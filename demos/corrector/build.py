@@ -1,0 +1,1696 @@
+"""Builds the correction scene (slides 11 and 12) and the continuation scene (slides 13 and 14) of the talk.
+
+Run it with pytycho from the tycho checkout,
+
+    uv run --project /Users/claudiovestini/git/tycho/code python build.py
+
+which writes correction.html, correction.tys, and correction.tyd, the same three files of the
+continuation scene, and runs.json, the members and the runs that check_dylan.py checks against
+DyLAN. STORYBOARD.md describes what each scene shows. Every orbit is computed here by corrector.py.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sys
+import time
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+
+import numpy as np
+
+import pytycho as ty
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import corrector as c  # noqa: E402
+
+MEMBERS = HERE.parent.parent / "data" / "stability" / "members.json"
+CSV = Path("/Users/claudiovestini/git/tycho/code/examples/broucke/data/family_11_periapsis.csv")
+TWO_PI = 2.0 * math.pi
+
+MU = {"lyapunov": 0.012155, "family11": 0.5}
+E = 0.3
+# the eccentricity and the initial true anomaly of each system
+SYSTEMS = {"cr3bp": (0.0, 0.0), "peri": (E, 0.0), "apo": (E, math.pi)}
+TARGETINGS = ("half", "full")
+SEGMENTS = (1, 2, 4, 8, 16)
+# the scale error epsilon of each first guess, and whether its corrector searches along the Newton step
+GUESSES = {"near": (0.001, False), "far": (0.01, False), "farther": (0.05, False), "far_ls": (0.01, True)}
+MAX_ITERATIONS = 10
+
+# the Jacobi constant of the Lyapunov orbit of period 2 pi, where the Lyapunov family of scene 2 ends,
+# and the Jacobi constant past the last member of every arclength pen, at which the run of the gray curve is stopped
+C_END = 2.9230742651998
+C_CURVE_END = 2.918
+LYAPUNOV_AMPLITUDE = 0.02
+# the weights of the continuation norm, which are nonzero only on the two coordinates of the diagram of
+# scene 2, i.e. x0 and C on the Lyapunov family and the launch velocity and e on family 11, each scaled by
+# its range over the family. The norm is then the length in the diagram, and the tangent and the hyperplane
+# of a pseudo-arclength step are a line and its normal in it. On the Lyapunov family a norm of the launch
+# velocity and C lets the blue pen at the large step jump to an orbit of four times the period, and on
+# family 11 a norm of x0 and e stalls it at the fold, where both are at an extremum
+W_LYAPUNOV = np.array([1 / 0.157**2, 0.0, 0.0, 1 / 0.2309**2])
+W_FAMILY11 = np.array([0.0, 1 / 0.313**2, 1 / 0.4539**2])
+# the index in a member Y of the ordinate of the diagram of each family
+ORDINATE = {"lyapunov": 0, "family11": 1}
+# a corrected member lies at most this many step lengths from its predictor, which keeps a pen on its family
+MAX_JUMP = 0.5
+NATURAL_STEPS = {"lyapunov": {"small": 0.01, "medium": 0.025, "large": 0.05}, "family11": {"small": 0.025, "medium": 0.05, "large": 0.1}}
+# both pens halve their step down to this fraction of the full step, and stop below it
+MIN_STEP = 2.0**-14
+# the arclength pen of family 11 stops on the second branch below this eccentricity, and the run of the gray family curve below the next
+FAMILY11_RETURN = 0.40
+FAMILY11_CURVE_RETURN = 0.36
+
+GRAY, RED, ORANGE, BLUE, WHITE = "#8a93a6", "#e8414a", "#e69f00", "#56b4e9", "#ffffff"
+# the white of a node at an opacity of 0.35 over the dark background, for a head, which is drawn opaque
+DIM_WHITE = "#5c5c5c"
+# the color of the arcs and of the convergence curve of the current run of scene 1, in both systems
+TEAL = "#21918c"
+# the glow of the converged orbit of scene 1, i.e. TEAL at an opacity of 0.3 over the dark background, and
+# its width in CSS pixels
+GLOW, STILL_GLOW = "#0d2f2e", 15.0
+# a body that a case does not show is parked this far out, outside every panel
+FAR = 1.0e3
+# the half width and the half height in n and in log10 ||F|| of a cross that marks a failed run in the
+# convergence panel
+CROSS_HALF, CROSS_TALL = 0.14, 0.45
+# each defect is drawn with a red disc of DEFECT_DISC CSS pixels at its target, under the node of NODE_SIZE.
+# a defect shorter than a pixel is thus still seen, as a red ring around its node or as a red dot
+DEFECT_DISC, NODE_SIZE = 12, 8
+# the CSS pixels per unit of n and per unit of log10 ||F|| in the convergence panel at the size of the viewer
+# on slides 11 and 12, measured on the stills of shots.mjs. the labels of the race are drawn and placed by them
+N_PX, LOG_PX = 23.2, 31.6
+# the cap height of a label of the race in CSS pixels, and its clearance from a curve, a cross, or another label
+LABEL_HEIGHT, LABEL_CLEAR = 10.0, 3.0
+# the label of a failed run is drawn at the height FAIL_Y, above every cross and below the head of the panel,
+# from the right tip of its cross. It is drawn from n = 1 at least, clear of the tick labels, and further left
+# when its width in n, FAIL_WIDTH at the size of the panel on slide 12, would take it out of the panel
+FAIL_Y, FAIL_WIDTH = 2.2, 6.0
+
+# scene 1 timing, in units of the clock c: iterate 0 spans c from ZERO to 1, and iterate n >= 1 spans
+# c from n to n + 1. In each iterate the arcs grow, the defects grow, the point of the convergence curve
+# appears, the nodes slide, and the converged orbit lights up at these fractions of the iterate
+ZERO = -2.0
+START1, GROW, DEFECT_END, POINT, SLIDE, LIGHT = -2.3, 0.45, 0.6, 0.6, 0.7, 0.8
+END1 = MAX_ITERATIONS + 1.5
+# iterate 0 of a run with S > 1 is staged instead: the arc and the defect of segment 0 grow in FIRST, while
+# the other nodes are dim, the other arcs and defects grow together in REST, the nodes slide from
+# STAGED_SLIDE to 1, as long as the slide of iterate 0 of a run with S = 1
+FIRST, REST, STAGED_SLIDE = (-2.0, -1.05), (-0.95, -0.1), 0.1
+# iterate 0 of a run with S = 1 is drawn whole from the start of the loop, and it is held until its node
+# slides at 0.1. its arcs and defects are grown over DRAWN, before START1. the point of iterate 0 of
+# every run is added to its convergence curve at the end of DRAWN, hence it is drawn from the first
+# frame for every S. the nodes and the sticks of iterate 0 start at DRAWN[0] as well, since a channel is
+# stored in single precision, in which START1 is rounded above the first value of the clock, and a
+# track that starts at START1 is thus hidden on the first frame
+DRAWN = (START1 - 1.0, START1 - 0.1)
+GAP = 1e-3
+# the gap of the ticker channels that a readout prints as integers, short enough that a frame does not fall in it
+TICK_GAP = 1e-6
+Y_TOP, Y_BOTTOM = 1.5, -15.5
+SAMPLES_HALF, SAMPLES_FULL, SAMPLES_ORBIT = 110, 180, 240
+# the mirror image (x, -y, -xdot, ydot) of a state, which is a state of the symmetric orbit at minus the time
+MIRROR = np.array([1.0, -1.0, -1.0, 1.0])
+
+# scene 2 timing: the sub-phases of one attempt, as fractions of its duration. A failed attempt is marked at
+# CORRECTOR_START, when its corrector would start, and its red dot is removed when the next attempt starts
+TANGENT_END, PREDICTOR_END, CONSTRAINT_START, CORRECTOR_START, MEMBER_AT = 0.15, 0.4, 0.4, 0.5, 0.9
+START2, FLOOR, FIRST_ATTEMPT = -0.3, 0.25, 0.2
+# an attempt that reaches the range of the parameter of the close-up lasts WINDOW_ATTEMPT before the stretch
+WINDOW_ATTEMPT = 0.35
+# each pen is stretched so that it ends its last attempt at LAST_END, and the end is held for HOLD2
+LAST_END, HOLD2 = 26.0, 1.5
+# the blue pen of family 11 is held for FOLD_HOLD in the attempt from the member whose tangent is closest to
+# vertical, at the fraction HOLD_AT of the attempt, i.e. after its predictor and its constraint line are
+# drawn and before its correction. Its last attempt ends FOLD_END_HOLD before the end of the loop. The time of
+# both holds is taken from its attempts before the close-up, hence its attempts inside the close-up are as
+# long as those of the other pens
+FOLD_HOLD, HOLD_AT, FOLD_END_HOLD = 4.5, 0.45, 3.5
+# the tangent and the constraint line of the blue pen are drawn in the violet of the dark theme of the deck,
+# the color of tau_j on slide 14. The record of the orange pen on the tab "both" is drawn in ORANGE at an
+# opacity of 0.5 over the dark background, since a head is drawn opaque. The record ends at its last member,
+# without the dot of its stop, hence the red dots of the failed attempts of the blue pen are the only red at
+# the fold
+VIOLET, DIM_ORANGE = "#c94fe6", "#765203"
+STEPS2 = 780
+SAMPLES_MEMBER = 140
+# the close-up of family 11 is centered on the tip of the fold and spans e from CLOSEUP_BELOW under it to
+# as much over it, and the close-up of the Lyapunov family spans the first failed step of the natural pen
+# at the medium step. Each is padded by WINDOW_PAD of the span of the curve in the ordinate. Its outline in the
+# diagram is at least WINDOW_MIN CSS pixels wide and tall, and dashed in dashes of about WINDOW_DASH CSS pixels
+CLOSEUP_BELOW, WINDOW_PAD, WINDOW_MIN, WINDOW_DASH = 0.0005, 0.15, 12.0, 4.0
+# the size of each panel of scene 2 on slides 13 and 14 in CSS pixels, and the insets of the area in which
+# its data are drawn from the left, the right, the bottom, and the top, which keep the data clear of the
+# tick labels and the axis titles at the left and the bottom, and of the head of the panel at the top. The
+# bottom inset of the orbit panel is raised, so that the line y = 0 is drawn above the y title
+PANELS = {
+    "diagram": ((290, 373), (48, 8, 40, 33)),
+    "closeup": ((434, 373), (64, 8, 40, 33)),
+    "orbits": ((730, 306), (48, 8, 56, 33)),
+}
+# the size in CSS pixels of the orbit panel of scene 1 on slides 11 and 12, and the height above its middle at
+# which the line y = 0 is drawn, clear of the y title at the middle of its left edge
+ORBIT_PANEL, TITLE_CLEAR = (398, 624), 12.0
+# the step of the run of the gray curve, and of the run that replaces its members of family 11 within
+# FINE_BELOW of the fold, which is fine enough for the close-up to show the two branches of the hairpin
+CURVE_STEP, FINE_BELOW, FOLD_STEP = 0.01, 0.002, 1e-4
+
+
+# numerics
+
+
+def pin(index: int, value: float, n: int):
+    """The extra equation Y[index] = value of :func:`corrector.newton`."""
+    row = np.zeros(n)
+    row[index] = 1.0
+    return lambda Y: (Y[index] - value, row)
+
+
+def jacobi_fun(model: c.Model):
+    return lambda Y: c.symmetric_F(model, 0.0, Y, "jacobi", None)
+
+
+def e_fun(model: c.Model, theta0: float):
+    return lambda Y: c.symmetric_F(model, theta0, Y, "e", TWO_PI)
+
+
+def lyapunov_seed() -> np.ndarray:
+    """The small L1 Lyapunov orbit, Y = (x0, y'0, T/2, C), corrected from the linear orbit at x0 fixed."""
+    model = c.Model(MU["lyapunov"])
+    x0, vy0, half = c.linear_lyapunov(model.mu, LYAPUNOV_AMPLITUDE)
+    Y = np.array([x0, vy0, half, float(model.jacobi(np.array([x0, 0.0, 0.0, vy0])))])
+    iterates, _, ok = c.newton(jacobi_fun(model), Y, extra=pin(0, x0, 4))
+    if not ok:
+        raise SystemExit("the seed of the Lyapunov family did not converge")
+    return iterates[-1]
+
+
+def family11_seed() -> np.ndarray:
+    """The member of family 11 at e = 0, Y = (x0, y'0, e), from members.json or else from the CSV of the Broucke page."""
+    try:
+        state = json.loads(MEMBERS.read_text())["family_11_periapsis"]["members"][0]["state"]
+        x0, vy0 = state[0], state[4]
+    except (OSError, KeyError, IndexError):
+        row = np.genfromtxt(CSV, delimiter=",", skip_header=1, max_rows=1)
+        x0, vy0 = row[3], row[7]
+    model = c.Model(MU["family11"])
+    iterates, _, ok = c.newton(e_fun(model, 0.0), np.array([x0, vy0, 0.0]), extra=pin(2, 0.0, 3))
+    if not ok:
+        raise SystemExit("the seed of family 11 did not converge")
+    # the Newton step leaves e at a rounding error of about 1e-28, which a readout would print
+    Y = iterates[-1].copy()
+    Y[2] = 0.0
+    return Y
+
+
+def to_eccentricity(mu: float, Y0: np.ndarray, theta0: float) -> np.ndarray:
+    """The member at e = E of the family continued in e at the period 2 pi from Y0 = (x0, y'0, 0)."""
+    model = c.Model(mu)
+    fam = c.continue_family(
+        model,
+        Y0,
+        parameter="e",
+        method="arclength",
+        step=0.01,
+        steps=400,
+        theta0=theta0,
+        period=TWO_PI,
+        stop=lambda Y: "e = E was passed" if Y[-1] >= E else "",
+    )
+    if fam.members[-1][-1] < E:
+        raise SystemExit(f"the family at mu = {mu}, theta0 = {theta0} stopped at e = {fam.members[-1][-1]:.4f}: {fam.stopped}")
+    a, b = fam.members[-2], fam.members[-1]
+    Y = a + (b - a) * (E - a[-1]) / (b[-1] - a[-1])
+    iterates, _, ok = c.newton(e_fun(model, theta0), Y, extra=pin(2, E, 3), give_up=10.0)
+    if not ok:
+        raise SystemExit(f"the member at e = {E}, mu = {mu}, theta0 = {theta0} did not converge")
+    return iterates[-1]
+
+
+def references_job(case: str) -> dict:
+    """The converged orbit (x0, y'0, T) of each system, from which scene 1 builds its first guesses."""
+    mu = MU[case]
+    if case == "lyapunov":
+        model = c.Model(mu)
+        fam = c.continue_family(
+            model,
+            lyapunov_seed(),
+            parameter="jacobi",
+            method="natural",
+            step=0.01,
+            steps=400,
+            weights=W_LYAPUNOV,
+            direction=-1.0,
+            end=C_END,
+            max_jump=MAX_JUMP,
+        )
+        if abs(fam.members[-1][-1] - C_END) > 1e-12:
+            raise SystemExit(f"the Lyapunov family stopped at C = {fam.members[-1][-1]}: {fam.stopped}")
+        iterates, _, ok = c.newton(jacobi_fun(model), fam.members[-1], extra=pin(2, math.pi, 4))
+        if not ok:
+            raise SystemExit("the Lyapunov orbit of period 2 pi did not converge")
+        x0, vy0, half, _ = iterates[-1]
+        base = np.array([x0, vy0, 0.0])
+        out = {"cr3bp": [x0, vy0, 2 * half]}
+    else:
+        base = family11_seed()
+        out = {"cr3bp": [base[0], base[1], TWO_PI]}
+    for system in ("peri", "apo"):
+        Y = to_eccentricity(mu, base, SYSTEMS[system][1])
+        out[system] = [Y[0], Y[1], TWO_PI]
+    return {"case": case, "references": {k: [float(x) for x in v] for k, v in out.items()}}
+
+
+# polylines
+
+
+def spread(P: np.ndarray, n: int) -> np.ndarray:
+    """n fractional sample indices along the polyline P (m, 2), spaced evenly in length plus turning angle, ends included."""
+    if len(P) < 2:
+        return np.zeros(1)
+    seg = np.diff(P, axis=0)
+    length = np.hypot(seg[:, 0], seg[:, 1])
+    heading = np.arctan2(seg[:, 1], seg[:, 0])
+    turn = np.r_[0.0, np.abs(np.angle(np.exp(1j * np.diff(heading))))]
+    w = length / max(float(length.sum()), 1e-300)
+    if turn.sum() > 1e-9:
+        w = w + turn / turn.sum()
+    sigma = np.r_[0.0, np.cumsum(w)]
+    if sigma[-1] <= 0.0:
+        return np.array([0.0, len(P) - 1.0])
+    return np.interp(np.linspace(0.0, sigma[-1], max(n, 2)), sigma, np.arange(len(P), dtype=float))
+
+
+def weight(P: np.ndarray) -> tuple[float, float]:
+    """The length and the total turning angle of the polyline P (m, 2)."""
+    if len(P) < 2:
+        return 0.0, 0.0
+    seg = np.diff(P, axis=0)
+    heading = np.arctan2(seg[:, 1], seg[:, 0])
+    return float(np.hypot(seg[:, 0], seg[:, 1]).sum()), float(np.abs(np.angle(np.exp(1j * np.diff(heading)))).sum())
+
+
+def rows_at(idx: np.ndarray, A: np.ndarray) -> np.ndarray:
+    grid = np.arange(len(A), dtype=float)
+    return np.stack([np.interp(idx, grid, A[:, j]) for j in range(A.shape[1])], axis=1)
+
+
+def orbit_polyline(model: c.Model, theta0: float, state: np.ndarray, period: float, n: int) -> tuple[np.ndarray, np.ndarray]:
+    """The positions (n, 2) of one period of the orbit from ``state``, and the elapsed anomaly at each."""
+    taus, X = c.orbit(model, theta0, state, period)
+    idx = spread(X[:, :2], n)
+    return rows_at(idx, X[:, :2]), np.interp(idx, np.arange(len(taus), dtype=float), taus)
+
+
+def first_guess(model: c.Model, theta0: float, sol: np.ndarray, T: float, kind: str, S: int, eps: float) -> np.ndarray:
+    """The S nodes sampled at equal steps of time over the targeted arc of the converged orbit, with each position
+    scaled about the centroid of the orbit and each velocity by 1 + eps."""
+    taus, X = c.orbit(model, theta0, sol, T)
+    center = X[:-1, :2].mean(axis=0)
+    arc = T / 2 if kind == "half" else T
+    out = []
+    for i in range(S):
+        t = arc * i / S
+        j = min(max(int(np.searchsorted(taus, t)), 1), len(taus) - 1)
+        w = (t - taus[j - 1]) / (taus[j] - taus[j - 1])
+        s = (1 - w) * X[j - 1] + w * X[j]
+        g = s.copy()
+        g[:2] = center + (1 + eps) * (s[:2] - center)
+        g[2:] = (1 + eps) * s[2:]
+        out.append(g)
+    return np.array(out)
+
+
+def correction_job(job: tuple) -> dict:
+    """One run of scene 1, with the arcs of every iterate thinned for drawing."""
+    case, system, targeting, S, guess, ref = job
+    t_start = time.time()
+    mu = MU[case]
+    e, theta0 = SYSTEMS[system]
+    eps, line_search = GUESSES[guess]
+    model = c.Model(mu, e)
+    sol = np.array([ref[0], 0.0, 0.0, ref[1]])
+    T = ref[2]
+    free = e == 0.0
+    t = c.Targeting(model, targeting, T * (1 + eps) if free else T, theta0=theta0, period_free=free, fixed_x0=sol[0] if free else None)
+    run = c.correct(t, first_guess(model, theta0, sol, T, targeting, S, eps), line_search=line_search, max_iterations=MAX_ITERATIONS)
+    total = SAMPLES_HALF if targeting == "half" else SAMPLES_FULL
+    iterates = []
+    for it in run.iterates:
+        dt = it.arc / S
+        sizes = [weight(it.samples[i][:, :2]) for i in range(S)]
+        lengths, turns = sum(x[0] for x in sizes), sum(x[1] for x in sizes)
+        segments = []
+        for i in range(S):
+            share = sizes[i][0] / max(lengths, 1e-300) + (sizes[i][1] / turns if turns > 1e-9 else 0.0)
+            idx = spread(it.samples[i][:, :2], max(6, round(total * share / 2)))
+            xy = rows_at(idx, it.samples[i][:, :2])
+            tau = np.interp(idx, np.arange(len(it.taus), dtype=float), it.taus)
+            segments.append((xy, tau / dt, theta0 + i * dt + tau))
+        iterates.append({"nodes": it.nodes, "ends": it.ends, "norm": it.norm, "step": it.step, "arc": it.arc, "segments": segments})
+    solution = None
+    if run.converged:
+        last = run.iterates[-1]
+        period = 2 * last.arc if targeting == "half" else last.arc
+        P, tau = orbit_polyline(model, theta0, last.nodes[0], period, SAMPLES_ORBIT)
+        solution = (P, tau / period, theta0 + tau)
+    return {
+        "key": (case, system, targeting, S, guess),
+        "converged": run.converged,
+        "failure": run.failure,
+        "iterates": iterates,
+        "solution": solution,
+        "seconds": time.time() - t_start,
+    }
+
+
+def family_model(family: str, Y: np.ndarray) -> tuple[c.Model, np.ndarray, float]:
+    """The model, the initial state, and the period of the member Y of a family."""
+    if family == "lyapunov":
+        return c.Model(MU[family]), np.array([Y[0], 0.0, 0.0, Y[1]]), 2.0 * Y[2]
+    return c.Model(MU[family], Y[2]), np.array([Y[0], 0.0, 0.0, Y[1]]), TWO_PI
+
+
+def run_family(family: str, seed: np.ndarray, method: str, step: float, *, curve: bool = False) -> c.Family:
+    """One continuation run of scene 2, or with ``curve`` the fine run drawn as the gray family curve."""
+    min_step = 1e-6 if curve else step * MIN_STEP
+    if family == "lyapunov":
+        model, W = c.Model(MU[family]), W_LYAPUNOV
+        kw = {"parameter": "jacobi", "weights": W, "direction": -1.0, "min_step": min_step}
+        if method == "natural":
+            return c.continue_family(model, seed, method="natural", step=step, steps=400, end=C_END, max_jump=MAX_JUMP, **kw)
+        last = C_CURVE_END if curve else C_END
+        return c.continue_family(
+            model,
+            seed,
+            method="arclength",
+            step=step,
+            steps=600,
+            max_jump=MAX_JUMP,
+            stop=lambda Y: "C passed the end" if Y[-1] <= last else "",
+            **kw,
+        )
+    model, W = c.Model(MU[family]), W_FAMILY11
+    kw = {"parameter": "e", "weights": W, "direction": 1.0, "period": TWO_PI, "theta0": 0.0, "min_step": min_step}
+    if method == "natural":
+        return c.continue_family(model, seed, method="natural", step=step, steps=400, max_jump=MAX_JUMP, **kw)
+    floor = FAMILY11_CURVE_RETURN if curve else FAMILY11_RETURN
+    top = [0.0]
+
+    def returned(Y):
+        top[0] = max(top[0], Y[-1])
+        return "the second branch was reached" if Y[-1] < floor and top[0] > Y[-1] + 0.01 else ""
+
+    return c.continue_family(model, seed, method="arclength", step=step, steps=600, max_jump=MAX_JUMP, stop=returned, **kw)
+
+
+def with_fine_fold(members: list[np.ndarray]) -> list[np.ndarray]:
+    """The gray curve of family 11 with its members around the fold replaced by a run at the step FOLD_STEP."""
+    e = np.array([Y[-1] for Y in members])
+    top = int(e.argmax())
+    lo = float(e[top]) - FINE_BELOW
+    a = max(i for i in range(top) if e[i] < lo)
+    b = min(i for i in range(top, len(members)) if e[i] < lo)
+    highest = [lo]
+
+    def below(Y):
+        highest[0] = max(highest[0], Y[-1])
+        return "the curve left the fold" if Y[-1] < lo < highest[0] else ""
+
+    kw = {"parameter": "e", "weights": W_FAMILY11, "direction": 1.0, "period": TWO_PI, "theta0": 0.0, "min_step": 1e-9}
+    fine = c.continue_family(c.Model(MU["family11"]), members[a], method="arclength", step=FOLD_STEP, steps=2000, max_jump=MAX_JUMP, stop=below, **kw)
+    return members[:a] + fine.members + members[b:]
+
+
+def continuation_job(job: tuple) -> dict:
+    """One pen of scene 2, or the gray family curve when the step name is "curve"."""
+    family, step_name, method, seed = job
+    t_start = time.time()
+    W = W_LYAPUNOV if family == "lyapunov" else W_FAMILY11
+    if step_name == "curve":
+        fam = run_family(family, seed, "arclength", CURVE_STEP, curve=True)
+        members = with_fine_fold(fam.members) if family == "family11" else fam.members
+        return {"key": (family, "curve", "arclength"), "members": members, "stopped": fam.stopped, "seconds": time.time() - t_start}
+    step = NATURAL_STEPS[family][step_name]
+    if method == "arclength":
+        step *= math.sqrt(W[-1])
+    fam = run_family(family, seed, method, step)
+    orbits = []
+    for Y in fam.members:
+        model, state, period = family_model(family, Y)
+        orbits.append(orbit_polyline(model, 0.0, state, period, SAMPLES_MEMBER)[0])
+    steps = [
+        {
+            "start": s.start,
+            "tangent": s.tangent,
+            "predictor": s.predictor,
+            "iterates": s.iterates,
+            "converged": s.member is not None,
+            "size": s.size,
+        }
+        for s in fam.steps
+    ]
+    return {
+        "key": (family, step_name, method),
+        "members": fam.members,
+        "steps": steps,
+        "stopped": fam.stopped,
+        "orbits": orbits,
+        "seconds": time.time() - t_start,
+    }
+
+
+# drawing helpers
+
+
+def inside(P: np.ndarray, box: tuple[float, float, float, float]) -> np.ndarray:
+    x0, x1, y0, y1 = box
+    return (P[:, 0] >= x0) & (P[:, 0] <= x1) & (P[:, 1] >= y0) & (P[:, 1] <= y1)
+
+
+def clamp(P: np.ndarray, box) -> np.ndarray:
+    x0, x1, y0, y1 = box
+    return np.stack([np.clip(P[:, 0], x0, x1), np.clip(P[:, 1], y0, y1)], axis=1)
+
+
+def increasing(cc: np.ndarray) -> np.ndarray:
+    """A mask that keeps the samples at which the clock channel strictly increases."""
+    keep = np.ones(len(cc), dtype=bool)
+    last = cc[0]
+    for i in range(1, len(cc)):
+        if cc[i] > last + 1e-7:
+            last = cc[i]
+        else:
+            keep[i] = False
+    return keep
+
+
+def lowered(box) -> tuple[float, float, float, float]:
+    """The box extended downward until the camera of the orbit panel of scene 1, fitted to it at the equal
+    aspect, draws y = 0 TITLE_CLEAR px above the middle of the panel."""
+    (width, height), (x0, x1, y0, y1) = ORBIT_PANEL, box
+    for _ in range(3):
+        per_px = 2.2 * max((x1 - x0) / 2 * height / width, (y1 - y0) / 2) / height
+        y0 = min(y0, -2 * TITLE_CLEAR * per_px - y1)
+    return x0, x1, y0, y1
+
+
+def widened(box) -> tuple[float, float, float, float]:
+    """The box widened about its middle to the aspect of the orbit panel of scene 1, i.e. the area that the
+    camera fitted to the box shows inside the margin of a tenth that it adds."""
+    (width, height), (x0, x1, y0, y1) = ORBIT_PANEL, box
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    half = max((x1 - x0) / 2 * height / width, (y1 - y0) / 2)
+    return cx - half * width / height, cx + half * width / height, cy - half, cy + half
+
+
+def box_of(points: list[np.ndarray], margin: float) -> tuple[float, float, float, float]:
+    P = np.vstack(points)
+    lo, hi = P.min(axis=0), P.max(axis=0)
+    pad = margin * (hi - lo)
+    return (float(lo[0] - pad[0]), float(hi[0] + pad[0]), float(lo[1] - pad[1]), float(hi[1] + pad[1]))
+
+
+def nearest_on(P: np.ndarray, p: np.ndarray) -> tuple[int, float, float]:
+    """The segment k of the polyline P nearest to the point p, the fraction along it of the nearest point, and its distance."""
+    a, d = P[:-1], np.diff(P, axis=0)
+    w = np.clip(np.einsum("ij,ij->i", p - a, d) / np.maximum(np.einsum("ij,ij->i", d, d), 1e-300), 0.0, 1.0)
+    dist = np.hypot(*(a + w[:, None] * d - p).T)
+    k = int(dist.argmin())
+    return k, float(w[k]), float(dist[k])
+
+
+def rectangle(box) -> np.ndarray:
+    x0, x1, y0, y1 = box
+    return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]])
+
+
+def cross(center, dx: float, dy: float) -> list[np.ndarray]:
+    x, y = center
+    return [np.array([[x - dx, y - dy], [x + dx, y + dy]]), np.array([[x - dx, y + dy], [x + dx, y - dy]])]
+
+
+def enter_leave(a: np.ndarray, b: np.ndarray, box) -> tuple[float, float] | None:
+    """The fractions along the segment from a to b at which it enters and leaves the box (Liang and Barsky), or None."""
+    x0, x1, y0, y1 = box
+    d = b - a
+    t0, t1 = 0.0, 1.0
+    for p, q in ((-d[0], a[0] - x0), (d[0], x1 - a[0]), (-d[1], a[1] - y0), (d[1], y1 - a[1])):
+        if p == 0.0:
+            if q < 0.0:
+                return None
+        elif p < 0.0:
+            t0 = max(t0, q / p)
+        else:
+            t1 = min(t1, q / p)
+    return (t0, t1) if t0 <= t1 else None
+
+
+def clip_pieces(P: np.ndarray, cc: np.ndarray, box, hold: float | None = None) -> list[tuple[np.ndarray, np.ndarray]]:
+    """The pieces of the polyline P inside the box, cut where P crosses an edge, with the clock channel cc
+    interpolated at each cut. With ``hold``, each piece is held at its last point until this clock value."""
+    pieces: list[tuple[list, list]] = []
+    open_ = False
+    for j in range(len(P) - 1):
+        a, b, ca, cb = P[j], P[j + 1], cc[j], cc[j + 1]
+        span = enter_leave(a, b, box)
+        if span is None:
+            open_ = False
+            continue
+        t0, t1 = span
+        if not open_ or t0 > 0.0:
+            pieces.append(([a + t0 * (b - a)], [ca + t0 * (cb - ca)]))
+        pieces[-1][0].append(a + t1 * (b - a))
+        pieces[-1][1].append(ca + t1 * (cb - ca))
+        open_ = t1 >= 1.0
+    out = []
+    for Q, cq in pieces:
+        Q, cq = np.array(Q), np.array(cq)
+        keep = increasing(cq)
+        Q, cq = Q[keep], cq[keep]
+        if hold is not None and hold > cq[-1] + 1e-7:
+            Q, cq = np.r_[Q, Q[-1:]], np.r_[cq, hold]
+        if len(Q) >= 2:
+            out.append((Q, cq))
+    return out
+
+
+def hold_series(changes: list[tuple[float, dict]], start: float, end: float, gap: float = GAP) -> tuple[np.ndarray, dict]:
+    """A clock channel and channels that hold each value from its time to the next change."""
+    times, values = [start], [changes[0][1]]
+    for t, v in changes[1:]:
+        if t - gap > times[-1] + 1e-9:
+            times.append(t - gap)
+            values.append(values[-1])
+        if t > times[-1] + 1e-9:
+            times.append(t)
+            values.append(v)
+        else:
+            values[-1] = v
+    if end > times[-1] + 1e-9:
+        times.append(end)
+        values.append(values[-1])
+    return np.array(times), {k: np.array([v[k] for v in values]) for k in values[0]}
+
+
+def at(k: int, f):
+    """The clock value at the fraction f of iterate k of scene 1."""
+    return ZERO + (1.0 - ZERO) * f if k == 0 else k + f
+
+
+def staged(k: int, S: int) -> bool:
+    """Whether iterate k of a run with S segments is staged one segment first."""
+    return k == 0 and S > 1
+
+
+def drawn(k: int, S: int) -> bool:
+    """Whether iterate k of a run with S segments is drawn whole from the start of the loop."""
+    return k == 0 and S == 1
+
+
+def grow_at(k: int, S: int, i: int, f):
+    """The clock value at the fraction f, at most DEFECT_END, of the growth of the arc and the defect of segment i."""
+    if drawn(k, S):
+        a, b = DRAWN
+    elif staged(k, S):
+        a, b = FIRST if i == 0 else REST
+    else:
+        return at(k, f)
+    return a + (b - a) * np.asarray(f) / DEFECT_END
+
+
+def slide_at(k: int, S: int) -> float:
+    """The clock value at which the nodes of iterate k start to slide to iterate k + 1."""
+    return STAGED_SLIDE if staged(k, S) else at(k, SLIDE)
+
+
+def point_at(k: int) -> float:
+    """The clock value at which the point of iterate k is added to the convergence curve, and the caption is updated."""
+    return DRAWN[1] if k == 0 else at(k, POINT)
+
+
+def snapped(points: list[tuple[float, float]], times: list[float], end: float) -> tuple[np.ndarray, np.ndarray]:
+    """The polyline through the points of a convergence curve, held at each point until the next is added,
+    so that the head of a grown curve jumps from one point to the next."""
+    P, cc = [points[0]], [times[0]]
+    for p, t in zip(points[1:], times[1:], strict=True):
+        P += [P[-1], p]
+        cc += [t - GAP, t]
+    return np.array([*P, P[-1]]), np.array([*cc, end])
+
+
+def convergence_curve(r: dict) -> tuple[list[tuple[float, float]], list[float], tuple | None]:
+    """The convergence curve of a run of scene 1.
+
+    Returns the points (n, log10 ||F||) of its finite iterates, clamped to the convergence panel, the clock
+    value at which each point is added, and for a failed run its cross, i.e. the center of the cross at the
+    iterate at which the run failed and at the height of its last finite norm, with its clock value. The
+    cross is None for a converged run.
+    """
+    its = r["iterates"]
+    K = len(its) - 1
+    finite = [k for k, it in enumerate(its) if math.isfinite(it["norm"])]
+    pts = [(float(k), min(max(math.log10(max(its[k]["norm"], 1e-300)), Y_BOTTOM), Y_TOP)) for k in finite] or [(0.0, Y_TOP)]
+    times = [point_at(k) for k in finite] or [point_at(0)]
+    mark = ((float(K), pts[-1][1]), point_at(K)) if not r["converged"] else None
+    return pts, times, mark
+
+
+def arc(cx: float, cy: float, rx: float, ry: float, a0: float, a1: float, n: int) -> np.ndarray:
+    """The n points of the elliptic arc about (cx, cy) with the semi-axes rx and ry, from the angle a0 to a1 in degrees."""
+    t = np.radians(np.linspace(a0, a1, n))
+    return np.stack([cx + rx * np.cos(t), cy + ry * np.sin(t)], axis=1)
+
+
+# the advance and the strokes of each character of a label of the race, in units of the cap height from the
+# left end of the baseline. a TyCHO label is drawn in the color of the text, hence the labels of the gray
+# curves are drawn as gray strokes
+GLYPHS = {
+    "S": (0.68, [np.r_[arc(0.31, 0.75, 0.25, 0.25, 35, 270, 9), arc(0.31, 0.25, 0.27, 0.25, 90, -145, 9)[1:]]]),
+    "=": (0.68, [np.array([[0.06, 0.3], [0.56, 0.3]]), np.array([[0.06, 0.62], [0.56, 0.62]])]),
+    " ": (0.28, []),
+    "1": (0.56, [np.array([[0.1, 0.78], [0.34, 1.0], [0.34, 0.0]])]),
+    "2": (0.66, [np.r_[arc(0.3, 0.72, 0.25, 0.27, 160, -35, 8), [[0.04, 0.0], [0.58, 0.0]]]]),
+    "4": (0.66, [np.array([[0.46, 0.0], [0.46, 1.0], [0.03, 0.32], [0.62, 0.32]])]),
+    "6": (0.66, [np.r_[arc(0.36, 0.3, 0.32, 0.7, 70, 180, 7), arc(0.32, 0.3, 0.28, 0.3, 180, 540, 14)[1:]]]),
+    "8": (0.66, [arc(0.31, 0.76, 0.22, 0.24, -90, 270, 13), arc(0.31, 0.26, 0.27, 0.26, 90, 450, 14)]),
+}
+
+
+def label_width(text: str) -> float:
+    """The width of a label of the race in units of its cap height, without the space after its last character."""
+    return sum(GLYPHS[ch][0] for ch in text) - 0.06
+
+
+def label_strokes(text: str, left: float, middle: float) -> list[np.ndarray]:
+    """The strokes of a label of the race in the convergence frame, from the abscissa ``left`` and centered
+    on the ordinate ``middle``, with a cap height of LABEL_HEIGHT CSS pixels."""
+    sx, sy = LABEL_HEIGHT / N_PX, LABEL_HEIGHT / LOG_PX
+    out, x = [], 0.0
+    for ch in text:
+        advance, strokes = GLYPHS[ch]
+        out += [np.stack([left + (x + P[:, 0]) * sx, middle + (P[:, 1] - 0.5) * sy], axis=1) for P in strokes]
+        x += advance
+    return out
+
+
+def place_labels(curves: list[tuple[int, list, tuple | None]], box) -> dict[int, tuple[float, float]]:
+    """The left end and the middle of the label "S = s" of each curve of a race, in the convergence frame.
+
+    Each curve is given by its segment count s, its points, and the center of the cross of a failed run,
+    or None. A label is put at the first place beside the last point of its curve, or beside its cross,
+    where it is clear of every curve, every cross, the earlier labels, the tolerance line, and the band of
+    the labels of failed runs at the top of the panel, inside the box. The test is made in CSS pixels. The
+    label of a cross is tried above and below it first, so that it is not read as the label of the next cross
+    of the race, which is often one iterate to the right.
+    """
+    px = np.array([N_PX, LOG_PX])
+    h, clear = LABEL_HEIGHT, LABEL_CLEAR
+    lines = [np.array([[box[0], -11.0], [box[1], -11.0]]) * px] + [np.array(pts) * px for _, pts, _ in curves]
+    rects = [(box[0] * N_PX, box[1] * N_PX, (FAIL_Y - 0.3) * LOG_PX, box[3] * LOG_PX)]
+    for _, _, mark in curves:
+        if mark is not None:
+            x, y = mark
+            rects.append(((x - CROSS_HALF) * N_PX, (x + CROSS_HALF) * N_PX, (y - CROSS_TALL) * LOG_PX, (y + CROSS_TALL) * LOG_PX))
+    out = {}
+    for S, pts, mark in curves:
+        w = label_width(f"S = {S}") * h
+        ax, ay = (mark if mark else pts[-1])[0] * N_PX, (mark if mark else pts[-1])[1] * LOG_PX
+        hx, hy = (CROSS_HALF * N_PX, CROSS_TALL * LOG_PX) if mark else (3.0, 3.0)
+        right, up, down = ax + hx + clear + 1, ay + hy + h / 2 + clear + 1, ay - hy - h / 2 - clear - 1
+        beside, over = [(right, ay), (right, up), (right, down)], [(ax - w / 2, up), (ax - w / 2, down)]
+        places = [*over, *beside] if mark else [*beside, *over]
+        places += [(ax - hx - clear - 1 - w, ay)]
+        places +=[(right, ay + s * k * (h + clear)) for k in (2, 3, 4) for s in (1, -1)]
+
+        def hits(left, mid):
+            r = (left - clear, left + w + clear, mid - h / 2 - clear, mid + h / 2 + clear)
+            if r[0] < box[0] * N_PX or r[1] > box[1] * N_PX or r[2] < box[2] * LOG_PX or r[3] > box[3] * LOG_PX:
+                return 1000
+            n = sum(1 for q in rects if q[0] < r[1] and r[0] < q[1] and q[2] < r[3] and r[2] < q[3])
+            return n + sum(1 for P in lines for a, b in zip(P[:-1], P[1:]) if enter_leave(a, b, r) is not None)
+
+        left, mid = min(places, key=lambda p: (hits(*p) > 0, hits(*p), places.index(p)))
+        rects.append((left, left + w, mid - h / 2, mid + h / 2))
+        out[S] = (left / N_PX, mid / LOG_PX)
+    return out
+
+
+def dashes(P: np.ndarray, dash: float, gap: float) -> list[np.ndarray]:
+    """The polyline P cut into dashes of the length dash, separated by gaps of the length gap."""
+    s = np.r_[0.0, np.cumsum(np.hypot(*np.diff(P, axis=0).T))]
+    out = []
+    for a in np.arange(0.0, s[-1], dash + gap):
+        t = np.r_[a, s[(s > a) & (s < min(a + dash, s[-1]))], min(a + dash, s[-1])]
+        out.append(np.stack([np.interp(t, s, P[:, 0]), np.interp(t, s, P[:, 1])], axis=1))
+    return out
+
+
+def bodies(scene: ty.Scene, frame, l1_below: bool = False) -> list:
+    """The masses and 𝓛₁ at attributes of the driver's set, which :func:`body_attrs` writes. With ``l1_below``, the
+    label of 𝓛₁ is drawn below 𝓛₁, at the ordinate of the attribute "l1_label_y", by a body of its own."""
+    out = []
+    for id, label, size in (("earth", "Earth", 7.0), ("moon", "Moon", 5.0), ("primary", "primary", 6.0), ("secondary", "secondary", 6.0)):
+        out.append(ty.body(scene.body(id, frame=frame, position=[ty.attr(f"{id}_x"), 0.0, 0.0], label=label, color=GRAY), size=size))
+    l1 = scene.body("L1", frame=frame, position=[ty.attr("l1x"), 0.0, 0.0], label=None if l1_below else "𝓛₁", color=GRAY)
+    out.append(ty.body(l1, size=4.0))
+    if l1_below:
+        tag = scene.body("L1_label", frame=frame, position=[ty.attr("l1x"), ty.attr("l1_label_y"), 0.0], label="𝓛₁", color=GRAY)
+        out.append(ty.body(tag, size=2.0))
+    return out
+
+
+def body_attrs(case: str) -> dict[str, float]:
+    """The positions of the masses of :func:`bodies`. The Lyapunov case shows the Earth and the Moon, and family 11
+    the primary and the secondary, and the masses of the other case are parked at FAR."""
+    mu = MU[case]
+    moon = case == "lyapunov"
+    return {
+        "earth_x": -mu if moon else FAR,
+        "moon_x": 1 - mu if moon else FAR,
+        "primary_x": FAR if moon else -mu,
+        "secondary_x": FAR if moon else 1 - mu,
+        "l1x": c.libration_l1(mu),
+    }
+
+
+def masses_near(case: str, polylines: list[np.ndarray]) -> list[np.ndarray]:
+    """The masses within one size of the box of the polylines, which a panel then shows with them."""
+    x0, x1, y0, y1 = box_of(polylines, 0.0)
+    size = max(x1 - x0, y1 - y0)
+    out = []
+    for x in (-MU[case], 1 - MU[case]):
+        if x0 - size <= x <= x1 + size and y0 - size <= 0.0 <= y1 + size:
+            out.append(np.array([[x, 0.0]]))
+    return out
+
+
+# scene 1
+
+
+def build_correction(refs: dict, runs: dict, out: Path) -> dict:
+    scene = ty.Scene(title="Differential correction")
+    rp = scene.frame("rp", label="rotating-pulsating", axes=("x", "y"))
+    conv = scene.frame("convergence", label="convergence", axes=("iterate n", "log₁₀ ‖F‖"), parent=rp)
+    # the label of a failed run is drawn in a frame that the driver's channel "failed" scales by 1e-6 up
+    # to the failure and by 1 after it, which parks the label at FAR and then moves it into the panel. A label
+    # is written for each iterate n at which a run can fail, and the labels of the other iterates stay at FAR
+    failure = scene.frame("failure", parent=conv, origin=[FAR, FAR, 0.0], scale=ty.channel("failed"))
+    failed_labels = [
+        ty.body(
+            scene.body(f"failed{n}", frame=failure, position=[ty.attr(f"fail{n}_x"), ty.attr("fail_y"), 0.0], label=f"run failed at n = {n}", color=RED),
+            size=2.0,
+        )
+        for n in range(MAX_ITERATIONS + 1)
+    ]
+    body_layers = bodies(scene, rp)
+
+    # the box of each case holds the three converged orbits and the masses near them. The camera of the orbit
+    # panel is fitted to this box, lowered and widened to the panel, and the arcs are cut where they leave it
+    boxes, clips, stick = {}, {}, {}
+    for case, by_system in refs.items():
+        polylines = {}
+        for system, (x0, vy0, T) in by_system.items():
+            e, theta0 = SYSTEMS[system]
+            polylines[system] = orbit_polyline(c.Model(MU[case], e), theta0, np.array([x0, 0.0, 0.0, vy0]), T, SAMPLES_ORBIT)[0]
+        x0, vy0, T = by_system["cr3bp"]
+        X = c.orbit(c.Model(MU[case]), 0.0, np.array([x0, 0.0, 0.0, vy0]), T)[1]
+        speed = float(np.median(np.hypot(X[:, 2], X[:, 3])))
+        boxes[case] = box_of([*polylines.values(), *masses_near(case, list(polylines.values()))], 0.12)
+        b = boxes[case]
+        size = max(b[1] - b[0], b[3] - b[2])
+        stick[case] = 0.07 * size / speed
+        clips[case] = widened(lowered(b))
+        scene.track_set(f"box-{case}", frame=rp, tags={"element": "box", "case": case}).add(rectangle(clips[case]))
+        # the reference orbit is dashed, so that the arcs below it are still seen
+        for system, P in polylines.items():
+            ts = scene.track_set(f"ref-{case}-{system}", frame=rp, tags={"element": "ref", "case": case, "system": system})
+            for D in dashes(P, 0.02 * size, 0.012 * size):
+                ts.add(D)
+    # the right margin keeps a cross at the last iterate, the label of a failed run, and the labels of the race inside the panel
+    conv_box = (-0.4, MAX_ITERATIONS + 2.4, Y_BOTTOM, Y_TOP + 1.0)
+    scene.track_set("convergence-box", frame=conv).add(rectangle(conv_box))
+    scene.track_set("tolerance", frame=conv).add(np.array([[conv_box[0], -11.0], [conv_box[1], -11.0]]))
+
+    # the curves of the five segment counts of each case, system, targeting, and guess are the race, and the
+    # label "S = s" of each is placed once, so that it does not move when another segment count is selected
+    convergence = {key: convergence_curve(r) for key, r in runs.items()}
+    races: dict[tuple, list] = {}
+    for (case, system, targeting, S, guess), curve in sorted(convergence.items()):
+        races.setdefault((case, system, targeting, guess), []).append((S, *curve))
+    labels = {group: place_labels([(S, pts, mark and mark[0]) for S, pts, _, mark in items], conv_box) for group, items in races.items()}
+
+    for key, r in sorted(runs.items()):
+        case, system, targeting, S, guess = key
+        tags = {"case": case, "system": system, "targeting": targeting, "S": str(S), "guess": guess}
+        name = "-".join(tags.values())
+        box = clips[case]
+        half = targeting == "half"
+        its = r["iterates"]
+        K = len(its) - 1
+
+        def new(element, frame=rp, periodic=False, attrs=None, name=name, tags=tags):
+            return scene.track_set(
+                f"{element}-{name}", frame=frame, tags={"element": element, **tags}, periodic=periodic, attrs=attrs or {}
+            )
+
+        arcs, ghosts, defects, nodes, dim_nodes, sticks = [], [], [], [], [], []
+        for k, it in enumerate(its):
+            hold = END1 if k == K else at(k + 1, 0.0) - GAP
+            slide = slide_at(k, S)
+            # an arc that leaves the box is drawn in its pieces inside it, and the last point of its last piece is kept, by segment and by mirror image
+            cuts: dict[tuple[int, int], np.ndarray | None] = {}
+            for i, (xy, frac, _) in enumerate(it["segments"]):
+                cc = grow_at(k, S, i, GROW * frac)
+                for m, P in enumerate([xy, xy * [1.0, -1.0]] if half else [xy]):
+                    pieces = clip_pieces(P, cc, box)
+                    if not inside(P, box).all():
+                        cuts[(i, m)] = pieces[-1][0][-1] if pieces else None
+                    for Pk, ck in pieces:
+                        arcs.append((np.r_[Pk, Pk[-1:]], np.r_[ck, hold]))
+                        if k == K or len(Pk) < 2:
+                            continue
+                        Pg = np.r_[Pk[::2], Pk[-1:]] if len(Pk) % 2 == 0 else Pk[::2]
+                        start = at(k + 1, 0.0)
+                        ghosts.append((Pg, np.linspace(start, start + 0.05, len(Pg))))
+            if math.isfinite(it["norm"]):
+                # the converged iterate keeps the sticks at the end of its arc, which form one vertical stick, but
+                # it does not have defects
+                last = r["converged"] and k == K
+                ends, nd, s = it["ends"], it["nodes"], stick[case]
+                targets = [nd[i + 1] for i in range(S - 1)]
+                targets.append(ends[-1] * MIRROR if half else nd[0])
+                pairs = [(i, 0, a, b) for i, (a, b) in enumerate(zip(ends, targets, strict=True))]
+                if half:
+                    pairs += [(i, 1, a * MIRROR, b * MIRROR) for i, _, a, b in pairs[:-1]]
+                for i, m, a, b in pairs:
+                    tt = np.array([grow_at(k, S, i, GROW), grow_at(k, S, i, DEFECT_END)])
+                    # the last gap of a half period runs from the end of the arc to its mirror image
+                    mirror_end = half and m == 0 and i == S - 1
+                    # with a single segment, the end of the arc is drawn with its velocity stick from its defect on, and
+                    # under the half period its mirror image as well, since neither is a node. Both are held with the
+                    # arc until its ghost replaces it. A stick that would leave the box is not drawn
+                    if S == 1:
+                        ends_drawn = (a, b) if mirror_end else (a,)
+                        tips = np.array([end[:2] + s * end[2:] for end in ends_drawn])
+                        if inside(np.r_[np.array([end[:2] for end in ends_drawn]), tips], box).all():
+                            for end in ends_drawn:
+                                sticks.append((np.array([end[:2], end[:2] + s * end[2:]]), np.array([tt[0], hold])))
+                    if last:
+                        continue
+                    # the gap in position, from the end of the arc to its target, is held until the next iterate
+                    gap = np.array([a[:2], b[:2]])
+                    if not inside(gap, box).all():
+                        # an end outside the box is drawn where its arc was cut, and a node outside it where the node is drawn
+                        a2 = a[:2] if inside(a[None, :2], box)[0] else cuts.get((i, m))
+                        b2 = b[:2] if inside(b[None, :2], box)[0] else (cuts.get((i, 1)) if mirror_end else clamp(b[None, :2], box)[0])
+                        if a2 is None or b2 is None:
+                            continue
+                        gap = np.array([a2, b2])
+                    defects.append((np.r_[gap, gap[1:]], np.r_[tt, hold]))
+            if S == 1:
+                # the node of a single segment is drawn with its velocity stick, cut where it leaves the box, until
+                # the node slides. the node of the last iterate K is not moved, hence its stick is kept to END1
+                p, v = it["nodes"][0, :2], it["nodes"][0, 2:]
+                pieces = clip_pieces(np.array([p, p + stick[case] * v]), np.array([0.0, 1.0]), box)
+                if pieces and inside(p[None], box)[0]:
+                    sticks.append((pieces[0][0][[0, -1]], np.array([DRAWN[0] if k == 0 else at(k, 0.0), END1 if k == K else slide])))
+        for i in range(S):
+            P, cc = [], []
+            for k, it in enumerate(its):
+                p = clamp(it["nodes"][i : i + 1, :2], box)[0]
+                P += [p, p]
+                cc += [DRAWN[0] if k == 0 else at(k, 0.0), slide_at(k, S) if k < K else END1]
+            if staged(0, S) and i > 0:
+                # the node is white until the first segment grows, and dim until its own segment grows
+                nodes.append((np.array(P[:2]), np.array([DRAWN[0], FIRST[0]])))
+                dim_nodes.append((np.array(P[:2]), np.array([FIRST[0], REST[0]])))
+                cc[0] = REST[0]
+            nodes.append((np.array(P), np.array(cc)))
+
+        ts = new("arcs")
+        for P, cc in arcs:
+            ts.add(P, channels={"c": cc})
+        if ghosts:
+            ts = new("ghosts")
+            for P, cc in ghosts:
+                ts.add(P, channels={"c": cc})
+        if defects:
+            ts = new("defects")
+            for P, cc in defects:
+                ts.add(P, channels={"c": cc})
+        ts = new("nodes")
+        for P, cc in nodes:
+            ts.add(P, channels={"c": cc})
+        if dim_nodes:
+            ts = new("dim_nodes")
+            for P, cc in dim_nodes:
+                ts.add(P, channels={"c": cc})
+        if sticks:
+            ts = new("sticks")
+            for P, cc in sticks:
+                ts.add(P, channels={"c": cc})
+        if r["solution"] is not None:
+            P, frac, _ = r["solution"]
+            ts = new("solution", periodic=True)
+            lit = at(K, LIGHT)
+            ts.add(P, channels={"c": lit + (END1 - lit) * frac})
+            # the still orbit is drawn a second time through the midpoints of the segments of the orbit. A wide line
+            # of TyCHO is drawn without joins, hence a notch is left outside every vertex of each opaque line, and
+            # it is covered by the line through the midpoints
+            mid = (P[:-1] + P[1:]) / 2
+            ts = new("solution_mid")
+            ts.add(np.r_[mid, mid[:1]], channels={"c": np.linspace(lit, END1, len(mid) + 1)})
+
+        # the convergence curve of this run, through its finite iterates, and a failed run is marked by a cross
+        pts, times, mark = convergence[key]
+        P, cc = snapped(pts, times, END1)
+        ts = new("current", frame=conv)
+        ts.add(P, channels={"c": cc})
+        if mark is not None:
+            ts = new("cross", frame=conv)
+            for seg in cross(mark[0], CROSS_HALF, CROSS_TALL):
+                ts.add(seg, channels={"c": np.array([mark[1], mark[1] + 0.01])})
+        # the labels of the four other curves of the race, each drawn when the last point or the cross of its curve is
+        group = (case, system, targeting, guess)
+        ts = new("race_label", frame=conv)
+        for S2, _, times2, mark2 in races[group]:
+            if S2 == S:
+                continue
+            t = mark2[1] if mark2 is not None else times2[-1]
+            for P in label_strokes(f"S = {S2}", *labels[group][S2]):
+                ts.add(P, channels={"c": np.linspace(t, t + 0.01, len(P))})
+        # the label of this run, drawn in teal at the place that place_labels gave it in the race
+        ts = new("current_label", frame=conv)
+        t = mark[1] if mark is not None else times[-1]
+        for P in label_strokes(f"S = {S}", *labels[group][S]):
+            ts.add(P, channels={"c": np.linspace(t, t + 0.01, len(P))})
+
+        # the ticker of the caption, which is updated when the point of each iterate is added. A failed propagation
+        # holds the norm of the iterate before it, and the last iterate of a converged run, from which no step is
+        # taken, holds the step fraction of the iterate before it
+        finite = [k for k, it in enumerate(its) if math.isfinite(it["norm"])]
+        logs = {k: math.log10(max(its[k]["norm"], 1e-300)) for k in finite}
+        changes = []
+        for k, it in enumerate(its):
+            alpha = it["step"] if k < K else (its[k - 1]["step"] if k else 1.0)
+            logF = logs[k] if k in logs else (changes[-1][1]["logF"] if changes else Y_TOP)
+            changes.append((START1 if k == 0 else point_at(k), {"n": float(k), "logF": logF, "alpha": alpha, "failed": 1e-6}))
+        attrs = {**body_attrs(case), **{f"fail{n}_x": 0.0 for n in range(MAX_ITERATIONS + 1)}, "fail_y": 0.0}
+        if mark is not None:
+            # a step is not taken from the iterate at which a run fails, hence its step fraction is read out as 0
+            changes.append((mark[1], {**changes[-1][1], "alpha": 0.0, "failed": 1.0}))
+            attrs[f"fail{K}_x"] = min(max(K, 1) + CROSS_HALF, conv_box[1] - FAIL_WIDTH) - FAR
+            attrs["fail_y"] = FAIL_Y - FAR
+        if case == "family11":
+            # the gaps of family 11 are drawn along y = 0 across 𝓛₁, which this scene therefore does not show
+            attrs["l1x"] = FAR
+        cc, ch = hold_series(changes, START1, END1, gap=TICK_GAP)
+        ts = new("ticker", attrs=attrs)
+        ts.add(np.zeros((len(cc), 2)), channels={"c": cc, **ch})
+
+    for (case, system, targeting, guess), items in races.items():
+        tags = {"case": case, "system": system, "targeting": targeting, "guess": guess}
+        name = "-".join(tags.values())
+        ts = scene.track_set(f"race-{name}", frame=conv, tags={"element": "race", **tags})
+        for _, pts, times, _ in items:
+            P, cc = snapped(pts, times, END1)
+            ts.add(P, channels={"c": cc})
+        marks = [mark for _, _, _, mark in items if mark is not None]
+        if marks:
+            ts = scene.track_set(f"race_cross-{name}", frame=conv, tags={"element": "race_cross", **tags})
+            for center, t in marks:
+                for seg in cross(center, CROSS_HALF, CROSS_TALL):
+                    ts.add(seg, channels={"c": np.array([t, t + 0.01])})
+
+    case = scene.choice("case", ["lyapunov", "family11"], labels=["𝓛₁ Lyapunov", "family 11"])
+    system = scene.choice("system", list(SYSTEMS), labels=["CR3BP", "ER3BP, periapsis", "ER3BP, apoapsis"])
+    targeting = scene.choice("targeting", list(TARGETINGS), labels=["half period", "full period"])
+    segments = scene.choice("S", [str(s) for s in SEGMENTS], labels=[str(s) for s in SEGMENTS])
+    guess = scene.choice("guess", list(GUESSES), labels=["ε = 0.001", "ε = 0.01", "ε = 0.05", "ε = 0.01, line search"])
+    ghosts_on = scene.toggle("ghosts", default=True)
+    defects_on = scene.toggle("defects", default=True)
+    solution_on = scene.toggle("solution", default=False)
+    others_on = scene.toggle("others", default=False)
+    scene.clock("value", channels=["c"], steps=480, range=[START1, END1], labels=["iterate n + fraction"])
+
+    def q(element, **extra):
+        return ty.sets(element=element, case=case, system=system, targeting=targeting, S=segments, guess=guess, **extra)
+
+    def qr(element):
+        return ty.sets(element=element, case=case, system=system, targeting=targeting, guess=guess)
+
+    driver = ty.driver(q("ticker"), {"index": 0})
+    scene.view(
+        "orbit",
+        frame=rp,
+        driver=driver,
+        camera={"kind": "plane", "plane": "xy"},
+        label="orbit, rotating-pulsating frame",
+        layers=[
+            ty.track(ty.sets(element="box", case=case), opacity=0.0, width=1.0),
+            ty.axes(),
+            # the ghosts are drawn under the current arcs, and the dashed reference over the arcs and the converged orbit
+            ty.track(q("ghosts"), before="hidden", color=GRAY, width=1.2, opacity=0.4, visible=ghosts_on),
+            ty.track(q("arcs"), reveal="grow", before="hidden", after="hidden", color=TEAL, width=2.5),
+            # the red disc of a defect is drawn at its target under the white node, and seen around it
+            ty.track(
+                q("defects"), reveal="grow", before="hidden", after="hidden", head={"color": RED, "size": DEFECT_DISC}, color=RED, width=3.0, visible=defects_on
+            ),
+            # the converged orbit is drawn still, in teal over its glow, so that the orbit panel is held still once a run converges
+            ty.track(q("solution"), before="hidden", color=GLOW, width=STILL_GLOW),
+            ty.track(q("solution_mid"), before="hidden", color=GLOW, width=STILL_GLOW),
+            ty.track(q("solution"), before="hidden", color=TEAL, width=5.0),
+            ty.track(q("solution_mid"), before="hidden", color=TEAL, width=5.0),
+            ty.track(ty.sets(element="ref", case=case, system=system), color=GRAY, width=3.5, opacity=0.95, visible=solution_on),
+            ty.track(q("sticks"), before="hidden", after="hidden", color=WHITE, width=1.8),
+            ty.track(
+                q("dim_nodes"),
+                trail=0.002,
+                taper=(0, 0),
+                head={"color": DIM_WHITE, "size": NODE_SIZE},
+                before="hidden",
+                after="hidden",
+                color=WHITE,
+                width=0.5,
+                opacity=0.3,
+            ),
+            # a node of a staged iterate 0 is drawn white until FIRST[0] by a track of its own, hidden after its end
+            ty.track(
+                q("nodes"), trail=0.002, taper=(0, 0), head={"color": WHITE, "size": NODE_SIZE}, before="hidden", after="hidden", color=WHITE, width=0.5
+            ),
+            *body_layers,
+        ],
+    )
+    scene.view(
+        "convergence",
+        frame=conv,
+        driver=driver,
+        camera={"kind": "plane", "plane": "xy", "aspect": "free"},
+        label="convergence",
+        layers=[
+            ty.track(ty.set_id("convergence-box"), opacity=0.0, width=1.0),
+            ty.axes(),
+            ty.grid(labels=True),
+            ty.track(ty.set_id("tolerance"), color=GRAY, width=1.0, opacity=0.6),
+            ty.track(
+                qr("race"), reveal="grow", before="hidden", head={"color": GRAY, "size": 5}, color=GRAY, width=1.5, opacity=0.8, visible=others_on
+            ),
+            ty.track(qr("race_cross"), before="hidden", color=RED, width=2.0, opacity=0.5, visible=others_on),
+            ty.track(q("race_label"), before="hidden", color=GRAY, width=1.3, opacity=0.9, visible=others_on),
+            ty.track(q("current_label"), before="hidden", color=TEAL, width=1.6, visible=others_on),
+            ty.track(q("current"), reveal="grow", before="hidden", head={"color": WHITE, "size": 7}, color=TEAL, width=3.0),
+            ty.track(q("cross"), before="hidden", color=RED, width=2.5),
+            *failed_labels,
+        ],
+    )
+    scene.panel("orbit", "orbit")
+    scene.panel("convergence", "convergence")
+    scene.layout(ty.split("row", 0.55, "orbit", "convergence"))
+    scene.tabs(case, label="case")
+    scene.tabs(system, label="system")
+    scene.tabs(targeting, label="targeting")
+    scene.tabs(segments, label="segments S")
+    scene.tabs(guess, label="first guess")
+    scene.toggle_control(ghosts_on, label="ghosts")
+    scene.toggle_control(defects_on, label="defects")
+    scene.toggle_control(solution_on, label="solution")
+    scene.toggle_control(others_on, label="other segment counts")
+    scene.transport()
+    scene.readout(
+        "caption",
+        "iterate n = ",
+        ty.channel("n"),
+        "   log₁₀ ‖F‖ = ",
+        {"channel": "logF", "digits": 3},
+        "   step fraction α = ",
+        ty.channel("alpha"),
+    )
+    scene.write(out / "correction.tys", out / "correction.tyd")
+    return scene.write_html(out / "correction.html")
+
+
+# scene 2
+
+
+def w_length(d: np.ndarray, W: np.ndarray) -> float:
+    return float(math.sqrt(max(float(d @ (W * d)), 0.0)))
+
+
+def phase(slot: tuple[float, float, float], f: float) -> float:
+    """The clock value at the fraction f of an attempt of a pen, given as its start, its duration, and the hold
+    that is inserted at the fraction HOLD_AT of it."""
+    t0, d, pause = slot
+    return t0 + f * d + (pause if f > HOLD_AT else 0.0)
+
+
+def caption_channels(p: float, halvings: int) -> dict[str, float]:
+    """The parameter p as an integer part and four decimal digits, which the caption prints as integers, and the halvings of the step."""
+    v = round(abs(p) * 10**4)
+    out = {"p_int": float(v // 10**4)}
+    for i in range(4):
+        out[f"p_{i + 1}"] = float((v // 10 ** (3 - i)) % 10)
+    out["halvings"] = float(halvings)
+    return out
+
+
+def framed(box, scale: np.ndarray, panel: str) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """The box widened along one axis until a unit is as long across the area for data of the panel as up it,
+    and the box of the camera, whose fit to the panel puts the widened box on this area. A unit is one of the
+    continuation norm, whose weights on the two axes are the squares of ``scale``, or one of length when
+    ``scale`` is (1, 1)."""
+    (width, height), (left, right, bottom, top) = PANELS[panel]
+    # the camera fits its box to the middle 1/1.1 of the panel along each axis. An inset below this margin would
+    # put the camera box inside the data box, and the fit would then follow the data along that axis alone
+    left, right = max(left, width * 0.05 / 1.1), max(right, width * 0.05 / 1.1)
+    bottom, top = max(bottom, height * 0.05 / 1.1), max(top, height * 0.05 / 1.1)
+    x0, x1, y0, y1 = box
+    w, h = (x1 - x0) * scale[0], (y1 - y0) * scale[1]
+    aspect = (width - left - right) / (height - bottom - top)
+    if w / h > aspect:
+        grow = (w / aspect / scale[1] - (y1 - y0)) / 2
+        y0, y1 = y0 - grow, y1 + grow
+    else:
+        grow = (h * aspect / scale[0] - (x1 - x0)) / 2
+        x0, x1 = x0 - grow, x1 + grow
+
+    def outer(a: float, b: float, lo: float, hi: float, size: float) -> tuple[float, float]:
+        span = (b - a) * size / (size - lo - hi)
+        start = a - span * lo / size + 0.05 * span / 1.1
+        return start, start + span / 1.1
+
+    return (x0, x1, y0, y1), (*outer(x0, x1, left, right, width), *outer(y0, y1, bottom, top, height))
+
+
+METHODS = ("natural", "arclength")
+
+
+def build_continuation(pens: dict, curves: dict, out: Path) -> dict:
+    scene = ty.Scene(title="Continuation of a family")
+    rp = scene.frame("rp", label="rotating-pulsating", axes=("x", "y"))
+    diagram_frames = {
+        "lyapunov": scene.frame("lyapunov", label="𝓛₁ Lyapunov family", axes=("Jacobi constant C", "launch position x₀"), parent=rp),
+        "family11": scene.frame("family11", label="family 11", axes=("eccentricity e", "launch velocity ẏ₀"), parent=rp),
+    }
+    body_layers = bodies(scene, rp, l1_below=True)
+    label_y = {}
+
+    def proj(Y, family: str):
+        """The point of the member Y in the diagram of its family, i.e. its parameter and its ordinate."""
+        return np.array([Y[-1], Y[ORDINATE[family]]])
+
+    def weights(family: str) -> np.ndarray:
+        return W_LYAPUNOV if family == "lyapunov" else W_FAMILY11
+
+    def scale(family: str) -> np.ndarray:
+        """The square roots of the weights of the two axes of the diagram, the parameter and the ordinate."""
+        W = weights(family)
+        return np.sqrt([W[-1], W[ORDINATE[family]]])
+
+    # the box of each close-up, in the parameter and the ordinate
+    windows, cameras = {}, {}
+    for family in NATURAL_STEPS:
+        curve = np.array([proj(Y, family) for Y in curves[family]])
+        tip = curve[np.argmax(curve[:, 0])]
+        if family == "family11":
+            lo, hi = tip[0] - CLOSEUP_BELOW, tip[0] + CLOSEUP_BELOW
+        else:
+            h = NATURAL_STEPS[family]["medium"]
+            first = next(st for st in pens[(family, "medium", "natural")]["steps"] if not st["converged"])
+            p = float(first["start"][-1])
+            lo, hi = p - 1.25 * h, p + 0.25 * h
+        vs = np.concatenate([Q[:, 1] for Q, _ in clip_pieces(curve, np.arange(len(curve), dtype=float), (lo, hi, -np.inf, np.inf))])
+        pad = WINDOW_PAD * float(vs.max() - vs.min())
+        if family == "family11":
+            # the ordinate is spanned symmetrically about the tip, so that the box is widened about it
+            half = float(np.abs(vs - tip[1]).max()) + pad
+            box = (lo, hi, float(tip[1]) - half, float(tip[1]) + half)
+        else:
+            box = (lo, hi, float(vs.min()) - pad, float(vs.max()) + pad)
+        windows[family], cameras[family] = framed(box, scale(family), "closeup")
+
+    def raw_times(pen: dict, family: str) -> list[float]:
+        """The duration of each attempt of a pen, in proportion to the length in the diagram of its predictor and of
+        its correction, or WINDOW_ATTEMPT for an attempt that reaches the range of the parameter of the close-up."""
+        W, window = weights(family), windows[family]
+        durations = []
+        for st in pen["steps"]:
+            p = [proj(Y, family)[0] for Y in [st["start"], st["predictor"], *st["iterates"]]]
+            if min(p) < window[1] and max(p) > window[0]:
+                durations.append(WINDOW_ATTEMPT)
+                continue
+            L = w_length(st["predictor"] - st["start"], W)
+            if st["converged"]:
+                L += w_length(st["iterates"][-1] - st["predictor"], W)
+            durations.append(max(FLOOR, min(L, 1.0)))
+        return durations
+
+    def fold_attempt(pen: dict, family: str) -> tuple[int, float]:
+        """The index of the converged attempt from the member whose tangent is closest to vertical in the diagram,
+        and the angle of this tangent from the vertical, in degrees."""
+        sc = scale(family)
+        off = []
+        for st in pen["steps"]:
+            u = proj(st["tangent"], family) * sc
+            off.append(math.degrees(math.asin(min(1.0, abs(float(u[0])) / float(np.hypot(*u))))))
+        j = int(np.argmin(off))
+        # a failed attempt is retried from the same member, along the same tangent
+        while not pen["steps"][j]["converged"] and j + 1 < len(pen["steps"]):
+            j += 1
+        return j, off[j]
+
+    # each pen is played alone, the orange pen on the tab "natural parameter" and the blue pen on the tab "both".
+    # each attempt is given its start, its duration, and the hold within it
+    timing = {}
+    end2 = LAST_END + HOLD2
+    for key, pen in pens.items():
+        durations = raw_times(pen, key[0])
+        d = np.array(durations) * (LAST_END - FIRST_ATTEMPT) / sum(durations)
+        pause = np.zeros(len(d))
+        if key[0] == "family11" and key[2] == "arclength":
+            j, angle = fold_attempt(pen, key[0])
+            pause[j] = FOLD_HOLD
+            # the attempts before the first one from a member inside the close-up are shortened by both holds
+            k = next(i for i, st in enumerate(pen["steps"]) if inside(proj(st["start"], key[0])[None], windows[key[0]])[0])
+            d[:k] *= (end2 - FOLD_END_HOLD - FIRST_ATTEMPT - float(d[k:].sum()) - FOLD_HOLD) / float(d[:k].sum())
+            held = FIRST_ATTEMPT + float(d[:j].sum()) + HOLD_AT * float(d[j])
+            print(
+                f"  {' '.join(key):28} in the close-up from {FIRST_ATTEMPT + float(d[:k].sum()):.2f}, held at the fold from {held:.2f} "
+                f"to {held + FOLD_HOLD:.2f} with its tangent {angle:.1f} degrees from the vertical, "
+                f"last member at {end2 - FOLD_END_HOLD - (1 - MEMBER_AT) * float(d[-1]):.2f}"
+            )
+        starts = FIRST_ATTEMPT + np.r_[0.0, np.cumsum(d + pause)[:-1]]
+        timing[key] = [(float(t), float(dd), float(h)) for t, dd, h in zip(starts, d, pause, strict=True)]
+
+    # the tangent and the half of the constraint line are drawn at these fractions of the width of the box of a
+    # panel, measured in the continuation norm
+    arrow_length = {"diagram": 0.12, "closeup": 0.3}
+    line_half = {"diagram": 0.06, "closeup": 0.15}
+    for family in NATURAL_STEPS:
+        sc = scale(family)
+        frame = diagram_frames[family]
+        curve = np.array([proj(Y, family) for Y in curves[family]])
+        runs_here = [pens[(family, s, m)] for s in NATURAL_STEPS[family] for m in METHODS]
+        failed = [proj(st["predictor"], family) for pen in runs_here for st in pen["steps"] if not st["converged"]]
+        everything = [curve, np.array(failed).reshape(-1, 2)] + [np.array([proj(Y, family) for Y in pen["members"]]) for pen in runs_here]
+        data, camera = framed(box_of(everything, 0.04), sc, "diagram")
+        boxes = {"diagram": data, "closeup": windows[family]}
+        for view, b in (("diagram", camera), ("closeup", cameras[family])):
+            scene.track_set(f"box-{view}-{family}", frame=frame, tags={"element": "box", "view": view, "family": family}).add(rectangle(b))
+        # the outline of the close-up in the diagram is drawn at least WINDOW_MIN CSS pixels wide and tall, about its
+        # middle, since the close-up of family 11 is narrower than a pixel of the diagram
+        # the CSS pixels per unit of the diagram, with the insets that framed applies
+        (width, height), (left, right, bottom, top) = PANELS["diagram"]
+        across = width - max(left, width * 0.05 / 1.1) - max(right, width * 0.05 / 1.1)
+        up = height - max(bottom, height * 0.05 / 1.1) - max(top, height * 0.05 / 1.1)
+        px = np.array([across / (data[1] - data[0]), up / (data[3] - data[2])])
+        w0, w1, w2, w3 = windows[family]
+        mid, half = np.array([w0 + w1, w2 + w3]) / 2, np.maximum(np.array([w1 - w0, w3 - w2]) / 2, WINDOW_MIN / 2 / px)
+        outline = (mid[0] - half[0], mid[0] + half[0], mid[1] - half[1], mid[1] + half[1])
+        # a track of TyCHO is drawn solid, hence each side of the outline is cut into dashes of about WINDOW_DASH
+        # CSS pixels, with gaps of half a dash, and the first and the last dash of a side end at its corners
+        ts = scene.track_set(f"window-{family}", frame=frame, tags={"element": "window", "family": family})
+        corners = rectangle(outline)
+        for a, b in zip(corners[:-1], corners[1:], strict=True):
+            n = max(1, round((float(np.hypot(*((b - a) * px))) + WINDOW_DASH / 2) / (1.5 * WINDOW_DASH)))
+            dash = 1.0 / (n + (n - 1) / 2)
+            for i in range(n):
+                ts.add(np.array([a + 1.5 * i * dash * (b - a), a + (1.5 * i + 1) * dash * (b - a)]))
+        # the gray curve is drawn up to the last member of the farthest pen drawn on the tab of the pens, so that a
+        # pen that reaches its end is not seen to stop short of the curve. A pen stopped by the minimum step is
+        # left out, and where every pen drawn is stopped, i.e. at the fold of family 11 on the tab "natural
+        # parameter", the curve is drawn up to the farthest pen of the step size
+        for step_name in NATURAL_STEPS[family]:
+            reach = {}
+            for method in METHODS:
+                pen = pens[(family, step_name, method)]
+                k, w, gap = nearest_on(curve * sc, proj(pen["members"][-1], family) * sc)
+                if gap > 1e-4:
+                    raise ValueError(f"the last member of the {method} pen of {family} at the {step_name} step lies {gap:.1e} off the curve")
+                reach[method] = (k + w, k, w, pen["stopped"] == "the step fell below the minimum")
+            for shown_on, drawn_methods in (("natural", ["natural"]), ("both", list(METHODS))):
+                ends = [reach[m] for m in drawn_methods if not reach[m][3]] or list(reach.values())
+                _, k, w, _ = max(ends)
+                drawn = np.r_[curve[: k + 1], curve[k : k + 1] + w * (curve[k + 1 : k + 2] - curve[k : k + 1])]
+                tags = {"element": "curve", "family": family, "step": step_name, "pens": shown_on}
+                scene.track_set(f"curve-diagram-{family}-{step_name}-{shown_on}", frame=frame, tags={"view": "diagram", **tags}).add(drawn)
+                ts = scene.track_set(f"curve-closeup-{family}-{step_name}-{shown_on}", frame=frame, tags={"view": "closeup", **tags})
+                for Q, _ in clip_pieces(drawn, np.arange(len(drawn), dtype=float), windows[family]):
+                    ts.add(Q)
+        orbits = [o for s in NATURAL_STEPS[family] for m in METHODS for o in pens[(family, s, m)]["orbits"]]
+        orbit_box = framed(box_of(orbits + masses_near(family, orbits), 0.04), np.ones(2), "orbits")[1]
+        # the smallest members shrink onto 𝓛₁, hence its label is drawn below the members and joined to it by a gray line
+        low, high = min(float(o[:, 1].min()) for o in orbits), max(float(o[:, 1].max()) for o in orbits)
+        label_y[family] = low - 0.08 * (high - low)
+        l1x = body_attrs(family)["l1x"]
+        scene.track_set(f"l1-leader-{family}", frame=rp, tags={"element": "l1_leader", "family": family}).add(
+            np.array([[l1x, 0.0], [l1x, label_y[family]]])
+        )
+        scene.track_set(f"obox-{family}", frame=rp, tags={"element": "obox", "family": family}).add(rectangle(orbit_box))
+
+        for step_name in NATURAL_STEPS[family]:
+            for method in METHODS:
+                pen = pens[(family, step_name, method)]
+                slots = timing[(family, step_name, method)]
+                # the orange pen is played on the tab "natural parameter", and the blue pen on the tab "both"
+                shown_on = "natural" if method == "natural" else "both"
+                tags = {"family": family, "step": step_name, "method": method, "pens": shown_on}
+                name = f"{family}-{step_name}-{method}"
+                sets: dict[tuple[str, str], list] = {}
+                # the changes of the caption, i.e. the newest member of the pen and the halvings of its step
+                ticks: list[tuple[float, str, float]] = []
+                # a track that ends before START2 is held at its last point over the whole loop. The seed, i.e. the
+                # first member, is drawn from this time, so that the orbit panel is not empty while a slide is paused
+                # at the start of the loop
+                early = np.array([START2 - 0.002, START2 - 0.001])
+                members, times = [pen["members"][0]], [float(early[0])]
+                # the halvings are counted from the step of the tab. The caption reads those of the step of the newest
+                # member, and at the start of an attempt it is raised to those of the attempt when these are more
+                full = NATURAL_STEPS[family][step_name] * (math.sqrt(weights(family)[-1]) if method == "arclength" else 1.0)
+                stopped = pen["stopped"] == "the step fell below the minimum"
+                for j, st in enumerate(pen["steps"]):
+                    slot = slots[j]
+                    t0, end = slot[0], phase(slot, 1.0)
+                    nxt_ok = next((i for i in range(j + 1, len(slots)) if pen["steps"][i]["converged"]), None)
+                    member_next = phase(slots[nxt_ok], MEMBER_AT) if nxt_ok is not None else end2
+                    ok = st["converged"]
+                    start, pred = proj(st["start"], family), proj(st["predictor"], family)
+                    tau = st["tangent"]
+                    # the direction of the tangent in the diagram scaled by sc, in which the norm is the length. The
+                    # tangent of a pseudo-arclength step is a unit vector of the norm, and its constraint is the
+                    # line through the predicted point normal to it, on which the member lies
+                    u = (proj(tau, family) if tau is not None else pred - start) * sc
+                    u = u / max(float(np.hypot(*u)), 1e-300)
+                    normal = np.array([-u[1], u[0]])
+                    predictor_times = np.array([phase(slot, TANGENT_END), phase(slot, PREDICTOR_END)])
+                    corrector_times = np.array([phase(slot, CORRECTOR_START), phase(slot, MEMBER_AT)])
+                    halvings = float(max(0, round(math.log2(full / abs(st["size"])))))
+                    ticks.append((t0, "raise", halvings))
+                    if ok:
+                        ticks.append((phase(slot, MEMBER_AT), "halvings", halvings))
+                    for view, b in boxes.items():
+                        size = (b[1] - b[0]) * sc[0]
+
+                        def put(element, P, cc, hold=None, view=view, b=b, sets=sets):
+                            for Q, cq in clip_pieces(P, cc, b, hold):
+                                sets.setdefault((element, view), []).append((Q, cq))
+
+                        # the tangent and the constraint line of a step from inside the close-up are drawn in the
+                        # close-up alone, as its dots below, so that the diagram is held still at the fold
+                        held = view == "diagram" and inside(start[None], windows[family])[0]
+                        if tau is not None and not held:
+                            tip = start + arrow_length[view] * size * u / sc
+                            # held to the end of the attempt also when it is cut at an edge of the box
+                            put("tangent", np.array([start, tip]), np.array([t0, phase(slot, TANGENT_END)]), hold=end)
+                            # the constraint line is shown whole, from its start to the end of the attempt
+                            half = line_half[view] * size * normal / sc
+                            for Q, _ in clip_pieces(np.array([pred - half, pred + half]), np.array([0.0, 1.0]), b):
+                                sets.setdefault(("constraint", view), []).append((Q[[0, -1]], np.array([phase(slot, CONSTRAINT_START), end])))
+                        if ok:
+                            put("pred", np.array([start, pred]), predictor_times)
+                            # the correction is one straight segment from the predicted point to the member, vertical
+                            # for the orange pen and along the constraint line for the blue pen
+                            put("corr", np.array([pred, proj(st["iterates"][-1], family)]), corrector_times)
+                            continue
+                        # a failed attempt keeps its predictor to its end, and a correction is not drawn
+                        put("pred_fail", np.array([start, pred]), predictor_times, hold=end)
+                        # a failed attempt is marked at its predicted point, in a panel whose box holds it, and in the
+                        # close-up alone when the close-up holds it. Its red dot is kept until the next member of its pen
+                        # is drawn, hence a run of halvings is seen as a row of red dots, and the larger red dot of a
+                        # stopped pen is kept to the end of the loop
+                        if not inside(pred[None], b)[0] or (view == "diagram" and inside(pred[None], windows[family])[0]):
+                            continue
+                        tf = phase(slot, CORRECTOR_START)
+                        if j == len(slots) - 1 and stopped:
+                            sets.setdefault(("stop_dot", view), []).append((np.array([pred, pred]), np.array([tf, tf + 0.001])))
+                        else:
+                            sets.setdefault(("fail_dot", view), []).append((np.array([pred, pred]), np.array([tf, member_next])))
+                    if ok:
+                        members.append(st["iterates"][-1])
+                        times.append(phase(slot, MEMBER_AT))
+                for i, (Y, t) in enumerate(zip(members, times, strict=True)):
+                    m = proj(Y, family)
+                    for view, b in boxes.items():
+                        if inside(m[None], b)[0]:
+                            sets.setdefault(("member", view), []).append((np.array([m, m]), np.array([t, t + 0.001])))
+                    # the orbit of each member is drawn in gray from its time on, and in the color of its pen while it is the newest
+                    orbit = pen["orbits"][i]
+                    nxt = times[i + 1] - GAP if i + 1 < len(times) else end2
+                    sets.setdefault(("orbits", "orbit"), []).append((orbit, t + np.linspace(0.0, 0.001, len(orbit))))
+                    sets.setdefault(("newest", "orbit"), []).append((orbit, t + np.linspace(0.0, 1.0, len(orbit)) * (nxt - t)))
+                    ticks.append((t, "p", float(Y[-1])))
+                record_tags = {**tags, "pens": "both"}
+                if method == "natural":
+                    # on the tab "both" the run of the orange pen is drawn from the start of the loop as a finished
+                    # record of its members, as dim dots
+                    for view, b in boxes.items():
+                        for Y in pen["members"]:
+                            m = proj(Y, family)
+                            if inside(m[None], b)[0]:
+                                sets.setdefault(("record", view), []).append((np.array([m, m]), early))
+                for (element, view), items in sets.items():
+                    set_tags = record_tags if element.startswith("record") else tags
+                    ts = scene.track_set(
+                        f"{element}-{view}-{name}", frame=rp if view == "orbit" else frame, tags={"element": element, "view": view, **set_tags}
+                    )
+                    for P, cc in items:
+                        ts.add(P, channels={"c": cc})
+                state = {"p": float(pen["members"][0][-1]), "halvings": 0.0}
+                changes = [(START2, caption_channels(state["p"], 0))]
+                for t, key, value in sorted(ticks):
+                    if key == "raise":
+                        key, value = "halvings", max(state["halvings"], value)
+                    state[key] = value
+                    changes.append((t, caption_channels(state["p"], int(state["halvings"]))))
+                cc, ch = hold_series(changes, START2, end2, gap=TICK_GAP)
+                ts = scene.track_set(
+                    f"ticker-{name}",
+                    frame=rp,
+                    tags={"element": "ticker", "family": family, "step": step_name, "pens": shown_on},
+                    attrs={**body_attrs(family), "l1_label_y": label_y[family]},
+                )
+                ts.add(np.zeros((len(cc), 2)), channels={"c": cc, **ch})
+
+    family = scene.choice("family", ["lyapunov", "family11"], labels=["𝓛₁ Lyapunov family, in C", "family 11, in e"])
+    step = scene.choice("step", list(NATURAL_STEPS["lyapunov"]), default="medium", labels=["small step", "medium step", "large step"])
+    shown = scene.choice("pens", ["natural", "both"], labels=["natural parameter", "both"])
+    scene.clock("value", channels=["c"], steps=STEPS2, range=[START2, end2], labels=["continuation"])
+    # the ticker of the pen played on the tab of the pens, i.e. of the orange pen alone or of the blue pen, drives every panel
+    driver = ty.driver(ty.sets(element="ticker", family=family, step=step, pens=shown), {"index": 0})
+
+    def q(element: str, view: str, m: str):
+        return ty.sets(element=element, view=view, family=family, step=step, method=m, pens=shown)
+
+    def pen_layers(view: str, m: str, color: str) -> list:
+        def q_(element):
+            return q(element, view, m)
+
+        constraint, tangent = [], []
+        if m == "arclength":
+            constraint = [ty.track(q_("constraint"), before="hidden", after="hidden", color=VIOLET, width=1.5, opacity=0.5)]
+            # the tangent is drawn opaque over the predictors, which lie along it, and under the members
+            tangent = [ty.track(q_("tangent"), reveal="grow", before="hidden", after="hidden", color=VIOLET, width=2.0, opacity=1.0)]
+        return [
+            *constraint,
+            ty.track(q_("pred_fail"), reveal="grow", before="hidden", after="hidden", color=color, width=2.0, opacity=0.4),
+            ty.track(q_("pred"), reveal="grow", before="hidden", color=color, width=2.0),
+            ty.track(q_("corr"), reveal="grow", before="hidden", color=color, width=2.0),
+            *tangent,
+            ty.track(q_("member"), reveal="grow", before="hidden", head={"color": color, "size": 8}, color=color, width=1.0),
+        ]
+
+    def dot_layers(view: str) -> list:
+        """The red dots, drawn over every line as heads, which keep their size on the screen. The dot of a failed
+        attempt is shown until the next member of its pen is drawn, and the larger dot of a stopped pen to the end."""
+        out = []
+        for m in METHODS:
+            out.append(ty.track(q("fail_dot", view, m), reveal="grow", before="hidden", after="hidden", head={"color": RED, "size": 9}, color=RED, width=1.0))
+            out.append(ty.track(q("stop_dot", view, m), reveal="grow", before="hidden", head={"color": RED, "size": 13}, color=RED, width=1.0))
+        return out
+
+    for view, label in (("diagram", "diagram"), ("closeup", "close-up")):
+        outline = []
+        if view == "diagram":
+            outline = [ty.track(ty.sets(element="window", family=family), color=WHITE, width=1.0, opacity=0.5)]
+        scene.view(
+            view,
+            frame=family,
+            driver=driver,
+            camera={"kind": "plane", "plane": "xy", "aspect": "free"},
+            label=label,
+            layers=[
+                ty.track(ty.sets(element="box", view=view, family=family), opacity=0.0, width=1.0),
+                ty.axes(),
+                ty.grid(labels=True),
+                *outline,
+                ty.track(ty.sets(element="curve", view=view, family=family, step=step, pens=shown), color=GRAY, width=2.0, opacity=0.8),
+                ty.track(q("record", view, "natural"), head={"color": DIM_ORANGE, "size": 7}, color=DIM_ORANGE, width=1.0),
+                *pen_layers(view, "natural", ORANGE),
+                *pen_layers(view, "arclength", BLUE),
+                *dot_layers(view),
+            ],
+        )
+
+    def orbit_sets(element: str, m: str):
+        return ty.sets(element=element, view="orbit", family=family, step=step, method=m, pens=shown)
+
+    # one orbit panel for the pen in play, in which the earlier members are gray and the newest member is drawn in the color of the pen
+    scene.view(
+        "orbits",
+        frame=rp,
+        driver=driver,
+        camera={"kind": "plane", "plane": "xy"},
+        label="members, rotating-pulsating frame",
+        layers=[
+            ty.track(ty.sets(element="obox", family=family), opacity=0.0, width=1.0),
+            ty.axes(),
+            ty.track(ty.sets(element="l1_leader", family=family), color=GRAY, width=1.0, opacity=0.6),
+            *[ty.track(orbit_sets("orbits", m), before="hidden", color=GRAY, width=1.0, opacity=0.35) for m in METHODS],
+            *[
+                ty.track(orbit_sets("newest", m), before="hidden", after="hidden", color=color, width=2.2)
+                for m, color in (("natural", ORANGE), ("arclength", BLUE))
+            ],
+            *body_layers,
+        ],
+    )
+    scene.panel("diagram", "diagram")
+    scene.panel("closeup", "closeup")
+    scene.panel("orbits", "orbits")
+    scene.layout(ty.split("col", 0.55, ty.split("row", 0.4, "diagram", "closeup"), "orbits"))
+    scene.tabs(family, label="family")
+    scene.tabs(step, label="step size")
+    scene.tabs(shown, label="pens")
+    scene.transport()
+    scene.readout(
+        "caption",
+        family,
+        " · moving pen at ",
+        ty.channel("p_int"),
+        ".",
+        *[ty.channel(f"p_{i}") for i in range(1, 5)],
+        " · halvings of its step: ",
+        ty.channel("halvings"),
+    )
+    scene.write(out / "continuation.tys", out / "continuation.tyd")
+    return scene.write_html(out / "continuation.html")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
+    parser.add_argument("--out", type=Path, default=HERE, help="the directory to write the pages into")
+    parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2), help="the number of worker processes")
+    args = parser.parse_args(argv)
+    t_all = time.time()
+    with ProcessPoolExecutor(max_workers=args.jobs) as pool:
+        seeds = {"lyapunov": lyapunov_seed(), "family11": family11_seed()}
+        t0 = time.time()
+        ref_futures = {case: pool.submit(references_job, case) for case in MU}
+        pen_jobs = [(f, s, m, seeds[f]) for f in MU for s in NATURAL_STEPS[f] for m in ("natural", "arclength")]
+        pen_jobs += [(f, "curve", "arclength", seeds[f]) for f in MU]
+        pen_results = list(pool.map(continuation_job, pen_jobs))
+        t_pens = time.time() - t0
+        refs = {case: f.result()["references"] for case, f in ref_futures.items()}
+        t_refs = time.time() - t0
+        jobs = [
+            (case, system, targeting, S, guess, refs[case][system])
+            for case in MU
+            for system in SYSTEMS
+            for targeting in TARGETINGS
+            for S in SEGMENTS
+            for guess in GUESSES
+        ]
+        t0 = time.time()
+        # the slowest runs first, so that the pool stays busy to the end
+        jobs.sort(key=lambda j: (j[4] != "far_ls", -j[3]))
+        runs = {r["key"]: r for r in pool.map(correction_job, jobs, chunksize=1)}
+        t_runs = time.time() - t0
+    print(f"references in {t_refs:.0f} s, the 14 continuation runs in {t_pens:.0f} s, the {len(runs)} correction runs in {t_runs:.0f} s")
+
+    print("iterations to converge (o), or to fail by a propagation (p), by a growing norm (g), or by the iteration limit (m):")
+    for case in MU:
+        for system in SYSTEMS:
+            for targeting in TARGETINGS:
+                for guess in GUESSES:
+                    row = []
+                    for S in SEGMENTS:
+                        r = runs[(case, system, targeting, S, guess)]
+                        n = len(r["iterates"]) - 1
+                        kind = (
+                            "o"
+                            if r["converged"]
+                            else ("p" if not math.isfinite(r["iterates"][-1]["norm"]) else ("g" if "grew" in (r["failure"] or "") else "m"))
+                        )
+                        row.append(f"{n:2d}{kind}")
+                    print(f"  {case:9} {system:6} {targeting:5} {guess:7} " + " ".join(row))
+
+    pens = {r["key"]: r for r in pen_results if r["key"][1] != "curve"}
+    curves = {r["key"][0]: r["members"] for r in pen_results if r["key"][1] == "curve"}
+    for key, r in sorted(pens.items()):
+        attempts, fails = len(r["steps"]), sum(not s["converged"] for s in r["steps"])
+        halvings = round(math.log2(r["steps"][0]["size"] / min(s["size"] for s in r["steps"])))
+        print(
+            f"  {' '.join(key):28} {len(r['members']):3d} members, {fails:2d} failed attempts of {attempts:3d}, {halvings:2d} halvings at most, "
+            f"last p = {r['members'][-1][-1]:.6f}, {r['stopped']}"
+        )
+    for family, members in curves.items():
+        print(
+            f"  {family} curve: {len(members)} members, p from {members[0][-1]:.5f} to {members[-1][-1]:.5f}, p max {max(m[-1] for m in members):.6f}"
+        )
+
+    t0 = time.time()
+    sizes1 = build_correction(refs, runs, args.out)
+    t_write1 = time.time() - t0
+    t0 = time.time()
+    sizes2 = build_continuation(pens, curves, args.out)
+    t_write2 = time.time() - t0
+    for name, sizes, t in (("correction", sizes1, t_write1), ("continuation", sizes2, t_write2)):
+        print(
+            f"wrote {name}.html ({sizes['page'] / 1e6:.2f} MB, the .tyd {(args.out / f'{name}.tyd').stat().st_size / 1e6:.2f} MB) in {t:.0f} s"
+        )
+
+    record = {
+        "readme": "Written by build.py. The references are (x0, ydot0, T) of the symmetric orbit that leaves the x-axis at a right angle "
+        "at theta0, in the rotating-pulsating frame. The corrections give the first node (x, y, xdot, ydot) and the targeted arc of each "
+        "converged run. The members of a continuation run are Y = (x0, ydot0, T/2, C) for the Lyapunov family and Y = (x0, ydot0, e) "
+        "for family 11 at theta0 = 0 and the period 2 pi.",
+        "mu": MU,
+        "systems": {k: {"e": v[0], "theta0": v[1]} for k, v in SYSTEMS.items()},
+        "references": refs,
+        "corrections": [
+            {
+                "case": k[0],
+                "system": k[1],
+                "targeting": k[2],
+                "S": k[3],
+                "guess": k[4],
+                "converged": r["converged"],
+                "failure": r["failure"],
+                "norms": [it["norm"] if math.isfinite(it["norm"]) else None for it in r["iterates"]],
+                "node0": [float(x) for x in r["iterates"][-1]["nodes"][0]] if r["converged"] else None,
+                "arc": r["iterates"][-1]["arc"] if r["converged"] else None,
+            }
+            for k, r in sorted(runs.items())
+        ],
+        "continuations": [
+            {
+                "family": k[0],
+                "step": k[1],
+                "method": k[2],
+                "stopped": r["stopped"],
+                "members": [[float(x) for x in Y] for Y in r["members"]],
+            }
+            for k, r in sorted(pens.items())
+        ],
+        "curves": {f: [[float(x) for x in Y] for Y in m] for f, m in curves.items()},
+    }
+    (args.out / "runs.json").write_text(json.dumps(record, indent=1))
+    print(f"wrote runs.json, all in {time.time() - t_all:.0f} s")
+
+
+if __name__ == "__main__":
+    main()
