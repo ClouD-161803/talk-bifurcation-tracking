@@ -1,4 +1,4 @@
-"""Builds the plot of the stability demo of slides 14 to 17 from the data in data/stability.
+"""Builds the plot of the stability demo of slides 15 to 17 and 20 from the data in data/stability.
 
 The plot has two panels. In the panel circle, the four in-plane Floquet multipliers of a member are
 drawn on the complex plane with the unit circle, and in the panel diagram, the point (a1, a2) of
