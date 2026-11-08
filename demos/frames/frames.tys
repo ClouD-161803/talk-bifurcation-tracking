@@ -1,0 +1,1231 @@
+{
+ "format": "tycho-scene",
+ "version": "0.3",
+ "requires": [
+  "layers.driver_context"
+ ],
+ "generator": "pytycho 0.2.0",
+ "title": "Frames of the elliptic restricted three-body problem",
+ "theme": {
+  "background": "#050505",
+  "foreground": "#f2f2ef",
+  "grid": "#232320"
+ },
+ "frames": {
+  "rotating-pulsating": {
+   "label": "rotating-pulsating",
+   "axes": [
+    "x",
+    "y",
+    "z"
+   ],
+   "unit": "DU"
+  },
+  "rotating": {
+   "label": "rotating",
+   "axes": [
+    "ξ",
+    "η",
+    "ζ"
+   ],
+   "unit": "DU",
+   "parent": "rotating-pulsating",
+   "scale": {
+    "channel": "rho"
+   }
+  },
+  "barycentric-inertial": {
+   "label": "barycentric inertial",
+   "axes": [
+    "X",
+    "Y",
+    "Z"
+   ],
+   "unit": "DU",
+   "parent": "rotating",
+   "rotation": {
+    "axis": "z",
+    "angle": {
+     "channel": "theta"
+    }
+   }
+  }
+ },
+ "bodies": {
+  "m1": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "mu",
+     "factor": -1.0
+    },
+    0.0,
+    0.0
+   ],
+   "label": "m₁",
+   "color": "#e69f00"
+  },
+  "m2": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "mu",
+     "factor": -1.0,
+     "offset": 1.0
+    },
+    0.0,
+    0.0
+   ],
+   "label": "m₂",
+   "color": "#56b4e9"
+  },
+  "L1": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL1"
+    },
+    0.0,
+    0.0
+   ],
+   "label": "𝓛₁",
+   "color": "#c94fe6"
+  },
+  "L2": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL2"
+    },
+    0.0,
+    0.0
+   ],
+   "label": "𝓛₂",
+   "color": "#c94fe6"
+  },
+  "L3": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL3"
+    },
+    0.0,
+    0.0
+   ],
+   "label": "𝓛₃",
+   "color": "#c94fe6"
+  },
+  "L4": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL45"
+    },
+    {
+     "attr": "yL45"
+    },
+    0.0
+   ],
+   "label": "𝓛₄",
+   "color": "#c94fe6"
+  },
+  "L5": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL45"
+    },
+    {
+     "attr": "yL45",
+     "factor": -1.0
+    },
+    0.0
+   ],
+   "label": "𝓛₅",
+   "color": "#c94fe6"
+  }
+ },
+ "track_sets": {
+  "secondary-copenhagen": {
+   "label": "secondary over one forcing period, mu = 0.5",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "copenhagen",
+    "role": "secondary"
+   },
+   "attrs": {
+    "mu": 0.5,
+    "family": 11.0,
+    "xL1": 0.0,
+    "xL2": 1.19840614455492,
+    "xL3": -1.19840614455492,
+    "xL45": 0.0,
+    "yL45": 0.8660254037844386
+   },
+   "tracks": 24,
+   "offsets": "secondary-copenhagen/offsets",
+   "positions": "secondary-copenhagen/positions",
+   "channels": {
+    "theta": {
+     "view": "secondary-copenhagen/channels/theta",
+     "unit": "rad"
+    },
+    "t": {
+     "view": "secondary-copenhagen/channels/t",
+     "unit": "TU"
+    },
+    "rho": {
+     "view": "secondary-copenhagen/channels/rho"
+    }
+   },
+   "parameters": {
+    "eccentricity": {
+     "view": "secondary-copenhagen/parameters/eccentricity",
+     "label": "eccentricity"
+    },
+    "K": {
+     "view": "secondary-copenhagen/parameters/K",
+     "label": "forcing periods"
+    }
+   },
+   "periodic": true
+  },
+  "orbit-copenhagen": {
+   "label": "Broucke family 11, periapsis branch, mu = 0.5",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "copenhagen",
+    "role": "orbit"
+   },
+   "attrs": {
+    "mu": 0.5
+   },
+   "tracks": 24,
+   "offsets": "orbit-copenhagen/offsets",
+   "positions": "orbit-copenhagen/positions",
+   "channels": {
+    "theta": {
+     "view": "orbit-copenhagen/channels/theta",
+     "unit": "rad"
+    },
+    "t": {
+     "view": "orbit-copenhagen/channels/t",
+     "unit": "TU"
+    },
+    "rho": {
+     "view": "orbit-copenhagen/channels/rho"
+    }
+   },
+   "parameters": {
+    "eccentricity": {
+     "view": "orbit-copenhagen/parameters/eccentricity",
+     "label": "eccentricity"
+    },
+    "K": {
+     "view": "orbit-copenhagen/parameters/K",
+     "label": "forcing periods"
+    }
+   },
+   "periodic": true
+  },
+  "box-rotating-pulsating-copenhagen": {
+   "label": "fitted box in the rotating-pulsating frame, mu = 0.5",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "copenhagen",
+    "role": "box"
+   },
+   "tracks": 1,
+   "offsets": "box-rotating-pulsating-copenhagen/offsets",
+   "positions": "box-rotating-pulsating-copenhagen/positions",
+   "periodic": false
+  },
+  "secondary-earth-moon": {
+   "label": "secondary over one forcing period, mu = 0.012155",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "earth-moon",
+    "role": "secondary"
+   },
+   "attrs": {
+    "mu": 0.012155,
+    "family": 7.0,
+    "xL1": 0.8368934068616908,
+    "xL2": 1.1556991411365538,
+    "xL3": -1.0050644850322834,
+    "xL45": 0.487845,
+    "yL45": 0.8660254037844386
+   },
+   "tracks": 26,
+   "offsets": "secondary-earth-moon/offsets",
+   "positions": "secondary-earth-moon/positions",
+   "channels": {
+    "theta": {
+     "view": "secondary-earth-moon/channels/theta",
+     "unit": "rad"
+    },
+    "t": {
+     "view": "secondary-earth-moon/channels/t",
+     "unit": "TU"
+    },
+    "rho": {
+     "view": "secondary-earth-moon/channels/rho"
+    }
+   },
+   "parameters": {
+    "eccentricity": {
+     "view": "secondary-earth-moon/parameters/eccentricity",
+     "label": "eccentricity"
+    },
+    "K": {
+     "view": "secondary-earth-moon/parameters/K",
+     "label": "forcing periods"
+    }
+   },
+   "periodic": true
+  },
+  "orbit-earth-moon": {
+   "label": "Broucke family 7, periapsis branch, mu = 0.012155",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "earth-moon",
+    "role": "orbit"
+   },
+   "attrs": {
+    "mu": 0.012155
+   },
+   "tracks": 26,
+   "offsets": "orbit-earth-moon/offsets",
+   "positions": "orbit-earth-moon/positions",
+   "channels": {
+    "theta": {
+     "view": "orbit-earth-moon/channels/theta",
+     "unit": "rad"
+    },
+    "t": {
+     "view": "orbit-earth-moon/channels/t",
+     "unit": "TU"
+    },
+    "rho": {
+     "view": "orbit-earth-moon/channels/rho"
+    }
+   },
+   "parameters": {
+    "eccentricity": {
+     "view": "orbit-earth-moon/parameters/eccentricity",
+     "label": "eccentricity"
+    },
+    "K": {
+     "view": "orbit-earth-moon/parameters/K",
+     "label": "forcing periods"
+    }
+   },
+   "periodic": true
+  },
+  "box-rotating-pulsating-earth-moon": {
+   "label": "fitted box in the rotating-pulsating frame, mu = 0.012155",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "earth-moon",
+    "role": "box"
+   },
+   "tracks": 1,
+   "offsets": "box-rotating-pulsating-earth-moon/offsets",
+   "positions": "box-rotating-pulsating-earth-moon/positions",
+   "periodic": false
+  },
+  "grid-minor": {
+   "label": "grid, minor lines",
+   "frame": "rotating-pulsating",
+   "tracks": 12,
+   "offsets": "grid-minor/offsets",
+   "positions": "grid-minor/positions",
+   "periodic": false
+  },
+  "grid-major": {
+   "label": "grid, major lines and circle",
+   "frame": "rotating-pulsating",
+   "tracks": 11,
+   "offsets": "grid-major/offsets",
+   "positions": "grid-major/positions",
+   "periodic": false
+  },
+  "box-rotating": {
+   "label": "fitted box in the rotating frame",
+   "frame": "rotating",
+   "tracks": 1,
+   "offsets": "box-rotating/offsets",
+   "positions": "box-rotating/positions",
+   "periodic": false
+  },
+  "box-barycentric-inertial": {
+   "label": "fitted box in the barycentric-inertial frame",
+   "frame": "barycentric-inertial",
+   "tracks": 1,
+   "offsets": "box-barycentric-inertial/offsets",
+   "positions": "box-barycentric-inertial/positions",
+   "periodic": false
+  }
+ },
+ "variables": {
+  "system": {
+   "kind": "choice",
+   "values": [
+    "copenhagen",
+    "earth-moon"
+   ],
+   "default": "copenhagen",
+   "scope": "scene",
+   "labels": [
+    "μ = 0.5",
+    "μ = 0.012155"
+   ]
+  },
+  "e": {
+   "kind": "selector",
+   "by": "nearest",
+   "default": 0.0,
+   "scope": "scene",
+   "parameter": "eccentricity"
+  },
+  "orbit": {
+   "kind": "toggle",
+   "default": false,
+   "scope": "scene"
+  }
+ },
+ "clock": {
+  "mode": "fraction",
+  "channels": [
+   "theta",
+   "t"
+  ],
+  "steps": 480,
+  "laps": 1,
+  "labels": [
+   "true anomaly θ",
+   "time t"
+  ]
+ },
+ "views": {
+  "rotating-pulsating": {
+   "frame": "rotating-pulsating",
+   "driver": {
+    "sets": {
+     "tags": {
+      "system": {
+       "var": "system"
+      },
+      "role": "secondary"
+     }
+    },
+    "member": {
+     "var": "e"
+    }
+   },
+   "layers": [
+    {
+     "kind": "track",
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "box"
+      }
+     },
+     "members": "all",
+     "reveal": "none",
+     "color": "#050505",
+     "opacity": 0.0
+    },
+    {
+     "kind": "track",
+     "sets": {
+      "set": "grid-minor"
+     },
+     "members": "all",
+     "reveal": "none",
+     "context": "driver",
+     "color": "#8a8f9c",
+     "opacity": 0.25,
+     "width": 1.0
+    },
+    {
+     "kind": "track",
+     "sets": {
+      "set": "grid-major"
+     },
+     "members": "all",
+     "reveal": "none",
+     "context": "driver",
+     "color": "#8a8f9c",
+     "opacity": 0.55,
+     "width": 1.25
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "none",
+     "color": {
+      "colormap": "viridis",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "width": 2.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3,
+      "taper": {
+       "width": 0.0,
+       "opacity": 0.0
+      }
+     },
+     "color": {
+      "colormap": "viridis",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "opacity": 0.3,
+     "width": 18.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3,
+      "taper": {
+       "width": 0.0,
+       "opacity": 0.0
+      }
+     },
+     "color": {
+      "colormap": "viridis",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "width": 5.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3
+     },
+     "head": {
+      "color": "#f0e442",
+      "size": 9.0
+     },
+     "color": "#ffffff",
+     "width": 2.0
+    },
+    {
+     "kind": "body",
+     "body": "L1",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L2",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L3",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L4",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "m1",
+     "size": 7.0
+    },
+    {
+     "kind": "body",
+     "body": "m2",
+     "size": 6.0
+    },
+    {
+     "kind": "axes"
+    }
+   ],
+   "camera": {
+    "kind": "plane",
+    "plane": "xy"
+   },
+   "label": "(x, y)"
+  },
+  "rotating": {
+   "frame": "rotating",
+   "driver": {
+    "sets": {
+     "tags": {
+      "system": {
+       "var": "system"
+      },
+      "role": "secondary"
+     }
+    },
+    "member": {
+     "var": "e"
+    }
+   },
+   "layers": [
+    {
+     "kind": "track",
+     "sets": {
+      "set": "box-rotating"
+     },
+     "members": "all",
+     "reveal": "none",
+     "color": "#050505",
+     "opacity": 0.0
+    },
+    {
+     "kind": "track",
+     "sets": {
+      "set": "grid-minor"
+     },
+     "members": "all",
+     "reveal": "none",
+     "context": "driver",
+     "color": "#8a8f9c",
+     "opacity": 0.25,
+     "width": 1.0
+    },
+    {
+     "kind": "track",
+     "sets": {
+      "set": "grid-major"
+     },
+     "members": "all",
+     "reveal": "none",
+     "context": "driver",
+     "color": "#8a8f9c",
+     "opacity": 0.55,
+     "width": 1.25
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "none",
+     "color": {
+      "colormap": "blues",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "width": 2.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3,
+      "taper": {
+       "width": 0.0,
+       "opacity": 0.0
+      }
+     },
+     "color": {
+      "colormap": "blues",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "opacity": 0.3,
+     "width": 18.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3,
+      "taper": {
+       "width": 0.0,
+       "opacity": 0.0
+      }
+     },
+     "color": {
+      "colormap": "blues",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "width": 5.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3
+     },
+     "head": {
+      "color": "#f0e442",
+      "size": 9.0
+     },
+     "color": "#ffffff",
+     "width": 2.0
+    },
+    {
+     "kind": "body",
+     "body": "L1",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L2",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L3",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L4",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "m1",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 7.0
+    },
+    {
+     "kind": "body",
+     "body": "m2",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 6.0
+    },
+    {
+     "kind": "axes"
+    }
+   ],
+   "camera": {
+    "kind": "plane",
+    "plane": "xy"
+   },
+   "label": "(ξ, η)"
+  },
+  "barycentric-inertial": {
+   "frame": "barycentric-inertial",
+   "driver": {
+    "sets": {
+     "tags": {
+      "system": {
+       "var": "system"
+      },
+      "role": "secondary"
+     }
+    },
+    "member": {
+     "var": "e"
+    }
+   },
+   "layers": [
+    {
+     "kind": "track",
+     "sets": {
+      "set": "box-barycentric-inertial"
+     },
+     "members": "all",
+     "reveal": "none",
+     "color": "#050505",
+     "opacity": 0.0
+    },
+    {
+     "kind": "track",
+     "sets": {
+      "set": "grid-minor"
+     },
+     "members": "all",
+     "reveal": "none",
+     "context": "driver",
+     "color": "#8a8f9c",
+     "opacity": 0.25,
+     "width": 1.0
+    },
+    {
+     "kind": "track",
+     "sets": {
+      "set": "grid-major"
+     },
+     "members": "all",
+     "reveal": "none",
+     "context": "driver",
+     "color": "#8a8f9c",
+     "opacity": 0.55,
+     "width": 1.25
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "none",
+     "color": {
+      "colormap": "plasma",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "width": 2.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3,
+      "taper": {
+       "width": 0.0,
+       "opacity": 0.0
+      }
+     },
+     "color": {
+      "colormap": "plasma",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "opacity": 0.3,
+     "width": 18.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3,
+      "taper": {
+       "width": 0.0,
+       "opacity": 0.0
+      }
+     },
+     "color": {
+      "colormap": "plasma",
+      "parameter": "eccentricity",
+      "range": [
+       0.0,
+       0.5
+      ],
+      "clip": [
+       0.0,
+       0.85
+      ]
+     },
+     "width": 5.0
+    },
+    {
+     "kind": "track",
+     "visible": {
+      "var": "orbit"
+     },
+     "sets": {
+      "tags": {
+       "system": {
+        "var": "system"
+       },
+       "role": "orbit"
+      }
+     },
+     "members": {
+      "var": "e"
+     },
+     "reveal": "trail",
+     "trail": {
+      "fraction": 0.3
+     },
+     "head": {
+      "color": "#f0e442",
+      "size": 9.0
+     },
+     "color": "#ffffff",
+     "width": 2.0
+    },
+    {
+     "kind": "body",
+     "body": "L1",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L2",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L3",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L4",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "m1",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 7.0
+    },
+    {
+     "kind": "body",
+     "body": "m2",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 6.0
+    },
+    {
+     "kind": "axes"
+    }
+   ],
+   "camera": {
+    "kind": "plane",
+    "plane": "xy"
+   },
+   "label": "(X, Y)"
+  }
+ },
+ "controls": [
+  {
+   "kind": "tabs",
+   "variable": "system",
+   "label": "mass ratio"
+  },
+  {
+   "kind": "slider",
+   "variable": "e",
+   "label": "eccentricity e",
+   "domain": {
+    "tags": {
+     "system": {
+      "var": "system"
+     },
+     "role": "secondary"
+    }
+   }
+  },
+  {
+   "kind": "toggle",
+   "variable": "orbit",
+   "label": "Broucke orbit"
+  },
+  {
+   "kind": "transport"
+  }
+ ],
+ "readouts": [
+  {
+   "place": "caption",
+   "parts": [
+    "e = ",
+    {
+     "member": "eccentricity",
+     "digits": 3
+    },
+    ",  θ = ",
+    {
+     "channel": "theta",
+     "digits": 3
+    },
+    " rad,  t = ",
+    {
+     "channel": "t",
+     "digits": 3
+    },
+    " TU,  ρ(θ) = ",
+    {
+     "channel": "rho",
+     "digits": 4
+    },
+    ",  K = ",
+    {
+     "member": "K"
+    },
+    ",  μ = ",
+    {
+     "attr": "mu"
+    },
+    ",  family ",
+    {
+     "attr": "family"
+    }
+   ]
+  }
+ ],
+ "initial": {
+  "variables": {},
+  "clock": {
+   "channel": "theta"
+  },
+  "panels": {
+   "barycentric-inertial": {
+    "view": "barycentric-inertial"
+   }
+  },
+  "layout": {
+   "kind": "panel",
+   "id": "barycentric-inertial"
+  }
+ }
+}
