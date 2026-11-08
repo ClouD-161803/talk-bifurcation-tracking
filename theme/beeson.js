@@ -1,54 +1,6 @@
-/*! beeson.js 1.0.0, the reveal.js theme of the Beeson group. MIT license. The orbit engine is ported from src/lib/orbits.ts of https://github.com/ClouD-161803/ClouD-161803.github.io (MIT). */
+/*! beeson.js 0.9.0-beta.1, the reveal.js theme of the Beeson group. MIT license. The orbit engine is ported from src/lib/orbits.ts of https://github.com/ClouD-161803/ClouD-161803.github.io (MIT). */
 "use strict";
 (() => {
-  // src/contour.ts
-  function isolines(g, nx, ny, x0, y0, dx, dy = dx, close = false) {
-    const at = (i, j) => g[j * (nx + 1) + i];
-    const links = /* @__PURE__ */ new Map(), where = /* @__PURE__ */ new Map();
-    const edge = (i, j, h) => {
-      const key = `${h ? "h" : "v"}${i},${j}`;
-      if (!where.has(key)) {
-        const a = at(i, j), b = h ? at(i + 1, j) : at(i, j + 1), t = a / (a - b);
-        where.set(key, h ? [x0 + (i + t) * dx, y0 + j * dy] : [x0 + i * dx, y0 + (j + t) * dy]);
-      }
-      return key;
-    };
-    const link = (a, b) => {
-      if (!links.has(a)) links.set(a, []);
-      if (!links.has(b)) links.set(b, []);
-      links.get(a)?.push(b);
-      links.get(b)?.push(a);
-    };
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const hits = [];
-      if (at(i, j) > 0 !== at(i + 1, j) > 0) hits.push(edge(i, j, true));
-      if (at(i + 1, j) > 0 !== at(i + 1, j + 1) > 0) hits.push(edge(i + 1, j, false));
-      if (at(i, j + 1) > 0 !== at(i + 1, j + 1) > 0) hits.push(edge(i, j + 1, true));
-      if (at(i, j) > 0 !== at(i, j + 1) > 0) hits.push(edge(i, j, false));
-      if (hits.length === 2) link(hits[0], hits[1]);
-      else if (hits.length === 4) {
-        link(hits[0], hits[1]);
-        link(hits[2], hits[3]);
-      }
-    }
-    const out = [], seen = /* @__PURE__ */ new Set();
-    for (const start2 of links.keys()) {
-      if (seen.has(start2)) continue;
-      const p = [];
-      let cur = start2;
-      while (cur && !seen.has(cur)) {
-        seen.add(cur);
-        const [x, y] = where.get(cur) ?? [0, 0];
-        p.push(x, y);
-        const next = links.get(cur)?.find((k) => !seen.has(k));
-        if (!next && close && p.length > 4 && links.get(cur)?.includes(start2)) p.push(p[0], p[1]);
-        cur = next;
-      }
-      out.push(p);
-    }
-    return out;
-  }
-
   // src/scenes.ts
   var H = 4e-3;
   var stopped = (u) => Math.hypot(u[0] + MU, u[1]) < 0.0166 || Math.hypot(u[0] - 1 + MU, u[1]) < 45e-4 || Math.hypot(u[0] - 0.8, u[1]) > 2.4;
@@ -90,178 +42,12 @@
     }
     return out;
   }
-  function viewed(m, tilt, flip2 = 1) {
-    const n = m.times.length, N = 2 * n - 1, c = Math.cos(tilt), d = Math.sin(tilt);
-    const pts = new Float64Array(2 * N), tt = new Float32Array(N);
-    for (let i = 0; i < n; i++) {
-      const x = m.path[3 * i], y = m.path[3 * i + 1], z = flip2 * m.path[3 * i + 2];
-      pts[2 * i] = x;
-      pts[2 * i + 1] = y * c + z * d;
-      tt[i] = m.times[i];
-      const k = N - 1 - i;
-      pts[2 * k] = x;
-      pts[2 * k + 1] = -y * c + z * d;
-      tt[k] = 2 * m.t - m.times[i];
-    }
-    return { pts, times: tt, T: 2 * m.t };
-  }
-  function halos(tilt) {
-    const seed = (z) => {
-      const s = new Float64Array(6);
-      s[0] = 1.18;
-      s[2] = z;
-      s[4] = -0.1568;
-      return s;
-    };
-    const a = family(seed, 2, spaced(0.0139, 0.09, 18, 1), [0, 4], [3, 5], H / 2, () => 0.3, () => 6, 0);
-    const last = a[a.length - 1];
-    if (!last) return [];
-    const again = (x) => {
-      const s = Float64Array.from(last.s);
-      s[0] = x;
-      return s;
-    };
-    const f = [...a, ...family(again, 0, spaced(last.s[0], 1.015, 20, 1), [2, 4], [3, 5], H / 2, () => 0.3, () => 6, 1)];
-    return f.flatMap((m, i) => [toned(viewed(m, tilt), i === f.length - 1 ? "hero" : "line"), toned(viewed(m, tilt, -1), "line")]);
-  }
-  function resonant(p, q, eccentricities) {
-    const a = Math.pow(q / p, 2 / 3), out = [];
-    for (const e of eccentricities) {
-      const r = a * (1 - e), v = Math.sqrt((1 - MU) * (2 / r - 1 / a));
-      const s = new Float64Array(6);
-      s[0] = -r - MU;
-      s[4] = r - v;
-      const m = correct(s, [4], [3], H, Math.PI * q * 0.85, Math.PI * q * 1.15, 12);
-      if (m) out.push(toned(closed(m), "line"));
-    }
-    return out;
-  }
-  function zeroVelocity(C) {
-    const x0 = -1.75, y0 = -1.45, d = 8e-3, nx = 438, ny = 363;
-    const f = (x, y) => {
-      const r1 = Math.hypot(x + MU, y), r2 = Math.hypot(x - 1 + MU, y);
-      return x * x + y * y + 2 * (1 - MU) / r1 + 2 * MU / r2 - C;
-    };
-    const g = new Float64Array((nx + 1) * (ny + 1));
-    for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) g[j * (nx + 1) + i] = f(x0 + i * d, y0 + j * d);
-    return isolines(g, nx, ny, x0, y0, d).filter((c) => c.length > 16).map((c) => {
-      const p = [], t = [];
-      for (let k = 0; k < c.length; k += 2) {
-        p.push(c[k], c[k + 1], 0);
-        t.push(t.length * 4e-3);
-      }
-      return toned(open(p, t), "line");
-    });
-  }
-  function lap(orbit, ax, ay, bx, by) {
-    const n = orbit.times.length - 1;
-    const nearest2 = (x, y) => {
-      let best = 0;
-      for (let i = 1; i < n; i++) if (Math.hypot(orbit.pts[2 * i] - x, orbit.pts[2 * i + 1] - y) < Math.hypot(orbit.pts[2 * best] - x, orbit.pts[2 * best + 1] - y)) best = i;
-      return best;
-    };
-    const from = nearest2(ax, ay), count = n + (nearest2(bx, by) - from + n) % n + 1;
-    const pts = new Float64Array(2 * count), times = new Float32Array(count);
-    for (let k = 0; k < count; k++) {
-      const i = (from + k) % n;
-      pts[2 * k] = orbit.pts[2 * i];
-      pts[2 * k + 1] = orbit.pts[2 * i + 1];
-      if (k) times[k] = times[k - 1] + (orbit.times[i || n] - orbit.times[(i || n) - 1]);
-    }
-    return { pts, times, T: times[count - 1] };
-  }
-  function joined(parts) {
-    const pts = [], times = [];
-    let t0 = 0;
-    for (const part of parts) {
-      pts.push(...part.pts);
-      for (const t of part.times) times.push(t0 + t);
-      t0 += part.T;
-    }
-    return { pts: Float64Array.from(pts), times: Float32Array.from(times), T: t0 };
-  }
-  function piece(s, a, b) {
-    const t0 = s.times[a], times = s.times.slice(a, b + 1).map((t) => t - t0);
-    return { pts: s.pts.slice(2 * a, 2 * b + 2), times, T: times[times.length - 1] };
-  }
-  function reflected(s) {
-    const pts = Float64Array.from(s.pts);
-    for (let i = 1; i < pts.length; i += 2) pts[i] = -pts[i];
-    return { ...s, pts };
-  }
-  function retimed(s, t0, rate) {
-    const times = s.times.map((t) => t0 + rate * t);
-    return { ...s, times, T: times[times.length - 1] };
-  }
-  function transfer(A, phases) {
-    const orbit = lyapunovFamily(2, [A], H)[0];
-    if (!orbit) return [];
-    const first = closed(orbit), { states, dirs } = unstable(orbit, first.T), n = states.length;
-    const xL1 = lagrange(1), xL2 = lagrange(2);
-    const off = (i, sign2) => {
-      const u = Float64Array.from(states[i]);
-      for (let j = 0; j < 6; j++) u[j] += sign2 * 1e-4 * dirs[i][j];
-      return u;
-    };
-    const nearest2 = (sign2) => {
-      const p = [];
-      let d = 9;
-      propagate(off(0, sign2), H, first.T + 2, p, [], (v) => (d = Math.min(d, Math.hypot(v[0] - 1 + MU, v[1]))) < 0.05, 0);
-      return d;
-    };
-    const sign = nearest2(1) < nearest2(-1) ? 1 : -1;
-    let reach = 9;
-    for (let i = 0; i < first.pts.length; i += 2) reach = Math.min(reach, Math.hypot(first.pts[i] - 1 + MU, first.pts[i + 1]));
-    const flights = [];
-    for (let k = 0; k < phases; k++) {
-      const i = Math.floor(k / phases * n), p = [], q = [];
-      propagate(off(i, sign), H, 12, p, q, stopped, 0);
-      const m = q.length, x = (j) => p[3 * j], y = (j) => p[3 * j + 1];
-      let from = 0, c = i;
-      const gap = (j, at) => Math.hypot(x(j) - states[at % n][0], y(j) - states[at % n][1]);
-      for (; from < m - 1; from++) {
-        while (gap(from, c + 1) < gap(from, c)) c++;
-        if (gap(from, c) > 1e-3) break;
-      }
-      const r1 = (j) => Math.hypot(x(j) + MU, y(j)), r2 = (j) => Math.hypot(x(j) - 1 + MU, y(j));
-      let perilune = -1, transit = -1, perigee = -1;
-      for (let j = from + 1; j < m - 1; j++) {
-        if (perilune < 0 && r2(j) < reach && r2(j) < r2(j - 1) && r2(j) <= r2(j + 1)) perilune = j;
-        if (transit < 0 && x(j) < xL1) transit = j;
-        if (transit >= 0 && r1(j) < r1(j - 1) && r1(j) <= r1(j + 1)) {
-          perigee = j;
-          break;
-        }
-      }
-      if (perilune < 0 && perigee < 0 && r2(m - 1) < 5e-3) perilune = m - 1;
-      const s = piece(open(p, q), from, m - 1);
-      flights.push({ s, perilune: perilune - from, transit: transit - from, perigee: perigee - from });
-    }
-    const through = flights.filter((f) => f.perigee >= 0);
-    const earliest = Math.min(...through.map((f) => f.s.times[f.transit]));
-    const bundle = through.filter((f) => f.s.times[f.transit] < earliest + 1);
-    const r = (f, j, x0) => Math.hypot(f.s.pts[2 * j] - x0, f.s.pts[2 * j + 1]);
-    const low = bundle.reduce((a, f) => !a || r(f, f.perigee, -MU) < r(a, a.perigee, -MU) ? f : a, null);
-    const passing = flights.filter((f) => f.perilune > 0);
-    const close = passing.filter((f) => r(f, f.perilune, 1 - MU) > 5e-3).reduce((a, f) => !a || r(f, f.perilune, 1 - MU) < r(a, a.perilune, 1 - MU) ? f : a, null);
-    if (!low || !close) return [];
-    const unstableArcs = passing.map((f) => piece(f.s, 0, f.perilune)), stableArcs = bundle.map((f) => reflected(piece(f.s, 0, f.perigee)));
-    const inbound = mirrored(piece(low.s, 0, low.perigee)), outbound = piece(close.s, 0, close.perilune), end = inbound.pts.length - 2;
-    const path = joined([inbound, lap(first, inbound.pts[end], inbound.pts[end + 1], outbound.pts[0], outbound.pts[1]), outbound]);
-    const longest = Math.max(...[...unstableArcs, ...stableArcs].map((s) => s.T)), unit = path.T / 6;
-    return [
-      { ...toned(retimed(first, 0, unit / first.T), "text") },
-      ...unstableArcs.map((s) => ({ ...toned(retimed(s, unit, 3 * unit / longest), "orange"), alpha: 0.2 })),
-      ...stableArcs.map((s) => ({ ...toned(retimed(s, unit, 3 * unit / longest), "violet"), alpha: 0.2 })),
-      { ...toned(retimed(path, 4 * unit, 1), "hero"), craft: true }
-    ];
-  }
   function unstable(orbit, T) {
     const e = 1e-7;
     let offset = new Float64Array(6);
     offset[0] = 1;
     const states = [], dirs = [];
-    for (let lap2 = 0; lap2 < 3; lap2++) {
+    for (let lap = 0; lap < 3; lap++) {
       const a = Float64Array.from(orbit.s), b = Float64Array.from(orbit.s);
       for (let i = 0; i < 6; i++) b[i] += e * offset[i];
       for (let t = 0; t < T; ) {
@@ -279,7 +65,7 @@
           b[i] = a[i] + e * d[i];
         }
         offset = d;
-        if (lap2 === 2) {
+        if (lap === 2) {
           states.push(Float64Array.from(a));
           dirs.push(d);
         }
@@ -316,133 +102,12 @@
     }
     return [toned(first, "text"), ...out];
   }
-  function band(laps, tilt) {
-    const seed = new Float64Array(6);
-    seed[0] = 1.0232;
-    seed[2] = 0.1829;
-    seed[4] = -0.1058;
-    const m = correct(seed, [2, 4], [3, 5], H / 2, 0.3, 6, 12);
-    if (!m) return { pts: new Float64Array(0), times: new Float32Array(0), T: 0 };
-    const c = Math.cos(tilt), d = Math.sin(tilt), n = m.times.length, pts = [], times = [];
-    const put = (i, sign, t) => {
-      const x = m.path[3 * i] + MU, y = sign * m.path[3 * i + 1], z = -m.path[3 * i + 2];
-      pts.push(x * Math.cos(t) - y * Math.sin(t) - MU, (x * Math.sin(t) + y * Math.cos(t)) * c + z * d);
-      times.push(t);
-    };
-    for (let lap2 = 0; lap2 < laps; lap2++) {
-      const t0 = 2 * m.t * lap2;
-      for (let i = 0; i < n; i++) put(i, 1, t0 + m.times[i]);
-      for (let i = n - 2; i > 0; i--) put(i, -1, t0 + 2 * m.t - m.times[i]);
-    }
-    return { pts: Float64Array.from(pts), times: Float32Array.from(times), T: times[times.length - 1] };
-  }
-  function spiral(acc, r0, a1, a2, tilt, laps) {
-    const c = Math.cos(tilt), mu = 1 - MU;
-    const s = [r0, 0, 0, Math.sqrt(mu / r0)];
-    let t = 0, phase = 0, out = false, end = Infinity;
-    const parts = [{ p: [], q: [] }, { p: [], q: [] }, { p: [], q: [] }];
-    const f = (u, tt, A) => {
-      const r = Math.hypot(u[0], u[1]), mx = Math.cos(tt), my = Math.sin(tt);
-      const dx = u[0] - mx, dy = u[1] - my, d = Math.hypot(dx, dy), v = Math.hypot(u[2], u[3]);
-      return [u[2], u[3], -mu * u[0] / r ** 3 - MU * dx / d ** 3 - MU * mx + A * u[2] / v, -mu * u[1] / r ** 3 - MU * dy / d ** 3 - MU * my + A * u[3] / v];
-    };
-    for (let n = 0; n < 3e5; n++) {
-      const r = Math.hypot(s[0], s[1]), d = Math.hypot(s[0] - Math.cos(t), s[1] - Math.sin(t));
-      if (r < 0.0166 || d < 45e-4 || r > 2.6) break;
-      if (phase === 2 && r > 1.15) out = true;
-      if (out && r < 1 || t > end) break;
-      const E = (s[2] ** 2 + s[3] ** 2) / 2 - mu / r, sma = E < 0 ? -mu / (2 * E) : 9;
-      if (phase === 0 && sma > a1) phase = 1;
-      if (phase === 1 && sma > a2) {
-        phase = 2;
-        end = t + 14;
-      }
-      const A = phase === 0 || phase === 1 && r < sma ? acc : 0;
-      const h = 0.05 * Math.min(r ** 1.5, 4 * d ** 1.5);
-      parts[phase].p.push(s[0] - MU, s[1] * c, 0);
-      parts[phase].q.push(t);
-      const k1 = f(s, t, A), k2 = f(s.map((v, i) => v + 0.5 * h * k1[i]), t + h / 2, A);
-      const k3 = f(s.map((v, i) => v + 0.5 * h * k2[i]), t + h / 2, A), k4 = f(s.map((v, i) => v + h * k3[i]), t + h, A);
-      for (let i = 0; i < 4; i++) s[i] += h / 6 * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
-      t += h;
-    }
-    const [p0, p1, p2] = parts;
-    return [toned(band(laps, tilt), "line"), { ...toned(open(p2.p, p2.q), "violet"), alpha: 0.85 }, { ...toned(open(p1.p, p1.q), "violet"), alpha: 0.85 }, { ...toned(open(p0.p, p0.q), "orange"), alpha: 0.85 }].filter((x) => x.times.length > 1);
-  }
-  function flown(s, h, T, tilt = 0, stop) {
-    const p = [], q = [], c = Math.cos(tilt), d = Math.sin(tilt);
-    propagate(s, h, T, p, q, stop, 0);
-    for (let i = 0; i < q.length; i++) p[3 * i + 1] = p[3 * i + 1] * c + p[3 * i + 2] * d;
-    return open(p, q);
-  }
-  var fraction = (v) => v - Math.floor(v);
-  function tori(tilt) {
-    return droFamily(spaced(0.07, 0.42, 25, 1.2), H).filter((_, i) => i % 5 === 0).map((m, i) => {
-      const s = Float64Array.from(m.s);
-      s[4] *= 1.006;
-      s[2] = i % 2 ? 0.014 : -0.014;
-      return toned(flown(s, 0.01, 22 * m.t, tilt), i % 2 ? "violet" : "orange");
-    });
-  }
-  function lace(A1, A2, phases, span) {
-    const out = [];
-    for (const [n, A] of [[1, A1], [2, A2]]) {
-      const orbit = lyapunovFamily(n, [A], H)[0];
-      if (!orbit) continue;
-      const first = closed(orbit), { states, dirs } = unstable(orbit, first.T), xL = lagrange(n);
-      out.push(toned(first, "text"));
-      const toMoon = (sign2) => {
-        const u = Float64Array.from(states[0]);
-        for (let i = 0; i < 6; i++) u[i] += sign2 * 1e-5 * dirs[0][i];
-        const p = [], q = [];
-        propagate(u, H, 12, p, q, (v) => Math.abs(v[0] - xL) > 0.1, 0);
-        return Math.abs(p[p.length - 3] - (1 - MU)) < Math.abs(xL - (1 - MU));
-      };
-      const sign = toMoon(1) ? 1 : -1;
-      for (let k = 0; k < phases; k++) {
-        const i = Math.floor(k / phases * states.length), u = Float64Array.from(states[i]);
-        for (let j = 0; j < 6; j++) u[j] += sign * 1e-5 * dirs[i][j];
-        const s = flown(u, H, span, 0, (v) => Math.hypot(v[0] - 1 + MU, v[1]) < 8e-3 || Math.hypot(v[0] - 1 + MU, v[1]) > 0.5);
-        out.push(n === 1 ? { ...toned(s, "orange"), alpha: 0.3 } : { ...toned(mirrored(s), "violet"), alpha: 0.3 });
-      }
-    }
-    return out;
-  }
-  function sheaf(count) {
-    const rp = 0.02, out = [];
-    for (let i = 0; i < count; i++) {
-      const ra = 0.92 + 0.2 * fraction(i * 0.618), a = (rp + ra) / 2, v = Math.sqrt((1 - MU) * (2 / rp - 1 / a));
-      const al = -2 + 0.4 * (fraction(i * 0.382) - 0.5), s = new Float64Array(6);
-      s[0] = -MU + rp * Math.cos(al);
-      s[1] = rp * Math.sin(al);
-      s[3] = -(v - rp) * Math.sin(al);
-      s[4] = (v - rp) * Math.cos(al);
-      out.push(toned(flown(s, 4e-3, 3.5, 0, (q) => Math.hypot(q[0] + MU, q[1]) < 0.015 || Math.hypot(q[0] - 1 + MU, q[1]) < 5e-3 || Math.hypot(q[0], q[1]) > 2), "orange"));
-    }
-    return out;
-  }
   var SCENES = {
     nest: () => [...lyapunovFamily(1, spaced(0.012, 0.12, 12, 1.5), H), ...lyapunovFamily(2, spaced(0.012, 0.14, 12, 1.5), H), ...droFamily(ramp(0.03, 0.09, 1.2), H)].map(closed),
-    dro: () => droFamily(ramp(0.02, 0.32, 1.12), H).filter((_, i) => i % 3 === 0).map(closed),
-    l1: () => lyapunovFamily(1, spaced(6e-3, 0.17, 26, 1.35), H).map(closed),
-    l2: () => lyapunovFamily(2, spaced(6e-3, 0.17, 24, 1.35), H).map(closed),
-    lyapunovs: () => [...lyapunovFamily(1, spaced(6e-3, 0.1, 16, 1.3), H), ...lyapunovFamily(2, spaced(6e-3, 0.11, 16, 1.3), H)].map(closed),
-    mark: () => droFamily([0.1], H).map(closed),
     tubes: () => [...tubes(1, 0.0313, 14, 2.2), ...tubes(2, 0.0408, 14, 2.2)],
-    halo: () => halos(1.2),
-    rosette: () => resonant(7, 2, spaced(0.04, 0.7, 14, 1)),
-    hill: () => [3.25, 3.2, 3.188, 3.172, 3.15, 3.12, 3.08, 3.05, 3.012, 2.99, 2.97, 2.95, 2.93, 2.91, 2.89].flatMap(zeroVelocity),
-    transfer: () => transfer(0.045, 400),
-    ribbon: () => ribbon(6e-3, 90, 3, 0.16),
-    wideRibbon: () => ribbon(0.016, 120, 3, 0.12),
-    spiral: () => spiral(0.11, 0.07, 0.42, 0.92, 0.44, 60),
-    torus: () => tori(1),
-    lace: () => lace(0.05, 0.06, 40, 9),
-    sheaf: () => sheaf(36)
+    wideRibbon: () => ribbon(0.016, 120, 3, 0.12)
   };
   var SCENE_NAMES = Object.keys(SCENES);
-  var SECONDS = { torus: 18 };
-  var seconds = (name) => SECONDS[name];
   var cache = /* @__PURE__ */ new Map();
   function scene(name) {
     let out = cache.get(name);
@@ -861,6 +526,23 @@
 
   // src/orbits.ts
   var FADE_BANDS = 12;
+  var alphaOf = (s) => s.alpha ?? (s.tone === "orange" || s.tone === "violet" ? 0.42 : s.tone === "text" ? 0.8 : s.tone === "line" ? 0.36 : 1);
+  var widthOf = (s) => (s.tone === "hero" ? 2.2 : s.tone === "text" ? 1.3 : 1) * (s.weight ?? 1);
+  var colorOf = (s) => s.color ? `color ${JSON.stringify(s.color)}` : s.ink ? `ink ${JSON.stringify(s.ink)}` : s.tone === "orange" || s.tone === "hero" ? "accent" : s.tone === "violet" ? "violet" : s.tone === "text" || s.tone === "line" ? "text" : "stroke";
+  function bandsOf(s) {
+    const n = s.times.length, fadeAt = s.times[0] + (s.fade ?? Infinity), span = s.T - fadeAt;
+    if (!(span > 0)) return null;
+    const out = new Uint32Array(FADE_BANDS);
+    let a = 0;
+    while (a < n - 1 && s.times[a + 1] <= fadeAt) a++;
+    out[0] = a;
+    for (let b = 1; b < FADE_BANDS; b++) {
+      const until = fadeAt + b * span / FADE_BANDS;
+      while (a < n - 1 && s.times[a + 1] <= until) a++;
+      out[b] = a;
+    }
+    return out;
+  }
   var MU = 0.01215;
   var NEAR = 0.15;
   var DURATION = 12;
@@ -1198,8 +880,19 @@
       this.pending = false;
       // the colors of the strands with an ink, resolved in redraw() for the current mode
       this.inks = [];
-      // copies of the canvases, traced in the colors of the old mode during a flip, or null
+      // copies of the canvases and of the trail, traced in the colors of the old mode during a flip, or
+      // null
       this.ghosted = null;
+      // during a trace, the strands before the index cached are drawn on the trail a piece per frame, and
+      // the others are stroked whole at every frame, see order()
+      this.cached = 0;
+      // the point of each strand before cached up to which it is drawn on the trail, a point of its path
+      this.upTo = [];
+      // the first points of the bands of the fade of each strand, from bandsOf()
+      this.bands = [];
+      // a canvas outside the page with the bodies and the strands before cached up to upTo, copied onto
+      // the base canvas at every frame of a trace, or null outside a trace
+      this.trail = null;
       this.el = el;
       const file = el.dataset.strands !== void 0;
       this.strands = file ? [] : scene(el.dataset.scene ?? "");
@@ -1209,7 +902,7 @@
       this.headSize = HEADS[el.dataset.heads ?? "full"] ?? HEADS.full;
       this.everyHead = el.dataset.heads !== void 0;
       const given2 = Number(el.dataset.duration);
-      this.duration = (given2 > 0 ? given2 : void 0) ?? (file ? void 0 : seconds(el.dataset.scene ?? "")) ?? DURATION;
+      this.duration = given2 > 0 ? given2 : DURATION;
       this.stagger = Math.max(0, Number(el.dataset.stagger) || 0);
       this.cx = +(el.dataset.cx ?? 0);
       this.cy = +(el.dataset.cy ?? 0);
@@ -1226,6 +919,7 @@
       this.labels = [...el.querySelectorAll(".lab")];
       this.Tmax = Math.max(...this.strands.map((s) => s.T));
       this.idx = this.strands.map(() => 0);
+      this.order();
       CACHE.set(el, this);
       this.fit();
       this.ready = file ? strandsFor(el).then(({ strands, dots }) => this.install(strands, dots)) : Promise.resolve();
@@ -1243,6 +937,7 @@
       this.dots = dots;
       this.Tmax = Math.max(...strands.map((s) => s.T));
       this.idx = strands.map(() => 0);
+      this.order();
       this.loaded = true;
       this.fittedFor = "";
       this.pathsFor = "";
@@ -1251,6 +946,37 @@
         this.pending = false;
         this.start();
       }
+    }
+    // sets cached, the number of strands at the start of the order of the strands that are drawn in
+    // pieces during a trace. a strand is drawn in pieces where the seams of the pieces are too faint to
+    // be seen, i.e. it is a hairline without a glow at an opacity of 0.5 or less, and where the pieces
+    // keep the order of the strands, i.e. every earlier strand of another color is traced before it
+    // begins. two strokes of one color give the same pixels in either order
+    order() {
+      const ends = /* @__PURE__ */ new Map();
+      const seconds = (i, t) => t / this.Tmax * this.duration + i * this.stagger;
+      let k = 0;
+      for (; k < this.strands.length; k++) {
+        const s = this.strands[k], color = colorOf(s), begin = seconds(k, s.times[0]);
+        if (s.glow || alphaOf(s) > 0.5 || widthOf(s) > 1) break;
+        if ([...ends].some(([other, end]) => other !== color && end > begin)) break;
+        ends.set(color, Math.max(ends.get(color) ?? -Infinity, seconds(k, s.times[s.times.length - 1])));
+      }
+      this.cached = k;
+      this.upTo = this.strands.map(() => 0);
+      this.bands = this.strands.map(bandsOf);
+      this.trail = null;
+    }
+    // the last point of the path of strand i at or before its point j
+    lastKept(i, j) {
+      const keep = this.paths[i].keep;
+      let lo = 0, hi = keep.length - 1;
+      while (lo < hi) {
+        const mid = lo + hi + 1 >> 1;
+        if (keep[mid] <= j) lo = mid;
+        else hi = mid - 1;
+      }
+      return keep[lo];
     }
     // the window in the units of the strands: its center and its half height
     get view() {
@@ -1283,7 +1009,14 @@
         into.append(to);
         return to;
       });
-      this.ghosted = { base, head, c: this.colors(), inks: [...this.inks] };
+      let trail = null;
+      if (this.trail) {
+        trail = document.createElement("canvas");
+        trail.width = this.W;
+        trail.height = this.H;
+        trail.getContext("2d")?.drawImage(this.trail, 0, 0);
+      }
+      this.ghosted = { base, head, trail, c: this.colors(), inks: [...this.inks] };
     }
     unghost() {
       this.ghosted?.base.remove();
@@ -1360,6 +1093,7 @@
           return pathOf(out);
         });
         this.pathsFor = key;
+        this.upTo = this.upTo.map((j, i) => this.lastKept(i, j));
       }
       const k = h / 2 / this.half;
       for (const lab of this.labels) {
@@ -1407,34 +1141,31 @@
     pen(ctx, c, i, inks = this.inks) {
       const s = this.strands[i], tone = s.tone;
       ctx.strokeStyle = s.color ? typeof s.color === "string" ? s.color : s.color[c.light ? 1 : 0] : s.ink ? inks[i] : tone === "orange" || tone === "hero" ? c.accent : tone === "violet" ? c.violet : tone === "text" || tone === "line" ? c.text : c.stroke;
-      ctx.globalAlpha = s.alpha ?? (tone === "orange" || tone === "violet" ? 0.42 : tone === "text" ? 0.8 : tone === "line" ? 0.36 : 1);
-      ctx.lineWidth = (tone === "hero" ? 2.2 : tone === "text" ? 1.3 : 1) * (s.weight ?? 1) * this.lw;
+      ctx.globalAlpha = alphaOf(s);
+      ctx.lineWidth = widthOf(s) * this.lw;
       ctx.lineJoin = "round";
       ctx.shadowBlur = s.glow ? 6 * this.lw : 0;
       if (s.glow) ctx.shadowColor = ctx.strokeStyle;
     }
-    // strokes strand i up to the fraction f of its segment from point j to j + 1. up to its fade, the
-    // strand is stroked in one path, since two strokes of one strand at an opacity below 1 overlap or
-    // leave a gap at their joint. beyond its fade, it is stroked in bands of equal time, which begin
-    // and end at its points, at an opacity that falls to zero at its last point
-    stroke(ctx, i, j, f) {
-      const s = this.strands[i], path = this.paths[i];
+    // strokes strand i from its point from, its first by default, up to the fraction f of its segment
+    // from point j to j + 1. up to its fade, the strand is stroked in one path, since two strokes of one
+    // strand at an opacity below 1 overlap or leave a gap at their joint. beyond its fade, it is stroked
+    // in bands of equal time, which begin and end at its points, at an opacity that falls to zero at its
+    // last point. a stroke from a later point draws the pixels of the same bands beyond this point
+    stroke(ctx, i, j, f, from = 0) {
+      const path = this.paths[i], ends = this.bands[i];
       const part = (a2, b, g) => {
+        if (b < from || b === from && !(g > 0)) return;
         ctx.beginPath();
-        trace(ctx, path, b, g, a2);
+        trace(ctx, path, b, g, Math.max(a2, from));
         ctx.stroke();
       };
-      const fadeAt = s.times[0] + (s.fade ?? Infinity), span = s.T - fadeAt;
-      let a = 0;
-      while (a < j && s.times[a + 1] <= fadeAt) a++;
-      if (a === j || !(span > 0)) return part(0, j, f);
+      let a = ends ? Math.min(ends[0], j) : j;
+      if (!ends || a === j) return part(0, j, f);
       if (a > 0) part(0, a, 0);
       const base = ctx.globalAlpha;
       for (let b = 0; b < FADE_BANDS && a < j; b++) {
-        const until = fadeAt + (b + 1) * span / FADE_BANDS;
-        let c = a;
-        while (c < j && s.times[c + 1] <= until) c++;
-        if (b === FADE_BANDS - 1) c = j;
+        const c = b === FADE_BANDS - 1 ? j : Math.min(ends[b + 1], j);
         if (c > a) {
           ctx.globalAlpha = base * (1 - (b + 0.5) / FADE_BANDS) ** 2;
           part(a, c, c === j ? f : 0);
@@ -1463,32 +1194,80 @@
       if (!ctx) return;
       const c = this.colors(), now = performance.now();
       this.paint(ctx, c);
-      this.draw(ctx, c, now);
+      this.trail = null;
+      this.draw(ctx, c, now, this.inks, this.midTrace ? this.trailOf(c) : null);
       this.paintHead(now, c);
     }
     // draws the bodies and every strand, a finished strand whole and a strand in its trace up to its
     // head at the time now. the strands are stroked in the order of their file or scene at every
-    // frame, the order of the still, hence the last frame of a trace is its still apart from the heads
-    draw(ctx, c, now, inks = this.inks) {
+    // frame, the order of the still, hence the last frame of a trace is its still apart from the heads.
+    // with a trail, the trail is copied in place of the bodies, and each strand before cached is
+    // stroked from its point of upTo on
+    draw(ctx, c, now, inks = this.inks, trail = null) {
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
       ctx.clearRect(0, 0, this.W, this.H);
-      this.bodies(ctx, c);
+      if (trail) ctx.drawImage(trail, 0, 0);
+      else this.bodies(ctx, c);
       const tracing = this.midTrace;
       this.strands.forEach((s, i) => {
-        const n = s.times.length, j = this.drawn(i);
+        const n = s.times.length, j = this.drawn(i), from = trail && i < this.cached ? this.upTo[i] : 0;
+        if (from > 0 && from >= n - 1) return;
         if (j < n - 1) {
           const tau = this.clock(i, now);
           if (!tracing || !(tau > s.times[0])) return;
           this.pen(ctx, c, i, inks);
-          this.stroke(ctx, i, j, this.fraction(i, j, tau));
+          this.stroke(ctx, i, j, this.fraction(i, j, tau), from);
           return;
         }
         this.pen(ctx, c, i, inks);
-        this.stroke(ctx, i, n - 1, 0);
+        this.stroke(ctx, i, n - 1, 0, from);
       });
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
+    }
+    // the trail of the trace, laid with the bodies and the strands before cached up to upTo when it
+    // is missing, or null without a strand before cached
+    trailOf(c) {
+      if (!this.cached) return null;
+      if (!this.trail) {
+        const trail = document.createElement("canvas");
+        trail.width = this.W;
+        trail.height = this.H;
+        const ctx = trail.getContext("2d");
+        if (!ctx) return null;
+        this.bodies(ctx, c);
+        for (let i = 0; i < this.cached; i++) {
+          if (!this.upTo[i]) continue;
+          this.pen(ctx, c, i);
+          this.stroke(ctx, i, this.upTo[i], 0);
+        }
+        this.trail = trail;
+      }
+      return this.trail;
+    }
+    // draws on the trails the pieces of the strands before cached that their heads have passed since
+    // the last frame, i.e. from the point of upTo to the last point of the path passed, and moves upTo
+    // there. a piece ends at a point of the path, since a stroke to a point left out of the path ends
+    // at the point of the path before it
+    extend(c) {
+      const ctx = this.trailOf(c)?.getContext("2d"), ghost = this.ghosted, gtx = ghost?.trail?.getContext("2d");
+      if (!ctx) return;
+      for (let i = 0; i < this.cached; i++) {
+        const to = this.lastKept(i, this.idx[i]), from = this.upTo[i];
+        if (to <= from) continue;
+        this.pen(ctx, c, i);
+        this.stroke(ctx, i, to, 0, from);
+        if (ghost && gtx) {
+          this.pen(gtx, ghost.c, i, ghost.inks);
+          this.stroke(gtx, i, to, 0, from);
+        }
+        this.upTo[i] = to;
+      }
+      for (const t of [ctx, gtx]) if (t) {
+        t.globalAlpha = 1;
+        t.shadowBlur = 0;
+      }
     }
     reset() {
       this.unghost();
@@ -1497,6 +1276,7 @@
       this.t0 = null;
       this.finished = false;
       this.idx = this.strands.map(() => 0);
+      this.upTo = this.strands.map(() => 0);
       this.redraw();
     }
     start() {
@@ -1510,6 +1290,7 @@
       }
       if (this.raf || this.finished && !this.loop) return;
       this.t0 = performance.now();
+      this.trail = null;
       const tick = (now) => {
         this.frame(now);
         this.raf = !this.finished || this.loop ? requestAnimationFrame(tick) : 0;
@@ -1528,13 +1309,14 @@
       this.unghost();
       this.stop();
       this.pending = false;
+      this.trail = null;
       this.base.remove();
       this.head.remove();
       CACHE.delete(this.el);
     }
     // tints the drawn strands within r slide pixels of the client point in the accent color, or
     // clears the tint when clientX is null
-    glow(clientX, clientY = 0, r = 60) {
+    glow(clientX, clientY = 0, r = 20) {
       if (clientX === null || !this.W) this.pointer = null;
       else {
         const b = this.el.getBoundingClientRect();
@@ -1599,7 +1381,7 @@
     get headed() {
       return this.strands.some((_, i) => this.headOf(i) > 0);
     }
-    // the seconds into the trace at which its first head is drawn, e.g. after the tubes of a transfer
+    // the seconds into the trace at which its first head is drawn, e.g. at the start of a record of a file
     get headAfter() {
       if (!(this.Tmax > 0)) return 0;
       const first = Math.min(...this.strands.map((s, i) => this.headOf(i) > 0 ? s.times[0] / this.Tmax * this.duration + i * this.stagger : Infinity));
@@ -1617,10 +1399,17 @@
         ctx.fill();
       });
     }
+    // tints the drawn strands within the radius of the pointer. a segment of a strand is stroked when its
+    // box, with its control points where it is curved, meets the box of the disc, and the stroke is
+    // clipped to the disc, since the points of a strand may lie far apart on either side of it
     glowing(ctx, c) {
       const g = this.pointer;
       if (!g) return;
-      const r2 = g.r * g.r;
+      const reach = g.r + this.lw;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, g.r, 0, 2 * Math.PI);
+      ctx.clip();
       ctx.strokeStyle = c.accent;
       ctx.globalAlpha = 0.35;
       ctx.lineWidth = this.lw;
@@ -1629,28 +1418,29 @@
       ctx.beginPath();
       this.strands.forEach((_, i) => {
         const { px: p, ctl } = this.paths[i], last = this.drawn(i);
-        const to = (j) => {
-          if (curved(ctl, j - 1)) ctx.bezierCurveTo(ctl[4 * j - 4], ctl[4 * j - 3], ctl[4 * j - 2], ctl[4 * j - 1], p[2 * j], p[2 * j + 1]);
-          else ctx.lineTo(p[2 * j], p[2 * j + 1]);
-        };
         let pen = false;
-        for (let j = 0; j <= last; j++) {
-          const dx = p[2 * j] - g.x, dy = p[2 * j + 1] - g.y;
-          if (dx * dx + dy * dy <= r2) {
-            if (pen) to(j);
-            else if (j > 0) {
-              ctx.moveTo(p[2 * j - 2], p[2 * j - 1]);
-              to(j);
-            } else ctx.moveTo(p[0], p[1]);
-            pen = true;
-          } else if (pen) {
-            to(j);
-            pen = false;
+        for (let j = 1; j <= last; j++) {
+          const bent = curved(ctl, j - 1);
+          let lx = Math.min(p[2 * j - 2], p[2 * j]), hx = Math.max(p[2 * j - 2], p[2 * j]);
+          let ly = Math.min(p[2 * j - 1], p[2 * j + 1]), hy = Math.max(p[2 * j - 1], p[2 * j + 1]);
+          if (bent) {
+            lx = Math.min(lx, ctl[4 * j - 4], ctl[4 * j - 2]);
+            hx = Math.max(hx, ctl[4 * j - 4], ctl[4 * j - 2]);
+            ly = Math.min(ly, ctl[4 * j - 3], ctl[4 * j - 1]);
+            hy = Math.max(hy, ctl[4 * j - 3], ctl[4 * j - 1]);
           }
+          if (lx > g.x + reach || hx < g.x - reach || ly > g.y + reach || hy < g.y - reach) {
+            pen = false;
+            continue;
+          }
+          if (!pen) ctx.moveTo(p[2 * j - 2], p[2 * j - 1]);
+          if (bent) ctx.bezierCurveTo(ctl[4 * j - 4], ctl[4 * j - 3], ctl[4 * j - 2], ctl[4 * j - 1], p[2 * j], p[2 * j + 1]);
+          else ctx.lineTo(p[2 * j], p[2 * j + 1]);
+          pen = true;
         }
       });
       ctx.stroke();
-      ctx.globalAlpha = 1;
+      ctx.restore();
     }
     // the point of strand i at the flight time tau, on its segment from point j to j + 1
     at(i, j, tau) {
@@ -1673,8 +1463,10 @@
       });
       if (flying === 0) this.finished = true;
       const c = this.colors(), ghost = this.ghosted, gtx = ghost?.base.getContext("2d");
-      this.draw(ctx, c, now);
-      if (ghost && gtx) this.draw(gtx, ghost.c, now, ghost.inks);
+      if (this.finished) this.trail = null;
+      else this.extend(c);
+      this.draw(ctx, c, now, this.inks, this.trail);
+      if (ghost && gtx) this.draw(gtx, ghost.c, now, ghost.inks, this.trail && ghost.trail);
       this.paintHead(now, c);
     }
   };
@@ -1715,7 +1507,7 @@
   }
 
   // src/cursor.ts
-  var REACH = 60;
+  var REACH = 20;
   var dot = null;
   function togglePointer() {
     if (dot) {
@@ -2850,6 +2642,54 @@
       box(viewer).append(image);
       for (const clone of clones.get(viewer.dataset.still ?? "") ?? []) clone.append(image.cloneNode());
     }
+  }
+
+  // src/contour.ts
+  function isolines(g, nx, ny, x0, y0, dx, dy = dx, close = false) {
+    const at = (i, j) => g[j * (nx + 1) + i];
+    const links = /* @__PURE__ */ new Map(), where = /* @__PURE__ */ new Map();
+    const edge = (i, j, h) => {
+      const key = `${h ? "h" : "v"}${i},${j}`;
+      if (!where.has(key)) {
+        const a = at(i, j), b = h ? at(i + 1, j) : at(i, j + 1), t = a / (a - b);
+        where.set(key, h ? [x0 + (i + t) * dx, y0 + j * dy] : [x0 + i * dx, y0 + (j + t) * dy]);
+      }
+      return key;
+    };
+    const link = (a, b) => {
+      if (!links.has(a)) links.set(a, []);
+      if (!links.has(b)) links.set(b, []);
+      links.get(a)?.push(b);
+      links.get(b)?.push(a);
+    };
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const hits = [];
+      if (at(i, j) > 0 !== at(i + 1, j) > 0) hits.push(edge(i, j, true));
+      if (at(i + 1, j) > 0 !== at(i + 1, j + 1) > 0) hits.push(edge(i + 1, j, false));
+      if (at(i, j + 1) > 0 !== at(i + 1, j + 1) > 0) hits.push(edge(i, j + 1, true));
+      if (at(i, j) > 0 !== at(i, j + 1) > 0) hits.push(edge(i, j, false));
+      if (hits.length === 2) link(hits[0], hits[1]);
+      else if (hits.length === 4) {
+        link(hits[0], hits[1]);
+        link(hits[2], hits[3]);
+      }
+    }
+    const out = [], seen = /* @__PURE__ */ new Set();
+    for (const start2 of links.keys()) {
+      if (seen.has(start2)) continue;
+      const p = [];
+      let cur = start2;
+      while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        const [x, y] = where.get(cur) ?? [0, 0];
+        p.push(x, y);
+        const next = links.get(cur)?.find((k) => !seen.has(k));
+        if (!next && close && p.length > 4 && links.get(cur)?.includes(start2)) p.push(p[0], p[1]);
+        cur = next;
+      }
+      out.push(p);
+    }
+    return out;
   }
 
   // src/surfaces.ts
@@ -4094,12 +3934,12 @@ void main() {
       const loop = o.el.hasAttribute("data-loop");
       if (glide) {
         o.complete();
-        const seconds2 = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
+        const seconds = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
         setTimeout(() => {
           if (window.Reveal.getCurrentSlide() !== slide) return;
           o.fit();
           if (loop) o.start();
-        }, seconds2 * 1e3 + 50);
+        }, seconds * 1e3 + 50);
       } else if (loop || o.el.hasAttribute("data-live") || TRACED.some((c) => slide.classList.contains(c))) {
         o.reset();
         o.start();
@@ -4219,7 +4059,7 @@ void main() {
     plots,
     // called in a script file of polylines named in data-strands, see src/strands.ts
     strands: register,
-    version: "1.0.0"
+    version: "0.9.0-beta.1"
   };
   window.Beeson = Beeson;
 })();
