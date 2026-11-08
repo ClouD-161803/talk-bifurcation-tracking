@@ -114,8 +114,8 @@ test('videos are placed on their steps of a deck, in the box of their picture', 
   assert.equal(slideCount(parts), 4);
   const slides = [1, 2, 3, 4].map((n) => text(parts, `ppt/slides/slide${n}.xml`));
   assert.deepEqual(slides.map((slide) => slide.match(/<a:videoFile /g)?.length ?? 0), [1, 0, 0, 1]);
-  // a square clip in a plate of 1680 by 630 px is at its right, as in object-position
-  assert.ok(slides[0].includes(box({ x: 1170, y: 200, width: 630, height: 630 })));
+  // a clip of 1200 by 1600 px in a plate of 1680 by 630 px is at its right, as in object-position
+  assert.ok(slides[0].includes(box({ x: 1327.5, y: 200, width: 472.5, height: 630 })));
   assert.ok(slides[0].includes('repeatCount="indefinite"') && slides[0].includes('mute="1"'));
   assert.ok(!slides[3].includes('repeatCount') && !slides[3].includes('mute="1"'));
   // the videos of the for-light class are hidden, hence one clip is in the file
@@ -133,8 +133,9 @@ test('a video is played through the steps of its slide', () => {
   assert.equal(slideCount(parts), 1, 'a video on more than one slide is restarted at each step');
   const slide = text(parts, 'ppt/slides/slide1.xml');
   assert.deepEqual([...slide.matchAll(/<p:pic><p:nvPicPr><p:cNvPr id="(\d+)" name="(\w+)/g)].map((m) => m.slice(1)),
-    [['2', 'Step'], ['3', 'Step'], ['4', 'Step'], ['5', 'Video']]);
-  assert.deepEqual([...slide.matchAll(/nodeType="clickEffect".*?<p:spTgt spid="(\d+)"/g)].map((m) => m[1]), ['3', '4']);
+    [['2', 'Step'], ['3', 'Step'], ['4', 'Step'], ['5', 'Step'], ['6', 'Video']]);
+  // the last click is the step that restores the dimmed fragments
+  assert.deepEqual([...slide.matchAll(/nodeType="clickEffect".*?<p:spTgt spid="(\d+)"/g)].map((m) => m[1]), ['3', '4', '5']);
   assert.ok(slide.indexOf('nodeType="afterEffect"') < slide.indexOf('nodeType="clickEffect"'));
 });
 

@@ -1,6 +1,7 @@
 // the scenes selected with the data-scene attribute of a `.backdrop`, computed on first use and
 // cached
 
+import { isolines } from './contour.ts';
 import { MU, closed, correct, droFamily, family, lagrange, lyapunovFamily, open, propagate, ramp, spaced, step } from './orbits.ts';
 import type { Member, Strand, Tone } from './orbits.ts';
 
@@ -110,44 +111,11 @@ function zeroVelocity(C: number): Strand[] {
   };
   const g = new Float64Array((nx + 1) * (ny + 1));
   for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) g[j * (nx + 1) + i] = f(x0 + i * d, y0 + j * d);
-  const at = (i: number, j: number) => g[j * (nx + 1) + i];
-  const links = new Map<string, string[]>(), where = new Map<string, [number, number]>();
-  const edge = (i: number, j: number, h: boolean): string => {
-    const key = `${h ? 'h' : 'v'}${i},${j}`;
-    if (!where.has(key)) {
-      const a = at(i, j), b = h ? at(i + 1, j) : at(i, j + 1), t = a / (a - b);
-      where.set(key, h ? [x0 + (i + t) * d, y0 + j * d] : [x0 + i * d, y0 + (j + t) * d]);
-    }
-    return key;
-  };
-  const link = (a: string, b: string) => {
-    if (!links.has(a)) links.set(a, []);
-    if (!links.has(b)) links.set(b, []);
-    links.get(a)?.push(b); links.get(b)?.push(a);
-  };
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const hits: string[] = [];
-    if (at(i, j) > 0 !== at(i + 1, j) > 0) hits.push(edge(i, j, true));
-    if (at(i + 1, j) > 0 !== at(i + 1, j + 1) > 0) hits.push(edge(i + 1, j, false));
-    if (at(i, j + 1) > 0 !== at(i + 1, j + 1) > 0) hits.push(edge(i, j + 1, true));
-    if (at(i, j) > 0 !== at(i, j + 1) > 0) hits.push(edge(i, j, false));
-    if (hits.length === 2) link(hits[0], hits[1]);
-    else if (hits.length === 4) { link(hits[0], hits[1]); link(hits[2], hits[3]); }
-  }
-  const out: Strand[] = [], seen = new Set<string>();
-  for (const start of links.keys()) {
-    if (seen.has(start)) continue;
+  return isolines(g, nx, ny, x0, y0, d).filter((c) => c.length > 16).map((c) => {
     const p: number[] = [], t: number[] = [];
-    let cur: string | undefined = start;
-    while (cur && !seen.has(cur)) {
-      seen.add(cur);
-      const [x, y] = where.get(cur) ?? [0, 0];
-      p.push(x, y, 0); t.push(t.length * 0.004);
-      cur = links.get(cur)?.find((k) => !seen.has(k));
-    }
-    if (t.length > 8) out.push(toned(open(p, t), 'line'));
-  }
-  return out;
+    for (let k = 0; k < c.length; k += 2) { p.push(c[k], c[k + 1], 0); t.push(t.length * 0.004); }
+    return toned(open(p, t), 'line');
+  });
 }
 
 // the arc of a closed orbit from the point nearest a to the point nearest b, after one full lap
@@ -180,46 +148,103 @@ function joined(parts: Strand[]): Strand {
   return { pts: Float64Array.from(pts), times: Float32Array.from(times), T: t0 };
 }
 
-// a low-energy transfer at the Jacobi constant of the L1 Lyapunov orbit of amplitude A: from a perigee
-// along the stable manifold, once around the orbit, and along the unstable manifold to a close pass
-// of the Moon. a flight of each branch is cut at its first apse within reach of its body, and every
-// tenth flight is kept as a faint strand. the path in the accent color is made of the flights with
-// the lowest perigee and perilune
-function transfer(A: number): Strand[] {
-  const orbit = lyapunovFamily(1, [A], H)[0];
+// the points a to b of a strand, with times counted from a
+function piece(s: Strand, a: number, b: number): Strand {
+  const t0 = s.times[a], times = s.times.slice(a, b + 1).map((t) => t - t0);
+  return { pts: s.pts.slice(2 * a, 2 * b + 2), times, T: times[times.length - 1] };
+}
+
+// the strand mirrored in the x axis and still drawn from its first point, i.e. a flight of the
+// unstable manifold turned into one of the stable manifold traced backward in time
+function reflected(s: Strand): Strand {
+  const pts = Float64Array.from(s.pts);
+  for (let i = 1; i < pts.length; i += 2) pts[i] = -pts[i];
+  return { ...s, pts };
+}
+
+// the strand traced on the clock of the drawing from t0, at rate times its own clock
+function retimed(s: Strand, t0: number, rate: number): Strand {
+  const times = s.times.map((t) => t0 + rate * t);
+  return { ...s, times, T: times[times.length - 1] };
+}
+
+// a low-energy transfer through the L2 Lyapunov orbit of amplitude A: from a perigee, through the
+// neck at L1 and along the stable manifold of the orbit, once around it, and along its unstable
+// manifold to a close pass of the Moon. the unstable branch toward the Moon is flown from phases
+// points of the orbit and drawn up to its first perilune. its mirror image is the stable branch,
+// whose flights that come from the Earth region by the shortest way are drawn back to their first
+// perigee. a flight is taken from its first point 1e-3 off the orbit, and the joints of the path
+// in the accent color are thus within 1e-3. this path is made of the flights with the lowest
+// perigee and the closest perilune above 0.005, i.e. 200 km above the surface. on the clock of the
+// drawing, the orbit is traced in the first tenth, the manifolds grow from it in the next three
+// tenths, and the path is then flown on its own clock, with the only head of the scene
+function transfer(A: number, phases: number): Strand[] {
+  const orbit = lyapunovFamily(2, [A], H)[0];
   if (!orbit) return [];
-  const first = closed(orbit), states = sampled(orbit, first.T), xL = lagrange(1);
-  let inbound: Strand | null = null, outbound: Strand | null = null, perigee = 9, perilune = 9;
-  const faint: Strand[] = [];
-  for (let k = 0; k < 120; k++) {
-    const i = Math.floor((k / 120) * states.length);
-    for (const sign of [1, -1]) {
-      const p: number[] = [], q: number[] = [];
-      propagate(kicked(states[i], sign), H, 5 * first.T, p, q, stopped, 0);
-      const n = q.length;
-      // the branch is told apart once the flight has left the orbit
-      let side = 0;
-      for (let j = 0; j < n && !side; j++) if (Math.abs(p[3 * j] - xL) > 2 * A) side = Math.sign(p[3 * j] - xL);
-      const body = side < 0 ? -MU : 1 - MU, reach = side < 0 ? 0.3 : 0.05;
-      const r = (j: number) => Math.hypot(p[3 * j] - body, p[3 * j + 1]);
-      let best = 9, cut = n - 1;
-      for (let j = 1; j < n - 1; j++) {
-        if (r(j) < r(j - 1) && r(j) < r(j + 1) && r(j) < reach) { best = r(j); cut = j; break; }
-      }
-      const piece = open(p.slice(0, 3 * (cut + 1)), q.slice(0, cut + 1));
-      if (side < 0) {
-        if (k % 10 === 0) faint.push(toned(mirrored(piece), 'violet'));
-        if (best < perigee) { perigee = best; inbound = mirrored(piece); }
-      } else {
-        if (k % 10 === 0) faint.push(toned(piece, 'orange'));
-        if (best < perilune) { perilune = best; outbound = piece; }
-      }
+  const first = closed(orbit), { states, dirs } = unstable(orbit, first.T), n = states.length;
+  const xL1 = lagrange(1), xL2 = lagrange(2);
+  const off = (i: number, sign: number) => {
+    const u = Float64Array.from(states[i]);
+    for (let j = 0; j < 6; j++) u[j] += sign * 1e-4 * dirs[i][j];
+    return u;
+  };
+  // the branch toward the Moon is the one of the trial flight that comes closer to it. a flight of
+  // the other branch may still turn back toward the Moon at a larger distance
+  const nearest = (sign: number) => {
+    const p: number[] = [];
+    let d = 9;
+    propagate(off(0, sign), H, first.T + 2, p, [], (v) => (d = Math.min(d, Math.hypot(v[0] - 1 + MU, v[1]))) < 0.05, 0);
+    return d;
+  };
+  const sign = nearest(1) < nearest(-1) ? 1 : -1;
+  // a perilune counts once the flight is closer to the Moon than the orbit ever is, since a flight
+  // that leaves the orbit near its closest point to the Moon starts with a minimum of the distance
+  let reach = 9;
+  for (let i = 0; i < first.pts.length; i += 2) reach = Math.min(reach, Math.hypot(first.pts[i] - 1 + MU, first.pts[i + 1]));
+  const flights: { s: Strand; perilune: number; transit: number; perigee: number }[] = [];
+  for (let k = 0; k < phases; k++) {
+    const i = Math.floor((k / phases) * n), p: number[] = [], q: number[] = [];
+    propagate(off(i, sign), H, 12, p, q, stopped, 0);
+    const m = q.length, x = (j: number) => p[3 * j], y = (j: number) => p[3 * j + 1];
+    // the flight is stepped as the orbit was in unstable(), hence its point j is compared with the
+    // points of the orbit from states[i + j] on
+    let from = 0, c = i;
+    const gap = (j: number, at: number) => Math.hypot(x(j) - states[at % n][0], y(j) - states[at % n][1]);
+    for (; from < m - 1; from++) {
+      while (gap(from, c + 1) < gap(from, c)) c++;
+      if (gap(from, c) > 1e-3) break;
     }
+    const r1 = (j: number) => Math.hypot(x(j) + MU, y(j)), r2 = (j: number) => Math.hypot(x(j) - 1 + MU, y(j));
+    let perilune = -1, transit = -1, perigee = -1;
+    for (let j = from + 1; j < m - 1; j++) {
+      if (perilune < 0 && r2(j) < reach && r2(j) < r2(j - 1) && r2(j) <= r2(j + 1)) perilune = j;
+      if (transit < 0 && x(j) < xL1) transit = j;
+      if (transit >= 0 && r1(j) < r1(j - 1) && r1(j) <= r1(j + 1)) { perigee = j; break; }
+    }
+    // a flight that ends on the surface of the Moon is drawn up to it
+    if (perilune < 0 && perigee < 0 && r2(m - 1) < 0.005) perilune = m - 1;
+    const s = piece(open(p, q), from, m - 1);
+    flights.push({ s, perilune: perilune - from, transit: transit - from, perigee: perigee - from });
   }
-  if (!inbound || !outbound) return [];
-  const end = inbound.pts.length - 2;
-  const around = lap(first, inbound.pts[end], inbound.pts[end + 1], outbound.pts[0], outbound.pts[1]);
-  return [...faint, toned(joined([inbound, around, outbound]), 'hero')];
+  // the flights through the neck within one unit of time of the earliest one form one bundle
+  const through = flights.filter((f) => f.perigee >= 0);
+  const earliest = Math.min(...through.map((f) => f.s.times[f.transit]));
+  const bundle = through.filter((f) => f.s.times[f.transit] < earliest + 1);
+  const r = (f: (typeof flights)[number], j: number, x0: number) => Math.hypot(f.s.pts[2 * j] - x0, f.s.pts[2 * j + 1]);
+  const low = bundle.reduce<(typeof flights)[number] | null>((a, f) => (!a || r(f, f.perigee, -MU) < r(a, a.perigee, -MU) ? f : a), null);
+  const passing = flights.filter((f) => f.perilune > 0);
+  const close = passing.filter((f) => r(f, f.perilune, 1 - MU) > 0.005).reduce<(typeof flights)[number] | null>((a, f) => (!a || r(f, f.perilune, 1 - MU) < r(a, a.perilune, 1 - MU) ? f : a), null);
+  if (!low || !close) return [];
+  const unstableArcs = passing.map((f) => piece(f.s, 0, f.perilune)), stableArcs = bundle.map((f) => reflected(piece(f.s, 0, f.perigee)));
+  const inbound = mirrored(piece(low.s, 0, low.perigee)), outbound = piece(close.s, 0, close.perilune), end = inbound.pts.length - 2;
+  const path = joined([inbound, lap(first, inbound.pts[end], inbound.pts[end + 1], outbound.pts[0], outbound.pts[1]), outbound]);
+  const longest = Math.max(...[...unstableArcs, ...stableArcs].map((s) => s.T)), unit = path.T / 6;
+  return [
+    { ...toned(retimed(first, 0, unit / first.T), 'text') },
+    ...unstableArcs.map((s) => ({ ...toned(retimed(s, unit, (3 * unit) / longest), 'orange'), alpha: 0.2 })),
+    ...stableArcs.map((s) => ({ ...toned(retimed(s, unit, (3 * unit) / longest), 'violet'), alpha: 0.2 })),
+    { ...toned(retimed(path, 4 * unit, 1), 'hero'), craft: true },
+  ];
 }
 
 // unit directions of the unstable manifold along a Lyapunov orbit, one per sampled state: a small
@@ -408,7 +433,7 @@ const SCENES = {
   halo: () => halos(1.2),
   rosette: () => resonant(7, 2, spaced(0.04, 0.7, 14, 1)),
   hill: () => [3.25, 3.2, 3.188, 3.172, 3.15, 3.12, 3.08, 3.05, 3.012, 2.99, 2.97, 2.95, 2.93, 2.91, 2.89].flatMap(zeroVelocity),
-  transfer: () => transfer(0.03),
+  transfer: () => transfer(0.045, 400),
   ribbon: () => ribbon(0.006, 90, 3, 0.16),
   wideRibbon: () => ribbon(0.016, 120, 3, 0.12),
   spiral: () => spiral(0.11, 0.07, 0.42, 0.92, 0.44, 60),
@@ -419,6 +444,11 @@ const SCENES = {
 
 export type SceneName = keyof typeof SCENES;
 export const SCENE_NAMES = Object.keys(SCENES) as SceneName[];
+
+// the seconds in which the longest flight of a scene is traced, where they differ from the 12 of
+// src/orbits.ts. a strand of torus winds 22 times about its orbit, and it is traced more slowly
+const SECONDS: Partial<Record<SceneName, number>> = { torus: 18 };
+export const seconds = (name: string): number | undefined => SECONDS[name as SceneName];
 
 const cache = new Map<string, Strand[]>();
 
