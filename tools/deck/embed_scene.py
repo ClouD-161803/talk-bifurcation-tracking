@@ -37,7 +37,7 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/correction.tys \
-        "the correction scene, slide 10" --controls --keep-theme \
+        "the correction scene, slide 11" --controls --keep-theme \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set case=lyapunov --set system=cr3bp --set targeting=half --set S=1 --set guess=near --set others=false \
         --show targeting
@@ -46,7 +46,7 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/correction.tys \
-        "the correction scene, slide 11" --controls --keep-theme \
+        "the correction scene, slide 12" --controls --keep-theme \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set case=lyapunov --set system=cr3bp --set targeting=full --set S=16 --set guess=farther \
         --set ghosts=false --set others=false --show others
@@ -55,7 +55,7 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/continuation.tys \
-        "the continuation scene, slide 12" --controls --keep-theme \
+        "the continuation scene, slide 13" --controls --keep-theme \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=lyapunov --set step=medium --set pens=natural --show family
 
@@ -63,13 +63,13 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/continuation.tys \
-        "the continuation scene, slide 13" --controls --keep-theme \
+        "the continuation scene, slide 14" --controls --keep-theme \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=family11 --set step=medium --set pens=both --show
 
-The Broucke page is placed below the h2 of its slide and above the caption. Each viewer of slides 10
-to 13 is placed beside the text column of its slide, in a box larger than the zone of the layout,
-which is too small for the controls and two panels side by side. The values set on slide 10 are the
+The Broucke page is placed below the h2 of its slide and above the caption. Each viewer of slides 11
+to 14 is placed beside the text column of its slide, in a box larger than the zone of the layout,
+which is too small for the controls and two panels side by side. The values set on slide 11 are the
 defaults of the scene, and they are set again so that the slide keeps its state if a rebuild of the
 scene changes a default.
 """
