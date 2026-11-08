@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CR3BP frame preview</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<script>
+// the mode before the first paint, so that a light deck is not shown dark for a moment
+try {
+  const t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('beeson-theme');
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
+<script src="../../theme/macros.js"></script>
+<script src="../../theme/mathjax-config.js"></script>
+<script src="../../theme/vendor/mathjax/tex-svg.js"></script>
+<style>
+.reveal .slides section .was { color: var(--muted); }
+/* a fragment that wraps a display and its "where" line keeps to the text column, and the line keeps
+   the gap of a paragraph below it */
+.reveal .slides section:not(.wide) > div.fragment:not(.zone):not(.cmp) { max-width: 1000px; }
+.reveal .slides section > div.fragment > p.small:last-child { margin-bottom: 24px; }
+/* the comparison slide: one group of figures per step, over the plate area of the figure layout */
+.reveal .slides section .cmp { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+.reveal .slides section .cmp .grid { position: absolute; left: 120px; top: 190px; width: 1680px; height: 640px; display: grid; gap: 16px; }
+.reveal .slides section .cmp .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* five frames, the DyLAN figure above and Broucke's panels of the same frame below */
+.reveal .slides section .cmp .five { grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: 262px minmax(0, 1fr); }
+.reveal .slides section .cmp .span { grid-column: 1 / -1; }
+.reveal .slides section .fig { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
+.reveal .slides section .fig > img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+.reveal .slides section .fig > img.paper { padding: 8px; }
+.reveal .slides section.figure .caption.right { left: 1000px; width: 800px; }
+/* a sentence on a wide slide keeps a measure of about 66 characters */
+.reveal .slides section.wide > p { max-width: 1360px; }
+.reveal .slides section > table.check { font-size: 28px; margin-bottom: 24px; }
+.reveal .slides section > table.check td:not(:first-child), .reveal .slides section > table.check th:not(:first-child) { text-align: right; }
+.reveal .slides section > table.text { font-size: 28px; }
+/* the stability demo of slides 14 to 17, beside a narrow text column, whose displays keep to the
+   column as its sentences do */
+.reveal .slides section .zone.stability { left: 920px; top: 120px; width: 880px; height: 840px; }
+/* the line on the asinh scale is set under the diagram of slide 15, since the text column beside it
+   is full, and it ends short of the slide number */
+.reveal .slides section .zone.stability > .caption { right: 120px; margin-top: 0; }
+.reveal .slides section.narrow > div.fragment:not(.zone):not(.cmp) { max-width: 760px; }
+/* the text of this deck is set at 94% of the sizes of the theme, since Latin Modern Roman is wider
+   than STIX Two Text and six slides overflowed the page in print at the sizes of the theme */
+.reveal { font-size: 45px; }
+.reveal .math { font-size: 49px; }
+.reveal .small, .reveal .caption, .reveal li ul, .reveal li ol { font-size: 34px; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- the circular problem, before "Motion in the rotating frame". the diagram at right is drawn by
+     demos/cr3bp-frame/cr3bp-frame.js, which the deck loads after theme/beeson.js with
+     <script src="demos/cr3bp-frame/cr3bp-frame.js"></script>
+     its stage is set by data-cr3bp-stage on the fragments: units, rotating, and body. it is drawn at
+     the mass ratio of data-mu, 0.2, so that the circle of the primary can be seen, and the two masses
+     turn once in data-turn, 10 s -->
+<section>
+  <h2 style="width: auto">The circular restricted three-body problem</h2>
+  <p>The primary and the secondary circle their barycenter, and a third body, too light to move them, flies among them.</p>
+  <p class="fragment" data-fragment-index="1" data-cr3bp-stage="units">We take their separation as the unit of length, and the time unit such that they turn once in \(2\pi\).</p>
+  <p class="fragment" data-fragment-index="2" data-cr3bp-stage="rotating">In the frame turning with them, both are at rest,</p>
+  <div class="fragment" data-fragment-index="2">
+    <div class="math">\[m_1 \text{ at } (-\mu, 0), \qquad m_2 \text{ at } (1 - \mu, 0),\]</div>
+    <p class="small">where the mass ratio \(\mu = m_2/(m_1 + m_2)\) is the only parameter.</p>
+  </div>
+  <p class="fragment" data-fragment-index="3" data-cr3bp-stage="body">The third body feels both, at the distances \(\rho_1\) and \(\rho_2\).</p>
+  <div class="zone cr3bp-frame" data-mu="0.2" data-turn="10">
+    <span class="lab" data-lab="X">\(X\)</span>
+    <span class="lab" data-lab="Y">\(Y\)</span>
+    <span class="lab" data-lab="x">\(x\)</span>
+    <span class="lab" data-lab="y">\(y\)</span>
+    <span class="lab" data-lab="m1">\(m_1\)</span>
+    <span class="lab" data-lab="m2">\(m_2\)</span>
+    <span class="lab" data-lab="one">\(1\)</span>
+    <span class="lab" data-lab="t">\(t\)</span>
+    <span class="lab" data-lab="c1">\((-\mu, 0)\)</span>
+    <span class="lab" data-lab="c2">\((1 - \mu, 0)\)</span>
+    <span class="lab" data-lab="m">\(m\)</span>
+    <span class="lab" data-lab="rho1">\(\rho_1\)</span>
+    <span class="lab" data-lab="rho2">\(\rho_2\)</span>
+  </div>
+</section>
+
+</div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script src="cr3bp-frame.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

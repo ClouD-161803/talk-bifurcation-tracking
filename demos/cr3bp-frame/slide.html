@@ -1,0 +1,32 @@
+<!-- the circular problem, before "Motion in the rotating frame". the diagram at right is drawn by
+     demos/cr3bp-frame/cr3bp-frame.js, which the deck loads after theme/beeson.js with
+     <script src="demos/cr3bp-frame/cr3bp-frame.js"></script>
+     its stage is set by data-cr3bp-stage on the fragments: units, rotating, and body. it is drawn at
+     the mass ratio of data-mu, 0.2, so that the circle of the primary can be seen, and the two masses
+     turn once in data-turn, 10 s -->
+<section>
+  <h2 style="width: auto">The circular restricted three-body problem</h2>
+  <p>The primary and the secondary circle their barycenter, and a third body, too light to move them, flies among them.</p>
+  <p class="fragment" data-fragment-index="1" data-cr3bp-stage="units">We take their separation as the unit of length, and the time unit such that they turn once in \(2\pi\).</p>
+  <p class="fragment" data-fragment-index="2" data-cr3bp-stage="rotating">In the frame turning with them, both are at rest,</p>
+  <div class="fragment" data-fragment-index="2">
+    <div class="math">\[m_1 \text{ at } (-\mu, 0), \qquad m_2 \text{ at } (1 - \mu, 0),\]</div>
+    <p class="small">where the mass ratio \(\mu = m_2/(m_1 + m_2)\) is the only parameter.</p>
+  </div>
+  <p class="fragment" data-fragment-index="3" data-cr3bp-stage="body">The third body feels both, at the distances \(\rho_1\) and \(\rho_2\).</p>
+  <div class="zone cr3bp-frame" data-mu="0.2" data-turn="10">
+    <span class="lab" data-lab="X">\(X\)</span>
+    <span class="lab" data-lab="Y">\(Y\)</span>
+    <span class="lab" data-lab="x">\(x\)</span>
+    <span class="lab" data-lab="y">\(y\)</span>
+    <span class="lab" data-lab="m1">\(m_1\)</span>
+    <span class="lab" data-lab="m2">\(m_2\)</span>
+    <span class="lab" data-lab="one">\(1\)</span>
+    <span class="lab" data-lab="t">\(t\)</span>
+    <span class="lab" data-lab="c1">\((-\mu, 0)\)</span>
+    <span class="lab" data-lab="c2">\((1 - \mu, 0)\)</span>
+    <span class="lab" data-lab="m">\(m\)</span>
+    <span class="lab" data-lab="rho1">\(\rho_1\)</span>
+    <span class="lab" data-lab="rho2">\(\rho_2\)</span>
+  </div>
+</section>
