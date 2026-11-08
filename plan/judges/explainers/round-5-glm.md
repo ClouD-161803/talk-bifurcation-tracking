@@ -1,0 +1,42 @@
+Overall: 9/10
+Verdict: ready with changes. Both scenes hold one idea at a time, every color is named in the notes at its first appearance, and every number I could derive this round agrees with the claim on the slide. What is left is the timing of two spoken lines against the picture, and a handful of cosmetic notes.
+
+## Round-4 findings, judged afresh
+
+1. The narration against the loop (minor). Fixed. Slide 10 is now loaded paused on the complete first guess, held to clock 0.1, and its notes say that Steps 1 to 5 are spoken over this still. Only the 36 words after "I press play" run against the 16 s loop, about 14 s at a talk pace of 150 words per minute, and the doubling they name is on the screen while they are spoken. Slide 11 now states in its loaded state that Steps 0 to 2 are spoken over two or three loops and that "other segment counts" is ticked once the run of sixteen segments has converged.
+2. "Member" undefined at its first use (minor). Fixed, with the sentence I proposed, at Step 2 of slide 12.
+3. The converged point on the tolerance line (note). I accept the rejection. The point at −11.1 does lie below the line at −11 and the caption reads −11.1, and stopping the runs one decade lower was only the second of the two options I offered. The INDEX still lists the coincidence under "left to a later round", and I leave it there.
+4. The red dot of the target (note). Fixed. Step 5 of slide 10 now ends "and the red dot is its target".
+5. The caption during a failed attempt (note). Closed as I advised.
+6. The crosses of S = 1 and S = 2 in the race shot (note). Closed as I advised.
+7. The label 𝓛₁ among the smallest orbits (note). I accept the reason but not the placement. That the family shrinks onto 𝓛₁ explains why the label belongs in the members panel, not why it must sit where the orbits cross it. I keep the note and the change: move the label into the empty corner of the panel.
+
+## What I verified this round
+
+With `verify5.py` and `verify5b.py` in this folder, against `corrector.py` of the demo. The monodromy of the Lyapunov reference orbit, the member of the family at C = 2.9231 with T = 2π, has its largest eigenvalue at 109.3, so the claim of Step 6 of slide 10 that an error is amplified a hundredfold per revolution is right. The monodromy of the seed of family 11 at e = 0 has its largest eigenvalue at 4917, against the claim of shot 4 of about 5000-fold per revolution. Of the attempts of the blue pen on family 11 at the medium step, the one whose start member has the tangent closest to vertical starts from e = 0.4539, takes 6 halvings, and its tangent stands 6.20° from the vertical, the storyboard's 6.2°; the last member reached with a full step is again e = 0.4270, and the greatest halving count is again 9. From the build code I also verified that the gray family curve of scene 2 is a static track, added with no clock channel (`build.py`, the track `curve-diagram-…`), so it is on screen from the first frame, including the paused frame of slide 12. The words "over the gray family curve" at Step 3 of slide 12 therefore name what is on the screen.
+
+## Findings, capped at twelve
+
+I have eight; a dropped finding is still visible in the INDEX of the shots.
+
+1. Minor (Q5, Q8), slide 13, Step 3. The viewer sees the blue pen held at the fold while the speaker pauses the demo, but the pause must land inside the hold, which lasts 2 units of the clock, about 2.3 s, from 17.9 to 19.9. The 56 words from "I press play" to "I click pause" take about 22 s at 150 words per minute, and the hold opens about 21 s after play, so the click window is about 2 s wide and opens just as the sentence ends. A slightly slow pace misses it, and the written fallback, dragging the slider of the clock back, is a visible fumble in front of the audience. Evidence: slide extract, Step 3 of slide 13; INDEX, the hold from 17.90 to 19.90; 1 unit of the clock is 1.15 s at speed 0.25. Change: stretch the hold to 3.5 units, from 17.9 to 21.4, taking the extra 1.5 units out of the shortened attempts before the close-up, as the storyboard already does to make room for the hold.
+2. Minor (Q3, Q5), slide 12, Steps 4 and 5, over shot 2. The speaker says "after 14 halvings I stop at e = 0.453854, at the large red dot" about 16 s before the stop dot is drawn: at the natural pace the clause lands around 12 s into the loop, when the caption reads 4 or fewer of the 14 halvings, and the dot appears near the end, at about 29 s. The two steps hold about 70 words, about 28 s, and the click that rewinds the clock comes about 6 s in, so about 5 s of slack remain to land the clause on the dot, but no note says to spend it there. Evidence: slide extract, Steps 4 and 5 of slide 12; INDEX, continuation-2, the halvings read 4 at 11.85 and 14 first at 25.75; the storyboard, the last attempt ends at 26.0. Change: add one sentence to the loaded state of slide 12, after the sentence on the speed: "I spread Steps 4 and 5 over the whole loop and land the words 'at the large red dot' on the stop of the pen, in the last seconds of the loop."
+3. Note (Q3), both scenes, the caption. The caption reads "moving pen at 3.1540" while the notes say "orange pen" and "blue pen", so the one readout the viewer is most likely to read names neither pen. The INDEX lists this as a limit of the TyCHO runtime, and the loaded state of slide 13 says whose values the caption carries. Change: close the gap with half a sentence in the loaded state of slide 12: "The caption names the moving pen, here the orange one."
+4. Note (Q4), slide 13, fragment 1. The weight matrix W is the one symbol in the display that is not given an "is the" clause; the small text says only "I weight only ẏ₀ and e in W, each by its range", from which a viewer cannot tell that W is a diagonal matrix. The storyboard states this, but the loaded state is not spoken. Change: "where τ_j is the tangent at the last member Y_j, Δs the step, and W a diagonal weight matrix. On family 11, I weight only ẏ₀ and e in it, each by its range."
+5. Note (Q12), slide 10, the payoff. When the run converges, a yellow head starts moving around the lit-up orbit, at the same moment as the speaker turns to the convergence panel, and no note ever names it. Claudio's second request was exactly about unexplained colored marks. Change, in the order the rubric prefers: cut the head, or close Step 5 with "When it converges, the orbit lights up and a yellow head flies it." I prefer the sentence, since the head is the celebration of the payoff.
+6. Note (Q7), scene 1, shot 3. The converged point of S = 16, at −11.1, sits a tenth of a decade below the tolerance line at −11, so the crossing of the tolerance is not seen (INDEX, correction-3a-6.64.png, under "left to a later round"). I accepted the round-4 rejection and keep this only so the coincidence stays visible.
+7. Note (Q2), scene 2, shot 1. The label 𝓛₁ is crossed by the smallest orbits of the members panel (INDEX, continuation-1-27.46.png). Kept from round 4 with the same change, to move the label into the empty corner of the panel.
+8. Note (Q11), the question shots. The teal curve of S = 8 crosses the gray curve of S = 16 near n = 5 (correction-6b-6.30.png), a dim node sits on the marker of the Moon in shots 5a and 5b, and the arcs of shot 6c are kinked. All three are outside the main line and are already listed in the INDEX; I leave them for the question shots.
+
+## The three changes that would raise the score most
+
+1. Stretch the hold at the fold from 2 to 3.5 units of the clock, so the pause of slide 13 lands inside it without a race (finding 1).
+2. Stage the stop of shot 2 in the loaded state of slide 12, so "at the large red dot" is spoken on the dot (finding 2).
+3. Name the yellow head at the payoff of slide 10, or cut it (finding 5).
+
+## Could not check
+
+- The PNGs and the live pages, judged from text alone per the task, so pixel-level findings rest on the INDEX.
+- The DyLAN cross-check, runs.json, CHECKS.md, and the family-11 seed from data/stability/members.json, all outside my evidence; my family-11 numbers use the Broucke CSV fallback that build.py itself takes when members.json is absent.
+- The timing of the words against the clock beyond the estimates above, which assume a pace of 150 words per minute and the loop lengths of the README.
+- The TyCHO runtime behaviors the INDEX lists as kept by design, and the exact placement of the labels of the race, which I take from the INDEX.
