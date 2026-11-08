@@ -1,6 +1,9 @@
 {
  "format": "tycho-scene",
  "version": "0.3",
+ "requires": [
+  "layers.arrows"
+ ],
  "generator": "pytycho 0.2.0",
  "title": "Differential correction",
  "frames": {
@@ -438,10 +441,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-apo-full-1-far": {
+  "arrows-family11-apo-full-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "apo",
     "targeting": "full",
@@ -449,11 +452,17 @@
     "guess": "far"
    },
    "tracks": 2,
-   "offsets": "sticks-family11-apo-full-1-far/offsets",
-   "positions": "sticks-family11-apo-full-1-far/positions",
+   "offsets": "arrows-family11-apo-full-1-far/offsets",
+   "positions": "arrows-family11-apo-full-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-apo-full-1-far/channels/c"
+     "view": "arrows-family11-apo-full-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-apo-full-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-apo-full-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -669,10 +678,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-apo-full-1-far_ls": {
+  "arrows-family11-apo-full-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "apo",
     "targeting": "full",
@@ -680,11 +689,17 @@
     "guess": "far_ls"
    },
    "tracks": 21,
-   "offsets": "sticks-family11-apo-full-1-far_ls/offsets",
-   "positions": "sticks-family11-apo-full-1-far_ls/positions",
+   "offsets": "arrows-family11-apo-full-1-far_ls/offsets",
+   "positions": "arrows-family11-apo-full-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-apo-full-1-far_ls/channels/c"
+     "view": "arrows-family11-apo-full-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-apo-full-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-apo-full-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -900,10 +915,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-apo-full-1-farther": {
+  "arrows-family11-apo-full-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "apo",
     "targeting": "full",
@@ -911,11 +926,17 @@
     "guess": "farther"
    },
    "tracks": 3,
-   "offsets": "sticks-family11-apo-full-1-farther/offsets",
-   "positions": "sticks-family11-apo-full-1-farther/positions",
+   "offsets": "arrows-family11-apo-full-1-farther/offsets",
+   "positions": "arrows-family11-apo-full-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-apo-full-1-farther/channels/c"
+     "view": "arrows-family11-apo-full-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-apo-full-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-apo-full-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -1131,10 +1152,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-apo-full-1-near": {
+  "arrows-family11-apo-full-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "apo",
     "targeting": "full",
@@ -1142,11 +1163,17 @@
     "guess": "near"
    },
    "tracks": 3,
-   "offsets": "sticks-family11-apo-full-1-near/offsets",
-   "positions": "sticks-family11-apo-full-1-near/positions",
+   "offsets": "arrows-family11-apo-full-1-near/offsets",
+   "positions": "arrows-family11-apo-full-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-apo-full-1-near/channels/c"
+     "view": "arrows-family11-apo-full-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-apo-full-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-apo-full-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -5158,10 +5185,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-apo-half-1-far": {
+  "arrows-family11-apo-half-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "apo",
     "targeting": "half",
@@ -5169,11 +5196,17 @@
     "guess": "far"
    },
    "tracks": 4,
-   "offsets": "sticks-family11-apo-half-1-far/offsets",
-   "positions": "sticks-family11-apo-half-1-far/positions",
+   "offsets": "arrows-family11-apo-half-1-far/offsets",
+   "positions": "arrows-family11-apo-half-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-apo-half-1-far/channels/c"
+     "view": "arrows-family11-apo-half-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-apo-half-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-apo-half-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -5389,10 +5422,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-apo-half-1-far_ls": {
+  "arrows-family11-apo-half-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "apo",
     "targeting": "half",
@@ -5400,11 +5433,17 @@
     "guess": "far_ls"
    },
    "tracks": 31,
-   "offsets": "sticks-family11-apo-half-1-far_ls/offsets",
-   "positions": "sticks-family11-apo-half-1-far_ls/positions",
+   "offsets": "arrows-family11-apo-half-1-far_ls/offsets",
+   "positions": "arrows-family11-apo-half-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-apo-half-1-far_ls/channels/c"
+     "view": "arrows-family11-apo-half-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-apo-half-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-apo-half-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -5620,10 +5659,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-apo-half-1-farther": {
+  "arrows-family11-apo-half-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "apo",
     "targeting": "half",
@@ -5631,11 +5670,17 @@
     "guess": "farther"
    },
    "tracks": 7,
-   "offsets": "sticks-family11-apo-half-1-farther/offsets",
-   "positions": "sticks-family11-apo-half-1-farther/positions",
+   "offsets": "arrows-family11-apo-half-1-farther/offsets",
+   "positions": "arrows-family11-apo-half-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-apo-half-1-farther/channels/c"
+     "view": "arrows-family11-apo-half-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-apo-half-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-apo-half-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -5851,10 +5896,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-apo-half-1-near": {
+  "arrows-family11-apo-half-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "apo",
     "targeting": "half",
@@ -5862,11 +5907,17 @@
     "guess": "near"
    },
    "tracks": 15,
-   "offsets": "sticks-family11-apo-half-1-near/offsets",
-   "positions": "sticks-family11-apo-half-1-near/positions",
+   "offsets": "arrows-family11-apo-half-1-near/offsets",
+   "positions": "arrows-family11-apo-half-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-apo-half-1-near/channels/c"
+     "view": "arrows-family11-apo-half-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-apo-half-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-apo-half-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -10018,10 +10069,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-cr3bp-full-1-far": {
+  "arrows-family11-cr3bp-full-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "cr3bp",
     "targeting": "full",
@@ -10029,11 +10080,17 @@
     "guess": "far"
    },
    "tracks": 8,
-   "offsets": "sticks-family11-cr3bp-full-1-far/offsets",
-   "positions": "sticks-family11-cr3bp-full-1-far/positions",
+   "offsets": "arrows-family11-cr3bp-full-1-far/offsets",
+   "positions": "arrows-family11-cr3bp-full-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-cr3bp-full-1-far/channels/c"
+     "view": "arrows-family11-cr3bp-full-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-cr3bp-full-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-cr3bp-full-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -10249,10 +10306,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-cr3bp-full-1-far_ls": {
+  "arrows-family11-cr3bp-full-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "cr3bp",
     "targeting": "full",
@@ -10260,11 +10317,17 @@
     "guess": "far_ls"
    },
    "tracks": 22,
-   "offsets": "sticks-family11-cr3bp-full-1-far_ls/offsets",
-   "positions": "sticks-family11-cr3bp-full-1-far_ls/positions",
+   "offsets": "arrows-family11-cr3bp-full-1-far_ls/offsets",
+   "positions": "arrows-family11-cr3bp-full-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-cr3bp-full-1-far_ls/channels/c"
+     "view": "arrows-family11-cr3bp-full-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-cr3bp-full-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-cr3bp-full-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -10480,10 +10543,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-cr3bp-full-1-farther": {
+  "arrows-family11-cr3bp-full-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "cr3bp",
     "targeting": "full",
@@ -10491,11 +10554,17 @@
     "guess": "farther"
    },
    "tracks": 13,
-   "offsets": "sticks-family11-cr3bp-full-1-farther/offsets",
-   "positions": "sticks-family11-cr3bp-full-1-farther/positions",
+   "offsets": "arrows-family11-cr3bp-full-1-farther/offsets",
+   "positions": "arrows-family11-cr3bp-full-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-cr3bp-full-1-farther/channels/c"
+     "view": "arrows-family11-cr3bp-full-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-cr3bp-full-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-cr3bp-full-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -10711,10 +10780,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-cr3bp-full-1-near": {
+  "arrows-family11-cr3bp-full-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "cr3bp",
     "targeting": "full",
@@ -10722,11 +10791,17 @@
     "guess": "near"
    },
    "tracks": 5,
-   "offsets": "sticks-family11-cr3bp-full-1-near/offsets",
-   "positions": "sticks-family11-cr3bp-full-1-near/positions",
+   "offsets": "arrows-family11-cr3bp-full-1-near/offsets",
+   "positions": "arrows-family11-cr3bp-full-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-cr3bp-full-1-near/channels/c"
+     "view": "arrows-family11-cr3bp-full-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-cr3bp-full-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-cr3bp-full-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -14698,10 +14773,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-cr3bp-half-1-far": {
+  "arrows-family11-cr3bp-half-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "cr3bp",
     "targeting": "half",
@@ -14709,11 +14784,17 @@
     "guess": "far"
    },
    "tracks": 15,
-   "offsets": "sticks-family11-cr3bp-half-1-far/offsets",
-   "positions": "sticks-family11-cr3bp-half-1-far/positions",
+   "offsets": "arrows-family11-cr3bp-half-1-far/offsets",
+   "positions": "arrows-family11-cr3bp-half-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-cr3bp-half-1-far/channels/c"
+     "view": "arrows-family11-cr3bp-half-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-cr3bp-half-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-cr3bp-half-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -14949,10 +15030,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-cr3bp-half-1-far_ls": {
+  "arrows-family11-cr3bp-half-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "cr3bp",
     "targeting": "half",
@@ -14960,11 +15041,17 @@
     "guess": "far_ls"
    },
    "tracks": 15,
-   "offsets": "sticks-family11-cr3bp-half-1-far_ls/offsets",
-   "positions": "sticks-family11-cr3bp-half-1-far_ls/positions",
+   "offsets": "arrows-family11-cr3bp-half-1-far_ls/offsets",
+   "positions": "arrows-family11-cr3bp-half-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-cr3bp-half-1-far_ls/channels/c"
+     "view": "arrows-family11-cr3bp-half-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-cr3bp-half-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-cr3bp-half-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -15200,10 +15287,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-cr3bp-half-1-farther": {
+  "arrows-family11-cr3bp-half-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "cr3bp",
     "targeting": "half",
@@ -15211,11 +15298,17 @@
     "guess": "farther"
    },
    "tracks": 11,
-   "offsets": "sticks-family11-cr3bp-half-1-farther/offsets",
-   "positions": "sticks-family11-cr3bp-half-1-farther/positions",
+   "offsets": "arrows-family11-cr3bp-half-1-farther/offsets",
+   "positions": "arrows-family11-cr3bp-half-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-cr3bp-half-1-farther/channels/c"
+     "view": "arrows-family11-cr3bp-half-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-cr3bp-half-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-cr3bp-half-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -15431,10 +15524,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-cr3bp-half-1-near": {
+  "arrows-family11-cr3bp-half-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "cr3bp",
     "targeting": "half",
@@ -15442,11 +15535,17 @@
     "guess": "near"
    },
    "tracks": 12,
-   "offsets": "sticks-family11-cr3bp-half-1-near/offsets",
-   "positions": "sticks-family11-cr3bp-half-1-near/positions",
+   "offsets": "arrows-family11-cr3bp-half-1-near/offsets",
+   "positions": "arrows-family11-cr3bp-half-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-cr3bp-half-1-near/channels/c"
+     "view": "arrows-family11-cr3bp-half-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-cr3bp-half-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-cr3bp-half-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -19538,10 +19637,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-peri-full-1-far": {
+  "arrows-family11-peri-full-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "peri",
     "targeting": "full",
@@ -19549,11 +19648,17 @@
     "guess": "far"
    },
    "tracks": 2,
-   "offsets": "sticks-family11-peri-full-1-far/offsets",
-   "positions": "sticks-family11-peri-full-1-far/positions",
+   "offsets": "arrows-family11-peri-full-1-far/offsets",
+   "positions": "arrows-family11-peri-full-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-peri-full-1-far/channels/c"
+     "view": "arrows-family11-peri-full-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-peri-full-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-peri-full-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -19769,10 +19874,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-peri-full-1-far_ls": {
+  "arrows-family11-peri-full-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "peri",
     "targeting": "full",
@@ -19780,11 +19885,17 @@
     "guess": "far_ls"
    },
    "tracks": 21,
-   "offsets": "sticks-family11-peri-full-1-far_ls/offsets",
-   "positions": "sticks-family11-peri-full-1-far_ls/positions",
+   "offsets": "arrows-family11-peri-full-1-far_ls/offsets",
+   "positions": "arrows-family11-peri-full-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-peri-full-1-far_ls/channels/c"
+     "view": "arrows-family11-peri-full-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-peri-full-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-peri-full-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -20000,10 +20111,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-peri-full-1-farther": {
+  "arrows-family11-peri-full-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "peri",
     "targeting": "full",
@@ -20011,11 +20122,17 @@
     "guess": "farther"
    },
    "tracks": 4,
-   "offsets": "sticks-family11-peri-full-1-farther/offsets",
-   "positions": "sticks-family11-peri-full-1-farther/positions",
+   "offsets": "arrows-family11-peri-full-1-farther/offsets",
+   "positions": "arrows-family11-peri-full-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-peri-full-1-farther/channels/c"
+     "view": "arrows-family11-peri-full-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-peri-full-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-peri-full-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -20231,10 +20348,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-peri-full-1-near": {
+  "arrows-family11-peri-full-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "peri",
     "targeting": "full",
@@ -20242,11 +20359,17 @@
     "guess": "near"
    },
    "tracks": 3,
-   "offsets": "sticks-family11-peri-full-1-near/offsets",
-   "positions": "sticks-family11-peri-full-1-near/positions",
+   "offsets": "arrows-family11-peri-full-1-near/offsets",
+   "positions": "arrows-family11-peri-full-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-peri-full-1-near/channels/c"
+     "view": "arrows-family11-peri-full-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-peri-full-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-peri-full-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -24278,10 +24401,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-peri-half-1-far": {
+  "arrows-family11-peri-half-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "peri",
     "targeting": "half",
@@ -24289,11 +24412,17 @@
     "guess": "far"
    },
    "tracks": 33,
-   "offsets": "sticks-family11-peri-half-1-far/offsets",
-   "positions": "sticks-family11-peri-half-1-far/positions",
+   "offsets": "arrows-family11-peri-half-1-far/offsets",
+   "positions": "arrows-family11-peri-half-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-peri-half-1-far/channels/c"
+     "view": "arrows-family11-peri-half-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-peri-half-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-peri-half-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -24509,10 +24638,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-peri-half-1-far_ls": {
+  "arrows-family11-peri-half-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "peri",
     "targeting": "half",
@@ -24520,11 +24649,17 @@
     "guess": "far_ls"
    },
    "tracks": 24,
-   "offsets": "sticks-family11-peri-half-1-far_ls/offsets",
-   "positions": "sticks-family11-peri-half-1-far_ls/positions",
+   "offsets": "arrows-family11-peri-half-1-far_ls/offsets",
+   "positions": "arrows-family11-peri-half-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-peri-half-1-far_ls/channels/c"
+     "view": "arrows-family11-peri-half-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-peri-half-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-peri-half-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -24760,10 +24895,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-peri-half-1-farther": {
+  "arrows-family11-peri-half-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "peri",
     "targeting": "half",
@@ -24771,11 +24906,17 @@
     "guess": "farther"
    },
    "tracks": 6,
-   "offsets": "sticks-family11-peri-half-1-farther/offsets",
-   "positions": "sticks-family11-peri-half-1-farther/positions",
+   "offsets": "arrows-family11-peri-half-1-farther/offsets",
+   "positions": "arrows-family11-peri-half-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-peri-half-1-farther/channels/c"
+     "view": "arrows-family11-peri-half-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-peri-half-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-peri-half-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -24991,10 +25132,10 @@
    },
    "periodic": false
   },
-  "sticks-family11-peri-half-1-near": {
+  "arrows-family11-peri-half-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "family11",
     "system": "peri",
     "targeting": "half",
@@ -25002,11 +25143,17 @@
     "guess": "near"
    },
    "tracks": 15,
-   "offsets": "sticks-family11-peri-half-1-near/offsets",
-   "positions": "sticks-family11-peri-half-1-near/positions",
+   "offsets": "arrows-family11-peri-half-1-near/offsets",
+   "positions": "arrows-family11-peri-half-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-family11-peri-half-1-near/channels/c"
+     "view": "arrows-family11-peri-half-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-family11-peri-half-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-family11-peri-half-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -29098,10 +29245,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-apo-full-1-far": {
+  "arrows-lyapunov-apo-full-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "full",
@@ -29109,11 +29256,17 @@
     "guess": "far"
    },
    "tracks": 18,
-   "offsets": "sticks-lyapunov-apo-full-1-far/offsets",
-   "positions": "sticks-lyapunov-apo-full-1-far/positions",
+   "offsets": "arrows-lyapunov-apo-full-1-far/offsets",
+   "positions": "arrows-lyapunov-apo-full-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-apo-full-1-far/channels/c"
+     "view": "arrows-lyapunov-apo-full-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-apo-full-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-apo-full-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -29329,10 +29482,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-apo-full-1-far_ls": {
+  "arrows-lyapunov-apo-full-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "full",
@@ -29340,11 +29493,17 @@
     "guess": "far_ls"
    },
    "tracks": 21,
-   "offsets": "sticks-lyapunov-apo-full-1-far_ls/offsets",
-   "positions": "sticks-lyapunov-apo-full-1-far_ls/positions",
+   "offsets": "arrows-lyapunov-apo-full-1-far_ls/offsets",
+   "positions": "arrows-lyapunov-apo-full-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-apo-full-1-far_ls/channels/c"
+     "view": "arrows-lyapunov-apo-full-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-apo-full-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-apo-full-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -29560,10 +29719,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-apo-full-1-farther": {
+  "arrows-lyapunov-apo-full-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "full",
@@ -29571,11 +29730,17 @@
     "guess": "farther"
    },
    "tracks": 2,
-   "offsets": "sticks-lyapunov-apo-full-1-farther/offsets",
-   "positions": "sticks-lyapunov-apo-full-1-farther/positions",
+   "offsets": "arrows-lyapunov-apo-full-1-farther/offsets",
+   "positions": "arrows-lyapunov-apo-full-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-apo-full-1-farther/channels/c"
+     "view": "arrows-lyapunov-apo-full-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-apo-full-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-apo-full-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -29791,10 +29956,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-apo-full-1-near": {
+  "arrows-lyapunov-apo-full-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "full",
@@ -29802,11 +29967,17 @@
     "guess": "near"
    },
    "tracks": 4,
-   "offsets": "sticks-lyapunov-apo-full-1-near/offsets",
-   "positions": "sticks-lyapunov-apo-full-1-near/positions",
+   "offsets": "arrows-lyapunov-apo-full-1-near/offsets",
+   "positions": "arrows-lyapunov-apo-full-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-apo-full-1-near/channels/c"
+     "view": "arrows-lyapunov-apo-full-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-apo-full-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-apo-full-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -33758,10 +33929,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-apo-half-1-far": {
+  "arrows-lyapunov-apo-half-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "half",
@@ -33769,11 +33940,17 @@
     "guess": "far"
    },
    "tracks": 21,
-   "offsets": "sticks-lyapunov-apo-half-1-far/offsets",
-   "positions": "sticks-lyapunov-apo-half-1-far/positions",
+   "offsets": "arrows-lyapunov-apo-half-1-far/offsets",
+   "positions": "arrows-lyapunov-apo-half-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-apo-half-1-far/channels/c"
+     "view": "arrows-lyapunov-apo-half-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-apo-half-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-apo-half-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -33989,10 +34166,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-apo-half-1-far_ls": {
+  "arrows-lyapunov-apo-half-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "half",
@@ -34000,11 +34177,17 @@
     "guess": "far_ls"
    },
    "tracks": 33,
-   "offsets": "sticks-lyapunov-apo-half-1-far_ls/offsets",
-   "positions": "sticks-lyapunov-apo-half-1-far_ls/positions",
+   "offsets": "arrows-lyapunov-apo-half-1-far_ls/offsets",
+   "positions": "arrows-lyapunov-apo-half-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-apo-half-1-far_ls/channels/c"
+     "view": "arrows-lyapunov-apo-half-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-apo-half-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-apo-half-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -34220,10 +34403,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-apo-half-1-farther": {
+  "arrows-lyapunov-apo-half-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "half",
@@ -34231,11 +34414,17 @@
     "guess": "farther"
    },
    "tracks": 11,
-   "offsets": "sticks-lyapunov-apo-half-1-farther/offsets",
-   "positions": "sticks-lyapunov-apo-half-1-farther/positions",
+   "offsets": "arrows-lyapunov-apo-half-1-farther/offsets",
+   "positions": "arrows-lyapunov-apo-half-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-apo-half-1-farther/channels/c"
+     "view": "arrows-lyapunov-apo-half-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-apo-half-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-apo-half-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -34451,10 +34640,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-apo-half-1-near": {
+  "arrows-lyapunov-apo-half-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "half",
@@ -34462,11 +34651,17 @@
     "guess": "near"
    },
    "tracks": 15,
-   "offsets": "sticks-lyapunov-apo-half-1-near/offsets",
-   "positions": "sticks-lyapunov-apo-half-1-near/positions",
+   "offsets": "arrows-lyapunov-apo-half-1-near/offsets",
+   "positions": "arrows-lyapunov-apo-half-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-apo-half-1-near/channels/c"
+     "view": "arrows-lyapunov-apo-half-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-apo-half-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-apo-half-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -38638,10 +38833,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-cr3bp-full-1-far": {
+  "arrows-lyapunov-cr3bp-full-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "cr3bp",
     "targeting": "full",
@@ -38649,11 +38844,17 @@
     "guess": "far"
    },
    "tracks": 2,
-   "offsets": "sticks-lyapunov-cr3bp-full-1-far/offsets",
-   "positions": "sticks-lyapunov-cr3bp-full-1-far/positions",
+   "offsets": "arrows-lyapunov-cr3bp-full-1-far/offsets",
+   "positions": "arrows-lyapunov-cr3bp-full-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-cr3bp-full-1-far/channels/c"
+     "view": "arrows-lyapunov-cr3bp-full-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-cr3bp-full-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-cr3bp-full-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -38869,10 +39070,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-cr3bp-full-1-far_ls": {
+  "arrows-lyapunov-cr3bp-full-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "cr3bp",
     "targeting": "full",
@@ -38880,11 +39081,17 @@
     "guess": "far_ls"
    },
    "tracks": 20,
-   "offsets": "sticks-lyapunov-cr3bp-full-1-far_ls/offsets",
-   "positions": "sticks-lyapunov-cr3bp-full-1-far_ls/positions",
+   "offsets": "arrows-lyapunov-cr3bp-full-1-far_ls/offsets",
+   "positions": "arrows-lyapunov-cr3bp-full-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-cr3bp-full-1-far_ls/channels/c"
+     "view": "arrows-lyapunov-cr3bp-full-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-cr3bp-full-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-cr3bp-full-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -39100,10 +39307,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-cr3bp-full-1-farther": {
+  "arrows-lyapunov-cr3bp-full-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "cr3bp",
     "targeting": "full",
@@ -39111,11 +39318,17 @@
     "guess": "farther"
    },
    "tracks": 2,
-   "offsets": "sticks-lyapunov-cr3bp-full-1-farther/offsets",
-   "positions": "sticks-lyapunov-cr3bp-full-1-farther/positions",
+   "offsets": "arrows-lyapunov-cr3bp-full-1-farther/offsets",
+   "positions": "arrows-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-cr3bp-full-1-farther/channels/c"
+     "view": "arrows-lyapunov-cr3bp-full-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-cr3bp-full-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-cr3bp-full-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -39331,10 +39544,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-cr3bp-full-1-near": {
+  "arrows-lyapunov-cr3bp-full-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "cr3bp",
     "targeting": "full",
@@ -39342,11 +39555,17 @@
     "guess": "near"
    },
    "tracks": 4,
-   "offsets": "sticks-lyapunov-cr3bp-full-1-near/offsets",
-   "positions": "sticks-lyapunov-cr3bp-full-1-near/positions",
+   "offsets": "arrows-lyapunov-cr3bp-full-1-near/offsets",
+   "positions": "arrows-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-cr3bp-full-1-near/channels/c"
+     "view": "arrows-lyapunov-cr3bp-full-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-cr3bp-full-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-cr3bp-full-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -43438,10 +43657,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-cr3bp-half-1-far": {
+  "arrows-lyapunov-cr3bp-half-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "cr3bp",
     "targeting": "half",
@@ -43449,11 +43668,17 @@
     "guess": "far"
    },
    "tracks": 10,
-   "offsets": "sticks-lyapunov-cr3bp-half-1-far/offsets",
-   "positions": "sticks-lyapunov-cr3bp-half-1-far/positions",
+   "offsets": "arrows-lyapunov-cr3bp-half-1-far/offsets",
+   "positions": "arrows-lyapunov-cr3bp-half-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-cr3bp-half-1-far/channels/c"
+     "view": "arrows-lyapunov-cr3bp-half-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-cr3bp-half-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-cr3bp-half-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -43689,10 +43914,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-cr3bp-half-1-far_ls": {
+  "arrows-lyapunov-cr3bp-half-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "cr3bp",
     "targeting": "half",
@@ -43700,11 +43925,17 @@
     "guess": "far_ls"
    },
    "tracks": 10,
-   "offsets": "sticks-lyapunov-cr3bp-half-1-far_ls/offsets",
-   "positions": "sticks-lyapunov-cr3bp-half-1-far_ls/positions",
+   "offsets": "arrows-lyapunov-cr3bp-half-1-far_ls/offsets",
+   "positions": "arrows-lyapunov-cr3bp-half-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-cr3bp-half-1-far_ls/channels/c"
+     "view": "arrows-lyapunov-cr3bp-half-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-cr3bp-half-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-cr3bp-half-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -43940,10 +44171,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-cr3bp-half-1-farther": {
+  "arrows-lyapunov-cr3bp-half-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "cr3bp",
     "targeting": "half",
@@ -43951,11 +44182,17 @@
     "guess": "farther"
    },
    "tracks": 15,
-   "offsets": "sticks-lyapunov-cr3bp-half-1-farther/offsets",
-   "positions": "sticks-lyapunov-cr3bp-half-1-farther/positions",
+   "offsets": "arrows-lyapunov-cr3bp-half-1-farther/offsets",
+   "positions": "arrows-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-cr3bp-half-1-farther/channels/c"
+     "view": "arrows-lyapunov-cr3bp-half-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-cr3bp-half-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-cr3bp-half-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -44171,10 +44408,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-cr3bp-half-1-near": {
+  "arrows-lyapunov-cr3bp-half-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "cr3bp",
     "targeting": "half",
@@ -44182,11 +44419,17 @@
     "guess": "near"
    },
    "tracks": 24,
-   "offsets": "sticks-lyapunov-cr3bp-half-1-near/offsets",
-   "positions": "sticks-lyapunov-cr3bp-half-1-near/positions",
+   "offsets": "arrows-lyapunov-cr3bp-half-1-near/offsets",
+   "positions": "arrows-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-cr3bp-half-1-near/channels/c"
+     "view": "arrows-lyapunov-cr3bp-half-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-cr3bp-half-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-cr3bp-half-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -48418,10 +48661,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-peri-full-1-far": {
+  "arrows-lyapunov-peri-full-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "peri",
     "targeting": "full",
@@ -48429,11 +48672,17 @@
     "guess": "far"
    },
    "tracks": 2,
-   "offsets": "sticks-lyapunov-peri-full-1-far/offsets",
-   "positions": "sticks-lyapunov-peri-full-1-far/positions",
+   "offsets": "arrows-lyapunov-peri-full-1-far/offsets",
+   "positions": "arrows-lyapunov-peri-full-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-peri-full-1-far/channels/c"
+     "view": "arrows-lyapunov-peri-full-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-peri-full-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-peri-full-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -48649,10 +48898,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-peri-full-1-far_ls": {
+  "arrows-lyapunov-peri-full-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "peri",
     "targeting": "full",
@@ -48660,11 +48909,17 @@
     "guess": "far_ls"
    },
    "tracks": 21,
-   "offsets": "sticks-lyapunov-peri-full-1-far_ls/offsets",
-   "positions": "sticks-lyapunov-peri-full-1-far_ls/positions",
+   "offsets": "arrows-lyapunov-peri-full-1-far_ls/offsets",
+   "positions": "arrows-lyapunov-peri-full-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-peri-full-1-far_ls/channels/c"
+     "view": "arrows-lyapunov-peri-full-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-peri-full-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-peri-full-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -48880,10 +49135,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-peri-full-1-farther": {
+  "arrows-lyapunov-peri-full-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "peri",
     "targeting": "full",
@@ -48891,11 +49146,17 @@
     "guess": "farther"
    },
    "tracks": 1,
-   "offsets": "sticks-lyapunov-peri-full-1-farther/offsets",
-   "positions": "sticks-lyapunov-peri-full-1-farther/positions",
+   "offsets": "arrows-lyapunov-peri-full-1-farther/offsets",
+   "positions": "arrows-lyapunov-peri-full-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-peri-full-1-farther/channels/c"
+     "view": "arrows-lyapunov-peri-full-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-peri-full-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-peri-full-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -49111,10 +49372,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-peri-full-1-near": {
+  "arrows-lyapunov-peri-full-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "peri",
     "targeting": "full",
@@ -49122,11 +49383,17 @@
     "guess": "near"
    },
    "tracks": 5,
-   "offsets": "sticks-lyapunov-peri-full-1-near/offsets",
-   "positions": "sticks-lyapunov-peri-full-1-near/positions",
+   "offsets": "arrows-lyapunov-peri-full-1-near/offsets",
+   "positions": "arrows-lyapunov-peri-full-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-peri-full-1-near/channels/c"
+     "view": "arrows-lyapunov-peri-full-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-peri-full-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-peri-full-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -53178,10 +53445,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-peri-half-1-far": {
+  "arrows-lyapunov-peri-half-1-far": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "peri",
     "targeting": "half",
@@ -53189,11 +53456,17 @@
     "guess": "far"
    },
    "tracks": 18,
-   "offsets": "sticks-lyapunov-peri-half-1-far/offsets",
-   "positions": "sticks-lyapunov-peri-half-1-far/positions",
+   "offsets": "arrows-lyapunov-peri-half-1-far/offsets",
+   "positions": "arrows-lyapunov-peri-half-1-far/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-peri-half-1-far/channels/c"
+     "view": "arrows-lyapunov-peri-half-1-far/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-peri-half-1-far/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-peri-half-1-far/channels/vy"
     }
    },
    "periodic": false
@@ -53429,10 +53702,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-peri-half-1-far_ls": {
+  "arrows-lyapunov-peri-half-1-far_ls": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "peri",
     "targeting": "half",
@@ -53440,11 +53713,17 @@
     "guess": "far_ls"
    },
    "tracks": 18,
-   "offsets": "sticks-lyapunov-peri-half-1-far_ls/offsets",
-   "positions": "sticks-lyapunov-peri-half-1-far_ls/positions",
+   "offsets": "arrows-lyapunov-peri-half-1-far_ls/offsets",
+   "positions": "arrows-lyapunov-peri-half-1-far_ls/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-peri-half-1-far_ls/channels/c"
+     "view": "arrows-lyapunov-peri-half-1-far_ls/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-peri-half-1-far_ls/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-peri-half-1-far_ls/channels/vy"
     }
    },
    "periodic": false
@@ -53680,10 +53959,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-peri-half-1-farther": {
+  "arrows-lyapunov-peri-half-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "peri",
     "targeting": "half",
@@ -53691,11 +53970,17 @@
     "guess": "farther"
    },
    "tracks": 13,
-   "offsets": "sticks-lyapunov-peri-half-1-farther/offsets",
-   "positions": "sticks-lyapunov-peri-half-1-farther/positions",
+   "offsets": "arrows-lyapunov-peri-half-1-farther/offsets",
+   "positions": "arrows-lyapunov-peri-half-1-farther/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-peri-half-1-farther/channels/c"
+     "view": "arrows-lyapunov-peri-half-1-farther/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-peri-half-1-farther/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-peri-half-1-farther/channels/vy"
     }
    },
    "periodic": false
@@ -53911,10 +54196,10 @@
    },
    "periodic": false
   },
-  "sticks-lyapunov-peri-half-1-near": {
+  "arrows-lyapunov-peri-half-1-near": {
    "frame": "rp",
    "tags": {
-    "element": "sticks",
+    "element": "arrows",
     "case": "lyapunov",
     "system": "peri",
     "targeting": "half",
@@ -53922,11 +54207,17 @@
     "guess": "near"
    },
    "tracks": 15,
-   "offsets": "sticks-lyapunov-peri-half-1-near/offsets",
-   "positions": "sticks-lyapunov-peri-half-1-near/positions",
+   "offsets": "arrows-lyapunov-peri-half-1-near/offsets",
+   "positions": "arrows-lyapunov-peri-half-1-near/positions",
    "channels": {
     "c": {
-     "view": "sticks-lyapunov-peri-half-1-near/channels/c"
+     "view": "arrows-lyapunov-peri-half-1-near/channels/c"
+    },
+    "vx": {
+     "view": "arrows-lyapunov-peri-half-1-near/channels/vx"
+    },
+    "vy": {
+     "view": "arrows-lyapunov-peri-half-1-near/channels/vy"
     }
    },
    "periodic": false
@@ -60105,10 +60396,10 @@
      "width": 3.5
     },
     {
-     "kind": "track",
+     "kind": "arrow",
      "sets": {
       "tags": {
-       "element": "sticks",
+       "element": "arrows",
        "case": {
         "var": "case"
        },
@@ -60127,11 +60418,17 @@
       }
      },
      "members": "all",
-     "reveal": "none",
+     "vector": [
+      "vx",
+      "vy"
+     ],
      "before": "hidden",
      "after": "hidden",
      "color": "#ffffff",
-     "width": 1.8
+     "width": 1.8,
+     "head": {
+      "size": 9.0
+     }
     },
     {
      "kind": "track",

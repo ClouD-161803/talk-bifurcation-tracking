@@ -82,6 +82,8 @@ CROSS_HALF, CROSS_TALL = 0.14, 0.45
 # each defect is drawn with a red disc of DEFECT_DISC CSS pixels at its target, under the node of NODE_SIZE.
 # a defect shorter than a pixel is thus still seen, as a red ring around its node or as a red dot
 DEFECT_DISC, NODE_SIZE = 12, 8
+# the length of the head of a velocity arrow, in CSS pixels
+ARROWHEAD = 9
 # the CSS pixels per unit of n and per unit of log10 ||F|| in the convergence panel at the size of the viewer
 # on slides 11 and 12, measured on the stills of shots.mjs. the labels of the race are drawn and placed by them
 N_PX, LOG_PX = 23.2, 31.6
@@ -105,7 +107,7 @@ FIRST, REST, STAGED_SLIDE = (-2.0, -1.05), (-0.95, -0.1), 0.1
 # iterate 0 of a run with S = 1 is drawn whole from the start of the loop, and it is held until its node
 # slides at 0.1. its arcs and defects are grown over DRAWN, before START1. the point of iterate 0 of
 # every run is added to its convergence curve at the end of DRAWN, hence it is drawn from the first
-# frame for every S. the nodes and the sticks of iterate 0 start at DRAWN[0] as well, since a channel is
+# frame for every S. the nodes and the arrows of iterate 0 start at DRAWN[0] as well, since a channel is
 # stored in single precision, in which START1 is rounded above the first value of the clock, and a
 # track that starts at START1 is thus hidden on the first frame
 DRAWN = (START1 - 1.0, START1 - 0.1)
@@ -812,7 +814,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
 
     # the box of each case holds the three converged orbits and the masses near them. The camera of the orbit
     # panel is fitted to this box, lowered and widened to the panel, and the arcs are cut where they leave it
-    boxes, clips, stick = {}, {}, {}
+    boxes, clips, arrow = {}, {}, {}
     for case, by_system in refs.items():
         polylines = {}
         for system, (x0, vy0, T) in by_system.items():
@@ -824,7 +826,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         boxes[case] = box_of([*polylines.values(), *masses_near(case, list(polylines.values()))], 0.12)
         b = boxes[case]
         size = max(b[1] - b[0], b[3] - b[2])
-        stick[case] = 0.07 * size / speed
+        arrow[case] = 0.07 * size / speed
         clips[case] = widened(lowered(b))
         scene.track_set(f"box-{case}", frame=rp, tags={"element": "box", "case": case}).add(rectangle(clips[case]))
         # the reference orbit is dashed, so that the arcs below it are still seen
@@ -859,7 +861,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                 f"{element}-{name}", frame=frame, tags={"element": element, **tags}, periodic=periodic, attrs=attrs or {}
             )
 
-        arcs, ghosts, defects, nodes, dim_nodes, sticks = [], [], [], [], [], []
+        arcs, ghosts, defects, nodes, dim_nodes, arrows = [], [], [], [], [], []
         for k, it in enumerate(its):
             hold = END1 if k == K else at(k + 1, 0.0) - GAP
             slide = slide_at(k, S)
@@ -879,10 +881,10 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                         start = at(k + 1, 0.0)
                         ghosts.append((Pg, np.linspace(start, start + 0.05, len(Pg))))
             if math.isfinite(it["norm"]):
-                # the converged iterate keeps the sticks at the end of its arc, which form one vertical stick, but
+                # the converged iterate keeps the arrows at the end of its arc, which form one vertical arrow, but
                 # it does not have defects
                 last = r["converged"] and k == K
-                ends, nd, s = it["ends"], it["nodes"], stick[case]
+                ends, nd, s = it["ends"], it["nodes"], arrow[case]
                 targets = [nd[i + 1] for i in range(S - 1)]
                 targets.append(ends[-1] * MIRROR if half else nd[0])
                 pairs = [(i, 0, a, b) for i, (a, b) in enumerate(zip(ends, targets, strict=True))]
@@ -892,15 +894,15 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                     tt = np.array([grow_at(k, S, i, GROW), grow_at(k, S, i, DEFECT_END)])
                     # the last gap of a half period runs from the end of the arc to its mirror image
                     mirror_end = half and m == 0 and i == S - 1
-                    # with a single segment, the end of the arc is drawn with its velocity stick from its defect on, and
+                    # with a single segment, the end of the arc is drawn with its velocity arrow from its defect on, and
                     # under the half period its mirror image as well, since neither is a node. Both are held with the
-                    # arc until its ghost replaces it. A stick that would leave the box is not drawn
+                    # arc until its ghost replaces it. An arrow that would leave the box is not drawn
                     if S == 1:
                         ends_drawn = (a, b) if mirror_end else (a,)
                         tips = np.array([end[:2] + s * end[2:] for end in ends_drawn])
                         if inside(np.r_[np.array([end[:2] for end in ends_drawn]), tips], box).all():
                             for end in ends_drawn:
-                                sticks.append((np.array([end[:2], end[:2] + s * end[2:]]), np.array([tt[0], hold])))
+                                arrows.append((end[:2], s * end[2:], np.array([tt[0], hold])))
                     if last:
                         continue
                     # the gap in position, from the end of the arc to its target, is held until the next iterate
@@ -914,12 +916,13 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                         gap = np.array([a2, b2])
                     defects.append((np.r_[gap, gap[1:]], np.r_[tt, hold]))
             if S == 1:
-                # the node of a single segment is drawn with its velocity stick, cut where it leaves the box, until
-                # the node slides. the node of the last iterate K is not moved, hence its stick is kept to END1
+                # the node of a single segment is drawn with its velocity arrow, cut where it leaves the box, until
+                # the node slides. the node of the last iterate K is not moved, hence its arrow is kept to END1
                 p, v = it["nodes"][0, :2], it["nodes"][0, 2:]
-                pieces = clip_pieces(np.array([p, p + stick[case] * v]), np.array([0.0, 1.0]), box)
+                pieces = clip_pieces(np.array([p, p + arrow[case] * v]), np.array([0.0, 1.0]), box)
                 if pieces and inside(p[None], box)[0]:
-                    sticks.append((pieces[0][0][[0, -1]], np.array([DRAWN[0] if k == 0 else at(k, 0.0), END1 if k == K else slide])))
+                    tip = pieces[0][0][-1]
+                    arrows.append((p, tip - p, np.array([DRAWN[0] if k == 0 else at(k, 0.0), END1 if k == K else slide])))
         for i in range(S):
             P, cc = [], []
             for k, it in enumerate(its):
@@ -951,10 +954,11 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ts = new("dim_nodes")
             for P, cc in dim_nodes:
                 ts.add(P, channels={"c": cc})
-        if sticks:
-            ts = new("sticks")
-            for P, cc in sticks:
-                ts.add(P, channels={"c": cc})
+        if arrows:
+            # an arrow is a track of two samples at its base, shown while the clock is in its window
+            ts = new("arrows")
+            for p, d, cc in arrows:
+                ts.add(np.array([p, p]), channels={"c": cc, "vx": np.full(2, d[0]), "vy": np.full(2, d[1])})
         if r["solution"] is not None:
             P, frac, _ = r["solution"]
             ts = new("solution", periodic=True)
@@ -1068,7 +1072,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ty.track(q("solution"), before="hidden", color=TEAL, width=5.0),
             ty.track(q("solution_mid"), before="hidden", color=TEAL, width=5.0),
             ty.track(ty.sets(element="ref", case=case, system=system), color=GRAY, width=3.5, opacity=0.95, visible=solution_on),
-            ty.track(q("sticks"), before="hidden", after="hidden", color=WHITE, width=1.8),
+            ty.arrow(q("arrows"), ("vx", "vy"), before="hidden", after="hidden", color=WHITE, width=1.8, head=ARROWHEAD),
             ty.track(
                 q("dim_nodes"),
                 trail=0.002,
