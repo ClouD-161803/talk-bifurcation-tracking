@@ -63,7 +63,7 @@
     0.0
    ],
    "label": "m₁",
-   "color": "#e69f00"
+   "color": "#56b4e9"
   },
   "m2": {
    "frame": "rotating-pulsating",
@@ -76,44 +76,45 @@
     0.0,
     0.0
    ],
-   "label": "m₂",
-   "color": "#56b4e9"
+   "color": "#9a9a94"
   },
-  "L1": {
+  "m2-label": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "mu",
+     "factor": -1.0,
+     "offset": 1.0
+    },
+    -0.11,
+    0.0
+   ],
+   "label": "m₂",
+   "color": "#9a9a94"
+  },
+  "L1-label": {
    "frame": "rotating-pulsating",
    "position": [
     {
      "attr": "xL1"
     },
-    0.0,
+    0.11,
     0.0
    ],
    "label": "𝓛₁",
-   "color": "#c94fe6"
+   "color": "#e8743f"
   },
-  "L2": {
+  "L2-label": {
    "frame": "rotating-pulsating",
    "position": [
     {
      "attr": "xL2"
     },
-    0.0,
+    0.11,
     0.0
    ],
    "label": "𝓛₂",
-   "color": "#c94fe6"
-  },
-  "L3": {
-   "frame": "rotating-pulsating",
-   "position": [
-    {
-     "attr": "xL3"
-    },
-    0.0,
-    0.0
-   ],
-   "label": "𝓛₃",
-   "color": "#c94fe6"
+   "color": "#e8743f"
   },
   "L4": {
    "frame": "rotating-pulsating",
@@ -127,7 +128,7 @@
     0.0
    ],
    "label": "𝓛₄",
-   "color": "#c94fe6"
+   "color": "#b043e4"
   },
   "L5": {
    "frame": "rotating-pulsating",
@@ -142,104 +143,98 @@
     0.0
    ],
    "label": "𝓛₅",
-   "color": "#c94fe6"
+   "color": "#b043e4"
+  },
+  "L1": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL1"
+    },
+    0.0,
+    0.0
+   ],
+   "color": "#e8743f"
+  },
+  "L2": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL2"
+    },
+    0.0,
+    0.0
+   ],
+   "color": "#e8743f"
+  },
+  "L3": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL3"
+    },
+    0.0,
+    0.0
+   ],
+   "label": "𝓛₃",
+   "color": "#e8743f"
+  },
+  "L4-stable": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL45stable"
+    },
+    {
+     "attr": "yL45stable"
+    },
+    0.0
+   ],
+   "color": "#b043e4"
+  },
+  "L5-stable": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL45stable"
+    },
+    {
+     "attr": "yL45stable",
+     "factor": -1.0
+    },
+    0.0
+   ],
+   "color": "#b043e4"
+  },
+  "L4-unstable": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL45unstable"
+    },
+    {
+     "attr": "yL45unstable"
+    },
+    0.0
+   ],
+   "color": "#e8743f"
+  },
+  "L5-unstable": {
+   "frame": "rotating-pulsating",
+   "position": [
+    {
+     "attr": "xL45unstable"
+    },
+    {
+     "attr": "yL45unstable",
+     "factor": -1.0
+    },
+    0.0
+   ],
+   "color": "#e8743f"
   }
  },
  "track_sets": {
-  "secondary-copenhagen": {
-   "label": "secondary over one forcing period, mu = 0.5",
-   "frame": "rotating-pulsating",
-   "tags": {
-    "system": "copenhagen",
-    "role": "secondary"
-   },
-   "attrs": {
-    "mu": 0.5,
-    "family": 11.0,
-    "xL1": 0.0,
-    "xL2": 1.19840614455492,
-    "xL3": -1.19840614455492,
-    "xL45": 0.0,
-    "yL45": 0.8660254037844386
-   },
-   "tracks": 24,
-   "offsets": "secondary-copenhagen/offsets",
-   "positions": "secondary-copenhagen/positions",
-   "channels": {
-    "theta": {
-     "view": "secondary-copenhagen/channels/theta",
-     "unit": "rad"
-    },
-    "t": {
-     "view": "secondary-copenhagen/channels/t",
-     "unit": "TU"
-    },
-    "rho": {
-     "view": "secondary-copenhagen/channels/rho"
-    }
-   },
-   "parameters": {
-    "eccentricity": {
-     "view": "secondary-copenhagen/parameters/eccentricity",
-     "label": "eccentricity"
-    },
-    "K": {
-     "view": "secondary-copenhagen/parameters/K",
-     "label": "forcing periods"
-    }
-   },
-   "periodic": true
-  },
-  "orbit-copenhagen": {
-   "label": "Broucke family 11, periapsis branch, mu = 0.5",
-   "frame": "rotating-pulsating",
-   "tags": {
-    "system": "copenhagen",
-    "role": "orbit"
-   },
-   "attrs": {
-    "mu": 0.5
-   },
-   "tracks": 24,
-   "offsets": "orbit-copenhagen/offsets",
-   "positions": "orbit-copenhagen/positions",
-   "channels": {
-    "theta": {
-     "view": "orbit-copenhagen/channels/theta",
-     "unit": "rad"
-    },
-    "t": {
-     "view": "orbit-copenhagen/channels/t",
-     "unit": "TU"
-    },
-    "rho": {
-     "view": "orbit-copenhagen/channels/rho"
-    }
-   },
-   "parameters": {
-    "eccentricity": {
-     "view": "orbit-copenhagen/parameters/eccentricity",
-     "label": "eccentricity"
-    },
-    "K": {
-     "view": "orbit-copenhagen/parameters/K",
-     "label": "forcing periods"
-    }
-   },
-   "periodic": true
-  },
-  "box-rotating-pulsating-copenhagen": {
-   "label": "fitted box in the rotating-pulsating frame, mu = 0.5",
-   "frame": "rotating-pulsating",
-   "tags": {
-    "system": "copenhagen",
-    "role": "box"
-   },
-   "tracks": 1,
-   "offsets": "box-rotating-pulsating-copenhagen/offsets",
-   "positions": "box-rotating-pulsating-copenhagen/positions",
-   "periodic": false
-  },
   "secondary-earth-moon": {
    "label": "secondary over one forcing period, mu = 0.012155",
    "frame": "rotating-pulsating",
@@ -254,7 +249,11 @@
     "xL2": 1.1556991411365538,
     "xL3": -1.0050644850322834,
     "xL45": 0.487845,
-    "yL45": 0.8660254037844386
+    "yL45": 0.8660254037844386,
+    "xL45stable": 0.487845,
+    "yL45stable": 0.8660254037844386,
+    "xL45unstable": 0.0,
+    "yL45unstable": 1000.0
    },
    "tracks": 26,
    "offsets": "secondary-earth-moon/offsets",
@@ -334,6 +333,104 @@
    "positions": "box-rotating-pulsating-earth-moon/positions",
    "periodic": false
   },
+  "secondary-copenhagen": {
+   "label": "secondary over one forcing period, mu = 0.5",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "copenhagen",
+    "role": "secondary"
+   },
+   "attrs": {
+    "mu": 0.5,
+    "family": 11.0,
+    "xL1": 0.0,
+    "xL2": 1.19840614455492,
+    "xL3": -1.19840614455492,
+    "xL45": 0.0,
+    "yL45": 0.8660254037844386,
+    "xL45stable": 0.0,
+    "yL45stable": 1000.0,
+    "xL45unstable": 0.0,
+    "yL45unstable": 0.8660254037844386
+   },
+   "tracks": 24,
+   "offsets": "secondary-copenhagen/offsets",
+   "positions": "secondary-copenhagen/positions",
+   "channels": {
+    "theta": {
+     "view": "secondary-copenhagen/channels/theta",
+     "unit": "rad"
+    },
+    "t": {
+     "view": "secondary-copenhagen/channels/t",
+     "unit": "TU"
+    },
+    "rho": {
+     "view": "secondary-copenhagen/channels/rho"
+    }
+   },
+   "parameters": {
+    "eccentricity": {
+     "view": "secondary-copenhagen/parameters/eccentricity",
+     "label": "eccentricity"
+    },
+    "K": {
+     "view": "secondary-copenhagen/parameters/K",
+     "label": "forcing periods"
+    }
+   },
+   "periodic": true
+  },
+  "orbit-copenhagen": {
+   "label": "Broucke family 11, periapsis branch, mu = 0.5",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "copenhagen",
+    "role": "orbit"
+   },
+   "attrs": {
+    "mu": 0.5
+   },
+   "tracks": 24,
+   "offsets": "orbit-copenhagen/offsets",
+   "positions": "orbit-copenhagen/positions",
+   "channels": {
+    "theta": {
+     "view": "orbit-copenhagen/channels/theta",
+     "unit": "rad"
+    },
+    "t": {
+     "view": "orbit-copenhagen/channels/t",
+     "unit": "TU"
+    },
+    "rho": {
+     "view": "orbit-copenhagen/channels/rho"
+    }
+   },
+   "parameters": {
+    "eccentricity": {
+     "view": "orbit-copenhagen/parameters/eccentricity",
+     "label": "eccentricity"
+    },
+    "K": {
+     "view": "orbit-copenhagen/parameters/K",
+     "label": "forcing periods"
+    }
+   },
+   "periodic": true
+  },
+  "box-rotating-pulsating-copenhagen": {
+   "label": "fitted box in the rotating-pulsating frame, mu = 0.5",
+   "frame": "rotating-pulsating",
+   "tags": {
+    "system": "copenhagen",
+    "role": "box"
+   },
+   "tracks": 1,
+   "offsets": "box-rotating-pulsating-copenhagen/offsets",
+   "positions": "box-rotating-pulsating-copenhagen/positions",
+   "periodic": false
+  },
   "grid-minor": {
    "label": "grid, minor lines",
    "frame": "rotating-pulsating",
@@ -371,14 +468,14 @@
   "system": {
    "kind": "choice",
    "values": [
-    "copenhagen",
-    "earth-moon"
+    "earth-moon",
+    "copenhagen"
    ],
-   "default": "copenhagen",
+   "default": "earth-moon",
    "scope": "scene",
    "labels": [
-    "μ = 0.5",
-    "μ = 0.012155"
+    "μ = 0.012155",
+    "μ = 0.5"
    ]
   },
   "e": {
@@ -397,14 +494,14 @@
  "clock": {
   "mode": "fraction",
   "channels": [
-   "theta",
-   "t"
+   "t",
+   "theta"
   ],
   "steps": 480,
   "laps": 1,
   "labels": [
-   "true anomaly θ",
-   "time t"
+   "time t",
+   "true anomaly θ"
   ]
  },
  "views": {
@@ -600,6 +697,31 @@
     },
     {
      "kind": "body",
+     "body": "m2-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L1-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L2-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L4",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
      "body": "L1",
      "size": 5.0
     },
@@ -615,12 +737,22 @@
     },
     {
      "kind": "body",
-     "body": "L4",
+     "body": "L4-stable",
      "size": 5.0
     },
     {
      "kind": "body",
-     "body": "L5",
+     "body": "L5-stable",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L4-unstable",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5-unstable",
      "size": 5.0
     },
     {
@@ -830,6 +962,31 @@
     },
     {
      "kind": "body",
+     "body": "m2-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L1-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L2-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L4",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
      "body": "L1",
      "trail": {
       "fraction": 1.0
@@ -854,7 +1011,7 @@
     },
     {
      "kind": "body",
-     "body": "L4",
+     "body": "L4-stable",
      "trail": {
       "fraction": 1.0
      },
@@ -862,7 +1019,23 @@
     },
     {
      "kind": "body",
-     "body": "L5",
+     "body": "L5-stable",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L4-unstable",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5-unstable",
      "trail": {
       "fraction": 1.0
      },
@@ -1081,6 +1254,31 @@
     },
     {
      "kind": "body",
+     "body": "m2-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L1-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L2-label",
+     "size": 0.01
+    },
+    {
+     "kind": "body",
+     "body": "L4",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5",
+     "size": 5.0
+    },
+    {
+     "kind": "body",
      "body": "L1",
      "trail": {
       "fraction": 1.0
@@ -1105,7 +1303,7 @@
     },
     {
      "kind": "body",
-     "body": "L4",
+     "body": "L4-stable",
      "trail": {
       "fraction": 1.0
      },
@@ -1113,7 +1311,23 @@
     },
     {
      "kind": "body",
-     "body": "L5",
+     "body": "L5-stable",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L4-unstable",
+     "trail": {
+      "fraction": 1.0
+     },
+     "size": 5.0
+    },
+    {
+     "kind": "body",
+     "body": "L5-unstable",
      "trail": {
       "fraction": 1.0
      },
@@ -1216,7 +1430,7 @@
  "initial": {
   "variables": {},
   "clock": {
-   "channel": "theta"
+   "channel": "t"
   },
   "panels": {
    "barycentric-inertial": {

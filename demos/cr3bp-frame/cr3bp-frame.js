@@ -2,13 +2,15 @@
 // frame, drawn as inline SVG in a div.cr3bp-frame, with its labels as span.lab[data-lab] typeset by
 // MathJax. load this file after theme/beeson.js. the stage of the diagram is set by the shown
 // fragment of its slide with data-cr3bp-stage and the highest index, i.e. inertial without such a
-// fragment, then units, rotating, and body. the diagram is animated within a stage and between
+// fragment, then units, rotating, and body. from units on, the rotating axes x and y are drawn and
+// turn with the two masses, and they come to rest with them as the view turns into the rotating
+// frame. the diagram is animated within a stage and between
 // stages while its slide is shown. it is drawn still in the print view, under ?still, and under
 // reduced motion, with the primary and the secondary at 30 degrees from the X axis.
 //
 // the primary and the secondary turn about the barycenter at the angle phi, which equals t in the
-// units of the slide. the view is turned by the angle psi, hence the masses are drawn at phi - psi
-// and the inertial axes at -psi. psi is 0 in the inertial stages and phi minus a whole number of
+// units of the slide. the view is turned by the angle psi, hence the masses and the rotating axes
+// are drawn at phi - psi and the inertial axes at -psi. psi is 0 in the inertial stages and phi minus a whole number of
 // turns in the rotating stages. between the two, psi follows a cubic Hermite curve, which keeps the
 // rate of turn of the view continuous.
 (() => {
@@ -28,10 +30,9 @@
   // the half length of an axis, and the radii of the primary, the secondary, and the third body,
   // nondimensional
   const AXIS = 1.05;
-  const R1 = 0.064, R2 = 0.046, RB = 0.026;
-  // the radius of the arc of the angle t, and the height of the dimension line of the unit length
-  // above the line of the two masses
-  const ARC = 0.4, DIM = 0.14;
+  const R1 = 0.064, R2 = 0.03, RB = 0.026;
+  // the height of the dimension line of the unit length above the line of the two masses
+  const DIM = 0.14;
   // the rest point of the third body in the rotating frame, the half widths of its loop, and the
   // period of the loop in s
   const BODY = { x: 0.38, y: 0.6, ax: 0.05, ay: 0.035, period: 12 };
@@ -39,40 +40,35 @@
   const OPACITY = {
     inertial: [1, 1, 0.3, 0.3],
     paths: [1, 1, 0.5, 0.5],
-    rotating: [0, 0, 1, 1],
+    rotating: [0, 1, 1, 1],
     unit: [0, 1, 0, 0],
-    angle: [0, 1, 0, 0],
     coords: [0, 0, 1, 1],
     body: [0, 0, 0, 1],
   };
 
   // the colors are the custom properties of theme/beeson.css, hence the drawing follows a flip of the
-  // mode without a redraw. the primary and the secondary take the colors of the frames scene of
-  // demos/frames/build.py
+  // mode without a redraw. the primary is blue as the Earth, and the secondary grey as the Moon
   const CSS = `
 .reveal .cr3bp-frame { pointer-events: none; }
 .reveal .slides section .zone.cr3bp-frame > svg { overflow: visible; }
 .reveal .cr3bp-frame .lab { position: absolute; left: 0; top: 0; white-space: nowrap; line-height: 1; font-size: 36px; color: var(--text); opacity: 0; filter: drop-shadow(0 0 3px var(--bg)) drop-shadow(0 0 1px var(--bg)); }
 .reveal .cr3bp-frame .lab[data-lab="X"], .reveal .cr3bp-frame .lab[data-lab="Y"] { color: var(--subtle); }
 .reveal .cr3bp-frame .lab[data-lab="one"] { color: var(--violet); }
-.reveal .cr3bp-frame .lab[data-lab="t"] { color: var(--accent); }
 .cr3bp-frame svg .axis-i { stroke: var(--subtle); fill: var(--subtle); }
 .cr3bp-frame svg .axis-r { stroke: var(--text); fill: var(--text); }
 .cr3bp-frame svg .path { stroke: var(--stroke); fill: none; }
-.cr3bp-frame svg .m1 { fill: var(--data-1); }
-.cr3bp-frame svg .m2 { fill: var(--data-2); }
+.cr3bp-frame svg .m1 { fill: var(--data-2); }
+.cr3bp-frame svg .m2 { fill: var(--subtle); }
 .cr3bp-frame svg .unit { stroke: var(--violet); fill: var(--violet); }
-.cr3bp-frame svg .angle { stroke: var(--accent); fill: none; }
 .cr3bp-frame svg .leader { stroke: var(--subtle); }
 .cr3bp-frame svg .seg { stroke: var(--text); }
-.cr3bp-frame svg .body { fill: var(--text); }
-.cr3bp-frame svg line, .cr3bp-frame svg circle.path, .cr3bp-frame svg path.angle { stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.cr3bp-frame svg .body { fill: var(--violet); }
+.cr3bp-frame svg line, .cr3bp-frame svg circle.path { stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .cr3bp-frame svg polygon { stroke: none; }
 `;
 
   const num = (v, d) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? d : Number(v));
   const deg = (a) => (a * 180) / Math.PI;
-  const mod = (a, m) => ((a % m) + m) % m;
   const rot = (a, x, y) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
   // the same test as Orbits.reduced in src/orbits.ts, with the print view of reveal.js added
   const still = () => {
@@ -143,12 +139,11 @@
       // the drawing is made in nondimensional units, with y up
       const root = node('g', { transform: `translate(${this.cx} ${this.cy}) scale(${SCALE} ${-SCALE})` }, svg);
       const group = () => node('g', {}, root);
-      this.g = { paths: group(), inertial: group(), rotating: group(), angle: group(), coords: group(), body: group(), masses: group() };
+      this.g = { paths: group(), inertial: group(), rotating: group(), coords: group(), body: group(), masses: group() };
       node('circle', { class: 'path', cx: 0, cy: 0, r: mu }, this.g.paths);
       node('circle', { class: 'path', cx: 0, cy: 0, r: 1 - mu }, this.g.paths);
       this.inertialAxes = axes(this.g.inertial, 'axis-i');
-      axes(this.g.rotating, 'axis-r');
-      this.arc = node('path', { class: 'angle' }, this.g.angle);
+      this.rotatingAxes = axes(this.g.rotating, 'axis-r');
       this.leader = node('line', { class: 'leader' }, this.g.coords);
       this.seg1 = node('line', { class: 'seg' }, this.g.body);
       this.seg2 = node('line', { class: 'seg' }, this.g.body);
@@ -289,19 +284,11 @@
       const mu = this.mu, op = this.op;
       const [psi] = this.psi();
       const alpha = this.phi - psi;
-      for (const name of ['paths', 'inertial', 'rotating', 'angle', 'coords', 'body']) this.g[name].setAttribute('opacity', op[name].toFixed(3));
+      for (const name of ['paths', 'inertial', 'rotating', 'coords', 'body']) this.g[name].setAttribute('opacity', op[name].toFixed(3));
       this.g.unit.setAttribute('opacity', op.unit.toFixed(3));
       this.inertialAxes.setAttribute('transform', `rotate(${deg(-psi).toFixed(3)})`);
       this.line.setAttribute('transform', `rotate(${deg(alpha).toFixed(3)})`);
-
-      // the arc of the angle t from the X axis to the line of the two masses, with t in [0, 2 pi)
-      const a0 = -psi, d = mod(this.phi, TAU);
-      const [sx, sy] = [ARC * Math.cos(a0), ARC * Math.sin(a0)];
-      const [ex, ey] = [ARC * Math.cos(a0 + d), ARC * Math.sin(a0 + d)];
-      this.arc.setAttribute('d', d < 1e-3 ? '' : `M ${sx} ${sy} A ${ARC} ${ARC} 0 ${d > Math.PI ? 1 : 0} 1 ${ex} ${ey}`);
-      const [tx, ty] = rot(a0 + d / 2, ARC + 0.1, 0);
-      // the label t of a short arc is faded in with it, since the arc is closed at each turn
-      this.place('t', tx, ty, op.angle * Math.min(1, d / 0.25));
+      this.rotatingAxes.setAttribute('transform', `rotate(${deg(alpha).toFixed(3)})`);
 
       // the labels of the two masses turn with them, beyond the ends of the dimension line
       const m1 = rot(alpha, -mu, 0), m2 = rot(alpha, 1 - mu, 0);
@@ -310,8 +297,8 @@
       const [ix, iy] = rot(-psi, AXIS + 0.1, 0), [jx, jy] = rot(-psi, 0, AXIS + 0.1);
       this.place('X', ix, iy, op.inertial);
       this.place('Y', jx, jy, op.inertial);
-      this.place('x', AXIS + 0.09, 0, op.rotating);
-      this.place('y', 0, AXIS + 0.09, op.rotating);
+      this.place('x', ...rot(alpha, AXIS + 0.09, 0), op.rotating);
+      this.place('y', ...rot(alpha, 0, AXIS + 0.09), op.rotating);
       const [ux, uy] = rot(alpha, 0.5 - mu, DIM + 0.1);
       this.place('one', ux, uy, op.unit);
 

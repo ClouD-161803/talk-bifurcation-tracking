@@ -52,8 +52,8 @@ INPUT_SHA256 = "763334cf42d7dd1712de1954c3318eab5ec7e3b4d060623e09bee824ed86dba5
 
 # each system maps to its tab label, its mass ratio, and the Broucke family whose periapsis branch is shown
 SYSTEMS = {
-    "copenhagen": ("μ = 0.5", 0.5, 11),
     "earth-moon": ("μ = 0.012155", 0.012155, 7),
+    "copenhagen": ("μ = 0.5", 0.5, 11),
 }
 # each frame maps to its label, its axis titles, the label of its view, and the colormap of the orbit
 FRAMES = {
@@ -77,7 +77,18 @@ E_RANGE = (0.0, 0.5)  # the range of the orbit colormaps, shared by the two syst
 E_CLIP = (0.0, 0.85)
 
 BG, FG, LINE = "#050505", "#f2f2ef", "#232320"
-M1_COLOR, M2_COLOR, L_COLOR = "#e69f00", "#56b4e9", "#c94fe6"
+# the primary in the blue and the secondary in the gray of the CR3BP diagram of the talk, and each libration point in
+# orange where it is unstable and in violet where it is stable, between the colors of the dark and the light mode
+M1_COLOR, M2_COLOR = "#56b4e9", "#9a9a94"
+UNSTABLE_COLOR, STABLE_COLOR = "#e8743f", "#b043e4"
+# the Routh mass ratio, under which L4 and L5 are linearly stable
+MU_ROUTH = (1 - np.sqrt(23 / 27)) / 2
+# the y of a dot body that is not drawn at the selected mass ratio, far outside every panel. the camera is fitted to
+# the track layers alone (section 2.8 of the scene format), hence such a body does not move the fit
+AWAY = 1e3
+# the offset of the label of m2 below the x axis, and of the labels of L1 and L2 above it, in the rotating-pulsating
+# frame, so that the three labels are clear of each other and of the dots on the axis at the Earth-Moon mass ratio
+M2_LABEL_DY, L12_LABEL_DY = -0.11, 0.11
 HEAD_COLOR = "#f0e442"
 # a neutral gray, so that the grid is not confused with the orbit in the colormap of any frame
 GRID_COLOR = "#8a8f9c"
@@ -110,6 +121,10 @@ def libration_points(mu: float) -> dict[str, float]:
             gamma -= np.polyval(coefficients, gamma) / np.polyval(derivative, gamma)
         out["x" + name] = origin + sign * gamma
     out["xL45"], out["yL45"] = 0.5 - mu, float(np.sqrt(3.0) / 2)
+    # the dot of L4 and L5 in the color of their stability is drawn at the points, and the other dot away
+    stable = mu < MU_ROUTH
+    for kind, shown in (("stable", stable), ("unstable", not stable)):
+        out[f"xL45{kind}"], out[f"yL45{kind}"] = (out["xL45"], out["yL45"]) if shown else (0.0, AWAY)
     return out
 
 
@@ -173,14 +188,27 @@ def build() -> None:
     )
 
     m1 = scene.body("m1", frame=pulsating, position=[-ty.attr("mu"), 0.0, 0.0], label="m₁", color=M1_COLOR)
-    m2 = scene.body("m2", frame=pulsating, position=[1 - ty.attr("mu"), 0.0, 0.0], label="m₂", color=M2_COLOR)
-    points = [
-        scene.body("L1", frame=pulsating, position=[ty.attr("xL1"), 0.0, 0.0], label="𝓛₁", color=L_COLOR),
-        scene.body("L2", frame=pulsating, position=[ty.attr("xL2"), 0.0, 0.0], label="𝓛₂", color=L_COLOR),
-        scene.body("L3", frame=pulsating, position=[ty.attr("xL3"), 0.0, 0.0], label="𝓛₃", color=L_COLOR),
-        scene.body("L4", frame=pulsating, position=[ty.attr("xL45"), ty.attr("yL45"), 0.0], label="𝓛₄", color=L_COLOR),
-        scene.body("L5", frame=pulsating, position=[ty.attr("xL45"), -ty.attr("yL45"), 0.0], label="𝓛₅", color=L_COLOR),
+    m2 = scene.body("m2", frame=pulsating, position=[1 - ty.attr("mu"), 0.0, 0.0], color=M2_COLOR)
+    # a body is drawn in one color, hence L4 and L5 are each a labeled body without a trail, under one dot body per
+    # stability, of which the one of the other stability is away. the labels of m2, L1, and L2 are bodies of their own
+    # off the axis, drawn without a visible dot
+    offset = [
+        scene.body("m2-label", frame=pulsating, position=[1 - ty.attr("mu"), M2_LABEL_DY, 0.0], label="m₂", color=M2_COLOR),
+        scene.body("L1-label", frame=pulsating, position=[ty.attr("xL1"), L12_LABEL_DY, 0.0], label="𝓛₁", color=UNSTABLE_COLOR),
+        scene.body("L2-label", frame=pulsating, position=[ty.attr("xL2"), L12_LABEL_DY, 0.0], label="𝓛₂", color=UNSTABLE_COLOR),
     ]
+    labels = [
+        scene.body("L4", frame=pulsating, position=[ty.attr("xL45"), ty.attr("yL45"), 0.0], label="𝓛₄", color=STABLE_COLOR),
+        scene.body("L5", frame=pulsating, position=[ty.attr("xL45"), -ty.attr("yL45"), 0.0], label="𝓛₅", color=STABLE_COLOR),
+    ]
+    points = [
+        scene.body(f"L{k}", frame=pulsating, position=[ty.attr(f"xL{k}"), 0.0, 0.0], label="𝓛₃" if k == 3 else None, color=UNSTABLE_COLOR)
+        for k in (1, 2, 3)
+    ]
+    for kind, color in (("stable", STABLE_COLOR), ("unstable", UNSTABLE_COLOR)):
+        x, y = ty.attr(f"xL45{kind}"), ty.attr(f"yL45{kind}")
+        points.append(scene.body(f"L4-{kind}", frame=pulsating, position=[x, y, 0.0], color=color))
+        points.append(scene.body(f"L5-{kind}", frame=pulsating, position=[x, -y, 0.0], color=color))
 
     for system, (_, mu, family) in SYSTEMS.items():
         branch = f"family-{family}-periapsis"
@@ -246,13 +274,13 @@ def build() -> None:
         boxes[fid] = scene.track_set(f"box-{fid}", frame=fid, label=f"fitted box in the {fid} frame")
         boxes[fid].add([[-BOX, -BOX], [BOX, BOX]])
 
-    system = scene.choice("system", list(SYSTEMS), default="copenhagen", labels=[v[0] for v in SYSTEMS.values()])
+    system = scene.choice("system", list(SYSTEMS), default="earth-moon", labels=[v[0] for v in SYSTEMS.values()])
     e = scene.selector("e", parameter="eccentricity", default=0.0)
     show_orbit = scene.toggle("orbit", default=False)
     drivers = ty.sets(system=system, role="secondary")
     orbits = ty.sets(system=system, role="orbit")
     boxes["rotating-pulsating"] = ty.sets(system=system, role="box")
-    scene.clock("fraction", channels=["theta", "t"], labels=["true anomaly θ", "time t"], steps=STEPS, laps=1)
+    scene.clock("fraction", channels=["t", "theta"], labels=["time t", "true anomaly θ"], steps=STEPS, laps=1)
 
     for fid, (_, _, label, colormap) in FRAMES.items():
         by_e = {"parameter": "eccentricity", "colormap": colormap, "range": list(E_RANGE), "clip": list(E_CLIP)}
@@ -271,6 +299,8 @@ def build() -> None:
                 ty.track(orbits, e, trail=0.3, taper=(0, 0), color=by_e, width=18.0, opacity=0.3, visible=show_orbit),
                 ty.track(orbits, e, trail=0.3, taper=(0, 0), color=by_e, width=5.0, visible=show_orbit),
                 ty.track(orbits, e, trail=0.3, head={"color": HEAD_COLOR, "size": 9}, color="#ffffff", width=2.0, visible=show_orbit),
+                *(ty.body(p, size=0.01) for p in offset),
+                *(ty.body(p, size=5.0) for p in labels),
                 *(ty.body(p, trail=moving, size=5.0) for p in points),
                 ty.body(m1, trail=moving, size=7.0),
                 ty.body(m2, trail=moving, size=6.0),

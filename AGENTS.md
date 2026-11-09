@@ -49,6 +49,7 @@ npm run pptx                                # slides.pptx, one click per step, w
 - Colors are the custom properties in `theme/beeson.css`: `--bg`, `--text`, `--subtle`, `--muted`, `--line`, `--accent`, `--violet`, and `--data-1` to `--data-8`. The typeface is Latin Modern Roman at 22, 28, 36, 48, 64, and 96 px on the 1920 by 1080 design size, and math is set in the TeX font of MathJax, i.e. Computer Modern, as in a LaTeX document. Body text is 48 px, i.e. the 24 points asked for by the AIAA on a slide 7.5 in high, captions and tables are 36 px, and a code box is 22 px. Orange is used for motion and progress, and violet for structure.
 - Write a talk over the demo deck in `index.html`, and do not copy `theme/` or `brand/` into another folder, since `index.html` is the default deck of `npm run check`, `npm run pdf`, and `npm run pptx`.
 - Read a PowerPoint file from its XML, and do not script PowerPoint, Keynote, or any other desktop app.
+- Hand over the work of a session as one commit, in place of a commit sequence: stage all of it with `git add`, and give Claudio one `git commit` command with its message. This rule applies in place of the commit-sequence rules of the global instructions, including the separate first commit of a failing test.
 
 ## Skills
 
