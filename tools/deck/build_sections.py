@@ -1,4 +1,5 @@
-"""Write the comparison slide, the PyDyLAN code block, and the backup tables into the deck source.
+"""Write the comparison slide of the orbits, the slide of family 11 in Broucke's diagram, the PyDyLAN
+code block, and the backup tables into the deck source.
 
 Run it as `python3 build_sections.py <talk folder> <deck>`, where the deck is index.html of the talk
 folder. The figures, the calls, and the table of the check are read from the talk folder, and each
@@ -18,28 +19,31 @@ FRAMES = [
     ("inertial-m2", "the inertial frame about the secondary"),
 ]
 BRANCHES = [
-    (7, "periapsis", 13, r"Family 7 from periapsis is continued at \(\mu = 0.012155\), and one index reaches \(k = -2\) at \(e = 0.468\)."),
-    (7, "apoapsis", 14, r"Family 7 from apoapsis is in \(\mathcal E^2\), i.e. stable, from \(e = 0.005\) to 0.975."),
-    (8, "periapsis", 16, r"Family 8 from periapsis is continued at \(\mu = 0.5\), and one index reaches \(k = -2\) at \(e = 0.677\)."),
-    (8, "apoapsis", 17, r"Family 8 from apoapsis is in \(\mathcal N\) from \(e = 0.289\), and in \(\mathcal E^2\) from \(e = 0.847\)."),
-    (11, "periapsis", 19, r"Family 11 from periapsis is in \(\mathcal H^{++}\) up to the fold at \(e = 0.453865\)."),
+    (7, "periapsis", 13, r"Family 7 from periapsis, at \(\mu = 0.012155\). One index reaches \(k = -2\) at \(e = 0.468\)."),
+    (7, "apoapsis", 14, r"Family 7 from apoapsis, at \(\mu = 0.012155\). It is in \(\mathcal E^2\), i.e. stable, for \(e \in [0.005, 0.975]\)."),
+    (8, "periapsis", 16, r"Family 8 from periapsis, at \(\mu = 0.5\). One index reaches \(k = -2\) at \(e = 0.677\)."),
+    (8, "apoapsis", 17, r"Family 8 from apoapsis, at \(\mu = 0.5\). It enters \(\mathcal N\) at \(e = 0.289\), and \(\mathcal E^2\) at \(e = 0.847\)."),
+    (11, "periapsis", 19, r"Family 11 from periapsis, at \(\mu = 0.5\). It is in \(\mathcal H^{++}\) up to the fold at \(e = 0.453865\)."),
     (
         11,
         "apoapsis",
         20,
-        r"On family 11 from apoapsis, one index reaches \(k = -2\) at \(e = 0.295\), and the branch is in \(\mathcal{EH}^-\) and \(\mathcal H^{--}\) past \(e = 0.84\).",
+        r"Family 11 from apoapsis, at \(\mu = 0.5\). One index reaches \(k = -2\) at \(e = 0.295\), and it enters \(\mathcal{EH}^-\) and \(\mathcal H^{--}\) past \(e = 0.84\).",
     ),
 ]
 COMPARISON_NOTES = """  <aside class="notes">
-    <p>Step 0: I go through the comparison figures quickly, one branch per click. First, family 11 in the plane of a₁ and a₂, with Broucke's Fig. 4 of the AIAA paper at left, Fig. 18 of his JPL report in the middle, and DyLAN at right. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 up to e = 0.453.</p>
-    <p>Step 1: Family 7 from periapsis, at the Earth–Moon mass ratio. On top are my members in the five frames of the Broucke page. Below each of my frames are the two panels of Broucke's Fig. 13 of the JPL report in the same frame. He did not label them with e, and he did not draw this branch about the primary. The family is unstable, and one index reaches −2 at e = 0.468, past the members drawn here, which end at e = 0.35.</p>
-    <p>Step 2: Family 7 from apoapsis, stable from e = 0.005 to e = 0.975. Below each of my frames is Broucke's run of panels in the same frame, from Fig. 14. He did not draw this branch about the primary.</p>
-    <p>Step 3: Family 8 from periapsis, at a mass ratio of one half, with Fig. 16 below. One index reaches −2 at e = 0.677. My members go up to e = 0.97, one step short of his last panel, since my member at 0.975 is not converged.</p>
-    <p>Step 4: Family 8 from apoapsis, with Fig. 17. It crosses the parabola into N at e = 0.289, and it is stable from e = 0.847 to its last member at 0.85.</p>
-    <p>Step 5: Family 11 from periapsis, up to the fold, with Fig. 19.</p>
-    <p>Step 6: Family 11 from apoapsis, with Fig. 20. The period-doubling at e = 0.295 is the one of the last slide, and three more crossings follow past e = 0.84, into EH⁻, H⁻⁻, and EH⁻ again, on the last members drawn here, which end at e = 0.88, as his do.</p>
-    <p>Step 7: So I found every branch consistent with Broucke's figures, in each frame in which he drew one. Last, I show the PyDyLAN calls for one of them.</p>
+    <p>Step 0: First the orbits themselves, one branch per click. On top are my members in the five frames of the Broucke page, and under each of my frames are Broucke's panels in the same frame. Family 7 from periapsis is at the Earth–Moon mass ratio, with the two panels of Fig. 13 of his JPL report under each frame. He did not label them with e, and he did not draw this branch about the primary. The family is unstable, and one index reaches −2 at e = 0.468, past the members drawn here, which end at e = 0.35.</p>
+    <p>Step 1: Family 7 from apoapsis, stable from e = 0.005 to e = 0.975, with Fig. 14. He did not draw this branch about the primary either.</p>
+    <p>Step 2: Family 8 from periapsis, at a mass ratio of one half, with Fig. 16. One index reaches −2 at e = 0.677. My members go up to e = 0.97, one step short of his last panel, since my member at 0.975 is not converged.</p>
+    <p>Step 3: Family 8 from apoapsis, with Fig. 17. It crosses the parabola into N at e = 0.289, and it is stable from e = 0.847 to its last member at 0.85.</p>
+    <p>Step 4: Family 11 from periapsis, up to the fold, with Fig. 19.</p>
+    <p>Step 5: Family 11 from apoapsis, with Fig. 20. One index reaches −2 at e = 0.295, the period-doubling I come back to in a few slides, and three more crossings follow past e = 0.84, into EH⁻, H⁻⁻, and EH⁻ again, on the last members drawn here, which end at e = 0.88, as his do.</p>
+    <p>Step 6: So every branch is consistent with Broucke's figures, in each frame in which he drew one. Next, the same families as curves in Broucke's diagram.</p>
     <p>TODO(claudio): the frames of a few of Broucke's panels were identified by their shape, in Figs. 13, 14, 16, and 17, as listed under "Where I was unsure" in figures/broucke/INDEX.md.</p>
+  </aside>"""
+DIAGRAM_NOTES = """  <aside class="notes">
+    <p>Step 0: Family 11 at a mass ratio of one half, both branches, on linear axes: Broucke's Fig. 4 of the AIAA paper at left, Fig. 18 of his JPL report in the middle, and DyLAN at right. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 on the branch from periapsis, up to e = 0.453.</p>
+    <p>Step 1: So DyLAN draws Broucke's curve. Next, what is changed where a curve meets k = 2 or k = −2.</p>
   </aside>"""
 
 
@@ -60,21 +64,8 @@ def comparison(talk: Path) -> str:
             raise SystemExit(f"missing figure {path}")
         return path
 
-    for name in ("aiaa-fig-4", "family-11-stability-fig-18"):
-        need(f"figures/broucke/{name}.png")
-    need("figures/dylan/stability-family-11-dark.png")
-    need("figures/dylan/stability-family-11-light.png")
-    groups = [
-        '  <div class="cmp fragment fade-out" data-fragment-index="1">\n'
-        '    <div class="grid three">\n'
-        f'      <div class="fig">{paper_image("figures/broucke/aiaa-fig-4.png", "Broucke, AIAA Fig. 4, family 11 in the a1, a2 plane")}</div>\n'
-        f'      <div class="fig">{paper_image("figures/broucke/family-11-stability-fig-18.png", "Broucke, report Fig. 18, family 11 in the a1, a2 plane")}</div>\n'
-        f'      <div class="fig">{mode_images("figures/dylan/stability-family-11", "DyLAN, family 11 in the a1, a2 plane")}</div>\n'
-        "    </div>\n"
-        r'    <p class="caption">Family 11 is drawn in Broucke&rsquo;s two figures and in DyLAN. The \(a_1\) labels of the left figure are ten times too large.</p>'
-        "\n  </div>"
-    ]
-    for index, (family, branch, figure, caption) in enumerate(BRANCHES, start=1):
+    groups = []
+    for index, (family, branch, figure, caption) in enumerate(BRANCHES):
         cells = []
         for frame, words in FRAMES:
             stem = f"figures/dylan/family-{family}-{branch}-{frame}"
@@ -88,22 +79,49 @@ def comparison(talk: Path) -> str:
                 cells.append(f'      <div class="fig">{paper_image(path, alt)}</div>')
             else:
                 cells.append('      <div class="fig"></div>')
-        kind = "fragment" if index == len(BRANCHES) else "fragment fade-in-then-out"
+        # the first group is shown at step 0 and faded out at step 1, the last is kept
+        if index == 0:
+            kind, step = "fragment fade-out", 1
+        elif index == len(BRANCHES) - 1:
+            kind, step = "fragment", index
+        else:
+            kind, step = "fragment fade-in-then-out", index
         groups.append(
-            f'  <div class="cmp {kind}" data-fragment-index="{index}">\n'
+            f'  <div class="cmp {kind}" data-fragment-index="{step}">\n'
             '    <div class="grid five">\n' + "\n".join(cells) + "\n    </div>\n"
             f'    <p class="caption">{caption}</p>\n'
             "  </div>"
         )
     return (
         '<section class="figure">\n'
-        "  <h2>Every branch against Broucke&rsquo;s figures</h2>\n" + "\n".join(groups) + "\n" + COMPARISON_NOTES + "\n</section>"
+        "  <h2>Orbits against Broucke&rsquo;s figures</h2>\n" + "\n".join(groups) + "\n" + COMPARISON_NOTES + "\n</section>"
     )
 
 
-# the groups of lines of the code box, one per step of the speaker notes of the slide, each lit at its step
-# in the highlight plugin of reveal.js
-CALL_GROUPS = "1-6|7-9|10-13|14-20|21-25|26"
+def diagram(talk: Path) -> str:
+    for name in ("aiaa-fig-4", "family-11-stability-fig-18"):
+        if not (talk / f"figures/broucke/{name}.png").is_file():
+            raise SystemExit(f"missing figure figures/broucke/{name}.png")
+    for mode in ("dark", "light"):
+        if not (talk / f"figures/dylan/stability-family-11-{mode}.png").is_file():
+            raise SystemExit(f"missing figure figures/dylan/stability-family-11-{mode}.png")
+    return (
+        '<section class="figure">\n'
+        "  <h2>Family 11 in Broucke&rsquo;s diagram</h2>\n"
+        '  <div class="cmp">\n'
+        '    <div class="grid three">\n'
+        f'      <div class="fig">{paper_image("figures/broucke/aiaa-fig-4.png", "Broucke, AIAA Fig. 4, family 11 in the a1, a2 plane")}</div>\n'
+        f'      <div class="fig">{paper_image("figures/broucke/family-11-stability-fig-18.png", "Broucke, report Fig. 18, family 11 in the a1, a2 plane")}</div>\n'
+        f'      <div class="fig">{mode_images("figures/dylan/stability-family-11", "DyLAN, family 11 in the a1, a2 plane")}</div>\n'
+        "    </div>\n"
+        r'    <p class="caption">Family 11 at \(\mu = 0.5\) in Broucke&rsquo;s Figs. 4 and 18, and in DyLAN. The \(a_1\) labels of Fig. 4 are ten times too large.</p>'
+        "\n  </div>\n" + DIAGRAM_NOTES + "\n</section>"
+    )
+
+
+# the lines of code of the code box in each step of the speaker notes of the slide, set apart by a blank line,
+# and each lit at its step in the highlight plugin of reveal.js
+CALL_STEPS = [6, 3, 4, 7, 5, 1]
 
 
 def code(talk: Path) -> str:
@@ -111,10 +129,19 @@ def code(talk: Path) -> str:
     if lines and lines[0].startswith('"""'):
         lines = lines[1:]
     kept = [line for line in lines if line.strip()]
-    if len(kept) != 26:
-        raise SystemExit(f"data/pydylan_calls_dylan.py has {len(kept)} lines of code, and the groups {CALL_GROUPS} are written for 26")
-    pre = f'<pre style="font-size: 21px"><code class="language-python" data-line-numbers="{CALL_GROUPS}">'
-    return pre + html.escape("\n".join(kept), quote=False) + "</code></pre>"
+    if len(kept) != sum(CALL_STEPS):
+        raise SystemExit(f"data/pydylan_calls_dylan.py has {len(kept)} lines of code, and the steps {CALL_STEPS} are written for {sum(CALL_STEPS)}")
+    out: list[str] = []
+    ranges = []
+    for size in CALL_STEPS:
+        if out:
+            out.append("")
+        first = len(out) + 1
+        out += kept[:size]
+        kept = kept[size:]
+        ranges.append(f"{first}-{len(out)}" if size > 1 else str(first))
+    pre = f'<pre style="font-size: 19px; line-height: 1.2"><code class="language-python" data-line-numbers="{"|".join(ranges)}">'
+    return pre + html.escape("\n".join(out), quote=False) + "</code></pre>"
 
 
 def cells(row: str) -> list[str]:
@@ -155,6 +182,7 @@ def splice(page: str, start: str, end: str, block: str) -> str:
 def main(talk: Path, deck: Path) -> None:
     page = deck.read_text(encoding="utf-8")
     page = splice(page, "<!-- comparison start -->", "<!-- comparison end -->", comparison(talk))
+    page = splice(page, "<!-- diagram start -->", "<!-- diagram end -->", diagram(talk))
     page = splice(page, "<!-- calls start -->", "<!-- calls end -->", code(talk))
     counts, text = tables(talk)
     header = ["Branch", "Fig.", "Barycentric", "Rotating", "Pulsating", "Primary", "Secondary", "Panels", "Good", "Partial"]
@@ -163,7 +191,7 @@ def main(talk: Path, deck: Path) -> None:
     page = splice(page, "<!-- counts start -->", "<!-- counts end -->", table(counts, "check", header))
     page = splice(page, "<!-- statements start -->", "<!-- statements end -->", table(text, "text"))
     deck.write_text(page, encoding="utf-8")
-    print(f"wrote the comparison slide, the calls, and two tables into {deck}")
+    print(f"wrote the comparison slide, the diagram slide, the calls, and two tables into {deck}")
 
 
 if __name__ == "__main__":
