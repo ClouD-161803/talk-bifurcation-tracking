@@ -7,7 +7,8 @@
 // \class{name}{...} in MathJax, in orange or, with data-tone, in violet, blue, or red, and a fragment
 // with data-unhighlight takes the color off the classes it names. a fragment with
 // data-keep is held at full opacity through the next step, or through the step of its value, and a
-// fragment is held as well while the current step highlights a class in it
+// fragment is held as well while the current step highlights a class in it. from the step of a
+// fragment with data-focus on, every fragment of the slide is held
 
 import type { Deck } from './reveal.d.ts';
 
@@ -25,6 +26,7 @@ export type Step = {
   tone: Tone;
   // the highlighted classes of the slide that are found in the fragment
   holds: string[];
+  focus: boolean;
 };
 
 /**
@@ -42,8 +44,10 @@ export function resolve(steps: Step[], current: number): { held: boolean[]; lit:
     for (const name of steps[i].highlight) lit.set(name, steps[i].tone);
   }
   const named = new Set(steps.filter((s) => s.visible && s.index === current).flatMap((s) => s.highlight));
+  const focused = steps.some((s) => s.visible && s.focus);
   const held = steps.map((s) => {
     if (!s.visible || s.index === current) return false;
+    if (focused) return true;
     const through = s.keep === 'next' ? (indices.find((k) => k > s.index) ?? s.index) : s.keep;
     if (through !== null && current <= through) return true;
     return s.holds.some((name) => named.has(name));
@@ -94,7 +98,7 @@ export function applySteps(slide: Element): void {
   const frags = [...slide.querySelectorAll<HTMLElement>('.fragment')];
   if (!slide.querySelector('section')) slide.toggleAttribute('data-complete', frags.every((f) => f.classList.contains('visible')));
   const names = [...new Set(frags.flatMap((f) => words(f.dataset.highlight)))];
-  if (!names.length && !frags.some((f) => f.hasAttribute('data-keep'))) return;
+  if (!names.length && !frags.some((f) => f.hasAttribute('data-keep') || f.hasAttribute('data-focus'))) return;
   const select = (name: string) => `.${CSS.escape(name)}`;
   const steps = frags.map((f): Step => {
     const keep = f.getAttribute('data-keep');
@@ -106,6 +110,7 @@ export function applySteps(slide: Element): void {
       unhighlight: words(f.dataset.unhighlight),
       tone: TONES.find((t) => t !== 'accent' && t === f.dataset.tone) ?? 'accent',
       holds: names.filter((name) => f.matches(select(name)) || f.querySelector(select(name))),
+      focus: f.hasAttribute('data-focus'),
     };
   });
   const current = Math.max(-1, ...steps.filter((s) => s.visible).map((s) => s.index));

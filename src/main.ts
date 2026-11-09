@@ -5,6 +5,7 @@
 import { Orbits, mount } from './orbits.ts';
 import { initChrome } from './chrome.ts';
 import { initCursor, togglePointer } from './cursor.ts';
+import { fly } from './fly.ts';
 import { mountPlots, type PlotView } from './plot.ts';
 import { markViewers, stillViewers } from './print.ts';
 import { mountQr } from './qr.ts';
@@ -168,7 +169,10 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
     for (const s of surfacesOf(deck.getCurrentSlide())) s.sync(!still());
     stepPlots(deck.getCurrentSlide());
   };
-  deck.on('fragmentshown', step);
+  deck.on('fragmentshown', (event) => {
+    step();
+    if (!still()) fly(deck.getCurrentSlide(), (event as Event & { fragments?: Element[] }).fragments ?? []);
+  });
   deck.on('fragmenthidden', step);
   deck.on('resize', () => {
     for (const o of backdrops) o.fit();

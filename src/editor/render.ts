@@ -52,11 +52,13 @@ const BLOCK_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'td',
 const INLINE_TAGS = new Set(['a', 'abbr', 'b', 'bdi', 'bdo', 'br', 'cite', 'code', 'data', 'dfn', 'em', 'i', 'img', 'kbd', 'mark', 'q', 's', 'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var', 'wbr']);
 
 // a div or a span is a block when its own text is not only white space and its children are
-// inline, e.g. div.foot, div.caption, div.math, and span.lab of the theme
+// inline, e.g. div.foot, div.caption, div.math, and span.lab of the theme. a cell or another
+// element of BLOCK_TAGS is not a block when its own text is only white space and it holds a div
+// that is not a block, e.g. the box of a plot, hence the elements in it are paired one by one
 export function isBlock(s: SrcEl): boolean {
-  if (BLOCK_TAGS.has(s.tag)) return true;
-  if (s.tag !== 'div' && s.tag !== 'span') return false;
   const own = s.children.some((c) => c.kind === 'text' && /\S/.test(c.decoded));
+  if (BLOCK_TAGS.has(s.tag)) return own || !s.children.some((c) => c.kind === 'element' && c.tag === 'div' && !isBlock(c));
+  if (s.tag !== 'div' && s.tag !== 'span') return false;
   return own && s.children.every((c) => c.kind !== 'element' || INLINE_TAGS.has(c.tag));
 }
 

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Plot fade deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<!-- a paused plot whose first step plays a trace with a tone per frame and a fade, held at its last
+     point for the last 1.2 s, and whose second step hides a region -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>A trace that fades</h2>
+      <div class="plot zone" data-plot="data" data-plot-tabs="still" data-plot-tab="still" data-plot-paused></div>
+      <span class="fragment" data-plot-tab="go" data-plot-run></span>
+      <span class="fragment" data-plot-hide="fill"></span>
+      <script type="application/json" id="data">{
+        "duration": 1,
+        "panels": [
+          { "id": "p", "x": { "range": [0, 1] }, "y": { "range": [0, 1] },
+            "regions": [{ "id": "fill", "points": [[0, 0], [1, 0], [0, 1]] }] }
+        ],
+        "marks": [{ "id": "m", "panel": "p", "kind": "trace", "fade": 0.6, "ghost": false }],
+        "tabs": [
+          { "name": "still", "values": [0], "data": {} },
+          { "name": "go", "values": [0, 1, 2, 3, 4], "times": [0, 0.4, 0.8, 1.2, 2.4],
+            "data": { "m": { "points": [[0, 0], [0.3, 0.3], [0.6, 0.3], [1, 1], [1, 1]],
+                             "tones": ["violet", "accent", "violet", "accent", "accent"] } } }
+        ]
+      }</script>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

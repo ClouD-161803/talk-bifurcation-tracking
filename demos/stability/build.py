@@ -18,6 +18,7 @@ left as it is. The two flags are not combined.
 
 import argparse
 import cmath
+import itertools
 import json
 import math
 import pathlib
@@ -681,19 +682,22 @@ REGIONS_Y = (-10, 20)
 THUMB = 17
 
 
-def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB, ident='thumbs'):
+def thumbnail(cx, cy, multipliers, radius=THUMB, ident='thumbs', ring=False):
     """The unit circle, the real axis, and four multipliers, drawn round in a circle of radius px at
-    (cx, cy), with the multipliers given in units of the radius of the circle. A multiplier on the
-    circle, of a stable pair, is violet, and one off the circle, of an unstable pair, is orange."""
+    (cx, cy), with the multipliers at their points of on_circle in units of the radius of the circle.
+    A multiplier on the circle, of a stable pair, is violet, and one off the circle, of an unstable
+    pair, is orange. With ring, the circle has the class ring, from which a circle of the table is
+    flown to its row."""
+    reach = max(1.6, max(abs(z.real) for z in multipliers) + 0.4)
     w = REGIONS_ZONE[0] - REGIONS_MARGIN[1] - REGIONS_MARGIN[3]
     h = REGIONS_ZONE[1] - REGIONS_MARGIN[0] - REGIONS_MARGIN[2]
     rx = radius * (REGIONS_X[1] - REGIONS_X[0]) / w
     ry = radius * (REGIONS_Y[1] - REGIONS_Y[0]) / h
     at = lambda z: [sig(cx + rx * z.real, 4), sig(cy + ry * z.imag, 4)]
-    ring = [at(cmath.exp(2j * math.pi * i / 64)) for i in range(65)]
+    circle = [at(cmath.exp(2j * math.pi * i / 64)) for i in range(65)]
     out = [
         {'id': ident, 'points': [at(complex(-reach, 0)), at(complex(reach, 0))], 'tone': 'muted', 'width': 1.5},
-        {'id': ident, 'points': ring, 'tone': 'subtle', 'width': 1.5},
+        {'id': ident, 'points': circle, 'tone': 'subtle', 'width': 1.5, **({'class': 'ring'} if ring else {})},
     ]
     tone = lambda z: 'violet' if abs(abs(z) - 1) < 1e-9 else 'accent'
     out += [{'id': ident, 'points': [at(z), at(z)], 'tone': tone(z), 'width': 6} for z in multipliers]
@@ -725,23 +729,35 @@ def on_circle(lam):
     return lam / rho * radius
 
 
+def stable_tone(z):
+    return 'violet' if abs(abs(z) - 1) < 1e-9 else 'accent'
+
+
+def follow(previous, current):
+    """The multipliers of current in the order nearest to the points of previous on the circle of
+    the slide, so that each trace follows one multiplier from frame to frame."""
+    return list(min(itertools.permutations(current), key=lambda order: sum(abs(on_circle(a) - on_circle(b)) for a, b in zip(previous, order))))
+
+
 def move_tab(name, path, seconds, marks=None):
     """A tab in which the point is moved through the diagram while its multipliers are moved on the
-    unit circle. path maps s in [0, 1] to the two indices, and the point is eased in and out."""
+    unit circle, each leaving a trace in violet while on the circle and in orange off it. path maps
+    s in [0, 1] to the two indices, and the point is eased in and out."""
     ease = lambda s: s * s * (3 - 2 * s)
-    trace, stable, unstable = [], [], []
+    trace, lams = [], []
     for i in range(MOVE_FRAMES):
         k1, k2 = path(ease(i / (MOVE_FRAMES - 1)))
         trace.append([sig((-(k1 + k2)).real, 4), sig((2 + k1 * k2).real, 4)])
-        lams = multipliers_of(k1) + multipliers_of(k2)
-        on = [on_circle(z) for z in lams if abs(abs(z) - 1) < 1e-9]
-        off = [on_circle(z) for z in lams if abs(abs(z) - 1) >= 1e-9]
-        stable.append([sig(v, 4) for z in on for v in (z.real, z.imag)])
-        unstable.append([sig(v, 4) for z in off for v in (z.real, z.imag)])
+        now = multipliers_of(k1) + multipliers_of(k2)
+        lams.append(follow(lams[-1], now) if lams else now)
+    data = {'point': {'points': trace, 'ghost': 0}}
+    for j in range(4):
+        zs = [on_circle(f[j]) for f in lams]
+        data[f'm{j + 1}'] = {'points': [[sig(z.real, 4), sig(z.imag, 4)] for z in zs], 'ghost': 0, 'tones': [stable_tone(f[j]) for f in lams]}
     tab = {
         'name': name, 'label': name, 'values': list(range(MOVE_FRAMES)),
         'times': [sig(seconds * i / (MOVE_FRAMES - 1), 4) for i in range(MOVE_FRAMES)],
-        'data': {'point': {'points': trace, 'ghost': 0}, 'stable': stable, 'unstable': unstable},
+        'data': data,
     }
     if marks:
         tab['panels'] = {'circle': {'curves': circle_curves() + [
@@ -786,41 +802,217 @@ def bifurcation_tabs():
     ]
 
 
+# ---- the circles of the rows of the table of regions
+
+# the window of the circle of a row in its units, drawn at ROW_UNIT px per unit while its row is in
+# focus and at 0.4 of that size otherwise, and the tones of the multipliers lam_1, 1/lam_1, lam_2,
+# and 1/lam_2, two reds for the first pair and two blues for the second
+ROW_X, ROW_Y = 2.3, 1.8
+PAIR_TONES = ['pair-1a', 'pair-1b', 'pair-2a', 'pair-2b']
+LAMBDAS = [r'$\lambda_1$', r'$1/\lambda_1$', r'$\lambda_2$', r'$1/\lambda_2$']
+# the seconds of a wiggle, and of the hold after it in which its traces are faded out
+WIGGLE_SECONDS, WIGGLE_FRAMES = 4.5, 90
+FADE_SECONDS, HOLD_FRAMES = 1.2, 6
+LABEL_GAP = 0.42
+
+
+def h(k):
+    """The log of the modulus of the multiplier of the real index k, with |k| > 2."""
+    return math.acosh(abs(k) / 2)
+
+
+def first(kind, u):
+    """The first multiplier of a pair: e^(i u) for an elliptic pair, u in degrees, and +-e^u for a
+    positive or a negative hyperbolic pair."""
+    if kind == 'E':
+        return cmath.exp(1j * math.radians(u))
+    return complex(math.copysign(math.exp(u), 1 if kind == 'H+' else -1))
+
+
+# the kinds of the two pairs of each region, named in the order of the symbol of the region, the
+# parameters of the pairs at the state drawn in the row, and the range over which each is wiggled.
+# the ranges are the allowed ones, cut where the point would leave the window of the diagram. in N,
+# the second pair is the conjugate of the first, hence the parameters are the angle in degrees and
+# the log of the modulus of lam_1, and the two wiggles turn and stretch it
+ROWS = {
+    1: (('E', 'E'), (45, 135), (3, 177), (3, 177)),
+    2: (('N', 'N'), (60, math.log(2)), (3, 177), (math.log(1.02), math.log(4))),
+    3: (('H-', 'H+'), (h(3), h(3)), (h(2.02), h(3.9)), (h(2.02), h(3.9))),
+    4: (('H+', 'H+'), (h(2.3), h(4)), (h(2.02), h(3.9)), (h(2.02), h(5.6))),
+    5: (('H-', 'H-'), (h(2.3), h(4)), (h(2.02), h(3.9)), (h(2.02), h(5.6))),
+    6: (('E', 'H+'), (120, h(3)), (3, 177), (h(2.02), h(8.9))),
+    7: (('E', 'H-'), (60, h(3)), (3, 177), (h(2.02), h(8.9))),
+}
+
+
+def row_multipliers(region, u1, u2):
+    """lam_1, 1/lam_1, lam_2, and 1/lam_2 of a row at the parameters u1 and u2."""
+    kinds = ROWS[region][0]
+    if kinds[0] == 'N':
+        lam = math.exp(u2) * cmath.exp(1j * math.radians(u1))
+        return [lam, 1 / lam, lam.conjugate(), 1 / lam.conjugate()]
+    a, b = first(kinds[0], u1), first(kinds[1], u2)
+    return [a, 1 / a, b, 1 / b]
+
+
+def point_of(lams):
+    """The point (a1, a2) of the four multipliers, from the indices of the two pairs."""
+    k1, k2 = lams[0] + lams[1], lams[2] + lams[3]
+    return (-(k1 + k2)).real, (2 + k1 * k2).real
+
+
+def label_place(region, j):
+    """The anchor of the label of multiplier j of a row, and the point of the label at the point z of
+    the multiplier on the circle. A label is put outside the circle beside a multiplier on it, along
+    the radius beside a complex one, and above for the first pair or below for the second beside a
+    real one, on the side of the multiplier away from the other of its pair."""
+    kind = ROWS[region][0][j // 2]
+    if kind in ('E', 'N'):
+        def at(z):
+            r = abs(z)
+            out = 1 + LABEL_GAP if kind == 'E' else r + LABEL_GAP if r > 1 else r - LABEL_GAP
+            return z / r * out
+        return 'middle', at
+    outer = j % 2 == 0
+    y = LABEL_GAP if j < 2 else -LABEL_GAP
+    start = (kind == 'H+') == outer
+    return ('start' if start else 'end'), (lambda z: complex(z.real + (0.04 if start else -0.04), y))
+
+
+def wiggle_path(u0, lo, hi, n=WIGGLE_FRAMES):
+    """The parameter at n frames from u0 to lo, to hi, and back to u0, eased at each end of a leg, and
+    the frames of each leg in proportion to its length."""
+    ease = lambda s: s * s * (3 - 2 * s)
+    legs = [(u0, lo), (lo, hi), (hi, u0)]
+    total = sum(abs(b - a) for a, b in legs)
+    counts = [max(4, round((n - 1) * abs(b - a) / total)) for a, b in legs]
+    counts[1] += (n - 1) - sum(counts)
+    out = [u0]
+    for (a, b), c in zip(legs, counts):
+        out += [a + (b - a) * ease(i / c) for i in range(1, c + 1)]
+    return out
+
+
+def xy(z, digits=4):
+    return [sig(z.real, digits), sig(z.imag, digits)]
+
+
+def row_panels():
+    return [{
+        'id': f'row-{k}', 'margin': [0, 0, 0, 0], 'equal': True, 'axes': False,
+        'x': {'range': [-ROW_X, ROW_X]}, 'y': {'range': [-ROW_Y, ROW_Y]},
+        'curves': [
+            {'points': [[-2.2, 0], [2.2, 0]], 'tone': 'muted', 'width': 2},
+            {'circle': [0, 0, 1], 'class': 'ring', 'tone': 'subtle', 'width': 2.5},
+        ],
+    } for k in ROWS]
+
+
+def row_marks():
+    marks = []
+    for k in ROWS:
+        marks += [{'id': f'r{k}-m{j + 1}', 'panel': f'row-{k}', 'kind': 'trace', 'tone': PAIR_TONES[j],
+                   'size': 12, 'width': 2, 'ghost': False, 'fade': FADE_SECONDS} for j in range(4)]
+        marks += [{'id': f'r{k}-l{j + 1}', 'panel': f'row-{k}', 'kind': 'label', 'tone': 'text',
+                   'anchor': label_place(k, j)[0], 'class': 'lambda'} for j in range(4)]
+    return marks
+
+
+def row_tabs():
+    """The tabs of the table of regions. In rows-st, the multipliers of every row are violet on the
+    circle and orange off it, as in the thumbnails of the diagram, and in rows-pl they are all
+    plain. In row-k, the multipliers of row k are in the tones of their pairs, with their names, and
+    the point of row k is drawn on the diagram. In row-k-w1 and row-k-w2, the first or the second
+    pair is wiggled over its range, and the point is moved on the diagram with a trace in the tone
+    of the pair, faded out after FADE_SECONDS."""
+    still = {k: row_multipliers(k, *ROWS[k][1]) for k in ROWS}
+    for k, lams in still.items():
+        assert region_of(*point_of(lams)) == k, f'the state of row {k} is outside its region'
+
+    def plain(tones):
+        return {f'r{k}-m{j + 1}': {'points': [xy(on_circle(still[k][j]))], 'ghost': 0, 'tones': [tones(k, j)]} for k in ROWS for j in range(4)}
+
+    def tab(name, data, frames=1, times=None):
+        out = {'name': name, 'label': name, 'values': list(range(frames)), 'data': data}
+        if times:
+            out['times'] = times
+        return out
+
+    tabs = [
+        tab('rows-st', plain(lambda k, j: stable_tone(still[k][j]))),
+        tab('rows-pl', plain(lambda k, j: 'subtle')),
+    ]
+    for k in ROWS:
+        others = {key: v for key, v in plain(lambda k, j: 'subtle').items() if not key.startswith(f'r{k}-')}
+
+        def drawn(frames):
+            data = dict(others)
+            for j in range(4):
+                anchor, at = label_place(k, j)
+                zs = [on_circle(f[j]) for f in frames]
+                data[f'r{k}-m{j + 1}'] = {'points': [xy(z) for z in zs], 'ghost': 0}
+                data[f'r{k}-l{j + 1}'] = {'at': [xy(at(z), 3) for z in zs], 'text': LAMBDAS[j]}
+            return data
+
+        data = drawn([still[k]])
+        data['w-dot'] = [[sig(v, 4) for v in point_of(still[k])]]
+        tabs.append(tab(f'row-{k}', data))
+        (u1, u2), r1, r2 = ROWS[k][1:]
+        for w, (lo, hi) in ((1, r1), (2, r2)):
+            path = wiggle_path(u1 if w == 1 else u2, lo, hi)
+            frames = [row_multipliers(k, u, u2) if w == 1 else row_multipliers(k, u1, u) for u in path]
+            frames += [frames[-1]] * HOLD_FRAMES
+            points = [point_of(f) for f in frames]
+            for f, (a1, a2) in zip(frames, points):
+                assert region_of(a1, a2) == k and REGIONS_X[0] < a1 < REGIONS_X[1] and REGIONS_Y[0] < a2 < REGIONS_Y[1], f'wiggle {w} of row {k} leaves its region or the window'
+            data = drawn(frames)
+            data['w-dot'] = [[sig(a1, 4), sig(a2, 4)] for a1, a2 in points]
+            data[f'w-trail-{w}'] = {'points': [[sig(a1, 4), sig(a2, 4)] for a1, a2 in points], 'ghost': 0}
+            n = len(path)
+            times = [sig(WIGGLE_SECONDS * i / (n - 1), 4) for i in range(n)]
+            times += [sig(WIGGLE_SECONDS + (FADE_SECONDS + 0.1) * i / HOLD_FRAMES, 4) for i in range(1, HOLD_FRAMES + 1)]
+            tabs.append(tab(f'row-{k}-w{w}', data, len(frames), times))
+    return tabs
+
+
 def regions_plot():
-    """The plot of Broucke's diagram on linear axes, with the unit circle beside it. The curves are
-    drawn on one after another, and each region is filled from a point, named, and given a thumbnail
-    of its multipliers at a step of its own. H++ and H-- are too thin for a name, which is put above
-    them with an arrow, and the thumbnail of each is beside its name. In the tabs of the table of
-    bifurcations, a point is moved across a curve while its multipliers are moved on the circle."""
+    """The plot of Broucke's diagram on linear axes, with the unit circle beside it and a circle for
+    each row of the table of regions. The curves are drawn on one after another, and each region is
+    filled from a point, named, and given a thumbnail of its multipliers at a step of its own. H++
+    and H-- are too thin for a name, which is put above them with an arrow, and the thumbnail of each
+    is beside its name. In the tabs of the rows, the pairs of a row are wiggled one at a time while
+    its point is moved on the diagram, and in the tabs of the table of bifurcations, a point is moved
+    across a curve while its multipliers are moved on the circle."""
     x_range, y_range = REGIONS_X, REGIONS_Y
     px_x = (x_range[1] - x_range[0]) / (REGIONS_ZONE[0] - REGIONS_MARGIN[1] - REGIONS_MARGIN[3])
     px_y = (y_range[1] - y_range[0]) / (REGIONS_ZONE[1] - REGIONS_MARGIN[0] - REGIONS_MARGIN[2])
-    e = lambda deg: cmath.exp(1j * math.radians(deg))
-    on = lambda *degs: [e(d) for d in degs]
-    real = lambda *xs: [complex(x, 0) for x in xs]
-    quad = lambda deg: [1.45 * e(deg), 1.45 * e(-deg), e(deg) / 1.45, e(-deg) / 1.45]
     line = lambda f: [[x, sig(f(x))] for x in (-9, 9)]
     par = [[sig(-9 + 18 * i / 180, 4), sig((-9 + 18 * i / 180) ** 2 / 4 + 2, 4)] for i in range(181)]
     name = lambda i, x, y: {'id': f'name-{i}', 'at': [x, y], 'text': SYMBOL[i], 'tone': 'text', 'delay': 0.9}
     curve_label = lambda key, x, y, text, delay, **kw: {'id': key, 'class': key, 'at': [x, y], 'text': text, 'tone': 'subtle', 'delay': delay, **kw}
 
-    # a leader from just under a name down to a tip inside its region, with a filled head of 7 by 9 px
+    # a leader from just under a name down to a tip inside its region, with a filled head of 7 by 9 px.
+    # the name is faded in at 0.9 s, the leader is drawn down from 1.3 s, and the head is shown at
+    # 1.8 s, when the leader reaches it
     def arrow(i, x, top, tip):
         hx, hy = 3.5 * px_x, 9 * px_y
         head = {'id': f'name-{i}', 'points': [[sig(x - hx, 4), sig(tip + hy, 4)], [x, tip], [sig(x + hx, 4), sig(tip + hy, 4)]],
-                'tone': 'subtle', 'opacity': 1, 'delay': 0.9}
-        return head, {'id': f'name-{i}', 'points': [[x, top], [x, sig(tip + hy, 4)]], 'tone': 'subtle', 'width': 1.5}
+                'tone': 'subtle', 'opacity': 1, 'delay': 1.8}
+        return head, {'id': f'name-{i}', 'points': [[x, top], [x, sig(tip + hy, 4)]], 'tone': 'subtle', 'width': 1.5, 'draw': 0.5, 'delay': 1.3}
 
     heads, leaders = zip(arrow(4, -7, 16.7, 13.1), arrow(5, 7, 16.7, 13.1))
+    # each thumbnail is drawn at the state of its row in the table, from which its circle is flown
+    # to the row, and N has a second thumbnail at its right, at the multipliers of the first negated
+    shown = lambda k, sign=1: [on_circle(sign * z) for z in row_multipliers(k, *ROWS[k][1])]
     thumbs = (
-        thumbnail(0, -0.6, on(60, -60, 120, -120), reach=1.6, radius=15, ident='thumb-1')
-        + thumbnail(-3.2, 9.5, quad(40), reach=1.8, ident='thumb-2')
-        + thumbnail(3.2, 9.5, quad(140), reach=1.8, ident='thumb-2')
-        + thumbnail(0, -5.8, real(0.5, 2, -0.5, -2), reach=2.4, ident='thumb-3')
-        + thumbnail(-4.9, 17.6, real(0.25, 0.8, 1.55, 2.35), reach=2.7, ident='thumb-4')
-        + thumbnail(4.9, 17.6, real(-0.25, -0.8, -1.55, -2.35), reach=2.7, ident='thumb-5')
-        + thumbnail(-5.6, -2.2, on(120, -120) + real(0.5, 2), reach=2.4, ident='thumb-6')
-        + thumbnail(5.6, -2.2, on(60, -60) + real(-0.5, -2), reach=2.4, ident='thumb-7')
+        thumbnail(0, -0.6, shown(1), radius=15, ident='thumb-1', ring=True)
+        + thumbnail(-3.2, 9.5, shown(2), ident='thumb-2', ring=True)
+        + thumbnail(3.2, 9.5, shown(2, -1), ident='thumb-2')
+        + thumbnail(0, -5.8, shown(3), ident='thumb-3', ring=True)
+        + thumbnail(-4.9, 17.6, shown(4), ident='thumb-4', ring=True)
+        + thumbnail(4.9, 17.6, shown(5), ident='thumb-5', ring=True)
+        + thumbnail(-5.6, -2.2, shown(6), ident='thumb-6', ring=True)
+        + thumbnail(5.6, -2.2, shown(7), ident='thumb-7', ring=True)
     )
     fills = []
     for r in region_fills(x_range, y_range, 'linear'):
@@ -869,13 +1061,16 @@ def regions_plot():
     return {
         'parameter': {'label': '', 'digits': 0},
         'duration': 1,
-        'panels': [diagram, circle],
+        'panels': [diagram, circle] + row_panels(),
         'marks': [
             {'id': 'point', 'panel': 'regions', 'kind': 'trace', 'tone': 'text', 'size': 14, 'width': 2.5, 'ghost': False},
-            {'id': 'stable', 'panel': 'circle', 'kind': 'points', 'tone': 'violet', 'size': 14},
-            {'id': 'unstable', 'panel': 'circle', 'kind': 'points', 'tone': 'accent', 'size': 14},
+            {'id': 'w-trail-1', 'panel': 'regions', 'kind': 'trace', 'tone': 'pair-1a', 'size': 0, 'width': 3, 'ghost': False, 'fade': FADE_SECONDS},
+            {'id': 'w-trail-2', 'panel': 'regions', 'kind': 'trace', 'tone': 'pair-2a', 'size': 0, 'width': 3, 'ghost': False, 'fade': FADE_SECONDS},
+            {'id': 'w-dot', 'panel': 'regions', 'kind': 'points', 'tone': 'text', 'size': 14},
+            *[{'id': f'm{j}', 'panel': 'circle', 'kind': 'trace', 'tone': 'violet', 'size': 11, 'width': 2, 'ghost': False} for j in range(1, 5)],
+            *row_marks(),
         ],
-        'tabs': [{'name': 'regions', 'label': 'regions', 'values': [0], 'data': {}}] + bifurcation_tabs(),
+        'tabs': [{'name': 'regions', 'label': 'regions', 'values': [0], 'data': {}}] + row_tabs() + bifurcation_tabs(),
     }
 
 

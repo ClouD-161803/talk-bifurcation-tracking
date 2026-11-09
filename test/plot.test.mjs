@@ -37,6 +37,15 @@ test('a trace is drawn with its ghost unless ghost is false', () => {
   assert.deepEqual(parsePlot(spec).marks.map((m) => m.ghost), [true, false]);
 });
 
+test('a trace is faded over the seconds of its fade, and is not faded without one', () => {
+  const spec = minimal();
+  spec.marks = [{ id: 'm', panel: 'p', kind: 'trace' }, { id: 'n', panel: 'p', kind: 'trace', fade: 1.2 }];
+  spec.tabs[0].data = { m: [[0, 0], [1, 1]], n: [[1, 0], [0, 1]] };
+  assert.deepEqual(parsePlot(spec).marks.map((m) => m.fade), [0, 1.2]);
+  spec.marks[1].fade = -1;
+  assert.throws(() => parsePlot(spec), { message: /^marks\[1\]\.fade: a number of seconds, at least 0, is expected/ });
+});
+
 test('an axis is read with its scale and the text of its ticks, and a tab replaces the keys of a panel', () => {
   const spec = minimal();
   spec.panels[0].x = { range: [-100, 100], scale: 'asinh', unit: 2, ticks: [-10, { at: 0, text: '$0$' }] };
@@ -165,9 +174,13 @@ test('a trace is read as a list of points, or with the last frame of its faint l
     tabs: [{ name: 'a', values: [0, 0.5, 1], data: { m: path } }],
   });
   const points = [[0, 0], [0.5, 1], [1, 0]];
-  assert.deepEqual(parsePlot(plot(points)).tabs[0].data.m, { points, ghost: 2 });
-  assert.deepEqual(parsePlot(plot({ points, ghost: 1 })).tabs[0].data.m, { points, ghost: 1 });
-  assert.deepEqual(parsePlot(plot({ points, ghost: 0 })).tabs[0].data.m, { points, ghost: 0 });
+  assert.deepEqual(parsePlot(plot(points)).tabs[0].data.m, { points, ghost: 2, tones: null });
+  assert.deepEqual(parsePlot(plot({ points, ghost: 1 })).tabs[0].data.m, { points, ghost: 1, tones: null });
+  assert.deepEqual(parsePlot(plot({ points, ghost: 0 })).tabs[0].data.m, { points, ghost: 0, tones: null });
+  const tones = ['violet', 'accent', 'violet'];
+  assert.deepEqual(parsePlot(plot({ points, tones })).tabs[0].data.m, { points, ghost: 2, tones });
+  assert.throws(() => parsePlot(plot({ points, tones: tones.slice(1) })), { message: /^tabs\[0\]\.data\.m\.tones: 2 tones are given, and the trace has 3 points/ });
+  assert.throws(() => parsePlot(plot({ points, tones: ['violet', 2, 'accent'] })), { message: /^tabs\[0\]\.data\.m\.tones\[1\]/ });
   assert.throws(() => parsePlot(plot({ points, ghost: 3 })), { message: /^tabs\[0\]\.data\.m\.ghost: a frame from 0 to 2 is expected/ });
   assert.throws(() => parsePlot(plot({ points, ghost: 0.5 })), { message: /^tabs\[0\]\.data\.m\.ghost: a frame from 0 to 2 is expected/ });
   assert.throws(() => parsePlot(plot({ points: points.slice(1) })), { message: /^tabs\[0\]\.data\.m: 2 frames are given, and the tab has 3 values/ });
@@ -330,6 +343,40 @@ test('a step with data-plot-run plays its tab once and holds the last frame, wit
   const back = await page.evaluate(probe);
   assert.equal(back.dots, 0);
   assert.deepEqual(back.hidden, [true, true]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a trace with tones and a fade is drawn in the tone of each frame and faded behind its head, and a step with data-plot-hide hides an item', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/plot-fade.html'));
+  await page.waitFor(deckSettled);
+  const probe = `(() => {
+    const view = Beeson.plots[0], lines = [...view.el.querySelectorAll('line.plot-trace')].filter((l) => l.style.display !== 'none');
+    return { playing: view.playing, frame: view.frame, colors: lines.map((l) => l.style.color), opacity: lines.map((l) => +l.style.opacity),
+      head: view.el.querySelector('.plot-dot')?.style.color, fill: view.el.querySelector('[data-plot-id="fill"]').classList.contains('plot-hidden') };
+  })()`;
+  assert.equal((await page.evaluate(probe)).fill, false);
+
+  await page.evaluate('Reveal.next()');
+  // the sample is kept in the same call as its test, between frames 2 and 3, where the newest
+  // segment is within half a frame of the head, i.e. 0.2 s of a fade of 0.6 s
+  await page.waitFor(`(() => { const s = ${probe}; window.sample = s; return s.playing && s.frame >= 2 && s.frame < 3; })()`, 5000);
+  const run = await page.evaluate('window.sample');
+  assert.ok(run.opacity.at(-1) > 0.35, JSON.stringify(run));
+  assert.ok(run.opacity.every((o, i) => i === 0 || o >= run.opacity[i - 1]), JSON.stringify(run));
+
+  await page.waitFor(`!${probe}.playing`, 5000);
+  const end = await page.evaluate(probe);
+  assert.deepEqual(end.colors, ['var(--violet)', 'var(--accent)', 'var(--violet)', 'var(--accent)']);
+  assert.deepEqual(end.opacity, [0, 0, 0, 0]);
+  assert.equal(end.head, 'var(--accent)');
+
+  await page.evaluate('Reveal.next()');
+  assert.equal((await page.evaluate(probe)).fill, true);
+  await page.evaluate('Reveal.prev()');
+  assert.equal((await page.evaluate(probe)).fill, false);
   assert.deepEqual(page.errors, []);
 });
 

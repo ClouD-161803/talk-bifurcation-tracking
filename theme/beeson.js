@@ -255,7 +255,7 @@
     }
     return first ? [...first.values()] : [];
   }
-  function fitView(strands, box2, slide) {
+  function fitView(strands, box3, slide) {
     const xs = [], ys = [], ws = [];
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const s of strands) {
@@ -275,7 +275,7 @@
         ws.push(length > 0 ? d / length : 1 / (n - 1));
       }
     }
-    if (!ws.length || !(box2.width > 0) || !(box2.height > 0)) return null;
+    if (!ws.length || !(box3.width > 0) || !(box3.height > 0)) return null;
     const total = ws.reduce((a2, b2) => a2 + b2, 0);
     const quantile = (v, q) => {
       const order = v.map((_, i) => i).sort((a2, b2) => v[a2] - v[b2]);
@@ -289,7 +289,7 @@
     const lo = (1 - FILL) / 2, hi = 1 - lo;
     const qx = [quantile(xs, lo), quantile(xs, hi)], qy = [quantile(ys, lo), quantile(ys, hi)];
     let cx = (qx[0] + qx[1]) / 2, cy = (qy[0] + qy[1]) / 2;
-    const aspect = box2.width / box2.height;
+    const aspect = box3.width / box3.height;
     const held = (half2) => {
       let k = 0;
       for (let i = 0; i < ws.length; i++)
@@ -304,12 +304,12 @@
     }
     let half = b;
     const inner = {
-      left: box2.left > 0.5,
-      right: box2.left + box2.width < slide.width - 0.5,
-      top: box2.top > 0.5,
-      bottom: box2.top + box2.height < slide.height - 0.5
+      left: box3.left > 0.5,
+      right: box3.left + box3.width < slide.width - 0.5,
+      top: box3.top > 0.5,
+      bottom: box3.top + box3.height < slide.height - 0.5
     };
-    const g = 2 * MARGIN / box2.height;
+    const g = 2 * MARGIN / box3.height;
     const need = (span, sides, width) => span / Math.max(width - sides * g, 1e-9);
     half = Math.max(
       half,
@@ -1065,11 +1065,11 @@
       this.unghost();
       if (this.fitted && this.strands.length) {
         const section = this.el.closest("section");
-        const box2 = { left: this.el.offsetLeft, top: this.el.offsetTop, width: w, height: h };
+        const box3 = { left: this.el.offsetLeft, top: this.el.offsetTop, width: w, height: h };
         const slide = { width: section?.offsetWidth || w, height: section?.offsetHeight || h };
-        const key2 = [box2.left, box2.top, w, h, slide.width, slide.height].join();
+        const key2 = [box3.left, box3.top, w, h, slide.width, slide.height].join();
         if (key2 !== this.fittedFor) {
-          const view = fitView(this.strands, box2, slide);
+          const view = fitView(this.strands, box3, slide);
           if (view) ({ cx: this.cx, cy: this.cy, half: this.half } = view);
           this.fittedFor = key2;
         }
@@ -1570,6 +1570,40 @@
     });
   }
 
+  // src/fly.ts
+  function box(nodes) {
+    const rects = nodes.map((n) => n.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
+    if (!rects.length) return null;
+    const left = Math.min(...rects.map((r) => r.left)), right = Math.max(...rects.map((r) => r.right));
+    const top = Math.min(...rects.map((r) => r.top)), bottom = Math.max(...rects.map((r) => r.bottom));
+    return { x: (left + right) / 2, y: (top + bottom) / 2, w: right - left };
+  }
+  function flyIn(slide, el) {
+    const from = box([...slide.querySelectorAll(el.dataset.flyFrom ?? "")]);
+    const to = box(el.dataset.flyTo ? [...el.querySelectorAll(el.dataset.flyTo)] : [el]);
+    const own = el.getBoundingClientRect();
+    if (!from || !to || !to.w || !el.offsetWidth) return;
+    const k = own.width / el.offsetWidth;
+    const seconds2 = Number(el.dataset.flyDuration ?? 1.2);
+    el.style.transition = "none";
+    el.style.transformOrigin = `${(to.x - own.left) / k}px ${(to.y - own.top) / k}px`;
+    el.style.transform = `translate(${(from.x - to.x) / k}px, ${(from.y - to.y) / k}px) scale(${from.w / to.w})`;
+    void el.offsetWidth;
+    el.style.transition = `transform ${seconds2}s cubic-bezier(0.45, 0, 0.25, 1), opacity 0s`;
+    el.style.transform = "";
+    setTimeout(() => {
+      el.style.transition = "";
+      el.style.transformOrigin = "";
+    }, seconds2 * 1e3 + 50);
+  }
+  function fly(slide, shown) {
+    for (const f of shown) {
+      for (const el of [f, ...f.querySelectorAll("[data-fly-from]")]) {
+        if (el instanceof HTMLElement && el.dataset.flyFrom) flyIn(slide, el);
+      }
+    }
+  }
+
   // src/plot.ts
   var KINDS = ["points", "trace", "label", "events"];
   var PATCH = ["x", "y", "title", "regions", "curves", "labels"];
@@ -1713,7 +1747,9 @@
       perFrame(points.length);
       const ghost = num(given2.ghost, `${path}.ghost`, points.length - 1);
       if (!Number.isInteger(ghost) || ghost < 0 || ghost > points.length - 1) fail(`${path}.ghost`, `a frame from 0 to ${points.length - 1} is expected`);
-      return { points, ghost };
+      const tones = given2.tones === void 0 ? null : list(given2.tones, `${path}.tones`).map((t, i) => str(t, `${path}.tones[${i}]`));
+      if (tones && tones.length !== points.length) fail(`${path}.tones`, `${tones.length} tones are given, and the trace has ${points.length} points`);
+      return { points, ghost, tones };
     }
     if (m.kind === "label") {
       if (!isObject2(v)) fail(path, "a label { at, text } is expected");
@@ -1756,6 +1792,7 @@
         width: num(m.width, `${p}.width`, 3),
         hollow: m.hollow === true,
         ghost: m.ghost !== false,
+        fade: seconds(m.fade, `${p}.fade`),
         anchor: anchor(m.anchor, `${p}.anchor`),
         dx: num(m.dx, `${p}.dx`, 0),
         dy: num(m.dy, `${p}.dy`, 0)
@@ -2064,6 +2101,8 @@
       this.emphasis = /* @__PURE__ */ new Set();
       this.shown = /* @__PURE__ */ new Set();
       this.steps = /* @__PURE__ */ new Set();
+      // the ids named in the data-plot-hide of a shown fragment, hidden from its step on
+      this.gone = /* @__PURE__ */ new Set();
       this.stepTab = null;
       // a plot whose slide has a fragment with data-plot-play is held until that fragment is shown
       this.cue = "none";
@@ -2081,10 +2120,10 @@
         this.spec = parsePlot(block.textContent ?? "");
       } catch (error) {
         const message = `plot ${el.dataset.plot ?? ""}: ${error.message}`;
-        const box2 = document.createElement("div");
-        box2.className = "plot-error";
-        box2.textContent = message;
-        el.append(box2);
+        const box3 = document.createElement("div");
+        box3.className = "plot-error";
+        box3.textContent = message;
+        el.append(box3);
         console.error(message);
         return;
       }
@@ -2292,7 +2331,10 @@
         node.style.setProperty("--plot-delay", `${it.delay}s`);
       }
       this.gate(node, names);
-      if (it.id) this.emphasized.push({ node, id: it.id });
+      if (it.id) {
+        node.setAttribute("data-plot-id", it.id);
+        this.emphasized.push({ node, id: it.id });
+      }
     }
     drawStatic() {
       this.svgEl.replaceChildren();
@@ -2401,17 +2443,42 @@
             });
           });
         } else if (m.kind === "trace") {
-          const { points, ghost } = data, pts = points.map((q) => this.toAxes(b, q));
+          const { points, ghost, tones } = data, pts = points.map((q) => this.toAxes(b, q));
           if (m.ghost && ghost > 0) svg("path", { class: "plot-ghost", d: this.pathS(b, pts.slice(0, ghost + 1)), "stroke-width": m.width }, group2);
           if (fader !== group2) group2.append(fader);
-          const done = svg("path", { class: "plot-trace", "stroke-width": m.width }, fader);
           const head = svg("circle", { class: "plot-dot", r: m.size / 2 }, fader);
-          this.drawers.push((u) => {
-            const p = traceTo(pts, u), [x, y] = p[p.length - 1];
-            done.setAttribute("d", this.pathS(b, p));
-            head.setAttribute("cx", this.XS(b, x).toFixed(1));
-            head.setAttribute("cy", this.YS(b, y).toFixed(1));
-          });
+          if (!tones && !(m.fade > 0)) {
+            const done = svg("path", { class: "plot-trace", "stroke-width": m.width }, fader);
+            fader.insertBefore(done, head);
+            this.drawers.push((u) => {
+              const p = traceTo(pts, u), [x, y] = p[p.length - 1];
+              done.setAttribute("d", this.pathS(b, p));
+              head.setAttribute("cx", this.XS(b, x).toFixed(1));
+              head.setAttribute("cy", this.YS(b, y).toFixed(1));
+            });
+          } else {
+            const parts = [];
+            const tone = (i) => toneColor(tones ? tones[clamp(i, 0, tones.length - 1)] : m.tone);
+            this.drawers.push((u) => {
+              const p = traceTo(pts, u), now = this.timeOf(u);
+              while (parts.length < p.length - 1) parts.push(fader.insertBefore(svg("line", { class: "plot-trace", "stroke-width": m.width }), head));
+              parts.forEach((line, i) => {
+                const on = i < p.length - 1;
+                line.style.display = on ? "" : "none";
+                if (!on) return;
+                line.setAttribute("x1", this.XS(b, p[i][0]).toFixed(1));
+                line.setAttribute("y1", this.YS(b, p[i][1]).toFixed(1));
+                line.setAttribute("x2", this.XS(b, p[i + 1][0]).toFixed(1));
+                line.setAttribute("y2", this.YS(b, p[i + 1][1]).toFixed(1));
+                line.style.color = tone(i);
+                if (m.fade > 0) line.style.opacity = (0.6 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)).toFixed(3);
+              });
+              const [x, y] = p[p.length - 1];
+              head.setAttribute("cx", this.XS(b, x).toFixed(1));
+              head.setAttribute("cy", this.YS(b, y).toFixed(1));
+              head.style.color = tone(Math.round(u));
+            });
+          }
         } else if (m.kind === "label") {
           const d = data, at = d.at.map((q) => this.toAxes(b, q));
           const el = this.label(d.text[0], 0, 0, m.anchor, "plot-mark", [m.panel, m.id], m.tone);
@@ -2489,7 +2556,7 @@
       this.gated = this.gated.filter((g) => g.node.isConnected);
     }
     hidden(names) {
-      return names.some((s) => this.steps.has(s) && !this.shown.has(s));
+      return names.some((s) => this.steps.has(s) && !this.shown.has(s) || this.gone.has(s));
     }
     applyGates() {
       for (const { node, names } of this.gated) node.classList.toggle("plot-hidden", this.hidden(names));
@@ -2515,6 +2582,7 @@
       this.steps = new Set(frags.flatMap((f) => words(f.dataset.plotShow)));
       const visible = frags.filter((f) => f.classList.contains("visible"));
       this.shown = new Set(visible.flatMap((f) => words(f.dataset.plotShow)));
+      this.gone = new Set(visible.flatMap((f) => words(f.dataset.plotHide)));
       const cues = frags.filter((f) => f.hasAttribute("data-plot-play"));
       const cue = !cues.length ? "none" : cues.some((f) => visible.includes(f)) ? "shown" : "held";
       const tabbed = visible.filter((f) => f.dataset.plotTab).sort((a, b) => +(a.dataset.fragmentIndex ?? 0) - +(b.dataset.fragmentIndex ?? 0));
@@ -2651,7 +2719,7 @@
       written.add(viewer);
     });
   }
-  function box(viewer) {
+  function box2(viewer) {
     const still3 = document.createElement("div");
     still3.className = viewer.className;
     still3.style.cssText = viewer.style.cssText;
@@ -2680,12 +2748,12 @@
     for (const viewer of document.querySelectorAll("tycho-viewer")) {
       const id = viewer.dataset.still;
       if (id === void 0 || written.has(viewer)) viewers.push(viewer);
-      else clones.set(id, [...clones.get(id) ?? [], box(viewer)]);
+      else clones.set(id, [...clones.get(id) ?? [], box2(viewer)]);
     }
     for (const viewer of viewers) {
       const image = await still(viewer);
       if (image === null) continue;
-      box(viewer).append(image);
+      box2(viewer).append(image);
       for (const clone of clones.get(viewer.dataset.still ?? "") ?? []) clone.append(image.cloneNode());
     }
   }
@@ -2972,10 +3040,10 @@
         if (!text) throw new Error("data-qr is empty");
         el.append(svgOf(encode(text), `QR code of ${text}`));
       } catch (error) {
-        const box2 = document.createElement("div");
-        box2.className = "qr-error";
-        box2.textContent = `QR code: ${error.message}`;
-        el.append(box2);
+        const box3 = document.createElement("div");
+        box3.className = "qr-error";
+        box3.textContent = `QR code: ${error.message}`;
+        el.append(box3);
       }
     }
   }
@@ -4077,8 +4145,10 @@ void main() {
       for (const name of steps[i].highlight) lit.set(name, steps[i].tone);
     }
     const named = new Set(steps.filter((s) => s.visible && s.index === current).flatMap((s) => s.highlight));
+    const focused = steps.some((s) => s.visible && s.focus);
     const held = steps.map((s) => {
       if (!s.visible || s.index === current) return false;
+      if (focused) return true;
       const through = s.keep === "next" ? indices.find((k) => k > s.index) ?? s.index : s.keep;
       if (through !== null && current <= through) return true;
       return s.holds.some((name) => named.has(name));
@@ -4095,7 +4165,7 @@ void main() {
       const unindexed = frags.filter((f) => !f.hasAttribute("data-fragment-index"));
       const last = unindexed.length ? [unindexed[unindexed.length - 1]] : frags.filter((f) => Number(f.dataset.fragmentIndex) === Math.max(...frags.map((g) => Number(g.dataset.fragmentIndex))));
       const boxes = new Set(frags.filter(isCopy).map((f) => f.parentElement));
-      const dimsBox = [...boxes].some((box2) => !last.some((f) => f.parentElement === box2 && isCopy(f)));
+      const dimsBox = [...boxes].some((box3) => !last.some((f) => f.parentElement === box3 && isCopy(f)));
       if (!dimsBox && !frags.some((f) => !last.includes(f) && hasContent(f) && !isCopy(f))) continue;
       const restore = document.createElement("span");
       restore.className = "fragment";
@@ -4108,7 +4178,7 @@ void main() {
     const frags = [...slide.querySelectorAll(".fragment")];
     if (!slide.querySelector("section")) slide.toggleAttribute("data-complete", frags.every((f) => f.classList.contains("visible")));
     const names = [...new Set(frags.flatMap((f) => words2(f.dataset.highlight)))];
-    if (!names.length && !frags.some((f) => f.hasAttribute("data-keep"))) return;
+    if (!names.length && !frags.some((f) => f.hasAttribute("data-keep") || f.hasAttribute("data-focus"))) return;
     const select2 = (name) => `.${CSS.escape(name)}`;
     const steps = frags.map((f) => {
       const keep = f.getAttribute("data-keep");
@@ -4119,7 +4189,8 @@ void main() {
         highlight: words2(f.dataset.highlight),
         unhighlight: words2(f.dataset.unhighlight),
         tone: TONES2.find((t) => t !== "accent" && t === f.dataset.tone) ?? "accent",
-        holds: names.filter((name) => f.matches(select2(name)) || f.querySelector(select2(name)))
+        holds: names.filter((name) => f.matches(select2(name)) || f.querySelector(select2(name))),
+        focus: f.hasAttribute("data-focus")
       };
     });
     const current = Math.max(-1, ...steps.filter((s) => s.visible).map((s) => s.index));
@@ -4173,9 +4244,9 @@ void main() {
     const deck = document.querySelector(".reveal");
     const live = [...document.querySelectorAll(".backdrop")].map((el) => Orbits.of(el)).filter((o) => o?.tracing);
     if (!deck || !live.length || !CSS.supports("view-transition-class", "a") || !CSS.supports("selector(:active-view-transition)")) return null;
-    const box2 = deck.getBoundingClientRect();
-    root.style.setProperty("--flip-deck-x", `${x - box2.left}px`);
-    root.style.setProperty("--flip-deck-y", `${y - box2.top}px`);
+    const box3 = deck.getBoundingClientRect();
+    root.style.setProperty("--flip-deck-x", `${x - box3.left}px`);
+    root.style.setProperty("--flip-deck-y", `${y - box3.top}px`);
     deck.style.setProperty("view-transition-name", "flip-deck");
     const canvases = live.flatMap((o) => o.canvases);
     canvases.forEach((c, k) => {
@@ -4190,12 +4261,12 @@ void main() {
     };
     const layer = document.createElement("div");
     layer.className = "flip-ghost";
-    Object.assign(layer.style, { left: `${box2.left}px`, top: `${box2.top}px`, width: `${box2.width}px`, height: `${box2.height}px` });
+    Object.assign(layer.style, { left: `${box3.left}px`, top: `${box3.top}px`, width: `${box3.width}px`, height: `${box3.height}px` });
     return {
       // called in the update of the view transition before the next mode is applied, hence the
       // canvases are redrawn after it in the new view of the deck
       lift() {
-        for (const o of live) o.ghost(layer, box2);
+        for (const o of live) o.ghost(layer, box3);
         document.body.append(layer);
         unname();
       },
@@ -4426,7 +4497,10 @@ void main() {
       for (const s of surfacesOf(deck.getCurrentSlide())) s.sync(!still2());
       stepPlots(deck.getCurrentSlide());
     };
-    deck.on("fragmentshown", step2);
+    deck.on("fragmentshown", (event) => {
+      step2();
+      if (!still2()) fly(deck.getCurrentSlide(), event.fragments ?? []);
+    });
     deck.on("fragmenthidden", step2);
     deck.on("resize", () => {
       for (const o of backdrops) o.fit();

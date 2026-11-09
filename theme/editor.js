@@ -365,9 +365,9 @@
   var BLOCK_TAGS = /* @__PURE__ */ new Set(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "td", "th", "dt", "dd", "figcaption", "caption", "blockquote", "pre", "aside", "summary", "label"]);
   var INLINE_TAGS = /* @__PURE__ */ new Set(["a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "dfn", "em", "i", "img", "kbd", "mark", "q", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var", "wbr"]);
   function isBlock(s) {
-    if (BLOCK_TAGS.has(s.tag)) return true;
-    if (s.tag !== "div" && s.tag !== "span") return false;
     const own = s.children.some((c) => c.kind === "text" && /\S/.test(c.decoded));
+    if (BLOCK_TAGS.has(s.tag)) return own || !s.children.some((c) => c.kind === "element" && c.tag === "div" && !isBlock(c));
+    if (s.tag !== "div" && s.tag !== "span") return false;
     return own && s.children.every((c) => c.kind !== "element" || INLINE_TAGS.has(c.tag));
   }
   var sameTag = (el, s) => el.localName.toLowerCase() === s.tag.toLowerCase();

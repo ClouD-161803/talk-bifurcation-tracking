@@ -19,8 +19,9 @@ This repository is the slide template of the Beeson group. The reveal.js theme `
 - Use one `h2` per slide, and an `h1` on a title slide. Keep the text column under 66 characters per line, and prefer one paragraph and a few list items to many items.
 - Give an image for each mode with `for-dark` and `for-light`, a white raster figure the class `paper`, and a black-on-white line plot the class `invert`.
 - Write math in MathJax delimiters, `\(` `\)` inline and `\[` `\]` display, inside a `div.math` for a display, and put shared macros into `theme/macros.js`.
-- Reveal a display in four steps: the lead-in sentence, the display, the sentence in which it is explained, and a step in which a symbol is colored. Mark the symbol with `\class{name}{...}`, and give the later fragment `data-highlight="name"`, so that the class is colored orange once the fragment is shown, or violet with `data-tone="violet"`. Give the display `data-keep` to hold it at full opacity through the next step, or `data-keep="N"` to hold it through the step of index N.
-- Put a plot in a `zone` or a `plate`, with its JSON block next to it. Reveal its panels and marks with `data-plot-show` and switch its tab with `data-plot-tab`, both on fragments of its slide.
+- Reveal a display in four steps: the lead-in sentence, the display, the sentence in which it is explained, and a step in which a symbol is colored. Mark the symbol with `\class{name}{...}`, and give the later fragment `data-highlight="name"`, so that the class is colored orange once the fragment is shown, or violet with `data-tone="violet"`. Give the display `data-keep` to hold it at full opacity through the next step, or `data-keep="N"` to hold it through the step of index N. Give a fragment `data-focus` to hold every fragment of its slide from its step on.
+- Put a plot in a `zone` or a `plate`, with its JSON block next to it. Reveal its panels and marks with `data-plot-show`, hide them with `data-plot-hide`, and switch its tab with `data-plot-tab`, all on fragments of its slide.
+- To move an element in at its step from another element of its slide, e.g. a small plot from a thumbnail of a diagram, give it `data-fly-from` with a selector of the source, as described in the README under Plots.
 - Put code in a `pre` with a `code` of the class of its language, e.g. `language-python`, and load `theme/vendor/reveal/highlight.js` after `notes.js`. To step through it, write its groups of lines in `data-line-numbers` on the `code`, separated by bars.
 - Put speaker notes in an `aside.notes`.
 - Put a surface where a backdrop would go, and load `theme/vendor/three/three.js` before `theme/beeson.js`.
@@ -33,7 +34,7 @@ This repository is the slide template of the Beeson group. The reveal.js theme `
 
 ```sh
 npm ci && npm run vendor && npm run build   # dependencies, vendored files, theme/beeson.js and theme/editor.js
-npm run typecheck && npm test               # types, then the orbit engine, the surfaces, the backdrops from files, the build, the vendor script, the browser lookup, the mode flip, the crop of the backdrops, the print view, the PowerPoint file, the plots, the stepped math, the code boxes, and the editor under node --test
+npm run typecheck && npm test               # types, then the orbit engine, the surfaces, the backdrops from files, the build, the vendor script, the browser lookup, the mode flip, the crop of the backdrops, the print view, the PowerPoint file, the plots, the stepped math, the code boxes, the fly, and the editor under node --test
 npm run check                               # screenshots of every slide in both modes, console errors, problems in the page, a poster on every video, the phone layout, a pixel ratio of 1.25, the editor on the deck
 npm run check -- --browser firefox          # the same in Firefox or Safari over WebDriver, without the console, the phone layout, and the pixel ratio
 npm run pdf                                 # slides.pdf, one page per step, with a page count check

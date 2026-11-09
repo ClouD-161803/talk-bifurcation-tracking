@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
+import { isBlock } from '../src/editor/render.ts';
 
 const deckText = readFileSync('index.html', 'utf8');
 // the newline of the file, since a checkout on Windows may turn it into CRLF
@@ -28,6 +29,18 @@ function replaced(oldText, newText) {
   assert.equal(deckText.split(oldText).length, 2, `${oldText} is not unique in index.html`);
   return deckText.replace(oldText, newText);
 }
+
+const srcEl = (tag, ...children) => ({ kind: 'element', tag, children });
+const srcText = (decoded) => ({ kind: 'text', decoded });
+
+test('a cell is a block unless it holds a box without text, e.g. a plot, and none of its own text', () => {
+  assert.equal(isBlock(srcEl('td', srcText('doubly elliptic'))), true);
+  assert.equal(isBlock(srcEl('td', srcEl('span', srcText('1')))), true);
+  assert.equal(isBlock(srcEl('td', srcEl('div', srcText('\\[x\\]')))), true);
+  assert.equal(isBlock(srcEl('aside', srcEl('p', srcText('a note')), srcEl('p', srcText('another')))), true);
+  assert.equal(isBlock(srcEl('td', srcEl('div', srcEl('div')), srcEl('span'))), false);
+  assert.equal(isBlock(srcEl('td', srcText('a plot '), srcEl('div'))), true);
+});
 
 test('a deck without ?edit does not load the editor, with ?edit it does on file://', async (t) => {
   const browser = await launch();
