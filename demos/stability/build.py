@@ -703,7 +703,8 @@ def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB):
 def regions_plot():
     """A still plot of the seven regions, with Howell's fills, the three curves, Moreno's name of each
     region, a thumbnail of its multipliers, and the lines k = -1 and k = 0 of period tripling and
-    quadrupling. H++ and H-- are too thin for a name, which is put above them with a leader."""
+    quadrupling. H++ and H-- are too thin for a name, which is put above them with an arrow, and the
+    thumbnail of each is beside its name, so that the arrow starts under the name at every step."""
     x_range, y_range = REGIONS_X, REGIONS_Y
     e = lambda deg: cmath.exp(1j * math.radians(deg))
     on = lambda *degs: [e(d) for d in degs]
@@ -712,14 +713,20 @@ def regions_plot():
     line = lambda f: [[x, sig(f(x))] for x in (-9, 9)]
     par = [[sig(-9 + 18 * i / 180, 4), sig((-9 + 18 * i / 180) ** 2 / 4 + 2, 4)] for i in range(181)]
     name = lambda i, x, y, **kw: {'id': 'names', 'at': [x, y], 'text': SYMBOL[i], 'tone': 'text', **kw}
+    # a leader from just under a name down to a tip inside its region, with a head of 10 by 12 px
+    def arrow(x, top, tip):
+        hx, hy = 10 * (x_range[1] - x_range[0]) / 760, 12 * (y_range[1] - y_range[0]) / 716
+        head = [[sig(x - hx, 4), sig(tip + hy, 4)], [x, tip], [sig(x + hx, 4), sig(tip + hy, 4)]]
+        return [{'id': 'names', 'points': [[x, top], [x, tip]], 'tone': 'subtle', 'width': 1.5},
+                {'id': 'names', 'points': head, 'tone': 'subtle', 'width': 1.5}]
     curve_label = lambda key, x, y, text, **kw: {'id': key, 'class': key, 'at': [x, y], 'text': text, 'tone': 'subtle', **kw}
     thumbs = (
         thumbnail(0, -0.6, on(60, -60, 120, -120), reach=1.6, radius=15)
         + thumbnail(-3.2, 9.5, quad(40), reach=1.8)
         + thumbnail(3.2, 9.5, quad(140), reach=1.8)
         + thumbnail(0, -5.8, real(0.5, 2, -0.5, -2), reach=2.4)
-        + thumbnail(-6.4, 17.6, real(0.25, 0.8, 1.55, 2.35), reach=2.7)
-        + thumbnail(6.4, 17.6, real(-0.25, -0.8, -1.55, -2.35), reach=2.7)
+        + thumbnail(-4.9, 17.6, real(0.25, 0.8, 1.55, 2.35), reach=2.7)
+        + thumbnail(4.9, 17.6, real(-0.25, -0.8, -1.55, -2.35), reach=2.7)
         + thumbnail(-5.6, -2.2, on(120, -120) + real(0.5, 2), reach=2.4)
         + thumbnail(5.6, -2.2, on(60, -60) + real(-0.5, -2), reach=2.4)
     )
@@ -735,16 +742,16 @@ def regions_plot():
             {'id': 'kequal', 'class': 'kequal', 'points': par, 'tone': 'subtle', 'width': 2.5},
             {'id': 'kplus', 'class': 'kplus', 'points': line(lambda a: -2 * a - 2), 'tone': 'subtle', 'width': 2.5},
             {'id': 'kminus', 'class': 'kminus', 'points': line(lambda a: 2 * a - 2), 'tone': 'subtle', 'width': 2.5},
-            {'id': 'names', 'points': [[-6.4, 16.4], [-6.4, 11.5]], 'tone': 'subtle', 'width': 1.5},
-            {'id': 'names', 'points': [[6.4, 16.4], [6.4, 11.5]], 'tone': 'subtle', 'width': 1.5},
+            *arrow(-7, 16.7, 13.1),
+            *arrow(7, 16.7, 13.1),
             *thumbs,
         ],
         'labels': [
             name(1, 0, 1.2),
             name(2, 0, 14),
             name(3, 0, -8.6),
-            name(4, -6.4, 19.2),
-            name(5, 6.4, 19.2),
+            name(4, -7, 17.6),
+            name(5, 7, 17.6),
             name(6, -5.6, 4.4),
             name(7, 5.6, 4.4),
             curve_label('kequal', 5.5, 12.2, '$k_1 = k_2$', anchor='end'),
