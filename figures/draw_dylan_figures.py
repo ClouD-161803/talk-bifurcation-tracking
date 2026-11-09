@@ -249,6 +249,100 @@ def regions_of(a1, a2):
     return region
 
 
+# the offsets of the label of an eccentricity from its point, tried nearest first, in points, and the
+# clearance kept between a label and any curve, in points
+LABEL_DISTANCES = (6, 10, 16, 22, 28, 36, 46, 58, 72, 90)
+LABEL_ANGLES = np.deg2rad([45, 135, -45, -135, 90, -90, 0, 180, *range(15, 360, 15)])
+LABEL_PAD = 2.5
+LEADER_DISTANCE = 20
+
+
+def curve_samples(axes, spacing):
+    """Points along every line of the axes in display pixels, at most spacing apart."""
+    samples = []
+    for line in axes.get_lines():
+        xy = line.get_transform().transform(np.column_stack(line.get_data()))
+        xy = xy[np.isfinite(xy).all(axis=1)]
+        for a, b in zip(xy[:-1], xy[1:]):
+            count = max(2, int(np.ceil(np.hypot(*(b - a)) / spacing)) + 1)
+            samples.append(a + np.linspace(0.0, 1.0, count)[:, None] * (b - a))
+    return np.vstack(samples)
+
+
+def box_distance(box, point):
+    """The distance in pixels from a point to a box, zero inside it."""
+    return float(np.hypot(max(box.x0 - point[0], 0.0, point[0] - box.x1), max(box.y0 - point[1], 0.0, point[1] - box.y1)))
+
+
+def leader_crossings(curves, anchor, box, pad):
+    """The number of curve samples within pad of the leader from the anchor to the nearest point of the box.
+
+    The samples within 4 pads of the anchor are left out, since the curve of the member itself passes there.
+    """
+    end = np.array([np.clip(anchor[0], box.x0, box.x1), np.clip(anchor[1], box.y0, box.y1)])
+    along = end - anchor
+    length = float(np.hypot(*along))
+    if length == 0.0:
+        return 0
+    t = np.clip(((curves - anchor) @ along) / length**2, 0.0, 1.0)
+    near = np.hypot(*(curves - anchor - t[:, None] * along).T) < pad
+    return int((near & (t * length > 4 * pad)).sum())
+
+
+def place_labels(figure, axes, marks):
+    """Annotates each (point, text, color) of marks clear of every line, of the other labels, and of the axes edges.
+
+    The offsets are tried from the nearest, and a label set farther than LEADER_DISTANCE from its point gets a thin
+    leader. When no offset is clear, the one with the fewest line samples under the label is kept. Returns the boxes.
+    """
+    renderer = figure.canvas.get_renderer()
+    scale = figure.dpi / 72
+    curves = curve_samples(axes, scale)
+    frame = axes.get_window_extent(renderer)
+    pad = LABEL_PAD * scale
+    placed = []
+    anchors = [axes.transData.transform(point) for point, _, _ in marks]
+    for anchor, (point, text, color) in zip(anchors, marks):
+        label = axes.annotate(text, point, textcoords="offset points", xytext=(0, 0), fontsize="small", color=color)
+        best = None
+        for distance in LABEL_DISTANCES:
+            for angle in LABEL_ANGLES:
+                dx, dy = np.cos(angle), np.sin(angle)
+                label.set_ha("left" if dx > 0.3 else "right" if dx < -0.3 else "center")
+                label.set_va("bottom" if dy > 0.3 else "top" if dy < -0.3 else "center")
+                label.xyann = (distance * dx, distance * dy)
+                box = label.get_window_extent(renderer)
+                if box.x0 < frame.x0 + pad or box.x1 > frame.x1 - pad or box.y0 < frame.y0 + pad or box.y1 > frame.y1 - pad:
+                    continue
+                grown = box.padded(pad)
+                inside = (curves[:, 0] > grown.x0) & (curves[:, 0] < grown.x1) & (curves[:, 1] > grown.y0) & (curves[:, 1] < grown.y1)
+                cost = int(inside.sum()) + 1000 * sum(grown.overlaps(other) for other in placed)
+                if distance > LEADER_DISTANCE:
+                    cost += leader_crossings(curves, anchor, box, pad)
+                else:
+                    # without a leader, a label about as near to another marked member as to its own would be read as
+                    # the label of that member
+                    own = box_distance(box, anchor)
+                    cost += 500 * int(any(box_distance(box, other) < 1.5 * own + 2 * pad for other in anchors if other is not anchor))
+                if best is None or cost < best[0]:
+                    best = (cost, label.xyann, label.get_ha(), label.get_va(), box)
+                if cost == 0:
+                    break
+            if best[0] == 0:
+                break
+        cost, offset, ha, va, box = best
+        label.remove()
+        leader = {}
+        if np.hypot(*offset) > LEADER_DISTANCE:
+            leader = {"arrowprops": {"arrowstyle": "-", "color": color, "linewidth": 0.4 * mpl.rcParams["lines.linewidth"], "shrinkA": 1, "shrinkB": 3}}
+        axes.annotate(text, point, textcoords="offset points", xytext=offset, ha=ha, va=va, fontsize="small", color=color, **leader)
+        if cost:
+            print(f"  {text}: no clear place, {cost} line samples under the label or its leader")
+        placed.append(box)
+    return placed
+
+
+
 def draw_stability(archive, meta, family, mode, folder):
     """The stability diagram of a family with both branches, the boundaries, and the region names."""
     colors = MODES[mode]
@@ -271,6 +365,7 @@ def draw_stability(archive, meta, family, mode, folder):
 
     window = np.array([[a1_low, a2_low]]), np.array([[a1_high - a1_low, a2_high - a2_low]])
     obstacles = []
+    marks = []
     for branch, style, legend in (("periapsis", "-", r"periapsis ($\theta_0 = 0$)"), ("apoapsis", "--", r"apoapsis ($\theta_0 = \pi$)")):
         trace = archive[f"f{family}_{branch}_trace"]
         color = colors[branch]
@@ -280,16 +375,23 @@ def draw_stability(archive, meta, family, mode, folder):
             index = int(np.argmin(np.abs(trace[:, 0] - e)))
             point = trace[index, 1], trace[index, 2]
             axes.plot(*point, "o", color=color, markersize=0.6 * mpl.rcParams["lines.markersize"])
-            # a label near the top or the right edge of the window is turned inward
-            u, v = ((np.array(point) - window[0][0]) / window[1][0]).tolist()
-            dx, ha = (-8, "right") if u > 0.8 else (8, "left")
-            dy, va = (-8, "top") if v > 0.9 else (6, "bottom")
-            axes.annotate(
-                rf"$e = {trace[index, 0]:.2f}$", point, textcoords="offset points", xytext=(dx, dy), ha=ha, va=va, fontsize="small", color=color
-            )
-            # the label of an eccentricity, about 0.15 of the axes wide, is kept clear of the region names
-            along = np.linspace(0.02, 0.19, 8) * np.sign(dx)
-            obstacles.append(np.column_stack([u + along, np.full_like(along, v + np.sign(dy) * 0.035)]))
+            marks.append((point, rf"$e = {trace[index, 0]:.2f}$", color))
+
+    axes.set_xlim(a1_low, a1_high)
+    axes.set_ylim(a2_low, a2_high)
+    axes.set_xlabel(r"$a_1$")
+    axes.set_ylabel(r"$a_2$")
+    axes.set_title(rf"Family {family}, $\mu = {family_meta['mass_ratio']:g}$")
+    axes.ticklabel_format(axis="both", style="plain")
+    figure.legend(loc="outside lower center", ncol=2, fontsize="small")
+    # the layout is fixed before the labels are placed, so that their boxes are measured where they are drawn
+    figure.canvas.draw()
+    figure.set_layout_engine("none")
+    boxes = place_labels(figure, axes, marks)
+    for box in boxes:
+        corners = axes.transAxes.inverted().transform(box.get_points())
+        u, v = np.meshgrid(np.linspace(*corners[:, 0], 8), np.linspace(*corners[:, 1], 4))
+        obstacles.append(np.column_stack([u.ravel(), v.ravel()]))
 
     points = region_label_points(
         archive[f"f{family}_region_a1"], archive[f"f{family}_region_a2"], archive[f"f{family}_region_grid"], np.vstack(obstacles)
@@ -298,13 +400,6 @@ def draw_stability(archive, meta, family, mode, folder):
         axes.annotate(
             NAME[region], point, ha="center", va="center", fontsize="medium", color=colors["subtle"]
         )
-    axes.set_xlim(a1_low, a1_high)
-    axes.set_ylim(a2_low, a2_high)
-    axes.set_xlabel(r"$a_1$")
-    axes.set_ylabel(r"$a_2$")
-    axes.set_title(rf"Family {family}, $\mu = {family_meta['mass_ratio']:g}$")
-    axes.ticklabel_format(axis="both", style="plain")
-    figure.legend(loc="outside lower center", ncol=2, fontsize="small")
     return save(figure, folder, f"stability-family-{family}", mode), sorted(points)
 
 

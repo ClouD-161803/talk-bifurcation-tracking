@@ -43,6 +43,7 @@ REPORT = "broucke-1969-periodic-orbits.pdf"
 # (paper, page counted from 1, rectangle as left, bottom, right, top in points, page name,
 # name of the whole-page output or None when the page is split by PANELS)
 PAGES = (
+    (AIAA, 6, (310, 32, 572, 297), "aiaa-fig-3", "aiaa-fig-3"),
     (AIAA, 7, (304, 379, 542, 627), "aiaa-fig-4", "aiaa-fig-4"),
     (REPORT, 58, (41, 162, 567, 625), "fig-13", None),
     (REPORT, 62, (33, 71, 574, 728), "fig-14a", None),

@@ -1,5 +1,5 @@
-"""Write the comparison slide of the orbits, the slide of family 11 in Broucke's diagram, the PyDyLAN
-code block, and the backup tables into the deck source.
+"""Write the comparison slide of the orbits, the slide of the three families in Broucke's diagram, the
+PyDyLAN code block, and the backup tables into the deck source.
 
 Run it as `python3 build_sections.py <talk folder> <deck>`, where the deck is index.html of the talk
 folder. The figures, the calls, and the table of the check are read from the talk folder, and each
@@ -41,9 +41,36 @@ COMPARISON_NOTES = """  <aside class="notes">
     <p>Step 6: So every branch is consistent with Broucke's figures, in each frame in which he drew one. Next, the same families as curves in Broucke's diagram.</p>
     <p>TODO(claudio): the frames of a few of Broucke's panels were identified by their shape, in Figs. 13, 14, 16, and 17, as listed under "Where I was unsure" in figures/broucke/INDEX.md.</p>
   </aside>"""
+# (family, the cells of Broucke's figures, caption), one group per step of the diagram slide. A cell is the
+# path and alt text of a crop, or the text of a placeholder over the two cells of Broucke's figures
+DIAGRAMS = [
+    (
+        7,
+        r"Broucke did not draw family 7 in the diagram. He wrote that its orbits are &ldquo;all very close to the line \(a_2 = -2a_1 - 2\)&rdquo;.",
+        r"Family 7 at \(\mu = 0.012155\) in DyLAN. Both branches stay near the line \(k = 2\), as Broucke wrote.",
+    ),
+    (
+        8,
+        [
+            ("figures/broucke/aiaa-fig-3.png", "Broucke, AIAA Fig. 3, family 8 in the a1, a2 plane"),
+            ("figures/broucke/family-8-stability-fig-15.png", "Broucke, report Fig. 15, family 8 in the a1, a2 plane"),
+        ],
+        r"Family 8 at \(\mu = 0.5\) in Broucke&rsquo;s Figs. 3 and 15, and in DyLAN.",
+    ),
+    (
+        11,
+        [
+            ("figures/broucke/aiaa-fig-4.png", "Broucke, AIAA Fig. 4, family 11 in the a1, a2 plane"),
+            ("figures/broucke/family-11-stability-fig-18.png", "Broucke, report Fig. 18, family 11 in the a1, a2 plane"),
+        ],
+        r"Family 11 at \(\mu = 0.5\) in Broucke&rsquo;s Figs. 4 and 18, and in DyLAN. The \(a_1\) labels of Fig. 4 are ten times too large.",
+    ),
+]
 DIAGRAM_NOTES = """  <aside class="notes">
-    <p>Step 0: Family 11 at a mass ratio of one half, both branches, on linear axes: Broucke's Fig. 4 of the AIAA paper at left, Fig. 18 of his JPL report in the middle, and DyLAN at right. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 on the branch from periapsis, up to e = 0.453.</p>
-    <p>Step 1: So DyLAN draws Broucke's curve. Next, what is changed where a curve meets k = 2 or k = −2.</p>
+    <p>Step 0: The three families as curves in Broucke's diagram, on linear axes, one family per click, with Broucke's figures at left and DyLAN at right. Family 7, at the Earth–Moon mass ratio, is the one he did not draw in the diagram. He wrote only that its orbits are all very close to the line a₂ = −2a₁ − 2, i.e. k = 2, and in DyLAN both branches indeed stay near this line.</p>
+    <p>Step 1: Family 8, at a mass ratio of one half, in Fig. 3 of the AIAA paper and Fig. 15 of his JPL report. The branch from periapsis rises into EH⁺, and the branch from apoapsis crosses the parabola into N at e = 0.289, as in his figures.</p>
+    <p>Step 2: Family 11, in Fig. 4 of the AIAA paper and Fig. 18 of the report. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 on the branch from periapsis, up to e = 0.453.</p>
+    <p>Step 3: So DyLAN draws Broucke's curves. Next, what is changed where a curve meets k = 2 or k = −2.</p>
   </aside>"""
 
 
@@ -56,6 +83,21 @@ def mode_images(stem: str, alt: str) -> str:
 
 def paper_image(path: str, alt: str) -> str:
     return f'<img class="paper" src="{path}" alt="{alt}">'
+
+
+def placeholder(text: str, span: int = 1) -> str:
+    style = f' style="grid-column: span {span}"' if span > 1 else ""
+    return f'<div class="fig none"{style}><p>{text}</p></div>'
+
+
+def step_kind(index: int, count: int) -> tuple[str, int]:
+    """The fragment classes and index of group index of count, shown one per step: the first is shown at step 0
+    and faded out at step 1, and the last is kept."""
+    if index == 0:
+        return "fragment fade-out", 1
+    if index == count - 1:
+        return "fragment", index
+    return "fragment fade-in-then-out", index
 
 
 def comparison(talk: Path) -> str:
@@ -78,18 +120,12 @@ def comparison(talk: Path) -> str:
                 alt = f"Broucke, Fig. {figure}, family {family} from {branch} in {words}"
                 cells.append(f'      <div class="fig">{paper_image(path, alt)}</div>')
             else:
-                cells.append('      <div class="fig"></div>')
-        # the first group is shown at step 0 and faded out at step 1, the last is kept
-        if index == 0:
-            kind, step = "fragment fade-out", 1
-        elif index == len(BRANCHES) - 1:
-            kind, step = "fragment", index
-        else:
-            kind, step = "fragment fade-in-then-out", index
+                cells.append(f"      {placeholder('Broucke did not draw this frame.')}")
+        kind, step = step_kind(index, len(BRANCHES))
         groups.append(
             f'  <div class="cmp {kind}" data-fragment-index="{step}">\n'
             '    <div class="grid five">\n' + "\n".join(cells) + "\n    </div>\n"
-            f'    <p class="caption">{caption}</p>\n'
+            f'    <p class="caption full">{caption}</p>\n'
             "  </div>"
         )
     return (
@@ -99,28 +135,34 @@ def comparison(talk: Path) -> str:
 
 
 def diagram(talk: Path) -> str:
-    for name in ("aiaa-fig-4", "family-11-stability-fig-18"):
-        if not (talk / f"figures/broucke/{name}.png").is_file():
-            raise SystemExit(f"missing figure figures/broucke/{name}.png")
-    for mode in ("dark", "light"):
-        if not (talk / f"figures/dylan/stability-family-11-{mode}.png").is_file():
-            raise SystemExit(f"missing figure figures/dylan/stability-family-11-{mode}.png")
+    groups = []
+    for index, (family, broucke, caption) in enumerate(DIAGRAMS):
+        stem = f"figures/dylan/stability-family-{family}"
+        crops = [] if isinstance(broucke, str) else [path for path, _ in broucke]
+        for path in (f"{stem}-dark.png", f"{stem}-light.png", *crops):
+            if not (talk / path).is_file():
+                raise SystemExit(f"missing figure {path}")
+        if isinstance(broucke, str):
+            cells = [f"      {placeholder(broucke, 2)}"]
+        else:
+            cells = [f'      <div class="fig">{paper_image(path, alt)}</div>' for path, alt in broucke]
+        cells.append(f'      <div class="fig">{mode_images(stem, f"DyLAN, family {family} in the a1, a2 plane")}</div>')
+        kind, step = step_kind(index, len(DIAGRAMS))
+        groups.append(
+            f'  <div class="cmp {kind}" data-fragment-index="{step}">\n'
+            '    <div class="grid three">\n' + "\n".join(cells) + "\n    </div>\n"
+            f'    <p class="caption full">{caption}</p>\n'
+            "  </div>"
+        )
     return (
         '<section class="figure">\n'
-        "  <h2>Family 11 in Broucke&rsquo;s diagram</h2>\n"
-        '  <div class="cmp">\n'
-        '    <div class="grid three">\n'
-        f'      <div class="fig">{paper_image("figures/broucke/aiaa-fig-4.png", "Broucke, AIAA Fig. 4, family 11 in the a1, a2 plane")}</div>\n'
-        f'      <div class="fig">{paper_image("figures/broucke/family-11-stability-fig-18.png", "Broucke, report Fig. 18, family 11 in the a1, a2 plane")}</div>\n'
-        f'      <div class="fig">{mode_images("figures/dylan/stability-family-11", "DyLAN, family 11 in the a1, a2 plane")}</div>\n'
-        "    </div>\n"
-        r'    <p class="caption">Family 11 at \(\mu = 0.5\) in Broucke&rsquo;s Figs. 4 and 18, and in DyLAN. The \(a_1\) labels of Fig. 4 are ten times too large.</p>'
-        "\n  </div>\n" + DIAGRAM_NOTES + "\n</section>"
+        "  <h2>The families in Broucke&rsquo;s diagram</h2>\n" + "\n".join(groups) + "\n" + DIAGRAM_NOTES + "\n</section>"
     )
 
 
 # the lines of code of the code box in each step of the speaker notes of the slide, set apart by a blank line,
-# and each lit at its step in the highlight plugin of reveal.js
+# and each lit at its step in the highlight plugin of reveal.js. Blank lines are not counted, and only those
+# around the imports are kept from the source, as in PEP 8
 CALL_STEPS = [6, 3, 4, 7, 5, 1]
 
 
@@ -128,19 +170,24 @@ def code(talk: Path) -> str:
     lines = (talk / "data/pydylan_calls_dylan.py").read_text(encoding="utf-8").splitlines()
     if lines and lines[0].startswith('"""'):
         lines = lines[1:]
-    kept = [line for line in lines if line.strip()]
-    if len(kept) != sum(CALL_STEPS):
-        raise SystemExit(f"data/pydylan_calls_dylan.py has {len(kept)} lines of code, and the steps {CALL_STEPS} are written for {sum(CALL_STEPS)}")
+    while lines and not lines[0].strip():
+        lines = lines[1:]
+    body = next(k for k, line in enumerate(lines) if line.strip() and not line.startswith(("import ", "from ")))
+    kept = lines[:body] + [line for line in lines[body:] if line.strip()]
+    if sum(1 for line in kept if line.strip()) != sum(CALL_STEPS):
+        raise SystemExit(f"data/pydylan_calls_dylan.py has {sum(1 for line in kept if line.strip())} lines of code, and the steps {CALL_STEPS} are written for {sum(CALL_STEPS)}")
     out: list[str] = []
     ranges = []
     for size in CALL_STEPS:
         if out:
             out.append("")
         first = len(out) + 1
-        out += kept[:size]
-        kept = kept[size:]
-        ranges.append(f"{first}-{len(out)}" if size > 1 else str(first))
-    pre = f'<pre style="font-size: 19px; line-height: 1.2"><code class="language-python" data-line-numbers="{"|".join(ranges)}">'
+        while size:
+            line = kept.pop(0)
+            out.append(line)
+            size -= bool(line.strip())
+        ranges.append(f"{first}-{len(out)}" if len(out) > first else str(first))
+    pre = f'<pre style="font-size: 19px; line-height: 1.1"><code class="language-python" data-line-numbers="{"|".join(ranges)}">'
     return pre + html.escape("\n".join(out), quote=False) + "</code></pre>"
 
 
