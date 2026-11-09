@@ -395,6 +395,14 @@ html:not([data-theme="light"]) .reveal .slides section.split .panel { box-shadow
 .reveal .plot-off { opacity: 0.3; }
 .reveal .plot .plot-later,
 .reveal .plot .plot-hidden { opacity: 0; }
+/* an element with a delay is shown that many seconds after its step, a curve with draw is traced
+   from its first point to its last, and a region with spread grows from a point. each is hidden at
+   once when its step is left */
+.reveal .plot .plot-delayed:not(.plot-hidden) { transition-delay: var(--plot-delay); }
+.reveal .plot .plot-draw { stroke-dasharray: 1 1; stroke-dashoffset: 0; transition: stroke-dashoffset var(--plot-draw) ease-in-out var(--plot-delay, 0s), opacity 0s linear var(--plot-delay, 0s); }
+.reveal .plot .plot-spread { transform-box: view-box; transform: scale(1); transition: transform var(--plot-spread) cubic-bezier(0.25, 0.6, 0.3, 1) var(--plot-delay, 0s), opacity 0s linear var(--plot-delay, 0s); }
+.reveal .plot .plot-draw.plot-hidden { stroke-dashoffset: 1; transition: none; }
+.reveal .plot .plot-spread.plot-hidden { transform: scale(0); transition: none; }
 .reveal .plot-bar { display: flex; flex: none; align-items: center; gap: 28px; height: 44px; }
 .reveal .plot-play { position: relative; flex: none; width: 40px; height: 40px; color: var(--subtle); }
 .reveal .plot-play:hover { color: var(--text); }

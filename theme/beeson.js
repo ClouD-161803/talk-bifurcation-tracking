@@ -954,13 +954,13 @@
     // begins. two strokes of one color give the same pixels in either order
     order() {
       const ends = /* @__PURE__ */ new Map();
-      const seconds = (i, t) => t / this.Tmax * this.duration + i * this.stagger;
+      const seconds2 = (i, t) => t / this.Tmax * this.duration + i * this.stagger;
       let k = 0;
       for (; k < this.strands.length; k++) {
-        const s = this.strands[k], color = colorOf(s), begin = seconds(k, s.times[0]);
+        const s = this.strands[k], color = colorOf(s), begin = seconds2(k, s.times[0]);
         if (s.glow || alphaOf(s) > 0.5 || widthOf(s) > 1) break;
         if ([...ends].some(([other, end]) => other !== color && end > begin)) break;
-        ends.set(color, Math.max(ends.get(color) ?? -Infinity, seconds(k, s.times[s.times.length - 1])));
+        ends.set(color, Math.max(ends.get(color) ?? -Infinity, seconds2(k, s.times[s.times.length - 1])));
       }
       this.cached = k;
       this.upTo = this.strands.map(() => 0);
@@ -1606,7 +1606,13 @@
   }
   function item(o, path, tone) {
     const cls = str(o.class, `${path}.class`, "").split(/\s+/).filter(Boolean);
-    return { id: o.id === void 0 ? null : str(o.id, `${path}.id`), tone: str(o.tone, `${path}.tone`, tone), cls };
+    const delay = seconds(o.delay, `${path}.delay`);
+    return { id: o.id === void 0 ? null : str(o.id, `${path}.id`), tone: str(o.tone, `${path}.tone`, tone), cls, delay };
+  }
+  function seconds(v, path) {
+    const s = num(v, path, 0);
+    if (!(s >= 0)) fail(path, "a number of seconds, at least 0, is expected");
+    return s;
   }
   function axis(v, path) {
     if (!isObject2(v)) fail(path, "an axis { range, ticks, title } is expected");
@@ -1632,7 +1638,8 @@
     return list(v, path, []).map((r, i) => {
       const p = `${path}[${i}]`;
       if (!isObject2(r)) fail(p, "a region is expected");
-      return { ...item(r, p, "violet"), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12) };
+      const from = r.from === void 0 ? null : pair(r.from, `${p}.from`);
+      return { ...item(r, p, "violet"), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), spread: seconds(r.spread, `${p}.spread`), from };
     });
   }
   function curves(v, path) {
@@ -1646,7 +1653,7 @@
         circle = [num(a[0], `${p}.circle[0]`), num(a[1], `${p}.circle[1]`), num(a[2], `${p}.circle[2]`)];
       } else if (c.points === void 0) fail(p, "points or circle is expected");
       const dash = c.dash === void 0 ? null : list(c.dash, `${p}.dash`).map((d, j) => num(d, `${p}.dash[${j}]`));
-      return { ...item(c, p, "subtle"), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash };
+      return { ...item(c, p, "subtle"), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, draw: seconds(c.draw, `${p}.draw`) };
     });
   }
   function labels(v, path) {
@@ -2062,6 +2069,8 @@
       this.cue = "none";
       // the slide of the plot is shown, and the plot may move
       this.live = false;
+      // the tab is played once, from a fragment with data-plot-run, and held at its last frame
+      this.once = false;
       this.el = el;
       CACHE2.set(el, this);
       for (const old of el.querySelectorAll(":scope > .plot-body, :scope > .plot-error")) old.remove();
@@ -2278,6 +2287,10 @@
     styleItem(node, it, names) {
       node.style.color = toneColor(it.tone);
       node.classList.add(...it.cls);
+      if (it.delay > 0) {
+        node.classList.add("plot-delayed");
+        node.style.setProperty("--plot-delay", `${it.delay}s`);
+      }
       this.gate(node, names);
       if (it.id) this.emphasized.push({ node, id: it.id });
     }
@@ -2296,15 +2309,33 @@
           svg("rect", { x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, clip);
         }
         const statics = svg("g", { "clip-path": `url(#plot-${this.uid}-${p.id})` }, g);
-        for (const r of p.regions) {
-          const node = svg("path", { class: "plot-region", d: `${this.path(b, r.points)}Z`, "fill-opacity": r.opacity }, statics);
-          this.styleItem(node, r, [p.id, r.id]);
-        }
+        p.regions.forEach((r, k) => {
+          const d = `${this.path(b, r.points)}Z`;
+          if (!(r.spread > 0)) {
+            this.styleItem(svg("path", { class: "plot-region", d, "fill-opacity": r.opacity }, statics), r, [p.id, r.id]);
+            return;
+          }
+          const id = `plot-${this.uid}-${p.id}-spread-${k}`;
+          svg("path", { d }, svg("clipPath", { id }, defs));
+          const xs = r.points.map((q) => clamp(this.X(b, q[0]), b.x, b.x + b.w)), ys = r.points.map((q) => clamp(this.Y(b, q[1]), b.y, b.y + b.h));
+          const [fx, fy] = r.from ?? [r.points.reduce((s, q) => s + q[0], 0) / r.points.length, r.points.reduce((s, q) => s + q[1], 0) / r.points.length];
+          const X = this.X(b, fx), Y = this.Y(b, fy);
+          const R = Math.max(...[Math.min(...xs), Math.max(...xs)].flatMap((x) => [Math.min(...ys), Math.max(...ys)].map((y) => Math.hypot(x - X, y - Y))));
+          const disk = svg("circle", { class: "plot-region plot-spread", cx: X.toFixed(1), cy: Y.toFixed(1), r: (R + 2).toFixed(1), "fill-opacity": r.opacity }, svg("g", { "clip-path": `url(#${id})` }, statics));
+          disk.style.transformOrigin = `${X.toFixed(1)}px ${Y.toFixed(1)}px`;
+          disk.style.setProperty("--plot-spread", `${r.spread}s`);
+          this.styleItem(disk, r, [p.id, r.id]);
+        });
         for (const c of p.curves) {
           const attrs = { class: "plot-curve", "stroke-width": c.width };
           if (c.dash) attrs["stroke-dasharray"] = c.dash.join(" ");
           const linear2 = p.x.scale === "linear" && p.y.scale === "linear";
           const node = c.circle && linear2 ? svg("ellipse", { ...attrs, cx: this.X(b, c.circle[0]), cy: this.Y(b, c.circle[1]), rx: c.circle[2] * b.sx, ry: c.circle[2] * b.sy }, statics) : svg("path", { ...attrs, d: this.path(b, c.circle ? circlePoints(c.circle) : c.points ?? []) }, statics);
+          if (c.draw > 0) {
+            node.setAttribute("pathLength", "1");
+            node.classList.add("plot-draw");
+            node.style.setProperty("--plot-draw", `${c.draw}s`);
+          }
           this.styleItem(node, c, [p.id, c.id]);
         }
         if (p.axes) {
@@ -2487,7 +2518,9 @@
       const cues = frags.filter((f) => f.hasAttribute("data-plot-play"));
       const cue = !cues.length ? "none" : cues.some((f) => visible.includes(f)) ? "shown" : "held";
       const tabbed = visible.filter((f) => f.dataset.plotTab).sort((a, b) => +(a.dataset.fragmentIndex ?? 0) - +(b.dataset.fragmentIndex ?? 0));
-      const name = tabbed.at(-1)?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
+      const top = tabbed.at(-1);
+      const name = top?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
+      const run = !!top?.hasAttribute("data-plot-run") && top.classList.contains("current-fragment") && this.live && !reduced();
       let tab = this.tab;
       if (name !== this.stepTab) {
         this.stepTab = name;
@@ -2496,8 +2529,14 @@
       }
       const cued = cue !== this.cue;
       this.cue = cue;
-      if (tab !== this.tab) this.setTab(tab);
-      else this.applyGates();
+      if (tab !== this.tab) {
+        if (this.once) this.pause();
+        this.setTab(tab, run);
+        if (run) {
+          this.once = true;
+          this.play();
+        }
+      } else this.applyGates();
       if (cued && this.live) {
         if (cue === "shown" && this.moves()) {
           this.pause();
@@ -2506,12 +2545,12 @@
         } else this.still();
       }
     }
-    /** Shows the tab i, from its first frame while the plot is played, and at its still frame otherwise. */
-    setTab(i) {
+    /** Shows the tab i, from its first frame while the plot is played or with first set, and at its still frame otherwise. */
+    setTab(i, first = false) {
       if (!this.spec || i === this.tab) return;
       this.tab = i;
       this.markTabs();
-      this.u = this.raf ? 0 : this.stillFrame();
+      this.u = this.raf || first ? 0 : this.stillFrame();
       this.t0 = performance.now();
       this.fade = 1;
       this.pass = 0;
@@ -2560,6 +2599,12 @@
       this.pass = 0;
       const tick = (now) => {
         const t = (now - this.t0) / 1e3, { duration, hold, fade } = this.plot, length = this.length;
+        if (this.once && t >= length) {
+          this.u = this.frames - 1;
+          this.draw();
+          this.pause();
+          return;
+        }
         const pass = length + hold > 0 ? Math.floor(t / (length + hold)) : 0;
         if (pass !== this.pass) {
           this.pass = pass;
@@ -2577,6 +2622,7 @@
     pause() {
       if (this.raf) cancelAnimationFrame(this.raf);
       this.raf = 0;
+      this.once = false;
       this.setPlaying(false);
       if (this.fade < 1 || this.held.length) {
         this.fade = 1;
@@ -4295,12 +4341,12 @@ void main() {
       const loop = o.el.hasAttribute("data-loop");
       if (glide) {
         o.complete();
-        const seconds = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
+        const seconds2 = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
         setTimeout(() => {
           if (window.Reveal.getCurrentSlide() !== slide) return;
           o.fit();
           if (loop) o.start();
-        }, seconds * 1e3 + 50);
+        }, seconds2 * 1e3 + 50);
       } else if (loop || o.el.hasAttribute("data-live") || TRACED.some((c) => slide.classList.contains(c))) {
         o.reset();
         o.start();

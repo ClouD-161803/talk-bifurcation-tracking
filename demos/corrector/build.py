@@ -116,13 +116,19 @@ DRAWN = (START1 - 1.0, START1 - 0.1)
 GUESS = START1 + 0.05
 PACE0 = (0.0, 0.9, 1.2, 2.1, 2.6)
 LEAD = 1.0 - (GUESS + PACE0[-1])
-# the close-up of scene 1 is a flipbook of magnified copies drawn over the box of half side ZOOM_HALF and a
-# margin, with the end of the iterate at which it is held ZOOM_GAP from the target. Each zoom lasts ZOOM_TIME
-# and is drawn in ZOOM_SLICES copies, about one per frame of the clock. The samples of a growing mark that a
-# copy has already drawn are spaced EPS apart
+# the close-up of scene 1 is a flipbook of magnified copies of the orbit panel, fitted to the box of half side
+# ZOOM_HALF and a margin, with the end of an iterate ZOOM_GAP from its target at the scale of the iterate. The scale
+# is kept while the new gap is within ZOOM_KEEP of this distance. A zoom lasts ZOOM_TIME and is drawn in up to
+# ZOOM_SLICES copies, about one per frame of the clock, and ZOOM_PER_DECADE per power of ten. The center glides to
+# the next target in steps of at most GLIDE_STEP. Every copy is clipped to CLOSE_CLIP, which covers the panel, and
+# the fixed grid of the close-up is GRID_STEP apart. The samples of a growing mark that a copy has already drawn
+# are spaced EPS apart
 ZOOM_HALF, ZOOM_GAP, ZOOM_TIME, ZOOM_SLICES, EPS = 1.0, 0.6, 0.4, 14, 1e-5
+ZOOM_KEEP, ZOOM_PER_DECADE, GLIDE_STEP, GRID_STEP = (0.3, 0.9), 6, 0.08, 0.5
+CLOSE_CLIP = (-4.0, 4.0, -3.0, 3.0)
+# the marks of the close-up that are drawn whole within a slice, and thinned to within SIMPLIFY of the close-up
+STATIC_NEAR, SIMPLIFY = ("zoom_ref", "zoom_ghosts", "zoom_solution"), 0.005
 MOVE_END = 0.35
-ZOOM_BOX = (-1.1 * ZOOM_HALF, 1.1 * ZOOM_HALF, -1.1 * ZOOM_HALF, 1.1 * ZOOM_HALF)
 # the requirement of the half period, i.e. the target on the axis and its vertical velocity
 GREEN = "#7ad151"
 # the clock span of one lap of the satellite on a converged orbit, about 1.7 s at speed 0.5
@@ -132,8 +138,6 @@ GAP = 1e-3
 TICK_GAP = 1e-6
 Y_TOP, Y_BOTTOM = 1.5, -15.5
 SAMPLES_HALF, SAMPLES_FULL, SAMPLES_ORBIT = 110, 180, 240
-# the mirror image (x, -y, -xdot, ydot) of a state, which is a state of the symmetric orbit at minus the time
-MIRROR = np.array([1.0, -1.0, -1.0, 1.0])
 # the target (x, 0, 0, ydot) of an end (x, y, xdot, ydot) under the half period, on the axis with a vertical velocity
 ON_AXIS = np.array([1.0, 0.0, 0.0, 1.0])
 
@@ -617,6 +621,27 @@ def in_slice(P: np.ndarray, cc: np.ndarray, a: float, b: float, revealed: bool =
     return Q, times
 
 
+def simplified(P: np.ndarray, tol: float) -> np.ndarray:
+    """The indices of the vertices of the polyline P that the Ramer-Douglas-Peucker algorithm keeps, i.e. the
+    vertices without which the polyline would move by more than tol, with its two ends."""
+    keep = np.zeros(len(P), dtype=bool)
+    keep[[0, -1]] = True
+    stack = [(0, len(P) - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j - i < 2:
+            continue
+        d = P[j] - P[i]
+        n = float(np.hypot(*d))
+        Q = P[i + 1 : j] - P[i]
+        dist = np.abs(Q[:, 0] * d[1] - Q[:, 1] * d[0]) / n if n > 0 else np.hypot(Q[:, 0], Q[:, 1])
+        m = int(np.argmax(dist))
+        if dist[m] > tol:
+            keep[i + 1 + m] = True
+            stack += [(i, i + 1 + m), (i + 1 + m, j)]
+    return np.flatnonzero(keep)
+
+
 def clip_late(P: np.ndarray, cc: np.ndarray, box) -> list[tuple[np.ndarray, np.ndarray]]:
     """The pieces of the polyline P inside the box, as in clip_pieces, but with the clock values of each piece
     spaced at least EPS apart by moving its earlier samples back, so that the last point of a piece is kept when a
@@ -871,6 +896,16 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         "zoom", label="centered on the target", axes=("", ""), parent=rp, origin=[ty.channel("t_x"), ty.channel("t_y"), 0.0], scale=ty.channel("inv_w")
     )
     scene.track_set("zoom-box", frame=zf).add(rectangle((-1.1 * ZOOM_HALF, 1.1 * ZOOM_HALF, -1.1 * ZOOM_HALF, 1.1 * ZOOM_HALF)))
+    # the close-up has a fixed grid GRID_STEP apart and the axis y = 0, on which every target lies, through its middle.
+    # The spacing of the grid in the units of the orbit panel is read out in the caption
+    ts = scene.track_set("zoom-grid", frame=zf)
+    x0, x1, y0, y1 = CLOSE_CLIP
+    for x in np.arange(math.ceil(x0 / GRID_STEP), math.floor(x1 / GRID_STEP) + 1) * GRID_STEP:
+        ts.add(np.array([[x, y0], [x, y1]]))
+    for y in np.arange(math.ceil(y0 / GRID_STEP), math.floor(y1 / GRID_STEP) + 1) * GRID_STEP:
+        if y != 0.0:
+            ts.add(np.array([[x0, y], [x1, y]]))
+    scene.track_set("zoom-axis", frame=zf).add(np.array([[x0, 0.0], [x1, 0.0]]))
     # the label of a failed run is drawn in a frame that the driver's channel "failed" scales by 1e-6 up
     # to the failure and by 1 after it, which parks the label at FAR and then moves it into the panel. A label
     # is written for each iterate n at which a run can fail, and the labels of the other iterates stay at FAR
@@ -886,7 +921,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
 
     # the box of each case holds the three converged orbits and the masses near them. The camera of the orbit
     # panel is fitted to this box, lowered and widened to the panel, and the arcs are cut where they leave it
-    boxes, clips, arrow = {}, {}, {}
+    boxes, clips, arrow, ref_lines = {}, {}, {}, {}
     for case, by_system in refs.items():
         polylines = {}
         for system, (x0, vy0, T) in by_system.items():
@@ -903,6 +938,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         scene.track_set(f"box-{case}", frame=rp, tags={"element": "box", "case": case}).add(rectangle(clips[case]))
         # the reference orbit is dashed, so that the arcs below it are still seen
         for system, P in polylines.items():
+            ref_lines[(case, system)] = P
             ts = scene.track_set(f"ref-{case}-{system}", frame=rp, tags={"element": "ref", "case": case, "system": system})
             for D in dashes(P, 0.02 * size, 0.012 * size):
                 ts.add(D)
@@ -910,6 +946,12 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
     conv_box = (-0.4, MAX_ITERATIONS + 2.4, Y_BOTTOM, Y_TOP + 1.0)
     scene.track_set("convergence-box", frame=conv).add(rectangle(conv_box))
     scene.track_set("tolerance", frame=conv).add(np.array([[conv_box[0], -11.0], [conv_box[1], -11.0]]))
+    # the grid of the convergence panel has a line at every iterate and at every power of ten of the norm
+    ts = scene.track_set("convergence-grid", frame=conv)
+    for n in range(0, MAX_ITERATIONS + 3):
+        ts.add(np.array([[n, conv_box[2]], [n, conv_box[3]]]))
+    for y in range(math.ceil(conv_box[2]), math.floor(conv_box[3]) + 1):
+        ts.add(np.array([[conv_box[0], y], [conv_box[1], y]]))
 
     # the curves of the five segment counts of each case, system, targeting, and guess are the race, and the
     # label "S = s" of each is placed once, so that it does not move when another segment count is selected
@@ -933,25 +975,34 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                 f"{element}-{name}", frame=frame, tags={"element": element, **tags}, periodic=periodic, attrs=attrs or {}
             )
 
-        arcs, mirror_arcs, ghosts, defects, nodes, dim_nodes, arrows, target_arrows = [], [], [], [], [], [], [], []
+        arcs, ghosts, defects, nodes, dim_nodes, arrows, target_arrows = [], [], [], [], [], [], []
+        # the marks of the orbit panel that the close-up magnifies, uncut, each a polyline, its clock channel, and
+        # whether the samples of the track before a copy of the flipbook have already been drawn
+        near: dict[str, list] = {key: [] for key in ("zoom_ref", "zoom_ghosts", "zoom_arcs", "zoom_solution", "zoom_defects", "zoom_dim_nodes", "zoom_nodes", "zoom_end")}
         for k, it in enumerate(its):
             hold = END1 if k == K else at(k + 1, 0.0, S) - GAP
             slide = slide_at(k, S)
-            # an arc that leaves the box is drawn in its pieces inside it, and the last point of its last piece is kept, by segment and by mirror image
-            cuts: dict[tuple[int, int], np.ndarray | None] = {}
+            # an arc that leaves the box is drawn in its pieces inside it, and the last point of its last piece is kept
+            cuts: dict[int, np.ndarray | None] = {}
             for i, (xy, frac, _) in enumerate(it["segments"]):
                 cc = grow_at(k, S, i, GROW * frac)
-                for m, P in enumerate([xy, xy * [1.0, -1.0]] if half else [xy]):
-                    pieces = clip_pieces(P, cc, box)
-                    if not inside(P, box).all():
-                        cuts[(i, m)] = pieces[-1][0][-1] if pieces else None
-                    for Pk, ck in pieces:
-                        (mirror_arcs if m else arcs).append((np.r_[Pk, Pk[-1:]], np.r_[ck, hold]))
-                        if k == K or len(Pk) < 2:
-                            continue
-                        Pg = np.r_[Pk[::2], Pk[-1:]] if len(Pk) % 2 == 0 else Pk[::2]
+                pieces = clip_pieces(xy, cc, box)
+                if not inside(xy, box).all():
+                    cuts[i] = pieces[-1][0][-1] if pieces else None
+                for Pk, ck in pieces:
+                    arcs.append((np.r_[Pk, Pk[-1:]], np.r_[ck, hold]))
+                    if k == K or len(Pk) < 2:
+                        continue
+                    Pg = np.r_[Pk[::2], Pk[-1:]] if len(Pk) % 2 == 0 else Pk[::2]
+                    start = at(k + 1, 0.0, S)
+                    ghosts.append((Pg, np.linspace(start, start + 0.05, len(Pg))))
+                ok = np.isfinite(xy).all(axis=1) & np.isfinite(cc)
+                if ok.sum() >= 2:
+                    near["zoom_arcs"].append((np.r_[xy[ok], xy[ok][-1:]], np.r_[cc[ok], hold], True))
+                    if k < K:
                         start = at(k + 1, 0.0, S)
-                        ghosts.append((Pg, np.linspace(start, start + 0.05, len(Pg))))
+                        Pg = xy[ok]
+                        near["zoom_ghosts"].append((np.r_[Pg, Pg[-1:]], np.r_[np.linspace(start, start + 0.05, len(Pg)), END1], True))
             if math.isfinite(it["norm"]):
                 # the converged iterate keeps the arrows at the end of its arc, which form one vertical arrow, but
                 # it does not have defects
@@ -959,13 +1010,10 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                 ends, nd, s = it["ends"], it["nodes"], arrow[case]
                 targets = [nd[i + 1] for i in range(S - 1)]
                 targets.append(ends[-1] * ON_AXIS if half else nd[0])
-                pairs = [(i, 0, a, b) for i, (a, b) in enumerate(zip(ends, targets, strict=True))]
-                if half:
-                    pairs += [(i, 1, a * MIRROR, b * MIRROR) for i, _, a, b in pairs[:-1]]
-                for i, m, a, b in pairs:
+                for i, (a, b) in enumerate(zip(ends, targets, strict=True)):
                     tt = np.array([grow_at(k, S, i, GROW), grow_at(k, S, i, DEFECT_END)])
                     # the last gap of a half period runs from the end of the arc down to its target on the axis
-                    on_axis = half and m == 0 and i == S - 1
+                    on_axis = half and i == S - 1
                     # with a single segment, the end of the arc is drawn with its velocity arrow from its defect on, and
                     # under the half period its target as well, with the vertical velocity required there, since
                     # neither is a node. Both are held with the arc until its ghost replaces it. An arrow that would
@@ -980,9 +1028,10 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                         continue
                     # the gap in position, from the end of the arc to its target, is held until the next iterate
                     gap = np.array([a[:2], b[:2]])
+                    near["zoom_defects"].append((np.r_[gap, gap[1:]], np.r_[tt, hold], True))
                     if not inside(gap, box).all():
                         # an end outside the box is drawn where its arc was cut, and a node outside it where the node is drawn
-                        a2 = a[:2] if inside(a[None, :2], box)[0] else cuts.get((i, m))
+                        a2 = a[:2] if inside(a[None, :2], box)[0] else cuts.get(i)
                         b2 = b[:2] if inside(b[None, :2], box)[0] else clamp(b[None, :2], box)[0]
                         if a2 is None or b2 is None:
                             continue
@@ -996,95 +1045,125 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                 if pieces and inside(p[None], box)[0]:
                     tip = pieces[0][0][-1]
                     arrows.append((p, tip - p, np.array([DRAWN[0] if k == 0 else at(k, 0.0, S), END1 if k == K else slide])))
-        # the close-up shows the closure of each iterate, i.e. the end of the last arc against its target, which is
-        # the point below it on the axis under the half period and the node x0 over the full period. A point p is
-        # drawn at (p - t) / w about the target t, hence the target stays at the middle of the close-up, and the
-        # end of an iterate held at its own scale w is drawn ZOOM_GAP from it. While the next arc grows, the end
-        # moves to the end of the next iterate, up to MOVE_END of the iterate, and the arc then lands on it. When the
-        # new gap is larger, the close-up zooms out about the target while the end moves, hence the gap is drawn at
-        # the new scale. When it is smaller, the end moves at the old scale, and the close-up zooms in once the arc
-        # has landed. The converged iterate K keeps
-        # the scale of iterate K - 1. The close-up shows the gap in position only, hence not the defect in velocity
+        # the nodes of a converged run are removed when its orbit is lit, so that the satellite is seen alone on it.
+        # The orbit panel draws a node outside its box at the edge, and the close-up where it is
+        gone = at(K, LIGHT, S) if r["converged"] else END1
+
+        def pack(P, cc, close):
+            return (P, cc, False) if close else (P, cc)
+
+        for i in range(S):
+            for dest, dim, close in ((nodes, dim_nodes, False), (near["zoom_nodes"], near["zoom_dim_nodes"], True)):
+                P, cc = [], []
+                for k, it in enumerate(its):
+                    p = it["nodes"][i, :2] if close else clamp(it["nodes"][i : i + 1, :2], box)[0]
+                    if not np.isfinite(p).all():
+                        break
+                    P += [p, p]
+                    cc += [DRAWN[0] if k == 0 else at(k, 0.0, S), slide_at(k, S) if k < K else gone]
+                if not P:
+                    continue
+                cc[-1] = max(cc[-1], cc[-2] + GAP)
+                if staged(0, S) and i > 0:
+                    # the node is white until the first segment grows, and dim until its own segment grows
+                    dest.append(pack(np.array(P[:2]), np.array([DRAWN[0], FIRST[0]]), close))
+                    dim.append(pack(np.array(P[:2]), np.array([FIRST[0], REST[0]]), close))
+                    cc[0] = REST[0]
+                dest.append(pack(np.array(P), np.array(cc), close))
+
+        # the close-up is a magnified copy of the orbit panel about a center c at a scale w, i.e. a point p is drawn
+        # at (p - c) / w. The center is the target of the closure of the iterate, i.e. the point below the end of the
+        # last arc on the axis under the half period and the node x0 over the full period, and w is set so that
+        # the end is drawn ZOOM_GAP from it. The flipbook is a sequence of slices of the clock, each with its scale
+        # and its center, in which every mark is drawn again and clipped to the panel. When iterate k starts, the
+        # center glides to its target up to MOVE_END of the iterate, and the close-up zooms out at the same time
+        # when the new gap is larger. The arc of iterate k is then drawn growing, its end is drawn when the arc
+        # lands, its gap after it, and the close-up zooms in when the new gap is smaller. The converged iterate K
+        # keeps the scale of iterate K - 1. The close-up shows the gap in position only, not the defect in velocity
         L = next((k for k, it in enumerate(its) if not math.isfinite(it["norm"])), K + 1) - 1
-        rel, scales, targets_at = [], [], []
+        scales, targets_at = [], []
         for k in range(L + 1):
             a = its[k]["ends"][-1]
-            t = a * ON_AXIS if half else its[k]["nodes"][0]
-            gap = float(np.hypot(*(a[:2] - t[:2])))
-            scales.append(scales[-1] if scales and ((r["converged"] and k == K) or gap < 1e-15) else gap / ZOOM_GAP)
-            rel.append(a[:2] - t[:2])
-            targets_at.append(t[:2])
+            t = (a * ON_AXIS if half else its[k]["nodes"][0])[:2]
+            gap = float(np.hypot(*(a[:2] - t)))
+            w = gap / ZOOM_GAP
+            if scales and ((r["converged"] and k == K) or gap < 1e-15 or ZOOM_KEEP[0] <= gap / scales[-1] / ZOOM_GAP <= ZOOM_KEEP[1] / ZOOM_GAP):
+                w = scales[-1]
+            scales.append(max(w, 1e-15))
+            targets_at.append(t)
+            arrive = grow_at(k, S, S - 1, GROW)
+            near["zoom_end"].append((np.array([a[:2], a[:2]]), np.array([arrive, at(k + 1, 0.0, S) - GAP if k < K else END1]), False))
+        if r["solution"] is not None:
+            P = r["solution"][0]
+            lit = at(K, LIGHT, S)
+            near["zoom_solution"].append((np.r_[P, P[-1:]], np.r_[np.linspace(lit, lit + 0.05, len(P)), END1], True))
+        P = ref_lines[(case, system)]
+        near["zoom_ref"].append((np.r_[P, P[-1:]], np.r_[np.linspace(START1, START1 + 0.01, len(P)), END1], True))
 
-        def stop(k):
-            return at(k + 1, 0.0, S) if k < L else END1
-
-        def first(k):
-            return grow_at(0, S, S - 1, GROW) if k == 0 else at(k, MOVE_END, S)
-
-        # the marks of the close-up about the target, each a track with its clock channel: the end, which moves
-        # while the nodes slide, the gap from it to the target, and the last arc of each iterate
-        closeup: dict[str, list] = {"zoom_end": [], "zoom_gap": [], "zoom_arc": []}
+        slices: list[tuple[float, float, float, np.ndarray]] = []
         if L >= 0:
-            P = np.repeat(np.array(rel), 2, axis=0)
-            closeup["zoom_end"].append((P, np.array([t for k in range(L + 1) for t in (first(k), stop(k))])))
-        for k in range(L + 1):
-            g0, g1 = grow_at(k, S, S - 1, GROW), grow_at(k, S, S - 1, DEFECT_END)
-            if not (r["converged"] and k == K):
-                closeup["zoom_gap"].append((np.array([rel[k], [0.0, 0.0], [0.0, 0.0]]), np.array([g0, g1, stop(k)])))
-            xy, frac, _ = its[k]["segments"][S - 1]
-            P = xy - targets_at[k]
-            closeup["zoom_arc"].append((np.r_[P, P[-1:]], np.r_[grow_at(k, S, S - 1, GROW * frac), stop(k)]))
-        # the close-up is a flipbook: each mark is drawn again at the scale of each slice of the clock, and shown
-        # while the clock is in that slice. A zoom from the scale w0 to w1 is cut into ZOOM_SLICES slices
-        slices: list[tuple[float, float, float]] = []
-        t0 = DRAWN[0]
-        for k in range(1, L + 1):
-            w0, w1 = scales[k - 1], scales[k]
-            if w1 == w0:
-                continue
-            # a zoom out is played while the end moves, so that the end stays in view and its gap is drawn at the
-            # new scale, and a zoom in once the arc has landed
-            z0, z1 = (at(k, 0.0, S), at(k, MOVE_END, S)) if w1 > w0 else (grow_at(k, S, S - 1, GROW), grow_at(k, S, S - 1, GROW) + ZOOM_TIME)
-            slices.append((t0, z0, w0))
-            for j in range(ZOOM_SLICES):
-                e = smooth((j + 1) / ZOOM_SLICES)
-                slices.append((z0 + (z1 - z0) * j / ZOOM_SLICES, z0 + (z1 - z0) * (j + 1) / ZOOM_SLICES, w0 ** (1 - e) * w1**e))
-            t0 = z1
-        if L >= 0:
-            slices.append((t0, END1, scales[L]))
-        zoom: dict[str, list] = {key: [] for key in (*closeup, "zoom_bar")}
-        for s0, s1, w in slices:
-            for element, items in closeup.items():
-                for P, cc in items:
-                    sliced = in_slice(P / w, cc, s0, s1, revealed=element != "zoom_end")
-                    if sliced is not None:
-                        zoom[element] += clip_late(*sliced, ZOOM_BOX)
-            # the scale bar at the lower left is 10^p long, the power of ten at most w, hence 0.1 to 1 unit of the close-up
-            power = math.floor(math.log10(w))
-            length = 10.0**power / w
-            zoom["zoom_bar"].append((np.array([[-ZOOM_HALF, -ZOOM_HALF], [length - ZOOM_HALF, -ZOOM_HALF]]), np.array([s0, s1 - GAP]), power))
-        # the nodes of a converged run are removed when its orbit is lit, so that the satellite is seen alone on it
-        gone = at(K, LIGHT, S) if r["converged"] else END1
-        for i in range(S):
-            P, cc = [], []
-            for k, it in enumerate(its):
-                p = clamp(it["nodes"][i : i + 1, :2], box)[0]
-                P += [p, p]
-                cc += [DRAWN[0] if k == 0 else at(k, 0.0, S), slide_at(k, S) if k < K else gone]
-            if staged(0, S) and i > 0:
-                # the node is white until the first segment grows, and dim until its own segment grows
-                nodes.append((np.array(P[:2]), np.array([DRAWN[0], FIRST[0]])))
-                dim_nodes.append((np.array(P[:2]), np.array([FIRST[0], REST[0]])))
-                cc[0] = REST[0]
-            nodes.append((np.array(P), np.array(cc)))
+            t0, w_now, c_now = DRAWN[0], scales[0], targets_at[0]
+            for k in range(1, L + 1):
+                w1, c1 = scales[k], targets_at[k]
+                glide = float(np.hypot(*(c1 - c_now))) / w_now
+                zoom_steps = min(ZOOM_SLICES, max(3, math.ceil(abs(math.log10(w1 / w_now)) * ZOOM_PER_DECADE)))
+                m0, m1 = at(k, 0.0, S), at(k, MOVE_END, S)
+                n = min(ZOOM_SLICES, max(math.ceil(glide / GLIDE_STEP), zoom_steps if w1 > w_now else 0))
+                if n:
+                    slices.append((t0, m0, w_now, c_now))
+                    w_out = w1 if w1 > w_now else w_now
+                    for j in range(n):
+                        e = smooth((j + 1) / n)
+                        slices.append((m0 + (m1 - m0) * j / n, m0 + (m1 - m0) * (j + 1) / n, w_now ** (1 - e) * w_out**e, c_now + e * (c1 - c_now)))
+                    t0, w_now, c_now = m1, w_out, c1
+                c_now = c1
+                if w1 < w_now:
+                    z0 = grow_at(k, S, S - 1, GROW)
+                    slices.append((t0, z0, w_now, c_now))
+                    for j in range(zoom_steps):
+                        e = smooth((j + 1) / zoom_steps)
+                        slices.append((z0 + ZOOM_TIME * j / zoom_steps, z0 + ZOOM_TIME * (j + 1) / zoom_steps, w_now ** (1 - e) * w1**e, c_now))
+                    t0, w_now = z0 + ZOOM_TIME, w1
+            slices.append((t0, END1, w_now, c_now))
+            # a slice at the scale and the center of the slice before it is merged into it
+            merged = [slices[0]]
+            for sl in slices[1:]:
+                last = merged[-1]
+                if sl[2] == last[2] and np.array_equal(sl[3], last[3]):
+                    merged[-1] = (last[0], sl[1], last[2], last[3])
+                else:
+                    merged.append(sl)
+            slices = merged
+        zoom: dict[str, list] = {key: [] for key in near}
+        near = {key: [(P, cc, rv, (P.min(axis=0), P.max(axis=0))) for P, cc, rv in items] for key, items in near.items()}
+        for s0, s1, w, ctr in slices:
+            lo, hi = ctr + w * np.array([CLOSE_CLIP[0], CLOSE_CLIP[2]]), ctr + w * np.array([CLOSE_CLIP[1], CLOSE_CLIP[3]])
+            for element, items in near.items():
+                for P, cc, revealed, (blo, bhi) in items:
+                    # a mark outside the slice in time, or away from the panel, is not drawn in it
+                    if cc[0] >= s1 or cc[-1] <= s0 or (bhi < lo).any() or (blo > hi).any():
+                        continue
+                    sliced = in_slice((P - ctr) / w, cc, s0, s1, revealed=revealed)
+                    if sliced is None:
+                        continue
+                    pieces = clip_late(*sliced, CLOSE_CLIP)
+                    if revealed:
+                        # a piece that leaves the panel is held until the end of the track in the slice, as its layer
+                        # hides a track after its last sample
+                        end = float(sliced[1][-1])
+                        pieces = [(np.r_[Pq, Pq[-1:]], np.r_[cq, end]) if cq[-1] < end - EPS else (Pq, cq) for Pq, cq in pieces]
+                    if element in STATIC_NEAR:
+                        # a mark that is drawn whole within the slice is thinned to within SIMPLIFY of the close-up
+                        pieces = [(Pq[j], cq[j]) for Pq, cq in pieces for j in [simplified(Pq, SIMPLIFY)]]
+                    if element == "zoom_ref":
+                        # the reference is dashed in the units of the close-up, hence at every scale alike
+                        pieces = [(D, np.linspace(cq[0], cq[0] + EPS * len(D), len(D))) for Pq, cq in pieces for D in dashes(Pq, 0.25, 0.12) if len(D) >= 2]
+                        pieces = [(np.r_[D, D[-1:]], np.r_[cq, s1 - GAP]) for D, cq in pieces]
+                    zoom[element] += pieces
 
         ts = new("arcs")
         for P, cc in arcs:
             ts.add(P, channels={"c": cc})
-        if mirror_arcs:
-            ts = new("mirror_arcs")
-            for P, cc in mirror_arcs:
-                ts.add(P, channels={"c": cc})
         if ghosts:
             ts = new("ghosts")
             for P, cc in ghosts:
@@ -1105,13 +1184,11 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                 ts = new(element, frame=zf)
                 for P, cc, *_ in items:
                     ts.add(P, channels={"c": cc})
-        # the target is held at the middle of the close-up, on the axis under the half period
-        if L >= 0:
-            ts = new("zoom_requirement" if half else "zoom_node", frame=zf)
-            ts.add(np.zeros((2, 2)), channels={"c": np.array([first(0) if half else DRAWN[0], END1])})
-            if half:
-                ts = new("zoom_axis", frame=zf)
-                ts.add(np.array([[-1.1 * ZOOM_HALF, 0.0], [1.1 * ZOOM_HALF, 0.0]]), channels={"c": np.array([DRAWN[0], END1])})
+        # the target under the half period is held at the middle of the close-up, on the axis, from the moment the
+        # first arc lands. Over the full period the target is the node x0, which the close-up draws with the nodes
+        if L >= 0 and half:
+            ts = new("zoom_requirement", frame=zf)
+            ts.add(np.zeros((2, 2)), channels={"c": np.array([grow_at(0, S, S - 1, GROW), END1])})
         # an arrow is a track of two samples at its base, shown while the clock is in its window
         for element, items in (("arrows", arrows), ("target_arrows", target_arrows)):
             if items:
@@ -1169,9 +1246,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         for k, it in enumerate(its):
             logF = logs[k] if k in logs else (events[-1][1]["logF"] if events else Y_TOP)
             events.append((START1 if k == 0 else point_at(k, S), {"n": float(k), "logF": logF, "failed": 1e-6}))
-        # the power of ten of the scale bar of the close-up is updated at each slice of the flipbook
-        events += [(max(cc[0], START1), {"zoom": float(power)}) for _, cc, power in zoom["zoom_bar"]]
-        changes, state = [], {"zoom": 0.0}
+        changes, state = [], {}
         for t, v in sorted(events, key=lambda e: e[0]):
             state = {**state, **v}
             changes.append((t, state))
@@ -1184,24 +1259,17 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             # the gaps of family 11 are drawn along y = 0 across 𝓛₁, which this scene therefore does not show
             attrs["l1x"] = FAR
         cc, ch = hold_series(changes, START1, END1, gap=TICK_GAP)
-        # the target and the scale of the close-up, at the samples of the ticker and at the ends of the slices of the
-        # flipbook and of the moves of the target, between which the target moves linearly and the scale is held
-        knots, tx, ty_ = [START1], [0.0], [0.0]
-        if L >= 0:
-            knots, tx, ty_ = [START1], [targets_at[0][0]], [targets_at[0][1]]
-            for k in range(1, L + 1):
-                for t, target in ((at(k, 0.0, S), targets_at[k - 1]), (at(k, MOVE_END, S), targets_at[k])):
-                    knots.append(t)
-                    tx.append(target[0])
-                    ty_.append(target[1])
-        edges = [s0 for s0, _, _ in slices[1:]]
-        grid = np.unique(np.r_[cc, knots, [e - TICK_GAP for e in edges], edges])
+        # the center and the scale of the close-up, held through each slice of the flipbook, which the frame zoom
+        # reads, and the spacing of the grid of the close-up in the units of the orbit panel, for the caption
+        edges = [s0 for s0, *_ in slices[1:]]
+        grid = np.unique(np.r_[cc, [e - TICK_GAP for e in edges], edges])
         grid = grid[(grid >= START1) & (grid <= END1)]
         ch = {key: np.interp(grid, cc, v) for key, v in ch.items()}
-        starts = np.array([s0 for s0, _, _ in slices]) if slices else np.array([START1])
-        inv = np.array([1.0 / w for _, _, w in slices]) if slices else np.array([1.0])
-        ch["inv_w"] = inv[np.clip(np.searchsorted(starts, grid + 1e-12, side="right") - 1, 0, len(inv) - 1)]
-        ch["t_x"], ch["t_y"] = np.interp(grid, knots, tx), np.interp(grid, knots, ty_)
+        held = slices or [(START1, END1, 1.0, np.zeros(2))]
+        which = np.clip(np.searchsorted(np.array([s0 for s0, *_ in held]), grid + 1e-12, side="right") - 1, 0, len(held) - 1)
+        ch["inv_w"] = np.array([1.0 / held[j][2] for j in which])
+        ch["cell"] = np.array([GRID_STEP * held[j][2] for j in which])
+        ch["t_x"], ch["t_y"] = np.array([held[j][3][0] for j in which]), np.array([held[j][3][1] for j in which])
         ts = new("ticker", attrs=attrs)
         ts.add(np.zeros((len(grid), 2)), channels={"c": grid, **ch})
 
@@ -1245,11 +1313,10 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         label="orbit",
         layers=[
             ty.track(ty.sets(element="box", case=case), opacity=0.0, width=1.0),
+            ty.grid(labels=False),
             ty.axes(),
             # the ghosts are drawn under the current arcs, and the dashed reference over the arcs and the converged orbit
             ty.track(q("ghosts"), before="hidden", color=GRAY, width=1.2, opacity=0.4, visible=ghosts_on),
-            # under the half period the mirror image of the integrated arcs is drawn in gray
-            ty.track(q("mirror_arcs"), reveal="grow", before="hidden", after="hidden", color=GRAY, width=2.5),
             ty.track(q("arcs"), reveal="grow", before="hidden", after="hidden", color=TEAL, width=2.5),
             # the red disc of a defect is drawn at its target under the white node, and seen around it
             ty.track(
@@ -1287,10 +1354,13 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ty.outline("closeup", color=WHITE, opacity=0.5, width=1.0, dash=(WINDOW_DASH, WINDOW_DASH / 2), min_size=WINDOW_MIN),
         ],
     )
-    # the close-up is drawn without axes, since its units change at each iterate, and its scale is given by the
-    # bar at its lower left, whose power of ten is read out in the caption. The last arc and its end are teal, the
-    # target is the green requirement on the gray line y = 0 under the half period and the white node over the
-    # full period
+    # the close-up is a magnified copy of the orbit panel without axes, since its units change with the zoom. Its
+    # fixed grid is read out in the caption. Its camera is fitted to the box of the target alone, and the marks are
+    # drawn across the whole panel. The end of the last arc is a teal dot from the moment the arc lands on it, and
+    # the target under the half period is the green requirement on the axis
+    def magnified(element, **kw):
+        return ty.track(q(element), before="hidden", after="hidden", fit=False, **kw)
+
     scene.view(
         "closeup",
         frame=zf,
@@ -1299,13 +1369,19 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         label="magnified close-up",
         layers=[
             ty.track(ty.set_id("zoom-box"), opacity=0.0, width=1.0),
-            ty.track(q("zoom_axis"), before="hidden", after="hidden", color=GRAY, width=1.0, opacity=0.6),
-            ty.track(q("zoom_bar"), before="hidden", after="hidden", color=WHITE, width=2.0, opacity=0.8),
-            ty.track(q("zoom_arc"), reveal="grow", before="hidden", after="hidden", color=TEAL, width=2.5),
-            ty.track(q("zoom_gap"), reveal="grow", before="hidden", after="hidden", head={"color": RED, "size": DEFECT_DISC}, color=RED, width=3.0, visible=defects_on),
-            ty.track(q("zoom_requirement"), trail=0.002, taper=(0, 0), head={"color": GREEN, "size": NODE_SIZE}, before="hidden", after="hidden", color=GREEN, width=0.5),
-            ty.track(q("zoom_node"), trail=0.002, taper=(0, 0), head={"color": WHITE, "size": NODE_SIZE}, before="hidden", after="hidden", color=WHITE, width=0.5),
-            ty.track(q("zoom_end"), trail=0.002, taper=(0, 0), head={"color": TEAL, "size": NODE_SIZE}, before="hidden", after="hidden", color=TEAL, width=0.5),
+            ty.track(ty.set_id("zoom-grid"), color=GRAY, width=1.0, opacity=0.25, fit=False),
+            ty.track(ty.set_id("zoom-axis"), color=GRAY, width=1.0, opacity=0.6, fit=False),
+            magnified("zoom_ref", reveal="grow", color=GRAY, width=3.5, opacity=0.95, visible=solution_on),
+            magnified("zoom_ghosts", reveal="grow", color=GRAY, width=1.2, opacity=0.4, visible=ghosts_on),
+            magnified("zoom_arcs", reveal="grow", color=TEAL, width=2.5),
+            magnified("zoom_defects", reveal="grow", head={"color": RED, "size": DEFECT_DISC}, color=RED, width=3.0, visible=defects_on),
+            magnified("zoom_solution", reveal="grow", color=GLOW, width=STILL_GLOW),
+            magnified("zoom_solution", reveal="grow", color=TEAL, width=5.0),
+            magnified("zoom_requirement", trail=0.002, taper=(0, 0), head={"color": GREEN, "size": NODE_SIZE}, color=GREEN, width=0.5),
+            magnified("zoom_end", trail=0.002, taper=(0, 0), head={"color": TEAL, "size": NODE_SIZE}, color=TEAL, width=0.5),
+            magnified("zoom_dim_nodes", trail=0.002, taper=(0, 0), head={"color": DIM_WHITE, "size": NODE_SIZE}, color=WHITE, width=0.5, opacity=0.3),
+            magnified("zoom_nodes", trail=0.002, taper=(0, 0), head={"color": WHITE, "size": NODE_SIZE}, color=WHITE, width=0.5),
+            *body_layers,
         ],
     )
     scene.view(
@@ -1318,6 +1394,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ty.track(ty.set_id("convergence-box"), opacity=0.0, width=1.0),
             ty.axes(),
             ty.grid(labels=True),
+            ty.track(ty.set_id("convergence-grid"), color=GRAY, width=1.0, opacity=0.2),
             ty.track(ty.set_id("tolerance"), color=GRAY, width=1.0, opacity=0.6),
             ty.track(
                 qr("race"), reveal="grow", before="hidden", head={"color": GRAY, "size": 5}, color=GRAY, width=1.5, opacity=0.8, visible=others_on
@@ -1350,8 +1427,9 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         ty.channel("n"),
         "   log₁₀ ‖F‖ = ",
         {"channel": "logF", "digits": 3},
-        "   scale bar 10^",
-        ty.channel("zoom"),
+        "   close-up grid ",
+        {"channel": "cell", "digits": 2},
+        " LU",
     )
     scene.write(out / "correction.tys", out / "correction.tyd")
     return scene.write_html(out / "correction.html")

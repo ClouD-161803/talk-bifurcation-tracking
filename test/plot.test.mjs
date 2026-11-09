@@ -54,6 +54,16 @@ test('an axis is read with its scale and the text of its ticks, and a tab replac
   assert.deepEqual(plot.tabs[0].panels.p.y.range, [0, 5]);
 });
 
+test('a region spreads and a curve is drawn on only with their keys, and an element is shown after its delay', () => {
+  const spec = minimal();
+  spec.panels[0].regions = [{ points: [[0, 0], [1, 0], [0, 1]] }, { points: [[0, 0], [1, 0], [0, 1]], spread: 1.5, from: [0.2, 0.2], delay: 0.5 }];
+  spec.panels[0].curves = [{ points: [[0, 0], [1, 1]] }, { points: [[0, 0], [1, 1]], draw: 2 }];
+  const plot = parsePlot(spec);
+  assert.deepEqual(plot.panels[0].regions.map((r) => [r.spread, r.from, r.delay]), [[0, null, 0], [1.5, [0.2, 0.2], 0.5]]);
+  assert.deepEqual(plot.panels[0].curves.map((c) => [c.draw, c.delay]), [[0, 0], [2, 0]]);
+  assert.equal(plot.marks[0].delay, 0);
+});
+
 test('the panels share a side in proportion to their sizes, with a gap between two panels', () => {
   assert.deepEqual(cells([1, 1], 1056, 56), [[0, 500], [556, 500]]);
   assert.deepEqual(cells([1, 3], 456, 56), [[0, 100], [156, 300]]);
@@ -80,6 +90,8 @@ test('a fault in a plot is reported with its path', () => {
     [(p) => (p.panels[0].x.ticks = ['a']), /^panels\[0\]\.x\.ticks\[0\]: a number or a tick \{ at, text \} is expected/],
     [(p) => (p.panels[0].margin = [1, 2]), /^panels\[0\]\.margin: a margin \[top, right, bottom, left\] is expected/],
     [(p) => (p.panels[0].size = -1), /^panels\[0\]\.size: a positive number is expected/],
+    [(p) => (p.panels[0].regions = [{ points: [[0, 0]], spread: -1 }]), /^panels\[0\]\.regions\[0\]\.spread: a number of seconds, at least 0, is expected/],
+    [(p) => (p.panels[0].curves = [{ points: [[0, 0]], delay: 'soon' }]), /^panels\[0\]\.curves\[0\]\.delay: /],
     [(p) => (p.tabs[0].panels = { q: {} }), /^tabs\[0\]\.panels\.q: the panel q is not declared/],
     [(p) => (p.tabs[0].panels = { p: { equal: true } }), /^tabs\[0\]\.panels\.p\.equal: one of x, y, title, regions, curves, labels is expected/],
   ];
@@ -284,6 +296,41 @@ test('a plot is played while its slide is shown, and its steps show a panel and 
   const error = await page.evaluate(`document.querySelector('[data-plot="missing"] .plot-error').textContent`);
   assert.match(error, /the JSON block with the id "missing" is not found/);
   assert.deepEqual(page.errors.filter((e) => !e.includes('"missing"')), []);
+});
+
+test('a step with data-plot-run plays its tab once and holds the last frame, with a region that spreads and a curve that is drawn on', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/plot-run.html'));
+  await page.waitFor(deckSettled);
+  const probe = `(() => {
+    const view = Beeson.plots[0], disk = view.el.querySelector('.plot-spread'), line = view.el.querySelector('.plot-draw');
+    return { playing: view.playing, frame: view.frame, dots: view.el.querySelectorAll('.plot-dot').length,
+      clipped: !!disk?.parentElement.getAttribute('clip-path'), hidden: [disk, line].map((n) => n.classList.contains('plot-hidden')),
+      delay: line.style.getPropertyValue('--plot-delay'), length: line.getAttribute('pathLength') };
+  })()`;
+
+  const before = await page.evaluate(probe);
+  assert.equal(before.playing, false);
+  assert.equal(before.dots, 0);
+  assert.equal(before.clipped, true);
+  assert.deepEqual(before.hidden, [true, true]);
+  assert.equal(before.delay, '0.2s');
+  assert.equal(before.length, '1');
+
+  await page.evaluate('Reveal.next()');
+  const run = await page.evaluate(probe);
+  assert.equal(run.playing, true);
+  assert.deepEqual(run.hidden, [false, false]);
+  await page.waitFor(`!${probe}.playing`, 5000);
+  assert.equal((await page.evaluate(probe)).frame, 2);
+
+  await page.evaluate('Reveal.prev()');
+  const back = await page.evaluate(probe);
+  assert.equal(back.dots, 0);
+  assert.deepEqual(back.hidden, [true, true]);
+  assert.deepEqual(page.errors, []);
 });
 
 test('a plot is printed at its last frame, with the panels and the tab of each step', { timeout: 60000 }, async (t) => {

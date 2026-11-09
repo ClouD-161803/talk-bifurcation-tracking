@@ -681,7 +681,7 @@ REGIONS_Y = (-10, 20)
 THUMB = 17
 
 
-def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB):
+def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB, ident='thumbs'):
     """The unit circle, the real axis, and four multipliers, drawn round in a circle of radius px at
     (cx, cy), with the multipliers given in units of the radius of the circle. A multiplier on the
     circle, of a stable pair, is violet, and one off the circle, of an unstable pair, is orange."""
@@ -692,58 +692,154 @@ def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB):
     at = lambda z: [sig(cx + rx * z.real, 4), sig(cy + ry * z.imag, 4)]
     ring = [at(cmath.exp(2j * math.pi * i / 64)) for i in range(65)]
     out = [
-        {'id': 'thumbs', 'points': [at(complex(-reach, 0)), at(complex(reach, 0))], 'tone': 'muted', 'width': 1.5},
-        {'id': 'thumbs', 'points': ring, 'tone': 'subtle', 'width': 1.5},
+        {'id': ident, 'points': [at(complex(-reach, 0)), at(complex(reach, 0))], 'tone': 'muted', 'width': 1.5},
+        {'id': ident, 'points': ring, 'tone': 'subtle', 'width': 1.5},
     ]
     tone = lambda z: 'violet' if abs(abs(z) - 1) < 1e-9 else 'accent'
-    out += [{'id': 'thumbs', 'points': [at(z), at(z)], 'tone': tone(z), 'width': 6} for z in multipliers]
+    out += [{'id': ident, 'points': [at(z), at(z)], 'tone': tone(z), 'width': 6} for z in multipliers]
     return out
 
 
+# the order in which the regions are filled and classified, as in the table of the slide, and the
+# point from which the fill of each spreads
+REGION_ORDER = [1, 2, 3, 4, 5, 6, 7]
+SPREAD_FROM = {1: (0, 1), 2: (0, 12), 3: (0, -7), 4: (-6.6, 12.1), 5: (6.6, 12.1), 6: (-5.6, 1.5), 7: (5.6, 1.5)}
+SPREAD_SECONDS = 1.8
+# the seconds of a move of the point between two regions, for the first crossing of a bifurcation
+# and for each further one
+FIRST_MOVE, NEXT_MOVE = 2.6, 1.6
+MOVE_FRAMES = 48
+
+
+def multipliers_of(k):
+    """The two multipliers of the index k, i.e. the roots of lam^2 - k lam + 1 = 0."""
+    r = cmath.sqrt(k * k - 4)
+    return [(k + r) / 2, (k - r) / 2]
+
+
+def on_circle(lam):
+    """The multiplier drawn on the unit circle of the slide, at the radius (1 + ln|lam|)^(1/2) and
+    mirrored inside for |lam| < 1, so that a multiplier far from the circle is still in view."""
+    rho = abs(lam)
+    radius = math.sqrt(1 + math.log(rho)) if rho >= 1 else 1 / math.sqrt(1 - math.log(rho))
+    return lam / rho * radius
+
+
+def move_tab(name, path, seconds, marks=None):
+    """A tab in which the point is moved through the diagram while its multipliers are moved on the
+    unit circle. path maps s in [0, 1] to the two indices, and the point is eased in and out."""
+    ease = lambda s: s * s * (3 - 2 * s)
+    trace, stable, unstable = [], [], []
+    for i in range(MOVE_FRAMES):
+        k1, k2 = path(ease(i / (MOVE_FRAMES - 1)))
+        trace.append([sig((-(k1 + k2)).real, 4), sig((2 + k1 * k2).real, 4)])
+        lams = multipliers_of(k1) + multipliers_of(k2)
+        on = [on_circle(z) for z in lams if abs(abs(z) - 1) < 1e-9]
+        off = [on_circle(z) for z in lams if abs(abs(z) - 1) >= 1e-9]
+        stable.append([sig(v, 4) for z in on for v in (z.real, z.imag)])
+        unstable.append([sig(v, 4) for z in off for v in (z.real, z.imag)])
+    tab = {
+        'name': name, 'label': name, 'values': list(range(MOVE_FRAMES)),
+        'times': [sig(seconds * i / (MOVE_FRAMES - 1), 4) for i in range(MOVE_FRAMES)],
+        'data': {'point': {'points': trace, 'ghost': 0}, 'stable': stable, 'unstable': unstable},
+    }
+    if marks:
+        tab['panels'] = {'circle': {'curves': circle_curves() + [
+            {'circle': [sig(z.real, 4), sig(z.imag, 4), 0.09], 'tone': 'muted', 'width': 2} for z in marks]}}
+    return tab
+
+
+def circle_curves():
+    return [
+        {'points': [[-2.1, 0], [2.1, 0]], 'tone': 'muted', 'width': 1.5},
+        {'circle': [0, 0, 1], 'tone': 'subtle', 'width': 2},
+    ]
+
+
+def lin(a, b):
+    """The indices along a straight line from the pair a to the pair b."""
+    return lambda s: (a[0] + s * (b[0] - a[0]), a[1] + s * (b[1] - a[1]))
+
+
+def collide(c, q0, q1):
+    """The indices c +- sqrt(q), with q from q0 to q1, which are equal at q = 0 and complex past it."""
+    return lambda s: (c + cmath.sqrt(q0 + s * (q1 - q0)), c - cmath.sqrt(q0 + s * (q1 - q0)))
+
+
+def bifurcation_tabs():
+    """One tab per crossing of the table of bifurcations, in its order: the tangent and the
+    period-doubling crossings of k = 2 and k = -2 from each side, the crossings of k = -1 and k = 0
+    inside E2, and the collisions of the indices on the parabola."""
+    root = lambda deg: [cmath.exp(1j * math.radians(deg)), cmath.exp(-1j * math.radians(deg))]
+    return [
+        move_tab('tan-1', lin((1.0, -0.6), (3.2, -0.6)), FIRST_MOVE),
+        move_tab('tan-2', lin((1.0, -3.2), (3.2, -3.2)), NEXT_MOVE),
+        move_tab('tan-3', lin((4.4, 2.6), (4.4, 1.2)), NEXT_MOVE),
+        move_tab('pd-1', lin((-1.0, 0.6), (-3.2, 0.6)), FIRST_MOVE),
+        move_tab('pd-2', lin((-1.0, 3.2), (-3.2, 3.2)), NEXT_MOVE),
+        move_tab('pd-3', lin((-4.4, -2.6), (-4.4, -1.2)), NEXT_MOVE),
+        move_tab('p3', lin((-0.3, 1.2), (-1.7, 1.2)), FIRST_MOVE, root(120)),
+        move_tab('p4', lin((0.8, -1.2), (-0.6, -1.2)), FIRST_MOVE, root(90)),
+        move_tab('hopf', collide(-0.4, 1.2, -1.2), FIRST_MOVE),
+        move_tab('mhopf-1', collide(3.2, 0.8, -2.5), FIRST_MOVE),
+        move_tab('mhopf-2', collide(-3.2, 0.8, -2.5), NEXT_MOVE),
+    ]
+
+
 def regions_plot():
-    """A still plot of the seven regions, with Howell's fills, the three curves, Moreno's name of each
-    region, a thumbnail of its multipliers, and the lines k = -1 and k = 0 of period tripling and
-    quadrupling. H++ and H-- are too thin for a name, which is put above them with an arrow, and the
-    thumbnail of each is beside its name, so that the arrow starts under the name at every step."""
+    """The plot of Broucke's diagram on linear axes, with the unit circle beside it. The curves are
+    drawn on one after another, and each region is filled from a point, named, and given a thumbnail
+    of its multipliers at a step of its own. H++ and H-- are too thin for a name, which is put above
+    them with an arrow, and the thumbnail of each is beside its name. In the tabs of the table of
+    bifurcations, a point is moved across a curve while its multipliers are moved on the circle."""
     x_range, y_range = REGIONS_X, REGIONS_Y
+    px_x = (x_range[1] - x_range[0]) / (REGIONS_ZONE[0] - REGIONS_MARGIN[1] - REGIONS_MARGIN[3])
+    px_y = (y_range[1] - y_range[0]) / (REGIONS_ZONE[1] - REGIONS_MARGIN[0] - REGIONS_MARGIN[2])
     e = lambda deg: cmath.exp(1j * math.radians(deg))
     on = lambda *degs: [e(d) for d in degs]
     real = lambda *xs: [complex(x, 0) for x in xs]
     quad = lambda deg: [1.45 * e(deg), 1.45 * e(-deg), e(deg) / 1.45, e(-deg) / 1.45]
     line = lambda f: [[x, sig(f(x))] for x in (-9, 9)]
     par = [[sig(-9 + 18 * i / 180, 4), sig((-9 + 18 * i / 180) ** 2 / 4 + 2, 4)] for i in range(181)]
-    name = lambda i, x, y, **kw: {'id': 'names', 'at': [x, y], 'text': SYMBOL[i], 'tone': 'text', **kw}
-    # a leader from just under a name down to a tip inside its region, with a head of 10 by 12 px
-    def arrow(x, top, tip):
-        hx, hy = 10 * (x_range[1] - x_range[0]) / 760, 12 * (y_range[1] - y_range[0]) / 716
-        head = [[sig(x - hx, 4), sig(tip + hy, 4)], [x, tip], [sig(x + hx, 4), sig(tip + hy, 4)]]
-        return [{'id': 'names', 'points': [[x, top], [x, tip]], 'tone': 'subtle', 'width': 1.5},
-                {'id': 'names', 'points': head, 'tone': 'subtle', 'width': 1.5}]
-    curve_label = lambda key, x, y, text, **kw: {'id': key, 'class': key, 'at': [x, y], 'text': text, 'tone': 'subtle', **kw}
+    name = lambda i, x, y: {'id': f'name-{i}', 'at': [x, y], 'text': SYMBOL[i], 'tone': 'text', 'delay': 0.9}
+    curve_label = lambda key, x, y, text, delay, **kw: {'id': key, 'class': key, 'at': [x, y], 'text': text, 'tone': 'subtle', 'delay': delay, **kw}
+
+    # a leader from just under a name down to a tip inside its region, with a filled head of 7 by 9 px
+    def arrow(i, x, top, tip):
+        hx, hy = 3.5 * px_x, 9 * px_y
+        head = {'id': f'name-{i}', 'points': [[sig(x - hx, 4), sig(tip + hy, 4)], [x, tip], [sig(x + hx, 4), sig(tip + hy, 4)]],
+                'tone': 'subtle', 'opacity': 1, 'delay': 0.9}
+        return head, {'id': f'name-{i}', 'points': [[x, top], [x, sig(tip + hy, 4)]], 'tone': 'subtle', 'width': 1.5}
+
+    heads, leaders = zip(arrow(4, -7, 16.7, 13.1), arrow(5, 7, 16.7, 13.1))
     thumbs = (
-        thumbnail(0, -0.6, on(60, -60, 120, -120), reach=1.6, radius=15)
-        + thumbnail(-3.2, 9.5, quad(40), reach=1.8)
-        + thumbnail(3.2, 9.5, quad(140), reach=1.8)
-        + thumbnail(0, -5.8, real(0.5, 2, -0.5, -2), reach=2.4)
-        + thumbnail(-4.9, 17.6, real(0.25, 0.8, 1.55, 2.35), reach=2.7)
-        + thumbnail(4.9, 17.6, real(-0.25, -0.8, -1.55, -2.35), reach=2.7)
-        + thumbnail(-5.6, -2.2, on(120, -120) + real(0.5, 2), reach=2.4)
-        + thumbnail(5.6, -2.2, on(60, -60) + real(-0.5, -2), reach=2.4)
+        thumbnail(0, -0.6, on(60, -60, 120, -120), reach=1.6, radius=15, ident='thumb-1')
+        + thumbnail(-3.2, 9.5, quad(40), reach=1.8, ident='thumb-2')
+        + thumbnail(3.2, 9.5, quad(140), reach=1.8, ident='thumb-2')
+        + thumbnail(0, -5.8, real(0.5, 2, -0.5, -2), reach=2.4, ident='thumb-3')
+        + thumbnail(-4.9, 17.6, real(0.25, 0.8, 1.55, 2.35), reach=2.7, ident='thumb-4')
+        + thumbnail(4.9, 17.6, real(-0.25, -0.8, -1.55, -2.35), reach=2.7, ident='thumb-5')
+        + thumbnail(-5.6, -2.2, on(120, -120) + real(0.5, 2), reach=2.4, ident='thumb-6')
+        + thumbnail(5.6, -2.2, on(60, -60) + real(-0.5, -2), reach=2.4, ident='thumb-7')
     )
-    panel = {
+    fills = []
+    for r in region_fills(x_range, y_range, 'linear'):
+        i = int(r['id'].split('-')[1])
+        assert region_of(*SPREAD_FROM[i]) == i, f'the fill of region {i} spreads from outside it'
+        fills.append({**r, 'spread': SPREAD_SECONDS, 'from': list(SPREAD_FROM[i])})
+    diagram = {
         'id': 'regions',
         'margin': REGIONS_MARGIN,
         'x': {'range': list(x_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (-8, -4, 0, 4, 8)], 'title': '$a_1$'},
         'y': {'range': list(y_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (-10, -5, 0, 5, 10, 15, 20)], 'title': '$a_2$'},
-        'regions': [{**r, 'id': 'fills'} for r in region_fills(x_range, y_range, 'linear')],
+        'regions': fills + list(heads),
         'curves': [
-            {'id': 'multiples', 'points': line(lambda a: a + 1), 'tone': 'muted', 'width': 2, 'dash': [10, 8]},
-            {'id': 'multiples', 'points': line(lambda a: 2), 'tone': 'muted', 'width': 2, 'dash': [2, 7]},
-            {'id': 'kequal', 'class': 'kequal', 'points': par, 'tone': 'subtle', 'width': 2.5},
-            {'id': 'kplus', 'class': 'kplus', 'points': line(lambda a: -2 * a - 2), 'tone': 'subtle', 'width': 2.5},
-            {'id': 'kminus', 'class': 'kminus', 'points': line(lambda a: 2 * a - 2), 'tone': 'subtle', 'width': 2.5},
-            *arrow(-7, 16.7, 13.1),
-            *arrow(7, 16.7, 13.1),
+            {'id': 'mult-3', 'points': line(lambda a: a + 1), 'tone': 'muted', 'width': 2, 'dash': [10, 8]},
+            {'id': 'mult-4', 'points': line(lambda a: 2), 'tone': 'muted', 'width': 2, 'dash': [2, 7]},
+            {'id': 'kequal', 'class': 'kequal', 'points': par, 'tone': 'subtle', 'width': 2.5, 'draw': 1.2},
+            {'id': 'kplus', 'class': 'kplus', 'points': line(lambda a: -2 * a - 2), 'tone': 'subtle', 'width': 2.5, 'draw': 1.0, 'delay': 1.3},
+            {'id': 'kminus', 'class': 'kminus', 'points': line(lambda a: 2 * a - 2), 'tone': 'subtle', 'width': 2.5, 'draw': 1.0, 'delay': 2.4},
+            *leaders,
             *thumbs,
         ],
         'labels': [
@@ -754,18 +850,32 @@ def regions_plot():
             name(5, 7, 17.6),
             name(6, -5.6, 4.4),
             name(7, 5.6, 4.4),
-            curve_label('kequal', 5.5, 12.2, '$k_1 = k_2$', anchor='end'),
-            curve_label('kplus', 4.0, -7.6, '$k = 2$', anchor='start'),
-            curve_label('kminus', -4.0, -7.6, '$k = -2$', anchor='end'),
-            {'id': 'multiples', 'at': [-7.8, -4.4], 'text': '$k = -1$', 'tone': 'muted', 'anchor': 'start'},
-            {'id': 'multiples', 'at': [-7.8, 2.9], 'text': '$k = 0$', 'tone': 'muted', 'anchor': 'start'},
+            curve_label('kequal', 6.0, 12.2, '$k_1 = k_2$', 1.2, anchor='end'),
+            curve_label('kplus', 3.35, -7.6, '$k = 2$', 2.3, anchor='start'),
+            curve_label('kminus', -3.35, -7.6, '$k = -2$', 3.4, anchor='end'),
+            {'id': 'mult-3', 'at': [-7.8, -4.6], 'text': '$k = -1$', 'tone': 'muted', 'anchor': 'start'},
+            {'id': 'mult-4', 'at': [-7.8, 2.75], 'text': '$k = 0$', 'tone': 'muted', 'anchor': 'start'},
+        ],
+    }
+    circle = {
+        'id': 'circle', 'margin': [8, 8, 8, 8], 'equal': True, 'axes': False,
+        'x': {'range': [-2.2, 2.2]}, 'y': {'range': [-2.2, 2.2]},
+        'curves': circle_curves(),
+        'labels': [
+            {'at': [1, 0], 'text': '$1$', 'tone': 'muted', 'anchor': 'start', 'dx': 4, 'dy': 18},
+            {'at': [-1, 0], 'text': '$-1$', 'tone': 'muted', 'anchor': 'end', 'dx': -4, 'dy': 18},
         ],
     }
     return {
         'parameter': {'label': '', 'digits': 0},
         'duration': 1,
-        'panels': [panel],
-        'tabs': [{'name': 'regions', 'label': 'regions', 'values': [0]}],
+        'panels': [diagram, circle],
+        'marks': [
+            {'id': 'point', 'panel': 'regions', 'kind': 'trace', 'tone': 'text', 'size': 14, 'width': 2.5, 'ghost': False},
+            {'id': 'stable', 'panel': 'circle', 'kind': 'points', 'tone': 'violet', 'size': 14},
+            {'id': 'unstable', 'panel': 'circle', 'kind': 'points', 'tone': 'accent', 'size': 14},
+        ],
+        'tabs': [{'name': 'regions', 'label': 'regions', 'values': [0], 'data': {}}] + bifurcation_tabs(),
     }
 
 

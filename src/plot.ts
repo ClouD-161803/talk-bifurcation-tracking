@@ -14,9 +14,9 @@ export type Scale = 'linear' | 'asinh';
 export type Axis = { range: Pair; ticks: Tick[]; title: string; scale: Scale; unit: number };
 // an element of a panel or a mark. id names it in data-plot-show and in the active list of a tab,
 // and the classes of cls are the targets of a data-highlight of the slide
-type Item = { id: string | null; tone: string; cls: string[] };
-export type Region = Item & { points: Pair[]; opacity: number };
-export type Curve = Item & { points: Pair[] | null; circle: [number, number, number] | null; width: number; dash: number[] | null };
+type Item = { id: string | null; tone: string; cls: string[]; delay: number };
+export type Region = Item & { points: Pair[]; opacity: number; spread: number; from: Pair | null };
+export type Curve = Item & { points: Pair[] | null; circle: [number, number, number] | null; width: number; dash: number[] | null; draw: number };
 export type Label = Item & { at: Pair; text: string; anchor: Anchor; dx: number; dy: number };
 // the margin of a panel in px, from the top clockwise as in CSS
 export type Margin = [number, number, number, number];
@@ -78,7 +78,14 @@ function anchor(v: unknown, path: string): Anchor {
 
 function item(o: Record<string, unknown>, path: string, tone: string): Item {
   const cls = str(o.class, `${path}.class`, '').split(/\s+/).filter(Boolean);
-  return { id: o.id === undefined ? null : str(o.id, `${path}.id`), tone: str(o.tone, `${path}.tone`, tone), cls };
+  const delay = seconds(o.delay, `${path}.delay`);
+  return { id: o.id === undefined ? null : str(o.id, `${path}.id`), tone: str(o.tone, `${path}.tone`, tone), cls, delay };
+}
+
+function seconds(v: unknown, path: string): number {
+  const s = num(v, path, 0);
+  if (!(s >= 0)) fail(path, 'a number of seconds, at least 0, is expected');
+  return s;
 }
 
 function axis(v: unknown, path: string): Axis {
@@ -108,7 +115,8 @@ function regions(v: unknown, path: string): Region[] {
   return list(v, path, []).map((r, i) => {
     const p = `${path}[${i}]`;
     if (!isObject(r)) fail(p, 'a region is expected');
-    return { ...item(r, p, 'violet'), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12) };
+    const from = r.from === undefined ? null : pair(r.from, `${p}.from`);
+    return { ...item(r, p, 'violet'), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), spread: seconds(r.spread, `${p}.spread`), from };
   });
 }
 
@@ -123,7 +131,7 @@ function curves(v: unknown, path: string): Curve[] {
       circle = [num(a[0], `${p}.circle[0]`), num(a[1], `${p}.circle[1]`), num(a[2], `${p}.circle[2]`)];
     } else if (c.points === undefined) fail(p, 'points or circle is expected');
     const dash = c.dash === undefined ? null : list(c.dash, `${p}.dash`).map((d, j) => num(d, `${p}.dash[${j}]`));
-    return { ...item(c, p, 'subtle'), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash };
+    return { ...item(c, p, 'subtle'), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, draw: seconds(c.draw, `${p}.draw`) };
   });
 }
 
@@ -551,6 +559,8 @@ export class PlotView {
   private cue: 'none' | 'held' | 'shown' = 'none';
   // the slide of the plot is shown, and the plot may move
   private live = false;
+  // the tab is played once, from a fragment with data-plot-run, and held at its last frame
+  private once = false;
 
   constructor(el: HTMLElement) {
     this.el = el;
@@ -789,6 +799,10 @@ export class PlotView {
   private styleItem(node: Element, it: Item, names: (string | null)[]): void {
     (node as HTMLElement | SVGElement).style.color = toneColor(it.tone);
     node.classList.add(...it.cls);
+    if (it.delay > 0) {
+      node.classList.add('plot-delayed');
+      (node as HTMLElement | SVGElement).style.setProperty('--plot-delay', `${it.delay}s`);
+    }
     this.gate(node, names);
     if (it.id) this.emphasized.push({ node, id: it.id });
   }
@@ -809,10 +823,25 @@ export class PlotView {
         svg('rect', { x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, clip);
       }
       const statics = svg('g', { 'clip-path': `url(#plot-${this.uid}-${p.id})` }, g);
-      for (const r of p.regions) {
-        const node = svg('path', { class: 'plot-region', d: `${this.path(b, r.points)}Z`, 'fill-opacity': r.opacity }, statics);
-        this.styleItem(node, r, [p.id, r.id]);
-      }
+      p.regions.forEach((r, k) => {
+        const d = `${this.path(b, r.points)}Z`;
+        if (!(r.spread > 0)) {
+          this.styleItem(svg('path', { class: 'plot-region', d, 'fill-opacity': r.opacity }, statics), r, [p.id, r.id]);
+          return;
+        }
+        // a region that spreads is a disk clipped to the region, grown from the point from as it is
+        // shown. the disk reaches the farthest corner of the part of the bounding box in the axes
+        const id = `plot-${this.uid}-${p.id}-spread-${k}`;
+        svg('path', { d }, svg('clipPath', { id }, defs));
+        const xs = r.points.map((q) => clamp(this.X(b, q[0]), b.x, b.x + b.w)), ys = r.points.map((q) => clamp(this.Y(b, q[1]), b.y, b.y + b.h));
+        const [fx, fy] = r.from ?? [r.points.reduce((s, q) => s + q[0], 0) / r.points.length, r.points.reduce((s, q) => s + q[1], 0) / r.points.length];
+        const X = this.X(b, fx), Y = this.Y(b, fy);
+        const R = Math.max(...[Math.min(...xs), Math.max(...xs)].flatMap((x) => [Math.min(...ys), Math.max(...ys)].map((y) => Math.hypot(x - X, y - Y))));
+        const disk = svg('circle', { class: 'plot-region plot-spread', cx: X.toFixed(1), cy: Y.toFixed(1), r: (R + 2).toFixed(1), 'fill-opacity': r.opacity }, svg('g', { 'clip-path': `url(#${id})` }, statics));
+        disk.style.transformOrigin = `${X.toFixed(1)}px ${Y.toFixed(1)}px`;
+        disk.style.setProperty('--plot-spread', `${r.spread}s`);
+        this.styleItem(disk, r, [p.id, r.id]);
+      });
       for (const c of p.curves) {
         const attrs: Record<string, string | number> = { class: 'plot-curve', 'stroke-width': c.width };
         if (c.dash) attrs['stroke-dasharray'] = c.dash.join(' ');
@@ -820,6 +849,12 @@ export class PlotView {
         const node = c.circle && linear
           ? svg('ellipse', { ...attrs, cx: this.X(b, c.circle[0]), cy: this.Y(b, c.circle[1]), rx: c.circle[2] * b.sx, ry: c.circle[2] * b.sy }, statics)
           : svg('path', { ...attrs, d: this.path(b, c.circle ? circlePoints(c.circle) : (c.points ?? [])) }, statics);
+        // a curve that is drawn on is traced from its first point to its last as it is shown
+        if (c.draw > 0) {
+          node.setAttribute('pathLength', '1');
+          node.classList.add('plot-draw');
+          node.style.setProperty('--plot-draw', `${c.draw}s`);
+        }
         this.styleItem(node, c, [p.id, c.id]);
       }
       if (p.axes) {
@@ -1010,7 +1045,10 @@ export class PlotView {
     const cues = frags.filter((f) => f.hasAttribute('data-plot-play'));
     const cue = !cues.length ? 'none' : cues.some((f) => visible.includes(f)) ? 'shown' : 'held';
     const tabbed = visible.filter((f) => f.dataset.plotTab).sort((a, b) => +(a.dataset.fragmentIndex ?? 0) - +(b.dataset.fragmentIndex ?? 0));
-    const name = tabbed.at(-1)?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
+    const top = tabbed.at(-1);
+    const name = top?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
+    // a tab of a fragment with data-plot-run is played once when its step is reached going forward
+    const run = !!top?.hasAttribute('data-plot-run') && top.classList.contains('current-fragment') && this.live && !reduced();
     let tab = this.tab;
     if (name !== this.stepTab) {
       this.stepTab = name;
@@ -1019,20 +1057,26 @@ export class PlotView {
     }
     const cued = cue !== this.cue;
     this.cue = cue;
-    if (tab !== this.tab) this.setTab(tab);
-    else this.applyGates();
+    if (tab !== this.tab) {
+      if (this.once) this.pause();
+      this.setTab(tab, run);
+      if (run) {
+        this.once = true;
+        this.play();
+      }
+    } else this.applyGates();
     if (cued && this.live) {
       if (cue === 'shown' && this.moves()) { this.pause(); this.u = 0; this.play(); }
       else this.still();
     }
   }
 
-  /** Shows the tab i, from its first frame while the plot is played, and at its still frame otherwise. */
-  setTab(i: number): void {
+  /** Shows the tab i, from its first frame while the plot is played or with first set, and at its still frame otherwise. */
+  setTab(i: number, first = false): void {
     if (!this.spec || i === this.tab) return;
     this.tab = i;
     this.markTabs();
-    this.u = this.raf ? 0 : this.stillFrame();
+    this.u = this.raf || first ? 0 : this.stillFrame();
     this.t0 = performance.now();
     this.fade = 1;
     this.pass = 0;
@@ -1087,6 +1131,12 @@ export class PlotView {
     this.pass = 0;
     const tick = (now: number) => {
       const t = (now - this.t0) / 1000, { duration, hold, fade } = this.plot, length = this.length;
+      if (this.once && t >= length) {
+        this.u = this.frames - 1;
+        this.draw();
+        this.pause();
+        return;
+      }
       const pass = length + hold > 0 ? Math.floor(t / (length + hold)) : 0;
       if (pass !== this.pass) {
         this.pass = pass;
@@ -1105,6 +1155,7 @@ export class PlotView {
   pause(): void {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
+    this.once = false;
     this.setPlaying(false);
     if (this.fade < 1 || this.held.length) {
       this.fade = 1;
