@@ -3,7 +3,7 @@
 The script does not import DyLAN. For each family, branch, and frame it draws the drawn members of
 the branch colored by eccentricity, with the colormap of the frame in the DYLAN-504 figures, and
 for each family the stability diagram in the (a1, a2) plane with both branches, the three boundary
-curves, the numbers of the stability regions, and the regions filled faintly in the colors of
+curves, the names of the stability regions of Frauenfelder and Moreno, and the regions filled faintly in the colors of
 Fig. 4 of Zimovan-Spreen, Howell, and Davis (2019), as in the stability demo of the deck. Each figure is written three times:
 
 - <name>-dark.png and <name>-light.png in the beeson styles of the deck, on a transparent
@@ -46,11 +46,17 @@ FRAMES = (
     ("inertial-m2", "selenocentric", r"inertial frame centered on $m_2$", "X_2", "Y_2", ("cividis", 0.0, 1.0)),
 )
 
-# the colors of Broucke's regions 1 to 7 in Fig. 4 of Zimovan-Spreen, Howell, and Davis (2019), as in
-# demos/stability/build.py, and their opacity in each mode, lower on the dark background
+# the colors of the regions in Fig. 4 of Zimovan-Spreen, Howell, and Davis (2019), as in
+# demos/stability/build.py, keyed by the region number of DyLAN, and their opacity in each mode, lower
+# on the dark background
 HOWELL = {1: "#ffd7bb", 2: "#c7ebf3", 3: "#d8d8d8", 4: "#f7ef8e", 5: "#ffaec9", 6: "#e4e0f3", 7: "#e4f5af"}
 HOWELL_ALPHA = {"dark": 0.22, "light": 0.5, "paper": 0.5}
 FILL_CELLS = 1200
+# the names of Frauenfelder and Moreno, keyed by the region number of DyLAN
+NAME = {
+    1: r"$\mathcal{E}^{2}$", 2: r"$\mathcal{N}$", 3: r"$\mathcal{H}^{-+}$", 4: r"$\mathcal{H}^{++}$",
+    5: r"$\mathcal{H}^{--}$", 6: r"$\mathcal{EH}^{+}$", 7: r"$\mathcal{EH}^{-}$",
+}
 
 # per mode: background behind the figure, text, subtle gray, the two branch colors, orbit width in pt
 MODES = {
@@ -229,7 +235,7 @@ def region_label_points(a1, a2, grid, obstacles):
 
 
 def regions_of(a1, a2):
-    """Broucke's region of each point (a1, a2), from the indices k, the roots of k^2 + a1 k + a2 - 2 = 0."""
+    """The region number of each point (a1, a2), as in DyLAN, from the indices k, the roots of k^2 + a1 k + a2 - 2 = 0."""
     disc = a1**2 - 4 * (a2 - 2)
     root = np.sqrt(np.abs(disc))
     k_low, k_high = (-a1 - root) / 2, (-a1 + root) / 2
@@ -244,7 +250,7 @@ def regions_of(a1, a2):
 
 
 def draw_stability(archive, meta, family, mode, folder):
-    """The stability diagram of a family with both branches, the boundaries, and the region numbers."""
+    """The stability diagram of a family with both branches, the boundaries, and the region names."""
     colors = MODES[mode]
     family_meta = meta["families"][family]
     (a1_low, a1_high), (a2_low, a2_high) = family_meta["windows"]
@@ -281,7 +287,7 @@ def draw_stability(archive, meta, family, mode, folder):
             axes.annotate(
                 rf"$e = {trace[index, 0]:.2f}$", point, textcoords="offset points", xytext=(dx, dy), ha=ha, va=va, fontsize="small", color=color
             )
-            # the label of an eccentricity, about 0.15 of the axes wide, is kept clear of the region numbers
+            # the label of an eccentricity, about 0.15 of the axes wide, is kept clear of the region names
             along = np.linspace(0.02, 0.19, 8) * np.sign(dx)
             obstacles.append(np.column_stack([u + along, np.full_like(along, v + np.sign(dy) * 0.035)]))
 
@@ -290,8 +296,7 @@ def draw_stability(archive, meta, family, mode, folder):
     )
     for region, point in points.items():
         axes.annotate(
-            str(region), point, ha="center", va="center", fontsize="medium", color=colors["subtle"],
-            bbox={"boxstyle": "circle,pad=0.25", "facecolor": "none", "edgecolor": colors["subtle"], "linewidth": 0.5 * mpl.rcParams["lines.linewidth"]},
+            NAME[region], point, ha="center", va="center", fontsize="medium", color=colors["subtle"]
         )
     axes.set_xlim(a1_low, a1_high)
     axes.set_ylim(a2_low, a2_high)

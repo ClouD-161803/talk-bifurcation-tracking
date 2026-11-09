@@ -48,7 +48,8 @@ PAD_TAB = {
 }
 RESIDUAL = 1e-6
 
-# the symbols of Frauenfelder and Moreno for Broucke's regions 1 to 7, in the markup of the plot
+# the names of Frauenfelder and Moreno, in the markup of the plot, keyed by the region numbers 1 to 7
+# of the members in data/stability
 SYMBOL = {
     1: r'$\mathcal{E}^{2}$', 2: r'$\mathcal{N}$', 3: r'$\mathcal{H}^{-+}$', 4: r'$\mathcal{H}^{++}$',
     5: r'$\mathcal{H}^{--}$', 6: r'$\mathcal{EH}^{+}$', 7: r'$\mathcal{EH}^{-}$',
@@ -98,7 +99,7 @@ def pair(k):
 
 
 def region_of(a1, a2):
-    """Broucke's region of the point (a1, a2), from the indices."""
+    """The region number of the point (a1, a2), from the indices, as in data/stability."""
     k = indices(a1, a2)
     if k[0].imag != 0:
         return 2
@@ -129,7 +130,7 @@ def continuous(frames):
     """The frames with the two multipliers of a pair swapped wherever the swapped order is nearer to
     the previous frame in the circle panel, so that a trace does not cut a chord across the circle.
     A fixed order, e.g. the one of modulus at least 1 first, is not continuous on family 8 from
-    apoapsis, whose two pairs are equal on the real axis at the entry into region 2 and on the unit
+    apoapsis, whose two pairs are equal on the real axis at the entry into N and on the unit
     circle at the exit from it. Where both orders are equally near, as just after the two
     multipliers of a pair are at 1 or -1, the order is kept."""
     last = None
@@ -236,7 +237,7 @@ def scale_fn(scale):
 
 def view(frames, scale, pad):
     """The ranges of a1 and a2 fitted to the path with the margin pad, in the coordinates of the
-    scale. A linear view also holds region 1, the triangle between (-4, 6), (4, 6), and (0, -2),
+    scale. A linear view also holds E2, the triangle between (-4, 6), (4, 6), and (0, -2),
     since a path near the origin is otherwise drawn without the regions it is measured against."""
     fwd, _ = scale_fn(scale)
     points = [(f['a1'], f['a2']) for f in frames]
@@ -316,7 +317,7 @@ def curve_points(name, x_range, y_range, scale, n=360):
 
 
 # the colors of the regions in Fig. 4 of Zimovan-Spreen, Howell, and Davis (2019), sampled from the PDF
-# and keyed by Broucke's region number, which are drawn faintly under the curves of every diagram
+# and keyed by the region number, which are drawn faintly under the curves of every diagram
 HOWELL = {1: '#ffd7bb', 2: '#c7ebf3', 3: '#d8d8d8', 4: '#f7ef8e', 5: '#ffaec9', 6: '#e4e0f3', 7: '#e4f5af'}
 # the opacity of a fill in the dark mode, raised in the light mode by the rule .plot-region.howell of the deck
 HOWELL_OPACITY = 0.22
@@ -577,7 +578,7 @@ def tab_data(name, frames, panel):
         'k2': {'at': [-3.5, 3.5], 'text': [index_text('k_2', f['k'][1]) for f in frames]},
         'path': [[sig(f['a1']), sig(f['a2'])] for f in frames],
         'point': [[sig(f['a1']), sig(f['a2'])] for f in frames],
-        'region': {'at': [x_range[1], y_range[1]], 'text': [f"region {f['region']}, {SYMBOL[f['region']]}" for f in frames]},
+        'region': {'at': [x_range[1], y_range[1]], 'text': [SYMBOL[f['region']] for f in frames]},
         'plus': events['plus'],
         'minus': events['minus'],
     }
@@ -637,8 +638,8 @@ def build(scale_all=None):
         names = sorted(int(l['id'][1:]) for l in panel['labels'] if l['id'].startswith('r'))
         unnamed = sorted({f['region'] for f in frames} - set(names))
         print(f'{name}: {len(frames)} frames, {crossed} on a curve, {len(dropped)} members dropped, '
-              f'{mismatch} regions differ from the data, {scale} diagram, regions named {names}'
-              + (f', VISITED BUT NOT NAMED {unnamed}' if unnamed else ''))
+              f'{mismatch} regions differ from the data, {scale} diagram, regions named {[SYMBOL[r] for r in names]}'
+              + (f', VISITED BUT NOT NAMED {[SYMBOL[r] for r in unnamed]}' if unnamed else ''))
     first = patches['11P']
     plot = {
         'parameter': {'label': '$e$', 'digits': 4},
@@ -700,7 +701,7 @@ def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB):
 def regions_plot():
     """A still plot of the seven regions, with Howell's fills, the three curves, Moreno's name of each
     region, a thumbnail of its multipliers, and the lines k = -1 and k = 0 of period tripling and
-    quadrupling. Regions 4 and 5 are too thin for a name, which is put above them with a leader."""
+    quadrupling. H++ and H-- are too thin for a name, which is put above them with a leader."""
     x_range, y_range = REGIONS_X, REGIONS_Y
     e = lambda deg: cmath.exp(1j * math.radians(deg))
     on = lambda *degs: [e(d) for d in degs]

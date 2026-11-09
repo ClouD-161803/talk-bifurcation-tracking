@@ -16,11 +16,11 @@ The source of the counts is the panel-by-panel matching of the DYLAN-504 investi
 
 | Branch | Broucke's text | Reproduction |
 |---|---|---|
-| 7P | Unstable, in region 6 up to $e = 0.35$, and very close to the line $a_2 = -2a_1 - 2$ | Region 6 up to $e = 0.465$, within 0.018 in $a_2$ of the line up to $e = 0.35$ |
-| 7A | Stable, in region 1 below $e = 0.75$, and approaching $(-4, 6)$ as $e$ grows | Region 1 from $e = 0.005$ to 0.975, with the distance to $(-4, 6)$ decreasing from 2.37 to 0.39 |
-| 8P | Unstable, in region 6 up to $e = 0.55$ | Region 6 up to $e = 0.675$, region 3 from 0.6768 |
-| 8A | Region 4, then region 2 near $e = 0.30$, and region 1 at $e = 0.85$, just past the parabola | Region 2 from $e = 0.2894$, region 1 from 0.8470, with $a_2 = 2.036$ at 0.85 against 2.144 on the parabola |
+| 7P | Unstable, in $\mathcal{EH}^+$ up to $e = 0.35$, and very close to the line $a_2 = -2a_1 - 2$ | In $\mathcal{EH}^+$ up to $e = 0.465$, within 0.018 in $a_2$ of the line up to $e = 0.35$ |
+| 7A | Stable, in $\mathcal E^2$ below $e = 0.75$, and approaching $(-4, 6)$ as $e$ grows | In $\mathcal E^2$ from $e = 0.005$ to 0.975, with the distance to $(-4, 6)$ decreasing from 2.37 to 0.39 |
+| 8P | Unstable, in $\mathcal{EH}^+$ up to $e = 0.55$ | In $\mathcal{EH}^+$ up to $e = 0.675$, in $\mathcal H^{-+}$ from 0.6768 |
+| 8A | In $\mathcal H^{++}$, then in $\mathcal N$ near $e = 0.30$, and in $\mathcal E^2$ at $e = 0.85$, just past the parabola | In $\mathcal N$ from $e = 0.2894$, in $\mathcal E^2$ from 0.8470, with $a_2 = 2.036$ at 0.85 against 2.144 on the parabola |
 | 11P | $a_1$ from $-5000$ to $-200$, and $a_2$ largest, about 13,400, near $e = 0.18$ | $a_1$ from $-4918.9$ at $e = 0$ to $-252.5$ at 0.453, $a_2$ largest, 13,348.8, at 0.165 |
-| 11A | Region 6 up to $e = 0.30$, region 3 from 0.30 to 0.80, and $a_1$ smallest, $-5500$, at 0.18 | Region 6 up to $e = 0.2946$, region 3 to 0.8425, $a_1$ smallest, $-5621.2$, at 0.1625 |
+| 11A | In $\mathcal{EH}^+$ up to $e = 0.30$, in $\mathcal H^{-+}$ from 0.30 to 0.80, and $a_1$ smallest, $-5500$, at 0.18 | In $\mathcal{EH}^+$ up to $e = 0.2946$, in $\mathcal H^{-+}$ to 0.8425, $a_1$ smallest, $-5621.2$, at 0.1625 |
 
 The statements of Broucke are from Section VI of his JPL Technical Report 32-1360. I took them from the vault note `DYLAN-504-changes.md` and checked each against the OCR of the report, `broucke_report.txt`, in the same investigation folder. I computed the values of the reproduction from `data/stability/` on `vestini/master` of dylan-core. Two numbers of the vault note are out of date: $a_1$ at $e = 0.453$ on 11P is $-252.5$, not $-178$, and the smallest $a_2$ on 11A is $-50{,}929.1$ at $e = 0.655$, not $-50{,}925$.

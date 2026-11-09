@@ -22,12 +22,12 @@ On this slide the diagram is added beside the circle, on the same tab, held at $
 
 | Step | What appears or moves | Readouts | What Claudio says |
 |---|---|---|---|
-| 0 | The head, both panels, the three curves with the names $k = 2$ and $k = -2$, and the point on the line $k = 2$. | $e = 0.0000$, $k_1 = 2.000$, $k_2 = 4916.9$, region 6, $\mathrm{EH}^{+}$ | On the right, the same orbit is a point in Broucke's diagram. |
+| 0 | The head, both panels, the three curves with the names $k = 2$ and $k = -2$, and the point on the line $k = 2$. | $e = 0.0000$, $k_1 = 2.000$, $k_2 = 4916.9$, $\mathcal{EH}^+$ | On the right, the same orbit is a point in Broucke's diagram. |
 | 1 | The sentence on the ER3BP. | the same | In the elliptic problem there is not a Jacobi constant, and the pair at 1 is gone. |
 | 2 | The quartic and its coefficients. | the same | The quartic is palindromic, with only the two coefficients $a_1$ and $a_2$, and a family is a path in their plane. |
 | 3 | The sentence on where the type changes. | the same | Between three curves, the type of the multipliers is the same everywhere. |
 | 4 | The display of the three curves. | the same | On the parabola the two indices are equal, and on the two lines one index is 2 or $-2$, respectively. |
-| 5 | The branch is played in 12 s and looped. The point is moved into region 4, back to the line $k = 2$ at the fold, marked in orange, and across $k = -2$ at the period doubling, marked in violet. The name of the current region is bright and the others are dimmed. The blue pair is moved out along the real axis, back to 1, around the circle to $-1$, and out along the negative axis. The tabs of families 7 and 8 are offered. | $e$ rises to 0.4539 and falls to 0.4504, $k_1$ ends at $-3.836$, $k_2$ at 172.5, and the region runs 6, 4, 6, 3. | As $e$ grows, family 11 is off the line $k = 2$, and at $e = 0.453865$ it is back on the line, at its fold. Just past the fold, one index is $-2$. |
+| 5 | The branch is played in 12 s and looped. The point is moved into $\mathcal H^{++}$, back to the line $k = 2$ at the fold, marked in orange, and across $k = -2$ at the period doubling, marked in violet. The name of the current region is bright and the others are dimmed. The blue pair is moved out along the real axis, back to 1, around the circle to $-1$, and out along the negative axis. The tabs of families 7 and 8 are offered. | $e$ rises to 0.4539 and falls to 0.4504, $k_1$ ends at $-3.836$, $k_2$ at 172.5, and the region runs $\mathcal{EH}^+$, $\mathcal H^{++}$, $\mathcal{EH}^+$, $\mathcal H^{-+}$. | As $e$ grows, family 11 is off the line $k = 2$, and at $e = 0.453865$ it is back on the line, at its fold. Just past the fold, one index is $-2$. |
 
 ## Slide 17, how a family changes
 
@@ -44,16 +44,16 @@ On this slide the instance is the same as on slide 16, except that the region na
 
 ## The tabs and their scales
 
-For each tab I fitted the window of the diagram to the path with a margin, rendered it on linear and on asinh axes into `shots/compare/`, and kept the scale that reads better. On asinh axes the ticks are at $\pm 2$ and at the powers of ten that fit, and each axis title ends in "on an asinh scale". On linear axes the window contains region 1. I widened the margins of a window where the name of a visited region did not fit, and every visited region is named.
+For each tab I fitted the window of the diagram to the path with a margin, rendered it on linear and on asinh axes into `shots/compare/`, and kept the scale that reads better. On asinh axes the ticks are at $\pm 2$ and at the powers of ten that fit, and each axis title ends in "on an asinh scale". On linear axes the window contains $\mathcal E^2$. I widened the margins of a window where the name of a visited region did not fit, and every visited region is named.
 
 | Tab | Branch | Frames | Regions | Scale | Reason |
 |---|---|---|---|---|---|
-| 11P | family 11 from periapsis, through the fold | 143 | 6, 4, 6, 3 | asinh | On linear axes, the fold and the period doubling are squeezed into one corner. |
-| 11A | family 11 from apoapsis | 407 | 6, 3, 7, 5, 7 | asinh | On linear axes, the four crossings are collapsed near the origin. |
-| 7P | family 7 from periapsis | 102 | 6, 3 | linear | Within $\pm 5$ region 1 is undistorted, and asinh ticks are uneven. |
-| 7A | family 7 from apoapsis | 205 | 6, 1 | linear | On asinh axes the window is a sliver without regions. On linear axes the point is moved a little along $k = 2$, with $k_2 = 2.000$ throughout. |
-| 8P | family 8 from periapsis | 148 | 6, 3 | asinh | On linear axes, the start of the path is squeezed into a corner. |
-| 8A | family 8 from apoapsis | 173 | 6, 4, 2, 1 | asinh | On linear axes region 1 is too small to be named, although the path is within two decades. |
+| 11P | family 11 from periapsis, through the fold | 143 | $\mathcal{EH}^+$, $\mathcal H^{++}$, $\mathcal{EH}^+$, $\mathcal H^{-+}$ | asinh | On linear axes, the fold and the period doubling are squeezed into one corner. |
+| 11A | family 11 from apoapsis | 407 | $\mathcal{EH}^+$, $\mathcal H^{-+}$, $\mathcal{EH}^-$, $\mathcal H^{--}$, $\mathcal{EH}^-$ | asinh | On linear axes, the four crossings are collapsed near the origin. |
+| 7P | family 7 from periapsis | 102 | $\mathcal{EH}^+$, $\mathcal H^{-+}$ | linear | Within $\pm 5$ $\mathcal E^2$ is undistorted, and asinh ticks are uneven. |
+| 7A | family 7 from apoapsis | 205 | $\mathcal{EH}^+$, $\mathcal E^2$ | linear | On asinh axes the window is a sliver without regions. On linear axes the point is moved a little along $k = 2$, with $k_2 = 2.000$ throughout. |
+| 8P | family 8 from periapsis | 148 | $\mathcal{EH}^+$, $\mathcal H^{-+}$ | asinh | On linear axes, the start of the path is squeezed into a corner. |
+| 8A | family 8 from apoapsis | 173 | $\mathcal{EH}^+$, $\mathcal H^{++}$, $\mathcal N$, $\mathcal E^2$ | asinh | On linear axes $\mathcal E^2$ is too small to be named, although the path is within two decades. |
 
 ## Frames and dropped members
 
