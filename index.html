@@ -333,19 +333,23 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
   <h2>Differential correction</h2>
   <div style="display: flex; gap: 48px; align-items: flex-start">
     <div style="flex: 0 0 800px">
-      <p>The free variables \(\boldsymbol X \in \R^N\) are corrected until the constraints \(\boldsymbol F \in \R^M\) vanish,</p>
+      <p>&ldquo;Correct&rdquo; free variables \(\boldsymbol X \in \R^N\) until they satisfy constraints \(\boldsymbol F : \R^N \to \R^M\),</p>
       <div class="fragment" data-fragment-index="1">
-        <div class="math">\[\boldsymbol F(\boldsymbol X) = \boldsymbol 0,\]</div>
-        <p class="small" style="margin-bottom: 24px">where \(\boldsymbol X\) is drawn from the initial state \(\boldsymbol x_0\) and the period \(T\), and \(\boldsymbol F\) from the final state.</p>
+        <div class="math">\[\boldsymbol F(\boldsymbol X) = \boldsymbol\phi(T; \boldsymbol x_0, t_0) - \boldsymbol x_0 = \boldsymbol 0,\]</div>
+        <p class="small" style="margin-bottom: 24px">where each entry in \(\boldsymbol X\) is drawn from the initial state \(\boldsymbol x_0\) and the period \(T\), and \(\boldsymbol F\) from the final state.</p>
       </div>
-      <p class="fragment" data-fragment-index="2">Along the flow \(\boldsymbol\phi(t; \boldsymbol x_0)\), the Jacobian is</p>
+      <p class="fragment" data-fragment-index="2">Along the flow \(\boldsymbol\phi\), the Jacobian is</p>
       <div class="fragment" data-fragment-index="3">
-        <div class="math">\[\DXF = \left[\, \class{hl-stm}{\dfrac{\partial\boldsymbol\phi}{\partial\boldsymbol x_0}} \;\;\; \class{hl-f}{\dfrac{\partial\boldsymbol\phi}{\partial T}} \,\right] =\left[\, \class{hl-stm}{\boldsymbol\Phi} \;\; \class{hl-f}{\boldsymbol f} \,\right]_T,\]</div>
-        <p class="small">in the rows of \(\boldsymbol F\) and the columns of \(\boldsymbol X\), where \(\boldsymbol\Phi\) is the state transition matrix and \(\boldsymbol f\) the vector field.</p>
+        <div class="math" style="font-size: 0.85em">\[\DXF = \begin{bmatrix} & \class{hl-f}{\vert} \\ \class{hl-stm}{\dfrac{\partial\boldsymbol\phi}{\partial\boldsymbol x_0}} - \boldsymbol I & \class{hl-f}{\dfrac{\partial\boldsymbol\phi}{\partial T}} \\ & \class{hl-f}{\vert} \end{bmatrix}_T = \begin{bmatrix} & \class{hl-f}{\vert} \\[-3pt] \class{hl-stm}{\boldsymbol\Phi} - \boldsymbol I & \,\class{hl-f}{\boldsymbol f}\, \\[-3pt] & \class{hl-f}{\vert} \end{bmatrix}_T,\]</div>
+        <p class="small">of dimension \(M \times N\), where \(\boldsymbol\Phi\) is the state transition matrix of the dynamics \(\boldsymbol f: \R^n \to \R^n\).</p>
       </div>
     </div>
     <div style="flex: 1 1 0">
-      <p class="fragment" data-fragment-index="4">Newton&rsquo;s method is iterated from a guess \(\boldsymbol X^{(0)}\).</p>
+      <div class="fragment" data-fragment-index="4">
+        <p>Linearizing,</p>
+        <div class="math" style="font-size: 0.85em">\[\boldsymbol F(\boldsymbol X^{(k)} + \delta\boldsymbol X) \approx \boldsymbol F(\boldsymbol X^{(k)}) + \DXF(\boldsymbol X^{(k)})\,\delta\boldsymbol X,\]</div>
+        <p>we iterate Newton&rsquo;s method from an initial &ldquo;guess&rdquo; \(\boldsymbol X^{(0)}\).</p>
+      </div>
       <ol>
         <li class="fragment" data-fragment-index="5" data-highlight="hl-stm" data-tone="violet">Integrate the orbit and \(\class{hl-stm}{\boldsymbol\Phi}\) from \(\boldsymbol X^{(k)}\).</li>
         <li class="fragment" data-fragment-index="6" data-highlight="hl-f">Form \(\boldsymbol F\) and \(\DXF\) from \(\class{hl-stm}{\boldsymbol\Phi}\) and \(\class{hl-f}{\boldsymbol f}\).</li>
@@ -356,9 +360,9 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
   </div>
   <aside class="notes">
     <p>Step 0: Every orbit I find is the root of a set of equations. The free variables, N of them, are what I may change, and the constraints, M of them, are what must vanish.</p>
-    <p>Step 1: I solve F(X) = 0. The free variables are components of the initial state x₀ and the period T, and the constraints are components of the final state, i.e. how far it misses its target.</p>
+    <p>Step 1: I solve F(X) = 0. The free variables are components of the initial state x₀ and the period T. For a periodic orbit, F is the final state after one period minus the initial state, i.e. how far the orbit misses closing.</p>
     <p>Step 2: Newton&rsquo;s method needs the Jacobian of F, which I take along the flow φ, the state reached from x₀ after a time t.</p>
-    <p>Step 3: Its columns of the initial state are the state transition matrix Φ, the derivative of the final state with respect to the initial one. The column of the period is the vector field f at the final state, i.e. how the final state moves if I fly a little longer. I keep only the rows of the constrained components and the columns of the free ones.</p>
+    <p>Step 3: Its block of the initial state is the state transition matrix Φ, the derivative of the final state with respect to the initial one, minus the identity, which comes from the x₀ subtracted in F. The column of the period is the vector field f at the final state, i.e. how the final state moves if I fly a little longer. I keep only the rows of the constrained components and the columns of the free ones.</p>
     <p>Step 4: From a first guess X⁽⁰⁾ I iterate Newton&rsquo;s method, with k the count of the iterates.</p>
     <p>Step 5: I integrate the equations of motion together with the variational equations, which give Φ, in violet.</p>
     <p>Step 6: At the final state I form F, and the Jacobian from Φ and the vector field at T, in orange.</p>
