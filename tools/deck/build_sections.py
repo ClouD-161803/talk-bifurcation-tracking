@@ -19,16 +19,16 @@ FRAMES = [
     ("inertial-m2", "the inertial frame about the secondary"),
 ]
 BRANCHES = [
-    (7, "periapsis", 13, r"Family 7 from periapsis, at \(\mu = 0.012155\). One index reaches \(k = -2\) at \(e = 0.468\)."),
-    (7, "apoapsis", 14, r"Family 7 from apoapsis, at \(\mu = 0.012155\). It is in \(\mathcal E^2\), i.e. stable, for \(e \in [0.005, 0.975]\)."),
-    (8, "periapsis", 16, r"Family 8 from periapsis, at \(\mu = 0.5\). One index reaches \(k = -2\) at \(e = 0.677\)."),
-    (8, "apoapsis", 17, r"Family 8 from apoapsis, at \(\mu = 0.5\). It enters \(\mathcal N\) at \(e = 0.289\), and \(\mathcal E^2\) at \(e = 0.847\)."),
-    (11, "periapsis", 19, r"Family 11 from periapsis, at \(\mu = 0.5\). It is in \(\mathcal H^{++}\) up to the fold at \(e = 0.453865\)."),
+    (7, "periapsis", 13, r"Family 7 periapsis, Earth&ndash;Moon mass ratio \((\mu = 0.012155)\). One index reaches \(k = -2\) at \(e = 0.468\)."),
+    (7, "apoapsis", 14, r"Family 7 apoapsis, Earth&ndash;Moon mass ratio \((\mu = 0.012155)\). The family lives in \(\mathcal E^2\), i.e. it is stable for all \(e \in [0.005, 0.975]\)."),
+    (8, "periapsis", 16, r"Family 8 periapsis \((\mu = 0.5)\). One index reaches \(k = -2\) at \(e = 0.677\)."),
+    (8, "apoapsis", 17, r"Family 8 apoapsis \((\mu = 0.5)\). It enters \(\mathcal N\) at \(e = 0.289\), and \(\mathcal E^2\) at \(e = 0.847\)."),
+    (11, "periapsis", 19, r"Family 11 periapsis \((\mu = 0.5)\). It is in \(\mathcal H^{++}\) up to the fold bifurcation at \(e = 0.453865\)."),
     (
         11,
         "apoapsis",
         20,
-        r"Family 11 from apoapsis, at \(\mu = 0.5\). One index reaches \(k = -2\) at \(e = 0.295\), and it enters \(\mathcal{EH}^-\) and \(\mathcal H^{--}\) past \(e = 0.84\).",
+        r"Family 11 apoapsis \((\mu = 0.5)\). One index reaches \(k = -2\) at \(e = 0.295\), then \(\mathcal{EH}^-\) and \(\mathcal H^{--}\) past \(e = 0.84\).",
     ),
 ]
 COMPARISON_NOTES = """  <aside class="notes">
@@ -127,7 +127,7 @@ def comparison(talk: Path) -> str:
                 alt = f"Broucke, Fig. {figure}, family {family} from {branch} in {words}"
                 cells.append(f'      <div class="fig">{paper_image(path, alt)}</div>')
             else:
-                cells.append(f"      {placeholder('Broucke did not draw this frame.')}")
+                cells.append(f"      {placeholder('Frame not plotted by Broucke.')}")
         kind, step = step_kind(index, len(BRANCHES))
         groups.append(
             f'  <div class="cmp {kind}" data-fragment-index="{step}">\n'
@@ -137,7 +137,7 @@ def comparison(talk: Path) -> str:
         )
     return (
         '<section class="figure">\n'
-        "  <h2>Orbits against Broucke&rsquo;s figures</h2>\n" + "\n".join(groups) + "\n" + COMPARISON_NOTES + "\n</section>"
+        "  <h2>Periodic orbit families reproductions</h2>\n" + "\n".join(groups) + "\n" + COMPARISON_NOTES + "\n</section>"
     )
 
 
@@ -169,7 +169,7 @@ def diagram(talk: Path) -> str:
 # the lines of code of the code box in each step of the speaker notes of the slide, set apart by a blank line,
 # and each lit at its step in the highlight plugin of reveal.js. Blank lines are not counted, and only those
 # around the imports are kept from the source, as in PEP 8
-CALL_STEPS = [6, 3, 4, 7, 5, 1]
+CALL_STEPS = [6, 3, 4, 6, 5, 1]
 
 
 def code(talk: Path) -> str:

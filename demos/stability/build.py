@@ -1063,7 +1063,7 @@ def regions_plot():
     }
 
 
-# ---- the L1 Lyapunov family of the Lyapunov-to-halo slide, from data/lyapunov/l1-lyapunov.json
+# ---- the L1 Lyapunov family of the Lyapunov to Halo slide, from data/lyapunov/l1-lyapunov.json
 
 LYAPUNOV = HERE.parent.parent / 'data' / 'lyapunov' / 'l1-lyapunov.json'
 # the size in px of the box of each panel in the zone of the slide, 880 by 840 px, used to space the
@@ -1096,8 +1096,8 @@ def lyapunov_plot():
     out-of-plane index k2 against the Jacobi constant C, as the two panels of the stability figure of
     the demonstration script. The point of the current member is moved along both paths, and the
     crossing of k = 2 is marked in both panels, with the name of the bifurcation in the upper one.
-    In the lower one, the side of the line k2 = 2 on which the halo family branches off is labeled
-    halo and the other one Lyapunov."""
+    In the lower one, the side of the line k2 = 2 on which the Halo family branches off is labeled
+    Halo and the other one Lyapunov."""
     frames, c_cross = lyapunov_frames()
     crossing = next(i for i, f in enumerate(frames) if f['cross'])
     x_range = (-2720.0, -2200.0)
@@ -1131,7 +1131,7 @@ def lyapunov_plot():
         ],
         'labels': [
             {'id': 'lline', 'class': 'kplus', 'at': [c_range[1], 2], 'text': '$k_2 = 2$', 'tone': 'subtle', 'anchor': 'end', 'dx': -12, 'dy': 36},
-            {'id': 'lhalo', 'at': [3.1835, 2], 'text': 'halo', 'tone': 'subtle', 'anchor': 'middle', 'dy': -26},
+            {'id': 'lhalo', 'at': [3.1835, 2], 'text': 'Halo', 'tone': 'subtle', 'anchor': 'middle', 'dy': -26},
             {'id': 'llyapunov', 'at': [3.1705, 2], 'text': 'Lyapunov', 'tone': 'subtle', 'anchor': 'middle', 'dy': 30},
         ],
     }

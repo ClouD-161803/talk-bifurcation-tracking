@@ -1,8 +1,8 @@
-"""Draws the L1 Lyapunov family of the Lyapunov-to-halo slide from data/lyapunov/l1-lyapunov.json.
+"""Draws the L1 Lyapunov family of the Lyapunov to Halo slide from data/lyapunov/l1-lyapunov.json.
 
 The figure is the orbit figure of the dylan-core demonstration script
 lyapunov_family_stability_diagram.py, i.e. the drawn members in 3D axes about L1, colored by the
-Jacobi constant C, with the member nearest the Lyapunov-to-halo bifurcation dashed and a colorbar
+Jacobi constant C, with the member nearest the Lyapunov to Halo bifurcation dashed and a colorbar
 in C marked at the bifurcation. It is drawn in the beeson styles of the deck, with the member of the
 bifurcation in the accent color of the deck, which marks the crossing of k = 2 in the plot of the
 same slide. The colormap is viridis, cut at its dark end in dark mode and at its light end in light
@@ -69,7 +69,7 @@ def draw_orbits(document, mode, folder):
                     color=ACCENT[mode] if crossing else cmap(norm(orbit["jacobi_constant"])),
                     linewidth=2.2 * colors["orbit_width"] if crossing else colors["orbit_width"],
                     linestyle="--" if crossing else "-",
-                    label="Lyapunov-to-halo bifurcation" if crossing else None,
+                    label="Lyapunov to Halo bifurcation" if crossing else None,
                     zorder=5 if crossing else 2)
     point = document["libration_point"]
     axes.plot3D([point[0]], [point[1]], [point[2]], marker="x", color=colors["text"], linestyle="", label=r"$\mathcal{L}_1$")
