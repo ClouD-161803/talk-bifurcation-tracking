@@ -1,5 +1,5 @@
-"""Write the comparison slide of the orbits, the slide of the three families in Broucke's diagram, the
-PyDyLAN code block, and the backup tables into the deck source.
+"""Write the slide of the families, i.e. the orbits of each branch and then the curve of its family in
+Broucke's diagram, the PyDyLAN code block, and the backup tables into the deck source.
 
 Run it as `python3 build_sections.py <talk folder> <deck>`, where the deck is index.html of the talk
 folder. The figures, the calls, and the table of the check are read from the talk folder, and each
@@ -19,31 +19,22 @@ FRAMES = [
     ("inertial-m2", "the inertial frame about the secondary"),
 ]
 BRANCHES = [
-    (7, "periapsis", 13, r"Family 7 periapsis, Earth&ndash;Moon mass ratio \((\mu = 0.012155)\). One index reaches \(k = -2\) at \(e = 0.468\)."),
-    (7, "apoapsis", 14, r"Family 7 apoapsis, Earth&ndash;Moon mass ratio \((\mu = 0.012155)\). The family lives in \(\mathcal E^2\), i.e. it is stable for all \(e \in [0.005, 0.975]\)."),
-    (8, "periapsis", 16, r"Family 8 periapsis \((\mu = 0.5)\). One index reaches \(k = -2\) at \(e = 0.677\)."),
-    (8, "apoapsis", 17, r"Family 8 apoapsis \((\mu = 0.5)\). It enters \(\mathcal N\) at \(e = 0.289\), and \(\mathcal E^2\) at \(e = 0.847\)."),
-    (11, "periapsis", 19, r"Family 11 periapsis \((\mu = 0.5)\). It is in \(\mathcal H^{++}\) up to the fold bifurcation at \(e = 0.453865\)."),
+    (7, "periapsis", 13, r"Earth&ndash;Moon mass ratio \((\mu = 0.012155)\). One index reaches \(k = -2\) at \(e = 0.468\)."),
+    (7, "apoapsis", 14, r"Earth&ndash;Moon mass ratio \((\mu = 0.012155)\). It is stable, in \(\mathcal E^2\), for \(e \in [0.005, 0.975]\)."),
+    (8, "periapsis", 16, r"\(\mu = 0.5\). One index reaches \(k = -2\) at \(e = 0.677\)."),
+    (8, "apoapsis", 17, r"\(\mu = 0.5\). It enters \(\mathcal N\) at \(e = 0.289\), and \(\mathcal E^2\) at \(e = 0.847\)."),
+    (11, "periapsis", 19, r"\(\mu = 0.5\). It is in \(\mathcal H^{++}\) up to the fold bifurcation at \(e = 0.453865\)."),
     (
         11,
         "apoapsis",
         20,
-        r"Family 11 apoapsis \((\mu = 0.5)\). One index reaches \(k = -2\) at \(e = 0.295\), then \(\mathcal{EH}^-\) and \(\mathcal H^{--}\) past \(e = 0.84\).",
+        r"\(\mu = 0.5\). One index reaches \(k = -2\) at \(e = 0.295\), then \(\mathcal{EH}^-\) and \(\mathcal H^{--}\) past \(e = 0.84\).",
     ),
 ]
-COMPARISON_NOTES = """  <aside class="notes">
-    <p>Step 0: First the orbits themselves, one branch per click. On top are my members in the five frames of the Broucke page, and under each of my frames are Broucke's panels in the same frame. Family 7 from periapsis is at the Earth–Moon mass ratio, with the two panels of Fig. 13 of his JPL report under each frame. He did not label them with e, and he did not draw this branch about the primary. The family is unstable, and one index reaches −2 at e = 0.468, past the members drawn here, which end at e = 0.35.</p>
-    <p>Step 1: Family 7 from apoapsis, stable from e = 0.005 to e = 0.975, with Fig. 14. He did not draw this branch about the primary either.</p>
-    <p>Step 2: Family 8 from periapsis, at a mass ratio of one half, with Fig. 16. One index reaches −2 at e = 0.677. My members go up to e = 0.97, one step short of his last panel, since my member at 0.975 is not converged.</p>
-    <p>Step 3: Family 8 from apoapsis, with Fig. 17. It crosses the parabola into N at e = 0.289, and it is stable from e = 0.847 to its last member at 0.85.</p>
-    <p>Step 4: Family 11 from periapsis, up to the fold, with Fig. 19.</p>
-    <p>Step 5: Family 11 from apoapsis, with Fig. 20. One index reaches −2 at e = 0.295, the period-doubling I come back to in a few slides, and three more crossings follow past e = 0.84, into EH⁻, H⁻⁻, and EH⁻ again, on the last members drawn here, which end at e = 0.88, as his do.</p>
-    <p>Step 6: So every branch is consistent with Broucke's figures, in each frame in which he drew one. Next, the same families as curves in Broucke's diagram.</p>
-    <p>TODO(claudio): the frames of a few of Broucke's panels were identified by their shape, in Figs. 13, 14, 16, and 17, as listed under "Where I was unsure" in figures/broucke/INDEX.md.</p>
-  </aside>"""
-# (family, the cells of Broucke's figures, caption), one group per step of the diagram slide. A cell is the
-# path and alt text of a crop, and the number of columns it spans when it spans more than one. Broucke did
-# not draw family 7 in the diagram, and its cell is the sentence in which he described it
+# (family, the cells of Broucke's figures, caption), the group of each family in the diagram, shown at the
+# step after its two branches. A cell is the path and alt text of a crop, and the number of columns it spans
+# when it spans more than one. Broucke did not draw family 7 in the diagram, and its cell is the sentence in
+# which he described it
 DIAGRAMS = [
     (
         7,
@@ -54,7 +45,7 @@ DIAGRAMS = [
                 2,
             ),
         ],
-        r"Family 7 \((\mu = 0.012155)\), described but not drawn by Broucke, and in DyLAN.",
+        r"\(\mu = 0.012155\), described but not drawn by Broucke, and in DyLAN.",
     ),
     (
         8,
@@ -62,7 +53,7 @@ DIAGRAMS = [
             ("figures/broucke/aiaa-fig-3.png", "Broucke, AIAA Fig. 3, family 8 in the a1, a2 plane"),
             ("figures/broucke/family-8-stability-fig-15.png", "Broucke, report Fig. 15, family 8 in the a1, a2 plane"),
         ],
-        r"Family 8 \((\mu = 0.5)\) in Broucke&rsquo;s Figs. 3 and 15, and in DyLAN.",
+        r"\(\mu = 0.5\), in Broucke&rsquo;s Figs. 3 and 15, and in DyLAN.",
     ),
     (
         11,
@@ -70,14 +61,20 @@ DIAGRAMS = [
             ("figures/broucke/aiaa-fig-4.png", "Broucke, AIAA Fig. 4, family 11 in the a1, a2 plane"),
             ("figures/broucke/family-11-stability-fig-18.png", "Broucke, report Fig. 18, family 11 in the a1, a2 plane"),
         ],
-        r"Family 11 \((\mu = 0.5)\) in Broucke&rsquo;s Figs. 4 and 18, and in DyLAN. The \(a_1\) labels of Fig. 4 are ten times too large.",
+        r"\(\mu = 0.5\), in Broucke&rsquo;s Figs. 4 and 18, and in DyLAN. The \(a_1\) labels of Fig. 4 are ten times too large.",
     ),
 ]
-DIAGRAM_NOTES = """  <aside class="notes">
-    <p>Step 0: The three families as curves in Broucke's diagram, on linear axes, one family per click, with Broucke's figures at left and DyLAN at right. Family 7, at the Earth–Moon mass ratio, is the one he did not draw in the diagram. The highlighted sentence is from page 1008 of his AIAA paper: its orbits are all very close to the line a₂ = −2a₁ − 2, i.e. k = 2, and in DyLAN both branches indeed stay near this line.</p>
-    <p>Step 1: Family 8, at a mass ratio of one half, in Fig. 3 of the AIAA paper and Fig. 15 of his JPL report. The branch from periapsis rises into EH⁺, and the branch from apoapsis crosses the parabola into N at e = 0.289, as in his figures.</p>
-    <p>Step 2: Family 11, in Fig. 4 of the AIAA paper and Fig. 18 of the report. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 on the branch from periapsis, up to e = 0.453.</p>
-    <p>Step 3: So DyLAN draws Broucke's curves. Next, the bifurcations along each branch.</p>
+NOTES = """  <aside class="notes">
+    <p>Step 0: I show each family in turn, first its two branches, one per click, and then its curve in Broucke's diagram. On top are my members in the five frames of the Broucke page, and under each of my frames are Broucke's panels in the same frame. Family 7 from periapsis is at the Earth–Moon mass ratio, with the two panels of Fig. 13 of his JPL report under each frame. He did not label them with e, and he did not draw this branch about the primary. The family is unstable, and one index reaches −2 at e = 0.468, past the members drawn here, which end at e = 0.35.</p>
+    <p>Step 1: Family 7 from apoapsis, stable from e = 0.005 to e = 0.975, with Fig. 14. He did not draw this branch about the primary either.</p>
+    <p>Step 2: Family 7 as a curve in Broucke's diagram, on linear axes, with Broucke's figures at left and DyLAN at right, as for each family. It is the family he did not draw in the diagram. The highlighted sentence is from page 1008 of his AIAA paper: its orbits are all very close to the line a₂ = −2a₁ − 2, i.e. k = 2, and in DyLAN both branches indeed stay near this line.</p>
+    <p>Step 3: Family 8 from periapsis, at a mass ratio of one half, with Fig. 16. One index reaches −2 at e = 0.677. My members go up to e = 0.97, one step short of his last panel, since my member at 0.975 is not converged.</p>
+    <p>Step 4: Family 8 from apoapsis, with Fig. 17. It crosses the parabola into N at e = 0.289, and it is stable from e = 0.847 to its last member at 0.85.</p>
+    <p>Step 5: Family 8 in Fig. 3 of the AIAA paper and Fig. 15 of his JPL report. The branch from periapsis rises into EH⁺, and the branch from apoapsis crosses the parabola into N at e = 0.289, as in his figures.</p>
+    <p>Step 6: Family 11 from periapsis, up to the fold, with Fig. 19.</p>
+    <p>Step 7: Family 11 from apoapsis, with Fig. 20. One index reaches −2 at e = 0.295, the period-doubling I come back to on the next slide, and three more crossings follow past e = 0.84, into EH⁻, H⁻⁻, and EH⁻ again, on the last members drawn here, which end at e = 0.88, as his do.</p>
+    <p>Step 8: Family 11, in Fig. 4 of the AIAA paper and Fig. 18 of the report. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 on the branch from periapsis, up to e = 0.453.</p>
+    <p>Step 9: So DyLAN draws Broucke's curves. Next, the bifurcations along each branch.</p>
   </aside>"""
 
 
@@ -107,62 +104,66 @@ def step_kind(index: int, count: int) -> tuple[str, int]:
     return "fragment fade-in-then-out", index
 
 
-def comparison(talk: Path) -> str:
-    def need(path: str) -> str:
-        if not (talk / path).is_file():
-            raise SystemExit(f"missing figure {path}")
-        return path
+def need(talk: Path, path: str) -> str:
+    if not (talk / path).is_file():
+        raise SystemExit(f"missing figure {path}")
+    return path
 
+
+def branch_cells(talk: Path, family: int, branch: str, figure: int) -> list[str]:
+    """My members of a branch in the five frames, over Broucke's panels in the same frames."""
+    cells = []
+    for frame, words in FRAMES:
+        stem = f"figures/dylan/family-{family}-{branch}-{frame}"
+        need(talk, f"{stem}-dark.png")
+        need(talk, f"{stem}-light.png")
+        cells.append(f'      <div class="fig">{mode_images(stem, f"DyLAN, family {family} from {branch} in {words}")}</div>')
+    for frame, words in FRAMES:
+        path = f"figures/broucke/family-{family}-{branch}-{frame}-fig-{figure}.png"
+        if (talk / path).is_file():
+            alt = f"Broucke, Fig. {figure}, family {family} from {branch} in {words}"
+            cells.append(f'      <div class="fig">{paper_image(path, alt)}</div>')
+        else:
+            cells.append(f"      {placeholder('Frame not plotted by Broucke.')}")
+    return cells
+
+
+def diagram_cells(talk: Path, family: int, broucke: list[tuple]) -> list[str]:
+    """Broucke's figures of a family in the diagram, and mine at the right."""
+    stem = f"figures/dylan/stability-family-{family}"
+    for path in (f"{stem}-dark.png", f"{stem}-light.png", *[path for path, *_ in broucke]):
+        need(talk, path)
+    cells = []
+    for path, alt, *span in broucke:
+        style = f' style="grid-column: span {span[0]}"' if span else ""
+        cells.append(f'      <div class="fig"{style}>{paper_image(path, alt)}</div>')
+    cells.append(f'      <div class="fig">{mode_images(stem, f"DyLAN, family {family} in the a1, a2 plane")}</div>')
+    return cells
+
+
+def families(talk: Path) -> str:
+    """One group per step: the two branches of a family, and then the family in the diagram."""
+    if sorted({family for family, *_ in BRANCHES}) != sorted(family for family, *_ in DIAGRAMS):
+        raise SystemExit("every family of BRANCHES needs one group in DIAGRAMS, and the other way around")
+    # a caption opens with the name of its family and branch and a semicolon, set upright in the color of the text
+    layers = []
+    for family, broucke, caption in DIAGRAMS:
+        for f, branch, figure, words in BRANCHES:
+            if f == family:
+                layers.append(("five", branch_cells(talk, family, branch, figure), f'<span class="name">Family {family} {branch};</span> {words}'))
+        layers.append(("three", diagram_cells(talk, family, broucke), f'<span class="name">Family {family};</span> {caption}'))
     groups = []
-    for index, (family, branch, figure, caption) in enumerate(BRANCHES):
-        cells = []
-        for frame, words in FRAMES:
-            stem = f"figures/dylan/family-{family}-{branch}-{frame}"
-            need(f"{stem}-dark.png")
-            need(f"{stem}-light.png")
-            cells.append(f'      <div class="fig">{mode_images(stem, f"DyLAN, family {family} from {branch} in {words}")}</div>')
-        for frame, words in FRAMES:
-            path = f"figures/broucke/family-{family}-{branch}-{frame}-fig-{figure}.png"
-            if (talk / path).is_file():
-                alt = f"Broucke, Fig. {figure}, family {family} from {branch} in {words}"
-                cells.append(f'      <div class="fig">{paper_image(path, alt)}</div>')
-            else:
-                cells.append(f"      {placeholder('Frame not plotted by Broucke.')}")
-        kind, step = step_kind(index, len(BRANCHES))
+    for index, (grid, cells, caption) in enumerate(layers):
+        kind, step = step_kind(index, len(layers))
         groups.append(
             f'  <div class="cmp {kind}" data-fragment-index="{step}">\n'
-            '    <div class="grid five">\n' + "\n".join(cells) + "\n    </div>\n"
+            f'    <div class="grid {grid}">\n' + "\n".join(cells) + "\n    </div>\n"
             f'    <p class="caption full">{caption}</p>\n'
             "  </div>"
         )
     return (
         '<section class="figure">\n'
-        "  <h2>Periodic orbit families reproductions</h2>\n" + "\n".join(groups) + "\n" + COMPARISON_NOTES + "\n</section>"
-    )
-
-
-def diagram(talk: Path) -> str:
-    groups = []
-    for index, (family, broucke, caption) in enumerate(DIAGRAMS):
-        stem = f"figures/dylan/stability-family-{family}"
-        for path in (f"{stem}-dark.png", f"{stem}-light.png", *[path for path, *_ in broucke]):
-            if not (talk / path).is_file():
-                raise SystemExit(f"missing figure {path}")
-        cells = []
-        for path, alt, *span in broucke:
-            style = f' style="grid-column: span {span[0]}"' if span else ""
-            cells.append(f'      <div class="fig"{style}>{paper_image(path, alt)}</div>')
-        cells.append(f'      <div class="fig">{mode_images(stem, f"DyLAN, family {family} in the a1, a2 plane")}</div>')
-        kind, step = step_kind(index, len(DIAGRAMS))
-        groups.append(
-            f'  <div class="cmp {kind}" data-fragment-index="{step}">\n'
-            '    <div class="grid three">\n' + "\n".join(cells) + "\n    </div>\n"
-            f'    <p class="caption full">{caption}</p>\n'
-            "  </div>"
-        )
-    return (
-        '<section class="figure">\n'
-        "  <h2>The families in Broucke&rsquo;s diagram</h2>\n" + "\n".join(groups) + "\n" + DIAGRAM_NOTES + "\n</section>"
+        '  <h2 style="width: auto">ER3BP periodic orbits and stability diagrams</h2>\n' + "\n".join(groups) + "\n" + NOTES + "\n</section>"
     )
 
 
@@ -234,8 +235,7 @@ def splice(page: str, start: str, end: str, block: str) -> str:
 
 def main(talk: Path, deck: Path) -> None:
     page = deck.read_text(encoding="utf-8")
-    page = splice(page, "<!-- comparison start -->", "<!-- comparison end -->", comparison(talk))
-    page = splice(page, "<!-- diagram start -->", "<!-- diagram end -->", diagram(talk))
+    page = splice(page, "<!-- families start -->", "<!-- families end -->", families(talk))
     page = splice(page, "<!-- calls start -->", "<!-- calls end -->", code(talk))
     counts, text = tables(talk)
     header = ["Branch", "Fig.", "Barycentric", "Rotating", "Pulsating", "Primary", "Secondary", "Panels", "Good", "Partial"]
@@ -244,7 +244,7 @@ def main(talk: Path, deck: Path) -> None:
     page = splice(page, "<!-- counts start -->", "<!-- counts end -->", table(counts, "check", header))
     page = splice(page, "<!-- statements start -->", "<!-- statements end -->", table(text, "text"))
     deck.write_text(page, encoding="utf-8")
-    print(f"wrote the comparison slide, the diagram slide, the calls, and two tables into {deck}")
+    print(f"wrote the slide of the families, the calls, and two tables into {deck}")
 
 
 if __name__ == "__main__":

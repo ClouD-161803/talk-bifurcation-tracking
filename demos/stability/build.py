@@ -12,7 +12,8 @@ It writes stability.json next to this file. With --deck PATH, the same JSON
 is also written into the block <script type="application/json" id="stability"> of the deck at
 PATH, e.g. index.html or a copy of it, and the still plot of the seven regions on linear axes into
 its block id="regions", and the plot of the L1 Lyapunov family, from data/lyapunov/l1-lyapunov.json, into
-its block id="lyapunov".
+its block id="lyapunov", with the Halo branches of its bifurcation diagram from
+data/lyapunov/l1-halo.json.
 """
 
 import argparse
@@ -1066,6 +1067,9 @@ def regions_plot():
 # ---- the L1 Lyapunov family of the Lyapunov to Halo slide, from data/lyapunov/l1-lyapunov.json
 
 LYAPUNOV = HERE.parent.parent / 'data' / 'lyapunov' / 'l1-lyapunov.json'
+HALO = HERE.parent.parent / 'data' / 'lyapunov' / 'l1-halo.json'
+# a tone that hides the head of a trace, i.e. of a Halo branch before the pitchfork
+HIDDEN = 'rgba(0,0,0,0)'
 # the size in px of the box of each panel in the zone of the slide, 880 by 840 px, used to space the
 # ticks of the a1 axis
 LYAPUNOV_BOX = (740, 250)
@@ -1091,13 +1095,29 @@ def lyapunov_frames():
     return out, doc['bifurcation']['jacobi_constant']
 
 
+def halo_z0(c, c_cross):
+    """The z0 of the upper Halo branch at the Jacobi constant c, from data/lyapunov/l1-halo.json,
+    and 0 above the pitchfork at c_cross. Near the pitchfork z0 grows as the square root of
+    c_cross - c, hence z0 squared is interpolated linearly in c, from 0 at c_cross."""
+    members = sorted(json.loads(HALO.read_text())['members'], key=lambda m: m['jacobi_constant'])
+    cs = [m['jacobi_constant'] for m in members] + [c_cross]
+    squares = [m['z0'] ** 2 for m in members] + [0.0]
+    assert cs[0] <= c, f'the Halo branch is computed down to C = {cs[0]}, above {c}'
+    if c >= c_cross:
+        return 0.0
+    i = next(i for i in range(1, len(cs)) if cs[i] >= c)
+    t = (c - cs[i - 1]) / (cs[i] - cs[i - 1])
+    return math.sqrt(squares[i - 1] + t * (squares[i] - squares[i - 1]))
+
+
 def lyapunov_plot():
     """The family in Broucke's diagram on linear axes at the scale of the family, above the
     out-of-plane index k2 against the Jacobi constant C, as the two panels of the stability figure of
     the demonstration script. The point of the current member is moved along both paths, and the
     crossing of k = 2 is marked in both panels, with the name of the bifurcation in the upper one.
     In the lower one, the side of the line k2 = 2 on which the Halo family branches off is labeled
-    Halo and the other one Lyapunov."""
+    Halo and the other one Lyapunov. The third panel is the bifurcation diagram of the pitchfork,
+    drawn by its own plot element beside the lower panel, and its point is moved with the others."""
     frames, c_cross = lyapunov_frames()
     crossing = next(i for i, f in enumerate(frames) if f['cross'])
     x_range = (-2720.0, -2200.0)
@@ -1121,10 +1141,12 @@ def lyapunov_plot():
             {'id': 'lplus', 'class': 'kplus', 'at': [-2470, 4990], 'text': '$k = 2$', 'tone': 'subtle', 'anchor': 'start'},
         ],
     }
+    # the left margin of the index panel leaves the left of its row to the bifurcation diagram, a
+    # separate plot element of the slide, laid beside it by the style of the deck
     index = {
         'id': 'index',
-        'margin': [24, 24, 84, 116],
-        'x': {'range': list(c_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (3.17, 3.175, 3.18, 3.185)], 'title': '$C$'},
+        'margin': [24, 24, 84, 520],
+        'x': {'range': list(c_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (3.17, 3.18)], 'title': '$C$'},
         'y': {'range': list(k_range), 'ticks': [{'at': v, 'text': f'${v:.2f}$'} for v in (1.97, 1.98, 1.99, 2.0, 2.01, 2.02)], 'title': '$k_2$'},
         'curves': [
             {'id': 'kline', 'class': 'kplus', 'points': [[c_range[0], 2], [c_range[1], 2]], 'tone': 'subtle', 'width': 2.5},
@@ -1132,7 +1154,27 @@ def lyapunov_plot():
         'labels': [
             {'id': 'lline', 'class': 'kplus', 'at': [c_range[1], 2], 'text': '$k_2 = 2$', 'tone': 'subtle', 'anchor': 'end', 'dx': -12, 'dy': 36},
             {'id': 'lhalo', 'at': [3.1835, 2], 'text': 'Halo', 'tone': 'subtle', 'anchor': 'middle', 'dy': -26},
-            {'id': 'llyapunov', 'at': [3.1705, 2], 'text': 'Lyapunov', 'tone': 'subtle', 'anchor': 'middle', 'dy': 30},
+            {'id': 'llyapunov', 'at': [c_range[0], 2], 'text': 'Lyapunov', 'tone': 'subtle', 'anchor': 'start', 'dx': 12, 'dy': 34},
+        ],
+    }
+    # the bifurcation diagram: z0, the out-of-plane coordinate at the crossing of y = 0, against C.
+    # the Lyapunov family is the line z0 = 0, and the two Halo branches, mirror images under
+    # z -> -z, leave it at the pitchfork. a path is violet where its out-of-plane pair is on the unit
+    # circle, i.e. in the region EH+, and orange in H++
+    c_pitch = frames[crossing]['c']
+    z_range = (-0.034, 0.034)
+    halo = [halo_z0(f['c'], c_pitch) for f in frames]
+    lyapunov_tones = ['violet' if f['region'] == 6 else 'accent' for f in frames]
+    halo_tones = [HIDDEN if i < crossing else 'violet' for i in range(len(frames))]
+    c_name = 3.1728
+    pitchfork = {
+        'id': 'pitchfork',
+        'margin': [24, 24, 84, 116],
+        'x': {'range': list(c_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (3.17, 3.175, 3.18, 3.185)], 'title': '$C$'},
+        'y': {'range': list(z_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (-0.03, 0, 0.03)], 'title': '$z_0$'},
+        'labels': [
+            {'id': 'zlyapunov', 'at': [3.1835, 0], 'text': 'Lyapunov', 'tone': 'subtle', 'anchor': 'middle', 'dy': -26},
+            {'id': 'zelliptic', 'at': [3.1835, 0], 'text': SYMBOL[6], 'tone': 'violet', 'anchor': 'middle', 'dy': 30},
         ],
     }
     return {
@@ -1140,8 +1182,15 @@ def lyapunov_plot():
         'duration': 10,
         'hold': 2,
         'layout': 'column',
-        'panels': [family, index],
+        'panels': [family, index, pitchfork],
         'marks': [
+            {'id': 'zpath', 'panel': 'pitchfork', 'kind': 'trace', 'tone': 'violet', 'width': 3, 'size': 8},
+            {'id': 'zupper', 'panel': 'pitchfork', 'kind': 'trace', 'tone': 'violet', 'width': 3, 'size': 8},
+            {'id': 'zlower', 'panel': 'pitchfork', 'kind': 'trace', 'tone': 'violet', 'width': 3, 'size': 8},
+            {'id': 'zcross', 'panel': 'pitchfork', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 22, 'dy': -22},
+            {'id': 'zpoint', 'panel': 'pitchfork', 'kind': 'points', 'tone': 'accent', 'size': 18},
+            {'id': 'zhalo', 'panel': 'pitchfork', 'kind': 'label', 'tone': 'subtle', 'anchor': 'middle', 'dy': -28},
+            {'id': 'zhyperbolic', 'panel': 'pitchfork', 'kind': 'label', 'tone': 'accent', 'anchor': 'middle', 'dy': 30},
             {'id': 'path', 'panel': 'family', 'kind': 'trace', 'tone': 'text', 'width': 3, 'size': 8},
             {'id': 'halo', 'panel': 'family', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 20, 'dy': -24},
             {'id': 'point', 'panel': 'family', 'kind': 'points', 'tone': 'accent', 'size': 18},
@@ -1166,6 +1215,14 @@ def lyapunov_plot():
                 'khalo': [{'frame': crossing, 'text': '', 'at': [round(frames[crossing]['c'], 7), 2]}],
                 'k1': {'at': [c_range[0], k_range[0]], 'text': [index_text('k_1', complex(f['k1'])) for f in frames]},
                 'k2': {'at': [c_range[0], k_range[0]], 'text': [rf"$k_2 = {f['k2']:.4f}$" for f in frames]},
+                'zpath': {'points': [[round(f['c'], 7), 0] for f in frames], 'tones': lyapunov_tones},
+                # the faint line of a branch ends at the pitchfork, hence the branch is not shown before it
+                'zupper': {'points': [[round(f['c'], 7), sig(z)] for f, z in zip(frames, halo)], 'ghost': crossing, 'tones': halo_tones},
+                'zlower': {'points': [[round(f['c'], 7), sig(-z)] for f, z in zip(frames, halo)], 'ghost': crossing, 'tones': halo_tones},
+                'zcross': [{'frame': crossing, 'text': '', 'at': [round(c_pitch, 7), 0]}],
+                'zpoint': [[round(f['c'], 7), 0] for f in frames],
+                'zhalo': {'at': [c_name, sig(halo_z0(c_name, c_pitch))], 'text': ['' if i < crossing else 'Halo' for i in range(len(frames))]},
+                'zhyperbolic': {'at': [3.1700, 0], 'text': ['' if i < crossing else SYMBOL[4] for i in range(len(frames))]},
             },
             'active': [[f"r{f['region']}"] for f in frames],
         }],
