@@ -388,8 +388,8 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
       <p>Start from \(\boldsymbol x_0 = (x_0, 0, \dot x_0, \dot y_0)\), with \(x_0\) fixed.</p>
       <p class="fragment" data-fragment-index="1">Then \(\boldsymbol X = (\dot x_0, \dot y_0, \class{hl-1}{T})\) and \(\boldsymbol F(\boldsymbol X) = \boldsymbol\phi(\class{hl-1}{T}; \boldsymbol x_0) - \boldsymbol x_0\).</p>
       <p class="fragment" data-fragment-index="2">The Jacobian has four rows and three columns,</p>
-      <div class="fragment" data-fragment-index="3">
-        <div class="math">\[\DXF = \begin{bmatrix} \Phi_{x\dot x} & \Phi_{x\dot y} & \class{hl-1}{\dot x} \\ \Phi_{y\dot x} & \Phi_{y\dot y} & \class{hl-1}{\dot y} \\ \Phi_{\dot x\dot x} - 1 & \Phi_{\dot x\dot y} & \class{hl-1}{\ddot x} \\ \Phi_{\dot y\dot x} & \Phi_{\dot y\dot y} - 1 & \class{hl-1}{\ddot y} \end{bmatrix}_{T},\]</div>
+      <div class="fragment" data-fragment-index="3" data-highlight="hl-stm" data-tone="violet">
+        <div class="math">\[\DXF = \begin{bmatrix} \class{hl-stm}{\Phi_{x\dot x}} & \class{hl-stm}{\Phi_{x\dot y}} & \class{hl-1}{\dot x} \\ \class{hl-stm}{\Phi_{y\dot x}} & \class{hl-stm}{\Phi_{y\dot y}} & \class{hl-1}{\dot y} \\ \class{hl-stm}{\Phi_{\dot x\dot x}} - 1 & \class{hl-stm}{\Phi_{\dot x\dot y}} & \class{hl-1}{\ddot x} \\ \class{hl-stm}{\Phi_{\dot y\dot x}} & \class{hl-stm}{\Phi_{\dot y\dot y}} - 1 & \class{hl-1}{\ddot y} \end{bmatrix}_{T},\]</div>
         <p class="small">where the \(-1\) entries are the derivatives of \(-\boldsymbol x_0\).</p>
       </div>
       <p><span class="fragment" data-fragment-index="4" data-highlight="hl-1">Its last column is the vector field.</span> <span class="fragment" data-fragment-index="5">The iteration is stopped once \(\|\boldsymbol F\| &lt; 10^{-11}\).</span></p>
@@ -400,7 +400,7 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
         <p>Then \(\boldsymbol X = (\dot y_0, \class{hl-1}{T/2})\) and \(\boldsymbol F(\boldsymbol X) = (y, \dot x)_{\class{hl-1}{T/2}}\), and the orbit is closed with the mirror image \(y \to -y\).</p>
       </div>
       <div class="fragment" data-fragment-index="7">
-        <div class="math">\[\DXF = \begin{bmatrix} \Phi_{y\dot y} & \class{hl-1}{\dot y} \\ \Phi_{\dot x\dot y} & \class{hl-1}{\ddot x} \end{bmatrix}_{T/2}\]</div>
+        <div class="math">\[\DXF = \begin{bmatrix} \class{hl-stm}{\Phi_{y\dot y}} & \class{hl-1}{\dot y} \\ \class{hl-stm}{\Phi_{\dot x\dot y}} & \class{hl-1}{\ddot x} \end{bmatrix}_{T/2}\]</div>
       </div>
       <p class="fragment" data-fragment-index="7">An error is now amplified over half the orbit only, hence convergence is reached from a farther guess.</p>
     </div>
@@ -416,7 +416,7 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
     <p>Step 0: Here is the scheme on one orbit, over the full period. I start from the x-axis, and I keep the launch point x₀ fixed.</p>
     <p>Step 1: The free variables are the launch velocity and the period T, in orange. F is the miss after one period, the end state minus the start state, which must vanish for the orbit to close.</p>
     <p>Step 2: Its Jacobian has four rows, one per component of the state, and three columns, one per free variable.</p>
-    <p>Step 3: Its first two columns are entries of the state transition matrix, in the columns of ẋ₀ and ẏ₀, and the −1 entries come from the start state subtracted in F.</p>
+    <p>Step 3: Its first two columns are entries of the state transition matrix, in violet, in the columns of ẋ₀ and ẏ₀. Φ with subscripts x and ẋ is the derivative of x at T with respect to ẋ₀, and so on. The −1 entries come from the start state subtracted in F.</p>
     <p>Step 4: The last column is the vector field at the end of the arc, i.e. how the end state changes if I fly a little longer.</p>
     <p>Step 5: With four equations and three unknowns I solve in the least-squares sense, update, and repeat until the norm of F is below 10⁻¹¹. The demo shows a Lyapunov orbit, a planar periodic orbit about 𝓛₁ of the Earth–Moon CR3BP. My first guess is the converged orbit, scaled by 0.1%. The white dot is the node, with its launch velocity as a white arrow. I press play. The teal arc is the flight over one period, and it must end back on the node. The red gap is the miss, which I call a defect. The close-up at the top right magnifies the end of the arc about the node. At each iterate the close-up first zooms in, and the new arc then lands closer, in view, with its scale in Earth–Moon distances on the bar at its lower left. I close the defect in six iterates, and a satellite, the orange dot, rides the converged orbit. Now a worse guess. I click "ε = 0.05" under "first guess" and press 0. The period shrinks at each iterate, from 3.3 to 2.1 to 0.2, and the next step would make it negative, hence the run is stopped at n = 2, at the red cross. A flight of zero length also has zero miss, and Newton's method is drawn to this trivial root.</p>
     <p>Step 6: The orbit is symmetric about the x-axis, which I use in half-period targeting. I click "half period", the right tab under "targeting", and press 0. I launch straight across the axis, and I fly only to the next crossing. The free variables are the launch speed ẏ₀ and the half period, and F holds y and ẋ at the crossing, which must both vanish, so that the arc crosses the axis at a right angle. The mirror image of the arc then closes the orbit.</p>
