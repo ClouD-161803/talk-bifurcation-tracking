@@ -28,17 +28,18 @@ const runs = JSON.parse(readFileSync(join(here, 'runs.json'), 'utf8'));
 
 // the start, the middle, and the end of iterate n are taken at the fractions 0.30, 0.65, and 0.90 of
 // it. iterate 0 spans the clock from -2 to 1, and iterate n >= 1 from n to n + 1. in each iterate the
-// arcs are drawn growing up to the fraction 0.45, the defects and the point of the convergence curve
-// are drawn by 0.6, and the nodes are moved to iterate n + 1 from 0.7. the same times are set in
-// ZERO, GROW, DEFECT_END, POINT, and SLIDE of build.py. with one segment, iterate 0 is instead played as a
+// close-up is moved up to the fraction 0.2, the arcs are drawn growing from 0.22 up to 0.3, the
+// arrows are drawn by 0.54, the defects and the point of the convergence curve by 0.8, and the nodes
+// are moved to iterate n + 1 from 0.84. the same times are set in ZERO, MOVE_END, SHOOT, GROW,
+// TARGET_ARROW, DEFECT_END, POINT, and SLIDE of build.py. with one segment, iterate 0 is instead played as a
 // slower iterate from GUESS, and iterate n >= 1 LEAD earlier, as set in GUESS, PACE0, and LEAD of build.py
 const PHASES = [0.3, 0.65, 0.9];
 const GUESS = -2.25;
-const PACE0 = [0, 0.9, 1.2, 2.1, 2.6];
+const PACE0 = [0, 0.45, 1.45, 1.53, 1.85];
 const LEAD = 1 - (GUESS + PACE0[4]);
 // the clock offset of the fraction f of iterate 0 with S = 1, interpolated in PACE0 at the ends of the phases
 const pace0 = (f) => {
-  const ends = [0, 0.45, 0.6, 0.7, 1];
+  const ends = [0, 0.3, 0.8, 0.84, 1];
   const j = Math.max(1, ends.findIndex((e) => e >= f));
   return PACE0[j - 1] + ((f - ends[j - 1]) / (ends[j] - ends[j - 1])) * (PACE0[j] - PACE0[j - 1]);
 };
