@@ -25,7 +25,7 @@ try {
 .reveal .slides section .was { color: var(--muted); }
 /* a fragment that wraps a display and its "where" line keeps to the text column, and the line keeps
    the gap of a paragraph below it */
-.reveal .slides section:not(.wide) > div.fragment:not(.zone):not(.cmp) { max-width: 1000px; }
+.reveal .slides section:not(.wide) > div.fragment:not(.zone):not(.cmp):not(.backdrop) { max-width: 1000px; }
 .reveal .slides section > div.fragment > p.small:last-child { margin-bottom: 24px; }
 /* slide 11: the derivation over the full period is faded out, and the one under the half period is
    built in its place, in the same cell of a grid */
@@ -53,7 +53,7 @@ try {
 /* the line on the asinh scale is set under the diagram of slide 16, since the text column beside it
    is full, and it ends short of the slide number */
 .reveal .slides section .zone.stability > .caption { right: 120px; margin-top: 0; }
-.reveal .slides section.narrow > div.fragment:not(.zone):not(.cmp) { max-width: 760px; }
+.reveal .slides section.narrow > div.fragment:not(.zone):not(.cmp):not(.backdrop) { max-width: 760px; }
 /* the text of this deck is set at 94% of the sizes of the theme, since Latin Modern Roman is wider
    than STIX Two Text and six slides overflowed the page in print at the sizes of the theme */
 .reveal { font-size: 45px; }

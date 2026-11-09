@@ -437,6 +437,8 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
 .reveal .slides section .fragment.visible.current-fragment,
 .reveal .slides section[data-complete] .fragment.visible { opacity: 1; }
 .reveal .slides section .fragment.visible .fragment.visible { opacity: 1; }
+/* a backdrop shown at a step is not dimmed at the later steps */
+.reveal .slides section:not([data-complete]) .backdrop.fragment.visible:not(.current-fragment) { opacity: 1; }
 /* a fragment of the class late is shown after the seconds of --late, once a plot has moved. the style of a
    fragment is read once it is visible and before it is current, and a fragment in a shown fragment is not
    dimmed, hence the delay of such a fragment is set as soon as it is visible */
