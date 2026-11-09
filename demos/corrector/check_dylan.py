@@ -5,7 +5,8 @@ CR3BP is solved again by the class Lyapunov, seeded with the orbit and with its 
 family 11 is propagated by the ER3BP and the RK54 of DyLAN, and its distance from the curve of DyLAN's
 members is the minimum-norm Newton step in (x0, ydot0, e) that zeroes (y, xdot) at theta = pi. The
 four references in the ER3BP at e = 0.3 are compared with EllipticPeriodicOrbit solves from the
-circular seed, and the members of family 11 at a tabulated e with the CSV of the Broucke page. Run it
+circular seed, with two spacecraft revolutions for the Lyapunov case, whose circular seed has the
+period pi. The members of family 11 at a tabulated e are compared with the CSV of the Broucke page. Run it
 with the Python of DyLAN and the PYTHONPATH of README.md, after build.py has written runs.json.
 """
 
@@ -85,11 +86,12 @@ def jacobi(mu, x, vy):
     return x * x + 2 * (1 - mu) / r1 + 2 * mu / r2 - vy * vy
 
 
-def elliptic_solve(earth, moon, seed, e, theta0):
-    """The member at e of the family through the circular seed (x0, ydot0, T), by EllipticPeriodicOrbit, and
-    the members it records on the way, at steps of 0.005 in e."""
+def elliptic_solve(earth, moon, seed, e, theta0, revolutions=1):
+    """The member at e of the family through the circular seed (x0, ydot0, T), by EllipticPeriodicOrbit with one
+    revolution of the primaries and ``revolutions`` of the spacecraft, and the members it records on the way, at
+    steps of 0.005 in e."""
     orbit = dc.periodic_orbit.EllipticPeriodicOrbit(
-        dc.eom.ER3BP(earth, moon, e), np.array([seed[0], 0, 0, 0, seed[1], 0]), seed[2], 1, 1, theta0
+        dc.eom.ER3BP(earth, moon, e), np.array([seed[0], 0, 0, 0, seed[1], 0]), seed[2], 1, revolutions, theta0
     )
     orbit.set_differential_corrector_information(
         np.array([EL.x, EL.vy]), np.array([EL.x, EL.z, EL.vy, EL.vz]), np.zeros(6), 6, 50, 1.0, 1e-12, False
@@ -133,13 +135,15 @@ def main():
 
     print("References against EllipticPeriodicOrbit (e = 0.3) and against DyLAN's Lyapunov orbit (CR3BP):\n")
     rows, recorded = [], {}
+    pair = {"lyapunov": (earth_l, moon_l), "family11": (earth_f, moon_f)}
     x0, vy0, T = refs["lyapunov"]["cr3bp"]
     gaps = lyapunov_resolve(cr3bp, x0, vy0, T, jacobi(mu_l, x0, vy0))
     rows.append(("lyapunov", "cr3bp", "Lyapunov", "-", gaps[0], gaps[1]))
-    for case, (earth, moon) in (("lyapunov", (earth_l, moon_l)), ("family11", (earth_f, moon_f))):
+    for case, (earth, moon) in pair.items():
         for system in ("peri", "apo"):
             e, theta0 = systems[system]["e"], systems[system]["theta0"]
-            state, period, members = elliptic_solve(earth, moon, refs[case]["cr3bp"], e, theta0)
+            revolutions = 2 if case == "lyapunov" else 1
+            state, period, members = elliptic_solve(earth, moon, refs[case]["cr3bp"], e, theta0, revolutions)
             recorded[(case, system)] = members
             ref = refs[case][system]
             rows.append((case, system, "EllipticPeriodicOrbit", abs(state[0] - ref[0]), abs(state[1] - ref[1]), abs(period - ref[2])))
@@ -156,15 +160,17 @@ def main():
         gap = max(abs(n[0] - ref[0]), abs(n[1]), abs(n[2]), abs(n[3] - ref[1]))
         key = (case, system, r["targeting"])
         count, worst = rows.get(key, (0, 0.0))
-        rows[key] = (count + 1, max(worst, gap) if gap < 1e-6 else worst)
-        if gap >= 1e-6:
+        if gap < 1e-6:
+            rows[key] = (count + 1, max(worst, gap))
+        else:
+            rows.setdefault(key, (0, 0.0))
             # the class Lyapunov does not take these orbits as seeds, since they are not Lyapunov orbits
             e, theta0 = systems[system]["e"], systems[system]["theta0"]
-            earth, moon = (earth_l, moon_l) if case == "lyapunov" else (earth_f, moon_f)
+            earth, moon = pair[case]
             half = r["arc"] if r["targeting"] == "half" else r["arc"] / 2
             residual, dist = symmetric_distance(earth, moon, e, theta0, n[0], n[3], half, "half" if e == 0.0 else "x0")
             elsewhere.append((case, system, r["targeting"], r["S"], r["guess"], gap, 2 * half, residual, dist))
-    table(["case", "system", "targeting", "runs", "largest gap to the reference"], [(*k, v[0], v[1]) for k, v in sorted(rows.items())])
+    table(["case", "system", "targeting", "runs on the reference", "largest gap to the reference"], [(*k, v[0], v[1]) for k, v in sorted(rows.items())])
     print("Converged runs that landed on another orbit, with their period and their distance to DyLAN's orbit:\n")
     table(["case", "system", "targeting", "S", "guess", "gap to the reference", "period", "residual (y, xdot)", "distance"], elsewhere)
 

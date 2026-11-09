@@ -37,25 +37,25 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/correction.tys \
-        "the correction scene, slide 11" --controls --keep-theme \
+        "the correction scene, slide 11" --controls \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
-        --set case=lyapunov --set system=cr3bp --set targeting=half --set S=1 --set guess=near \
+        --set case=lyapunov --set system=cr3bp --set targeting=full --set S=1 --set guess=near \
         --show targeting guess solution
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/correction.tys \
-        "the correction scene, slide 12" --controls --keep-theme \
+        "the correction scene, slide 12" --controls \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
-        --set case=lyapunov --set system=cr3bp --set targeting=full --set S=16 --set guess=farther \
+        --set case=lyapunov --set system=cr3bp --set targeting=full --set S=16 --set guess=near \
         --show case system S guess
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/continuation.tys \
-        "the continuation scene, slide 13" --controls --keep-theme \
+        "the continuation scene, slide 13" --controls \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=lyapunov --set step=medium --set pens=natural --show family
 
@@ -63,7 +63,7 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/continuation.tys \
-        "the continuation scene, slide 14" --controls --keep-theme \
+        "the continuation scene, slide 14" --controls \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=family11 --set step=medium --set pens=both --show
 

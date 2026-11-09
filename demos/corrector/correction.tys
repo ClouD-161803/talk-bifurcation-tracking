@@ -599,8 +599,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻¹⁶ LU",
-   "color": "#ffffff"
+   "label": "10⁻¹⁶ LU"
   },
   "scale1": {
    "frame": "scale1",
@@ -609,8 +608,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻¹⁶ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻¹⁶ LU"
   },
   "scale2": {
    "frame": "scale2",
@@ -619,8 +617,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻¹⁶ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻¹⁶ LU"
   },
   "scale3": {
    "frame": "scale3",
@@ -629,8 +626,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻¹⁵ LU",
-   "color": "#ffffff"
+   "label": "10⁻¹⁵ LU"
   },
   "scale4": {
    "frame": "scale4",
@@ -639,8 +635,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻¹⁵ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻¹⁵ LU"
   },
   "scale5": {
    "frame": "scale5",
@@ -649,8 +644,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻¹⁵ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻¹⁵ LU"
   },
   "scale6": {
    "frame": "scale6",
@@ -659,8 +653,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻¹⁴ LU",
-   "color": "#ffffff"
+   "label": "10⁻¹⁴ LU"
   },
   "scale7": {
    "frame": "scale7",
@@ -669,8 +662,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻¹⁴ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻¹⁴ LU"
   },
   "scale8": {
    "frame": "scale8",
@@ -679,8 +671,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻¹⁴ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻¹⁴ LU"
   },
   "scale9": {
    "frame": "scale9",
@@ -689,8 +680,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻¹³ LU",
-   "color": "#ffffff"
+   "label": "10⁻¹³ LU"
   },
   "scale10": {
    "frame": "scale10",
@@ -699,8 +689,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻¹³ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻¹³ LU"
   },
   "scale11": {
    "frame": "scale11",
@@ -709,8 +698,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻¹³ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻¹³ LU"
   },
   "scale12": {
    "frame": "scale12",
@@ -719,8 +707,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻¹² LU",
-   "color": "#ffffff"
+   "label": "10⁻¹² LU"
   },
   "scale13": {
    "frame": "scale13",
@@ -729,8 +716,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻¹² LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻¹² LU"
   },
   "scale14": {
    "frame": "scale14",
@@ -739,8 +725,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻¹² LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻¹² LU"
   },
   "scale15": {
    "frame": "scale15",
@@ -749,8 +734,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻¹¹ LU",
-   "color": "#ffffff"
+   "label": "10⁻¹¹ LU"
   },
   "scale16": {
    "frame": "scale16",
@@ -759,8 +743,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻¹¹ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻¹¹ LU"
   },
   "scale17": {
    "frame": "scale17",
@@ -769,8 +752,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻¹¹ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻¹¹ LU"
   },
   "scale18": {
    "frame": "scale18",
@@ -779,8 +761,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻¹⁰ LU",
-   "color": "#ffffff"
+   "label": "10⁻¹⁰ LU"
   },
   "scale19": {
    "frame": "scale19",
@@ -789,8 +770,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻¹⁰ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻¹⁰ LU"
   },
   "scale20": {
    "frame": "scale20",
@@ -799,8 +779,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻¹⁰ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻¹⁰ LU"
   },
   "scale21": {
    "frame": "scale21",
@@ -809,8 +788,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻⁹ LU",
-   "color": "#ffffff"
+   "label": "10⁻⁹ LU"
   },
   "scale22": {
    "frame": "scale22",
@@ -819,8 +797,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻⁹ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻⁹ LU"
   },
   "scale23": {
    "frame": "scale23",
@@ -829,8 +806,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻⁹ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻⁹ LU"
   },
   "scale24": {
    "frame": "scale24",
@@ -839,8 +815,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻⁸ LU",
-   "color": "#ffffff"
+   "label": "10⁻⁸ LU"
   },
   "scale25": {
    "frame": "scale25",
@@ -849,8 +824,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻⁸ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻⁸ LU"
   },
   "scale26": {
    "frame": "scale26",
@@ -859,8 +833,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻⁸ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻⁸ LU"
   },
   "scale27": {
    "frame": "scale27",
@@ -869,8 +842,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻⁷ LU",
-   "color": "#ffffff"
+   "label": "10⁻⁷ LU"
   },
   "scale28": {
    "frame": "scale28",
@@ -879,8 +851,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻⁷ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻⁷ LU"
   },
   "scale29": {
    "frame": "scale29",
@@ -889,8 +860,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻⁷ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻⁷ LU"
   },
   "scale30": {
    "frame": "scale30",
@@ -899,8 +869,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻⁶ LU",
-   "color": "#ffffff"
+   "label": "10⁻⁶ LU"
   },
   "scale31": {
    "frame": "scale31",
@@ -909,8 +878,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻⁶ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻⁶ LU"
   },
   "scale32": {
    "frame": "scale32",
@@ -919,8 +887,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻⁶ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻⁶ LU"
   },
   "scale33": {
    "frame": "scale33",
@@ -929,8 +896,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻⁵ LU",
-   "color": "#ffffff"
+   "label": "10⁻⁵ LU"
   },
   "scale34": {
    "frame": "scale34",
@@ -939,8 +905,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻⁵ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻⁵ LU"
   },
   "scale35": {
    "frame": "scale35",
@@ -949,8 +914,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻⁵ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻⁵ LU"
   },
   "scale36": {
    "frame": "scale36",
@@ -959,8 +923,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻⁴ LU",
-   "color": "#ffffff"
+   "label": "10⁻⁴ LU"
   },
   "scale37": {
    "frame": "scale37",
@@ -969,8 +932,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻⁴ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻⁴ LU"
   },
   "scale38": {
    "frame": "scale38",
@@ -979,8 +941,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻⁴ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻⁴ LU"
   },
   "scale39": {
    "frame": "scale39",
@@ -989,8 +950,7 @@
     0.0,
     0.0
    ],
-   "label": "10⁻³ LU",
-   "color": "#ffffff"
+   "label": "10⁻³ LU"
   },
   "scale40": {
    "frame": "scale40",
@@ -999,8 +959,7 @@
     0.0,
     0.0
    ],
-   "label": "2 × 10⁻³ LU",
-   "color": "#ffffff"
+   "label": "2 × 10⁻³ LU"
   },
   "scale41": {
    "frame": "scale41",
@@ -1009,8 +968,7 @@
     0.0,
     0.0
    ],
-   "label": "5 × 10⁻³ LU",
-   "color": "#ffffff"
+   "label": "5 × 10⁻³ LU"
   },
   "scale42": {
    "frame": "scale42",
@@ -1019,8 +977,7 @@
     0.0,
     0.0
    ],
-   "label": "0.01 LU",
-   "color": "#ffffff"
+   "label": "0.01 LU"
   },
   "scale43": {
    "frame": "scale43",
@@ -1029,8 +986,7 @@
     0.0,
     0.0
    ],
-   "label": "0.02 LU",
-   "color": "#ffffff"
+   "label": "0.02 LU"
   },
   "scale44": {
    "frame": "scale44",
@@ -1039,8 +995,7 @@
     0.0,
     0.0
    ],
-   "label": "0.05 LU",
-   "color": "#ffffff"
+   "label": "0.05 LU"
   },
   "scale45": {
    "frame": "scale45",
@@ -1049,8 +1004,7 @@
     0.0,
     0.0
    ],
-   "label": "0.1 LU",
-   "color": "#ffffff"
+   "label": "0.1 LU"
   },
   "scale46": {
    "frame": "scale46",
@@ -1059,8 +1013,7 @@
     0.0,
     0.0
    ],
-   "label": "0.2 LU",
-   "color": "#ffffff"
+   "label": "0.2 LU"
   },
   "scale47": {
    "frame": "scale47",
@@ -1069,8 +1022,7 @@
     0.0,
     0.0
    ],
-   "label": "0.5 LU",
-   "color": "#ffffff"
+   "label": "0.5 LU"
   },
   "scale48": {
    "frame": "scale48",
@@ -1079,8 +1031,7 @@
     0.0,
     0.0
    ],
-   "label": "1 LU",
-   "color": "#ffffff"
+   "label": "1 LU"
   },
   "scale49": {
    "frame": "scale49",
@@ -1089,8 +1040,7 @@
     0.0,
     0.0
    ],
-   "label": "2 LU",
-   "color": "#ffffff"
+   "label": "2 LU"
   },
   "scale50": {
    "frame": "scale50",
@@ -1099,8 +1049,7 @@
     0.0,
     0.0
    ],
-   "label": "5 LU",
-   "color": "#ffffff"
+   "label": "5 LU"
   },
   "failed0": {
    "frame": "failure",
@@ -1378,7 +1327,7 @@
     "case": "lyapunov",
     "system": "cr3bp"
    },
-   "tracks": 49,
+   "tracks": 51,
    "offsets": "ref-lyapunov-cr3bp/offsets",
    "positions": "ref-lyapunov-cr3bp/positions",
    "periodic": false
@@ -1390,7 +1339,7 @@
     "case": "lyapunov",
     "system": "peri"
    },
-   "tracks": 62,
+   "tracks": 106,
    "offsets": "ref-lyapunov-peri/offsets",
    "positions": "ref-lyapunov-peri/positions",
    "periodic": false
@@ -1402,7 +1351,7 @@
     "case": "lyapunov",
     "system": "apo"
    },
-   "tracks": 43,
+   "tracks": 106,
    "offsets": "ref-lyapunov-apo/offsets",
    "positions": "ref-lyapunov-apo/positions",
    "periodic": false
@@ -2945,7 +2894,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 1,
+   "tracks": 2,
    "offsets": "zoom_solution-family11-apo-full-4-near/offsets",
    "positions": "zoom_solution-family11-apo-full-4-near/positions",
    "channels": {
@@ -3897,7 +3846,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 1,
+   "tracks": 2,
    "offsets": "zoom_solution-family11-apo-full-16-near/offsets",
    "positions": "zoom_solution-family11-apo-full-16-near/positions",
    "channels": {
@@ -7253,7 +7202,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 9,
+   "tracks": 8,
    "offsets": "arcs-family11-cr3bp-full-1-farther/offsets",
    "positions": "arcs-family11-cr3bp-full-1-farther/positions",
    "channels": {
@@ -7333,7 +7282,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 7,
+   "tracks": 6,
    "offsets": "zoom_arcs-family11-cr3bp-full-1-farther/offsets",
    "positions": "zoom_arcs-family11-cr3bp-full-1-farther/positions",
    "channels": {
@@ -7413,7 +7362,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 13,
+   "tracks": 12,
    "offsets": "arrows-family11-cr3bp-full-1-farther/offsets",
    "positions": "arrows-family11-cr3bp-full-1-farther/positions",
    "channels": {
@@ -7490,8 +7439,8 @@
     "fail2_x": 0.0,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
-    "fail5_x": 0.0,
-    "fail6_x": -993.86,
+    "fail5_x": -994.86,
+    "fail6_x": 0.0,
     "fail7_x": 0.0,
     "fail8_x": 0.0,
     "fail9_x": 0.0,
@@ -7695,7 +7644,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 2,
    "offsets": "arcs-family11-cr3bp-full-1-near/offsets",
    "positions": "arcs-family11-cr3bp-full-1-near/positions",
    "channels": {
@@ -7775,7 +7724,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_arcs-family11-cr3bp-full-1-near/offsets",
    "positions": "zoom_arcs-family11-cr3bp-full-1-near/positions",
    "channels": {
@@ -7855,7 +7804,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 5,
+   "tracks": 4,
    "offsets": "arrows-family11-cr3bp-full-1-near/offsets",
    "positions": "arrows-family11-cr3bp-full-1-near/positions",
    "channels": {
@@ -7928,8 +7877,8 @@
     "secondary_x": 0.5,
     "l1x": 1000.0,
     "fail0_x": 0.0,
-    "fail1_x": 0.0,
-    "fail2_x": -997.86,
+    "fail1_x": -998.86,
+    "fail2_x": 0.0,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
     "fail5_x": 0.0,
@@ -9465,7 +9414,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 1,
+   "tracks": 2,
    "offsets": "zoom_solution-family11-cr3bp-full-16-near/offsets",
    "positions": "zoom_solution-family11-cr3bp-full-16-near/positions",
    "channels": {
@@ -15073,7 +15022,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 1,
+   "tracks": 2,
    "offsets": "zoom_solution-family11-peri-full-16-near/offsets",
    "positions": "zoom_solution-family11-peri-full-16-near/positions",
    "channels": {
@@ -18429,7 +18378,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 4,
+   "tracks": 1,
    "offsets": "arcs-lyapunov-apo-full-1-farther/offsets",
    "positions": "arcs-lyapunov-apo-full-1-farther/positions",
    "channels": {
@@ -18449,7 +18398,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "defects-lyapunov-apo-full-1-farther/offsets",
    "positions": "defects-lyapunov-apo-full-1-farther/positions",
    "channels": {
@@ -18489,7 +18438,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_ref-lyapunov-apo-full-1-farther/offsets",
    "positions": "zoom_ref-lyapunov-apo-full-1-farther/positions",
    "channels": {
@@ -18509,7 +18458,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 3,
+   "tracks": 2,
    "offsets": "zoom_arcs-lyapunov-apo-full-1-farther/offsets",
    "positions": "zoom_arcs-lyapunov-apo-full-1-farther/positions",
    "channels": {
@@ -18529,7 +18478,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "zoom_defects-lyapunov-apo-full-1-farther/offsets",
    "positions": "zoom_defects-lyapunov-apo-full-1-farther/positions",
    "channels": {
@@ -18549,7 +18498,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "zoom_nodes-lyapunov-apo-full-1-farther/offsets",
    "positions": "zoom_nodes-lyapunov-apo-full-1-farther/positions",
    "channels": {
@@ -18569,7 +18518,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "zoom_end-lyapunov-apo-full-1-farther/offsets",
    "positions": "zoom_end-lyapunov-apo-full-1-farther/positions",
    "channels": {
@@ -18589,7 +18538,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "arrows-lyapunov-apo-full-1-farther/offsets",
    "positions": "arrows-lyapunov-apo-full-1-farther/positions",
    "channels": {
@@ -18662,8 +18611,8 @@
     "secondary_x": 1000.0,
     "l1x": 0.8368934068616908,
     "fail0_x": 0.0,
-    "fail1_x": 0.0,
-    "fail2_x": -997.86,
+    "fail1_x": -998.86,
+    "fail2_x": 0.0,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
     "fail5_x": 0.0,
@@ -18871,7 +18820,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 1,
    "offsets": "arcs-lyapunov-apo-full-1-near/offsets",
    "positions": "arcs-lyapunov-apo-full-1-near/positions",
    "channels": {
@@ -18891,7 +18840,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "defects-lyapunov-apo-full-1-near/offsets",
    "positions": "defects-lyapunov-apo-full-1-near/positions",
    "channels": {
@@ -18931,7 +18880,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 83,
+   "tracks": 3,
    "offsets": "zoom_ref-lyapunov-apo-full-1-near/offsets",
    "positions": "zoom_ref-lyapunov-apo-full-1-near/positions",
    "channels": {
@@ -18951,7 +18900,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 2,
    "offsets": "zoom_arcs-lyapunov-apo-full-1-near/offsets",
    "positions": "zoom_arcs-lyapunov-apo-full-1-near/positions",
    "channels": {
@@ -18971,7 +18920,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "zoom_defects-lyapunov-apo-full-1-near/offsets",
    "positions": "zoom_defects-lyapunov-apo-full-1-near/positions",
    "channels": {
@@ -18991,7 +18940,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 7,
+   "tracks": 1,
    "offsets": "zoom_nodes-lyapunov-apo-full-1-near/offsets",
    "positions": "zoom_nodes-lyapunov-apo-full-1-near/positions",
    "channels": {
@@ -19011,7 +18960,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "zoom_end-lyapunov-apo-full-1-near/offsets",
    "positions": "zoom_end-lyapunov-apo-full-1-near/positions",
    "channels": {
@@ -19031,7 +18980,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 1,
    "offsets": "arrows-lyapunov-apo-full-1-near/offsets",
    "positions": "arrows-lyapunov-apo-full-1-near/positions",
    "channels": {
@@ -19104,8 +19053,8 @@
     "secondary_x": 1000.0,
     "l1x": 0.8368934068616908,
     "fail0_x": 0.0,
-    "fail1_x": 0.0,
-    "fail2_x": -997.86,
+    "fail1_x": -998.86,
+    "fail2_x": 0.0,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
     "fail5_x": 0.0,
@@ -19393,7 +19342,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 257,
+   "tracks": 48,
    "offsets": "zoom_ref-lyapunov-apo-full-4-farther/offsets",
    "positions": "zoom_ref-lyapunov-apo-full-4-farther/positions",
    "channels": {
@@ -19413,7 +19362,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 4,
+   "tracks": 12,
    "offsets": "zoom_arcs-lyapunov-apo-full-4-farther/offsets",
    "positions": "zoom_arcs-lyapunov-apo-full-4-farther/positions",
    "channels": {
@@ -19433,12 +19382,32 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 8,
    "offsets": "zoom_defects-lyapunov-apo-full-4-farther/offsets",
    "positions": "zoom_defects-lyapunov-apo-full-4-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_defects-lyapunov-apo-full-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_dim_nodes-lyapunov-apo-full-4-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_dim_nodes",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "full",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 3,
+   "offsets": "zoom_dim_nodes-lyapunov-apo-full-4-farther/offsets",
+   "positions": "zoom_dim_nodes-lyapunov-apo-full-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_dim_nodes-lyapunov-apo-full-4-farther/channels/c"
     }
    },
    "periodic": false
@@ -19453,7 +19422,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 15,
+   "tracks": 27,
    "offsets": "zoom_nodes-lyapunov-apo-full-4-farther/offsets",
    "positions": "zoom_nodes-lyapunov-apo-full-4-farther/positions",
    "channels": {
@@ -19749,7 +19718,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 44,
+   "tracks": 33,
    "offsets": "arcs-lyapunov-apo-full-4-near/offsets",
    "positions": "arcs-lyapunov-apo-full-4-near/positions",
    "channels": {
@@ -19769,7 +19738,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 44,
+   "tracks": 32,
    "offsets": "defects-lyapunov-apo-full-4-near/offsets",
    "positions": "defects-lyapunov-apo-full-4-near/positions",
    "channels": {
@@ -19829,7 +19798,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 939,
+   "tracks": 1761,
    "offsets": "zoom_ref-lyapunov-apo-full-4-near/offsets",
    "positions": "zoom_ref-lyapunov-apo-full-4-near/positions",
    "channels": {
@@ -19849,7 +19818,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 22,
+   "tracks": 30,
    "offsets": "zoom_arcs-lyapunov-apo-full-4-near/offsets",
    "positions": "zoom_arcs-lyapunov-apo-full-4-near/positions",
    "channels": {
@@ -19869,7 +19838,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 11,
+   "tracks": 18,
    "offsets": "zoom_defects-lyapunov-apo-full-4-near/offsets",
    "positions": "zoom_defects-lyapunov-apo-full-4-near/positions",
    "channels": {
@@ -19889,7 +19858,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 30,
+   "tracks": 142,
    "offsets": "zoom_nodes-lyapunov-apo-full-4-near/offsets",
    "positions": "zoom_nodes-lyapunov-apo-full-4-near/positions",
    "channels": {
@@ -19909,7 +19878,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 11,
+   "tracks": 8,
    "offsets": "zoom_end-lyapunov-apo-full-4-near/offsets",
    "positions": "zoom_end-lyapunov-apo-full-4-near/positions",
    "channels": {
@@ -19983,9 +19952,9 @@
     "fail5_x": 0.0,
     "fail6_x": 0.0,
     "fail7_x": 0.0,
-    "fail8_x": 0.0,
+    "fail8_x": -993.6,
     "fail9_x": 0.0,
-    "fail10_x": -993.6,
+    "fail10_x": 0.0,
     "fail_y": -997.6
    },
    "tracks": 1,
@@ -20185,7 +20154,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 117,
+   "tracks": 112,
    "offsets": "arcs-lyapunov-apo-full-16-farther/offsets",
    "positions": "arcs-lyapunov-apo-full-16-farther/positions",
    "channels": {
@@ -20205,7 +20174,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 112,
+   "tracks": 96,
    "offsets": "defects-lyapunov-apo-full-16-farther/offsets",
    "positions": "defects-lyapunov-apo-full-16-farther/positions",
    "channels": {
@@ -20265,7 +20234,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 312,
+   "tracks": 838,
    "offsets": "zoom_ref-lyapunov-apo-full-16-farther/offsets",
    "positions": "zoom_ref-lyapunov-apo-full-16-farther/positions",
    "channels": {
@@ -20295,6 +20264,26 @@
    },
    "periodic": false
   },
+  "zoom_solution-lyapunov-apo-full-16-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_solution",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "full",
+    "S": "16",
+    "guess": "farther"
+   },
+   "tracks": 2,
+   "offsets": "zoom_solution-lyapunov-apo-full-16-farther/offsets",
+   "positions": "zoom_solution-lyapunov-apo-full-16-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_solution-lyapunov-apo-full-16-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "zoom_defects-lyapunov-apo-full-16-farther": {
    "frame": "zoom",
    "tags": {
@@ -20305,7 +20294,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 7,
+   "tracks": 6,
    "offsets": "zoom_defects-lyapunov-apo-full-16-farther/offsets",
    "positions": "zoom_defects-lyapunov-apo-full-16-farther/positions",
    "channels": {
@@ -20325,7 +20314,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 35,
+   "tracks": 36,
    "offsets": "zoom_nodes-lyapunov-apo-full-16-farther/offsets",
    "positions": "zoom_nodes-lyapunov-apo-full-16-farther/positions",
    "channels": {
@@ -20355,6 +20344,66 @@
    },
    "periodic": false
   },
+  "solution-lyapunov-apo-full-16-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "full",
+    "S": "16",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution-lyapunov-apo-full-16-farther/offsets",
+   "positions": "solution-lyapunov-apo-full-16-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution-lyapunov-apo-full-16-farther/channels/c"
+    }
+   },
+   "periodic": true
+  },
+  "solution_mid-lyapunov-apo-full-16-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution_mid",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "full",
+    "S": "16",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution_mid-lyapunov-apo-full-16-farther/offsets",
+   "positions": "solution_mid-lyapunov-apo-full-16-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution_mid-lyapunov-apo-full-16-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "satellite-lyapunov-apo-full-16-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "satellite",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "full",
+    "S": "16",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "satellite-lyapunov-apo-full-16-farther/offsets",
+   "positions": "satellite-lyapunov-apo-full-16-farther/positions",
+   "channels": {
+    "c": {
+     "view": "satellite-lyapunov-apo-full-16-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "current-lyapunov-apo-full-16-farther": {
    "frame": "convergence",
    "tags": {
@@ -20371,26 +20420,6 @@
    "channels": {
     "c": {
      "view": "current-lyapunov-apo-full-16-farther/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "cross-lyapunov-apo-full-16-farther": {
-   "frame": "convergence",
-   "tags": {
-    "element": "cross",
-    "case": "lyapunov",
-    "system": "apo",
-    "targeting": "full",
-    "S": "16",
-    "guess": "farther"
-   },
-   "tracks": 2,
-   "offsets": "cross-lyapunov-apo-full-16-farther/offsets",
-   "positions": "cross-lyapunov-apo-full-16-farther/positions",
-   "channels": {
-    "c": {
-     "view": "cross-lyapunov-apo-full-16-farther/channels/c"
     }
    },
    "periodic": false
@@ -20418,11 +20447,11 @@
     "fail4_x": 0.0,
     "fail5_x": 0.0,
     "fail6_x": 0.0,
-    "fail7_x": -993.6,
+    "fail7_x": 0.0,
     "fail8_x": 0.0,
     "fail9_x": 0.0,
     "fail10_x": 0.0,
-    "fail_y": -997.6
+    "fail_y": 0.0
    },
    "tracks": 1,
    "offsets": "ticker-lyapunov-apo-full-16-farther/offsets",
@@ -20621,7 +20650,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 112,
+   "tracks": 64,
    "offsets": "arcs-lyapunov-apo-full-16-near/offsets",
    "positions": "arcs-lyapunov-apo-full-16-near/positions",
    "channels": {
@@ -20641,7 +20670,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 96,
+   "tracks": 48,
    "offsets": "defects-lyapunov-apo-full-16-near/offsets",
    "positions": "defects-lyapunov-apo-full-16-near/positions",
    "channels": {
@@ -20701,7 +20730,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 375,
+   "tracks": 617,
    "offsets": "zoom_ref-lyapunov-apo-full-16-near/offsets",
    "positions": "zoom_ref-lyapunov-apo-full-16-near/positions",
    "channels": {
@@ -20721,7 +20750,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 14,
+   "tracks": 8,
    "offsets": "zoom_arcs-lyapunov-apo-full-16-near/offsets",
    "positions": "zoom_arcs-lyapunov-apo-full-16-near/positions",
    "channels": {
@@ -20741,7 +20770,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 1,
+   "tracks": 2,
    "offsets": "zoom_solution-lyapunov-apo-full-16-near/offsets",
    "positions": "zoom_solution-lyapunov-apo-full-16-near/positions",
    "channels": {
@@ -20761,7 +20790,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 6,
+   "tracks": 3,
    "offsets": "zoom_defects-lyapunov-apo-full-16-near/offsets",
    "positions": "zoom_defects-lyapunov-apo-full-16-near/positions",
    "channels": {
@@ -20781,7 +20810,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 22,
+   "tracks": 19,
    "offsets": "zoom_nodes-lyapunov-apo-full-16-near/offsets",
    "positions": "zoom_nodes-lyapunov-apo-full-16-near/positions",
    "channels": {
@@ -20801,7 +20830,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 7,
+   "tracks": 4,
    "offsets": "zoom_end-lyapunov-apo-full-16-near/offsets",
    "positions": "zoom_end-lyapunov-apo-full-16-near/positions",
    "channels": {
@@ -21117,12 +21146,32 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 9,
+   "tracks": 8,
    "offsets": "arcs-lyapunov-apo-half-1-farther/offsets",
    "positions": "arcs-lyapunov-apo-half-1-farther/positions",
    "channels": {
     "c": {
      "view": "arcs-lyapunov-apo-half-1-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "mirror-lyapunov-apo-half-1-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "mirror",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "mirror-lyapunov-apo-half-1-farther/offsets",
+   "positions": "mirror-lyapunov-apo-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "mirror-lyapunov-apo-half-1-farther/channels/c"
     }
    },
    "periodic": false
@@ -21177,7 +21226,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 823,
+   "tracks": 73,
    "offsets": "zoom_ref-lyapunov-apo-half-1-farther/offsets",
    "positions": "zoom_ref-lyapunov-apo-half-1-farther/positions",
    "channels": {
@@ -21197,7 +21246,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 9,
+   "tracks": 8,
    "offsets": "zoom_arcs-lyapunov-apo-half-1-farther/offsets",
    "positions": "zoom_arcs-lyapunov-apo-half-1-farther/positions",
    "channels": {
@@ -21237,7 +21286,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 20,
+   "tracks": 14,
    "offsets": "zoom_nodes-lyapunov-apo-half-1-farther/offsets",
    "positions": "zoom_nodes-lyapunov-apo-half-1-farther/positions",
    "channels": {
@@ -21257,12 +21306,32 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 7,
+   "tracks": 8,
    "offsets": "zoom_end-lyapunov-apo-half-1-farther/offsets",
    "positions": "zoom_end-lyapunov-apo-half-1-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_end-lyapunov-apo-half-1-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_mirror-lyapunov-apo-half-1-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_mirror",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "zoom_mirror-lyapunov-apo-half-1-farther/offsets",
+   "positions": "zoom_mirror-lyapunov-apo-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_mirror-lyapunov-apo-half-1-farther/channels/c"
     }
    },
    "periodic": false
@@ -21297,7 +21366,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 10,
+   "tracks": 8,
    "offsets": "arrows-lyapunov-apo-half-1-farther/offsets",
    "positions": "arrows-lyapunov-apo-half-1-farther/positions",
    "channels": {
@@ -21313,28 +21382,62 @@
    },
    "periodic": false
   },
-  "target_arrows-lyapunov-apo-half-1-farther": {
+  "solution-lyapunov-apo-half-1-farther": {
    "frame": "rp",
    "tags": {
-    "element": "target_arrows",
+    "element": "solution",
     "case": "lyapunov",
     "system": "apo",
     "targeting": "half",
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 3,
-   "offsets": "target_arrows-lyapunov-apo-half-1-farther/offsets",
-   "positions": "target_arrows-lyapunov-apo-half-1-farther/positions",
+   "tracks": 1,
+   "offsets": "solution-lyapunov-apo-half-1-farther/offsets",
+   "positions": "solution-lyapunov-apo-half-1-farther/positions",
    "channels": {
     "c": {
-     "view": "target_arrows-lyapunov-apo-half-1-farther/channels/c"
-    },
-    "vx": {
-     "view": "target_arrows-lyapunov-apo-half-1-farther/channels/vx"
-    },
-    "vy": {
-     "view": "target_arrows-lyapunov-apo-half-1-farther/channels/vy"
+     "view": "solution-lyapunov-apo-half-1-farther/channels/c"
+    }
+   },
+   "periodic": true
+  },
+  "solution_mid-lyapunov-apo-half-1-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution_mid",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution_mid-lyapunov-apo-half-1-farther/offsets",
+   "positions": "solution_mid-lyapunov-apo-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution_mid-lyapunov-apo-half-1-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "satellite-lyapunov-apo-half-1-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "satellite",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "satellite-lyapunov-apo-half-1-farther/offsets",
+   "positions": "satellite-lyapunov-apo-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "satellite-lyapunov-apo-half-1-farther/channels/c"
     }
    },
    "periodic": false
@@ -21355,26 +21458,6 @@
    "channels": {
     "c": {
      "view": "current-lyapunov-apo-half-1-farther/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "cross-lyapunov-apo-half-1-farther": {
-   "frame": "convergence",
-   "tags": {
-    "element": "cross",
-    "case": "lyapunov",
-    "system": "apo",
-    "targeting": "half",
-    "S": "1",
-    "guess": "farther"
-   },
-   "tracks": 2,
-   "offsets": "cross-lyapunov-apo-half-1-farther/offsets",
-   "positions": "cross-lyapunov-apo-half-1-farther/positions",
-   "channels": {
-    "c": {
-     "view": "cross-lyapunov-apo-half-1-farther/channels/c"
     }
    },
    "periodic": false
@@ -21402,11 +21485,11 @@
     "fail4_x": 0.0,
     "fail5_x": 0.0,
     "fail6_x": 0.0,
-    "fail7_x": -993.6,
+    "fail7_x": 0.0,
     "fail8_x": 0.0,
     "fail9_x": 0.0,
     "fail10_x": 0.0,
-    "fail_y": -997.6
+    "fail_y": 0.0
    },
    "tracks": 1,
    "offsets": "ticker-lyapunov-apo-half-1-farther/offsets",
@@ -21685,7 +21768,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 391,
+   "tracks": 567,
    "offsets": "zoom_ref-lyapunov-apo-half-1-near/offsets",
    "positions": "zoom_ref-lyapunov-apo-half-1-near/positions",
    "channels": {
@@ -21705,7 +21788,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 5,
+   "tracks": 6,
    "offsets": "zoom_arcs-lyapunov-apo-half-1-near/offsets",
    "positions": "zoom_arcs-lyapunov-apo-half-1-near/positions",
    "channels": {
@@ -21731,6 +21814,26 @@
    "channels": {
     "c": {
      "view": "zoom_defects-lyapunov-apo-half-1-near/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_nodes-lyapunov-apo-half-1-near": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_nodes",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "1",
+    "guess": "near"
+   },
+   "tracks": 6,
+   "offsets": "zoom_nodes-lyapunov-apo-half-1-near/offsets",
+   "positions": "zoom_nodes-lyapunov-apo-half-1-near/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_nodes-lyapunov-apo-half-1-near/channels/c"
     }
    },
    "periodic": false
@@ -22153,12 +22256,32 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 36,
+   "tracks": 24,
    "offsets": "arcs-lyapunov-apo-half-4-farther/offsets",
    "positions": "arcs-lyapunov-apo-half-4-farther/positions",
    "channels": {
     "c": {
      "view": "arcs-lyapunov-apo-half-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "mirror-lyapunov-apo-half-4-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "mirror",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 4,
+   "offsets": "mirror-lyapunov-apo-half-4-farther/offsets",
+   "positions": "mirror-lyapunov-apo-half-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "mirror-lyapunov-apo-half-4-farther/channels/c"
     }
    },
    "periodic": false
@@ -22173,7 +22296,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 36,
+   "tracks": 20,
    "offsets": "defects-lyapunov-apo-half-4-farther/offsets",
    "positions": "defects-lyapunov-apo-half-4-farther/positions",
    "channels": {
@@ -22233,7 +22356,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 448,
+   "tracks": 136,
    "offsets": "zoom_ref-lyapunov-apo-half-4-farther/offsets",
    "positions": "zoom_ref-lyapunov-apo-half-4-farther/positions",
    "channels": {
@@ -22253,7 +22376,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 11,
+   "tracks": 6,
    "offsets": "zoom_arcs-lyapunov-apo-half-4-farther/offsets",
    "positions": "zoom_arcs-lyapunov-apo-half-4-farther/positions",
    "channels": {
@@ -22273,7 +22396,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 11,
+   "tracks": 5,
    "offsets": "zoom_defects-lyapunov-apo-half-4-farther/offsets",
    "positions": "zoom_defects-lyapunov-apo-half-4-farther/positions",
    "channels": {
@@ -22293,12 +22416,32 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 11,
+   "tracks": 6,
    "offsets": "zoom_end-lyapunov-apo-half-4-farther/offsets",
    "positions": "zoom_end-lyapunov-apo-half-4-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_end-lyapunov-apo-half-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_mirror-lyapunov-apo-half-4-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_mirror",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "zoom_mirror-lyapunov-apo-half-4-farther/offsets",
+   "positions": "zoom_mirror-lyapunov-apo-half-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_mirror-lyapunov-apo-half-4-farther/channels/c"
     }
    },
    "periodic": false
@@ -22323,6 +22466,66 @@
    },
    "periodic": false
   },
+  "solution-lyapunov-apo-half-4-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution-lyapunov-apo-half-4-farther/offsets",
+   "positions": "solution-lyapunov-apo-half-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution-lyapunov-apo-half-4-farther/channels/c"
+    }
+   },
+   "periodic": true
+  },
+  "solution_mid-lyapunov-apo-half-4-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution_mid",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution_mid-lyapunov-apo-half-4-farther/offsets",
+   "positions": "solution_mid-lyapunov-apo-half-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution_mid-lyapunov-apo-half-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "satellite-lyapunov-apo-half-4-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "satellite",
+    "case": "lyapunov",
+    "system": "apo",
+    "targeting": "half",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "satellite-lyapunov-apo-half-4-farther/offsets",
+   "positions": "satellite-lyapunov-apo-half-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "satellite-lyapunov-apo-half-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "current-lyapunov-apo-half-4-farther": {
    "frame": "convergence",
    "tags": {
@@ -22339,26 +22542,6 @@
    "channels": {
     "c": {
      "view": "current-lyapunov-apo-half-4-farther/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "cross-lyapunov-apo-half-4-farther": {
-   "frame": "convergence",
-   "tags": {
-    "element": "cross",
-    "case": "lyapunov",
-    "system": "apo",
-    "targeting": "half",
-    "S": "4",
-    "guess": "farther"
-   },
-   "tracks": 2,
-   "offsets": "cross-lyapunov-apo-half-4-farther/offsets",
-   "positions": "cross-lyapunov-apo-half-4-farther/positions",
-   "channels": {
-    "c": {
-     "view": "cross-lyapunov-apo-half-4-farther/channels/c"
     }
    },
    "periodic": false
@@ -22389,8 +22572,8 @@
     "fail7_x": 0.0,
     "fail8_x": 0.0,
     "fail9_x": 0.0,
-    "fail10_x": -993.6,
-    "fail_y": -997.6
+    "fail10_x": 0.0,
+    "fail_y": 0.0
    },
    "tracks": 1,
    "offsets": "ticker-lyapunov-apo-half-4-farther/offsets",
@@ -22689,7 +22872,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 221,
+   "tracks": 85,
    "offsets": "zoom_ref-lyapunov-apo-half-4-near/offsets",
    "positions": "zoom_ref-lyapunov-apo-half-4-near/positions",
    "channels": {
@@ -23105,7 +23288,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 144,
+   "tracks": 80,
    "offsets": "arcs-lyapunov-apo-half-16-farther/offsets",
    "positions": "arcs-lyapunov-apo-half-16-farther/positions",
    "channels": {
@@ -23145,7 +23328,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 128,
+   "tracks": 64,
    "offsets": "defects-lyapunov-apo-half-16-farther/offsets",
    "positions": "defects-lyapunov-apo-half-16-farther/positions",
    "channels": {
@@ -23195,26 +23378,6 @@
    },
    "periodic": false
   },
-  "zoom_ref-lyapunov-apo-half-16-farther": {
-   "frame": "zoom",
-   "tags": {
-    "element": "zoom_ref",
-    "case": "lyapunov",
-    "system": "apo",
-    "targeting": "half",
-    "S": "16",
-    "guess": "farther"
-   },
-   "tracks": 1093,
-   "offsets": "zoom_ref-lyapunov-apo-half-16-farther/offsets",
-   "positions": "zoom_ref-lyapunov-apo-half-16-farther/positions",
-   "channels": {
-    "c": {
-     "view": "zoom_ref-lyapunov-apo-half-16-farther/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "zoom_arcs-lyapunov-apo-half-16-farther": {
    "frame": "zoom",
    "tags": {
@@ -23225,7 +23388,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 9,
+   "tracks": 5,
    "offsets": "zoom_arcs-lyapunov-apo-half-16-farther/offsets",
    "positions": "zoom_arcs-lyapunov-apo-half-16-farther/positions",
    "channels": {
@@ -23245,7 +23408,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 8,
+   "tracks": 4,
    "offsets": "zoom_defects-lyapunov-apo-half-16-farther/offsets",
    "positions": "zoom_defects-lyapunov-apo-half-16-farther/positions",
    "channels": {
@@ -23265,7 +23428,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 9,
+   "tracks": 5,
    "offsets": "zoom_end-lyapunov-apo-half-16-farther/offsets",
    "positions": "zoom_end-lyapunov-apo-half-16-farther/positions",
    "channels": {
@@ -23621,7 +23784,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 64,
+   "tracks": 48,
    "offsets": "arcs-lyapunov-apo-half-16-near/offsets",
    "positions": "arcs-lyapunov-apo-half-16-near/positions",
    "channels": {
@@ -23661,7 +23824,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 48,
+   "tracks": 32,
    "offsets": "defects-lyapunov-apo-half-16-near/offsets",
    "positions": "defects-lyapunov-apo-half-16-near/positions",
    "channels": {
@@ -23711,26 +23874,6 @@
    },
    "periodic": false
   },
-  "zoom_ref-lyapunov-apo-half-16-near": {
-   "frame": "zoom",
-   "tags": {
-    "element": "zoom_ref",
-    "case": "lyapunov",
-    "system": "apo",
-    "targeting": "half",
-    "S": "16",
-    "guess": "near"
-   },
-   "tracks": 153,
-   "offsets": "zoom_ref-lyapunov-apo-half-16-near/offsets",
-   "positions": "zoom_ref-lyapunov-apo-half-16-near/positions",
-   "channels": {
-    "c": {
-     "view": "zoom_ref-lyapunov-apo-half-16-near/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "zoom_arcs-lyapunov-apo-half-16-near": {
    "frame": "zoom",
    "tags": {
@@ -23741,7 +23884,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_arcs-lyapunov-apo-half-16-near/offsets",
    "positions": "zoom_arcs-lyapunov-apo-half-16-near/positions",
    "channels": {
@@ -23761,7 +23904,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 2,
    "offsets": "zoom_defects-lyapunov-apo-half-16-near/offsets",
    "positions": "zoom_defects-lyapunov-apo-half-16-near/positions",
    "channels": {
@@ -23781,7 +23924,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_end-lyapunov-apo-half-16-near/offsets",
    "positions": "zoom_end-lyapunov-apo-half-16-near/positions",
    "channels": {
@@ -24137,7 +24280,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 3,
+   "tracks": 4,
    "offsets": "arcs-lyapunov-cr3bp-full-1-farther/offsets",
    "positions": "arcs-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
@@ -24157,7 +24300,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 1,
+   "tracks": 3,
    "offsets": "defects-lyapunov-cr3bp-full-1-farther/offsets",
    "positions": "defects-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
@@ -24197,7 +24340,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 7,
+   "tracks": 66,
    "offsets": "zoom_ref-lyapunov-cr3bp-full-1-farther/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
@@ -24217,7 +24360,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 3,
    "offsets": "zoom_arcs-lyapunov-cr3bp-full-1-farther/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
@@ -24237,7 +24380,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 1,
+   "tracks": 3,
    "offsets": "zoom_defects-lyapunov-cr3bp-full-1-farther/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
@@ -24257,7 +24400,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 1,
+   "tracks": 7,
    "offsets": "zoom_nodes-lyapunov-cr3bp-full-1-farther/offsets",
    "positions": "zoom_nodes-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
@@ -24277,7 +24420,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 1,
+   "tracks": 3,
    "offsets": "zoom_end-lyapunov-cr3bp-full-1-farther/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
@@ -24297,7 +24440,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 4,
    "offsets": "arrows-lyapunov-cr3bp-full-1-farther/offsets",
    "positions": "arrows-lyapunov-cr3bp-full-1-farther/positions",
    "channels": {
@@ -24370,8 +24513,8 @@
     "secondary_x": 1000.0,
     "l1x": 0.8368934068616908,
     "fail0_x": 0.0,
-    "fail1_x": -998.86,
-    "fail2_x": 0.0,
+    "fail1_x": 0.0,
+    "fail2_x": -997.86,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
     "fail5_x": 0.0,
@@ -24579,7 +24722,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 7,
    "offsets": "arcs-lyapunov-cr3bp-full-1-near/offsets",
    "positions": "arcs-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
@@ -24599,7 +24742,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 6,
    "offsets": "defects-lyapunov-cr3bp-full-1-near/offsets",
    "positions": "defects-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
@@ -24639,7 +24782,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 18,
+   "tracks": 574,
    "offsets": "zoom_ref-lyapunov-cr3bp-full-1-near/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
@@ -24659,12 +24802,32 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 15,
    "offsets": "zoom_arcs-lyapunov-cr3bp-full-1-near/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
     "c": {
      "view": "zoom_arcs-lyapunov-cr3bp-full-1-near/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_solution-lyapunov-cr3bp-full-1-near": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_solution",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "1",
+    "guess": "near"
+   },
+   "tracks": 2,
+   "offsets": "zoom_solution-lyapunov-cr3bp-full-1-near/offsets",
+   "positions": "zoom_solution-lyapunov-cr3bp-full-1-near/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_solution-lyapunov-cr3bp-full-1-near/channels/c"
     }
    },
    "periodic": false
@@ -24679,7 +24842,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 6,
    "offsets": "zoom_defects-lyapunov-cr3bp-full-1-near/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
@@ -24699,7 +24862,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 30,
    "offsets": "zoom_nodes-lyapunov-cr3bp-full-1-near/offsets",
    "positions": "zoom_nodes-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
@@ -24719,7 +24882,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 7,
    "offsets": "zoom_end-lyapunov-cr3bp-full-1-near/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
@@ -24739,7 +24902,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 14,
    "offsets": "arrows-lyapunov-cr3bp-full-1-near/offsets",
    "positions": "arrows-lyapunov-cr3bp-full-1-near/positions",
    "channels": {
@@ -24751,6 +24914,66 @@
     },
     "vy": {
      "view": "arrows-lyapunov-cr3bp-full-1-near/channels/vy"
+    }
+   },
+   "periodic": false
+  },
+  "solution-lyapunov-cr3bp-full-1-near": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "1",
+    "guess": "near"
+   },
+   "tracks": 1,
+   "offsets": "solution-lyapunov-cr3bp-full-1-near/offsets",
+   "positions": "solution-lyapunov-cr3bp-full-1-near/positions",
+   "channels": {
+    "c": {
+     "view": "solution-lyapunov-cr3bp-full-1-near/channels/c"
+    }
+   },
+   "periodic": true
+  },
+  "solution_mid-lyapunov-cr3bp-full-1-near": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution_mid",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "1",
+    "guess": "near"
+   },
+   "tracks": 1,
+   "offsets": "solution_mid-lyapunov-cr3bp-full-1-near/offsets",
+   "positions": "solution_mid-lyapunov-cr3bp-full-1-near/positions",
+   "channels": {
+    "c": {
+     "view": "solution_mid-lyapunov-cr3bp-full-1-near/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "satellite-lyapunov-cr3bp-full-1-near": {
+   "frame": "rp",
+   "tags": {
+    "element": "satellite",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "1",
+    "guess": "near"
+   },
+   "tracks": 1,
+   "offsets": "satellite-lyapunov-cr3bp-full-1-near/offsets",
+   "positions": "satellite-lyapunov-cr3bp-full-1-near/positions",
+   "channels": {
+    "c": {
+     "view": "satellite-lyapunov-cr3bp-full-1-near/channels/c"
     }
    },
    "periodic": false
@@ -24775,26 +24998,6 @@
    },
    "periodic": false
   },
-  "cross-lyapunov-cr3bp-full-1-near": {
-   "frame": "convergence",
-   "tags": {
-    "element": "cross",
-    "case": "lyapunov",
-    "system": "cr3bp",
-    "targeting": "full",
-    "S": "1",
-    "guess": "near"
-   },
-   "tracks": 2,
-   "offsets": "cross-lyapunov-cr3bp-full-1-near/offsets",
-   "positions": "cross-lyapunov-cr3bp-full-1-near/positions",
-   "channels": {
-    "c": {
-     "view": "cross-lyapunov-cr3bp-full-1-near/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "ticker-lyapunov-cr3bp-full-1-near": {
    "frame": "rp",
    "tags": {
@@ -24813,7 +25016,7 @@
     "l1x": 0.8368934068616908,
     "fail0_x": 0.0,
     "fail1_x": 0.0,
-    "fail2_x": -997.86,
+    "fail2_x": 0.0,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
     "fail5_x": 0.0,
@@ -24822,7 +25025,7 @@
     "fail8_x": 0.0,
     "fail9_x": 0.0,
     "fail10_x": 0.0,
-    "fail_y": -997.6
+    "fail_y": 0.0
    },
    "tracks": 1,
    "offsets": "ticker-lyapunov-cr3bp-full-1-near/offsets",
@@ -25021,7 +25224,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 17,
+   "tracks": 20,
    "offsets": "arcs-lyapunov-cr3bp-full-4-farther/offsets",
    "positions": "arcs-lyapunov-cr3bp-full-4-farther/positions",
    "channels": {
@@ -25101,7 +25304,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 381,
+   "tracks": 686,
    "offsets": "zoom_ref-lyapunov-cr3bp-full-4-farther/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-full-4-farther/positions",
    "channels": {
@@ -25121,12 +25324,32 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 13,
+   "tracks": 12,
    "offsets": "zoom_arcs-lyapunov-cr3bp-full-4-farther/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-full-4-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_arcs-lyapunov-cr3bp-full-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_solution-lyapunov-cr3bp-full-4-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_solution",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 2,
+   "offsets": "zoom_solution-lyapunov-cr3bp-full-4-farther/offsets",
+   "positions": "zoom_solution-lyapunov-cr3bp-full-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_solution-lyapunov-cr3bp-full-4-farther/channels/c"
     }
    },
    "periodic": false
@@ -25141,12 +25364,32 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 8,
+   "tracks": 5,
    "offsets": "zoom_defects-lyapunov-cr3bp-full-4-farther/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-full-4-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_defects-lyapunov-cr3bp-full-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_dim_nodes-lyapunov-cr3bp-full-4-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_dim_nodes",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "zoom_dim_nodes-lyapunov-cr3bp-full-4-farther/offsets",
+   "positions": "zoom_dim_nodes-lyapunov-cr3bp-full-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_dim_nodes-lyapunov-cr3bp-full-4-farther/channels/c"
     }
    },
    "periodic": false
@@ -25161,7 +25404,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 30,
+   "tracks": 40,
    "offsets": "zoom_nodes-lyapunov-cr3bp-full-4-farther/offsets",
    "positions": "zoom_nodes-lyapunov-cr3bp-full-4-farther/positions",
    "channels": {
@@ -25181,12 +25424,72 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 4,
+   "tracks": 5,
    "offsets": "zoom_end-lyapunov-cr3bp-full-4-farther/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-full-4-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_end-lyapunov-cr3bp-full-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "solution-lyapunov-cr3bp-full-4-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution-lyapunov-cr3bp-full-4-farther/offsets",
+   "positions": "solution-lyapunov-cr3bp-full-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution-lyapunov-cr3bp-full-4-farther/channels/c"
+    }
+   },
+   "periodic": true
+  },
+  "solution_mid-lyapunov-cr3bp-full-4-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution_mid",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution_mid-lyapunov-cr3bp-full-4-farther/offsets",
+   "positions": "solution_mid-lyapunov-cr3bp-full-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution_mid-lyapunov-cr3bp-full-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "satellite-lyapunov-cr3bp-full-4-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "satellite",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "full",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "satellite-lyapunov-cr3bp-full-4-farther/offsets",
+   "positions": "satellite-lyapunov-cr3bp-full-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "satellite-lyapunov-cr3bp-full-4-farther/channels/c"
     }
    },
    "periodic": false
@@ -25211,26 +25514,6 @@
    },
    "periodic": false
   },
-  "cross-lyapunov-cr3bp-full-4-farther": {
-   "frame": "convergence",
-   "tags": {
-    "element": "cross",
-    "case": "lyapunov",
-    "system": "cr3bp",
-    "targeting": "full",
-    "S": "4",
-    "guess": "farther"
-   },
-   "tracks": 2,
-   "offsets": "cross-lyapunov-cr3bp-full-4-farther/offsets",
-   "positions": "cross-lyapunov-cr3bp-full-4-farther/positions",
-   "channels": {
-    "c": {
-     "view": "cross-lyapunov-cr3bp-full-4-farther/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "ticker-lyapunov-cr3bp-full-4-farther": {
    "frame": "rp",
    "tags": {
@@ -25251,14 +25534,14 @@
     "fail1_x": 0.0,
     "fail2_x": 0.0,
     "fail3_x": 0.0,
-    "fail4_x": -995.86,
+    "fail4_x": 0.0,
     "fail5_x": 0.0,
     "fail6_x": 0.0,
     "fail7_x": 0.0,
     "fail8_x": 0.0,
     "fail9_x": 0.0,
     "fail10_x": 0.0,
-    "fail_y": -997.6
+    "fail_y": 0.0
    },
    "tracks": 1,
    "offsets": "ticker-lyapunov-cr3bp-full-4-farther/offsets",
@@ -25457,7 +25740,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 24,
+   "tracks": 12,
    "offsets": "arcs-lyapunov-cr3bp-full-4-near/offsets",
    "positions": "arcs-lyapunov-cr3bp-full-4-near/positions",
    "channels": {
@@ -25477,7 +25760,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 20,
+   "tracks": 8,
    "offsets": "defects-lyapunov-cr3bp-full-4-near/offsets",
    "positions": "defects-lyapunov-cr3bp-full-4-near/positions",
    "channels": {
@@ -25537,7 +25820,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 882,
+   "tracks": 270,
    "offsets": "zoom_ref-lyapunov-cr3bp-full-4-near/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-full-4-near/positions",
    "channels": {
@@ -25557,7 +25840,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 12,
+   "tracks": 6,
    "offsets": "zoom_arcs-lyapunov-cr3bp-full-4-near/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-full-4-near/positions",
    "channels": {
@@ -25597,7 +25880,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 5,
+   "tracks": 2,
    "offsets": "zoom_defects-lyapunov-cr3bp-full-4-near/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-full-4-near/positions",
    "channels": {
@@ -25617,7 +25900,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 50,
+   "tracks": 15,
    "offsets": "zoom_nodes-lyapunov-cr3bp-full-4-near/offsets",
    "positions": "zoom_nodes-lyapunov-cr3bp-full-4-near/positions",
    "channels": {
@@ -25637,7 +25920,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 6,
+   "tracks": 3,
    "offsets": "zoom_end-lyapunov-cr3bp-full-4-near/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-full-4-near/positions",
    "channels": {
@@ -25953,7 +26236,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 112,
+   "tracks": 80,
    "offsets": "arcs-lyapunov-cr3bp-full-16-farther/offsets",
    "positions": "arcs-lyapunov-cr3bp-full-16-farther/positions",
    "channels": {
@@ -25973,7 +26256,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 96,
+   "tracks": 64,
    "offsets": "defects-lyapunov-cr3bp-full-16-farther/offsets",
    "positions": "defects-lyapunov-cr3bp-full-16-farther/positions",
    "channels": {
@@ -26033,7 +26316,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 956,
+   "tracks": 651,
    "offsets": "zoom_ref-lyapunov-cr3bp-full-16-farther/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-full-16-farther/positions",
    "channels": {
@@ -26053,7 +26336,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 14,
+   "tracks": 10,
    "offsets": "zoom_arcs-lyapunov-cr3bp-full-16-farther/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-full-16-farther/positions",
    "channels": {
@@ -26093,7 +26376,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 6,
+   "tracks": 4,
    "offsets": "zoom_defects-lyapunov-cr3bp-full-16-farther/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-full-16-farther/positions",
    "channels": {
@@ -26113,7 +26396,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 54,
+   "tracks": 39,
    "offsets": "zoom_nodes-lyapunov-cr3bp-full-16-farther/offsets",
    "positions": "zoom_nodes-lyapunov-cr3bp-full-16-farther/positions",
    "channels": {
@@ -26133,7 +26416,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 7,
+   "tracks": 5,
    "offsets": "zoom_end-lyapunov-cr3bp-full-16-farther/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-full-16-farther/positions",
    "channels": {
@@ -26449,7 +26732,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 64,
+   "tracks": 48,
    "offsets": "arcs-lyapunov-cr3bp-full-16-near/offsets",
    "positions": "arcs-lyapunov-cr3bp-full-16-near/positions",
    "channels": {
@@ -26469,7 +26752,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 48,
+   "tracks": 32,
    "offsets": "defects-lyapunov-cr3bp-full-16-near/offsets",
    "positions": "defects-lyapunov-cr3bp-full-16-near/positions",
    "channels": {
@@ -26529,7 +26812,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 515,
+   "tracks": 270,
    "offsets": "zoom_ref-lyapunov-cr3bp-full-16-near/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-full-16-near/positions",
    "channels": {
@@ -26549,7 +26832,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 8,
+   "tracks": 6,
    "offsets": "zoom_arcs-lyapunov-cr3bp-full-16-near/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-full-16-near/positions",
    "channels": {
@@ -26589,7 +26872,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 2,
    "offsets": "zoom_defects-lyapunov-cr3bp-full-16-near/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-full-16-near/positions",
    "channels": {
@@ -26609,7 +26892,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 29,
+   "tracks": 15,
    "offsets": "zoom_nodes-lyapunov-cr3bp-full-16-near/offsets",
    "positions": "zoom_nodes-lyapunov-cr3bp-full-16-near/positions",
    "channels": {
@@ -26629,7 +26912,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_end-lyapunov-cr3bp-full-16-near/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-full-16-near/positions",
    "channels": {
@@ -26945,12 +27228,32 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 20,
+   "tracks": 6,
    "offsets": "arcs-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "arcs-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
     "c": {
      "view": "arcs-lyapunov-cr3bp-half-1-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "mirror-lyapunov-cr3bp-half-1-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "mirror",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "mirror-lyapunov-cr3bp-half-1-farther/offsets",
+   "positions": "mirror-lyapunov-cr3bp-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "mirror-lyapunov-cr3bp-half-1-farther/channels/c"
     }
    },
    "periodic": false
@@ -26965,7 +27268,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 11,
+   "tracks": 5,
    "offsets": "defects-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "defects-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
@@ -27005,7 +27308,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 412,
+   "tracks": 548,
    "offsets": "zoom_ref-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
@@ -27025,7 +27328,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 15,
+   "tracks": 6,
    "offsets": "zoom_arcs-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
@@ -27045,7 +27348,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 11,
+   "tracks": 5,
    "offsets": "zoom_defects-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
@@ -27065,7 +27368,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 36,
+   "tracks": 6,
    "offsets": "zoom_nodes-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "zoom_nodes-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
@@ -27085,12 +27388,32 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 11,
+   "tracks": 6,
    "offsets": "zoom_end-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_end-lyapunov-cr3bp-half-1-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_mirror-lyapunov-cr3bp-half-1-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_mirror",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "zoom_mirror-lyapunov-cr3bp-half-1-farther/offsets",
+   "positions": "zoom_mirror-lyapunov-cr3bp-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_mirror-lyapunov-cr3bp-half-1-farther/channels/c"
     }
    },
    "periodic": false
@@ -27125,7 +27448,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 13,
+   "tracks": 12,
    "offsets": "arrows-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "arrows-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
@@ -27151,7 +27474,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 6,
    "offsets": "target_arrows-lyapunov-cr3bp-half-1-farther/offsets",
    "positions": "target_arrows-lyapunov-cr3bp-half-1-farther/positions",
    "channels": {
@@ -27163,6 +27486,66 @@
     },
     "vy": {
      "view": "target_arrows-lyapunov-cr3bp-half-1-farther/channels/vy"
+    }
+   },
+   "periodic": false
+  },
+  "solution-lyapunov-cr3bp-half-1-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution-lyapunov-cr3bp-half-1-farther/offsets",
+   "positions": "solution-lyapunov-cr3bp-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution-lyapunov-cr3bp-half-1-farther/channels/c"
+    }
+   },
+   "periodic": true
+  },
+  "solution_mid-lyapunov-cr3bp-half-1-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution_mid",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution_mid-lyapunov-cr3bp-half-1-farther/offsets",
+   "positions": "solution_mid-lyapunov-cr3bp-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution_mid-lyapunov-cr3bp-half-1-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "satellite-lyapunov-cr3bp-half-1-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "satellite",
+    "case": "lyapunov",
+    "system": "cr3bp",
+    "targeting": "half",
+    "S": "1",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "satellite-lyapunov-cr3bp-half-1-farther/offsets",
+   "positions": "satellite-lyapunov-cr3bp-half-1-farther/positions",
+   "channels": {
+    "c": {
+     "view": "satellite-lyapunov-cr3bp-half-1-farther/channels/c"
     }
    },
    "periodic": false
@@ -27183,26 +27566,6 @@
    "channels": {
     "c": {
      "view": "current-lyapunov-cr3bp-half-1-farther/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "cross-lyapunov-cr3bp-half-1-farther": {
-   "frame": "convergence",
-   "tags": {
-    "element": "cross",
-    "case": "lyapunov",
-    "system": "cr3bp",
-    "targeting": "half",
-    "S": "1",
-    "guess": "farther"
-   },
-   "tracks": 2,
-   "offsets": "cross-lyapunov-cr3bp-half-1-farther/offsets",
-   "positions": "cross-lyapunov-cr3bp-half-1-farther/positions",
-   "channels": {
-    "c": {
-     "view": "cross-lyapunov-cr3bp-half-1-farther/channels/c"
     }
    },
    "periodic": false
@@ -27233,8 +27596,8 @@
     "fail7_x": 0.0,
     "fail8_x": 0.0,
     "fail9_x": 0.0,
-    "fail10_x": -993.6,
-    "fail_y": -997.6
+    "fail10_x": 0.0,
+    "fail_y": 0.0
    },
    "tracks": 1,
    "offsets": "ticker-lyapunov-cr3bp-half-1-farther/offsets",
@@ -27433,7 +27796,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 8,
+   "tracks": 4,
    "offsets": "arcs-lyapunov-cr3bp-half-1-near/offsets",
    "positions": "arcs-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
@@ -27473,7 +27836,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 7,
+   "tracks": 3,
    "offsets": "defects-lyapunov-cr3bp-half-1-near/offsets",
    "positions": "defects-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
@@ -27513,7 +27876,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 724,
+   "tracks": 306,
    "offsets": "zoom_ref-lyapunov-cr3bp-half-1-near/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
@@ -27533,7 +27896,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 8,
+   "tracks": 4,
    "offsets": "zoom_arcs-lyapunov-cr3bp-half-1-near/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
@@ -27553,7 +27916,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 7,
+   "tracks": 3,
    "offsets": "zoom_defects-lyapunov-cr3bp-half-1-near/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
@@ -27573,7 +27936,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 8,
+   "tracks": 4,
    "offsets": "zoom_end-lyapunov-cr3bp-half-1-near/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
@@ -27633,7 +27996,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 16,
+   "tracks": 8,
    "offsets": "arrows-lyapunov-cr3bp-half-1-near/offsets",
    "positions": "arrows-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
@@ -27659,7 +28022,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 8,
+   "tracks": 4,
    "offsets": "target_arrows-lyapunov-cr3bp-half-1-near/offsets",
    "positions": "target_arrows-lyapunov-cr3bp-half-1-near/positions",
    "channels": {
@@ -27981,7 +28344,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 24,
+   "tracks": 20,
    "offsets": "arcs-lyapunov-cr3bp-half-4-farther/offsets",
    "positions": "arcs-lyapunov-cr3bp-half-4-farther/positions",
    "channels": {
@@ -28021,7 +28384,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 20,
+   "tracks": 16,
    "offsets": "defects-lyapunov-cr3bp-half-4-farther/offsets",
    "positions": "defects-lyapunov-cr3bp-half-4-farther/positions",
    "channels": {
@@ -28081,7 +28444,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 412,
+   "tracks": 357,
    "offsets": "zoom_ref-lyapunov-cr3bp-half-4-farther/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-half-4-farther/positions",
    "channels": {
@@ -28101,7 +28464,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 6,
+   "tracks": 5,
    "offsets": "zoom_arcs-lyapunov-cr3bp-half-4-farther/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-half-4-farther/positions",
    "channels": {
@@ -28121,7 +28484,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 5,
+   "tracks": 4,
    "offsets": "zoom_defects-lyapunov-cr3bp-half-4-farther/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-half-4-farther/positions",
    "channels": {
@@ -28141,7 +28504,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 6,
+   "tracks": 5,
    "offsets": "zoom_end-lyapunov-cr3bp-half-4-farther/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-half-4-farther/positions",
    "channels": {
@@ -28497,7 +28860,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 16,
+   "tracks": 12,
    "offsets": "arcs-lyapunov-cr3bp-half-4-near/offsets",
    "positions": "arcs-lyapunov-cr3bp-half-4-near/positions",
    "channels": {
@@ -28537,7 +28900,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 12,
+   "tracks": 8,
    "offsets": "defects-lyapunov-cr3bp-half-4-near/offsets",
    "positions": "defects-lyapunov-cr3bp-half-4-near/positions",
    "channels": {
@@ -28617,7 +28980,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_arcs-lyapunov-cr3bp-half-4-near/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-half-4-near/positions",
    "channels": {
@@ -28637,7 +29000,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 2,
    "offsets": "zoom_defects-lyapunov-cr3bp-half-4-near/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-half-4-near/positions",
    "channels": {
@@ -28657,7 +29020,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_end-lyapunov-cr3bp-half-4-near/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-half-4-near/positions",
    "channels": {
@@ -29013,7 +29376,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 80,
+   "tracks": 64,
    "offsets": "arcs-lyapunov-cr3bp-half-16-farther/offsets",
    "positions": "arcs-lyapunov-cr3bp-half-16-farther/positions",
    "channels": {
@@ -29053,7 +29416,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 64,
+   "tracks": 48,
    "offsets": "defects-lyapunov-cr3bp-half-16-farther/offsets",
    "positions": "defects-lyapunov-cr3bp-half-16-farther/positions",
    "channels": {
@@ -29113,7 +29476,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 272,
+   "tracks": 306,
    "offsets": "zoom_ref-lyapunov-cr3bp-half-16-farther/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-half-16-farther/positions",
    "channels": {
@@ -29133,7 +29496,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 5,
+   "tracks": 4,
    "offsets": "zoom_arcs-lyapunov-cr3bp-half-16-farther/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-half-16-farther/positions",
    "channels": {
@@ -29153,7 +29516,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_defects-lyapunov-cr3bp-half-16-farther/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-half-16-farther/positions",
    "channels": {
@@ -29173,7 +29536,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 5,
+   "tracks": 4,
    "offsets": "zoom_end-lyapunov-cr3bp-half-16-farther/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-half-16-farther/positions",
    "channels": {
@@ -29529,7 +29892,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 64,
+   "tracks": 48,
    "offsets": "arcs-lyapunov-cr3bp-half-16-near/offsets",
    "positions": "arcs-lyapunov-cr3bp-half-16-near/positions",
    "channels": {
@@ -29569,7 +29932,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 48,
+   "tracks": 32,
    "offsets": "defects-lyapunov-cr3bp-half-16-near/offsets",
    "positions": "defects-lyapunov-cr3bp-half-16-near/positions",
    "channels": {
@@ -29629,7 +29992,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 102,
+   "tracks": 136,
    "offsets": "zoom_ref-lyapunov-cr3bp-half-16-near/offsets",
    "positions": "zoom_ref-lyapunov-cr3bp-half-16-near/positions",
    "channels": {
@@ -29649,7 +30012,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_arcs-lyapunov-cr3bp-half-16-near/offsets",
    "positions": "zoom_arcs-lyapunov-cr3bp-half-16-near/positions",
    "channels": {
@@ -29669,7 +30032,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 2,
    "offsets": "zoom_defects-lyapunov-cr3bp-half-16-near/offsets",
    "positions": "zoom_defects-lyapunov-cr3bp-half-16-near/positions",
    "channels": {
@@ -29689,7 +30052,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_end-lyapunov-cr3bp-half-16-near/offsets",
    "positions": "zoom_end-lyapunov-cr3bp-half-16-near/positions",
    "channels": {
@@ -30487,7 +30850,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 1,
    "offsets": "arcs-lyapunov-peri-full-1-near/offsets",
    "positions": "arcs-lyapunov-peri-full-1-near/positions",
    "channels": {
@@ -30507,7 +30870,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "defects-lyapunov-peri-full-1-near/offsets",
    "positions": "defects-lyapunov-peri-full-1-near/positions",
    "channels": {
@@ -30547,7 +30910,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 152,
+   "tracks": 2,
    "offsets": "zoom_ref-lyapunov-peri-full-1-near/offsets",
    "positions": "zoom_ref-lyapunov-peri-full-1-near/positions",
    "channels": {
@@ -30567,7 +30930,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 3,
+   "tracks": 2,
    "offsets": "zoom_arcs-lyapunov-peri-full-1-near/offsets",
    "positions": "zoom_arcs-lyapunov-peri-full-1-near/positions",
    "channels": {
@@ -30587,7 +30950,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "zoom_defects-lyapunov-peri-full-1-near/offsets",
    "positions": "zoom_defects-lyapunov-peri-full-1-near/positions",
    "channels": {
@@ -30607,7 +30970,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 8,
+   "tracks": 1,
    "offsets": "zoom_nodes-lyapunov-peri-full-1-near/offsets",
    "positions": "zoom_nodes-lyapunov-peri-full-1-near/positions",
    "channels": {
@@ -30627,7 +30990,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 2,
+   "tracks": 1,
    "offsets": "zoom_end-lyapunov-peri-full-1-near/offsets",
    "positions": "zoom_end-lyapunov-peri-full-1-near/positions",
    "channels": {
@@ -30647,7 +31010,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 5,
+   "tracks": 1,
    "offsets": "arrows-lyapunov-peri-full-1-near/offsets",
    "positions": "arrows-lyapunov-peri-full-1-near/positions",
    "channels": {
@@ -30720,8 +31083,8 @@
     "secondary_x": 1000.0,
     "l1x": 0.8368934068616908,
     "fail0_x": 0.0,
-    "fail1_x": 0.0,
-    "fail2_x": -997.86,
+    "fail1_x": -998.86,
+    "fail2_x": 0.0,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
     "fail5_x": 0.0,
@@ -30929,7 +31292,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 8,
+   "tracks": 9,
    "offsets": "arcs-lyapunov-peri-full-4-farther/offsets",
    "positions": "arcs-lyapunov-peri-full-4-farther/positions",
    "channels": {
@@ -30949,7 +31312,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 4,
+   "tracks": 8,
    "offsets": "defects-lyapunov-peri-full-4-farther/offsets",
    "positions": "defects-lyapunov-peri-full-4-farther/positions",
    "channels": {
@@ -31009,7 +31372,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 26,
+   "tracks": 357,
    "offsets": "zoom_ref-lyapunov-peri-full-4-farther/offsets",
    "positions": "zoom_ref-lyapunov-peri-full-4-farther/positions",
    "channels": {
@@ -31029,7 +31392,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 6,
+   "tracks": 8,
    "offsets": "zoom_arcs-lyapunov-peri-full-4-farther/offsets",
    "positions": "zoom_arcs-lyapunov-peri-full-4-farther/positions",
    "channels": {
@@ -31049,7 +31412,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 2,
+   "tracks": 6,
    "offsets": "zoom_defects-lyapunov-peri-full-4-farther/offsets",
    "positions": "zoom_defects-lyapunov-peri-full-4-farther/positions",
    "channels": {
@@ -31069,7 +31432,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 1,
+   "tracks": 3,
    "offsets": "zoom_dim_nodes-lyapunov-peri-full-4-farther/offsets",
    "positions": "zoom_dim_nodes-lyapunov-peri-full-4-farther/positions",
    "channels": {
@@ -31089,7 +31452,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 3,
+   "tracks": 27,
    "offsets": "zoom_nodes-lyapunov-peri-full-4-farther/offsets",
    "positions": "zoom_nodes-lyapunov-peri-full-4-farther/positions",
    "channels": {
@@ -31109,7 +31472,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 1,
+   "tracks": 2,
    "offsets": "zoom_end-lyapunov-peri-full-4-farther/offsets",
    "positions": "zoom_end-lyapunov-peri-full-4-farther/positions",
    "channels": {
@@ -31176,8 +31539,8 @@
     "secondary_x": 1000.0,
     "l1x": 0.8368934068616908,
     "fail0_x": 0.0,
-    "fail1_x": -998.86,
-    "fail2_x": 0.0,
+    "fail1_x": 0.0,
+    "fail2_x": -997.86,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
     "fail5_x": 0.0,
@@ -31465,7 +31828,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 907,
+   "tracks": 874,
    "offsets": "zoom_ref-lyapunov-peri-full-4-near/offsets",
    "positions": "zoom_ref-lyapunov-peri-full-4-near/positions",
    "channels": {
@@ -31881,7 +32244,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 93,
+   "tracks": 112,
    "offsets": "arcs-lyapunov-peri-full-16-farther/offsets",
    "positions": "arcs-lyapunov-peri-full-16-farther/positions",
    "channels": {
@@ -31901,7 +32264,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 93,
+   "tracks": 96,
    "offsets": "defects-lyapunov-peri-full-16-farther/offsets",
    "positions": "defects-lyapunov-peri-full-16-farther/positions",
    "channels": {
@@ -31961,7 +32324,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 819,
+   "tracks": 769,
    "offsets": "zoom_ref-lyapunov-peri-full-16-farther/offsets",
    "positions": "zoom_ref-lyapunov-peri-full-16-farther/positions",
    "channels": {
@@ -31981,12 +32344,32 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 12,
+   "tracks": 14,
    "offsets": "zoom_arcs-lyapunov-peri-full-16-farther/offsets",
    "positions": "zoom_arcs-lyapunov-peri-full-16-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_arcs-lyapunov-peri-full-16-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_solution-lyapunov-peri-full-16-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_solution",
+    "case": "lyapunov",
+    "system": "peri",
+    "targeting": "full",
+    "S": "16",
+    "guess": "farther"
+   },
+   "tracks": 2,
+   "offsets": "zoom_solution-lyapunov-peri-full-16-farther/offsets",
+   "positions": "zoom_solution-lyapunov-peri-full-16-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_solution-lyapunov-peri-full-16-farther/channels/c"
     }
    },
    "periodic": false
@@ -32021,7 +32404,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 47,
+   "tracks": 29,
    "offsets": "zoom_nodes-lyapunov-peri-full-16-farther/offsets",
    "positions": "zoom_nodes-lyapunov-peri-full-16-farther/positions",
    "channels": {
@@ -32041,12 +32424,72 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 6,
+   "tracks": 7,
    "offsets": "zoom_end-lyapunov-peri-full-16-farther/offsets",
    "positions": "zoom_end-lyapunov-peri-full-16-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_end-lyapunov-peri-full-16-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "solution-lyapunov-peri-full-16-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution",
+    "case": "lyapunov",
+    "system": "peri",
+    "targeting": "full",
+    "S": "16",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution-lyapunov-peri-full-16-farther/offsets",
+   "positions": "solution-lyapunov-peri-full-16-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution-lyapunov-peri-full-16-farther/channels/c"
+    }
+   },
+   "periodic": true
+  },
+  "solution_mid-lyapunov-peri-full-16-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "solution_mid",
+    "case": "lyapunov",
+    "system": "peri",
+    "targeting": "full",
+    "S": "16",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "solution_mid-lyapunov-peri-full-16-farther/offsets",
+   "positions": "solution_mid-lyapunov-peri-full-16-farther/positions",
+   "channels": {
+    "c": {
+     "view": "solution_mid-lyapunov-peri-full-16-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "satellite-lyapunov-peri-full-16-farther": {
+   "frame": "rp",
+   "tags": {
+    "element": "satellite",
+    "case": "lyapunov",
+    "system": "peri",
+    "targeting": "full",
+    "S": "16",
+    "guess": "farther"
+   },
+   "tracks": 1,
+   "offsets": "satellite-lyapunov-peri-full-16-farther/offsets",
+   "positions": "satellite-lyapunov-peri-full-16-farther/positions",
+   "channels": {
+    "c": {
+     "view": "satellite-lyapunov-peri-full-16-farther/channels/c"
     }
    },
    "periodic": false
@@ -32067,26 +32510,6 @@
    "channels": {
     "c": {
      "view": "current-lyapunov-peri-full-16-farther/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "cross-lyapunov-peri-full-16-farther": {
-   "frame": "convergence",
-   "tags": {
-    "element": "cross",
-    "case": "lyapunov",
-    "system": "peri",
-    "targeting": "full",
-    "S": "16",
-    "guess": "farther"
-   },
-   "tracks": 2,
-   "offsets": "cross-lyapunov-peri-full-16-farther/offsets",
-   "positions": "cross-lyapunov-peri-full-16-farther/positions",
-   "channels": {
-    "c": {
-     "view": "cross-lyapunov-peri-full-16-farther/channels/c"
     }
    },
    "periodic": false
@@ -32113,12 +32536,12 @@
     "fail3_x": 0.0,
     "fail4_x": 0.0,
     "fail5_x": 0.0,
-    "fail6_x": -993.86,
+    "fail6_x": 0.0,
     "fail7_x": 0.0,
     "fail8_x": 0.0,
     "fail9_x": 0.0,
     "fail10_x": 0.0,
-    "fail_y": -997.6
+    "fail_y": 0.0
    },
    "tracks": 1,
    "offsets": "ticker-lyapunov-peri-full-16-farther/offsets",
@@ -32317,7 +32740,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 80,
+   "tracks": 64,
    "offsets": "arcs-lyapunov-peri-full-16-near/offsets",
    "positions": "arcs-lyapunov-peri-full-16-near/positions",
    "channels": {
@@ -32337,7 +32760,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 64,
+   "tracks": 48,
    "offsets": "defects-lyapunov-peri-full-16-near/offsets",
    "positions": "defects-lyapunov-peri-full-16-near/positions",
    "channels": {
@@ -32397,7 +32820,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 463,
+   "tracks": 374,
    "offsets": "zoom_ref-lyapunov-peri-full-16-near/offsets",
    "positions": "zoom_ref-lyapunov-peri-full-16-near/positions",
    "channels": {
@@ -32417,7 +32840,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 10,
+   "tracks": 8,
    "offsets": "zoom_arcs-lyapunov-peri-full-16-near/offsets",
    "positions": "zoom_arcs-lyapunov-peri-full-16-near/positions",
    "channels": {
@@ -32437,7 +32860,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 1,
+   "tracks": 2,
    "offsets": "zoom_solution-lyapunov-peri-full-16-near/offsets",
    "positions": "zoom_solution-lyapunov-peri-full-16-near/positions",
    "channels": {
@@ -32457,7 +32880,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 4,
+   "tracks": 3,
    "offsets": "zoom_defects-lyapunov-peri-full-16-near/offsets",
    "positions": "zoom_defects-lyapunov-peri-full-16-near/positions",
    "channels": {
@@ -32477,7 +32900,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 24,
+   "tracks": 14,
    "offsets": "zoom_nodes-lyapunov-peri-full-16-near/offsets",
    "positions": "zoom_nodes-lyapunov-peri-full-16-near/positions",
    "channels": {
@@ -32497,7 +32920,7 @@
     "S": "16",
     "guess": "near"
    },
-   "tracks": 5,
+   "tracks": 4,
    "offsets": "zoom_end-lyapunov-peri-full-16-near/offsets",
    "positions": "zoom_end-lyapunov-peri-full-16-near/positions",
    "channels": {
@@ -32813,7 +33236,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 6,
+   "tracks": 5,
    "offsets": "arcs-lyapunov-peri-half-1-farther/offsets",
    "positions": "arcs-lyapunov-peri-half-1-farther/positions",
    "channels": {
@@ -32873,7 +33296,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 355,
+   "tracks": 1866,
    "offsets": "zoom_ref-lyapunov-peri-half-1-farther/offsets",
    "positions": "zoom_ref-lyapunov-peri-half-1-farther/positions",
    "channels": {
@@ -32893,7 +33316,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 7,
+   "tracks": 13,
    "offsets": "zoom_arcs-lyapunov-peri-half-1-farther/offsets",
    "positions": "zoom_arcs-lyapunov-peri-half-1-farther/positions",
    "channels": {
@@ -32913,7 +33336,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 5,
+   "tracks": 11,
    "offsets": "zoom_defects-lyapunov-peri-half-1-farther/offsets",
    "positions": "zoom_defects-lyapunov-peri-half-1-farther/positions",
    "channels": {
@@ -32933,7 +33356,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 4,
+   "tracks": 44,
    "offsets": "zoom_nodes-lyapunov-peri-half-1-farther/offsets",
    "positions": "zoom_nodes-lyapunov-peri-half-1-farther/positions",
    "channels": {
@@ -32953,7 +33376,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 5,
+   "tracks": 11,
    "offsets": "zoom_end-lyapunov-peri-half-1-farther/offsets",
    "positions": "zoom_end-lyapunov-peri-half-1-farther/positions",
    "channels": {
@@ -32993,7 +33416,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 10,
+   "tracks": 4,
    "offsets": "arrows-lyapunov-peri-half-1-farther/offsets",
    "positions": "arrows-lyapunov-peri-half-1-farther/positions",
    "channels": {
@@ -33019,7 +33442,7 @@
     "S": "1",
     "guess": "farther"
    },
-   "tracks": 5,
+   "tracks": 1,
    "offsets": "target_arrows-lyapunov-peri-half-1-farther/offsets",
    "positions": "target_arrows-lyapunov-peri-half-1-farther/positions",
    "channels": {
@@ -33096,12 +33519,12 @@
     "fail2_x": 0.0,
     "fail3_x": 0.0,
     "fail4_x": 0.0,
-    "fail5_x": -994.86,
+    "fail5_x": 0.0,
     "fail6_x": 0.0,
     "fail7_x": 0.0,
     "fail8_x": 0.0,
     "fail9_x": 0.0,
-    "fail10_x": 0.0,
+    "fail10_x": -993.6,
     "fail_y": -997.6
    },
    "tracks": 1,
@@ -33381,7 +33804,7 @@
     "S": "1",
     "guess": "near"
    },
-   "tracks": 272,
+   "tracks": 374,
    "offsets": "zoom_ref-lyapunov-peri-half-1-near/offsets",
    "positions": "zoom_ref-lyapunov-peri-half-1-near/positions",
    "channels": {
@@ -33849,7 +34272,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 36,
+   "tracks": 24,
    "offsets": "arcs-lyapunov-peri-half-4-farther/offsets",
    "positions": "arcs-lyapunov-peri-half-4-farther/positions",
    "channels": {
@@ -33889,7 +34312,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 32,
+   "tracks": 20,
    "offsets": "defects-lyapunov-peri-half-4-farther/offsets",
    "positions": "defects-lyapunov-peri-half-4-farther/positions",
    "channels": {
@@ -33949,7 +34372,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 811,
+   "tracks": 523,
    "offsets": "zoom_ref-lyapunov-peri-half-4-farther/offsets",
    "positions": "zoom_ref-lyapunov-peri-half-4-farther/positions",
    "channels": {
@@ -33969,7 +34392,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 9,
+   "tracks": 7,
    "offsets": "zoom_arcs-lyapunov-peri-half-4-farther/offsets",
    "positions": "zoom_arcs-lyapunov-peri-half-4-farther/positions",
    "channels": {
@@ -33989,12 +34412,32 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 8,
+   "tracks": 5,
    "offsets": "zoom_defects-lyapunov-peri-half-4-farther/offsets",
    "positions": "zoom_defects-lyapunov-peri-half-4-farther/positions",
    "channels": {
     "c": {
      "view": "zoom_defects-lyapunov-peri-half-4-farther/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "zoom_nodes-lyapunov-peri-half-4-farther": {
+   "frame": "zoom",
+   "tags": {
+    "element": "zoom_nodes",
+    "case": "lyapunov",
+    "system": "peri",
+    "targeting": "half",
+    "S": "4",
+    "guess": "farther"
+   },
+   "tracks": 4,
+   "offsets": "zoom_nodes-lyapunov-peri-half-4-farther/offsets",
+   "positions": "zoom_nodes-lyapunov-peri-half-4-farther/positions",
+   "channels": {
+    "c": {
+     "view": "zoom_nodes-lyapunov-peri-half-4-farther/channels/c"
     }
    },
    "periodic": false
@@ -34009,7 +34452,7 @@
     "S": "4",
     "guess": "farther"
    },
-   "tracks": 9,
+   "tracks": 6,
    "offsets": "zoom_end-lyapunov-peri-half-4-farther/offsets",
    "positions": "zoom_end-lyapunov-peri-half-4-farther/positions",
    "channels": {
@@ -34465,7 +34908,7 @@
     "S": "4",
     "guess": "near"
    },
-   "tracks": 170,
+   "tracks": 102,
    "offsets": "zoom_ref-lyapunov-peri-half-4-near/offsets",
    "positions": "zoom_ref-lyapunov-peri-half-4-near/positions",
    "channels": {
@@ -34881,7 +35324,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 96,
+   "tracks": 64,
    "offsets": "arcs-lyapunov-peri-half-16-farther/offsets",
    "positions": "arcs-lyapunov-peri-half-16-farther/positions",
    "channels": {
@@ -34921,7 +35364,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 80,
+   "tracks": 48,
    "offsets": "defects-lyapunov-peri-half-16-farther/offsets",
    "positions": "defects-lyapunov-peri-half-16-farther/positions",
    "channels": {
@@ -34981,7 +35424,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 562,
+   "tracks": 34,
    "offsets": "zoom_ref-lyapunov-peri-half-16-farther/offsets",
    "positions": "zoom_ref-lyapunov-peri-half-16-farther/positions",
    "channels": {
@@ -35001,7 +35444,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 6,
+   "tracks": 4,
    "offsets": "zoom_arcs-lyapunov-peri-half-16-farther/offsets",
    "positions": "zoom_arcs-lyapunov-peri-half-16-farther/positions",
    "channels": {
@@ -35021,7 +35464,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 5,
+   "tracks": 3,
    "offsets": "zoom_defects-lyapunov-peri-half-16-farther/offsets",
    "positions": "zoom_defects-lyapunov-peri-half-16-farther/positions",
    "channels": {
@@ -35041,7 +35484,7 @@
     "S": "16",
     "guess": "farther"
    },
-   "tracks": 6,
+   "tracks": 4,
    "offsets": "zoom_end-lyapunov-peri-half-16-farther/offsets",
    "positions": "zoom_end-lyapunov-peri-half-16-farther/positions",
    "channels": {
@@ -35487,26 +35930,6 @@
    },
    "periodic": false
   },
-  "zoom_ref-lyapunov-peri-half-16-near": {
-   "frame": "zoom",
-   "tags": {
-    "element": "zoom_ref",
-    "case": "lyapunov",
-    "system": "peri",
-    "targeting": "half",
-    "S": "16",
-    "guess": "near"
-   },
-   "tracks": 119,
-   "offsets": "zoom_ref-lyapunov-peri-half-16-near/offsets",
-   "positions": "zoom_ref-lyapunov-peri-half-16-near/positions",
-   "channels": {
-    "c": {
-     "view": "zoom_ref-lyapunov-peri-half-16-near/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "zoom_arcs-lyapunov-peri-half-16-near": {
    "frame": "zoom",
    "tags": {
@@ -35939,7 +36362,7 @@
     "half",
     "full"
    ],
-   "default": "half",
+   "default": "full",
    "scope": "scene",
    "labels": [
     "half period",
@@ -36170,7 +36593,8 @@
      "members": "all",
      "reveal": "none",
      "before": "hidden",
-     "color": "#0d2f2e",
+     "color": "#21918c",
+     "opacity": 0.3,
      "width": 15.0
     },
     {
@@ -36198,7 +36622,8 @@
      "members": "all",
      "reveal": "none",
      "before": "hidden",
-     "color": "#0d2f2e",
+     "color": "#21918c",
+     "opacity": 0.3,
      "width": 15.0
     },
     {
@@ -36307,11 +36732,10 @@
       "fraction": 0.3
      },
      "head": {
-      "color": "#f0e442",
+      "color": "#e69f00",
       "size": 9.0
      },
      "before": "hidden",
-     "color": "#ffffff",
      "width": 2.0
     },
     {
@@ -36378,7 +36802,6 @@
      ],
      "before": "hidden",
      "after": "hidden",
-     "color": "#ffffff",
      "width": 1.8,
      "head": {
       "size": 9.0
@@ -36416,12 +36839,11 @@
       }
      },
      "head": {
-      "color": "#5c5c5c",
+      "color": "#8a93a6",
       "size": 8.0
      },
      "before": "hidden",
      "after": "hidden",
-     "color": "#ffffff",
      "opacity": 0.3,
      "width": 0.5
     },
@@ -36457,12 +36879,10 @@
       }
      },
      "head": {
-      "color": "#ffffff",
       "size": 8.0
      },
      "before": "hidden",
      "after": "hidden",
-     "color": "#ffffff",
      "width": 0.5
     },
     {
@@ -36493,7 +36913,6 @@
     {
      "kind": "outline",
      "view": "closeup",
-     "color": "#ffffff",
      "opacity": 0.5,
      "width": 1.0,
      "dash": [
@@ -36730,7 +37149,8 @@
      "before": "hidden",
      "after": "hidden",
      "fit": false,
-     "color": "#0d2f2e",
+     "color": "#21918c",
+     "opacity": 0.3,
      "width": 15.0
     },
     {
@@ -36877,13 +37297,12 @@
       }
      },
      "head": {
-      "color": "#5c5c5c",
+      "color": "#8a93a6",
       "size": 8.0
      },
      "before": "hidden",
      "after": "hidden",
      "fit": false,
-     "color": "#ffffff",
      "opacity": 0.3,
      "width": 0.5
     },
@@ -36919,13 +37338,11 @@
       }
      },
      "head": {
-      "color": "#ffffff",
       "size": 8.0
      },
      "before": "hidden",
      "after": "hidden",
      "fit": false,
-     "color": "#ffffff",
      "width": 0.5
     },
     {
@@ -36962,7 +37379,6 @@
      "reveal": "none",
      "context": "driver",
      "fit": false,
-     "color": "#ffffff",
      "width": 2.0
     },
     {
@@ -36973,7 +37389,6 @@
      "members": "all",
      "reveal": "none",
      "fit": false,
-     "color": "#ffffff",
      "width": 2.0
     },
     {
@@ -36985,7 +37400,6 @@
      "reveal": "none",
      "context": "driver",
      "fit": false,
-     "color": "#ffffff",
      "width": 2.0
     },
     {
@@ -37342,7 +37756,6 @@
      "members": "all",
      "reveal": "grow",
      "head": {
-      "color": "#ffffff",
       "size": 7.0
      },
      "before": "hidden",

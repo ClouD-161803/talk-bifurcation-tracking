@@ -1,39 +1,45 @@
 # Checks of the corrector against DyLAN
 
-I checked every converged orbit of the two scenes against DyLAN, on `vestini/master` of dylan-core. Every state agrees with DyLAN to better than $10^{-10}$, and most states agree to $10^{-11}$. I printed the numbers below with `check_dylan.py`, which reads `runs.json` and runs in about 30 s, and I copied them from its output.
+I checked every converged orbit of the two scenes against DyLAN, on `vestini/master` of dylan-core. Every state that lands on its reference agrees with DyLAN to better than $10^{-9}$, and most states agree to $10^{-11}$. The two largest gaps, $6.7 \times 10^{-10}$ and $6.3 \times 10^{-10}$, are those of the Lyapunov orbit corrected over the full period in the ER3BP, as explained under the corrections. I printed the numbers below with `check_dylan.py`, which reads `runs.json` and runs in about 30 s, and I copied them from its output.
 
-A state here is the initial state $(x_0, \dot{y}_0)$ of a symmetric orbit, which leaves the $x$-axis at a right angle at the initial true anomaly $\theta_0$. Every state is nondimensional, in the rotating-pulsating frame, with the velocity taken with respect to the true anomaly. Lyapunov orbits are computed at the Earth–Moon mass ratio $\mu = 0.012155$, and family 11 at $\mu = 0.5$. In DyLAN I propagated every orbit with the ER3BP and the RK54 integrator at a tolerance of $10^{-12}$, the same tolerance as in `corrector.py`. A gap is the largest absolute difference between two states, taken component by component. In `corrector.py` a correction is stopped once $\|\boldsymbol{F}\|$ is below $10^{-11}$.
+A state here is the initial state $(x_0, \dot{y}_0)$ of a symmetric orbit, which leaves the $x$-axis at a right angle at the initial true anomaly $\theta_0$. Every state is nondimensional, in the rotating-pulsating frame, with the velocity taken with respect to the true anomaly. Lyapunov orbits are computed at the Earth–Moon mass ratio $\mu = 0.012155$, and family 11 at $\mu = 0.5$. The Lyapunov orbit of scene 1 is the member of period $\pi$ of the Lyapunov family, and in the ER3BP it is continued as an orbit of two laps in the period $2\pi$. In DyLAN I propagated every orbit with the ER3BP and the RK54 integrator at a tolerance of $10^{-12}$, the same tolerance as in `corrector.py`. A gap is the largest absolute difference between two states, taken component by component. In `corrector.py` a correction is stopped once $\|\boldsymbol{F}\|$ is below $10^{-11}$.
 
 ## The references
 
-The references are the six orbits of period $2\pi$ from which the first guesses of scene 1 are built. I solved the Lyapunov reference in the CR3BP again with the class `Lyapunov` of DyLAN, seeded with the reference, with $x_0$ held and at its Jacobi constant $C$. With `EllipticPeriodicOrbit` I continued each circular reference in steps of 0.005 in $e$ up to $e = 0.3$, with a corrector tolerance of $10^{-12}$, and compared the result with the reference at $e = 0.3$. The epoch is periapsis, with $\theta_0 = 0$, or apoapsis, with $\theta_0 = \pi$. The reference of family 11 in the CR3BP is compared with the Broucke page in the last section.
+The references are the six orbits from which the first guesses of scene 1 are built. Each of them has the period $2\pi$, except the Lyapunov orbit in the CR3BP, whose period is $\pi$. I solved the Lyapunov reference in the CR3BP again with the class `Lyapunov` of DyLAN, seeded with the reference, with $x_0$ held and at its Jacobi constant $C$. With `EllipticPeriodicOrbit` I continued each circular reference in steps of 0.005 in $e$ up to $e = 0.3$, with a corrector tolerance of $10^{-12}$, and with two spacecraft revolutions for the Lyapunov orbit, and compared the result with the reference at $e = 0.3$. The epoch is periapsis, with $\theta_0 = 0$, or apoapsis, with $\theta_0 = \pi$. The reference of family 11 in the CR3BP is compared with the Broucke page in the last section.
 
 | Case | System | Class of DyLAN | Gap in $x_0$ | Gap in $\dot{y}_0$ | Gap in the period |
 |---|---|---|---|---|---|
-| Lyapunov | CR3BP | `Lyapunov` | held | $5.8 \times 10^{-13}$ | $1.2 \times 10^{-11}$ |
-| Lyapunov | $e = 0.3$, periapsis | `EllipticPeriodicOrbit` | $1.2 \times 10^{-13}$ | $3.4 \times 10^{-13}$ | pinned at $2\pi$ |
-| Lyapunov | $e = 0.3$, apoapsis | `EllipticPeriodicOrbit` | $1.2 \times 10^{-13}$ | $3.1 \times 10^{-13}$ | pinned at $2\pi$ |
+| Lyapunov | CR3BP | `Lyapunov` | held | $1.5 \times 10^{-12}$ | $1.4 \times 10^{-11}$ |
+| Lyapunov | $e = 0.3$, periapsis | `EllipticPeriodicOrbit` | $5.9 \times 10^{-14}$ | $2.5 \times 10^{-13}$ | pinned at $2\pi$ |
+| Lyapunov | $e = 0.3$, apoapsis | `EllipticPeriodicOrbit` | $7.9 \times 10^{-14}$ | $6.1 \times 10^{-16}$ | pinned at $2\pi$ |
 | family 11 | $e = 0.3$, periapsis | `EllipticPeriodicOrbit` | $6.4 \times 10^{-13}$ | $3.1 \times 10^{-12}$ | pinned at $2\pi$ |
 | family 11 | $e = 0.3$, apoapsis | `EllipticPeriodicOrbit` | $3.5 \times 10^{-14}$ | $9.6 \times 10^{-13}$ | pinned at $2\pi$ |
 
 ## Scene 1, the corrections
 
-Of the 72 runs of scene 1, 35 converge, and every one of them lands on the reference of its case and system. The gap of each group to its reference is listed below, for the whole first node $(x, y, \dot{x}, \dot{y})$. The gaps of full-period targeting are larger, since the monodromy matrix is unstable, and a residual of $10^{-11}$ is thus amplified in the state.
+Of the 72 runs of scene 1, 42 converge, and 41 of them land on the reference of their case and system. A run is stopped when a step makes the period zero or negative, since $\boldsymbol{F}$ of single shooting over the full period vanishes at any node as the period goes to zero, and this trivial root is not an orbit. The gap of each group to its reference is listed below, for the whole first node $(x, y, \dot{x}, \dot{y})$. The gaps of full-period targeting are larger, since the monodromy matrix is unstable, and a residual of $10^{-11}$ is thus amplified in the state. The largest eigenvalue of the monodromy matrix is about $10^{3}$ in magnitude for the Lyapunov orbit in the CR3BP and about $10^{6}$ for its two laps in the ER3BP, hence the largest gaps are those of the Lyapunov orbit in the ER3BP.
 
-| Case | System | Targeting | Converged runs | Largest gap |
+| Case | System | Targeting | Runs on the reference | Largest gap |
 |---|---|---|---|---|
-| Lyapunov | CR3BP | half period | 5 | $2.6 \times 10^{-14}$ |
-| Lyapunov | CR3BP | full period | 3 | $5.8 \times 10^{-13}$ |
-| Lyapunov | periapsis | half period | 5 | $7.4 \times 10^{-13}$ |
-| Lyapunov | periapsis | full period | 2 | $5.1 \times 10^{-11}$ |
-| Lyapunov | apoapsis | half period | 4 | $3.6 \times 10^{-13}$ |
-| Lyapunov | apoapsis | full period | 1 | $5.8 \times 10^{-11}$ |
+| Lyapunov | CR3BP | half period | 6 | $4.3 \times 10^{-12}$ |
+| Lyapunov | CR3BP | full period | 5 | $8.1 \times 10^{-13}$ |
+| Lyapunov | periapsis | half period | 5 | $3.2 \times 10^{-13}$ |
+| Lyapunov | periapsis | full period | 3 | $6.7 \times 10^{-10}$ |
+| Lyapunov | apoapsis | half period | 5 | $2.0 \times 10^{-13}$ |
+| Lyapunov | apoapsis | full period | 2 | $6.3 \times 10^{-10}$ |
 | family 11 | CR3BP | half period | 4 | $4.7 \times 10^{-13}$ |
 | family 11 | CR3BP | full period | 1 | $4.1 \times 10^{-12}$ |
 | family 11 | periapsis | half period | 3 | $6.9 \times 10^{-13}$ |
 | family 11 | periapsis | full period | 1 | $3.4 \times 10^{-11}$ |
 | family 11 | apoapsis | half period | 4 | $1.3 \times 10^{-12}$ |
 | family 11 | apoapsis | full period | 2 | $2.7 \times 10^{-11}$ |
+
+One run of the Lyapunov orbit converges to another orbit, with $S = 1$ and the guess ε = 0.05. At apoapsis under the half period, the run converges to a large retrograde orbit about the Earth, with $x_0 = 0.8709$ and $\dot{y}_0 = -0.613$. I propagated it in DyLAN for half its period. The residual is $(y, \dot{x})$ at the end, and the distance is the largest component of the minimum-norm Newton step to the orbit in DyLAN.
+
+| System | Targeting | Gap to the reference | Period | Residual | Distance |
+|---|---|---|---|---|---|
+| apoapsis | half period | $0.96$ | $2\pi$ | $2.9 \times 10^{-12}$ | $6.4 \times 10^{-12}$ |
 
 ## Scene 2, the members
 

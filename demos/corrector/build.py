@@ -32,7 +32,10 @@ MEMBERS = HERE.parent.parent / "data" / "stability" / "members.json"
 CSV = Path("/Users/claudiovestini/git/tycho/code/examples/broucke/data/family_11_periapsis.csv")
 TWO_PI = 2.0 * math.pi
 
+# the mass ratio of each case. The Lyapunov case of scene 1 is the member of period pi of the Lyapunov family, and two
+# laps of it take 2 pi, the period of the ER3BP
 MU = {"lyapunov": 0.012155, "family11": 0.5}
+FAMILIES = tuple(MU)
 E = 0.3
 # the eccentricity and the initial true anomaly of each system
 SYSTEMS = {"cr3bp": (0.0, 0.0), "peri": (E, 0.0), "apo": (E, math.pi)}
@@ -66,14 +69,13 @@ MIN_STEP = 2.0**-14
 FAMILY11_RETURN = 0.40
 FAMILY11_CURVE_RETURN = 0.36
 
-GRAY, RED, ORANGE, BLUE, WHITE, YELLOW = "#8a93a6", "#e8414a", "#e69f00", "#56b4e9", "#ffffff", "#f0e442"
-# the white of a node at an opacity of 0.35 over the dark background, for a head, which is drawn opaque
-DIM_WHITE = "#5c5c5c"
+# a mark without a color, e.g. a node, an arrow, or the scale bar, is drawn in the foreground of the theme of the viewer,
+# hence in white over the dark background and in black over the light one
+GRAY, RED, ORANGE, BLUE = "#8a93a6", "#e8414a", "#e69f00", "#56b4e9"
 # the color of the arcs and of the convergence curve of the current run of scene 1, in both systems
 TEAL = "#21918c"
-# the glow of the converged orbit of scene 1, i.e. TEAL at an opacity of 0.3 over the dark background, and
-# its width in CSS pixels
-GLOW, STILL_GLOW = "#0d2f2e", 15.0
+# the opacity of the glow of the converged orbit of scene 1, drawn in TEAL, and its width in CSS pixels
+GLOW, STILL_GLOW = 0.3, 15.0
 # a body that a case does not show is parked this far out, outside every panel
 FAR = 1.0e3
 # the half width and the half height in n and in log10 ||F|| of a cross that marks a failed run in the
@@ -267,6 +269,8 @@ def references_job(case: str) -> dict:
     """The converged orbit (x0, y'0, T) of each system, from which scene 1 builds its first guesses."""
     mu = MU[case]
     if case == "lyapunov":
+        # the member of period pi is the first member past the half period pi / 2, corrected at it
+        half_period = math.pi / 2
         model = c.Model(mu)
         fam = c.continue_family(
             model,
@@ -277,14 +281,14 @@ def references_job(case: str) -> dict:
             steps=400,
             weights=W_LYAPUNOV,
             direction=-1.0,
-            end=C_END,
             max_jump=MAX_JUMP,
+            stop=lambda Y: "the half period pi / 2 was passed" if Y[2] >= half_period else "",
         )
-        if abs(fam.members[-1][-1] - C_END) > 1e-12:
-            raise SystemExit(f"the Lyapunov family stopped at C = {fam.members[-1][-1]}: {fam.stopped}")
-        iterates, _, ok = c.newton(jacobi_fun(model), fam.members[-1], extra=pin(2, math.pi, 4))
+        if fam.members[-1][2] < half_period:
+            raise SystemExit(f"the Lyapunov family stopped at the half period {fam.members[-1][2]}: {fam.stopped}")
+        iterates, _, ok = c.newton(jacobi_fun(model), fam.members[-1], extra=pin(2, half_period, 4))
         if not ok:
-            raise SystemExit("the Lyapunov orbit of period 2 pi did not converge")
+            raise SystemExit(f"the Lyapunov orbit of period {2 * half_period} did not converge")
         x0, vy0, half, _ = iterates[-1]
         base = np.array([x0, vy0, 0.0])
         out = {"cr3bp": [x0, vy0, 2 * half]}
@@ -386,9 +390,20 @@ def correction_job(job: tuple) -> dict:
         iterates.append({"nodes": it.nodes, "ends": it.ends, "norm": it.norm, "arc": it.arc, "segments": segments})
     solution = None
     if run.converged:
+        # the still orbit is joined from the converged segments, each flown from its own node, and under the half
+        # period from their mirror image. A single flight over the period from x0 would amplify the residual of x0
+        # by the monodromy matrix, about 1e6 for the two laps of the Lyapunov orbit in the ER3BP, and its end would be
+        # drawn a scale bar away from x0 in the close-up
         last = run.iterates[-1]
         period = 2 * last.arc if targeting == "half" else last.arc
-        P, tau = orbit_polyline(model, theta0, last.nodes[0], period, SAMPLES_ORBIT)
+        dt = last.arc / S
+        X = np.concatenate([last.samples[i][1 if i else 0 :, :2] for i in range(S)])
+        tau = np.concatenate([i * dt + last.taus[1 if i else 0 :] for i in range(S)])
+        if targeting == "half":
+            X = np.r_[X, X[-2::-1] * np.array([1.0, -1.0])]
+            tau = np.r_[tau, 2 * last.arc - tau[-2::-1]]
+        idx = spread(X, SAMPLES_ORBIT)
+        P, tau = rows_at(idx, X), np.interp(idx, np.arange(len(tau), dtype=float), tau)
         solution = (P, tau / period, theta0 + tau)
     return {
         "key": (case, system, targeting, S, guess),
@@ -811,7 +826,7 @@ def scale_value(w: float) -> float:
 
 def body_attrs(case: str) -> dict[str, float]:
     """The positions of the masses of :func:`bodies`. The Lyapunov case shows the Earth and the Moon, and family 11
-    the primary and the secondary, and the masses of the other case are parked at FAR."""
+    the primary and the secondary, and the masses of the other cases are parked at FAR."""
     mu = MU[case]
     moon = case == "lyapunov"
     return {
@@ -869,7 +884,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
     scale_labels = []
     for k, v in enumerate(SCALE_VALUES):
         tag = scene.frame(f"scale{k}", parent=zf, origin=[BAR_X, ty.channel(f"scale{k}"), 0.0])
-        scale_labels.append(ty.body(scene.body(f"scale{k}", frame=tag, position=[0.0, 0.0, 0.0], label=scale_text(v), color=WHITE), size=1.0))
+        scale_labels.append(ty.body(scene.body(f"scale{k}", frame=tag, position=[0.0, 0.0, 0.0], label=scale_text(v)), size=1.0))
     # the label of a failed run is drawn in a frame that the driver's channel "failed" scales by 1e-6 up
     # to the failure and by 1 after it, which parks the label at FAR and then moves it into the panel. A label
     # is written for each iterate n at which a run can fail, and the labels of the other iterates stay at FAR
@@ -1229,9 +1244,9 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         ts = new("ticker", attrs=attrs)
         ts.add(np.zeros((len(grid), 2)), channels={"c": grid, **ch})
 
-    case = scene.choice("case", ["lyapunov", "family11"], labels=["𝓛₁ Lyapunov", "family 11"])
+    case = scene.choice("case", list(MU), labels=["𝓛₁ Lyapunov", "family 11"])
     system = scene.choice("system", list(SYSTEMS), labels=["CR3BP", "ER3BP, periapsis", "ER3BP, apoapsis"])
-    targeting = scene.choice("targeting", list(TARGETINGS), labels=["half period", "full period"])
+    targeting = scene.choice("targeting", list(TARGETINGS), default="full", labels=["half period", "full period"])
     segments = scene.choice("S", [str(s) for s in SEGMENTS], labels=[str(s) for s in SEGMENTS])
     guess = scene.choice("guess", list(GUESSES), labels=["ε = 0.001", "ε = 0.05"])
     defects_on = scene.toggle("defects", default=True)
@@ -1254,41 +1269,40 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ty.axes(),
             # the dashed reference is drawn over the arcs and the converged orbit
             ty.track(q("arcs"), reveal="grow", before="hidden", after="hidden", color=TEAL, width=2.5),
-            # the red disc of a defect is drawn at its target under the white node, and seen around it
+            # the red disc of a defect is drawn at its target under the node, and seen around it
             ty.track(
                 q("defects"), reveal="grow", before="hidden", after="hidden", head={"color": RED, "size": DEFECT_DISC}, color=RED, width=3.0, visible=defects_on
             ),
             ty.track(q("mirror"), reveal="grow", before="hidden", color=GRAY, width=2.5, opacity=0.8),
             # the converged orbit is drawn still, in teal over its glow, under the satellite that rides it
-            ty.track(q("solution"), before="hidden", color=GLOW, width=STILL_GLOW),
-            ty.track(q("solution_mid"), before="hidden", color=GLOW, width=STILL_GLOW),
+            ty.track(q("solution"), before="hidden", color=TEAL, opacity=GLOW, width=STILL_GLOW),
+            ty.track(q("solution_mid"), before="hidden", color=TEAL, opacity=GLOW, width=STILL_GLOW),
             ty.track(q("solution"), before="hidden", color=TEAL, width=5.0),
             ty.track(q("solution_mid"), before="hidden", color=TEAL, width=5.0),
             ty.track(ty.sets(element="ref", case=case, system=system), color=GRAY, width=3.5, opacity=0.95, visible=solution_on),
             # a satellite laps the converged orbit from the moment the orbit is drawn to the end of the loop, as a
-            # yellow head with a white comet
-            ty.track(q("satellite"), trail=0.3, before="hidden", head={"color": YELLOW, "size": 9}, color=WHITE, width=2.0),
+            # orange head with a comet in the foreground color
+            ty.track(q("satellite"), trail=0.3, before="hidden", head={"color": ORANGE, "size": 9}, width=2.0),
             # the velocity required at the target on the axis under the half period, which is vertical
             ty.arrow(q("target_arrows"), ("vx", "vy"), before="hidden", after="hidden", color=GREEN, width=1.8, head=ARROWHEAD),
-            ty.arrow(q("arrows"), ("vx", "vy"), before="hidden", after="hidden", color=WHITE, width=1.8, head=ARROWHEAD),
+            ty.arrow(q("arrows"), ("vx", "vy"), before="hidden", after="hidden", width=1.8, head=ARROWHEAD),
             ty.track(
                 q("dim_nodes"),
                 trail=0.002,
                 taper=(0, 0),
-                head={"color": DIM_WHITE, "size": NODE_SIZE},
+                head={"color": GRAY, "size": NODE_SIZE},
                 before="hidden",
                 after="hidden",
-                color=WHITE,
                 width=0.5,
                 opacity=0.3,
             ),
-            # a node of a staged iterate 0 is drawn white until FIRST[0] by a track of its own, hidden after its end
+            # a node of a staged iterate 0 is drawn in the foreground color until FIRST[0] by a track of its own, hidden after its end
             ty.track(
-                q("nodes"), trail=0.002, taper=(0, 0), head={"color": WHITE, "size": NODE_SIZE}, before="hidden", after="hidden", color=WHITE, width=0.5
+                q("nodes"), trail=0.002, taper=(0, 0), head={"size": NODE_SIZE}, before="hidden", after="hidden", width=0.5
             ),
             *body_layers,
             # the area that the close-up shows, as it is zoomed and as it is panned or zoomed by hand
-            ty.outline("closeup", color=WHITE, opacity=0.5, width=1.0, dash=(WINDOW_DASH, WINDOW_DASH / 2), min_size=WINDOW_MIN),
+            ty.outline("closeup", opacity=0.5, width=1.0, dash=(WINDOW_DASH, WINDOW_DASH / 2), min_size=WINDOW_MIN),
         ],
     )
     # the close-up is a magnified copy of the orbit panel without axes, since its units change with the zoom, and
@@ -1312,16 +1326,16 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             magnified("zoom_arcs", reveal="grow", color=TEAL, width=2.5),
             magnified("zoom_defects", reveal="grow", head={"color": RED, "size": DEFECT_DISC}, color=RED, width=3.0, visible=defects_on),
             magnified("zoom_mirror", reveal="grow", color=GRAY, width=2.5, opacity=0.8),
-            magnified("zoom_solution", reveal="grow", color=GLOW, width=STILL_GLOW),
+            magnified("zoom_solution", reveal="grow", color=TEAL, opacity=GLOW, width=STILL_GLOW),
             magnified("zoom_solution", reveal="grow", color=TEAL, width=5.0),
             magnified("zoom_requirement", trail=0.002, taper=(0, 0), head={"color": GREEN, "size": NODE_SIZE}, color=GREEN, width=0.5),
             magnified("zoom_end", trail=0.002, taper=(0, 0), head={"color": TEAL, "size": NODE_SIZE}, color=TEAL, width=0.5),
-            magnified("zoom_dim_nodes", trail=0.002, taper=(0, 0), head={"color": DIM_WHITE, "size": NODE_SIZE}, color=WHITE, width=0.5, opacity=0.3),
-            magnified("zoom_nodes", trail=0.002, taper=(0, 0), head={"color": WHITE, "size": NODE_SIZE}, color=WHITE, width=0.5),
+            magnified("zoom_dim_nodes", trail=0.002, taper=(0, 0), head={"color": GRAY, "size": NODE_SIZE}, width=0.5, opacity=0.3),
+            magnified("zoom_nodes", trail=0.002, taper=(0, 0), head={"size": NODE_SIZE}, width=0.5),
             *body_layers,
-            ty.track(ty.set_id("scalebar"), color=WHITE, width=2.0, fit=False, context="driver"),
-            ty.track(ty.set_id("scalebar-start"), color=WHITE, width=2.0, fit=False),
-            ty.track(ty.set_id("scalebar-end"), color=WHITE, width=2.0, fit=False, context="driver"),
+            ty.track(ty.set_id("scalebar"), width=2.0, fit=False, context="driver"),
+            ty.track(ty.set_id("scalebar-start"), width=2.0, fit=False),
+            ty.track(ty.set_id("scalebar-end"), width=2.0, fit=False, context="driver"),
             *scale_labels,
         ],
     )
@@ -1338,7 +1352,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ty.track(ty.set_id("convergence-grid"), color=GRAY, width=1.0, opacity=0.2),
             ty.track(ty.set_id("tolerance"), color=GRAY, width=1.0, opacity=0.6),
             # the norm of F is the error that the defects show, hence its curve is drawn in their red
-            ty.track(q("current"), reveal="grow", before="hidden", head={"color": WHITE, "size": 7}, color=RED, width=3.0),
+            ty.track(q("current"), reveal="grow", before="hidden", head={"size": 7}, color=RED, width=3.0),
             ty.track(q("cross"), before="hidden", color=RED, width=2.5),
             *failed_labels,
         ],
@@ -1739,7 +1753,7 @@ def build_continuation(pens: dict, curves: dict, out: Path) -> dict:
         # pixels wide and tall, since the close-up of family 11 is narrower than a pixel of the diagram
         outline = []
         if view == "diagram":
-            outline = [ty.outline("closeup", color=WHITE, opacity=0.5, width=1.0, dash=(WINDOW_DASH, WINDOW_DASH / 2), min_size=WINDOW_MIN)]
+            outline = [ty.outline("closeup", opacity=0.5, width=1.0, dash=(WINDOW_DASH, WINDOW_DASH / 2), min_size=WINDOW_MIN)]
         scene.view(
             view,
             frame=family,
@@ -1813,8 +1827,8 @@ def main(argv: list[str] | None = None) -> None:
         seeds = {"lyapunov": lyapunov_seed(), "family11": family11_seed()}
         t0 = time.time()
         ref_futures = {case: pool.submit(references_job, case) for case in MU}
-        pen_jobs = [(f, s, m, seeds[f]) for f in MU for s in NATURAL_STEPS[f] for m in ("natural", "arclength")]
-        pen_jobs += [(f, "curve", "arclength", seeds[f]) for f in MU]
+        pen_jobs = [(f, s, m, seeds[f]) for f in FAMILIES for s in NATURAL_STEPS[f] for m in ("natural", "arclength")]
+        pen_jobs += [(f, "curve", "arclength", seeds[f]) for f in FAMILIES]
         pen_results = list(pool.map(continuation_job, pen_jobs))
         t_pens = time.time() - t0
         refs = {case: f.result()["references"] for case, f in ref_futures.items()}
@@ -1834,7 +1848,7 @@ def main(argv: list[str] | None = None) -> None:
         t_runs = time.time() - t0
     print(f"references in {t_refs:.0f} s, the 14 continuation runs in {t_pens:.0f} s, the {len(runs)} correction runs in {t_runs:.0f} s")
 
-    print("iterations to converge (o), or to fail by a propagation (p), by a growing norm (g), or by the iteration limit (m):")
+    print("iterations to converge (o), or to fail by a propagation (p), by a growing norm (g), by a period that is not positive (t), or by the iteration limit (m):")
     for case in MU:
         for system in SYSTEMS:
             for targeting in TARGETINGS:
@@ -1846,10 +1860,16 @@ def main(argv: list[str] | None = None) -> None:
                         kind = (
                             "o"
                             if r["converged"]
-                            else ("p" if not math.isfinite(r["iterates"][-1]["norm"]) else ("g" if "grew" in (r["failure"] or "") else "m"))
+                            else "p"
+                            if not math.isfinite(r["iterates"][-1]["norm"])
+                            else "g"
+                            if "grew" in (r["failure"] or "")
+                            else "t"
+                            if "period" in (r["failure"] or "")
+                            else "m"
                         )
                         row.append(f"{n:2d}{kind}")
-                    print(f"  {case:9} {system:6} {targeting:5} {guess:7} " + " ".join(row))
+                    print(f"  {case:14} {system:6} {targeting:5} {guess:7} " + " ".join(row))
 
     pens = {r["key"]: r for r in pen_results if r["key"][1] != "curve"}
     curves = {r["key"][0]: r["members"] for r in pen_results if r["key"][1] == "curve"}

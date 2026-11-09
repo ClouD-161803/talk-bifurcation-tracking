@@ -366,7 +366,7 @@ def correct(
     The Newton step solves DF dX = -F in the least-squares sense, which is the Newton step of a
     square system and the minimum-norm step otherwise, and the full step is taken. The run
     converges when the norm of F is below ``tol``. It fails when the norm passes ``give_up``, when
-    a propagation fails, or after ``max_iterations``.
+    a propagation fails, when a step makes the period zero or negative, or after ``max_iterations``.
     """
     nodes = np.array(nodes, dtype=float)
     S = len(nodes)
@@ -397,6 +397,10 @@ def correct(
             return run
         dX = np.linalg.lstsq(J, -F, rcond=None)[0]
         nodes, arc = _unpack(t, _pack(t, nodes, arc) + dX, nodes, arc)
+        if arc <= 0.0:
+            # F vanishes at any node as the period goes to zero, a root that is not an orbit
+            run.failure = "the period is not positive"
+            return run
     run.failure = "the iteration limit was reached"
     return run
 

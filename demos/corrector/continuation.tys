@@ -4595,7 +4595,6 @@
     {
      "kind": "outline",
      "view": "closeup",
-     "color": "#ffffff",
      "opacity": 0.5,
      "width": 1.0,
      "dash": [

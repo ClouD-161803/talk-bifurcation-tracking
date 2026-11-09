@@ -54,18 +54,21 @@ const STAGED = [-1.1, -0.5, 0.05, 0.6];
 // first frame of the loop, on which slides 11 and 12 are loaded
 const SCENES = {
   correction: [
+    // shot 1 opens as slide 11 is loaded. shot 2 fails over the full period from the farther guess, and
+    // converges from the same guess under the half period
     { shot: '1', set: [], first: true },
-    { shot: '2', set: [['targeting', 'full']] },
+    { shot: '2a', set: [['guess', 'farther']] },
+    { shot: '2b', set: [['targeting', 'half']] },
     // shot 3 opens as slide 12 is loaded
-    { shot: '3', set: [['S', '16'], ['guess', 'farther']], first: true },
+    { shot: '3', set: [['targeting', 'full'], ['guess', 'near'], ['S', '16']], first: true },
     // shot 4 compares one segment with sixteen on family 11 over the full period
-    { shot: '4a', set: [['case', 'family11'], ['guess', 'near'], ['S', '1']] },
+    { shot: '4a', set: [['case', 'family11'], ['S', '1']] },
     { shot: '4b', set: [['S', '16']] },
-    // shot 5 is played from the state of shot 3, where the run from the periapsis fails, and it is
-    // converged from the closer guess, then from the apoapsis
-    { shot: '5a', set: [['case', 'lyapunov'], ['guess', 'farther'], ['system', 'peri']] },
-    { shot: '5b', set: [['guess', 'near']] },
-    { shot: '5c', set: [['system', 'apo']] },
+    // shot 5 is played from the state of shot 3 in the ER3BP, where the run converges with sixteen segments
+    // and fails with one, then from the apoapsis
+    { shot: '5a', set: [['case', 'lyapunov'], ['system', 'peri']] },
+    { shot: '5b', set: [['S', '1']] },
+    { shot: '5c', set: [['S', '16'], ['system', 'apo']] },
     { shot: '6', set: [['system', 'cr3bp'], ['solution', true]] },
   ],
   // each shot of the continuation scene is taken at the start of the loop, at which its slide is paused,
