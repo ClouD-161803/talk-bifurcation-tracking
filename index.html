@@ -377,32 +377,34 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
      period, with S = 1 and the guess epsilon = 0.001, and it shows the tabs of the targeting, with the full
      period at the left, and the first guess and the switch of the solution. it
      opens on the node and its arrow alone, the arc of the first guess grows right after play, and a
-     satellite rides the converged orbit. the single shooting of slide 11 over the full period is faded out at step 6,
+     satellite rides the converged orbit. the single shooting of slide 11 over the full period is faded out at step 5,
      and half-period targeting is built in its place. data-viewer-speed
      is the playback speed at which the script at the end of this file puts the viewer when the slide
      is shown -->
 <section data-viewer-speed="0.5">
   <h2>Single shooting</h2>
   <div class="rederive">
-    <div class="fragment fade-out" data-fragment-index="6">
+    <div class="fragment fade-out" data-fragment-index="5">
       <p>Start from \(\boldsymbol x_0 = (x_0, 0, \dot x_0, \dot y_0)\), with \(x_0\) fixed.</p>
-      <p class="fragment" data-fragment-index="1">Then \(\boldsymbol X = (\dot x_0, \dot y_0, \class{hl-1}{T})\) and \(\boldsymbol F(\boldsymbol X) = \boldsymbol\phi(\class{hl-1}{T}; \boldsymbol x_0) - \boldsymbol x_0\).</p>
+      <div class="fragment" data-fragment-index="1" data-highlight="hl-1">
+        <p>Then \(\boldsymbol X = (\dot x_0, \dot y_0, \class{hl-1}{T})\) and</p>
+        <div class="math">\[\begin{aligned} \boldsymbol F(\boldsymbol X) &amp;= \boldsymbol\phi(\class{hl-1}{T}; \boldsymbol x_0, t_0) - \boldsymbol x_0 \\ &amp;= (x_{\class{hl-1}{T}} - x_0, y_{\class{hl-1}{T}}, \dot x_{\class{hl-1}{T}} - \dot x_0, \dot y_{\class{hl-1}{T}} - \dot y_0). \end{aligned}\]</div>
+      </div>
       <p class="fragment" data-fragment-index="2">The Jacobian has four rows and three columns,</p>
       <div class="fragment" data-fragment-index="3" data-highlight="hl-stm" data-tone="violet">
-        <div class="math">\[\DXF = \begin{bmatrix} \class{hl-stm}{\Phi_{x\dot x}} & \class{hl-stm}{\Phi_{x\dot y}} & \class{hl-1}{\dot x} \\ \class{hl-stm}{\Phi_{y\dot x}} & \class{hl-stm}{\Phi_{y\dot y}} & \class{hl-1}{\dot y} \\ \class{hl-stm}{\Phi_{\dot x\dot x}} - 1 & \class{hl-stm}{\Phi_{\dot x\dot y}} & \class{hl-1}{\ddot x} \\ \class{hl-stm}{\Phi_{\dot y\dot x}} & \class{hl-stm}{\Phi_{\dot y\dot y}} - 1 & \class{hl-1}{\ddot y} \end{bmatrix}_{T},\]</div>
-        <p class="small">where the \(-1\) entries are the derivatives of \(-\boldsymbol x_0\).</p>
+        <div class="math">\[\DXF = \begin{bmatrix} \class{hl-stm}{\partial x_{\class{hl-1}{T}}/\partial\dot x_0} & \class{hl-stm}{\partial x_{\class{hl-1}{T}}/\partial\dot y_0} & \dot x_{\class{hl-1}{T}} \\ \class{hl-stm}{\partial y_{\class{hl-1}{T}}/\partial\dot x_0} & \class{hl-stm}{\partial y_{\class{hl-1}{T}}/\partial\dot y_0} & \dot y_{\class{hl-1}{T}} \\ \class{hl-stm}{\partial\dot x_{\class{hl-1}{T}}/\partial\dot x_0} - 1 & \class{hl-stm}{\partial\dot x_{\class{hl-1}{T}}/\partial\dot y_0} & \ddot x_{\class{hl-1}{T}} \\ \class{hl-stm}{\partial\dot y_{\class{hl-1}{T}}/\partial\dot x_0} & \class{hl-stm}{\partial\dot y_{\class{hl-1}{T}}/\partial\dot y_0} - 1 & \ddot y_{\class{hl-1}{T}} \end{bmatrix}.\]</div>
       </div>
-      <p><span class="fragment" data-fragment-index="4" data-highlight="hl-1">Its last column is the vector field.</span> <span class="fragment" data-fragment-index="5">The iteration is stopped once \(\|\boldsymbol F\| &lt; 10^{-11}\).</span></p>
+      <p class="fragment" data-fragment-index="4">The iteration is stopped once \(\|\boldsymbol F\| &lt; 10^{-11}\).</p>
     </div>
     <div>
+      <div class="fragment" data-fragment-index="5">
+        <p>In half-period targeting, the initial condition departs vertically, from \(\boldsymbol x_0 = (x_0, 0, 0, \dot y_0)\), and crosses vertically at half period.</p>
+        <p>Then \(\boldsymbol X = (\dot y_0, \class{hl-1}{T/2})\) and \(\boldsymbol F(\boldsymbol X) = (y_{\class{hl-1}{T/2}}, \dot x_{\class{hl-1}{T/2}})\), and the orbit is closed with the mirror image \(y \to -y\).</p>
+      </div>
       <div class="fragment" data-fragment-index="6">
-        <p>In half-period targeting, the arc is launched straight across the axis, from \(\boldsymbol x_0 = (x_0, 0, 0, \dot y_0)\), to the next crossing.</p>
-        <p>Then \(\boldsymbol X = (\dot y_0, \class{hl-1}{T/2})\) and \(\boldsymbol F(\boldsymbol X) = (y, \dot x)_{\class{hl-1}{T/2}}\), and the orbit is closed with the mirror image \(y \to -y\).</p>
+        <div class="math">\[\DXF = \begin{bmatrix} \class{hl-stm}{\partial y_{\class{hl-1}{T/2}}/\partial\dot y_0} & \dot y_{\class{hl-1}{T/2}} \\ \class{hl-stm}{\partial\dot x_{\class{hl-1}{T/2}}/\partial\dot y_0} & \ddot x_{\class{hl-1}{T/2}} \end{bmatrix}.\]</div>
       </div>
-      <div class="fragment" data-fragment-index="7">
-        <div class="math">\[\DXF = \begin{bmatrix} \class{hl-stm}{\Phi_{y\dot y}} & \class{hl-1}{\dot y} \\ \class{hl-stm}{\Phi_{\dot x\dot y}} & \class{hl-1}{\ddot x} \end{bmatrix}_{T/2}\]</div>
-      </div>
-      <p class="fragment" data-fragment-index="7">An error is now amplified over half the orbit only, hence convergence is reached from a farther guess.</p>
+      <p class="fragment" data-fragment-index="6">An error is now amplified over half the orbit only, hence convergence is reached from a farther guess.</p>
     </div>
   </div>
 <!-- tycho-viewer start, the correction scene, slide 11, written by embed_scene.py -->
@@ -416,11 +418,10 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
     <p>Step 0: Here is the scheme on one orbit, over the full period. I start from the x-axis, and I keep the launch point x₀ fixed.</p>
     <p>Step 1: The free variables are the launch velocity and the period T, in orange. F is the miss after one period, the end state minus the start state, which must vanish for the orbit to close.</p>
     <p>Step 2: Its Jacobian has four rows, one per component of the state, and three columns, one per free variable.</p>
-    <p>Step 3: Its first two columns are entries of the state transition matrix, in violet, in the columns of ẋ₀ and ẏ₀. Φ with subscripts x and ẋ is the derivative of x at T with respect to ẋ₀, and so on. The −1 entries come from the start state subtracted in F.</p>
-    <p>Step 4: The last column is the vector field at the end of the arc, i.e. how the end state changes if I fly a little longer.</p>
-    <p>Step 5: With four equations and three unknowns I solve in the least-squares sense, update, and repeat until the norm of F is below 10⁻¹¹. The demo shows a Lyapunov orbit, a planar periodic orbit about 𝓛₁ of the Earth–Moon CR3BP. My first guess is the converged orbit, scaled by 0.1%. The white dot is the node, with its launch velocity as a white arrow. I press play. The teal arc is the flight over one period, and it must end back on the node. The red gap is the miss, which I call a defect. The close-up at the top right magnifies the end of the arc about the node. At each iterate the close-up first zooms in, and the new arc then lands closer, in view, with its scale in Earth–Moon distances on the bar at its lower left. I close the defect in six iterates, and a satellite, the orange dot, rides the converged orbit. Now a worse guess. I click "ε = 0.05" under "first guess" and press 0. The period shrinks at each iterate, from 3.3 to 2.1 to 0.2, and the next step would make it negative, hence the run is stopped at n = 2, at the red cross. A flight of zero length also has zero miss, and Newton's method is drawn to this trivial root.</p>
-    <p>Step 6: The orbit is symmetric about the x-axis, which I use in half-period targeting. I click "half period", the right tab under "targeting", and press 0. I launch straight across the axis, and I fly only to the next crossing. The free variables are the launch speed ẏ₀ and the half period, and F holds y and ẋ at the crossing, which must both vanish, so that the arc crosses the axis at a right angle. The mirror image of the arc then closes the orbit.</p>
-    <p>Step 7: The Jacobian is now two by two, with the vector field again in the last column, in orange. From the same guess I now converge, in five iterates, and the mirror image of the last arc is drawn in gray below the axis. An error is amplified over half the orbit only, and the zero-length flight is not a root, since y and ẋ do not vanish at the launch. Next I correct a long, unstable arc.</p>
+    <p>Step 3: Its first two columns are entries of the state transition matrix, in violet, in the columns of ẋ₀ and ẏ₀. Each entry is the derivative of a component of the final state with respect to ẋ₀ or ẏ₀, e.g. ∂x/∂ẋ₀ is how far x at T moves per unit of ẋ₀. The −1 entries come from the start state subtracted in F. The last column is the vector field at the end of the arc, i.e. how the end state changes if I fly a little longer.</p>
+    <p>Step 4: With four equations and three unknowns I solve in the least-squares sense, update, and repeat until the norm of F is below 10⁻¹¹. The demo shows a Lyapunov orbit, a planar periodic orbit about 𝓛₁ of the Earth–Moon CR3BP. My first guess is the converged orbit, scaled by 0.1%. The white dot is the node, with its launch velocity as a white arrow. I press play. The teal arc is the flight over one period, and it must end back on the node. The red gap is the miss, which I call a defect. The close-up at the top right magnifies the end of the arc about the node. At each iterate the close-up first zooms in, and the new arc then lands closer, in view, with its scale in Earth–Moon distances on the bar at its lower left. I close the defect in six iterates, and a satellite, the orange dot, rides the converged orbit. Now a worse guess. I click "ε = 0.05" under "first guess" and press 0. The period shrinks at each iterate, from 3.3 to 2.1 to 0.2, and the next step would make it negative, hence the run is stopped at n = 2, at the red cross. A flight of zero length also has zero miss, and Newton's method is drawn to this trivial root.</p>
+    <p>Step 5: The orbit is symmetric about the x-axis, which I use in half-period targeting. I click "half period", the right tab under "targeting", and press 0. I launch straight across the axis, and I fly only to the next crossing. The free variables are the launch speed ẏ₀ and the half period, and F holds y and ẋ at the crossing, which must both vanish, so that the arc crosses the axis at a right angle. The mirror image of the arc then closes the orbit.</p>
+    <p>Step 6: The Jacobian is now two by two, with the vector field again in the last column. From the same guess I now converge, in five iterates, and the mirror image of the last arc is drawn in gray below the axis. An error is amplified over half the orbit only, and the zero-length flight is not a root, since y and ẋ do not vanish at the launch. Next I correct a long, unstable arc.</p>
   </aside>
 </section>
 
@@ -436,13 +437,13 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
   <h2>Multiple shooting</h2>
   <p>A long arc is cut into \(S\) segments at the nodes \(\boldsymbol x_i\),</p>
   <div class="fragment" data-fragment-index="1">
-    <div class="math">\[\boldsymbol F_i = \class{hl-phi}{\boldsymbol\phi(\Delta t_i; \boldsymbol x_i)} \class{hl-id}{{} - \boldsymbol x_{i+1}} = \boldsymbol 0, \qquad \class{hl-close}{\boldsymbol x_S \coloneqq \boldsymbol x_0},\]</div>
-    <p class="small">where \(\Delta t_i = T/S\), and \(\boldsymbol F_i\) is the defect of segment \(i\).</p>
+    <div class="math">\[\boldsymbol F_i = \class{hl-phi}{\boldsymbol\phi(\Delta t_i; \boldsymbol x_i, t_i)} \class{hl-id}{{} - \boldsymbol x_{i+1}} = \boldsymbol 0, \qquad \class{hl-close}{\boldsymbol x_S \coloneqq \boldsymbol x_0},\]</div>
+    <p class="small">where \(\Delta t_i = T/S\), \(t_i = t_0 + i\,\Delta t_i\), and \(\boldsymbol F_i\) is the defect of segment \(i\).</p>
   </div>
-  <p class="fragment" data-fragment-index="2">For \(S = 3\), in the columns of \(\boldsymbol x_0\), \(\boldsymbol x_1\), \(\boldsymbol x_2\), and \(T\),</p>
+  <p class="fragment" data-fragment-index="2">For \(S = 3\), \(\boldsymbol X = (\boldsymbol x_0, \boldsymbol x_1, \boldsymbol x_2, T)\) and \(\boldsymbol F = (\boldsymbol F_0, \boldsymbol F_1, \boldsymbol F_2)\), hence</p>
   <div class="fragment" data-fragment-index="3">
-    <div class="math">\[\DXF = \begin{bmatrix} \class{hl-phi}{\boldsymbol\Phi_0} & \class{hl-id}{-\boldsymbol I} & \boldsymbol 0 & \boldsymbol f_0/3 \\ \boldsymbol 0 & \class{hl-phi}{\boldsymbol\Phi_1} & \class{hl-id}{-\boldsymbol I} & \boldsymbol f_1/3 \\ \class{hl-id}{\class{hl-close}{-\boldsymbol I}} & \boldsymbol 0 & \class{hl-phi}{\boldsymbol\Phi_2} & \boldsymbol f_2/3 \end{bmatrix},\]</div>
-    <p class="small">where \(\boldsymbol\Phi_i\) and \(\boldsymbol f_i\) are taken along segment \(i\).</p>
+    <div class="math" style="font-size: 0.8em">\[\DXF = \begin{bmatrix} \class{hl-phi}{\boldsymbol\Phi_0} & \class{hl-id}{-\boldsymbol I} & \boldsymbol 0 & \boldsymbol f_0/3 \\ \boldsymbol 0 & \class{hl-phi}{\boldsymbol\Phi_1} & \class{hl-id}{-\boldsymbol I} & \boldsymbol f_1/3 \\ \class{hl-id}{\class{hl-close}{-\boldsymbol I}} & \boldsymbol 0 & \class{hl-phi}{\boldsymbol\Phi_2} & \boldsymbol f_2/3 \end{bmatrix},\]</div>
+    <p class="small">where \(\boldsymbol\Phi_i = \partial\boldsymbol\phi(\Delta t_i; \boldsymbol x_i, t_i)/\partial\boldsymbol x_i\).</p>
   </div>
   <p class="small"><span class="fragment" data-fragment-index="4" data-highlight="hl-phi" data-tone="violet">Each flow is differentiated into a \(\boldsymbol\Phi_i\) on the diagonal,</span> <span class="fragment" data-fragment-index="5" data-highlight="hl-id">each next node into a \(-\boldsymbol I\),</span> <span class="fragment" data-fragment-index="6" data-unhighlight="hl-phi hl-id" data-highlight="hl-close">and the closing node into the corner.</span></p>
 <!-- tycho-viewer start, the correction scene, slide 12, written by embed_scene.py -->
