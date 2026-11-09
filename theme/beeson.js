@@ -4329,6 +4329,13 @@ void main() {
   var ORBIT_WIDTH = 4;
   var RIB_WIDTH = 2;
   var DOT_SIZE = 18;
+  var COMPASS_LEFT = 190;
+  var COMPASS_TOP = 170;
+  var COMPASS_RADIUS = 70;
+  var CIRCLE_WIDTH = 1.5;
+  var NEEDLE_WIDTH = 3;
+  var HEAD = 18;
+  var LABEL_GAP = 10;
   var SHEET_ALPHA = 0.86;
   var QUAD = [0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1];
   var SHEET_VERTEX = (
@@ -4403,11 +4410,15 @@ void main() {
       if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
       if (r.ribs.some((i) => !(i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
     }
+    for (const a of data.arrows ?? []) {
+      if (!(a.toward?.length === 3 && a.toward.every(Number.isFinite))) return `the arrow ${a.id} does not have a point toward of three numbers`;
+    }
     return data;
   }
   var CACHE4 = /* @__PURE__ */ new WeakMap();
   var Bundle = class _Bundle {
     constructor(el, data, THREE) {
+      this.subtle = "";
       this.stageName = null;
       this.t0 = 0;
       this.duration = GROW;
@@ -4460,20 +4471,17 @@ void main() {
       this.dot = this.makeDot();
       this.scene.add(this.line, this.dot);
       this.strips = data.strips.map((r, i) => this.makeStrip(r, i));
-      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-      const grow = (p) => {
-        for (let k = 0; k < 3; k++) {
-          lo[k] = Math.min(lo[k], p[k]);
-          hi[k] = Math.max(hi[k], p[k]);
-        }
-      };
-      this.orbit.forEach(grow);
-      for (const r of this.strips) this.orbit.forEach((p, i) => {
-        grow(add(p, r.directions[i], r.half));
-        grow(add(p, r.directions[i], -r.half));
-      });
+      const points = [...this.orbit];
+      for (const r of this.strips) this.orbit.forEach((p, i) => points.push(add(p, r.directions[i], r.half), add(p, r.directions[i], -r.half)));
+      const lo = [0, 1, 2].map((k) => Math.min(...points.map((p) => p[k])));
+      const hi = [0, 1, 2].map((k) => Math.max(...points.map((p) => p[k])));
       this.center = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
       this.radius = 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+      const from = this.point ?? this.center;
+      this.arrows = (data.arrows ?? []).map((a) => {
+        const d = add(a.toward, from, -1);
+        return { id: a.id, u: add([0, 0, 0], d, 1 / (Math.hypot(...d) || 1)) };
+      });
       this.dragging = dragToTurn(el, (dx, dy) => {
         this.azimuth -= dx * 5e-3;
         this.elevation = clamp2(this.elevation + dy * 4e-3, -1.45, 1.45);
@@ -4596,6 +4604,7 @@ void main() {
       const cs = getComputedStyle(this.el), css = (name, fallback) => rgb(cs.getPropertyValue(name), fallback);
       const bg = css("--bg", [0.02, 0.02, 0.02]), text = css("--text", [0.95, 0.95, 0.94]);
       const set2 = (target, c) => target.set(c[0], c[1], c[2]);
+      this.subtle = cs.getPropertyValue("--subtle").trim() || "#a6a6a0";
       set2(this.line.material.uniforms.uColor.value, text);
       set2(this.dot.material.uniforms.uColor.value, text);
       set2(this.dot.material.uniforms.uRing.value, bg);
@@ -4652,13 +4661,19 @@ void main() {
     }
     /**
      * The strips as drawn now, read by the tests: for each, its growth from 0 to 1, the growth of its
-     * sheet, and that of each of its segments. With settled, the change of stage has ended.
+     * sheet, and that of each of its segments. With settled, the change of stage has ended. For each
+     * arrow, in the slide pixels of the element, its needle from the middle of the compass to the tip,
+     * and its direction in the scene, from the libration point to a point 0.1 toward its point.
      */
     probe() {
       return {
         stage: this.stageName ?? "",
         settled: !this.moving,
-        strips: this.strips.map((r) => ({ id: r.id, grow: r.grow, sheet: sheetGrowth(r.grow), ribs: r.ribs.map((_, k) => ribGrowth(r.grow, k, r.ribs.length)) }))
+        strips: this.strips.map((r) => ({ id: r.id, grow: r.grow, sheet: sheetGrowth(r.grow), ribs: r.ribs.map((_, k) => ribGrowth(r.grow, k, r.ribs.length)) })),
+        arrows: this.arrows.map((a, i) => {
+          const from = this.point ?? this.center, { middle, tips } = this.compass();
+          return { id: a.id, needle: [middle, tips[i]], scene: [this.screen(from), this.screen(add(from, a.u, 0.1))] };
+        })
       };
     }
     /** Sizes the canvas from the box of the element on the screen, and draws. */
@@ -4719,24 +4734,90 @@ void main() {
         r.segments.visible = r.grow > 0;
       }
     }
+    // a point of the drawing in the slide pixels of the element, under the camera of now
+    screen(v) {
+      const p = new this.THREE.Vector3(...v).project(this.camera);
+      return [(p.x + 1) / 2 * this.w, (1 - p.y) / 2 * this.h];
+    }
+    // the compass in the slide pixels of the element: its middle, and the tip of the needle of each
+    // arrow, along the direction of the arrow under the turn of the camera, without perspective. the
+    // needle of a direction toward the camera or away from it is short
+    compass() {
+      const middle = [COMPASS_LEFT, COMPASS_TOP];
+      const q = this.camera.quaternion.clone().invert(), v = new this.THREE.Vector3();
+      const at = (d) => {
+        v.set(...d).applyQuaternion(q);
+        return [middle[0] + COMPASS_RADIUS * v.x, middle[1] - COMPASS_RADIUS * v.y];
+      };
+      return { middle, tips: this.arrows.map((a) => at(a.u)) };
+    }
+    // the circle of the plane of the orbit about the middle of the compass, and a needle with a head
+    // toward the point of each arrow, over the image of the scene
+    drawCompass(ctx) {
+      if (!this.arrows.length) return;
+      const { middle, tips } = this.compass();
+      const q = this.camera.quaternion.clone().invert(), v = new this.THREE.Vector3();
+      ctx.save();
+      ctx.scale(this.W / this.w, this.H / this.h);
+      ctx.strokeStyle = ctx.fillStyle = this.subtle;
+      ctx.lineWidth = CIRCLE_WIDTH;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        v.set(Math.cos(i * Math.PI / 32), Math.sin(i * Math.PI / 32), 0).applyQuaternion(q);
+        ctx.lineTo(middle[0] + COMPASS_RADIUS * v.x, middle[1] - COMPASS_RADIUS * v.y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = NEEDLE_WIDTH;
+      for (const t of tips) {
+        const l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
+        if (l < 1) continue;
+        const e = [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l], head = Math.min(HEAD, l), b = 0.4 * head;
+        const base = [t[0] - e[0] * head, t[1] - e[1] * head];
+        ctx.beginPath();
+        ctx.moveTo(...middle);
+        ctx.lineTo(base[0], base[1]);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(t[0], t[1]);
+        ctx.lineTo(base[0] - e[1] * b, base[1] + e[0] * b);
+        ctx.lineTo(base[0] + e[1] * b, base[1] - e[0] * b);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     // the labels at their anchors in the pixels of the slide. data-at is L1, for the libration point,
-    // or the id of a strip. the label of a strip is at the outer end of the segment of its rib data-rib,
-    // from 0, on the side data-side, 1 or -1, and it is faded in with its sheet
+    // the id of a strip, or the id of an arrow. the label of a strip is at the outer end of the
+    // segment of its rib data-rib, from 0, on the side data-side, 1 or -1, and it is faded in with its
+    // sheet. the label of an arrow is past the head of its needle, by LABEL_GAP and by its half extent
+    // along the needle, or above the middle of the compass when the needle is too short to show
     label() {
-      const p = new this.THREE.Vector3();
+      const { middle, tips } = this.compass();
       for (const lab of this.labels) {
         const at = lab.dataset.at ?? "";
+        const i = this.arrows.findIndex((a) => a.id === at);
+        if (i >= 0) {
+          const t = tips[i], l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
+          const e = l < 1 ? [0, -1] : [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l];
+          const reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
+          lab.style.left = `${t[0] + e[0] * reach + num3(lab.dataset.dx, 0)}px`;
+          lab.style.top = `${t[1] + e[1] * reach + num3(lab.dataset.dy, 0)}px`;
+          lab.style.opacity = "1";
+          continue;
+        }
         let anchor2 = null, alpha = 1;
         const r = this.strips.find((rb) => rb.id === at);
         if (r) {
-          const k = clamp2(Math.round(num3(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i = r.ribs[k];
-          anchor2 = add(this.orbit[i], r.directions[i], r.half * (num3(lab.dataset.side, 1) < 0 ? -1 : 1));
+          const k = clamp2(Math.round(num3(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i2 = r.ribs[k];
+          anchor2 = add(this.orbit[i2], r.directions[i2], r.half * (num3(lab.dataset.side, 1) < 0 ? -1 : 1));
           alpha = sheetGrowth(r.grow);
         } else if (this.point && /^L\d$/.test(at)) anchor2 = this.point;
         if (!anchor2) continue;
-        p.set(...anchor2).project(this.camera);
-        lab.style.left = `${(p.x + 1) / 2 * this.w + num3(lab.dataset.dx, 0)}px`;
-        lab.style.top = `${(1 - p.y) / 2 * this.h + num3(lab.dataset.dy, -30)}px`;
+        const [x, y] = this.screen(anchor2);
+        lab.style.left = `${x + num3(lab.dataset.dx, 0)}px`;
+        lab.style.top = `${y + num3(lab.dataset.dy, -30)}px`;
         lab.style.opacity = String(alpha);
       }
     }
@@ -4754,6 +4835,7 @@ void main() {
       if (!ctx) return;
       ctx.clearRect(0, 0, this.W, this.H);
       ctx.drawImage(r.domElement, 0, 0);
+      this.drawCompass(ctx);
     }
     kick() {
       if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);

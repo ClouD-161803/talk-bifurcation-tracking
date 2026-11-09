@@ -46,7 +46,8 @@ README = (
     "by the largest |y| of the orbit, nondimensional. orbit holds the points, spaced evenly in "
     "arclength in this projection. Each strip holds the unit direction at every point of orbit, in "
     "the same projection, its half width, and ribs, the indices of the points at which a segment "
-    "is drawn. multiplier is the eigenvalue of the monodromy matrix along the direction."
+    "is drawn. multiplier is the eigenvalue of the monodromy matrix along the direction. Each "
+    "record of arrows holds the id of its label and the point toward which it is drawn, here the Earth."
 )
 
 
@@ -196,6 +197,7 @@ def build(family_path):
         "libration_point": [0.0, 0.0, 0.0],
         "orbit": np.round(orbit, 5).tolist(),
         "strips": strips,
+        "arrows": [{"id": "Earth", "toward": [round((-mu - x_l1) / size, 5), 0.0, 0.0]}],
     }
     report = {
         "mu": mu,
