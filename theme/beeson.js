@@ -3671,7 +3671,11 @@ void main() {
     const indices = [...new Set(steps.map((s) => s.index))].sort((a, b) => a - b);
     const lit = /* @__PURE__ */ new Map();
     const order = steps.map((_, i) => i).sort((a, b) => steps[a].index - steps[b].index);
-    for (const i of order) if (steps[i].visible) for (const name of steps[i].highlight) lit.set(name, steps[i].tone);
+    for (const i of order) {
+      if (!steps[i].visible) continue;
+      for (const name of steps[i].unhighlight) lit.delete(name);
+      for (const name of steps[i].highlight) lit.set(name, steps[i].tone);
+    }
     const named = new Set(steps.filter((s) => s.visible && s.index === current).flatMap((s) => s.highlight));
     const held = steps.map((s) => {
       if (!s.visible || s.index === current) return false;
@@ -3713,6 +3717,7 @@ void main() {
         visible: f.classList.contains("visible"),
         keep: keep === null ? null : keep.trim() === "" ? "next" : Number(keep),
         highlight: words2(f.dataset.highlight),
+        unhighlight: words2(f.dataset.unhighlight),
         tone: TONES2.find((t) => t !== "accent" && t === f.dataset.tone) ?? "accent",
         holds: names.filter((name) => f.matches(select2(name)) || f.querySelector(select2(name)))
       };
