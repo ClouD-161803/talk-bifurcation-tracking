@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { resolve } from '../src/steps.ts';
 
-const step = (index, visible, more = {}) => ({ index, visible, keep: null, highlight: [], tone: 'accent', holds: [], ...more });
+const step = (index, visible, more = {}) => ({ index, visible, keep: null, highlight: [], unhighlight: [], tone: 'accent', holds: [], ...more });
 
 test('a fragment with an empty data-keep is held through the next step of the slide', () => {
   const steps = [step(1, true, { keep: 'next' }), step(4, true), step(6, true)];
@@ -39,6 +39,15 @@ test('a class is colored once its step is shown, in the tone of the last step th
   assert.deepEqual([...resolve(steps, 2).lit], [['a', 'violet'], ['b', 'violet']]);
   assert.deepEqual([...resolve([step(1, true, { highlight: ['a'] }), step(2, false, { highlight: ['a'], tone: 'violet' })], 1).lit], [['a', 'accent']]);
   assert.deepEqual([...resolve([step(1, false, { highlight: ['a'] })], -1).lit], []);
+});
+
+test('a class named in data-unhighlight is not colored once its step is shown, until a later step names it again', () => {
+  const steps = [step(1, true, { highlight: ['a', 'b'], tone: 'blue' }), step(2, false, { unhighlight: ['a'] }), step(3, false, { highlight: ['a'], tone: 'red' })];
+  assert.deepEqual([...resolve(steps, 1).lit], [['a', 'blue'], ['b', 'blue']]);
+  steps[1].visible = true;
+  assert.deepEqual([...resolve(steps, 2).lit], [['b', 'blue']]);
+  steps[2].visible = true;
+  assert.deepEqual([...resolve(steps, 3).lit], [['b', 'blue'], ['a', 'red']]);
 });
 
 // the opacity of the display, of the sentence after it, and the color of each class, in the
