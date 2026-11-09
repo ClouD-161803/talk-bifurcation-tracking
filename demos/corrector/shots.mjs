@@ -9,7 +9,7 @@
 //
 // A PNG is named <scene>-<shot>-<value>.png, where the value is the clock value with two decimals.
 // The shot is its number in the storyboard, and a letter is added to it when several controls are
-// set in turn in the shot, e.g. 5a and 5b for the two systems of shot 5 of the correction scene.
+// set in turn in the shot, e.g. 5a, 5b, and 5c for the three runs of shot 5 of the correction scene.
 //
 // Every tab and toggle is set by a click on its button or its checkbox, as a viewer sets it. The
 // clock is set by an input event on the scrubber of the transport, by which it is paused as by a
@@ -30,11 +30,19 @@ const runs = JSON.parse(readFileSync(join(here, 'runs.json'), 'utf8'));
 // it. iterate 0 spans the clock from -2 to 1, and iterate n >= 1 from n to n + 1. in each iterate the
 // arcs are drawn growing up to the fraction 0.45, the defects and the point of the convergence curve
 // are drawn by 0.6, and the nodes are moved to iterate n + 1 from 0.7. the same times are set in
-// ZERO, GROW, DEFECT_END, POINT, and SLIDE of build.py. with one segment, iterate 0 is instead drawn
-// whole from the start of the loop, as set in DRAWN of build.py, hence its first two PNGs are the same
-// still
+// ZERO, GROW, DEFECT_END, POINT, and SLIDE of build.py. with one segment, iterate 0 is instead played as a
+// slower iterate from GUESS, and iterate n >= 1 LEAD earlier, as set in GUESS, PACE0, and LEAD of build.py
 const PHASES = [0.3, 0.65, 0.9];
-const at = (n, f) => (n === 0 ? -2 + 3 * f : n + f);
+const GUESS = -2.25;
+const PACE0 = [0, 0.9, 1.2, 2.1, 2.6];
+const LEAD = 1 - (GUESS + PACE0[4]);
+// the clock offset of the fraction f of iterate 0 with S = 1, interpolated in PACE0 at the ends of the phases
+const pace0 = (f) => {
+  const ends = [0, 0.45, 0.6, 0.7, 1];
+  const j = Math.max(1, ends.findIndex((e) => e >= f));
+  return PACE0[j - 1] + ((f - ends[j - 1]) / (ends[j] - ends[j - 1])) * (PACE0[j] - PACE0[j - 1]);
+};
+const at = (n, f, S) => (S === '1' ? (n === 0 ? GUESS + pace0(f) : n + f - LEAD) : n === 0 ? -2 + 3 * f : n + f);
 // with more than one segment, iterate 0 is staged, and it is taken while its first segment grows, while
 // the others grow, when every defect is drawn, and while the nodes move. the same times are set in FIRST,
 // REST, and STAGED_SLIDE of build.py
@@ -54,13 +62,15 @@ const SCENES = {
     // shot 4 compares one segment with eight on family 11 over the full period
     { shot: '4a', set: [['case', 'family11'], ['guess', 'near'], ['S', '1']] },
     { shot: '4b', set: [['S', '8']] },
-    { shot: '5a', set: [['case', 'lyapunov'], ['system', 'peri']] },
-    { shot: '5b', set: [['system', 'apo']] },
-    { shot: '6a', set: [['system', 'cr3bp'], ['guess', 'far']] },
+    // shot 5 is played from the state of shot 3, where the run from the periapsis fails, and it is
+    // converged from the closer guess, then from the apoapsis
+    { shot: '5a', set: [['case', 'lyapunov'], ['S', '16'], ['guess', 'farther'], ['system', 'peri']] },
+    { shot: '5b', set: [['guess', 'near']] },
+    { shot: '5c', set: [['system', 'apo']] },
+    { shot: '6a', set: [['system', 'cr3bp'], ['S', '8'], ['guess', 'far']] },
     { shot: '6b', set: [['guess', 'far_ls']] },
-    // the middle of iterate 9 is added to shot 6c, where the step fraction alpha = 1/32 is read out
-    // in the caption before the cross at iterate 10
-    { shot: '6c', set: [['S', '1']], also: [9.65] },
+    // the middle of iterate 9 is added to shot 6c, the last step before the cross at iterate 10
+    { shot: '6c', set: [['S', '1']], also: [9.65 - LEAD] },
     { shot: '7a', set: [['S', '16'], ['ghosts', true], ['defects', false]] },
     { shot: '7b', set: [['defects', true], ['solution', true]] },
   ],
@@ -157,7 +167,7 @@ try {
         );
         const last = run.norms.length - 1;
         const iterates = [...new Set([0, 1, last])];
-        const times = (n) => (n === 0 && now.S !== '1' ? STAGED : PHASES.map((f) => at(n, f)));
+        const times = (n) => (n > 0 || now.S === '1' ? PHASES.map((f) => at(n, f, now.S)) : STAGED);
         frames = [...(first ? [0] : []), ...iterates.flatMap((n) => times(n).map(frameOf)), ...also.map(frameOf), steps - 1].sort((a, b) => a - b);
       } else {
         frames = [0, ...Array.from({ length: parts }, (_, j) => Math.round(((j + 0.5) * steps) / parts)), ...also.map(frameOf), steps - 1].sort((a, b) => a - b);

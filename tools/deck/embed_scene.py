@@ -40,7 +40,7 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         "the correction scene, slide 11" --controls --keep-theme \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set case=lyapunov --set system=cr3bp --set targeting=half --set S=1 --set guess=near --set others=false \
-        --show targeting
+        --show targeting guess ghosts solution
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
@@ -49,7 +49,7 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         "the correction scene, slide 12" --controls --keep-theme \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set case=lyapunov --set system=cr3bp --set targeting=full --set S=16 --set guess=farther \
-        --set ghosts=false --set others=false --show others
+        --set ghosts=false --set others=false --show case system S guess others
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \

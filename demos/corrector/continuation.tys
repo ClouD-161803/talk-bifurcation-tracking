@@ -1,6 +1,9 @@
 {
  "format": "tycho-scene",
  "version": "0.3",
+ "requires": [
+  "layers.outline"
+ ],
  "generator": "pytycho 0.2.0",
  "title": "Continuation of a family",
  "frames": {
@@ -129,17 +132,6 @@
    "tracks": 1,
    "offsets": "box-closeup-lyapunov/offsets",
    "positions": "box-closeup-lyapunov/positions",
-   "periodic": false
-  },
-  "window-lyapunov": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "window",
-    "family": "lyapunov"
-   },
-   "tracks": 40,
-   "offsets": "window-lyapunov/offsets",
-   "positions": "window-lyapunov/positions",
    "periodic": false
   },
   "curve-diagram-lyapunov-small-natural": {
@@ -372,26 +364,6 @@
    },
    "periodic": false
   },
-  "corr-closeup-lyapunov-small-natural": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "small",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 6,
-   "offsets": "corr-closeup-lyapunov-small-natural/offsets",
-   "positions": "corr-closeup-lyapunov-small-natural/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-lyapunov-small-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "pred-closeup-lyapunov-small-natural": {
    "frame": "lyapunov",
    "tags": {
@@ -402,12 +374,32 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 5,
+   "tracks": 24,
    "offsets": "pred-closeup-lyapunov-small-natural/offsets",
    "positions": "pred-closeup-lyapunov-small-natural/positions",
    "channels": {
     "c": {
      "view": "pred-closeup-lyapunov-small-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-lyapunov-small-natural": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "small",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 24,
+   "offsets": "corr-closeup-lyapunov-small-natural/offsets",
+   "positions": "corr-closeup-lyapunov-small-natural/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-lyapunov-small-natural/channels/c"
     }
    },
    "periodic": false
@@ -428,6 +420,26 @@
    "channels": {
     "c": {
      "view": "member-diagram-lyapunov-small-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "member-closeup-lyapunov-small-natural": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "small",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 25,
+   "offsets": "member-closeup-lyapunov-small-natural/offsets",
+   "positions": "member-closeup-lyapunov-small-natural/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-lyapunov-small-natural/channels/c"
     }
    },
    "periodic": false
@@ -472,26 +484,6 @@
    },
    "periodic": false
   },
-  "member-closeup-lyapunov-small-natural": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "small",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 5,
-   "offsets": "member-closeup-lyapunov-small-natural/offsets",
-   "positions": "member-closeup-lyapunov-small-natural/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-lyapunov-small-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "record-diagram-lyapunov-small-natural": {
    "frame": "lyapunov",
    "tags": {
@@ -522,7 +514,7 @@
     "method": "natural",
     "pens": "both"
    },
-   "tracks": 5,
+   "tracks": 25,
    "offsets": "record-closeup-lyapunov-small-natural/offsets",
    "positions": "record-closeup-lyapunov-small-natural/positions",
    "channels": {
@@ -666,7 +658,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 10,
+   "tracks": 34,
    "offsets": "tangent-closeup-lyapunov-small-arclength/offsets",
    "positions": "tangent-closeup-lyapunov-small-arclength/positions",
    "channels": {
@@ -686,7 +678,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 10,
+   "tracks": 34,
    "offsets": "constraint-closeup-lyapunov-small-arclength/offsets",
    "positions": "constraint-closeup-lyapunov-small-arclength/positions",
    "channels": {
@@ -706,7 +698,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 9,
+   "tracks": 34,
    "offsets": "pred-closeup-lyapunov-small-arclength/offsets",
    "positions": "pred-closeup-lyapunov-small-arclength/positions",
    "channels": {
@@ -726,7 +718,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 8,
+   "tracks": 34,
    "offsets": "corr-closeup-lyapunov-small-arclength/offsets",
    "positions": "corr-closeup-lyapunov-small-arclength/positions",
    "channels": {
@@ -752,6 +744,26 @@
    "channels": {
     "c": {
      "view": "member-diagram-lyapunov-small-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "member-closeup-lyapunov-small-arclength": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "small",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 35,
+   "offsets": "member-closeup-lyapunov-small-arclength/offsets",
+   "positions": "member-closeup-lyapunov-small-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-lyapunov-small-arclength/channels/c"
     }
    },
    "periodic": false
@@ -792,26 +804,6 @@
    "channels": {
     "c": {
      "view": "newest-orbit-lyapunov-small-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "member-closeup-lyapunov-small-arclength": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "small",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 8,
-   "offsets": "member-closeup-lyapunov-small-arclength/offsets",
-   "positions": "member-closeup-lyapunov-small-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-lyapunov-small-arclength/channels/c"
     }
    },
    "periodic": false
@@ -900,6 +892,26 @@
    },
    "periodic": false
   },
+  "pred-closeup-lyapunov-medium-natural": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "pred",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "medium",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 12,
+   "offsets": "pred-closeup-lyapunov-medium-natural/offsets",
+   "positions": "pred-closeup-lyapunov-medium-natural/positions",
+   "channels": {
+    "c": {
+     "view": "pred-closeup-lyapunov-medium-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "corr-closeup-lyapunov-medium-natural": {
    "frame": "lyapunov",
    "tags": {
@@ -910,7 +922,7 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 4,
+   "tracks": 12,
    "offsets": "corr-closeup-lyapunov-medium-natural/offsets",
    "positions": "corr-closeup-lyapunov-medium-natural/positions",
    "channels": {
@@ -950,7 +962,7 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 3,
+   "tracks": 5,
    "offsets": "pred_fail-closeup-lyapunov-medium-natural/offsets",
    "positions": "pred_fail-closeup-lyapunov-medium-natural/positions",
    "channels": {
@@ -970,32 +982,12 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 2,
+   "tracks": 5,
    "offsets": "fail_dot-closeup-lyapunov-medium-natural/offsets",
    "positions": "fail_dot-closeup-lyapunov-medium-natural/positions",
    "channels": {
     "c": {
      "view": "fail_dot-closeup-lyapunov-medium-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred-closeup-lyapunov-medium-natural": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "pred",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "medium",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 3,
-   "offsets": "pred-closeup-lyapunov-medium-natural/offsets",
-   "positions": "pred-closeup-lyapunov-medium-natural/positions",
-   "channels": {
-    "c": {
-     "view": "pred-closeup-lyapunov-medium-natural/channels/c"
     }
    },
    "periodic": false
@@ -1040,6 +1032,26 @@
    },
    "periodic": false
   },
+  "member-closeup-lyapunov-medium-natural": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "medium",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 13,
+   "offsets": "member-closeup-lyapunov-medium-natural/offsets",
+   "positions": "member-closeup-lyapunov-medium-natural/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-lyapunov-medium-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "orbits-orbit-lyapunov-medium-natural": {
    "frame": "rp",
    "tags": {
@@ -1080,26 +1092,6 @@
    },
    "periodic": false
   },
-  "member-closeup-lyapunov-medium-natural": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "medium",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 3,
-   "offsets": "member-closeup-lyapunov-medium-natural/offsets",
-   "positions": "member-closeup-lyapunov-medium-natural/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-lyapunov-medium-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "record-diagram-lyapunov-medium-natural": {
    "frame": "lyapunov",
    "tags": {
@@ -1130,7 +1122,7 @@
     "method": "natural",
     "pens": "both"
    },
-   "tracks": 3,
+   "tracks": 13,
    "offsets": "record-closeup-lyapunov-medium-natural/offsets",
    "positions": "record-closeup-lyapunov-medium-natural/positions",
    "channels": {
@@ -1264,6 +1256,26 @@
    },
    "periodic": false
   },
+  "tangent-closeup-lyapunov-medium-arclength": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "tangent",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "medium",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 14,
+   "offsets": "tangent-closeup-lyapunov-medium-arclength/offsets",
+   "positions": "tangent-closeup-lyapunov-medium-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "tangent-closeup-lyapunov-medium-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "constraint-closeup-lyapunov-medium-arclength": {
    "frame": "lyapunov",
    "tags": {
@@ -1274,7 +1286,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 4,
+   "tracks": 14,
    "offsets": "constraint-closeup-lyapunov-medium-arclength/offsets",
    "positions": "constraint-closeup-lyapunov-medium-arclength/positions",
    "channels": {
@@ -1294,7 +1306,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 4,
+   "tracks": 14,
    "offsets": "pred-closeup-lyapunov-medium-arclength/offsets",
    "positions": "pred-closeup-lyapunov-medium-arclength/positions",
    "channels": {
@@ -1314,32 +1326,12 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 4,
+   "tracks": 14,
    "offsets": "corr-closeup-lyapunov-medium-arclength/offsets",
    "positions": "corr-closeup-lyapunov-medium-arclength/positions",
    "channels": {
     "c": {
      "view": "corr-closeup-lyapunov-medium-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "tangent-closeup-lyapunov-medium-arclength": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "tangent",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "medium",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 3,
-   "offsets": "tangent-closeup-lyapunov-medium-arclength/offsets",
-   "positions": "tangent-closeup-lyapunov-medium-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "tangent-closeup-lyapunov-medium-arclength/channels/c"
     }
    },
    "periodic": false
@@ -1360,6 +1352,26 @@
    "channels": {
     "c": {
      "view": "member-diagram-lyapunov-medium-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "member-closeup-lyapunov-medium-arclength": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "medium",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 15,
+   "offsets": "member-closeup-lyapunov-medium-arclength/offsets",
+   "positions": "member-closeup-lyapunov-medium-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-lyapunov-medium-arclength/channels/c"
     }
    },
    "periodic": false
@@ -1400,26 +1412,6 @@
    "channels": {
     "c": {
      "view": "newest-orbit-lyapunov-medium-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "member-closeup-lyapunov-medium-arclength": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "medium",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 3,
-   "offsets": "member-closeup-lyapunov-medium-arclength/offsets",
-   "positions": "member-closeup-lyapunov-medium-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-lyapunov-medium-arclength/channels/c"
     }
    },
    "periodic": false
@@ -1508,6 +1500,46 @@
    },
    "periodic": false
   },
+  "pred-closeup-lyapunov-large-natural": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "pred",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "large",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 10,
+   "offsets": "pred-closeup-lyapunov-large-natural/offsets",
+   "positions": "pred-closeup-lyapunov-large-natural/positions",
+   "channels": {
+    "c": {
+     "view": "pred-closeup-lyapunov-large-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-lyapunov-large-natural": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "large",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 10,
+   "offsets": "corr-closeup-lyapunov-large-natural/offsets",
+   "positions": "corr-closeup-lyapunov-large-natural/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-lyapunov-large-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "pred_fail-diagram-lyapunov-large-natural": {
    "frame": "lyapunov",
    "tags": {
@@ -1548,26 +1580,6 @@
    },
    "periodic": false
   },
-  "corr-closeup-lyapunov-large-natural": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "large",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 4,
-   "offsets": "corr-closeup-lyapunov-large-natural/offsets",
-   "positions": "corr-closeup-lyapunov-large-natural/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-lyapunov-large-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "pred_fail-closeup-lyapunov-large-natural": {
    "frame": "lyapunov",
    "tags": {
@@ -1578,7 +1590,7 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 4,
+   "tracks": 8,
    "offsets": "pred_fail-closeup-lyapunov-large-natural/offsets",
    "positions": "pred_fail-closeup-lyapunov-large-natural/positions",
    "channels": {
@@ -1598,32 +1610,12 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 2,
+   "tracks": 8,
    "offsets": "fail_dot-closeup-lyapunov-large-natural/offsets",
    "positions": "fail_dot-closeup-lyapunov-large-natural/positions",
    "channels": {
     "c": {
      "view": "fail_dot-closeup-lyapunov-large-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred-closeup-lyapunov-large-natural": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "pred",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "large",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 3,
-   "offsets": "pred-closeup-lyapunov-large-natural/offsets",
-   "positions": "pred-closeup-lyapunov-large-natural/positions",
-   "channels": {
-    "c": {
-     "view": "pred-closeup-lyapunov-large-natural/channels/c"
     }
    },
    "periodic": false
@@ -1644,6 +1636,26 @@
    "channels": {
     "c": {
      "view": "member-diagram-lyapunov-large-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "member-closeup-lyapunov-large-natural": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "large",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 11,
+   "offsets": "member-closeup-lyapunov-large-natural/offsets",
+   "positions": "member-closeup-lyapunov-large-natural/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-lyapunov-large-natural/channels/c"
     }
    },
    "periodic": false
@@ -1688,26 +1700,6 @@
    },
    "periodic": false
   },
-  "member-closeup-lyapunov-large-natural": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "large",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 3,
-   "offsets": "member-closeup-lyapunov-large-natural/offsets",
-   "positions": "member-closeup-lyapunov-large-natural/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-lyapunov-large-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "record-diagram-lyapunov-large-natural": {
    "frame": "lyapunov",
    "tags": {
@@ -1738,7 +1730,7 @@
     "method": "natural",
     "pens": "both"
    },
-   "tracks": 3,
+   "tracks": 11,
    "offsets": "record-closeup-lyapunov-large-natural/offsets",
    "positions": "record-closeup-lyapunov-large-natural/positions",
    "channels": {
@@ -1872,6 +1864,86 @@
    },
    "periodic": false
   },
+  "tangent-closeup-lyapunov-large-arclength": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "tangent",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 16,
+   "offsets": "tangent-closeup-lyapunov-large-arclength/offsets",
+   "positions": "tangent-closeup-lyapunov-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "tangent-closeup-lyapunov-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "constraint-closeup-lyapunov-large-arclength": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "constraint",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 16,
+   "offsets": "constraint-closeup-lyapunov-large-arclength/offsets",
+   "positions": "constraint-closeup-lyapunov-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "constraint-closeup-lyapunov-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "pred-closeup-lyapunov-large-arclength": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "pred",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 10,
+   "offsets": "pred-closeup-lyapunov-large-arclength/offsets",
+   "positions": "pred-closeup-lyapunov-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "pred-closeup-lyapunov-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-lyapunov-large-arclength": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 10,
+   "offsets": "corr-closeup-lyapunov-large-arclength/offsets",
+   "positions": "corr-closeup-lyapunov-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-lyapunov-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "pred_fail-diagram-lyapunov-large-arclength": {
    "frame": "lyapunov",
    "tags": {
@@ -1912,26 +1984,6 @@
    },
    "periodic": false
   },
-  "constraint-closeup-lyapunov-large-arclength": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "constraint",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 8,
-   "offsets": "constraint-closeup-lyapunov-large-arclength/offsets",
-   "positions": "constraint-closeup-lyapunov-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "constraint-closeup-lyapunov-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "pred_fail-closeup-lyapunov-large-arclength": {
    "frame": "lyapunov",
    "tags": {
@@ -1942,7 +1994,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 4,
+   "tracks": 6,
    "offsets": "pred_fail-closeup-lyapunov-large-arclength/offsets",
    "positions": "pred_fail-closeup-lyapunov-large-arclength/positions",
    "channels": {
@@ -1962,72 +2014,12 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 3,
+   "tracks": 6,
    "offsets": "fail_dot-closeup-lyapunov-large-arclength/offsets",
    "positions": "fail_dot-closeup-lyapunov-large-arclength/positions",
    "channels": {
     "c": {
      "view": "fail_dot-closeup-lyapunov-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred-closeup-lyapunov-large-arclength": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "pred",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 4,
-   "offsets": "pred-closeup-lyapunov-large-arclength/offsets",
-   "positions": "pred-closeup-lyapunov-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "pred-closeup-lyapunov-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "corr-closeup-lyapunov-large-arclength": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 4,
-   "offsets": "corr-closeup-lyapunov-large-arclength/offsets",
-   "positions": "corr-closeup-lyapunov-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-lyapunov-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "tangent-closeup-lyapunov-large-arclength": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "tangent",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 6,
-   "offsets": "tangent-closeup-lyapunov-large-arclength/offsets",
-   "positions": "tangent-closeup-lyapunov-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "tangent-closeup-lyapunov-large-arclength/channels/c"
     }
    },
    "periodic": false
@@ -2048,6 +2040,26 @@
    "channels": {
     "c": {
      "view": "member-diagram-lyapunov-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "member-closeup-lyapunov-large-arclength": {
+   "frame": "lyapunov",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "lyapunov",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 11,
+   "offsets": "member-closeup-lyapunov-large-arclength/offsets",
+   "positions": "member-closeup-lyapunov-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-lyapunov-large-arclength/channels/c"
     }
    },
    "periodic": false
@@ -2088,26 +2100,6 @@
    "channels": {
     "c": {
      "view": "newest-orbit-lyapunov-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "member-closeup-lyapunov-large-arclength": {
-   "frame": "lyapunov",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "lyapunov",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 3,
-   "offsets": "member-closeup-lyapunov-large-arclength/offsets",
-   "positions": "member-closeup-lyapunov-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-lyapunov-large-arclength/channels/c"
     }
    },
    "periodic": false
@@ -2178,17 +2170,6 @@
    "tracks": 1,
    "offsets": "box-closeup-family11/offsets",
    "positions": "box-closeup-family11/positions",
-   "periodic": false
-  },
-  "window-family11": {
-   "frame": "family11",
-   "tags": {
-    "element": "window",
-    "family": "family11"
-   },
-   "tracks": 8,
-   "offsets": "window-family11/offsets",
-   "positions": "window-family11/positions",
    "periodic": false
   },
   "curve-diagram-family11-small-natural": {
@@ -2421,6 +2402,46 @@
    },
    "periodic": false
   },
+  "pred-closeup-family11-small-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "pred",
+    "view": "closeup",
+    "family": "family11",
+    "step": "small",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 32,
+   "offsets": "pred-closeup-family11-small-natural/offsets",
+   "positions": "pred-closeup-family11-small-natural/positions",
+   "channels": {
+    "c": {
+     "view": "pred-closeup-family11-small-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-family11-small-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "family11",
+    "step": "small",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 32,
+   "offsets": "corr-closeup-family11-small-natural/offsets",
+   "positions": "corr-closeup-family11-small-natural/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-family11-small-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "pred_fail-diagram-family11-small-natural": {
    "frame": "family11",
    "tags": {
@@ -2461,26 +2482,6 @@
    },
    "periodic": false
   },
-  "corr-closeup-family11-small-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "family11",
-    "step": "small",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 14,
-   "offsets": "corr-closeup-family11-small-natural/offsets",
-   "positions": "corr-closeup-family11-small-natural/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-family11-small-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "pred_fail-closeup-family11-small-natural": {
    "frame": "family11",
    "tags": {
@@ -2491,7 +2492,7 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 26,
+   "tracks": 29,
    "offsets": "pred_fail-closeup-family11-small-natural/offsets",
    "positions": "pred_fail-closeup-family11-small-natural/positions",
    "channels": {
@@ -2511,32 +2512,12 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 24,
+   "tracks": 28,
    "offsets": "fail_dot-closeup-family11-small-natural/offsets",
    "positions": "fail_dot-closeup-family11-small-natural/positions",
    "channels": {
     "c": {
      "view": "fail_dot-closeup-family11-small-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred-closeup-family11-small-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "pred",
-    "view": "closeup",
-    "family": "family11",
-    "step": "small",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 13,
-   "offsets": "pred-closeup-family11-small-natural/offsets",
-   "positions": "pred-closeup-family11-small-natural/positions",
-   "channels": {
-    "c": {
-     "view": "pred-closeup-family11-small-natural/channels/c"
     }
    },
    "periodic": false
@@ -2581,6 +2562,26 @@
    },
    "periodic": false
   },
+  "member-closeup-family11-small-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "family11",
+    "step": "small",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 33,
+   "offsets": "member-closeup-family11-small-natural/offsets",
+   "positions": "member-closeup-family11-small-natural/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-family11-small-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "orbits-orbit-family11-small-natural": {
    "frame": "rp",
    "tags": {
@@ -2621,26 +2622,6 @@
    },
    "periodic": false
   },
-  "member-closeup-family11-small-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "family11",
-    "step": "small",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 14,
-   "offsets": "member-closeup-family11-small-natural/offsets",
-   "positions": "member-closeup-family11-small-natural/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-family11-small-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "record-diagram-family11-small-natural": {
    "frame": "family11",
    "tags": {
@@ -2671,7 +2652,7 @@
     "method": "natural",
     "pens": "both"
    },
-   "tracks": 14,
+   "tracks": 33,
    "offsets": "record-closeup-family11-small-natural/offsets",
    "positions": "record-closeup-family11-small-natural/positions",
    "channels": {
@@ -2805,6 +2786,86 @@
    },
    "periodic": false
   },
+  "tangent-closeup-family11-small-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "tangent",
+    "view": "closeup",
+    "family": "family11",
+    "step": "small",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 54,
+   "offsets": "tangent-closeup-family11-small-arclength/offsets",
+   "positions": "tangent-closeup-family11-small-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "tangent-closeup-family11-small-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "constraint-closeup-family11-small-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "constraint",
+    "view": "closeup",
+    "family": "family11",
+    "step": "small",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 54,
+   "offsets": "constraint-closeup-family11-small-arclength/offsets",
+   "positions": "constraint-closeup-family11-small-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "constraint-closeup-family11-small-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "pred-closeup-family11-small-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "pred",
+    "view": "closeup",
+    "family": "family11",
+    "step": "small",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 41,
+   "offsets": "pred-closeup-family11-small-arclength/offsets",
+   "positions": "pred-closeup-family11-small-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "pred-closeup-family11-small-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-family11-small-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "family11",
+    "step": "small",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 41,
+   "offsets": "corr-closeup-family11-small-arclength/offsets",
+   "positions": "corr-closeup-family11-small-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-family11-small-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "pred_fail-diagram-family11-small-arclength": {
    "frame": "family11",
    "tags": {
@@ -2821,26 +2882,6 @@
    "channels": {
     "c": {
      "view": "pred_fail-diagram-family11-small-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "constraint-closeup-family11-small-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "constraint",
-    "view": "closeup",
-    "family": "family11",
-    "step": "small",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 18,
-   "offsets": "constraint-closeup-family11-small-arclength/offsets",
-   "positions": "constraint-closeup-family11-small-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "constraint-closeup-family11-small-arclength/channels/c"
     }
    },
    "periodic": false
@@ -2875,7 +2916,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 10,
+   "tracks": 13,
    "offsets": "fail_dot-closeup-family11-small-arclength/offsets",
    "positions": "fail_dot-closeup-family11-small-arclength/positions",
    "channels": {
@@ -2905,66 +2946,6 @@
    },
    "periodic": false
   },
-  "tangent-closeup-family11-small-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "tangent",
-    "view": "closeup",
-    "family": "family11",
-    "step": "small",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 18,
-   "offsets": "tangent-closeup-family11-small-arclength/offsets",
-   "positions": "tangent-closeup-family11-small-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "tangent-closeup-family11-small-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred-closeup-family11-small-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "pred",
-    "view": "closeup",
-    "family": "family11",
-    "step": "small",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 8,
-   "offsets": "pred-closeup-family11-small-arclength/offsets",
-   "positions": "pred-closeup-family11-small-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "pred-closeup-family11-small-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "corr-closeup-family11-small-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "family11",
-    "step": "small",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 7,
-   "offsets": "corr-closeup-family11-small-arclength/offsets",
-   "positions": "corr-closeup-family11-small-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-family11-small-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "member-diagram-family11-small-arclength": {
    "frame": "family11",
    "tags": {
@@ -2981,6 +2962,26 @@
    "channels": {
     "c": {
      "view": "member-diagram-family11-small-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "member-closeup-family11-small-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "family11",
+    "step": "small",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 42,
+   "offsets": "member-closeup-family11-small-arclength/offsets",
+   "positions": "member-closeup-family11-small-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-family11-small-arclength/channels/c"
     }
    },
    "periodic": false
@@ -3021,26 +3022,6 @@
    "channels": {
     "c": {
      "view": "newest-orbit-family11-small-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "member-closeup-family11-small-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "family11",
-    "step": "small",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 7,
-   "offsets": "member-closeup-family11-small-arclength/offsets",
-   "positions": "member-closeup-family11-small-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-family11-small-arclength/channels/c"
     }
    },
    "periodic": false
@@ -3129,6 +3110,46 @@
    },
    "periodic": false
   },
+  "pred-closeup-family11-medium-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "pred",
+    "view": "closeup",
+    "family": "family11",
+    "step": "medium",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 29,
+   "offsets": "pred-closeup-family11-medium-natural/offsets",
+   "positions": "pred-closeup-family11-medium-natural/positions",
+   "channels": {
+    "c": {
+     "view": "pred-closeup-family11-medium-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-family11-medium-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "family11",
+    "step": "medium",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 29,
+   "offsets": "corr-closeup-family11-medium-natural/offsets",
+   "positions": "corr-closeup-family11-medium-natural/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-family11-medium-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "pred_fail-diagram-family11-medium-natural": {
    "frame": "family11",
    "tags": {
@@ -3169,26 +3190,6 @@
    },
    "periodic": false
   },
-  "corr-closeup-family11-medium-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "family11",
-    "step": "medium",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 12,
-   "offsets": "corr-closeup-family11-medium-natural/offsets",
-   "positions": "corr-closeup-family11-medium-natural/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-family11-medium-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "pred_fail-closeup-family11-medium-natural": {
    "frame": "family11",
    "tags": {
@@ -3199,7 +3200,7 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 23,
+   "tracks": 43,
    "offsets": "pred_fail-closeup-family11-medium-natural/offsets",
    "positions": "pred_fail-closeup-family11-medium-natural/positions",
    "channels": {
@@ -3219,32 +3220,12 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 21,
+   "tracks": 42,
    "offsets": "fail_dot-closeup-family11-medium-natural/offsets",
    "positions": "fail_dot-closeup-family11-medium-natural/positions",
    "channels": {
     "c": {
      "view": "fail_dot-closeup-family11-medium-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred-closeup-family11-medium-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "pred",
-    "view": "closeup",
-    "family": "family11",
-    "step": "medium",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 11,
-   "offsets": "pred-closeup-family11-medium-natural/offsets",
-   "positions": "pred-closeup-family11-medium-natural/positions",
-   "channels": {
-    "c": {
-     "view": "pred-closeup-family11-medium-natural/channels/c"
     }
    },
    "periodic": false
@@ -3289,6 +3270,26 @@
    },
    "periodic": false
   },
+  "member-closeup-family11-medium-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "family11",
+    "step": "medium",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 30,
+   "offsets": "member-closeup-family11-medium-natural/offsets",
+   "positions": "member-closeup-family11-medium-natural/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-family11-medium-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "orbits-orbit-family11-medium-natural": {
    "frame": "rp",
    "tags": {
@@ -3329,26 +3330,6 @@
    },
    "periodic": false
   },
-  "member-closeup-family11-medium-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "family11",
-    "step": "medium",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 12,
-   "offsets": "member-closeup-family11-medium-natural/offsets",
-   "positions": "member-closeup-family11-medium-natural/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-family11-medium-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "record-diagram-family11-medium-natural": {
    "frame": "family11",
    "tags": {
@@ -3379,7 +3360,7 @@
     "method": "natural",
     "pens": "both"
    },
-   "tracks": 12,
+   "tracks": 30,
    "offsets": "record-closeup-family11-medium-natural/offsets",
    "positions": "record-closeup-family11-medium-natural/positions",
    "channels": {
@@ -3513,6 +3494,86 @@
    },
    "periodic": false
   },
+  "tangent-closeup-family11-medium-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "tangent",
+    "view": "closeup",
+    "family": "family11",
+    "step": "medium",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 41,
+   "offsets": "tangent-closeup-family11-medium-arclength/offsets",
+   "positions": "tangent-closeup-family11-medium-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "tangent-closeup-family11-medium-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "constraint-closeup-family11-medium-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "constraint",
+    "view": "closeup",
+    "family": "family11",
+    "step": "medium",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 41,
+   "offsets": "constraint-closeup-family11-medium-arclength/offsets",
+   "positions": "constraint-closeup-family11-medium-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "constraint-closeup-family11-medium-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "pred-closeup-family11-medium-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "pred",
+    "view": "closeup",
+    "family": "family11",
+    "step": "medium",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 27,
+   "offsets": "pred-closeup-family11-medium-arclength/offsets",
+   "positions": "pred-closeup-family11-medium-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "pred-closeup-family11-medium-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-family11-medium-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "family11",
+    "step": "medium",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 27,
+   "offsets": "corr-closeup-family11-medium-arclength/offsets",
+   "positions": "corr-closeup-family11-medium-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-family11-medium-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "pred_fail-diagram-family11-medium-arclength": {
    "frame": "family11",
    "tags": {
@@ -3529,26 +3590,6 @@
    "channels": {
     "c": {
      "view": "pred_fail-diagram-family11-medium-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "constraint-closeup-family11-medium-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "constraint",
-    "view": "closeup",
-    "family": "family11",
-    "step": "medium",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 17,
-   "offsets": "constraint-closeup-family11-medium-arclength/offsets",
-   "positions": "constraint-closeup-family11-medium-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "constraint-closeup-family11-medium-arclength/channels/c"
     }
    },
    "periodic": false
@@ -3583,7 +3624,7 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 10,
+   "tracks": 14,
    "offsets": "fail_dot-closeup-family11-medium-arclength/offsets",
    "positions": "fail_dot-closeup-family11-medium-arclength/positions",
    "channels": {
@@ -3613,66 +3654,6 @@
    },
    "periodic": false
   },
-  "tangent-closeup-family11-medium-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "tangent",
-    "view": "closeup",
-    "family": "family11",
-    "step": "medium",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 16,
-   "offsets": "tangent-closeup-family11-medium-arclength/offsets",
-   "positions": "tangent-closeup-family11-medium-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "tangent-closeup-family11-medium-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred-closeup-family11-medium-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "pred",
-    "view": "closeup",
-    "family": "family11",
-    "step": "medium",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 7,
-   "offsets": "pred-closeup-family11-medium-arclength/offsets",
-   "positions": "pred-closeup-family11-medium-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "pred-closeup-family11-medium-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "corr-closeup-family11-medium-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "family11",
-    "step": "medium",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 6,
-   "offsets": "corr-closeup-family11-medium-arclength/offsets",
-   "positions": "corr-closeup-family11-medium-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-family11-medium-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "member-diagram-family11-medium-arclength": {
    "frame": "family11",
    "tags": {
@@ -3689,6 +3670,26 @@
    "channels": {
     "c": {
      "view": "member-diagram-family11-medium-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "member-closeup-family11-medium-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "family11",
+    "step": "medium",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 28,
+   "offsets": "member-closeup-family11-medium-arclength/offsets",
+   "positions": "member-closeup-family11-medium-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-family11-medium-arclength/channels/c"
     }
    },
    "periodic": false
@@ -3729,26 +3730,6 @@
    "channels": {
     "c": {
      "view": "newest-orbit-family11-medium-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "member-closeup-family11-medium-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "family11",
-    "step": "medium",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 6,
-   "offsets": "member-closeup-family11-medium-arclength/offsets",
-   "positions": "member-closeup-family11-medium-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-family11-medium-arclength/channels/c"
     }
    },
    "periodic": false
@@ -3837,6 +3818,46 @@
    },
    "periodic": false
   },
+  "pred_fail-closeup-family11-large-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "pred_fail",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 41,
+   "offsets": "pred_fail-closeup-family11-large-natural/offsets",
+   "positions": "pred_fail-closeup-family11-large-natural/positions",
+   "channels": {
+    "c": {
+     "view": "pred_fail-closeup-family11-large-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "fail_dot-closeup-family11-large-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "fail_dot",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 40,
+   "offsets": "fail_dot-closeup-family11-large-natural/offsets",
+   "positions": "fail_dot-closeup-family11-large-natural/positions",
+   "channels": {
+    "c": {
+     "view": "fail_dot-closeup-family11-large-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "pred-diagram-family11-large-natural": {
    "frame": "family11",
    "tags": {
@@ -3877,66 +3898,6 @@
    },
    "periodic": false
   },
-  "corr-closeup-family11-large-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 9,
-   "offsets": "corr-closeup-family11-large-natural/offsets",
-   "positions": "corr-closeup-family11-large-natural/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-family11-large-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred_fail-closeup-family11-large-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "pred_fail",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 19,
-   "offsets": "pred_fail-closeup-family11-large-natural/offsets",
-   "positions": "pred_fail-closeup-family11-large-natural/positions",
-   "channels": {
-    "c": {
-     "view": "pred_fail-closeup-family11-large-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "fail_dot-closeup-family11-large-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "fail_dot",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 17,
-   "offsets": "fail_dot-closeup-family11-large-natural/offsets",
-   "positions": "fail_dot-closeup-family11-large-natural/positions",
-   "channels": {
-    "c": {
-     "view": "fail_dot-closeup-family11-large-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "pred-closeup-family11-large-natural": {
    "frame": "family11",
    "tags": {
@@ -3947,12 +3908,32 @@
     "method": "natural",
     "pens": "natural"
    },
-   "tracks": 8,
+   "tracks": 26,
    "offsets": "pred-closeup-family11-large-natural/offsets",
    "positions": "pred-closeup-family11-large-natural/positions",
    "channels": {
     "c": {
      "view": "pred-closeup-family11-large-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-family11-large-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 26,
+   "offsets": "corr-closeup-family11-large-natural/offsets",
+   "positions": "corr-closeup-family11-large-natural/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-family11-large-natural/channels/c"
     }
    },
    "periodic": false
@@ -3997,6 +3978,26 @@
    },
    "periodic": false
   },
+  "member-closeup-family11-large-natural": {
+   "frame": "family11",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "natural",
+    "pens": "natural"
+   },
+   "tracks": 27,
+   "offsets": "member-closeup-family11-large-natural/offsets",
+   "positions": "member-closeup-family11-large-natural/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-family11-large-natural/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "orbits-orbit-family11-large-natural": {
    "frame": "rp",
    "tags": {
@@ -4037,26 +4038,6 @@
    },
    "periodic": false
   },
-  "member-closeup-family11-large-natural": {
-   "frame": "family11",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "natural",
-    "pens": "natural"
-   },
-   "tracks": 9,
-   "offsets": "member-closeup-family11-large-natural/offsets",
-   "positions": "member-closeup-family11-large-natural/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-family11-large-natural/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "record-diagram-family11-large-natural": {
    "frame": "family11",
    "tags": {
@@ -4087,7 +4068,7 @@
     "method": "natural",
     "pens": "both"
    },
-   "tracks": 9,
+   "tracks": 27,
    "offsets": "record-closeup-family11-large-natural/offsets",
    "positions": "record-closeup-family11-large-natural/positions",
    "channels": {
@@ -4221,6 +4202,86 @@
    },
    "periodic": false
   },
+  "tangent-closeup-family11-large-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "tangent",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 38,
+   "offsets": "tangent-closeup-family11-large-arclength/offsets",
+   "positions": "tangent-closeup-family11-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "tangent-closeup-family11-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "constraint-closeup-family11-large-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "constraint",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 38,
+   "offsets": "constraint-closeup-family11-large-arclength/offsets",
+   "positions": "constraint-closeup-family11-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "constraint-closeup-family11-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "pred-closeup-family11-large-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "pred",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 22,
+   "offsets": "pred-closeup-family11-large-arclength/offsets",
+   "positions": "pred-closeup-family11-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "pred-closeup-family11-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "corr-closeup-family11-large-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "corr",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 22,
+   "offsets": "corr-closeup-family11-large-arclength/offsets",
+   "positions": "corr-closeup-family11-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "corr-closeup-family11-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
   "pred_fail-diagram-family11-large-arclength": {
    "frame": "family11",
    "tags": {
@@ -4281,46 +4342,6 @@
    },
    "periodic": false
   },
-  "constraint-closeup-family11-large-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "constraint",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 19,
-   "offsets": "constraint-closeup-family11-large-arclength/offsets",
-   "positions": "constraint-closeup-family11-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "constraint-closeup-family11-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "tangent-closeup-family11-large-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "tangent",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 18,
-   "offsets": "tangent-closeup-family11-large-arclength/offsets",
-   "positions": "tangent-closeup-family11-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "tangent-closeup-family11-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
   "fail_dot-closeup-family11-large-arclength": {
    "frame": "family11",
    "tags": {
@@ -4331,52 +4352,12 @@
     "method": "arclength",
     "pens": "both"
    },
-   "tracks": 8,
+   "tracks": 16,
    "offsets": "fail_dot-closeup-family11-large-arclength/offsets",
    "positions": "fail_dot-closeup-family11-large-arclength/positions",
    "channels": {
     "c": {
      "view": "fail_dot-closeup-family11-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "pred-closeup-family11-large-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "pred",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 8,
-   "offsets": "pred-closeup-family11-large-arclength/offsets",
-   "positions": "pred-closeup-family11-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "pred-closeup-family11-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "corr-closeup-family11-large-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "corr",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 7,
-   "offsets": "corr-closeup-family11-large-arclength/offsets",
-   "positions": "corr-closeup-family11-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "corr-closeup-family11-large-arclength/channels/c"
     }
    },
    "periodic": false
@@ -4397,6 +4378,26 @@
    "channels": {
     "c": {
      "view": "member-diagram-family11-large-arclength/channels/c"
+    }
+   },
+   "periodic": false
+  },
+  "member-closeup-family11-large-arclength": {
+   "frame": "family11",
+   "tags": {
+    "element": "member",
+    "view": "closeup",
+    "family": "family11",
+    "step": "large",
+    "method": "arclength",
+    "pens": "both"
+   },
+   "tracks": 23,
+   "offsets": "member-closeup-family11-large-arclength/offsets",
+   "positions": "member-closeup-family11-large-arclength/positions",
+   "channels": {
+    "c": {
+     "view": "member-closeup-family11-large-arclength/channels/c"
     }
    },
    "periodic": false
@@ -4437,26 +4438,6 @@
    "channels": {
     "c": {
      "view": "newest-orbit-family11-large-arclength/channels/c"
-    }
-   },
-   "periodic": false
-  },
-  "member-closeup-family11-large-arclength": {
-   "frame": "family11",
-   "tags": {
-    "element": "member",
-    "view": "closeup",
-    "family": "family11",
-    "step": "large",
-    "method": "arclength",
-    "pens": "both"
-   },
-   "tracks": 7,
-   "offsets": "member-closeup-family11-large-arclength/offsets",
-   "positions": "member-closeup-family11-large-arclength/positions",
-   "channels": {
-    "c": {
-     "view": "member-closeup-family11-large-arclength/channels/c"
     }
    },
    "periodic": false
@@ -4612,20 +4593,16 @@
      "labels": true
     },
     {
-     "kind": "track",
-     "sets": {
-      "tags": {
-       "element": "window",
-       "family": {
-        "var": "family"
-       }
-      }
-     },
-     "members": "all",
-     "reveal": "none",
+     "kind": "outline",
+     "view": "closeup",
      "color": "#ffffff",
      "opacity": 0.5,
-     "width": 1.0
+     "width": 1.0,
+     "dash": [
+      4.0,
+      2.0
+     ],
+     "min_size": 12.0
     },
     {
      "kind": "track",
@@ -5121,6 +5098,7 @@
      },
      "members": "all",
      "reveal": "none",
+     "fit": false,
      "color": "#8a93a6",
      "opacity": 0.8,
      "width": 2.0
@@ -5149,6 +5127,7 @@
       "color": "#765203",
       "size": 7.0
      },
+     "fit": false,
      "color": "#765203",
      "width": 1.0
     },
@@ -5174,6 +5153,7 @@
      "reveal": "grow",
      "before": "hidden",
      "after": "hidden",
+     "fit": false,
      "color": "#e69f00",
      "opacity": 0.4,
      "width": 2.0
@@ -5199,6 +5179,7 @@
      "members": "all",
      "reveal": "grow",
      "before": "hidden",
+     "fit": false,
      "color": "#e69f00",
      "width": 2.0
     },
@@ -5223,6 +5204,7 @@
      "members": "all",
      "reveal": "grow",
      "before": "hidden",
+     "fit": false,
      "color": "#e69f00",
      "width": 2.0
     },
@@ -5251,6 +5233,7 @@
       "size": 8.0
      },
      "before": "hidden",
+     "fit": false,
      "color": "#e69f00",
      "width": 1.0
     },
@@ -5276,6 +5259,7 @@
      "reveal": "none",
      "before": "hidden",
      "after": "hidden",
+     "fit": false,
      "color": "#c94fe6",
      "opacity": 0.5,
      "width": 1.5
@@ -5302,6 +5286,7 @@
      "reveal": "grow",
      "before": "hidden",
      "after": "hidden",
+     "fit": false,
      "color": "#56b4e9",
      "opacity": 0.4,
      "width": 2.0
@@ -5327,6 +5312,7 @@
      "members": "all",
      "reveal": "grow",
      "before": "hidden",
+     "fit": false,
      "color": "#56b4e9",
      "width": 2.0
     },
@@ -5351,6 +5337,7 @@
      "members": "all",
      "reveal": "grow",
      "before": "hidden",
+     "fit": false,
      "color": "#56b4e9",
      "width": 2.0
     },
@@ -5376,6 +5363,7 @@
      "reveal": "grow",
      "before": "hidden",
      "after": "hidden",
+     "fit": false,
      "color": "#c94fe6",
      "opacity": 1.0,
      "width": 2.0
@@ -5405,6 +5393,7 @@
       "size": 8.0
      },
      "before": "hidden",
+     "fit": false,
      "color": "#56b4e9",
      "width": 1.0
     },
@@ -5434,6 +5423,7 @@
      },
      "before": "hidden",
      "after": "hidden",
+     "fit": false,
      "color": "#e8414a",
      "width": 1.0
     },
@@ -5462,6 +5452,7 @@
       "size": 13.0
      },
      "before": "hidden",
+     "fit": false,
      "color": "#e8414a",
      "width": 1.0
     },
@@ -5491,6 +5482,7 @@
      },
      "before": "hidden",
      "after": "hidden",
+     "fit": false,
      "color": "#e8414a",
      "width": 1.0
     },
@@ -5519,6 +5511,7 @@
       "size": 13.0
      },
      "before": "hidden",
+     "fit": false,
      "color": "#e8414a",
      "width": 1.0
     }
