@@ -3666,6 +3666,7 @@ void main() {
   }
 
   // src/steps.ts
+  var TONES2 = ["accent", "violet", "blue", "red"];
   function resolve(steps, current) {
     const indices = [...new Set(steps.map((s) => s.index))].sort((a, b) => a - b);
     const lit = /* @__PURE__ */ new Map();
@@ -3712,7 +3713,7 @@ void main() {
         visible: f.classList.contains("visible"),
         keep: keep === null ? null : keep.trim() === "" ? "next" : Number(keep),
         highlight: words2(f.dataset.highlight),
-        tone: f.dataset.tone === "violet" ? "violet" : "accent",
+        tone: TONES2.find((t) => t !== "accent" && t === f.dataset.tone) ?? "accent",
         holds: names.filter((name) => f.matches(select2(name)) || f.querySelector(select2(name)))
       };
     });
@@ -3723,8 +3724,7 @@ void main() {
     for (const name of names) for (const el of slide.querySelectorAll(select2(name))) tones.set(el, lit.get(name) ?? tones.get(el));
     for (const [el, tone] of tones) {
       el.classList.add("hl-target");
-      el.classList.toggle("hl-accent", tone === "accent");
-      el.classList.toggle("hl-violet", tone === "violet");
+      for (const t of TONES2) el.classList.toggle(`hl-${t}`, tone === t);
     }
   }
   function applyAll(root2) {
