@@ -78,8 +78,8 @@ test('the cut of the effective potential is at -C/2, with C from data-C or else 
 });
 
 // the stage of the surface and a digest of its canvas, on the slide of the surface or on each of its
-// pages in the print view
-const surfaces = `Promise.all([...document.querySelectorAll('.surface')].filter((s) => s.getClientRects().length).map(async (s) => {
+// pages in the print view. the bundles, also of the class surface, are checked in bundle.test.mjs
+const surfaces = `Promise.all([...document.querySelectorAll('.surface[data-function]')].filter((s) => s.getClientRects().length).map(async (s) => {
   const canvas = s.querySelector('canvas'), ctx = canvas.getContext('2d');
   const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
   let drawn = 0;

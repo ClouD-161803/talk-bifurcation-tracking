@@ -1,73 +1,45 @@
-// Renders the preview of the stability demo with headless Chrome into shots/: one PNG per step of
-// slides 11 to 13, and one per tab of the plot of slide 12, each at the last frame of its tab.
+// Renders each step of the bifurcation slide of the talk, the slide with the plot of the block
+// id="stability", with headless Chrome into demos/stability/shots/, as <theme>-step-<s>.png.
 //
-//   node demos/stability/shots.mjs              the steps and the tabs, as shots/slide-N-step-S.png and shots/tab-T.png
-//   node demos/stability/shots.mjs --tabs NAME  only the tabs, as shots/compare/NAME-T.png
+//   node demos/stability/shots.mjs [--deck index.html] [--theme dark]
 //
-// A plot that plays at a step is paused and drawn at the last frame of its tab, so that each PNG
-// is the same on every run.
+// At each step the plot is paused and drawn at the last frame of its tab, so that each PNG is the
+// same on every run, and the run fails on any page error.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import { deckSettled, deckUrl, launch } from '../../scripts/chrome.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const at = process.argv.indexOf('--tabs');
-const prefix = at >= 0 ? process.argv[at + 1] : null;
-const out = prefix ? join(here, 'shots', 'compare') : join(here, 'shots');
+const { values: options } = parseArgs({
+  options: { deck: { type: 'string', default: join(here, '..', '..', 'index.html') }, theme: { type: 'string', default: 'dark' } },
+});
+const out = join(here, 'shots');
 mkdirSync(out, { recursive: true });
 
 const browser = await launch();
 const page = await browser.newPage();
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
-
-// moves to step s of slide h, i.e. with the first s fragments shown, and lets the fragments fade in
-async function go(h, s) {
-  await page.evaluate(`Reveal.slide(${h}, 0, ${s - 1})`);
-  await wait(900);
-}
-
-// pauses each plot of the current slide at the last frame of its tab, with played set only a plot
-// whose step with data-plot-play is shown
-const last = (played = false) => `(() => {
-  for (const p of Beeson.plots.filter((p) => Reveal.getCurrentSlide().contains(p.el))) {
-    if (${played} && !p.el.closest('section').querySelector('.fragment.visible[data-plot-play]')) continue;
-    p.pause();
-    p.u = p.frames - 1;
-    p.draw();
-  }
-  return true;
-})()`;
-
-async function shot(name) {
-  writeFileSync(join(out, `${name}.png`), await page.screenshot());
-  console.log(`${prefix ? 'compare/' : ''}${name}.png`);
-}
+const plot = `Beeson.plots.find((p) => Reveal.getCurrentSlide().contains(p.el))`;
 
 try {
-  await page.goto(deckUrl(join(here, 'preview', 'index.html')));
+  await page.goto(deckUrl(resolve(options.deck), `theme=${options.theme}`));
   await page.waitFor(deckSettled, 60000);
   await page.evaluate(`Reveal.configure({ transition: 'none', controls: false })`);
-  if (!prefix) {
-    for (const [h, slide] of [[0, 11], [1, 12], [2, 13]]) {
-      const steps = await page.evaluate(`Reveal.getSlides()[${h}].querySelectorAll('.fragment').length`);
-      for (let s = 0; s <= steps; s++) {
-        await go(h, s);
-        await page.evaluate(last(true));
-        await wait(300);
-        await shot(`slide-${slide}-step-${s}`);
-      }
-    }
-  }
-  // the tabs, on slide 12 with every step shown
-  await go(1, 5);
-  const names = await page.evaluate(`Beeson.plots.find((p) => Reveal.getCurrentSlide().contains(p.el)).plot.tabs.map((t) => t.name)`);
-  for (const [i, name] of names.entries()) {
-    await page.evaluate(`Beeson.plots.find((p) => Reveal.getCurrentSlide().contains(p.el)).setTab(${i})`);
-    await page.evaluate(last());
-    await wait(500);
-    await shot(prefix ? `${prefix}-${name}` : `tab-${name}`);
+  const slide = `document.querySelector('[data-plot="stability"]')?.closest('section')`;
+  if (!(await page.evaluate(`!!${slide}`))) throw new Error(`${options.deck} does not have a slide with the plot of the block id="stability"`);
+  const { h, v } = await page.evaluate(`Reveal.getIndices(${slide})`);
+  const steps = await page.evaluate(`new Set([...${slide}.querySelectorAll('.fragment')].map((f) => f.dataset.fragmentIndex)).size`);
+  for (let s = 0; s <= steps; s++) {
+    await page.evaluate(`Reveal.slide(${h}, ${v ?? 0}, ${s - 1})`);
+    await wait(1500);
+    await page.evaluate(`(() => { const p = ${plot}; p.pause(); p.u = p.frames - 1; p.draw(); return true; })()`);
+    await wait(300);
+    const name = `${options.theme}-step-${s}.png`;
+    writeFileSync(join(out, name), await page.screenshot());
+    console.log(name);
   }
   if (page.errors.length) {
     console.error(page.errors.join('\n'));

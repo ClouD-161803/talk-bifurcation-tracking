@@ -208,6 +208,61 @@ def main():
         name = f"family-{family}-{branch}-{FRAMES[frame]}-fig-{figure}.png"
         compose([image for *_, image in items]).save(output / name, dpi=(DPI, DPI), optimize=True)
         print(f"{name}: e = {', '.join('?' if e is None else f'{e:g}' for e, *_ in items)} from {', '.join(sorted({p for _, p, _ in items}))}")
+    quotes(documents, output)
+
+
+# the sentences of Broucke quoted on the slides, each as (paper, page, the first words of the first
+# line and the last words of the last line cut out, the first and the last words of the sentence
+# highlighted in these lines, output name), in the words of the OCR layer of the scan
+QUOTES = (
+    (AIAA, 6, "Good stability information", "in this diagram.", "However, they are", "in this diagram.", "aiaa-quote-family-7"),
+    (AIAA, 7, "of the differential", "was divergence.", "The last orbit,", "was divergence.", "aiaa-quote-divergence"),
+)
+HIGHLIGHT = (1.0, 0.8, 0.62)
+
+
+def quotes(documents, output):
+    """Writes each sentence of QUOTES with the lines around it, in color at DPI, with the sentence
+    marked by a PDF highlight annotation in HIGHLIGHT."""
+    for paper, page_number, first, last, start, end, name in QUOTES:
+        page = documents[paper][page_number - 1]
+        words = page.get_text("words")
+        texts = [w[4] for w in words]
+
+        def hits(phrase):
+            parts = phrase.split()
+            return [i for i in range(len(texts)) if texts[i : i + len(parts)] == parts], len(parts) - 1
+
+        # the highlighted sentence is unique on its page, and the cut is taken around it
+        (begin, *more), _ = hits(start)
+        if more:
+            sys.exit(f"{name}: {start!r} is found {1 + len(more)} times on page {page_number}")
+        found, length = hits(end)
+        stop = min(i + length for i in found if i > begin)
+        found, _ = hits(first)
+        a_word = max(i for i in found if i <= begin)
+        found, length = hits(last)
+        b_word = min(i + length for i in found if i + length >= stop)
+
+        line = lambda w: (w[5], w[6])
+        lines = [line(w) for w in words]
+        a = lines.index(line(words[a_word]))
+        b = len(lines) - 1 - lines[::-1].index(line(words[b_word]))
+        kept = [w for w in words[a : b + 1] if line(w) in set(lines[a : b + 1])]
+        clip = pymupdf.Rect(min(w[0] for w in kept), min(w[1] for w in kept), max(w[2] for w in kept), max(w[3] for w in kept))
+        # the boxes of the OCR words overlap the line above, hence the cut is shrunk at its top
+        clip += (-MARGIN_POINTS, 2, MARGIN_POINTS, 0)
+        runs = collections.defaultdict(list)
+        for w in words[begin : stop + 1]:
+            runs[line(w)].append(w)
+        quads = [pymupdf.Rect(ws[0][0], min(w[1] for w in ws) + 1, ws[-1][2], max(w[3] for w in ws) - 1).quad for ws in runs.values()]
+        annotation = page.add_highlight_annot(quads)
+        annotation.set_colors(stroke=HIGHLIGHT)
+        annotation.update()
+        pixmap = page.get_pixmap(clip=clip, dpi=DPI, annots=True)
+        page.delete_annot(annotation)
+        Image.open(io.BytesIO(pixmap.tobytes("png"))).save(output / f"{name}.png", dpi=(DPI, DPI), optimize=True)
+        print(f"{name}.png: {paper} page {page_number}, {pixmap.width} x {pixmap.height} px")
 
 
 if __name__ == "__main__":

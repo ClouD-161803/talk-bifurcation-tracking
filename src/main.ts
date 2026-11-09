@@ -12,7 +12,8 @@ import { markViewers, stillViewers } from './print.ts';
 import { mountQr } from './qr.ts';
 import { initScrub } from './scrub.ts';
 import { mount as mountSurfaces } from './surface.ts';
-import type { Surface } from './surface.ts';
+import type { Turntable } from './surface.ts';
+import { mount as mountBundles } from './bundle.ts';
 import { register } from './strands.ts';
 import { addRestoreSteps, applyAll, applySteps, initSteps, typeset } from './steps.ts';
 import { forDeck, get, initSwitcher, initTheme, set, toggle } from './switcher.ts';
@@ -64,7 +65,7 @@ const DEFAULTS: RevealOptions = {
 const TRACED = ['title', 'section', 'closing'];
 
 const backdrops: Orbits[] = [];
-const surfaces: Surface[] = [];
+const surfaces: Turntable[] = [];
 const plots: PlotView[] = [];
 
 // with the URL parameter edit, the in-place editor is loaded, and the deck is drawn still while it
@@ -81,7 +82,7 @@ const still = () => EDITING || Orbits.reduced() || window.Reveal.isPrintView() |
 
 function remount(): void {
   for (const o of mount(document)) if (!backdrops.includes(o)) backdrops.push(o);
-  if (document.querySelector('.surface')) for (const s of mountSurfaces(document)) if (!surfaces.includes(s)) surfaces.push(s);
+  if (document.querySelector('.surface')) for (const s of [...mountSurfaces(document), ...mountBundles(document)]) if (!surfaces.includes(s)) surfaces.push(s);
   for (const p of mountPlots(document)) if (!plots.includes(p)) plots.push(p);
 }
 

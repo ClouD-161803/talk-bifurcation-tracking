@@ -42,12 +42,19 @@ COMPARISON_NOTES = """  <aside class="notes">
     <p>TODO(claudio): the frames of a few of Broucke's panels were identified by their shape, in Figs. 13, 14, 16, and 17, as listed under "Where I was unsure" in figures/broucke/INDEX.md.</p>
   </aside>"""
 # (family, the cells of Broucke's figures, caption), one group per step of the diagram slide. A cell is the
-# path and alt text of a crop, or the text of a placeholder over the two cells of Broucke's figures
+# path and alt text of a crop, and the number of columns it spans when it spans more than one. Broucke did
+# not draw family 7 in the diagram, and its cell is the sentence in which he described it
 DIAGRAMS = [
     (
         7,
-        r"Broucke did not draw family 7 in the diagram. He wrote that its orbits are &ldquo;all very close to the line \(a_2 = -2a_1 - 2\)&rdquo;.",
-        r"Family 7 at \(\mu = 0.012155\) in DyLAN. Both branches stay near the line \(k = 2\), as Broucke wrote.",
+        [
+            (
+                "figures/broucke/aiaa-quote-family-7.png",
+                "Broucke, AIAA Journal 7(6), p. 1008: However, they are all very close to the line a2 = -2a1 - 2 in this diagram.",
+                2,
+            ),
+        ],
+        r"Family 7 \((\mu = 0.012155)\), described but not drawn by Broucke, and in DyLAN.",
     ),
     (
         8,
@@ -55,7 +62,7 @@ DIAGRAMS = [
             ("figures/broucke/aiaa-fig-3.png", "Broucke, AIAA Fig. 3, family 8 in the a1, a2 plane"),
             ("figures/broucke/family-8-stability-fig-15.png", "Broucke, report Fig. 15, family 8 in the a1, a2 plane"),
         ],
-        r"Family 8 at \(\mu = 0.5\) in Broucke&rsquo;s Figs. 3 and 15, and in DyLAN.",
+        r"Family 8 \((\mu = 0.5)\) in Broucke&rsquo;s Figs. 3 and 15, and in DyLAN.",
     ),
     (
         11,
@@ -63,14 +70,14 @@ DIAGRAMS = [
             ("figures/broucke/aiaa-fig-4.png", "Broucke, AIAA Fig. 4, family 11 in the a1, a2 plane"),
             ("figures/broucke/family-11-stability-fig-18.png", "Broucke, report Fig. 18, family 11 in the a1, a2 plane"),
         ],
-        r"Family 11 at \(\mu = 0.5\) in Broucke&rsquo;s Figs. 4 and 18, and in DyLAN. The \(a_1\) labels of Fig. 4 are ten times too large.",
+        r"Family 11 \((\mu = 0.5)\) in Broucke&rsquo;s Figs. 4 and 18, and in DyLAN. The \(a_1\) labels of Fig. 4 are ten times too large.",
     ),
 ]
 DIAGRAM_NOTES = """  <aside class="notes">
-    <p>Step 0: The three families as curves in Broucke's diagram, on linear axes, one family per click, with Broucke's figures at left and DyLAN at right. Family 7, at the Earth–Moon mass ratio, is the one he did not draw in the diagram. He wrote only that its orbits are all very close to the line a₂ = −2a₁ − 2, i.e. k = 2, and in DyLAN both branches indeed stay near this line.</p>
+    <p>Step 0: The three families as curves in Broucke's diagram, on linear axes, one family per click, with Broucke's figures at left and DyLAN at right. Family 7, at the Earth–Moon mass ratio, is the one he did not draw in the diagram. The highlighted sentence is from page 1008 of his AIAA paper: its orbits are all very close to the line a₂ = −2a₁ − 2, i.e. k = 2, and in DyLAN both branches indeed stay near this line.</p>
     <p>Step 1: Family 8, at a mass ratio of one half, in Fig. 3 of the AIAA paper and Fig. 15 of his JPL report. The branch from periapsis rises into EH⁺, and the branch from apoapsis crosses the parabola into N at e = 0.289, as in his figures.</p>
     <p>Step 2: Family 11, in Fig. 4 of the AIAA paper and Fig. 18 of the report. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 on the branch from periapsis, up to e = 0.453.</p>
-    <p>Step 3: So DyLAN draws Broucke's curves. Next, what is changed where a curve meets k = 2 or k = −2.</p>
+    <p>Step 3: So DyLAN draws Broucke's curves. Next, the bifurcations along each branch.</p>
   </aside>"""
 
 
@@ -138,14 +145,13 @@ def diagram(talk: Path) -> str:
     groups = []
     for index, (family, broucke, caption) in enumerate(DIAGRAMS):
         stem = f"figures/dylan/stability-family-{family}"
-        crops = [] if isinstance(broucke, str) else [path for path, _ in broucke]
-        for path in (f"{stem}-dark.png", f"{stem}-light.png", *crops):
+        for path in (f"{stem}-dark.png", f"{stem}-light.png", *[path for path, *_ in broucke]):
             if not (talk / path).is_file():
                 raise SystemExit(f"missing figure {path}")
-        if isinstance(broucke, str):
-            cells = [f"      {placeholder(broucke, 2)}"]
-        else:
-            cells = [f'      <div class="fig">{paper_image(path, alt)}</div>' for path, alt in broucke]
+        cells = []
+        for path, alt, *span in broucke:
+            style = f' style="grid-column: span {span[0]}"' if span else ""
+            cells.append(f'      <div class="fig"{style}>{paper_image(path, alt)}</div>')
         cells.append(f'      <div class="fig">{mode_images(stem, f"DyLAN, family {family} in the a1, a2 plane")}</div>')
         kind, step = step_kind(index, len(DIAGRAMS))
         groups.append(

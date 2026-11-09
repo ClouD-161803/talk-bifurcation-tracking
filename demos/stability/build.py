@@ -1,20 +1,18 @@
-"""Builds the plot of the stability demo of slides 15 to 17 and 20 from the data in data/stability.
+"""Builds the plot of the bifurcation slide of the talk from the data in data/stability.
 
-The plot has two panels. In the panel circle, the four in-plane Floquet multipliers of a member are
-drawn on the complex plane with the unit circle, and in the panel diagram, the point (a1, a2) of
-the same member is drawn in Broucke's stability diagram. The six tabs are the six branches of
-families 11, 7 and 8. Run the script with the system python3, from any folder:
+The plot has one panel, diagram, in which the point (a1, a2) of each member of a branch is drawn in
+Broucke's stability diagram, with a ring and the name of the bifurcation at each crossing of the
+lines k = 2 and k = -2 and of the parabola k1 = k2. The six tabs are the six branches of families
+7, 8 and 11, in the order of the steps of the slide. Run the script with the system python3, from
+any folder:
 
     python3 demos/stability/build.py
 
-It writes stability.json next to this file and the same JSON into the inline block of
-preview/index.html, and it prints the number of frames of each tab. With --deck PATH, the same JSON
+It writes stability.json next to this file. With --deck PATH, the same JSON
 is also written into the block <script type="application/json" id="stability"> of the deck at
 PATH, e.g. index.html or a copy of it, and the still plot of the seven regions on linear axes into
 its block id="regions", and the plot of the L1 Lyapunov family, from data/lyapunov/l1-lyapunov.json, into
-its block id="lyapunov". With --scale linear or --scale asinh, every tab of the
-preview is drawn on that scale, for the screenshots that compare the two, and stability.json is
-left as it is. The two flags are not combined.
+its block id="lyapunov".
 """
 
 import argparse
@@ -27,16 +25,15 @@ import re
 
 HERE = pathlib.Path(__file__).resolve().parent
 DATA = HERE.parent.parent / 'data' / 'stability'
-PREVIEW = HERE / 'preview' / 'index.html'
 
 # tab name, branch file, and the scale of the diagram chosen from the screenshots of both scales
 TABS = [
-    ('11P', 'family-11-periapsis', 'asinh'),
-    ('11A', 'family-11-apoapsis', 'asinh'),
     ('7P', 'family-7-periapsis', 'linear'),
     ('7A', 'family-7-apoapsis', 'linear'),
     ('8P', 'family-8-periapsis', 'asinh'),
     ('8A', 'family-8-apoapsis', 'asinh'),
+    ('11A', 'family-11-apoapsis', 'asinh'),
+    ('11P', 'family-11-periapsis', 'asinh'),
 ]
 # the margin of the view of a tab beyond its path, as fractions of the span of the path in scaled
 # coordinates, at the left, right, bottom, and top, where a region the path visits needs room for
@@ -57,9 +54,10 @@ SYMBOL = {
     5: r'$\mathcal{H}^{--}$', 6: r'$\mathcal{EH}^{+}$', 7: r'$\mathcal{EH}^{-}$',
 }
 
-# the box of the diagram in px at the zone of the preview, 880 by 840 px, used to place the labels
-# and to space the ticks
-BOX = (391, 592)
+# the margin of the panel diagram in px, and the box inside it in the zone of the slide, 880 by
+# 840 px, used to place the labels and to space the ticks
+MARGIN = [52, 24, 84, 100]
+BOX = (756, 592)
 CELL = 4
 FONT = 28
 SPACING = {'x': 64, 'y': 38}
@@ -87,19 +85,6 @@ def indices(a1, a2):
     return [complex(-a1 / 2, -r / 2), complex(-a1 / 2, r / 2)]
 
 
-def pair(k):
-    """The two multipliers of the index k, the one of modulus at least 1 first, and on the unit
-    circle the one with the nonnegative imaginary part first."""
-    if abs(k.imag) < 1e-12 and abs(k.real) < 2:
-        c = k.real / 2
-        s = math.sqrt(max(0.0, 1 - c * c))
-        return [complex(c, s), complex(c, -s)]
-    lam = (k + cmath.sqrt(k * k - 4)) / 2
-    if abs(lam) < 1:
-        lam = 1 / lam
-    return [lam, 1 / lam]
-
-
 def region_of(a1, a2):
     """The region number of the point (a1, a2), from the indices, as in data/stability."""
     k = indices(a1, a2)
@@ -119,51 +104,16 @@ def region_of(a1, a2):
     return 6 if above == 1 else 7
 
 
-def squeeze(z):
-    """The point at which a multiplier z is drawn, at the radius exp(sign(ln r) ln(1 + |ln r|) / 2)
-    for the modulus r, so that z and its inverse are mirror images across the unit circle."""
-    r = abs(z)
-    lr = math.log(r)
-    big = math.exp(math.copysign(math.log1p(abs(lr)) / 2, lr))
-    return [round(big * z.real / r, 4), round(big * z.imag / r, 4)]
-
-
-def continuous(frames):
-    """The frames with the two multipliers of a pair swapped wherever the swapped order is nearer to
-    the previous frame in the circle panel, so that a trace does not cut a chord across the circle.
-    A fixed order, e.g. the one of modulus at least 1 first, is not continuous on family 8 from
-    apoapsis, whose two pairs are equal on the real axis at the entry into N and on the unit
-    circle at the exit from it. Where both orders are equally near, as just after the two
-    multipliers of a pair are at 1 or -1, the order is kept."""
-    last = None
-    for f in frames:
-        lam = f['lam']
-        if last:
-            for i in (0, 2):
-                a, b = squeeze(lam[i]), squeeze(lam[i + 1])
-                if math.dist(b, last[i]) + math.dist(a, last[i + 1]) < math.dist(a, last[i]) + math.dist(b, last[i + 1]) - 1e-9:
-                    lam[i], lam[i + 1] = lam[i + 1], lam[i]
-        last = [squeeze(z) for z in lam]
-    return frames
-
-
-def radius(r):
-    return math.sqrt(1 + math.log(r))
-
-
 # ---- frames
 
 
-def frame(e, a1, a2, k=None, lam=None, region=None):
+def frame(e, a1, a2, k=None, region=None):
     k = k or indices(a1, a2)
-    lam = lam or pair(k[0]) + pair(k[1])
-    return {'e': e, 'a1': a1, 'a2': a2, 'k': k, 'lam': lam, 'region': region or region_of(a1, a2), 'cross': None}
+    return {'e': e, 'a1': a1, 'a2': a2, 'k': k, 'region': region or region_of(a1, a2), 'cross': None}
 
 
 def from_member(m):
-    k = [complex(*p) for p in m['k']]
-    lam = [complex(*p) for p in m['multipliers']]
-    return frame(m['e'], m['a1'], m['a2'], k, lam, m['region'])
+    return frame(m['e'], m['a1'], m['a2'], [complex(*p) for p in m['k']], m['region'])
 
 
 # the functions whose zeros are the three curves. f = (2 - k1)(2 - k2) is zero on the line k = 2,
@@ -368,10 +318,28 @@ def region_fills(x_range, y_range, scale, n=120):
 
 # ---- placement of the names of the curves and the regions
 
-# the words at the crossings of the lines k = 2 and k = -2 on a tab, and where they are drawn
-# relative to the mark, at the left of it, below for the fold and above for the period doubling
-WORDS = {'11P': {'plus': 'fold', 'minus': 'period doubling'}}
-EVENT = {'plus': {'anchor': 'end', 'dx': -22, 'dy': 30}, 'minus': {'anchor': 'end', 'dx': -22, 'dy': -26}}
+# the name of a bifurcation at a crossing of each curve, as in the table of crossings on the slide of
+# Broucke's diagram. the parabola is crossed at a secondary Hopf bifurcation between E2 and N, i.e.
+# for |a1| < 4, and at a modified one between H++ or H-- and N
+def bifurcation(f):
+    if f['cross'] == 'equal':
+        return 'secondary Hopf' if abs(f['a1']) < 4 else 'modified secondary Hopf'
+    return {'plus': 'tangent', 'minus': 'period-doubling'}[f['cross']]
+
+
+# the places of the name of a bifurcation around its ring, as the anchor and the offset in px of the
+# event mark bif-<place>. each crossing is given the place with the most room, in this order of
+# preference among equals
+PLACES = {
+    'w': {'anchor': 'end', 'dx': -22, 'dy': 0},
+    'e': {'anchor': 'start', 'dx': 22, 'dy': 0},
+    'sw': {'anchor': 'end', 'dx': -14, 'dy': 30},
+    'nw': {'anchor': 'end', 'dx': -14, 'dy': -30},
+    'se': {'anchor': 'start', 'dx': 14, 'dy': 30},
+    'ne': {'anchor': 'start', 'dx': 14, 'dy': -30},
+    's': {'anchor': 'middle', 'dx': 0, 'dy': 36},
+    'n': {'anchor': 'middle', 'dx': 0, 'dy': -36},
+}
 
 
 def text_width(text):
@@ -417,11 +385,12 @@ class Field:
 
 
 def place_labels(frames, x_range, y_range, scale, curves, events):
-    """The names of the regions in view and of the three curves, each placed where it is farthest
-    from the path, from the curves, from the marks and words of the events, and from the names
-    placed before it, and each region name inside its region. Where a region has no such place
-    with 8 px of room, its name is placed inside it at 3 px from the curves, and over the path if
-    need be. The region names are placed first, since a curve has more room along it."""
+    """The places of the names of the events, by the keys of PLACES, and the names of the regions in
+    view and of the three curves. Each name of an event is placed where it is farthest from the
+    path, from the curves, from the rings, and from the names placed before it. Each region name
+    is placed inside its region in the same way. Where a region has no such place with 8 px of
+    room, its name is placed inside it at 3 px from the curves, and over the path if need be. The
+    region names are placed before the curve names, since a curve has more room along it."""
     fwd, back = scale_fn(scale)
     (xlo, xhi), (ylo, yhi) = x_range, y_range
     to_px = lambda a1, a2: ((fwd(a1) - xlo) / (xhi - xlo) * BOX[0], (yhi - fwd(a2)) / (yhi - ylo) * BOX[1])
@@ -445,14 +414,37 @@ def place_labels(frames, x_range, y_range, scale, curves, events):
     def cells_in(x0, y0, x1, y1):
         return {(i, j) for i in range(int(x0 // CELL), int(x1 // CELL) + 1) for j in range(int(y0 // CELL), int(y1 // CELL) + 1)}
 
+    def text_rect(px, py, place, w):
+        style = PLACES[place]
+        x = px + style['dx'] - {'start': 0, 'middle': w / 2, 'end': w}[style['anchor']]
+        return x, py + style['dy'] - h / 2, x + w, py + style['dy'] + h / 2
+
+    rings = [to_px(a1, a2) for a1, a2, _ in events]
     taken = set()
-    for a1, a2, kind, text in events:
-        px, py = to_px(a1, a2)
+    for px, py in rings:
         taken |= cells_in(px - 16, py - 16, px + 16, py + 16)
-        if text:
-            style = EVENT[kind]
-            x1 = px + style['dx']
-            taken |= cells_in(x1 - text_width(text), py + style['dy'] - h / 2, x1, py + style['dy'] + h / 2)
+    path_field = Field(path_cells)
+    places = []
+    for n, ((px, py), (_, _, text)) in enumerate(zip(rings, events)):
+        # a ring next to an earlier one of the same bifurcation shares its name
+        if any(events[m][2] == text and math.dist(rings[m], (px, py)) < 48 for m in range(n)):
+            places.append(None)
+            continue
+        w = text_width(text)
+        # the own ring is an obstacle by its circle, since its square would touch every place
+        own = {(i, j) for i, j in cells_in(px - 16, py - 16, px + 16, py + 16) if math.dist(((i + 0.5) * CELL, (j + 0.5) * CELL), (px, py)) > 16}
+        walls = Field(all_curves | (taken - own))
+        best = None
+        for place in PLACES:
+            x0, y0, x1, y1 = text_rect(px, py, place, w)
+            inside = min(x0, y0, BOX[0] - x1, BOX[1] - y1)
+            wall, path = walls.clearance(x0, y0, x1, y1), path_field.clearance(x0, y0, x1, y1)
+            # among places of equal room, the one with more room in total is taken
+            score = min(wall, path, 24) + 0.01 * min(wall + path, 80) + min(inside, 0) * 4
+            if best is None or score > best[0]:
+                best = (score, place)
+        places.append(best[1])
+        taken |= cells_in(*text_rect(px, py, best[1], w))
 
     def candidates(w):
         for py in range(int(h / 2) + 6, BOX[1] - int(h / 2) - 6, 8):
@@ -462,7 +454,6 @@ def place_labels(frames, x_range, y_range, scale, curves, events):
     def rect(px, py, w):
         return px - w / 2, py - h / 2, px + w / 2, py + h / 2
 
-    path_field = Field(path_cells)
     for region in range(1, 8):
         text = SYMBOL[region]
         w = text_width(text)
@@ -510,7 +501,7 @@ def place_labels(frames, x_range, y_range, scale, curves, events):
             labels.append({'id': f'k{name}', 'at': [sig(a1), sig(a2)], 'text': text, 'tone': 'subtle', 'class': f'k{name}'})
             taken |= cells_in(*rect(px, py, w))
 
-    return labels
+    return places, labels
 
 
 # ---- the plot
@@ -534,17 +525,18 @@ def index_text(name, k):
     return rf'${name} = {fmt(k.real)} {sign} {fmt(abs(k.imag))}\mathrm{{i}}$'
 
 
-def crossings(name, frames):
-    """The frames on the lines k = 2 and k = -2, with their words on the tab name."""
-    words = WORDS.get(name, {})
-    return [(i, f, words.get(f['cross'], '')) for i, f in enumerate(frames) if f['cross'] in ('plus', 'minus')]
+def crossings(frames):
+    """The index, the frame, and the name of the bifurcation of each frame on a curve."""
+    return [(i, f, bifurcation(f)) for i, f in enumerate(frames) if f['cross']]
 
 
 def diagram(name, frames, scale):
+    """The patch of the panel diagram for the tab name, and the place of the name of each crossing."""
     pad = PAD_TAB.get((name, scale), PAD[scale])
     x_range, y_range = view(frames, scale, pad)
     curves = {key: curve_points(key, x_range, y_range, scale) for key in ('plus', 'minus', 'equal')}
-    events = [(f['a1'], f['a2'], f['cross'], text) for _, f, text in crossings(name, frames)]
+    events = [(f['a1'], f['a2'], text) for _, f, text in crossings(frames)]
+    places, labels = place_labels(frames, x_range, y_range, scale, curves, events)
     _, back = scale_fn(scale)
     title = ' on an asinh scale' if scale == 'asinh' else ''
     axis = lambda r, key: {
@@ -553,7 +545,7 @@ def diagram(name, frames, scale):
         'ticks': ticks(r[0], r[1], scale, BOX[0] if key == 'x' else BOX[1], SPACING[key], key),
         'title': f'$a_{1 if key == "x" else 2}${title}',
     }
-    return {
+    return places, {
         'x': axis(x_range, 'x'),
         'y': axis(y_range, 'y'),
         'regions': region_fills(x_range, y_range, scale),
@@ -562,75 +554,37 @@ def diagram(name, frames, scale):
             {'id': 'kplus', 'class': 'kplus', 'points': curves['plus'], 'tone': 'subtle', 'width': 2.5},
             {'id': 'kminus', 'class': 'kminus', 'points': curves['minus'], 'tone': 'subtle', 'width': 2.5},
         ],
-        'labels': place_labels(frames, x_range, y_range, scale, curves, events),
+        'labels': labels,
     }
 
 
-def tab_data(name, frames, panel):
+def tab_data(frames, panel, places):
     x_range = panel['x']['range']
     y_range = panel['y']['range']
-    events = {'plus': [], 'minus': []}
-    for i, f, text in crossings(name, frames):
-        events[f['cross']].append({'frame': i, 'at': [sig(f['a1']), sig(f['a2'])], 'text': text})
+    events = {place: [] for place in PLACES}
+    for (i, f, text), place in zip(crossings(frames), places):
+        events[place or 'e'].append({'frame': i, 'at': [sig(f['a1']), sig(f['a2'])], 'text': text if place else ''})
     return {
-        'pair-1': [squeeze(f['lam'][0]) + squeeze(f['lam'][1]) for f in frames],
-        'pair-2': [squeeze(f['lam'][2]) + squeeze(f['lam'][3]) for f in frames],
-        **{f'pair-{1 + i // 2}{"ab"[i % 2]}': [squeeze(f['lam'][i]) for f in frames] for i in range(4)},
-        'k1': {'at': [-3.5, 3.5], 'text': [index_text('k_1', f['k'][0]) for f in frames]},
-        'k2': {'at': [-3.5, 3.5], 'text': [index_text('k_2', f['k'][1]) for f in frames]},
         'path': [[sig(f['a1']), sig(f['a2'])] for f in frames],
         'point': [[sig(f['a1']), sig(f['a2'])] for f in frames],
         'region': {'at': [x_range[1], y_range[1]], 'text': [SYMBOL[f['region']] for f in frames]},
-        'plus': events['plus'],
-        'minus': events['minus'],
+        **{f'bif-{place}': events[place] for place in PLACES},
     }
 
 
-def circle_panel():
-    """The unit circle with the axes and the dashed rings at |lambda| = 10 and 100, named in the
-    legend under the circle, since at the size of the panel beside the diagram the two rings are
-    too close for a name on each. The readouts of k1 and k2 are drawn above the circle."""
-    r10, r100 = radius(10), radius(100)
-    return {
-        'id': 'circle',
-        'x': {'range': [-3.5, 3.5]},
-        'y': {'range': [-3.5, 3.5]},
-        'equal': True,
-        'axes': False,
-        'size': 0.75,
-        'margin': [84, 8, 132, 8],
-        'curves': [
-            {'points': [[-3.4, 0], [3.4, 0]], 'tone': 'muted', 'width': 1.5},
-            {'points': [[0, -3.4], [0, 3.4]], 'tone': 'muted', 'width': 1.5},
-            {'circle': [0, 0, round(r100, 4)], 'tone': 'muted', 'width': 1.5, 'dash': [5, 7]},
-            {'circle': [0, 0, round(r10, 4)], 'tone': 'muted', 'width': 1.5, 'dash': [5, 7]},
-            {'id': 'unit', 'circle': [0, 0, 1], 'tone': 'subtle', 'width': 2.5},
-        ],
-        'labels': [
-            {'at': [1, 0], 'text': '$1$', 'anchor': 'start', 'dx': 6, 'dy': 20, 'tone': 'muted'},
-            {'at': [-1, 0], 'text': '$-1$', 'anchor': 'end', 'dx': -6, 'dy': 20, 'tone': 'muted'},
-            {'id': 'legend', 'at': [0, -3.5], 'text': r'$|\lambda|$ at radius $(1 + \mathrm{ln}|\lambda|)^{1/2}$', 'dy': 30, 'tone': 'muted'},
-            {'id': 'legend-2', 'at': [0, -3.5], 'text': r'$1/\lambda$ mirrored inside', 'dy': 66, 'tone': 'muted'},
-            {'id': 'legend-3', 'at': [0, -3.5], 'text': r'dashed at $|\lambda| = 10$ and $100$', 'dy': 102, 'tone': 'muted'},
-        ],
-    }
-
-
-def build(scale_all=None):
+def build():
     tabs = []
     patches = {}
     dropped_all = {}
     for name, file, scale in TABS:
-        scale = scale_all or scale
         frames, dropped = branch(name, file)
-        frames = continuous(frames)
         dropped_all[name] = dropped
-        panel = diagram(name, frames, scale)
+        places, panel = diagram(name, frames, scale)
         tabs.append({
             'name': name,
             'label': name,
             'values': [round(f['e'], 7) for f in frames],
-            'data': tab_data(name, frames, panel),
+            'data': tab_data(frames, panel, places),
             'active': [[f"r{f['region']}"] for f in frames],
             'panels': {'diagram': panel},
         })
@@ -642,28 +596,16 @@ def build(scale_all=None):
         print(f'{name}: {len(frames)} frames, {crossed} on a curve, {len(dropped)} members dropped, '
               f'{mismatch} regions differ from the data, {scale} diagram, regions named {[SYMBOL[r] for r in names]}'
               + (f', VISITED BUT NOT NAMED {[SYMBOL[r] for r in unnamed]}' if unnamed else ''))
-    first = patches['11P']
+    first = patches[TABS[0][0]]
     plot = {
         'parameter': {'label': '$e$', 'digits': 4},
         'duration': 12,
         'hold': 2,
-        'layout': 'row',
-        'panels': [
-            circle_panel(),
-            {'id': 'diagram', 'size': 1.25, 'margin': [52, 24, 84, 100], **first},
-        ],
-        # a trace of each multiplier, under the dots of its pair and without the faint whole path,
-        # since the four paths are on the unit circle and the real axis, which are drawn already
+        'panels': [{'id': 'diagram', 'margin': MARGIN, **first}],
         'marks': [
-            *[{'id': f'pair-{p}{c}', 'panel': 'circle', 'kind': 'trace', 'tone': f'data-{p + 1}', 'width': 3, 'size': 16, 'ghost': False}
-              for p in (1, 2) for c in 'ab'],
-            {'id': 'pair-1', 'panel': 'circle', 'kind': 'points', 'tone': 'data-2', 'size': 16},
-            {'id': 'pair-2', 'panel': 'circle', 'kind': 'points', 'tone': 'data-3', 'size': 16},
-            {'id': 'k1', 'panel': 'circle', 'kind': 'label', 'tone': 'data-2', 'anchor': 'start', 'dy': -56},
-            {'id': 'k2', 'panel': 'circle', 'kind': 'label', 'tone': 'data-3', 'anchor': 'start', 'dy': -18},
             {'id': 'path', 'panel': 'diagram', 'kind': 'trace', 'tone': 'text', 'width': 3, 'size': 8},
-            {'id': 'plus', 'panel': 'diagram', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, **EVENT['plus']},
-            {'id': 'minus', 'panel': 'diagram', 'kind': 'events', 'tone': 'violet', 'size': 26, 'width': 3, **EVENT['minus']},
+            *[{'id': f'bif-{place}', 'panel': 'diagram', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, **style}
+              for place, style in PLACES.items()],
             {'id': 'point', 'panel': 'diagram', 'kind': 'points', 'tone': 'accent', 'size': 18},
             {'id': 'region', 'panel': 'diagram', 'kind': 'label', 'tone': 'text', 'anchor': 'end', 'dy': -30},
         ],
@@ -1240,17 +1182,11 @@ def inject(page, text, block='stability'):
 
 def main():
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n", 1)[0])
-    parser.add_argument('--scale', choices=['linear', 'asinh'], help='draw every tab of the preview on this scale')
     parser.add_argument('--deck', type=pathlib.Path, help='also write the JSON into the block id="stability" of this deck')
     args = parser.parse_args()
-    if args.scale and args.deck:
-        parser.error('--deck is not combined with --scale, since the JSON of a --scale run is not the one of stability.json')
-    plot, dropped = build(args.scale)
+    plot, dropped = build()
     text = json.dumps(plot, separators=(',', ':'), ensure_ascii=False)
-    if not args.scale:
-        (HERE / 'stability.json').write_text(text + '\n')
-    if PREVIEW.exists():
-        inject(PREVIEW, text)
+    (HERE / 'stability.json').write_text(text + '\n')
     if args.deck:
         inject(args.deck, text)
         regions = json.dumps(regions_plot(), separators=(',', ':'), ensure_ascii=False)

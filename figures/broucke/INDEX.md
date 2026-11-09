@@ -15,6 +15,8 @@ In each `family-<N>-<branch>-<frame>-fig-<M>.png` file I collected the panels of
 |---|---|---|---|---|---|---|
 | `aiaa-fig-3.png` | AIAA, 6 (journal p. 1008) | 3 | 8P and 8A | the $(a_1, a_2)$ plane | 0.0, .20, .25 (periapsis), .30, .50, .85 (apoapsis) | Family 8 of periodic orbits. |
 | `aiaa-fig-4.png` | AIAA, 7 (journal p. 1009) | 4 | 11P and 11A | the $(a_1, a_2)$ plane | 0.0, 0.20, 0.45 (periapsis), 0.30, 0.50, 0.70, 0.80 (apoapsis) | Family 11 of periodic orbits. |
+| `aiaa-quote-family-7.png` | AIAA, 6 (journal p. 1008) | none | 7P and 7A | none | none | the paragraph on family 7, with the sentence "However, they are all very close to the line a2 = −2a1 − 2 in this diagram." highlighted |
+| `aiaa-quote-divergence.png` | AIAA, 7 (journal p. 1009) | none | 11P | none | none | the paragraph on family 11, with the sentence on the divergence at e = 0.454 highlighted |
 | `family-7-periapsis-inertial-fig-13.png` | report, 58 | 13 | 7P | inertial, see below | not labeled, two panels | Family 7P of periodic orbits |
 | `family-7-periapsis-rotating-fig-13.png` | report, 58 | 13 | 7P | rotating, see below | not labeled, two panels | same |
 | `family-7-periapsis-pulsating-fig-13.png` | report, 58 | 13 | 7P | pulsating, see below | not labeled, two panels | same |
@@ -46,7 +48,7 @@ In each `family-<N>-<branch>-<frame>-fig-<M>.png` file I collected the panels of
 | `family-11-apoapsis-inertial-m1-fig-20.png` | report, 83–84 | 20 | 11A | inertial-m1 | 0.0, 0.40, 0.5, 0.6, 0.75, 0.85, 0.88 | same |
 | `family-11-apoapsis-inertial-m2-fig-20.png` | report, 84–85 | 20 | 11A | inertial-m2 | 0.0, 0.15, 0.20, 0.25, 0.35, 0.40, 0.45, 0.60, 0.65, 0.70, 0.75, 0.80, 0.86, 0.87, 0.88 | same |
 
-I wrote the eccentricities as he wrote them, hence 0.4 and 0.40 both appear.
+I wrote the eccentricities as he wrote them, hence 0.4 and 0.40 both appear. The two `aiaa-quote-` files are cuts of the text of the AIAA paper, with each quoted sentence marked by a PDF highlight in `quotes` of `figures/crop_broucke.py`, and they are shown on the slides as images rather than retyped.
 
 ## Where I was unsure
 
