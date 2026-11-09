@@ -50,30 +50,23 @@ const at = (n, f, S) => (S === '1' ? (n === 0 ? GUESS + pace0(f) : n + f - LEAD)
 const STAGED = [-1.1, -0.5, 0.05, 0.6];
 
 // the shots of the storyboard, each with the controls set before it, in the order the speaker sets
-// them. a shot without settings is the opening state of the page. shots 1 and 3a are also taken at the
+// them. a shot without settings is the opening state of the page. shots 1 and 3 are also taken at the
 // first frame of the loop, on which slides 11 and 12 are loaded
 const SCENES = {
   correction: [
     { shot: '1', set: [], first: true },
     { shot: '2', set: [['targeting', 'full']] },
-    // shot 3 opens with the ghosts and the other segment counts off, as slide 12 is loaded, and the
-    // other segment counts are switched on at the race
-    { shot: '3a', set: [['S', '16'], ['guess', 'farther'], ['ghosts', false]], first: true },
-    { shot: '3b', set: [['others', true]] },
-    // shot 4 compares one segment with eight on family 11 over the full period
+    // shot 3 opens as slide 12 is loaded
+    { shot: '3', set: [['S', '16'], ['guess', 'farther']], first: true },
+    // shot 4 compares one segment with sixteen on family 11 over the full period
     { shot: '4a', set: [['case', 'family11'], ['guess', 'near'], ['S', '1']] },
-    { shot: '4b', set: [['S', '8']] },
+    { shot: '4b', set: [['S', '16']] },
     // shot 5 is played from the state of shot 3, where the run from the periapsis fails, and it is
     // converged from the closer guess, then from the apoapsis
-    { shot: '5a', set: [['case', 'lyapunov'], ['S', '16'], ['guess', 'farther'], ['system', 'peri']] },
+    { shot: '5a', set: [['case', 'lyapunov'], ['guess', 'farther'], ['system', 'peri']] },
     { shot: '5b', set: [['guess', 'near']] },
     { shot: '5c', set: [['system', 'apo']] },
-    { shot: '6a', set: [['system', 'cr3bp'], ['S', '8'], ['guess', 'far']] },
-    { shot: '6b', set: [['guess', 'far_ls']] },
-    // the middle of iterate 9 is added to shot 6c, the last step before the cross at iterate 10
-    { shot: '6c', set: [['S', '1']], also: [9.65 - LEAD] },
-    { shot: '7a', set: [['S', '16'], ['ghosts', true], ['defects', false]] },
-    { shot: '7b', set: [['defects', true], ['solution', true]] },
+    { shot: '6', set: [['system', 'cr3bp'], ['solution', true]] },
   ],
   // each shot of the continuation scene is taken at the start of the loop, at which its slide is paused,
   // and at the middles of eight equal parts of the loop, and shot 3 at the middles of sixteen, so that the

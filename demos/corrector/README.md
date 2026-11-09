@@ -26,7 +26,7 @@ The pages are built with the pytycho of the TyCHO checkout, whose runtime has to
 uv run --project /Users/claudiovestini/git/tycho/code python /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/build.py
 ```
 
-On the Mac a build takes about 230 s, spread over worker processes, i.e. the number of cores less two unless `--jobs` is given. The builder prints the table of the iterations of the 240 correction runs and a line for each continuation run. The correction page is 17.5 MB, of which 10.7 MB is the data container, and the continuation page is 1.7 MB, of which 0.7 MB is the data container. The check runs in about 30 s with the Python of DyLAN and the bindings of `vestini/master`.
+On the Mac a build takes about 220 s, spread over worker processes, i.e. the number of cores less two unless `--jobs` is given. The builder prints the table of the iterations of the 72 correction runs and a line for each continuation run. The correction page is 5.8 MB, of which 3.1 MB is the data container, and the continuation page is 1.7 MB, of which 0.7 MB is the data container. The check runs in about 30 s with the Python of DyLAN and the bindings of `vestini/master`.
 
 ```sh
 PYTHONPATH=/Users/claudiovestini/git/dylan/worktrees/vestini-master/ac/build_with_spice/python_binding:/Users/claudiovestini/git/dylan/worktrees/vestini-master/dc/build_with_spice/python_binding:/Users/claudiovestini/git/dylan/worktrees/vestini-master/d/build_with_spice/python_binding /Users/claudiovestini/git/dylan/.venv/bin/python /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/check_dylan.py

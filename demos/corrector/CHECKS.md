@@ -18,30 +18,22 @@ The references are the six orbits of period $2\pi$ from which the first guesses 
 
 ## Scene 1, the corrections
 
-Of the 240 runs of scene 1, 118 converge. Of these, 115 land on the reference of their case and system. The gap of each group to its reference is listed below, for the whole first node $(x, y, \dot{x}, \dot{y})$. The gaps of full-period targeting are larger, since the monodromy matrix is unstable, and a residual of $10^{-11}$ is thus amplified in the state.
+Of the 72 runs of scene 1, 35 converge, and every one of them lands on the reference of its case and system. The gap of each group to its reference is listed below, for the whole first node $(x, y, \dot{x}, \dot{y})$. The gaps of full-period targeting are larger, since the monodromy matrix is unstable, and a residual of $10^{-11}$ is thus amplified in the state.
 
 | Case | System | Targeting | Converged runs | Largest gap |
 |---|---|---|---|---|
-| Lyapunov | CR3BP | half period | 18 | $4.1 \times 10^{-14}$ |
-| Lyapunov | CR3BP | full period | 9 | $5.8 \times 10^{-13}$ |
-| Lyapunov | periapsis | half period | 18 | $2.1 \times 10^{-12}$ |
-| Lyapunov | periapsis | full period | 7 | $5.1 \times 10^{-11}$ |
-| Lyapunov | apoapsis | half period | 13 | $1.2 \times 10^{-12}$ |
-| Lyapunov | apoapsis | full period | 2 | $6.4 \times 10^{-11}$ |
-| family 11 | CR3BP | half period | 11 | $4.7 \times 10^{-13}$ |
-| family 11 | CR3BP | full period | 5 | $4.1 \times 10^{-11}$ |
-| family 11 | periapsis | half period | 10 | $6.0 \times 10^{-12}$ |
-| family 11 | periapsis | full period | 8 | $3.7 \times 10^{-11}$ |
-| family 11 | apoapsis | half period | 12 | $1.3 \times 10^{-12}$ |
-| family 11 | apoapsis | full period | 5 | $2.7 \times 10^{-11}$ |
-
-Three runs converge to another periodic orbit, and each of these orbits is a periodic orbit of the model in DyLAN as well. The two Lyapunov runs from the far guess with $S = 1$, over the half period in the CR3BP, converge to an orbit of period 5.17 through the same $x_0$. The run of family 11 at periapsis with the same settings and the line search converges to an orbit of period $2\pi$ at $x_0 = -0.0805$, far from the reference at $-0.1240$. These runs are drawn as converged on the page, and their orbit is not the gray solution. In the table below, the residual is $(y, \dot{x})$ after half a period in DyLAN. The distance is the largest component of the Newton step to the orbit in DyLAN, taken in $(\dot{y}_0, T/2)$ with $x_0$ held in the CR3BP, and in $(x_0, \dot{y}_0)$ in the ER3BP. I could not seed the class `Lyapunov` of DyLAN with the orbit of period 5.17, since this orbit is not a Lyapunov orbit.
-
-| Case | System | $S$ | First guess | Gap to the reference | Period | Residual | Distance |
-|---|---|---|---|---|---|---|---|
-| Lyapunov | CR3BP | 1 | far | $5.1 \times 10^{-2}$ | 5.17 | $3.6 \times 10^{-13}$ | $5.1 \times 10^{-13}$ |
-| Lyapunov | CR3BP | 1 | far, line search | $5.1 \times 10^{-2}$ | 5.17 | $3.6 \times 10^{-13}$ | $5.1 \times 10^{-13}$ |
-| family 11 | periapsis | 1 | far, line search | $2.6 \times 10^{-1}$ | $2\pi$ | $6.3 \times 10^{-11}$ | $1.4 \times 10^{-12}$ |
+| Lyapunov | CR3BP | half period | 5 | $2.6 \times 10^{-14}$ |
+| Lyapunov | CR3BP | full period | 3 | $5.8 \times 10^{-13}$ |
+| Lyapunov | periapsis | half period | 5 | $7.4 \times 10^{-13}$ |
+| Lyapunov | periapsis | full period | 2 | $5.1 \times 10^{-11}$ |
+| Lyapunov | apoapsis | half period | 4 | $3.6 \times 10^{-13}$ |
+| Lyapunov | apoapsis | full period | 1 | $5.8 \times 10^{-11}$ |
+| family 11 | CR3BP | half period | 4 | $4.7 \times 10^{-13}$ |
+| family 11 | CR3BP | full period | 1 | $4.1 \times 10^{-12}$ |
+| family 11 | periapsis | half period | 3 | $6.9 \times 10^{-13}$ |
+| family 11 | periapsis | full period | 1 | $3.4 \times 10^{-11}$ |
+| family 11 | apoapsis | half period | 4 | $1.3 \times 10^{-12}$ |
+| family 11 | apoapsis | full period | 2 | $2.7 \times 10^{-11}$ |
 
 ## Scene 2, the members
 

@@ -37,9 +37,9 @@ E = 0.3
 # the eccentricity and the initial true anomaly of each system
 SYSTEMS = {"cr3bp": (0.0, 0.0), "peri": (E, 0.0), "apo": (E, math.pi)}
 TARGETINGS = ("half", "full")
-SEGMENTS = (1, 2, 4, 8, 16)
-# the scale error epsilon of each first guess, and whether its corrector searches along the Newton step
-GUESSES = {"near": (0.001, False), "far": (0.01, False), "farther": (0.05, False), "far_ls": (0.01, True)}
+SEGMENTS = (1, 4, 16)
+# the scale error epsilon of each first guess
+GUESSES = {"near": 0.001, "farther": 0.05}
 MAX_ITERATIONS = 10
 
 # the Jacobi constant of the Lyapunov orbit of period 2 pi, where the Lyapunov family of scene 2 ends,
@@ -84,15 +84,10 @@ CROSS_HALF, CROSS_TALL = 0.14, 0.45
 DEFECT_DISC, NODE_SIZE = 12, 8
 # the length of the head of a velocity arrow, in CSS pixels
 ARROWHEAD = 9
-# the CSS pixels per unit of n and per unit of log10 ||F|| in the convergence panel at the size of the viewer
-# on slides 11 and 12, measured on the stills of shots.mjs. the labels of the race are drawn and placed by them
-N_PX, LOG_PX = 23.2, 17.2
-# the cap height of a label of the race in CSS pixels, and its clearance from a curve, a cross, or another label
-LABEL_HEIGHT, LABEL_CLEAR = 10.0, 3.0
 # the label of a failed run is drawn at the height FAIL_Y, above every cross and below the head of the panel,
 # from the right tip of its cross. It is drawn from n = 1 at least, clear of the tick labels, and further left
 # when its width in n, FAIL_WIDTH at the size of the panel on slide 12, would take it out of the panel
-FAIL_Y, FAIL_WIDTH = 2.2, 6.0
+FAIL_Y, FAIL_WIDTH = 2.4, 6.0
 
 # scene 1 timing, in units of the clock c: iterate 0 spans c from ZERO to 1, and iterate n >= 1 spans
 # c from n to n + 1. In each iterate n >= 1, in turn, the close-up is moved to the target and the scale of the
@@ -133,8 +128,14 @@ LEAD = 1.0 - (GUESS + PACE0[-1])
 ZOOM_HALF, ZOOM_GAP, ZOOM_SLICES, EPS = 1.0, 0.6, 14, 1e-5
 ZOOM_KEEP, ZOOM_PER_DECADE, GLIDE_STEP, GRID_STEP = (0.3, 0.9), 6, 0.08, 0.5
 CLOSE_CLIP = (-4.0, 4.0, -3.0, 3.0)
+# the scale of the close-up is shown by a scale bar at its lower left, from (BAR_X, BAR_Y) in the units of the
+# close-up, with end ticks of half height BAR_TICK. Its length in LU is the largest of SCALE_VALUES, i.e. 1, 2, or 5
+# times a power of ten, that is drawn at most BAR_MAX long, hence the bar is drawn from 0.4 to BAR_MAX long. Its
+# label is drawn BAR_LABEL above its left end
+BAR_X, BAR_Y, BAR_TICK, BAR_MAX, BAR_LABEL = -1.2, -1.02, 0.04, 1.0, 0.13
+SCALE_VALUES = [m * 10.0**e for e in range(-16, 1) for m in (1, 2, 5)]
 # the marks of the close-up that are drawn whole within a slice, and thinned to within SIMPLIFY of the close-up
-STATIC_NEAR, SIMPLIFY = ("zoom_ref", "zoom_ghosts", "zoom_solution"), 0.005
+STATIC_NEAR, SIMPLIFY = ("zoom_ref", "zoom_solution"), 0.005
 # the requirement of the half period, i.e. the target on the axis and its vertical velocity
 GREEN = "#7ad151"
 # the clock span of one lap of the satellite on a converged orbit, about 1.7 s at speed 0.5
@@ -362,13 +363,13 @@ def correction_job(job: tuple) -> dict:
     t_start = time.time()
     mu = MU[case]
     e, theta0 = SYSTEMS[system]
-    eps, line_search = GUESSES[guess]
+    eps = GUESSES[guess]
     model = c.Model(mu, e)
     sol = np.array([ref[0], 0.0, 0.0, ref[1]])
     T = ref[2]
     free = e == 0.0
     t = c.Targeting(model, targeting, T * (1 + eps) if free else T, theta0=theta0, period_free=free, fixed_x0=sol[0] if free else None)
-    run = c.correct(t, first_guess(model, theta0, sol, T, targeting, S, eps), line_search=line_search, max_iterations=MAX_ITERATIONS)
+    run = c.correct(t, first_guess(model, theta0, sol, T, targeting, S, eps), max_iterations=MAX_ITERATIONS)
     total = SAMPLES_HALF if targeting == "half" else SAMPLES_FULL
     iterates = []
     for it in run.iterates:
@@ -382,7 +383,7 @@ def correction_job(job: tuple) -> dict:
             xy = rows_at(idx, it.samples[i][:, :2])
             tau = np.interp(idx, np.arange(len(it.taus), dtype=float), it.taus)
             segments.append((xy, tau / dt, theta0 + i * dt + tau))
-        iterates.append({"nodes": it.nodes, "ends": it.ends, "norm": it.norm, "step": it.step, "arc": it.arc, "segments": segments})
+        iterates.append({"nodes": it.nodes, "ends": it.ends, "norm": it.norm, "arc": it.arc, "segments": segments})
     solution = None
     if run.converged:
         last = run.iterates[-1]
@@ -769,86 +770,6 @@ def convergence_curve(r: dict, S: int) -> tuple[list[tuple[float, float]], list[
     return pts, times, mark
 
 
-def arc(cx: float, cy: float, rx: float, ry: float, a0: float, a1: float, n: int) -> np.ndarray:
-    """The n points of the elliptic arc about (cx, cy) with the semi-axes rx and ry, from the angle a0 to a1 in degrees."""
-    t = np.radians(np.linspace(a0, a1, n))
-    return np.stack([cx + rx * np.cos(t), cy + ry * np.sin(t)], axis=1)
-
-
-# the advance and the strokes of each character of a label of the race, in units of the cap height from the
-# left end of the baseline. a TyCHO label is drawn in the color of the text, hence the labels of the gray
-# curves are drawn as gray strokes
-GLYPHS = {
-    "S": (0.68, [np.r_[arc(0.31, 0.75, 0.25, 0.25, 35, 270, 9), arc(0.31, 0.25, 0.27, 0.25, 90, -145, 9)[1:]]]),
-    "=": (0.68, [np.array([[0.06, 0.3], [0.56, 0.3]]), np.array([[0.06, 0.62], [0.56, 0.62]])]),
-    " ": (0.28, []),
-    "1": (0.56, [np.array([[0.1, 0.78], [0.34, 1.0], [0.34, 0.0]])]),
-    "2": (0.66, [np.r_[arc(0.3, 0.72, 0.25, 0.27, 160, -35, 8), [[0.04, 0.0], [0.58, 0.0]]]]),
-    "4": (0.66, [np.array([[0.46, 0.0], [0.46, 1.0], [0.03, 0.32], [0.62, 0.32]])]),
-    "6": (0.66, [np.r_[arc(0.36, 0.3, 0.32, 0.7, 70, 180, 7), arc(0.32, 0.3, 0.28, 0.3, 180, 540, 14)[1:]]]),
-    "8": (0.66, [arc(0.31, 0.76, 0.22, 0.24, -90, 270, 13), arc(0.31, 0.26, 0.27, 0.26, 90, 450, 14)]),
-}
-
-
-def label_width(text: str) -> float:
-    """The width of a label of the race in units of its cap height, without the space after its last character."""
-    return sum(GLYPHS[ch][0] for ch in text) - 0.06
-
-
-def label_strokes(text: str, left: float, middle: float) -> list[np.ndarray]:
-    """The strokes of a label of the race in the convergence frame, from the abscissa ``left`` and centered
-    on the ordinate ``middle``, with a cap height of LABEL_HEIGHT CSS pixels."""
-    sx, sy = LABEL_HEIGHT / N_PX, LABEL_HEIGHT / LOG_PX
-    out, x = [], 0.0
-    for ch in text:
-        advance, strokes = GLYPHS[ch]
-        out += [np.stack([left + (x + P[:, 0]) * sx, middle + (P[:, 1] - 0.5) * sy], axis=1) for P in strokes]
-        x += advance
-    return out
-
-
-def place_labels(curves: list[tuple[int, list, tuple | None]], box) -> dict[int, tuple[float, float]]:
-    """The left end and the middle of the label "S = s" of each curve of a race, in the convergence frame.
-
-    Each curve is given by its segment count s, its points, and the center of the cross of a failed run,
-    or None. A label is put at the first place beside the last point of its curve, or beside its cross,
-    where it is clear of every curve, every cross, the earlier labels, the tolerance line, and the band of
-    the labels of failed runs at the top of the panel, inside the box. The test is made in CSS pixels. The
-    label of a cross is tried above and below it first, so that it is not read as the label of the next cross
-    of the race, which is often one iterate to the right.
-    """
-    px = np.array([N_PX, LOG_PX])
-    h, clear = LABEL_HEIGHT, LABEL_CLEAR
-    lines = [np.array([[box[0], -11.0], [box[1], -11.0]]) * px] + [np.array(pts) * px for _, pts, _ in curves]
-    rects = [(box[0] * N_PX, box[1] * N_PX, (FAIL_Y - 0.3) * LOG_PX, box[3] * LOG_PX)]
-    for _, _, mark in curves:
-        if mark is not None:
-            x, y = mark
-            rects.append(((x - CROSS_HALF) * N_PX, (x + CROSS_HALF) * N_PX, (y - CROSS_TALL) * LOG_PX, (y + CROSS_TALL) * LOG_PX))
-    out = {}
-    for S, pts, mark in curves:
-        w = label_width(f"S = {S}") * h
-        ax, ay = (mark if mark else pts[-1])[0] * N_PX, (mark if mark else pts[-1])[1] * LOG_PX
-        hx, hy = (CROSS_HALF * N_PX, CROSS_TALL * LOG_PX) if mark else (3.0, 3.0)
-        right, up, down = ax + hx + clear + 1, ay + hy + h / 2 + clear + 1, ay - hy - h / 2 - clear - 1
-        beside, over = [(right, ay), (right, up), (right, down)], [(ax - w / 2, up), (ax - w / 2, down)]
-        places = [*over, *beside] if mark else [*beside, *over]
-        places += [(ax - hx - clear - 1 - w, ay)]
-        places +=[(right, ay + s * k * (h + clear)) for k in (2, 3, 4) for s in (1, -1)]
-
-        def hits(left, mid):
-            r = (left - clear, left + w + clear, mid - h / 2 - clear, mid + h / 2 + clear)
-            if r[0] < box[0] * N_PX or r[1] > box[1] * N_PX or r[2] < box[2] * LOG_PX or r[3] > box[3] * LOG_PX:
-                return 1000
-            n = sum(1 for q in rects if q[0] < r[1] and r[0] < q[1] and q[2] < r[3] and r[2] < q[3])
-            return n + sum(1 for P in lines for a, b in zip(P[:-1], P[1:]) if enter_leave(a, b, r) is not None)
-
-        left, mid = min(places, key=lambda p: (hits(*p) > 0, hits(*p), places.index(p)))
-        rects.append((left, left + w, mid - h / 2, mid + h / 2))
-        out[S] = (left / N_PX, mid / LOG_PX)
-    return out
-
-
 def dashes(P: np.ndarray, dash: float, gap: float) -> list[np.ndarray]:
     """The polyline P cut into dashes of the length dash, separated by gaps of the length gap."""
     s = np.r_[0.0, np.cumsum(np.hypot(*np.diff(P, axis=0).T))]
@@ -871,6 +792,21 @@ def bodies(scene: ty.Scene, frame, l1_below: bool = False) -> list:
         tag = scene.body("L1_label", frame=frame, position=[ty.attr("l1x"), ty.attr("l1_label_y"), 0.0], label="𝓛₁", color=GRAY)
         out.append(ty.body(tag, size=2.0))
     return out
+
+
+def scale_text(v: float) -> str:
+    """The label of a scale bar of length v in LU, in decimals down to 0.01 and with a power of ten below."""
+    e = math.floor(math.log10(v) + 1e-9)
+    m = round(v / 10.0**e)
+    if e >= -2:
+        return f"{v:.{max(0, -e)}f} LU"
+    power = "10" + str(e).translate(str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹"))
+    return f"{power} LU" if m == 1 else f"{m} × {power} LU"
+
+
+def scale_value(w: float) -> float:
+    """The length in LU of the scale bar of the close-up at the scale w, which is drawn v / w long."""
+    return max(v for v in SCALE_VALUES if v <= BAR_MAX * w * (1 + 1e-9))
 
 
 def body_attrs(case: str) -> dict[str, float]:
@@ -912,8 +848,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         "zoom", label="centered on the target", axes=("", ""), parent=rp, origin=[ty.channel("t_x"), ty.channel("t_y"), 0.0], scale=ty.channel("inv_w")
     )
     scene.track_set("zoom-box", frame=zf).add(rectangle((-1.1 * ZOOM_HALF, 1.1 * ZOOM_HALF, -1.1 * ZOOM_HALF, 1.1 * ZOOM_HALF)))
-    # the close-up has a fixed grid GRID_STEP apart and the axis y = 0, on which every target lies, through its middle.
-    # The spacing of the grid in the units of the orbit panel is read out in the caption
+    # the close-up has a fixed grid GRID_STEP apart and the axis y = 0, on which every target lies, through its middle
     ts = scene.track_set("zoom-grid", frame=zf)
     x0, x1, y0, y1 = CLOSE_CLIP
     for x in np.arange(math.ceil(x0 / GRID_STEP), math.floor(x1 / GRID_STEP) + 1) * GRID_STEP:
@@ -922,6 +857,19 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         if y != 0.0:
             ts.add(np.array([[x0, y], [x1, y]]))
     scene.track_set("zoom-axis", frame=zf).add(np.array([[x0, 0.0], [x1, 0.0]]))
+    # the scale bar is drawn in a frame that the channel "bar" scales to its length, since a frame of scale s maps a
+    # length d of its parent to s d, and its right tick in a frame
+    # at its right end. Each label is written once, in a frame that its channel parks at FAR unless it is the label
+    # of the bar
+    bar = scene.frame("scalebar", parent=zf, origin=[BAR_X, BAR_Y, 0.0], scale=ty.channel("bar"))
+    scene.track_set("scalebar", frame=bar).add(np.array([[0.0, 0.0], [1.0, 0.0]]))
+    bar_end = scene.frame("scalebar-end", parent=zf, origin=[ty.channel("bar_end"), BAR_Y, 0.0])
+    scene.track_set("scalebar-end", frame=bar_end).add(np.array([[0.0, -BAR_TICK], [0.0, BAR_TICK]]))
+    scene.track_set("scalebar-start", frame=zf).add(np.array([[BAR_X, BAR_Y - BAR_TICK], [BAR_X, BAR_Y + BAR_TICK]]))
+    scale_labels = []
+    for k, v in enumerate(SCALE_VALUES):
+        tag = scene.frame(f"scale{k}", parent=zf, origin=[BAR_X, ty.channel(f"scale{k}"), 0.0])
+        scale_labels.append(ty.body(scene.body(f"scale{k}", frame=tag, position=[0.0, 0.0, 0.0], label=scale_text(v), color=WHITE), size=1.0))
     # the label of a failed run is drawn in a frame that the driver's channel "failed" scales by 1e-6 up
     # to the failure and by 1 after it, which parks the label at FAR and then moves it into the panel. A label
     # is written for each iterate n at which a run can fail, and the labels of the other iterates stay at FAR
@@ -958,8 +906,9 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ts = scene.track_set(f"ref-{case}-{system}", frame=rp, tags={"element": "ref", "case": case, "system": system})
             for D in dashes(P, 0.02 * size, 0.012 * size):
                 ts.add(D)
-    # the right margin keeps a cross at the last iterate, the label of a failed run, and the labels of the race inside the panel
-    conv_box = (-0.4, MAX_ITERATIONS + 2.4, Y_BOTTOM, Y_TOP + 1.0)
+    # the right margin keeps a cross at the last iterate and the label of a failed run inside the panel
+    # the top is left clear of the head of the panel, which covers the top 0.6 of the box
+    conv_box = (-0.4, MAX_ITERATIONS + 2.4, Y_BOTTOM, Y_TOP + 2.0)
     scene.track_set("convergence-box", frame=conv).add(rectangle(conv_box))
     scene.track_set("tolerance", frame=conv).add(np.array([[conv_box[0], -11.0], [conv_box[1], -11.0]]))
     # the grid of the convergence panel has a line at every iterate and at every power of ten of the norm
@@ -969,13 +918,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
     for y in range(math.ceil(conv_box[2]), math.floor(conv_box[3]) + 1):
         ts.add(np.array([[conv_box[0], y], [conv_box[1], y]]))
 
-    # the curves of the five segment counts of each case, system, targeting, and guess are the race, and the
-    # label "S = s" of each is placed once, so that it does not move when another segment count is selected
     convergence = {key: convergence_curve(r, key[3]) for key, r in runs.items()}
-    races: dict[tuple, list] = {}
-    for (case, system, targeting, S, guess), curve in sorted(convergence.items()):
-        races.setdefault((case, system, targeting, guess), []).append((S, *curve))
-    labels = {group: place_labels([(S, pts, mark and mark[0]) for S, pts, _, mark in items], conv_box) for group, items in races.items()}
 
     for key, r in sorted(runs.items()):
         case, system, targeting, S, guess = key
@@ -991,10 +934,10 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                 f"{element}-{name}", frame=frame, tags={"element": element, **tags}, periodic=periodic, attrs=attrs or {}
             )
 
-        arcs, ghosts, defects, nodes, dim_nodes, arrows, target_arrows = [], [], [], [], [], [], []
+        arcs, defects, nodes, dim_nodes, arrows, target_arrows = [], [], [], [], [], []
         # the marks of the orbit panel that the close-up magnifies, uncut, each a polyline, its clock channel, and
         # whether the samples of the track before a copy of the flipbook have already been drawn
-        near: dict[str, list] = {key: [] for key in ("zoom_ref", "zoom_ghosts", "zoom_arcs", "zoom_solution", "zoom_defects", "zoom_dim_nodes", "zoom_nodes", "zoom_end", "zoom_mirror")}
+        near: dict[str, list] = {key: [] for key in ("zoom_ref", "zoom_arcs", "zoom_solution", "zoom_defects", "zoom_dim_nodes", "zoom_nodes", "zoom_end", "zoom_mirror")}
         for k, it in enumerate(its):
             hold = END1 if k == K else at(k + 1, 0.0, S) - GAP
             slide = slide_at(k, S)
@@ -1008,18 +951,9 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                     cuts[i] = pieces[-1][0][-1] if pieces else None
                 for Pk, ck in pieces:
                     arcs.append((np.r_[Pk, Pk[-1:]], np.r_[ck, hold]))
-                    if k == K or len(Pk) < 2:
-                        continue
-                    Pg = np.r_[Pk[::2], Pk[-1:]] if len(Pk) % 2 == 0 else Pk[::2]
-                    start = at(k + 1, 0.0, S)
-                    ghosts.append((Pg, np.linspace(start, start + 0.05, len(Pg))))
                 ok = np.isfinite(xy).all(axis=1) & np.isfinite(cc)
                 if ok.sum() >= 2:
                     near["zoom_arcs"].append((np.r_[xy[ok], xy[ok][-1:]], np.r_[cc[ok], hold], True))
-                    if k < K:
-                        start = at(k + 1, 0.0, S)
-                        Pg = xy[ok]
-                        near["zoom_ghosts"].append((np.r_[Pg, Pg[-1:]], np.r_[np.linspace(start, start + 0.05, len(Pg)), END1], True))
             if math.isfinite(it["norm"]):
                 # the converged iterate keeps the arrows at the end of its arc, which form one vertical arrow, but
                 # it does not have defects
@@ -1033,7 +967,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
                     on_axis = half and i == S - 1
                     # with a single segment, the end of the arc is drawn with its velocity arrow at END_ARROW, and
                     # under the half period its target as well, with the vertical velocity required there, at
-                    # TARGET_ARROW, since neither is a node. Both are held with the arc until its ghost replaces it.
+                    # TARGET_ARROW, since neither is a node. Both are held with the arc until the next iterate.
                     # An arrow that would leave the box is not drawn
                     if S == 1:
                         ends_drawn = (a, b) if on_axis else (a,)
@@ -1198,10 +1132,6 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ts = new("mirror")
             for P, cc in mirror:
                 ts.add(P, channels={"c": cc})
-        if ghosts:
-            ts = new("ghosts")
-            for P, cc in ghosts:
-                ts.add(P, channels={"c": cc})
         if defects:
             ts = new("defects")
             for P, cc in defects:
@@ -1256,20 +1186,6 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ts = new("cross", frame=conv)
             for seg in cross(mark[0], CROSS_HALF, CROSS_TALL):
                 ts.add(seg, channels={"c": np.array([mark[1], mark[1] + 0.01])})
-        # the labels of the four other curves of the race, each drawn when the last point or the cross of its curve is
-        group = (case, system, targeting, guess)
-        ts = new("race_label", frame=conv)
-        for S2, _, times2, mark2 in races[group]:
-            if S2 == S:
-                continue
-            t = mark2[1] if mark2 is not None else times2[-1]
-            for P in label_strokes(f"S = {S2}", *labels[group][S2]):
-                ts.add(P, channels={"c": np.linspace(t, t + 0.01, len(P))})
-        # the label of this run, drawn in teal at the place that place_labels gave it in the race
-        ts = new("current_label", frame=conv)
-        t = mark[1] if mark is not None else times[-1]
-        for P in label_strokes(f"S = {S}", *labels[group][S]):
-            ts.add(P, channels={"c": np.linspace(t, t + 0.01, len(P))})
 
         # the ticker of the caption, which is updated when the point of each iterate is added. A failed propagation
         # holds the norm of the iterate before it
@@ -1293,7 +1209,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             attrs["l1x"] = FAR
         cc, ch = hold_series(changes, START1, END1, gap=TICK_GAP)
         # the center and the scale of the close-up, held through each slice of the flipbook, which the frame zoom
-        # reads, and the spacing of the grid of the close-up in the units of the orbit panel, for the caption
+        # reads
         edges = [s0 for s0, *_ in slices[1:]]
         grid = np.unique(np.r_[cc, [e - TICK_GAP for e in edges], edges])
         grid = grid[(grid >= START1) & (grid <= END1)]
@@ -1301,41 +1217,29 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         held = slices or [(START1, END1, 1.0, np.zeros(2))]
         which = np.clip(np.searchsorted(np.array([s0 for s0, *_ in held]), grid + 1e-12, side="right") - 1, 0, len(held) - 1)
         ch["inv_w"] = np.array([1.0 / held[j][2] for j in which])
-        ch["cell"] = np.array([GRID_STEP * held[j][2] for j in which])
+        # the inverse of the length of the scale bar in the units of the close-up, which is the scale of its frame,
+        # the abscissa of its right end, and, for each label of SCALE_VALUES, its ordinate while it is the label of
+        # the bar, or FAR
+        ws = np.array([held[j][2] for j in which])
+        bar = np.array([scale_value(w) for w in ws])
+        ch["bar"], ch["bar_end"] = ws / bar, BAR_X + bar / ws
+        for k, v in enumerate(SCALE_VALUES):
+            ch[f"scale{k}"] = np.where(np.isclose(bar, v, rtol=1e-6, atol=0.0), BAR_Y + BAR_LABEL, FAR)
         ch["t_x"], ch["t_y"] = np.array([held[j][3][0] for j in which]), np.array([held[j][3][1] for j in which])
         ts = new("ticker", attrs=attrs)
         ts.add(np.zeros((len(grid), 2)), channels={"c": grid, **ch})
-
-    for (case, system, targeting, guess), items in races.items():
-        tags = {"case": case, "system": system, "targeting": targeting, "guess": guess}
-        name = "-".join(tags.values())
-        ts = scene.track_set(f"race-{name}", frame=conv, tags={"element": "race", **tags})
-        for _, pts, times, _ in items:
-            P, cc = snapped(pts, times, END1)
-            ts.add(P, channels={"c": cc})
-        marks = [mark for _, _, _, mark in items if mark is not None]
-        if marks:
-            ts = scene.track_set(f"race_cross-{name}", frame=conv, tags={"element": "race_cross", **tags})
-            for center, t in marks:
-                for seg in cross(center, CROSS_HALF, CROSS_TALL):
-                    ts.add(seg, channels={"c": np.array([t, t + 0.01])})
 
     case = scene.choice("case", ["lyapunov", "family11"], labels=["𝓛₁ Lyapunov", "family 11"])
     system = scene.choice("system", list(SYSTEMS), labels=["CR3BP", "ER3BP, periapsis", "ER3BP, apoapsis"])
     targeting = scene.choice("targeting", list(TARGETINGS), labels=["half period", "full period"])
     segments = scene.choice("S", [str(s) for s in SEGMENTS], labels=[str(s) for s in SEGMENTS])
-    guess = scene.choice("guess", list(GUESSES), labels=["ε = 0.001", "ε = 0.01", "ε = 0.05", "ε = 0.01, line search"])
-    ghosts_on = scene.toggle("ghosts", default=True)
+    guess = scene.choice("guess", list(GUESSES), labels=["ε = 0.001", "ε = 0.05"])
     defects_on = scene.toggle("defects", default=True)
     solution_on = scene.toggle("solution", default=False)
-    others_on = scene.toggle("others", default=False)
     scene.clock("value", channels=["c"], steps=840, range=[START1, END1], labels=["iterate n + fraction"], seconds=SECONDS)
 
     def q(element, **extra):
         return ty.sets(element=element, case=case, system=system, targeting=targeting, S=segments, guess=guess, **extra)
-
-    def qr(element):
-        return ty.sets(element=element, case=case, system=system, targeting=targeting, guess=guess)
 
     driver = ty.driver(q("ticker"), {"index": 0})
     scene.view(
@@ -1348,8 +1252,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ty.track(ty.sets(element="box", case=case), opacity=0.0, width=1.0),
             ty.grid(labels=False),
             ty.axes(),
-            # the ghosts are drawn under the current arcs, and the dashed reference over the arcs and the converged orbit
-            ty.track(q("ghosts"), before="hidden", color=GRAY, width=1.2, opacity=0.4, visible=ghosts_on),
+            # the dashed reference is drawn over the arcs and the converged orbit
             ty.track(q("arcs"), reveal="grow", before="hidden", after="hidden", color=TEAL, width=2.5),
             # the red disc of a defect is drawn at its target under the white node, and seen around it
             ty.track(
@@ -1388,8 +1291,8 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ty.outline("closeup", color=WHITE, opacity=0.5, width=1.0, dash=(WINDOW_DASH, WINDOW_DASH / 2), min_size=WINDOW_MIN),
         ],
     )
-    # the close-up is a magnified copy of the orbit panel without axes, since its units change with the zoom. Its
-    # fixed grid is read out in the caption. Its camera is fitted to the box of the target alone, and the marks are
+    # the close-up is a magnified copy of the orbit panel without axes, since its units change with the zoom, and
+    # its scale is shown by the scale bar. Its camera is fitted to the box of the target alone, and the marks are
     # drawn across the whole panel. The end of the last arc is a teal dot from the moment the arc lands on it, and
     # the target under the half period is the green requirement on the axis
     def magnified(element, **kw):
@@ -1400,13 +1303,12 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         frame=zf,
         driver=driver,
         camera={"kind": "plane", "plane": "xy"},
-        label="magnified close-up",
+        label="close-up",
         layers=[
             ty.track(ty.set_id("zoom-box"), opacity=0.0, width=1.0),
             ty.track(ty.set_id("zoom-grid"), color=GRAY, width=1.0, opacity=0.25, fit=False),
             ty.track(ty.set_id("zoom-axis"), color=GRAY, width=1.0, opacity=0.6, fit=False),
             magnified("zoom_ref", reveal="grow", color=GRAY, width=3.5, opacity=0.95, visible=solution_on),
-            magnified("zoom_ghosts", reveal="grow", color=GRAY, width=1.2, opacity=0.4, visible=ghosts_on),
             magnified("zoom_arcs", reveal="grow", color=TEAL, width=2.5),
             magnified("zoom_defects", reveal="grow", head={"color": RED, "size": DEFECT_DISC}, color=RED, width=3.0, visible=defects_on),
             magnified("zoom_mirror", reveal="grow", color=GRAY, width=2.5, opacity=0.8),
@@ -1417,6 +1319,10 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             magnified("zoom_dim_nodes", trail=0.002, taper=(0, 0), head={"color": DIM_WHITE, "size": NODE_SIZE}, color=WHITE, width=0.5, opacity=0.3),
             magnified("zoom_nodes", trail=0.002, taper=(0, 0), head={"color": WHITE, "size": NODE_SIZE}, color=WHITE, width=0.5),
             *body_layers,
+            ty.track(ty.set_id("scalebar"), color=WHITE, width=2.0, fit=False, context="driver"),
+            ty.track(ty.set_id("scalebar-start"), color=WHITE, width=2.0, fit=False),
+            ty.track(ty.set_id("scalebar-end"), color=WHITE, width=2.0, fit=False, context="driver"),
+            *scale_labels,
         ],
     )
     scene.view(
@@ -1431,13 +1337,8 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
             ty.grid(labels=True),
             ty.track(ty.set_id("convergence-grid"), color=GRAY, width=1.0, opacity=0.2),
             ty.track(ty.set_id("tolerance"), color=GRAY, width=1.0, opacity=0.6),
-            ty.track(
-                qr("race"), reveal="grow", before="hidden", head={"color": GRAY, "size": 5}, color=GRAY, width=1.5, opacity=0.8, visible=others_on
-            ),
-            ty.track(qr("race_cross"), before="hidden", color=RED, width=2.0, opacity=0.5, visible=others_on),
-            ty.track(q("race_label"), before="hidden", color=GRAY, width=1.3, opacity=0.9, visible=others_on),
-            ty.track(q("current_label"), before="hidden", color=TEAL, width=1.6, visible=others_on),
-            ty.track(q("current"), reveal="grow", before="hidden", head={"color": WHITE, "size": 7}, color=TEAL, width=3.0),
+            # the norm of F is the error that the defects show, hence its curve is drawn in their red
+            ty.track(q("current"), reveal="grow", before="hidden", head={"color": WHITE, "size": 7}, color=RED, width=3.0),
             ty.track(q("cross"), before="hidden", color=RED, width=2.5),
             *failed_labels,
         ],
@@ -1451,10 +1352,8 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
     scene.tabs(targeting, label="targeting")
     scene.tabs(segments, label="segments S")
     scene.tabs(guess, label="first guess")
-    scene.toggle_control(ghosts_on, label="ghosts")
     scene.toggle_control(defects_on, label="defects")
     scene.toggle_control(solution_on, label="solution")
-    scene.toggle_control(others_on, label="other segment counts")
     scene.transport()
     scene.readout(
         "caption",
@@ -1462,9 +1361,6 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         ty.channel("n"),
         "   log₁₀ ‖F‖ = ",
         {"channel": "logF", "digits": 3},
-        "   close-up grid ",
-        {"channel": "cell", "digits": 2},
-        " LU",
     )
     scene.write(out / "correction.tys", out / "correction.tyd")
     return scene.write_html(out / "correction.html")
@@ -1933,7 +1829,7 @@ def main(argv: list[str] | None = None) -> None:
         ]
         t0 = time.time()
         # the slowest runs first, so that the pool stays busy to the end
-        jobs.sort(key=lambda j: (j[4] != "far_ls", -j[3]))
+        jobs.sort(key=lambda j: -j[3])
         runs = {r["key"]: r for r in pool.map(correction_job, jobs, chunksize=1)}
         t_runs = time.time() - t0
     print(f"references in {t_refs:.0f} s, the 14 continuation runs in {t_pens:.0f} s, the {len(runs)} correction runs in {t_runs:.0f} s")

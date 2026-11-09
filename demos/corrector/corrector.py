@@ -9,7 +9,7 @@ x = -mu and x = 1 - mu, respectively, and every length is in DU.
 The state (x, y, x', y') is integrated together with the state transition matrix and, on request,
 with its sensitivity to the eccentricity, by an adaptive Dormand-Prince 5(4) integrator vectorized
 over a batch of arcs, so that the segments of multiple shooting share one integration. The corrector
-solves F(X) = 0 by Newton's method, with an optional backtracking line search, and records the
+solves F(X) = 0 by Newton's method, taking the full step at every iterate, and records the
 nodes, the arcs, and the norm of F at every iterate. The continuation functions step a family of
 symmetric orbits in the Jacobi constant or in the eccentricity, by natural-parameter or
 pseudo-arclength continuation, and record the predictor and every corrector iterate of each step.
@@ -278,7 +278,6 @@ class Iterate:
     samples: np.ndarray  # (S, m, 4)
     F: np.ndarray
     norm: float
-    step: float = 1.0  # the fraction of the Newton step taken from this iterate to the next
 
 
 @dataclass
@@ -358,7 +357,6 @@ def correct(
     nodes: np.ndarray,
     *,
     arc: float | None = None,
-    line_search: bool = False,
     tol: float = 1e-11,
     max_iterations: int = 12,
     give_up: float = 10.0,
@@ -366,9 +364,7 @@ def correct(
     """Corrects the first-guess nodes (S, 4) by multiple shooting, and records every iterate.
 
     The Newton step solves DF dX = -F in the least-squares sense, which is the Newton step of a
-    square system and the minimum-norm step otherwise. With ``line_search``, the step is halved
-    until the norm of F falls by a quarter of the fraction taken, down to a sixty-fourth of the
-    step, and when no fraction passes, the fraction with the smallest norm is taken. The run
+    square system and the minimum-norm step otherwise, and the full step is taken. The run
     converges when the norm of F is below ``tol``. It fails when the norm passes ``give_up``, when
     a propagation fails, or after ``max_iterations``.
     """
@@ -400,22 +396,7 @@ def correct(
             run.failure = "the norm of F grew past the limit" if it.norm > give_up else "the iteration limit was reached"
             return run
         dX = np.linalg.lstsq(J, -F, rcond=None)[0]
-        X = _pack(t, nodes, arc)
-        alpha = 1.0
-        if line_search:
-            tried = []
-            for alpha in 2.0 ** -np.arange(7):
-                try:
-                    norm = float(np.linalg.norm(_evaluate(t, *_unpack(t, X + alpha * dX, nodes, arc), jacobian=False, record=False)[0]))
-                except PropagationError:
-                    continue
-                if norm < (1.0 - alpha / 4) * it.norm:
-                    break
-                tried.append((norm, alpha))
-            else:
-                alpha = min(tried)[1] if tried else 1.0
-        it.step = float(alpha)
-        nodes, arc = _unpack(t, X + alpha * dX, nodes, arc)
+        nodes, arc = _unpack(t, _pack(t, nodes, arc) + dX, nodes, arc)
     run.failure = "the iteration limit was reached"
     return run
 
