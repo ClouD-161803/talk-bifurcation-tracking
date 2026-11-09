@@ -33,7 +33,6 @@ try {
 .reveal .slides section .cmp .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 /* five frames, the DyLAN figure above and Broucke's panels of the same frame below */
 .reveal .slides section .cmp .five { grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: 262px minmax(0, 1fr); }
-.reveal .slides section .cmp .span { grid-column: 1 / -1; }
 .reveal .slides section .fig { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; }
 .reveal .slides section .fig > img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
 .reveal .slides section .fig > img.paper { padding: 8px; }
@@ -674,7 +673,11 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
       <div class="fig"><img class="for-dark" src="figures/dylan/family-7-periapsis-inertial-dark.png" alt="DyLAN, family 7 from periapsis in the barycentric inertial frame"><img class="for-light" src="figures/dylan/family-7-periapsis-inertial-light.png" alt="DyLAN, family 7 from periapsis in the barycentric inertial frame"></div>
       <div class="fig"><img class="for-dark" src="figures/dylan/family-7-periapsis-inertial-m1-dark.png" alt="DyLAN, family 7 from periapsis in the inertial frame about the primary"><img class="for-light" src="figures/dylan/family-7-periapsis-inertial-m1-light.png" alt="DyLAN, family 7 from periapsis in the inertial frame about the primary"></div>
       <div class="fig"><img class="for-dark" src="figures/dylan/family-7-periapsis-inertial-m2-dark.png" alt="DyLAN, family 7 from periapsis in the inertial frame about the secondary"><img class="for-light" src="figures/dylan/family-7-periapsis-inertial-m2-light.png" alt="DyLAN, family 7 from periapsis in the inertial frame about the secondary"></div>
-      <div class="fig span"><img class="paper" src="figures/broucke/family-7-periapsis-mixed-fig-13.png" alt="Broucke, Fig. 13, family 7 from periapsis, several frames"></div>
+      <div class="fig"><img class="paper" src="figures/broucke/family-7-periapsis-pulsating-fig-13.png" alt="Broucke, Fig. 13, family 7 from periapsis in the rotating-pulsating frame"></div>
+      <div class="fig"><img class="paper" src="figures/broucke/family-7-periapsis-rotating-fig-13.png" alt="Broucke, Fig. 13, family 7 from periapsis in the rotating frame"></div>
+      <div class="fig"><img class="paper" src="figures/broucke/family-7-periapsis-inertial-fig-13.png" alt="Broucke, Fig. 13, family 7 from periapsis in the barycentric inertial frame"></div>
+      <div class="fig"></div>
+      <div class="fig"><img class="paper" src="figures/broucke/family-7-periapsis-inertial-m2-fig-13.png" alt="Broucke, Fig. 13, family 7 from periapsis in the inertial frame about the secondary"></div>
     </div>
     <p class="caption">Family 7 from periapsis is continued at \(\mu = 0.012155\), and one index reaches \(k = -2\) at \(e = 0.468\).</p>
   </div>
@@ -755,7 +758,7 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
   </div>
   <aside class="notes">
     <p>Step 0: I go through the comparison figures quickly, one branch per click. First, family 11 in the plane of a₁ and a₂, with Broucke's Fig. 4 of the AIAA paper at left, Fig. 18 of his JPL report in the middle, and DyLAN at right. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 up to e = 0.453.</p>
-    <p>Step 1: Family 7 from periapsis, at the Earth–Moon mass ratio. On top are my members in the five frames of the Broucke page. Below is Broucke's Fig. 13 of the JPL report, whole, since he did not label its panels with e. The family is unstable, and one index reaches −2 at e = 0.468, past the members drawn here, which end at e = 0.35.</p>
+    <p>Step 1: Family 7 from periapsis, at the Earth–Moon mass ratio. On top are my members in the five frames of the Broucke page. Below each of my frames are the two panels of Broucke's Fig. 13 of the JPL report in the same frame. He did not label them with e, and he did not draw this branch about the primary. The family is unstable, and one index reaches −2 at e = 0.468, past the members drawn here, which end at e = 0.35.</p>
     <p>Step 2: Family 7 from apoapsis, stable from e = 0.005 to e = 0.975. Below each of my frames is Broucke's run of panels in the same frame, from Fig. 14. He did not draw this branch about the primary.</p>
     <p>Step 3: Family 8 from periapsis, at a mass ratio of one half, with Fig. 16 below. One index reaches −2 at e = 0.677. My members go up to e = 0.97, one step short of his last panel, since my member at 0.975 is not converged.</p>
     <p>Step 4: Family 8 from apoapsis, with Fig. 17. It crosses the parabola into N at e = 0.289, and it is stable from e = 0.847 to its last member at 0.85.</p>

@@ -32,7 +32,7 @@ BRANCHES = [
 ]
 COMPARISON_NOTES = """  <aside class="notes">
     <p>Step 0: I go through the comparison figures quickly, one branch per click. First, family 11 in the plane of a₁ and a₂, with Broucke's Fig. 4 of the AIAA paper at left, Fig. 18 of his JPL report in the middle, and DyLAN at right. The curves agree, but the a₁ axis of Fig. 4 is labeled ten times too large. In DyLAN, a₁ goes from −4918.9 to −252.5 up to e = 0.453.</p>
-    <p>Step 1: Family 7 from periapsis, at the Earth–Moon mass ratio. On top are my members in the five frames of the Broucke page. Below is Broucke's Fig. 13 of the JPL report, whole, since he did not label its panels with e. The family is unstable, and one index reaches −2 at e = 0.468, past the members drawn here, which end at e = 0.35.</p>
+    <p>Step 1: Family 7 from periapsis, at the Earth–Moon mass ratio. On top are my members in the five frames of the Broucke page. Below each of my frames are the two panels of Broucke's Fig. 13 of the JPL report in the same frame. He did not label them with e, and he did not draw this branch about the primary. The family is unstable, and one index reaches −2 at e = 0.468, past the members drawn here, which end at e = 0.35.</p>
     <p>Step 2: Family 7 from apoapsis, stable from e = 0.005 to e = 0.975. Below each of my frames is Broucke's run of panels in the same frame, from Fig. 14. He did not draw this branch about the primary.</p>
     <p>Step 3: Family 8 from periapsis, at a mass ratio of one half, with Fig. 16 below. One index reaches −2 at e = 0.677. My members go up to e = 0.97, one step short of his last panel, since my member at 0.975 is not converged.</p>
     <p>Step 4: Family 8 from apoapsis, with Fig. 17. It crosses the parabola into N at e = 0.289, and it is stable from e = 0.847 to its last member at 0.85.</p>
@@ -81,18 +81,13 @@ def comparison(talk: Path) -> str:
             need(f"{stem}-dark.png")
             need(f"{stem}-light.png")
             cells.append(f'      <div class="fig">{mode_images(stem, f"DyLAN, family {family} from {branch} in {words}")}</div>')
-        mixed = f"figures/broucke/family-{family}-{branch}-mixed-fig-{figure}.png"
-        if (talk / mixed).is_file():
-            alt = f"Broucke, Fig. {figure}, family {family} from {branch}, several frames"
-            cells.append(f'      <div class="fig span">{paper_image(mixed, alt)}</div>')
-        else:
-            for frame, words in FRAMES:
-                path = f"figures/broucke/family-{family}-{branch}-{frame}-fig-{figure}.png"
-                if (talk / path).is_file():
-                    alt = f"Broucke, Fig. {figure}, family {family} from {branch} in {words}"
-                    cells.append(f'      <div class="fig">{paper_image(path, alt)}</div>')
-                else:
-                    cells.append('      <div class="fig"></div>')
+        for frame, words in FRAMES:
+            path = f"figures/broucke/family-{family}-{branch}-{frame}-fig-{figure}.png"
+            if (talk / path).is_file():
+                alt = f"Broucke, Fig. {figure}, family {family} from {branch} in {words}"
+                cells.append(f'      <div class="fig">{paper_image(path, alt)}</div>')
+            else:
+                cells.append('      <div class="fig"></div>')
         kind = "fragment" if index == len(BRANCHES) else "fragment fade-in-then-out"
         groups.append(
             f'  <div class="cmp {kind}" data-fragment-index="{index}">\n'

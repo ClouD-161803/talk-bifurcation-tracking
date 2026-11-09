@@ -9,7 +9,7 @@ script writes three kinds of file into the output folder:
 - pages/fig-<M><page letter>.png, each page of a figure cut to its ink, with the caption;
 - family-<N>-<branch>-<frame>-fig-<M>.png, the panels of one coordinate frame of a figure,
   collected from all its pages and laid out in order of eccentricity;
-- the stability diagrams and Fig. 13, whose panels are not labeled, as whole pages.
+- the stability diagrams as whole pages.
 
 A page is split into panels at the blank bands between them, first into rows and then each row
 into columns, and PANELS gives the frame and the eccentricity of each panel in reading order.
@@ -44,7 +44,7 @@ REPORT = "broucke-1969-periodic-orbits.pdf"
 # name of the whole-page output or None when the page is split by PANELS)
 PAGES = (
     (AIAA, 7, (304, 379, 542, 627), "aiaa-fig-4", "aiaa-fig-4"),
-    (REPORT, 58, (41, 162, 567, 625), "fig-13", "family-7-periapsis-mixed-fig-13"),
+    (REPORT, 58, (41, 162, 567, 625), "fig-13", None),
     (REPORT, 62, (33, 71, 574, 728), "fig-14a", None),
     (REPORT, 63, (32, 77, 597, 724), "fig-14b", None),
     (REPORT, 66, (161, 144, 446, 426), "fig-15", "family-8-stability-fig-15"),
@@ -65,11 +65,13 @@ PAGES = (
 )
 
 FRAMES = {"I": "inertial", "R": "rotating", "P": "pulsating", "G": "inertial-m1", "S": "inertial-m2"}
-FIGURES = {"14": ("7", "apoapsis"), "16": ("8", "periapsis"), "17": ("8", "apoapsis"), "19": ("11", "periapsis"), "20": ("11", "apoapsis")}
+FIGURES = {"13": ("7", "periapsis"), "14": ("7", "apoapsis"), "16": ("8", "periapsis"), "17": ("8", "apoapsis"), "19": ("11", "periapsis"), "20": ("11", "apoapsis")}
 
 # the frame letter of FRAMES and the eccentricity Broucke wrote, for each panel in reading order
-# (reading order, frames matched by shape to the DyLAN tracks and by the order of the runs)
+# (reading order, frames matched by shape to the DyLAN tracks and by the order of the runs). An
+# eccentricity of ? is one that Broucke did not write, and such panels are kept in reading order
 PANELS = {
+    "fig-13": "S:? S:? I:? I:? P:? R:? P:? R:?",
     "fig-14a": "I:0.0 I:0.95 R:0.0 R:0.25 R:0.50 R:0.60 R:0.70 R:0.80 R:0.90 R:0.95 R:0.975 P:0.0 P:0.40 P:0.80 P:0.975 S:0.0",
     "fig-14b": "S:0.25 S:0.50 S:0.60 S:0.70 S:0.80 S:0.90 S:0.95 S:0.975",
     "fig-16a": "I:0.0 I:0.30 I:0.50 I:0.55 I:0.60 I:0.69 I:0.80 I:0.90 I:0.975 R:0.0 R:0.50 R:0.80",
@@ -198,13 +200,13 @@ def main():
             sys.exit(f"{page_name}: {len(boxes)} panels found but {len(labels)} labeled")
         figure = page_name[4:6]
         for box, (frame, eccentricity) in zip(boxes, labels):
-            frames[figure, frame].append((float(eccentricity), page_name, image.crop(box)))
+            frames[figure, frame].append((None if eccentricity == "?" else float(eccentricity), page_name, image.crop(box)))
     for (figure, frame), items in sorted(frames.items()):
         family, branch = FIGURES[figure]
-        items.sort(key=lambda item: item[0])
+        items.sort(key=lambda item: (item[0] is None, item[0] or 0.0))
         name = f"family-{family}-{branch}-{FRAMES[frame]}-fig-{figure}.png"
         compose([image for *_, image in items]).save(output / name, dpi=(DPI, DPI), optimize=True)
-        print(f"{name}: e = {', '.join(f'{e:g}' for e, *_ in items)} from {', '.join(sorted({p for _, p, _ in items}))}")
+        print(f"{name}: e = {', '.join('?' if e is None else f'{e:g}' for e, *_ in items)} from {', '.join(sorted({p for _, p, _ in items}))}")
 
 
 if __name__ == "__main__":
