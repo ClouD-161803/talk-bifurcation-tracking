@@ -36359,14 +36359,14 @@
   "targeting": {
    "kind": "choice",
    "values": [
-    "half",
-    "full"
+    "full",
+    "half"
    ],
    "default": "full",
    "scope": "scene",
    "labels": [
-    "half period",
-    "full period"
+    "full period",
+    "half period"
    ]
   },
   "S": {

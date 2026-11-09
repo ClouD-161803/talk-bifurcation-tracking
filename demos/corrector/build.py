@@ -39,7 +39,7 @@ FAMILIES = tuple(MU)
 E = 0.3
 # the eccentricity and the initial true anomaly of each system
 SYSTEMS = {"cr3bp": (0.0, 0.0), "peri": (E, 0.0), "apo": (E, math.pi)}
-TARGETINGS = ("half", "full")
+TARGETINGS = ("full", "half")
 SEGMENTS = (1, 4, 16)
 # the scale error epsilon of each first guess
 GUESSES = {"near": 0.001, "farther": 0.05}
@@ -1246,7 +1246,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
 
     case = scene.choice("case", list(MU), labels=["𝓛₁ Lyapunov", "family 11"])
     system = scene.choice("system", list(SYSTEMS), labels=["CR3BP", "ER3BP, periapsis", "ER3BP, apoapsis"])
-    targeting = scene.choice("targeting", list(TARGETINGS), default="full", labels=["half period", "full period"])
+    targeting = scene.choice("targeting", list(TARGETINGS), default="full", labels=["full period", "half period"])
     segments = scene.choice("S", [str(s) for s in SEGMENTS], labels=[str(s) for s in SEGMENTS])
     guess = scene.choice("guess", list(GUESSES), labels=["ε = 0.001", "ε = 0.05"])
     defects_on = scene.toggle("defects", default=True)

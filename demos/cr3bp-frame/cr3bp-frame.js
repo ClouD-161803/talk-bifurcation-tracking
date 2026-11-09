@@ -2,10 +2,10 @@
 // frame, drawn as inline SVG in a div.cr3bp-frame, with its labels as span.lab[data-lab] typeset by
 // MathJax. load this file after theme/beeson.js. the stage of the diagram is set by the shown
 // fragment of its slide with data-cr3bp-stage and the highest index, i.e. inertial without such a
-// fragment, then units, rotating, and body. from units on, the rotating axes x and y are drawn and
-// turn with the two masses, and they come to rest with them as the view turns into the rotating
-// frame. the diagram is animated within a stage and between
-// stages while its slide is shown. it is drawn still in the print view, under ?still, and under
+// fragment, then units, rotating, body, and mark, at which the third body turns violet. from units
+// on, the rotating axes x and y are drawn and turn with the two masses, and they come to rest with
+// them as the view turns into the rotating frame. the diagram is animated within a stage and
+// between stages while its slide is shown. it is drawn still in the print view, under ?still, and under
 // reduced motion, with the primary and the secondary at 30 degrees from the X axis.
 //
 // the primary and the secondary turn about the barycenter at the angle phi, which equals t in the
@@ -16,7 +16,7 @@
 (() => {
   const NS = 'http://www.w3.org/2000/svg';
   const TAU = 2 * Math.PI;
-  const STAGES = { units: 1, rotating: 2, body: 3 };
+  const STAGES = { units: 1, rotating: 2, body: 3, mark: 4 };
   // the shortest duration of the turn of the view into the rotating frame and back, in s, and the
   // largest mean rate of the turn, in rad/s, beyond which the turn is lengthened
   const TURN = 1.5;
@@ -30,24 +30,25 @@
   // the half length of an axis, and the radii of the primary, the secondary, and the third body,
   // nondimensional
   const AXIS = 1.05;
-  const R1 = 0.064, R2 = 0.03, RB = 0.026;
+  const R1 = 0.054, R2 = 0.03, RB = 0.026;
   // the height of the dimension line of the unit length above the line of the two masses
   const DIM = 0.14;
   // the rest point of the third body in the rotating frame, the half widths of its loop, and the
   // period of the loop in s
   const BODY = { x: 0.38, y: 0.6, ax: 0.05, ay: 0.035, period: 12 };
-  // the opacity of each group of the drawing at each of the four stages
+  // the opacity of each group of the drawing at each of the five stages
   const OPACITY = {
-    inertial: [1, 1, 0.3, 0.3],
-    paths: [1, 1, 0.5, 0.5],
-    rotating: [0, 1, 1, 1],
-    unit: [0, 1, 0, 0],
-    coords: [0, 0, 1, 1],
-    body: [0, 0, 0, 1],
+    inertial: [1, 1, 0.3, 0.3, 0.3],
+    paths: [1, 1, 0.5, 0.5, 0.5],
+    rotating: [0, 1, 1, 1, 1],
+    unit: [0, 1, 0, 0, 0],
+    coords: [0, 0, 1, 1, 1],
+    body: [0, 0, 0, 1, 1],
   };
 
   // the colors are the custom properties of theme/beeson.css, hence the drawing follows a flip of the
-  // mode without a redraw. the primary is blue as the Earth, and the secondary grey as the Moon
+  // mode without a redraw. the primary is blue as the Earth, the secondary grey as the Moon, and the
+  // third body is violet from the stage mark on
   const CSS = `
 .reveal .cr3bp-frame { pointer-events: none; }
 .reveal .slides section .zone.cr3bp-frame > svg { overflow: visible; }
@@ -62,7 +63,8 @@
 .cr3bp-frame svg .unit { stroke: var(--violet); fill: var(--violet); }
 .cr3bp-frame svg .leader { stroke: var(--subtle); }
 .cr3bp-frame svg .seg { stroke: var(--text); }
-.cr3bp-frame svg .body { fill: var(--violet); }
+.cr3bp-frame svg .body { fill: var(--text); transition: fill 400ms ease-out; }
+.cr3bp-frame.marked svg .body { fill: var(--violet); }
 .cr3bp-frame svg line, .cr3bp-frame svg circle.path { stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .cr3bp-frame svg polygon { stroke: none; }
 `;
@@ -161,7 +163,7 @@
       node('circle', { class: 'm2', cx: b, cy: 0, r: R2 }, this.line);
     }
 
-    // the stage set by the shown fragments of the slide, from 0 to 3
+    // the stage set by the shown fragments of the slide, from 0 to 4
     target() {
       let best = null;
       for (const f of this.el.closest('section')?.querySelectorAll('.fragment.visible[data-cr3bp-stage]') ?? []) {
@@ -219,6 +221,7 @@
       if (stage === this.stage) return;
       const first = this.stage < 0;
       this.stage = stage;
+      this.el.classList.toggle('marked', stage >= STAGES.mark);
       const want = stage >= STAGES.rotating;
       if (!animate || first) {
         this.view = want ? { kind: 'rotating', target: TAU * Math.round(this.phi / TAU) } : { kind: 'inertial', psi: 0 };
