@@ -2695,7 +2695,8 @@
   // src/surfaces.ts
   var RAMPS = {
     blues: ["#f7fbff", "#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5", "#08519c", "#08306b"],
-    reds: ["#fff5f0", "#fee0d2", "#fcbba1", "#fc9272", "#fb6a4a", "#ef3b2c", "#cb181d", "#a50f15", "#67000d"]
+    reds: ["#fff5f0", "#fee0d2", "#fcbba1", "#fc9272", "#fb6a4a", "#ef3b2c", "#cb181d", "#a50f15", "#67000d"],
+    magma_r: ["#fcfdbf", "#feca8d", "#fd9668", "#f1605d", "#cd4071", "#9e2f7f", "#721f81", "#440f76", "#180f3d", "#000004"]
   };
   var num2 = (value, fallback) => value !== void 0 && value.trim() !== "" && Number.isFinite(Number(value)) ? Number(value) : fallback;
   function effectivePotential(mu) {
@@ -2732,6 +2733,7 @@
   }
   var GRAVITATIONAL = { ramp: "blues", range: [-3, -1.5] };
   var CENTRIFUGAL = { ramp: "reds", range: [-3, -1.5] };
+  var EFFECTIVE = { ramp: "magma_r", range: [-3, -1.5] };
   var BOWL_LIFT = 4;
   var FUNCTIONS = {
     // the effective potential of the CR3BP at data-mu, assembled from its wells and its bowl, with the
@@ -2752,7 +2754,7 @@
         floor: -3.2,
         zscale: 1,
         layers: { flat: () => 0, wells, bowl, sum },
-        tones: { flat: GRAVITATIONAL, wells: GRAVITATIONAL, bowl: CENTRIFUGAL, sum: { ramp: "theme" } },
+        tones: { flat: GRAVITATIONAL, wells: GRAVITATIONAL, bowl: CENTRIFUGAL, sum: EFFECTIVE },
         marks,
         initial: "flat",
         stages: {

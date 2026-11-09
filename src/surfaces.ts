@@ -33,13 +33,14 @@ export type Tone = { ramp: string; range?: [number, number] };
 
 /**
  * The fixed color ramps, as sRGB colors at even steps from the lowest height of a range to the
- * highest. blues and reds are the sequential ColorBrewer scales Blues and Reds, as plotly 7 resolves
- * colorscale='Blues' and colorscale='Reds' of a go.Surface. The ramp theme is made from the custom
- * properties of the theme in surface.ts.
+ * highest. blues and reds are the sequential ColorBrewer scales Blues and Reds, and magma_r is the
+ * reversed Magma of matplotlib, as plotly 7 resolves colorscale='Blues', 'Reds', and 'Magma_r' of a
+ * go.Surface. The ramp theme is made from the custom properties of the theme in surface.ts.
  */
 export const RAMPS: Record<string, string[]> = {
   blues: ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b'],
   reds: ['#fff5f0', '#fee0d2', '#fcbba1', '#fc9272', '#fb6a4a', '#ef3b2c', '#cb181d', '#a50f15', '#67000d'],
+  magma_r: ['#fcfdbf', '#feca8d', '#fd9668', '#f1605d', '#cd4071', '#9e2f7f', '#721f81', '#440f76', '#180f3d', '#000004'],
 };
 
 /** The data attributes of the element and of the fragment that sets the stage, by their dataset keys. */
@@ -117,11 +118,12 @@ export function levelCurves(g: Float64Array, x: [number, number], y: [number, nu
   return isolines(d, nx, ny, x[0], y[0], (x[1] - x[0]) / nx, (y[1] - y[0]) / ny, true);
 }
 
-// the ramps and ranges of the gravitational and the centrifugal parts in plot_potentials_decomposed.py
-// of Claudio Vestini's MAE 541 project, a plotly figure of the three surfaces at mu = 0.05 with
-// cmin = -3 and cmax = -1.5
+// the ramps and ranges of the gravitational and the centrifugal parts and of their sum in
+// plot_potentials_decomposed.py of Claudio Vestini's MAE 541 project, a plotly figure of the three
+// surfaces at mu = 0.05 with cmin = -3 and cmax = -1.5
 const GRAVITATIONAL: Tone = { ramp: 'blues', range: [-3, -1.5] };
 const CENTRIFUGAL: Tone = { ramp: 'reds', range: [-3, -1.5] };
+const EFFECTIVE: Tone = { ramp: 'magma_r', range: [-3, -1.5] };
 // the height by which the bowl is raised above the wells at the stage bowl, nondimensional
 const BOWL_LIFT = 4;
 
@@ -144,7 +146,7 @@ const FUNCTIONS = {
       floor: -3.2,
       zscale: 1,
       layers: { flat: () => 0, wells, bowl, sum },
-      tones: { flat: GRAVITATIONAL, wells: GRAVITATIONAL, bowl: CENTRIFUGAL, sum: { ramp: 'theme' } },
+      tones: { flat: GRAVITATIONAL, wells: GRAVITATIONAL, bowl: CENTRIFUGAL, sum: EFFECTIVE },
       marks,
       initial: 'flat',
       stages: {
