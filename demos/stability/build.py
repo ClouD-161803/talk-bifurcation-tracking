@@ -683,7 +683,8 @@ THUMB = 17
 
 def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB):
     """The unit circle, the real axis, and four multipliers, drawn round in a circle of radius px at
-    (cx, cy), with the multipliers given in units of the radius of the circle."""
+    (cx, cy), with the multipliers given in units of the radius of the circle. A multiplier on the
+    circle, of a stable pair, is violet, and one off the circle, of an unstable pair, is orange."""
     w = REGIONS_ZONE[0] - REGIONS_MARGIN[1] - REGIONS_MARGIN[3]
     h = REGIONS_ZONE[1] - REGIONS_MARGIN[0] - REGIONS_MARGIN[2]
     rx = radius * (REGIONS_X[1] - REGIONS_X[0]) / w
@@ -694,7 +695,8 @@ def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB):
         {'id': 'thumbs', 'points': [at(complex(-reach, 0)), at(complex(reach, 0))], 'tone': 'muted', 'width': 1.5},
         {'id': 'thumbs', 'points': ring, 'tone': 'subtle', 'width': 1.5},
     ]
-    out += [{'id': 'thumbs', 'points': [at(z), at(z)], 'tone': 'text', 'width': 8} for z in multipliers]
+    tone = lambda z: 'violet' if abs(abs(z) - 1) < 1e-9 else 'accent'
+    out += [{'id': 'thumbs', 'points': [at(z), at(z)], 'tone': tone(z), 'width': 6} for z in multipliers]
     return out
 
 
