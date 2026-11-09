@@ -338,10 +338,10 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
         <div class="math">\[\boldsymbol F(\boldsymbol X) = \boldsymbol\phi(T; \boldsymbol x_0, t_0) - \boldsymbol x_0 = \boldsymbol 0,\]</div>
         <p class="small" style="margin-bottom: 24px">where each entry in \(\boldsymbol X\) is drawn from the initial state \(\boldsymbol x_0\) and the period \(T\), and \(\boldsymbol F\) from the final state.</p>
       </div>
-      <p class="fragment" data-fragment-index="2">Along the flow \(\boldsymbol\phi\), the Jacobian is</p>
+      <p class="fragment" data-fragment-index="2">Along flow map \(\boldsymbol\phi\), the Jacobian is</p>
       <div class="fragment" data-fragment-index="3">
-        <div class="math" style="font-size: 0.85em">\[\DXF = \begin{bmatrix} & \class{hl-f}{\vert} \\ \class{hl-stm}{\dfrac{\partial\boldsymbol\phi}{\partial\boldsymbol x_0}} - \boldsymbol I & \class{hl-f}{\dfrac{\partial\boldsymbol\phi}{\partial T}} \\ & \class{hl-f}{\vert} \end{bmatrix}_T = \begin{bmatrix} & \class{hl-f}{\vert} \\[-3pt] \class{hl-stm}{\boldsymbol\Phi} - \boldsymbol I & \,\class{hl-f}{\boldsymbol f}\, \\[-3pt] & \class{hl-f}{\vert} \end{bmatrix}_T,\]</div>
-        <p class="small">of dimension \(M \times N\), where \(\boldsymbol\Phi\) is the state transition matrix of the dynamics \(\boldsymbol f: \R^n \to \R^n\).</p>
+        <div class="math" style="font-size: 0.85em">\[\DXF = \begin{bmatrix} &amp; \class{hl-f}{\vert} \\ \left[ \class{hl-stm}{\dfrac{\partial\boldsymbol\phi}{\partial\boldsymbol x_0}} - \boldsymbol I \right]&amp; \class{hl-f}{\dfrac{\partial\boldsymbol\phi}{\partial T}} \\ &amp; \class{hl-f}{\vert} \end{bmatrix}_T = \begin{bmatrix} &amp; \class{hl-f}{\vert} \\[-3pt] \left[ \class{hl-stm}{\boldsymbol\Phi} - \boldsymbol I \right]&amp; \,\class{hl-f}{\boldsymbol f}\, \\[-3pt] &amp; \class{hl-f}{\vert} \end{bmatrix}_T,\]</div>
+        <p class="small">of dimension \(M \times N\), where \(\boldsymbol\Phi\) is the state transition matrix (STM) of the dynamics \(\boldsymbol f: \R^n \to \R^n\).</p>
       </div>
     </div>
     <div style="flex: 1 1 0">
@@ -351,9 +351,9 @@ html[data-theme="light"] { --pair-1a: #c41e1e; --pair-1b: #e8697f; --pair-2a: #1
         <p>we iterate Newton&rsquo;s method from an initial &ldquo;guess&rdquo; \(\boldsymbol X^{(0)}\).</p>
       </div>
       <ol>
-        <li class="fragment" data-fragment-index="5" data-highlight="hl-stm" data-tone="violet">Integrate the orbit and \(\class{hl-stm}{\boldsymbol\Phi}\) from \(\boldsymbol X^{(k)}\).</li>
+        <li class="fragment" data-fragment-index="5" data-highlight="hl-stm" data-tone="violet">Integrate state and <span class="hl-stm">STM</span> from \(\boldsymbol X^{(k)}\).</li>
         <li class="fragment" data-fragment-index="6" data-highlight="hl-f">Form \(\boldsymbol F\) and \(\DXF\) from \(\class{hl-stm}{\boldsymbol\Phi}\) and \(\class{hl-f}{\boldsymbol f}\).</li>
-        <li class="fragment" data-fragment-index="7">Solve \(\DXF\,\delta\boldsymbol X = -\boldsymbol F\) by least squares.</li>
+        <li class="fragment" data-fragment-index="7">Solve \(\DXF\,\delta\boldsymbol X = -\boldsymbol F\).</li>
         <li class="fragment" data-fragment-index="8">Set \(\boldsymbol X^{(k+1)} = \boldsymbol X^{(k)} + \delta\boldsymbol X\), and repeat until \(\|\boldsymbol F\|\) is below a tolerance.</li>
       </ol>
     </div>
