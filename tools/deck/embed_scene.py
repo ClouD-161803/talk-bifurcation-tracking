@@ -15,9 +15,7 @@ View group, and Export are hidden, so that only the controls of the scene are se
 as well, the viewer is lean="panels", which keeps the Add panel group and the icons of the panel
 heads, for a scene in which the presenter adds panels by hand. A variable is started at a value
 other than its default with --set VARIABLE=VALUE. With --style, the viewer is
-placed in slide pixels, and without it the viewer takes the zone of the slide layout. With
---keep-theme, the viewer keeps its dark theme when the deck is switched to light mode, for a scene
-whose white marks would not be seen on a light background. With --show VARIABLE..., only the controls
+placed in slide pixels, and without it the viewer takes the zone of the slide layout. With --show VARIABLE..., only the controls
 of those variables and the transport are shown, and --show alone keeps the transport only, so that a
 slide offers only the controls spoken on it, while the page of the scene keeps them all. The six viewers of the deck are written by
 
@@ -105,7 +103,6 @@ def main() -> None:
     parser.add_argument("--controls", action="store_true", help="show the controls, for a scene the presenter works by hand")
     parser.add_argument("--panels", action="store_true", help="with --controls, keep the Add panel group and the icons of the panel heads")
     parser.add_argument("--show", nargs="*", metavar="VARIABLE", help="with --controls, show the controls of these variables only")
-    parser.add_argument("--keep-theme", action="store_true", help="keep the dark theme of the viewer when the deck is switched to light mode")
     args = parser.parse_args()
     if args.panels and not args.controls:
         parser.error("--panels is given only with --controls, since a kiosk viewer does not show the Add panel group")
@@ -127,7 +124,7 @@ def main() -> None:
     scene = document if args.set or args.show is not None else text
     lean = "panels" if args.panels else args.controls
     element = ty.build_embed(
-        scene, container, theme="dark", kiosk=not args.controls, lean=lean, class_="zone", style=args.style, data_keep_theme=args.keep_theme
+        scene, container, theme="dark", kiosk=not args.controls, lean=lean, class_="zone", style=args.style
     )
 
     start = f"<!-- tycho-viewer start, {args.label}, written by embed_scene.py -->"

@@ -4578,31 +4578,36 @@ void main() {
     }
     if (own.length) applySteps(slide);
   }
+  var waiting = (o) => o.el.classList.contains("fragment") && !o.el.classList.contains("visible");
+  function playBackdrop(o, slide) {
+    o.fit();
+    if (still2()) {
+      o.complete();
+      return;
+    }
+    if (waiting(o)) {
+      o.reset();
+      return;
+    }
+    const loop = o.el.hasAttribute("data-loop");
+    if (slide.hasAttribute("data-auto-animate")) {
+      o.complete();
+      const seconds2 = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
+      setTimeout(() => {
+        if (window.Reveal.getCurrentSlide() !== slide) return;
+        o.fit();
+        if (loop) o.start();
+      }, seconds2 * 1e3 + 50);
+    } else if (loop || o.el.hasAttribute("data-live") || TRACED.some((c) => slide.classList.contains(c))) {
+      o.reset();
+      o.start();
+    } else o.complete();
+  }
   function show(slide) {
     stepPlots(slide);
     for (const p of plotsIn(slide)) if (still2()) p.still();
     else p.start();
-    const glide = slide.hasAttribute("data-auto-animate");
-    for (const o of within(slide)) {
-      o.fit();
-      if (still2()) {
-        o.complete();
-        continue;
-      }
-      const loop = o.el.hasAttribute("data-loop");
-      if (glide) {
-        o.complete();
-        const seconds2 = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
-        setTimeout(() => {
-          if (window.Reveal.getCurrentSlide() !== slide) return;
-          o.fit();
-          if (loop) o.start();
-        }, seconds2 * 1e3 + 50);
-      } else if (loop || o.el.hasAttribute("data-live") || TRACED.some((c) => slide.classList.contains(c))) {
-        o.reset();
-        o.start();
-      } else o.complete();
-    }
+    for (const o of within(slide)) playBackdrop(o, slide);
     for (const s of surfacesOf(slide)) {
       s.fit();
       s.sync(false);
@@ -4690,6 +4695,12 @@ void main() {
       if (!still2()) fly(deck.getCurrentSlide(), event.fragments ?? []);
     });
     deck.on("fragmenthidden", step2);
+    const stepped = (event) => {
+      const shown = event.fragments ?? [];
+      for (const o of within(deck.getCurrentSlide())) if (shown.includes(o.el)) playBackdrop(o, deck.getCurrentSlide());
+    };
+    deck.on("fragmentshown", stepped);
+    deck.on("fragmenthidden", stepped);
     deck.on("resize", () => {
       for (const o of backdrops) o.fit();
       for (const s of surfaces) s.fit();
@@ -4716,7 +4727,7 @@ void main() {
   }
   function syncViewers(theme) {
     for (const viewer of document.querySelectorAll("tycho-viewer")) {
-      if (!viewer.hasAttribute("data-keep-theme")) viewer.setAttribute("theme", theme);
+      viewer.setAttribute("theme", theme);
       viewer.setAttribute("data-prevent-swipe", "");
     }
   }

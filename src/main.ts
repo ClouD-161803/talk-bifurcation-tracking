@@ -77,29 +77,34 @@ function stepPlots(slide: Element): void {
   if (own.length) applySteps(slide);
 }
 
+// a backdrop that is a step of its slide is left blank until its step is shown
+const waiting = (o: Orbits) => o.el.classList.contains('fragment') && !o.el.classList.contains('visible');
+
+function playBackdrop(o: Orbits, slide: HTMLElement): void {
+  o.fit();
+  if (still()) { o.complete(); return; }
+  if (waiting(o)) { o.reset(); return; }
+  const loop = o.el.hasAttribute('data-loop');
+  if (slide.hasAttribute('data-auto-animate')) {
+    // a matched backdrop is moved between two frames in a reveal.js auto-animate, hence it is
+    // shown complete and measured again after the move
+    o.complete();
+    const seconds = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
+    setTimeout(() => {
+      if (window.Reveal.getCurrentSlide() !== slide) return;
+      o.fit();
+      if (loop) o.start();
+    }, seconds * 1000 + 50);
+  } else if (loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide.classList.contains(c))) {
+    o.reset();
+    o.start();
+  } else o.complete();
+}
+
 function show(slide: HTMLElement): void {
   stepPlots(slide);
   for (const p of plotsIn(slide)) if (still()) p.still(); else p.start();
-  const glide = slide.hasAttribute('data-auto-animate');
-  for (const o of within(slide)) {
-    o.fit();
-    if (still()) { o.complete(); continue; }
-    const loop = o.el.hasAttribute('data-loop');
-    if (glide) {
-      // a matched backdrop is moved between two frames in a reveal.js auto-animate, hence it is
-      // shown complete and measured again after the move
-      o.complete();
-      const seconds = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
-      setTimeout(() => {
-        if (window.Reveal.getCurrentSlide() !== slide) return;
-        o.fit();
-        if (loop) o.start();
-      }, seconds * 1000 + 50);
-    } else if (loop || o.el.hasAttribute('data-live') || TRACED.some((c) => slide.classList.contains(c))) {
-      o.reset();
-      o.start();
-    } else o.complete();
-  }
+  for (const o of within(slide)) playBackdrop(o, slide);
   for (const s of surfacesOf(slide)) {
     s.fit();
     s.sync(false);
@@ -181,6 +186,13 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
     if (!still()) fly(deck.getCurrentSlide(), (event as Event & { fragments?: Element[] }).fragments ?? []);
   });
   deck.on('fragmenthidden', step);
+  // a backdrop that is a step is traced from its step on, and blanked when the step is hidden
+  const stepped = (event: Event) => {
+    const shown = (event as Event & { fragments?: HTMLElement[] }).fragments ?? [];
+    for (const o of within(deck.getCurrentSlide())) if (shown.includes(o.el)) playBackdrop(o, deck.getCurrentSlide());
+  };
+  deck.on('fragmentshown', stepped);
+  deck.on('fragmenthidden', stepped);
   deck.on('resize', () => {
     for (const o of backdrops) o.fit();
     for (const s of surfaces) s.fit();
@@ -205,12 +217,10 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
 }
 
 // the mode of the deck is passed to a tycho viewer through its theme attribute, which can be
-// changed at any time, unless the viewer carries data-keep-theme, under which the theme written in
-// the file is kept, for a scene whose marks are drawn for one background. a drag in a viewer moves
-// the camera, and it is not a swipe of the deck
+// changed at any time. a drag in a viewer moves the camera, and it is not a swipe of the deck
 function syncViewers(theme: string): void {
   for (const viewer of document.querySelectorAll('tycho-viewer')) {
-    if (!viewer.hasAttribute('data-keep-theme')) viewer.setAttribute('theme', theme);
+    viewer.setAttribute('theme', theme);
     viewer.setAttribute('data-prevent-swipe', '');
   }
 }
