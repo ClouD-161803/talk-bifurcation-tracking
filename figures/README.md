@@ -45,6 +45,12 @@ The files `stability-family-<N>-<mode>.png` are the stability diagrams in the $(
 
 The mode is one of three. The `dark` and `light` files are drawn in the styles `styles/beeson-dark.mplstyle` and `styles/beeson-light.mplstyle` on a transparent background, for the classes `for-dark` and `for-light`. The `paper` files are drawn in the style of DYLAN-504 (Computer Modern through LaTeX, black on white, opaque), for the class `paper`. In dark mode I cut the dark end of each colormap until every color has a contrast of at least 3:1 with the background of the slide `#050505`. Every file is 2400 px wide, and I wrote them all with `draw_dylan_figures.py`.
 
+The files `lyapunov-l1-orbits-<mode>.png`, for the modes `dark` and `light`, are the orbit figure of the dylan-core demonstration script `lyapunov_family_stability_diagram.py`, redrawn in the beeson styles. I drew them with `draw_lyapunov_figures.py` from `../data/lyapunov/l1-lyapunov.json`, which does not import DyLAN, as below. The 14 members are drawn in 3D axes about $\mathcal{L}_1$ and colored by the Jacobi constant $C$ in viridis, cut at its dark end in dark mode and at its light end in light mode to a contrast of 3:1 with the slide. The member nearest the Lyapunov-to-halo bifurcation is dashed in the accent color of the deck, in place of the black of the demonstration script, and the bifurcation is marked on the colorbar. The stability figure of the same script is drawn in the deck as the plot of the block `id="lyapunov"`, written by `../demos/stability/build.py --deck index.html`.
+
+```sh
+uv run --with matplotlib,numpy python figures/draw_lyapunov_figures.py data/lyapunov/l1-lyapunov.json figures/dylan
+```
+
 ## `broucke/`
 
 The files in `broucke/` are crops at 300 dpi of two papers. The first is Fig. 4 on p. 1009 of the AIAA Journal paper, Broucke 1969, "Stability of periodic orbits in the elliptic, restricted three-body problem". The others are Figs. 13 to 20 of JPL Technical Report 32-1360, Broucke 1969, "Periodic orbits in the elliptic restricted three-body problem". I cut them with `crop_broucke.py` from rectangles taken from the vault note "numerical experiments in Broucke 1969". The paper, the PDF page, the figure, the branch, the frame, the eccentricities drawn, and the caption of each file are given in `broucke/INDEX.md`, together with the panels whose frame I was unsure of. The whole pages with their captions are in `broucke/pages/`.

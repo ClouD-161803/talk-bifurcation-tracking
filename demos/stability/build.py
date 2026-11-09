@@ -11,7 +11,8 @@ It writes stability.json next to this file and the same JSON into the inline blo
 preview/index.html, and it prints the number of frames of each tab. With --deck PATH, the same JSON
 is also written into the block <script type="application/json" id="stability"> of the deck at
 PATH, e.g. index.html or a copy of it, and the still plot of the seven regions on linear axes into
-its block id="regions". With --scale linear or --scale asinh, every tab of the
+its block id="regions", and the plot of the L1 Lyapunov family, from data/lyapunov/l1-lyapunov.json, into
+its block id="lyapunov". With --scale linear or --scale asinh, every tab of the
 preview is drawn on that scale, for the screenshots that compare the two, and stability.json is
 left as it is. The two flags are not combined.
 """
@@ -1120,6 +1121,115 @@ def regions_plot():
     }
 
 
+# ---- the L1 Lyapunov family of the Lyapunov-to-halo slide, from data/lyapunov/l1-lyapunov.json
+
+LYAPUNOV = HERE.parent.parent / 'data' / 'lyapunov' / 'l1-lyapunov.json'
+# the size in px of the box of each panel in the zone of the slide, 880 by 840 px, used to space the
+# ticks of the a1 axis
+LYAPUNOV_BOX = (740, 250)
+
+
+def lyapunov_frames():
+    """The members of the family from the largest Jacobi constant down, with a frame added where
+    the path crosses the line k = 2, on the line itself. The indices are kept as in DyLAN, k1 in
+    the plane and k2 out of it."""
+    doc = json.loads(LYAPUNOV.read_text())
+    frames = [{'c': m['jacobi_constant'], 'a1': m['a1'], 'a2': m['a2'], 'k1': m['k1'], 'k2': m['k2'],
+               'region': m['region'], 'cross': False} for m in doc['members']]
+    out = [frames[0]]
+    for p, q in zip(frames, frames[1:]):
+        f0, f1 = CURVES['plus'](p['a1'], p['a2']), CURVES['plus'](q['a1'], q['a2'])
+        if f0 * f1 < 0:
+            t = root(CURVES['plus'], p, q)
+            lerp = lambda key: p[key] + t * (q[key] - p[key])
+            a1 = lerp('a1')
+            out.append({'c': lerp('c'), 'a1': a1, 'a2': -2 * a1 - 2, 'k1': -a1 - 2, 'k2': 2.0, 'region': q['region'], 'cross': True})
+        out.append(q)
+    assert sum(f['cross'] for f in out) == 1, 'one crossing of k = 2 is expected'
+    return out, doc['bifurcation']['jacobi_constant']
+
+
+def lyapunov_plot():
+    """The family in Broucke's diagram on linear axes at the scale of the family, above the
+    out-of-plane index k2 against the Jacobi constant C, as the two panels of the stability figure of
+    the demonstration script. The point of the current member is moved along both paths, and the
+    crossing of k = 2 is marked in both panels, with the name of the bifurcation in the upper one.
+    In the lower one, the side of the line k2 = 2 on which the halo family branches off is labeled
+    halo and the other one Lyapunov."""
+    frames, c_cross = lyapunov_frames()
+    crossing = next(i for i, f in enumerate(frames) if f['cross'])
+    x_range = (-2720.0, -2200.0)
+    y_range = (4420.0, 5380.0)
+    c_range = (3.1672, 3.1895)
+    k_range = (1.962, 2.021)
+    fills = [r for r in region_fills(x_range, y_range, 'linear') if r['id'] in ('fill-4', 'fill-6')]
+    family = {
+        'id': 'family',
+        'size': 1.15,
+        'margin': [52, 24, 84, 116],
+        'x': {'range': list(x_range), 'ticks': ticks(*x_range, 'linear', LYAPUNOV_BOX[0], SPACING['x'], 'x'), 'title': '$a_1$'},
+        'y': {'range': list(y_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (4500, 4750, 5000, 5250)], 'title': '$a_2$'},
+        'regions': fills,
+        'curves': [
+            {'id': 'kplus', 'class': 'kplus', 'points': curve_points('plus', x_range, y_range, 'linear'), 'tone': 'subtle', 'width': 2.5},
+        ],
+        'labels': [
+            {'id': 'r6', 'at': [-2600, 4600], 'text': SYMBOL[6], 'tone': 'text'},
+            {'id': 'r4', 'at': [-2320, 5220], 'text': SYMBOL[4], 'tone': 'text'},
+            {'id': 'lplus', 'class': 'kplus', 'at': [-2470, 4990], 'text': '$k = 2$', 'tone': 'subtle', 'anchor': 'start'},
+        ],
+    }
+    index = {
+        'id': 'index',
+        'margin': [24, 24, 84, 116],
+        'x': {'range': list(c_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (3.17, 3.175, 3.18, 3.185)], 'title': '$C$'},
+        'y': {'range': list(k_range), 'ticks': [{'at': v, 'text': f'${v:.2f}$'} for v in (1.97, 1.98, 1.99, 2.0, 2.01, 2.02)], 'title': '$k_2$'},
+        'curves': [
+            {'id': 'kline', 'class': 'kplus', 'points': [[c_range[0], 2], [c_range[1], 2]], 'tone': 'subtle', 'width': 2.5},
+        ],
+        'labels': [
+            {'id': 'lline', 'class': 'kplus', 'at': [c_range[1], 2], 'text': '$k_2 = 2$', 'tone': 'subtle', 'anchor': 'end', 'dx': -12, 'dy': 36},
+            {'id': 'lhalo', 'at': [3.1835, 2], 'text': 'halo', 'tone': 'subtle', 'anchor': 'middle', 'dy': -26},
+            {'id': 'llyapunov', 'at': [3.1705, 2], 'text': 'Lyapunov', 'tone': 'subtle', 'anchor': 'middle', 'dy': 30},
+        ],
+    }
+    return {
+        'parameter': {'label': '$C$', 'digits': 4},
+        'duration': 10,
+        'hold': 2,
+        'layout': 'column',
+        'panels': [family, index],
+        'marks': [
+            {'id': 'path', 'panel': 'family', 'kind': 'trace', 'tone': 'text', 'width': 3, 'size': 8},
+            {'id': 'halo', 'panel': 'family', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 20, 'dy': -24},
+            {'id': 'point', 'panel': 'family', 'kind': 'points', 'tone': 'accent', 'size': 18},
+            {'id': 'region', 'panel': 'family', 'kind': 'label', 'tone': 'text', 'anchor': 'end', 'dy': -30},
+            {'id': 'kpath', 'panel': 'index', 'kind': 'trace', 'tone': 'text', 'width': 3, 'size': 8},
+            {'id': 'khalo', 'panel': 'index', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 22, 'dy': -22},
+            {'id': 'kpoint', 'panel': 'index', 'kind': 'points', 'tone': 'accent', 'size': 18},
+            {'id': 'k1', 'panel': 'index', 'kind': 'label', 'tone': 'data-2', 'anchor': 'start', 'dx': 16, 'dy': -56},
+            {'id': 'k2', 'panel': 'index', 'kind': 'label', 'tone': 'data-3', 'anchor': 'start', 'dx': 16, 'dy': -18},
+        ],
+        'tabs': [{
+            'name': 'L1',
+            'label': '$L_1$ Lyapunov',
+            'values': [round(f['c'], 7) for f in frames],
+            'data': {
+                'path': [[sig(f['a1']), sig(f['a2'])] for f in frames],
+                'point': [[sig(f['a1']), sig(f['a2'])] for f in frames],
+                'halo': [{'frame': crossing, 'text': 'pitchfork', 'at': [sig(frames[crossing]['a1']), sig(frames[crossing]['a2'])]}],
+                'region': {'at': [x_range[1], y_range[1]], 'text': [SYMBOL[f['region']] for f in frames]},
+                'kpath': [[round(f['c'], 7), sig(f['k2'], 7)] for f in frames],
+                'kpoint': [[round(f['c'], 7), sig(f['k2'], 7)] for f in frames],
+                'khalo': [{'frame': crossing, 'text': '', 'at': [round(frames[crossing]['c'], 7), 2]}],
+                'k1': {'at': [c_range[0], k_range[0]], 'text': [index_text('k_1', complex(f['k1'])) for f in frames]},
+                'k2': {'at': [c_range[0], k_range[0]], 'text': [rf"$k_2 = {f['k2']:.4f}$" for f in frames]},
+            },
+            'active': [[f"r{f['region']}"] for f in frames],
+        }],
+    }, frames[crossing]['c'], c_cross
+
+
 def inject(page, text, block='stability'):
     html = page.read_text()
     start = f'<script type="application/json" id="{block}">'
@@ -1146,6 +1256,11 @@ def main():
         regions = json.dumps(regions_plot(), separators=(',', ':'), ensure_ascii=False)
         inject(args.deck, regions, 'regions')
         print(f'written into {args.deck}, with {len(regions) / 1e3:.0f} kB of JSON for the block id="regions"')
+        lyapunov, c_line, c_dylan = lyapunov_plot()
+        lyapunov = json.dumps(lyapunov, separators=(',', ':'), ensure_ascii=False)
+        inject(args.deck, lyapunov, 'lyapunov')
+        print(f'{len(lyapunov) / 1e3:.0f} kB of JSON for the block id="lyapunov", with the crossing of k = 2 '
+              f'at C = {c_line:.6f} on the line and at C = {c_dylan:.6f} in DyLAN')
     for name, members in dropped.items():
         if members:
             es = ', '.join(f"{m['e']:g}" for m in members)
