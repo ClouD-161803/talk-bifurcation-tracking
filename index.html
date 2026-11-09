@@ -828,7 +828,7 @@ print(family[last].parameter_value, point.first_coefficient, point.second_coeffi
 
 <!-- 24, backup. the mass-ratio bridge of DYLAN-533, family 7 from apoapsis to family 8 from apoapsis,
      drawn by data/bridge/draw_bridge.py -->
-<section class="figure">
+<section class="figure" data-timing="1">
   <div class="plate">
     <video class="for-dark" src="data/bridge/bridge-dark.mp4" poster="data/bridge/bridge-dark.png" muted loop data-autoplay></video>
     <video class="for-light" src="data/bridge/bridge-light.mp4" poster="data/bridge/bridge-light.png" muted loop data-autoplay></video>
@@ -842,7 +842,7 @@ print(family[last].parameter_value, point.first_coefficient, point.second_coeffi
 
 <!-- 25, backup. the counts of the 144-panel check against Broucke, from data/check-144.md. the table
      between the markers is written by build_sections.py -->
-<section class="wide">
+<section class="wide" data-timing="1">
   <h2>Backup: the 144-panel check</h2>
   <p>Of the 144 orbit panels in Broucke&rsquo;s Figs. 13 to 20, 124 agree with the DyLAN member of closest \(e\), and the other 20 agree in trend.</p>
 <!-- counts start -->
@@ -867,7 +867,7 @@ print(family[last].parameter_value, point.first_coefficient, point.second_coeffi
 
 <!-- 26, backup. Broucke's statements on stability against the DyLAN families, from data/check-144.md.
      the table between the markers is written by build_sections.py -->
-<section class="wide">
+<section class="wide" data-timing="1">
   <h2>Backup: Broucke&rsquo;s text against DyLAN</h2>
 <!-- statements start -->
   <table class="text">
@@ -896,7 +896,8 @@ print(family[last].parameter_value, point.first_coefficient, point.second_coeffi
 <script src="theme/vendor/three/three.js"></script>
 <script src="theme/beeson.js"></script>
 <script src="demos/cr3bp-frame/cr3bp-frame.js"></script>
-<script>Beeson.start({});</script>
+<!-- a 45 min talk, with the backups after the closing slide left out of the pacing -->
+<script>Beeson.start({ totalTime: 2700 });</script>
 <script>
 // a viewer with controls restores the state it stored at a rehearsal, and its clock keeps its frame,
 // its speed, and its play state while its slide is hidden. reset() of the viewer restores the
