@@ -72,7 +72,7 @@ In the talk deck, `index.html`, the demo is on slides 15 to 17 and 20, with plac
 | `circle` | the panel `circle` |
 | `diagram` | the panel `diagram` |
 | `curves` | `kequal kplus kminus`, the three curves and their names |
-| `regions` | `r1` to `r7`, the region names, and `stable`, the fill of region 1 |
+| `regions` | `r1` to `r7`, the region names, and `fill-1` to `fill-7`, the faint fills of the seven regions in the colors of Howell's Fig. 4 |
 | `family` | `path point region`, and the tabs `7P 7A 8P 8A` |
 | `k-plus-2` | `plus`, with `kplus` in the `data-highlight` of the fragment |
 | `k-minus-2` | `minus`, with `kminus` in the `data-highlight` and `data-tone="violet"` |

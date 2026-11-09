@@ -10,7 +10,8 @@ families 11, 7 and 8. Run the script with the system python3, from any folder:
 It writes stability.json next to this file and the same JSON into the inline block of
 preview/index.html, and it prints the number of frames of each tab. With --deck PATH, the same JSON
 is also written into the block <script type="application/json" id="stability"> of the deck at
-PATH, e.g. index.html or a copy of it. With --scale linear or --scale asinh, every tab of the
+PATH, e.g. index.html or a copy of it, and the still plot of the seven regions on linear axes into
+its block id="regions". With --scale linear or --scale asinh, every tab of the
 preview is drawn on that scale, for the screenshots that compare the two, and stability.json is
 left as it is. The two flags are not combined.
 """
@@ -314,20 +315,52 @@ def curve_points(name, x_range, y_range, scale, n=360):
     return pts
 
 
-def stable_polygon(scale, n=60):
-    """Region 1, between the two lines and below the parabola, as a polygon in data coordinates."""
+# the colors of the regions in Fig. 4 of Zimovan-Spreen, Howell, and Davis (2019), sampled from the PDF
+# and keyed by Broucke's region number, which are drawn faintly under the curves of every diagram
+HOWELL = {1: '#ffd7bb', 2: '#c7ebf3', 3: '#d8d8d8', 4: '#f7ef8e', 5: '#ffaec9', 6: '#e4e0f3', 7: '#e4f5af'}
+# the opacity of a fill in the dark mode, raised in the light mode by the rule .plot-region.howell of the deck
+HOWELL_OPACITY = 0.22
+
+
+def region_fills(x_range, y_range, scale, n=120):
+    """The seven regions as polygons in data coordinates over the view, extended by a tenth of its
+    span on each side. Over a range of a1, each region is the band between a lower and an upper
+    function of a1, hence its polygon is the lower function sampled forward and the upper one
+    backward, evenly in the coordinate of the scale and at the corners a1 = -4, 0, and 4."""
     fwd, back = scale_fn(scale)
-    pts = []
-    for i in range(n + 1):
-        a1 = back(fwd(-4) + (fwd(0) - fwd(-4)) * i / n)
-        pts.append([sig(a1), sig(-2 * a1 - 2)])
-    for i in range(1, n + 1):
-        a1 = back(fwd(0) + (fwd(4) - fwd(0)) * i / n)
-        pts.append([sig(a1), sig(2 * a1 - 2)])
-    for i in range(1, n):
-        a1 = 4 - 8 * i / n
-        pts.append([sig(a1), sig(a1 * a1 / 4 + 2)])
-    return pts
+    lo, hi = x_range
+    ylo, yhi = y_range
+    xa, xb = back(lo - 0.1 * (hi - lo)), back(hi + 0.1 * (hi - lo))
+    par = lambda a: a * a / 4 + 2
+    plus = lambda a: -2 * a - 2
+    minus = lambda a: 2 * a - 2
+    top_value = max(back(yhi + (yhi - ylo)), par(xa), par(xb))
+    bottom_value = min(back(ylo - (yhi - ylo)), minus(xa), plus(xb))
+    top = lambda a: top_value
+    bottom = lambda a: bottom_value
+    bands = {
+        1: (-4, 4, lambda a: max(plus(a), minus(a)), par),
+        2: (xa, xb, par, top),
+        3: (xa, xb, bottom, lambda a: min(plus(a), minus(a))),
+        4: (xa, -4, plus, par),
+        5: (4, xb, minus, par),
+        6: (xa, 0, minus, plus),
+        7: (0, xb, plus, minus),
+    }
+    out = []
+    for region, (a, b, lower, upper) in bands.items():
+        a, b = max(a, xa), min(b, xb)
+        if not a < b:
+            continue
+        sa, sb = fwd(a), fwd(b)
+        m = max(16, math.ceil(n * (sb - sa) / (fwd(xb) - fwd(xa))))
+        xs = sorted({a, b, *[c for c in (-4, 0, 4) if a < c < b], *[back(sa + (sb - sa) * i / m) for i in range(1, m)]})
+        # a band edge at the top or the bottom of the view is drawn with its two ends only, since a
+        # polygon of many collinear vertices is filled with faint seams in Chrome
+        edge = lambda f, xs: [xs[0], xs[-1]] if f in (top, bottom) else xs
+        points = [[sig(x), sig(lower(x))] for x in edge(lower, xs)] + [[sig(x), sig(upper(x))] for x in edge(upper, xs[::-1])]
+        out.append({'id': f'fill-{region}', 'class': 'howell', 'points': points, 'tone': HOWELL[region], 'opacity': HOWELL_OPACITY})
+    return out
 
 
 # ---- placement of the names of the curves and the regions
@@ -520,7 +553,7 @@ def diagram(name, frames, scale):
     return {
         'x': axis(x_range, 'x'),
         'y': axis(y_range, 'y'),
-        'regions': [{'id': 'stable', 'points': stable_polygon(scale), 'tone': 'data-3', 'opacity': 0.16}],
+        'regions': region_fills(x_range, y_range, scale),
         'curves': [
             {'id': 'kequal', 'class': 'kequal', 'points': curves['equal'], 'tone': 'subtle', 'width': 2.5},
             {'id': 'kplus', 'class': 'kplus', 'points': curves['plus'], 'tone': 'subtle', 'width': 2.5},
@@ -636,9 +669,99 @@ def build(scale_all=None):
     return plot, dropped_all
 
 
-def inject(page, text):
+# ---- the diagram of the slide that introduces it, on linear axes in about the window of Howell's Fig. 4
+
+# the zone of the plot in px, with the bar of the plot hidden by the class bare, and the margin of its
+# panel, from which the thumbnails of the multipliers are drawn round on axes of unequal scales
+REGIONS_ZONE = (880, 840)
+REGIONS_MARGIN = [40, 24, 84, 96]
+REGIONS_X = (-8, 8)
+REGIONS_Y = (-10, 20)
+THUMB = 17
+
+
+def thumbnail(cx, cy, multipliers, reach=1.6, radius=THUMB):
+    """The unit circle, the real axis, and four multipliers, drawn round in a circle of radius px at
+    (cx, cy), with the multipliers given in units of the radius of the circle."""
+    w = REGIONS_ZONE[0] - REGIONS_MARGIN[1] - REGIONS_MARGIN[3]
+    h = REGIONS_ZONE[1] - REGIONS_MARGIN[0] - REGIONS_MARGIN[2]
+    rx = radius * (REGIONS_X[1] - REGIONS_X[0]) / w
+    ry = radius * (REGIONS_Y[1] - REGIONS_Y[0]) / h
+    at = lambda z: [sig(cx + rx * z.real, 4), sig(cy + ry * z.imag, 4)]
+    ring = [at(cmath.exp(2j * math.pi * i / 64)) for i in range(65)]
+    out = [
+        {'id': 'thumbs', 'points': [at(complex(-reach, 0)), at(complex(reach, 0))], 'tone': 'muted', 'width': 1.5},
+        {'id': 'thumbs', 'points': ring, 'tone': 'subtle', 'width': 1.5},
+    ]
+    out += [{'id': 'thumbs', 'points': [at(z), at(z)], 'tone': 'text', 'width': 8} for z in multipliers]
+    return out
+
+
+def regions_plot():
+    """A still plot of the seven regions, with Howell's fills, the three curves, Moreno's name of each
+    region, a thumbnail of its multipliers, and the lines k = -1 and k = 0 of period tripling and
+    quadrupling. Regions 4 and 5 are too thin for a name, which is put above them with a leader."""
+    x_range, y_range = REGIONS_X, REGIONS_Y
+    e = lambda deg: cmath.exp(1j * math.radians(deg))
+    on = lambda *degs: [e(d) for d in degs]
+    real = lambda *xs: [complex(x, 0) for x in xs]
+    quad = lambda deg: [1.45 * e(deg), 1.45 * e(-deg), e(deg) / 1.45, e(-deg) / 1.45]
+    line = lambda f: [[x, sig(f(x))] for x in (-9, 9)]
+    par = [[sig(-9 + 18 * i / 180, 4), sig((-9 + 18 * i / 180) ** 2 / 4 + 2, 4)] for i in range(181)]
+    name = lambda i, x, y, **kw: {'id': 'names', 'at': [x, y], 'text': SYMBOL[i], 'tone': 'text', **kw}
+    curve_label = lambda key, x, y, text, **kw: {'id': key, 'class': key, 'at': [x, y], 'text': text, 'tone': 'subtle', **kw}
+    thumbs = (
+        thumbnail(0, -0.6, on(60, -60, 120, -120), reach=1.6, radius=15)
+        + thumbnail(-3.2, 9.5, quad(40), reach=1.8)
+        + thumbnail(3.2, 9.5, quad(140), reach=1.8)
+        + thumbnail(0, -5.8, real(0.5, 2, -0.5, -2), reach=2.4)
+        + thumbnail(-6.4, 17.6, real(0.25, 0.8, 1.55, 2.35), reach=2.7)
+        + thumbnail(6.4, 17.6, real(-0.25, -0.8, -1.55, -2.35), reach=2.7)
+        + thumbnail(-5.6, -2.2, on(120, -120) + real(0.5, 2), reach=2.4)
+        + thumbnail(5.6, -2.2, on(60, -60) + real(-0.5, -2), reach=2.4)
+    )
+    panel = {
+        'id': 'regions',
+        'margin': REGIONS_MARGIN,
+        'x': {'range': list(x_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (-8, -4, 0, 4, 8)], 'title': '$a_1$'},
+        'y': {'range': list(y_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (-10, -5, 0, 5, 10, 15, 20)], 'title': '$a_2$'},
+        'regions': [{**r, 'id': 'fills'} for r in region_fills(x_range, y_range, 'linear')],
+        'curves': [
+            {'id': 'multiples', 'points': line(lambda a: a + 1), 'tone': 'muted', 'width': 2, 'dash': [10, 8]},
+            {'id': 'multiples', 'points': line(lambda a: 2), 'tone': 'muted', 'width': 2, 'dash': [2, 7]},
+            {'id': 'kequal', 'class': 'kequal', 'points': par, 'tone': 'subtle', 'width': 2.5},
+            {'id': 'kplus', 'class': 'kplus', 'points': line(lambda a: -2 * a - 2), 'tone': 'subtle', 'width': 2.5},
+            {'id': 'kminus', 'class': 'kminus', 'points': line(lambda a: 2 * a - 2), 'tone': 'subtle', 'width': 2.5},
+            {'id': 'names', 'points': [[-6.4, 16.4], [-6.4, 11.5]], 'tone': 'subtle', 'width': 1.5},
+            {'id': 'names', 'points': [[6.4, 16.4], [6.4, 11.5]], 'tone': 'subtle', 'width': 1.5},
+            *thumbs,
+        ],
+        'labels': [
+            name(1, 0, 1.2),
+            name(2, 0, 14),
+            name(3, 0, -8.6),
+            name(4, -6.4, 19.2),
+            name(5, 6.4, 19.2),
+            name(6, -5.6, 4.4),
+            name(7, 5.6, 4.4),
+            curve_label('kequal', 5.5, 12.2, '$k_1 = k_2$', anchor='end'),
+            curve_label('kplus', 4.0, -7.6, '$k = 2$', anchor='start'),
+            curve_label('kminus', -4.0, -7.6, '$k = -2$', anchor='end'),
+            {'id': 'multiples', 'at': [-7.8, -4.4], 'text': '$k = -1$', 'tone': 'muted', 'anchor': 'start'},
+            {'id': 'multiples', 'at': [-7.8, 2.9], 'text': '$k = 0$', 'tone': 'muted', 'anchor': 'start'},
+        ],
+    }
+    return {
+        'parameter': {'label': '', 'digits': 0},
+        'duration': 1,
+        'panels': [panel],
+        'tabs': [{'name': 'regions', 'label': 'regions', 'values': [0]}],
+    }
+
+
+def inject(page, text, block='stability'):
     html = page.read_text()
-    start = '<script type="application/json" id="stability">'
+    start = f'<script type="application/json" id="{block}">'
     i = html.index(start) + len(start)
     j = html.index('</script>', i)
     page.write_text(html[:i] + text + html[j:])
@@ -659,7 +782,9 @@ def main():
         inject(PREVIEW, text)
     if args.deck:
         inject(args.deck, text)
-        print(f'written into {args.deck}')
+        regions = json.dumps(regions_plot(), separators=(',', ':'), ensure_ascii=False)
+        inject(args.deck, regions, 'regions')
+        print(f'written into {args.deck}, with {len(regions) / 1e3:.0f} kB of JSON for the block id="regions"')
     for name, members in dropped.items():
         if members:
             es = ', '.join(f"{m['e']:g}" for m in members)

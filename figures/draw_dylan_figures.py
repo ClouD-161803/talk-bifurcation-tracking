@@ -3,7 +3,8 @@
 The script does not import DyLAN. For each family, branch, and frame it draws the drawn members of
 the branch colored by eccentricity, with the colormap of the frame in the DYLAN-504 figures, and
 for each family the stability diagram in the (a1, a2) plane with both branches, the three boundary
-curves, and the numbers of the stability regions. Each figure is written three times:
+curves, the numbers of the stability regions, and the regions filled faintly in the colors of
+Fig. 4 of Zimovan-Spreen, Howell, and Davis (2019), as in the stability demo of the deck. Each figure is written three times:
 
 - <name>-dark.png and <name>-light.png in the beeson styles of the deck, on a transparent
   background, for the classes for-dark and for-light;
@@ -44,6 +45,12 @@ FRAMES = (
     ("inertial-m1", "geocentric", r"inertial frame centered on $m_1$", "X_1", "Y_1", ("Reds_r", 0.0, 0.769)),
     ("inertial-m2", "selenocentric", r"inertial frame centered on $m_2$", "X_2", "Y_2", ("cividis", 0.0, 1.0)),
 )
+
+# the colors of Broucke's regions 1 to 7 in Fig. 4 of Zimovan-Spreen, Howell, and Davis (2019), as in
+# demos/stability/build.py, and their opacity in each mode, lower on the dark background
+HOWELL = {1: "#ffd7bb", 2: "#c7ebf3", 3: "#d8d8d8", 4: "#f7ef8e", 5: "#ffaec9", 6: "#e4e0f3", 7: "#e4f5af"}
+HOWELL_ALPHA = {"dark": 0.22, "light": 0.5, "paper": 0.5}
+FILL_CELLS = 1200
 
 # per mode: background behind the figure, text, subtle gray, the two branch colors, orbit width in pt
 MODES = {
@@ -221,6 +228,21 @@ def region_label_points(a1, a2, grid, obstacles):
     return points
 
 
+def regions_of(a1, a2):
+    """Broucke's region of each point (a1, a2), from the indices k, the roots of k^2 + a1 k + a2 - 2 = 0."""
+    disc = a1**2 - 4 * (a2 - 2)
+    root = np.sqrt(np.abs(disc))
+    k_low, k_high = (-a1 - root) / 2, (-a1 + root) / 2
+    above = (k_low > 2).astype(int) + (k_high > 2)
+    below = (k_low < -2).astype(int) + (k_high < -2)
+    region = np.select(
+        [disc < 0, (above == 0) & (below == 0), above == 2, below == 2, (above == 1) & (below == 1), above == 1],
+        [2, 1, 4, 5, 3, 6],
+        default=7,
+    )
+    return region
+
+
 def draw_stability(archive, meta, family, mode, folder):
     """The stability diagram of a family with both branches, the boundaries, and the region numbers."""
     colors = MODES[mode]
@@ -235,6 +257,11 @@ def draw_stability(archive, meta, family, mode, folder):
     axes.plot(a1, 2 * a1 - 2, "--", color=colors["subtle"], linewidth=boundary_width)
     axes.axhline(0.0, color=colors["muted"], linewidth=0.4 * mpl.rcParams["lines.linewidth"], zorder=0.5)
     axes.axvline(0.0, color=colors["muted"], linewidth=0.4 * mpl.rcParams["lines.linewidth"], zorder=0.5)
+    grid_a1, grid_a2 = np.meshgrid(np.linspace(a1_low, a1_high, FILL_CELLS), np.linspace(a2_low, a2_high, FILL_CELLS))
+    fill = np.zeros((FILL_CELLS, FILL_CELLS, 4))
+    for region, value in HOWELL.items():
+        fill[regions_of(grid_a1, grid_a2) == region] = (*mpl.colors.to_rgb(value), HOWELL_ALPHA[mode])
+    axes.imshow(fill, extent=(a1_low, a1_high, a2_low, a2_high), origin="lower", aspect="auto", interpolation="nearest", zorder=0)
 
     window = np.array([[a1_low, a2_low]]), np.array([[a1_high - a1_low, a2_high - a2_low]])
     obstacles = []
