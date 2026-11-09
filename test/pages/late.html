@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Late steps deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<!-- a late fragment at the first step, and a late fragment in a fragment of the second step, shown
+     at the third step -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Late steps</h2>
+      <p class="fragment late" style="--late: 1s">A line shown late.</p>
+      <div class="fragment">
+        <p>A block.</p>
+        <p class="fragment late" style="--late: 1s">A line in the block, shown late.</p>
+      </div>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

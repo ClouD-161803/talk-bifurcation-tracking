@@ -733,6 +733,46 @@ def stable_tone(z):
     return 'violet' if abs(abs(z) - 1) < 1e-9 else 'accent'
 
 
+def segment_tones(zs):
+    """The tone of each frame of a trace for the segment that starts at it, violet where both ends of
+    the segment are on the unit circle and orange otherwise, and the tone of the last frame for it."""
+    on = [stable_tone(z) == 'violet' for z in zs]
+    return ['violet' if a and b else 'accent' for a, b in zip(on, on[1:])] + [stable_tone(zs[-1])]
+
+
+def kind_of(k1, k2):
+    """Whether each index is elliptic, and whether the two are complex."""
+    elliptic = lambda k: abs(k.imag) < 1e-12 and abs(k.real) < 2
+    return elliptic(complex(k1)), elliptic(complex(k2)), abs(complex(k1).imag) > 1e-12
+
+
+def crossings_of(path, n=400):
+    """The parameters in (0, 1) at which the kinds of the indices along path change, i.e. at which a
+    pair meets at 1 or -1, or the two pairs meet, found by bisection to 1e-13."""
+    out, last = [], kind_of(*path(0))
+    for i in range(1, n + 1):
+        now = kind_of(*path(i / n))
+        if now != last:
+            lo, hi = (i - 1) / n, i / n
+            while hi - lo > 1e-13:
+                mid = (lo + hi) / 2
+                lo, hi = (mid, hi) if kind_of(*path(mid)) == last else (lo, mid)
+            out.append(hi)
+        last = now
+    return out
+
+
+def snapped(k1, k2):
+    """The indices at a crossing set to their exact values, i.e. 2 or -2, or the two equal, so that the
+    multipliers are drawn at 1 or -1, or at one point of the circle."""
+    k1, k2 = complex(k1), complex(k2)
+    if abs(k1 - k2) < 1e-4:
+        mean = complex(((k1 + k2) / 2).real)
+        return mean, mean
+    fix = lambda k: complex(math.copysign(2, k.real)) if abs(k.imag) < 1e-9 and abs(abs(k.real) - 2) < 1e-6 else k
+    return fix(k1), fix(k2)
+
+
 def follow(previous, current):
     """The multipliers of current in the order nearest to the points of previous on the circle of
     the slide, so that each trace follows one multiplier from frame to frame."""
@@ -742,18 +782,24 @@ def follow(previous, current):
 def move_tab(name, path, seconds, marks=None):
     """A tab in which the point is moved through the diagram while its multipliers are moved on the
     unit circle, each leaving a trace in violet while on the circle and in orange off it. path maps
-    s in [0, 1] to the two indices, and the point is eased in and out."""
+    s in [0, 1] to the two indices, and the point is eased in and out. The frame nearest to each
+    crossing is moved onto it, hence the traces of a pair that meets at 1 or -1 pass through it, and
+    a segment is violet only where both of its ends are on the circle."""
     ease = lambda s: s * s * (3 - 2 * s)
+    params = [ease(i / (MOVE_FRAMES - 1)) for i in range(MOVE_FRAMES)]
+    for c in crossings_of(path):
+        i = min(range(1, MOVE_FRAMES - 1), key=lambda j: abs(params[j] - c))
+        params[i] = c
     trace, lams = [], []
-    for i in range(MOVE_FRAMES):
-        k1, k2 = path(ease(i / (MOVE_FRAMES - 1)))
+    for s in params:
+        k1, k2 = snapped(*path(s))
         trace.append([sig((-(k1 + k2)).real, 4), sig((2 + k1 * k2).real, 4)])
         now = multipliers_of(k1) + multipliers_of(k2)
         lams.append(follow(lams[-1], now) if lams else now)
     data = {'point': {'points': trace, 'ghost': 0}}
     for j in range(4):
         zs = [on_circle(f[j]) for f in lams]
-        data[f'm{j + 1}'] = {'points': [[sig(z.real, 4), sig(z.imag, 4)] for z in zs], 'ghost': 0, 'tones': [stable_tone(f[j]) for f in lams]}
+        data[f'm{j + 1}'] = {'points': [[sig(z.real, 4), sig(z.imag, 4)] for z in zs], 'ghost': 0, 'tones': segment_tones([f[j] for f in lams])}
     tab = {
         'name': name, 'label': name, 'values': list(range(MOVE_FRAMES)),
         'times': [sig(seconds * i / (MOVE_FRAMES - 1), 4) for i in range(MOVE_FRAMES)],
@@ -790,10 +836,10 @@ def bifurcation_tabs():
     return [
         move_tab('tan-1', lin((1.0, -0.6), (3.2, -0.6)), FIRST_MOVE),
         move_tab('tan-2', lin((1.0, -3.2), (3.2, -3.2)), NEXT_MOVE),
-        move_tab('tan-3', lin((4.4, 2.6), (4.4, 1.2)), NEXT_MOVE),
+        move_tab('tan-3', lin((4.2, 2.3), (5.8, 0.8)), NEXT_MOVE),
         move_tab('pd-1', lin((-1.0, 0.6), (-3.2, 0.6)), FIRST_MOVE),
         move_tab('pd-2', lin((-1.0, 3.2), (-3.2, 3.2)), NEXT_MOVE),
-        move_tab('pd-3', lin((-4.4, -2.6), (-4.4, -1.2)), NEXT_MOVE),
+        move_tab('pd-3', lin((-4.2, -2.3), (-5.8, -0.8)), NEXT_MOVE),
         move_tab('p3', lin((-0.3, 1.2), (-1.7, 1.2)), FIRST_MOVE, root(120)),
         move_tab('p4', lin((0.8, -1.2), (-0.6, -1.2)), FIRST_MOVE, root(90)),
         move_tab('hopf', collide(-0.4, 1.2, -1.2), FIRST_MOVE),

@@ -153,3 +153,27 @@ test('the last step of a slide is shown alone, and a step is added to restore th
   assert.deepEqual(await page.evaluate('Reveal.getIndices().h'), 2);
   assert.deepEqual(page.errors, []);
 });
+
+// the style of a fragment is read once it is visible and before it is current, hence a fragment in a shown
+// fragment, which is not dimmed, would start its fade at once without a delay set while it is visible
+test('a fragment of the class late is shown after its delay, also in a shown fragment', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/late.html'));
+  await page.waitFor(deckSettled);
+
+  const opacity = (i) => page.evaluate(`getComputedStyle(document.querySelectorAll('.late')[${i}]).opacity`);
+  const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+  const seen = [];
+  for (const [late, steps] of [[0, 1], [1, 2]]) {
+    for (let i = 0; i < steps; i++) await page.evaluate('Reveal.next()');
+    await wait(300);
+    seen.push(await opacity(late));
+    // after the delay of 1 s and the fade of 400 ms
+    await wait(1300);
+    seen.push(await opacity(late));
+  }
+  assert.deepEqual(seen, ['0', '1', '0', '1']);
+  assert.deepEqual(page.errors, []);
+});
