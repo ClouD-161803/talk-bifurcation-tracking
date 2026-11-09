@@ -314,22 +314,15 @@ def build() -> None:
     scene.slider(e, label="eccentricity e", domain=drivers)
     scene.toggle_control(show_orbit, label="Broucke orbit")
     scene.transport()
+    # e and mu are shown on their controls, and the families are named only later in the talk
     scene.readout(
         "caption",
-        "e = ",
-        {"member": "eccentricity", "digits": 3},
-        ",  θ = ",
+        "θ = ",
         {"channel": "theta", "digits": 3},
         " rad,  t = ",
         {"channel": "t", "digits": 3},
         " TU,  ρ(θ) = ",
         {"channel": "rho", "digits": 4},
-        ",  K = ",
-        {"member": "K"},
-        ",  μ = ",
-        {"attr": "mu"},
-        ",  family ",
-        {"attr": "family"},
     )
 
     scene.write(HERE / "frames.tys", HERE / "frames.tyd")

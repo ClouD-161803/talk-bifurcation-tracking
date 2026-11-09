@@ -1392,12 +1392,7 @@
   {
    "place": "caption",
    "parts": [
-    "e = ",
-    {
-     "member": "eccentricity",
-     "digits": 3
-    },
-    ",  θ = ",
+    "θ = ",
     {
      "channel": "theta",
      "digits": 3
@@ -1411,18 +1406,6 @@
     {
      "channel": "rho",
      "digits": 4
-    },
-    ",  K = ",
-    {
-     "member": "K"
-    },
-    ",  μ = ",
-    {
-     "attr": "mu"
-    },
-    ",  family ",
-    {
-     "attr": "family"
     }
    ]
   }
