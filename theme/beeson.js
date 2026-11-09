@@ -3631,6 +3631,12 @@ void main() {
         s.tone = 1;
       }
     }
+    /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other. */
+    follow(other) {
+      this.azimuth = other.azimuth;
+      this.elevation = other.elevation;
+      this.resume = other.resume;
+    }
     /** Starts the turning of the camera and the animation of a change of stage, while the slide is shown. */
     start() {
       this.active = true;
@@ -4011,7 +4017,13 @@ void main() {
       if (!still2()) {
         for (const o of within(ev.previousSlide)) if (!ev.currentSlide.contains(o.el)) o.reset();
       }
-      for (const s of surfacesOf(ev.previousSlide)) s.stop();
+      const before = surfacesOf(ev.previousSlide);
+      for (const s of before) s.stop();
+      const key = (s) => JSON.stringify(Object.entries(s.el.dataset).filter(([k]) => k !== "stage").sort());
+      for (const s of surfacesOf(ev.currentSlide)) {
+        const from = before.find((b) => key(b) === key(s));
+        if (from) s.follow(from);
+      }
       for (const p of plotsIn(ev.previousSlide)) if (!ev.currentSlide.contains(p.el)) p.leave();
       show(ev.currentSlide);
     });
