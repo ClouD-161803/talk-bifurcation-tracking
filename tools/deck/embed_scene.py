@@ -24,7 +24,7 @@ viewer with controls plays from the start like a kiosk. The six viewers of the d
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/tycho/code/examples/broucke/broucke.tys "the Broucke page" --controls \
-        --style "left: 40px; top: 180px; width: 1840px; height: 830px" \
+        --style "left: 120px; top: 180px; width: 1680px; height: 830px" \
         --show family branch --autoplay
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
