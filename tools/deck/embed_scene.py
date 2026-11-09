@@ -24,7 +24,7 @@ viewer with controls plays from the start like a kiosk. The six viewers of the d
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/tycho/code/examples/broucke/broucke.tys "the Broucke page" --controls \
-        --style "left: 120px; top: 190px; width: 1680px; height: 640px" \
+        --style "left: 40px; top: 180px; width: 1840px; height: 830px" \
         --show family branch --autoplay
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
@@ -67,7 +67,7 @@ viewer with controls plays from the start like a kiosk. The six viewers of the d
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=family11 --set step=medium --set pens=both --show
 
-The Broucke page is placed below the h2 of its slide and above the caption, and it offers only the
+The Broucke page fills its slide below the h2, and it offers only the
 family and branch tabs and the transport, with the clock on the elapsed time. Each viewer of slides 11
 to 14 is placed beside the text column of its slide, in a box larger than the zone of the layout,
 which is too small for the controls and two panels side by side. The values set on slide 11 are the
