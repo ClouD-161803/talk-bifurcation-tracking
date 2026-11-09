@@ -33,14 +33,15 @@ export type Tone = { ramp: string; range?: [number, number] };
 
 /**
  * The fixed color ramps, as sRGB colors at even steps from the lowest height of a range to the
- * highest. blues and reds are the sequential ColorBrewer scales Blues and Reds, and magma_r is the
- * reversed Magma of matplotlib, as plotly 7 resolves colorscale='Blues', 'Reds', and 'Magma_r' of a
- * go.Surface. The ramp theme is made from the custom properties of the theme in surface.ts.
+ * highest. blues and reds are the sequential ColorBrewer scales Blues and Reds, as plotly 7 resolves
+ * colorscale='Blues' and 'Reds' of a go.Surface. magma_r is the Magma of matplotlib from 0.3 to 1,
+ * reversed, i.e. Magma_r without its darkest 30 %, hence the highest heights stay purple on a dark
+ * slide. The ramp theme is made from the custom properties of the theme in surface.ts.
  */
 export const RAMPS: Record<string, string[]> = {
   blues: ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#08519c', '#08306b'],
   reds: ['#fff5f0', '#fee0d2', '#fcbba1', '#fc9272', '#fb6a4a', '#ef3b2c', '#cb181d', '#a50f15', '#67000d'],
-  magma_r: ['#fcfdbf', '#feca8d', '#fd9668', '#f1605d', '#cd4071', '#9e2f7f', '#721f81', '#440f76', '#180f3d', '#000004'],
+  magma_r: ['#fcfdbf', '#fdda9c', '#feb67c', '#fc9065', '#f56b5c', '#e24d66', '#c43c75', '#a3307e', '#832681', '#641a80'],
 };
 
 /** The data attributes of the element and of the fragment that sets the stage, by their dataset keys. */
