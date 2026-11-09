@@ -1,7 +1,7 @@
 """A script that embeds a tycho scene in the deck of the bifurcation talk as a viewer element.
 
 The scene is read from a scene document NAME.tys and from the data container NAME.tyd next to it.
-The kiosk <tycho-viewer> element written by build_embed of pytycho is put in place of whatever lies
+The <tycho-viewer> element written by build_embed of pytycho is put in place of whatever lies
 between the two marker comments
 
     <!-- tycho-viewer start, LABEL, written by embed_scene.py -->
@@ -17,13 +17,15 @@ heads, for a scene in which the presenter adds panels by hand. A variable is sta
 other than its default with --set VARIABLE=VALUE. With --style, the viewer is
 placed in slide pixels, and without it the viewer takes the zone of the slide layout. With --show VARIABLE..., only the controls
 of those variables and the transport are shown, and --show alone keeps the transport only, so that a
-slide offers only the controls spoken on it, while the page of the scene keeps them all. The six viewers of the deck are written by
+slide offers only the controls spoken on it, while the page of the scene keeps them all. With --autoplay, a
+viewer with controls plays from the start like a kiosk. The six viewers of the deck are written by
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
-        /Users/claudiovestini/git/tycho/code/examples/broucke/broucke.tys "the Broucke page" \
-        --style "left: 120px; top: 190px; width: 1680px; height: 640px"
+        /Users/claudiovestini/git/tycho/code/examples/broucke/broucke.tys "the Broucke page" --controls \
+        --style "left: 120px; top: 190px; width: 1680px; height: 640px" \
+        --show family branch --autoplay
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
@@ -65,7 +67,8 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=family11 --set step=medium --set pens=both --show
 
-The Broucke page is placed below the h2 of its slide and above the caption. Each viewer of slides 11
+The Broucke page is placed below the h2 of its slide and above the caption, and it offers only the
+family and branch tabs and the transport, with the clock on the elapsed time. Each viewer of slides 11
 to 14 is placed beside the text column of its slide, in a box larger than the zone of the layout,
 which is too small for the controls and two panels side by side. The values set on slide 11 are the
 defaults of the scene, and they are set again so that the slide keeps its state if a rebuild of the
@@ -103,9 +106,12 @@ def main() -> None:
     parser.add_argument("--controls", action="store_true", help="show the controls, for a scene the presenter works by hand")
     parser.add_argument("--panels", action="store_true", help="with --controls, keep the Add panel group and the icons of the panel heads")
     parser.add_argument("--show", nargs="*", metavar="VARIABLE", help="with --controls, show the controls of these variables only")
+    parser.add_argument("--autoplay", action="store_true", help="with --controls, play from the start like a kiosk")
     args = parser.parse_args()
     if args.panels and not args.controls:
         parser.error("--panels is given only with --controls, since a kiosk viewer does not show the Add panel group")
+    if args.autoplay and not args.controls:
+        parser.error("--autoplay is given only with --controls, since a kiosk viewer always plays")
 
     # without --set, the text of the scene is embedded as it was written
     text = args.scene.read_text(encoding="utf-8")
@@ -124,7 +130,7 @@ def main() -> None:
     scene = document if args.set or args.show is not None else text
     lean = "panels" if args.panels else args.controls
     element = ty.build_embed(
-        scene, container, theme="dark", kiosk=not args.controls, lean=lean, class_="zone", style=args.style
+        scene, container, theme="dark", kiosk=not args.controls, lean=lean, autoplay=args.autoplay, class_="zone", style=args.style
     )
 
     start = f"<!-- tycho-viewer start, {args.label}, written by embed_scene.py -->"
