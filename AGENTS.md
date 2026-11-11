@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository is the slide template of the Beeson group. The reveal.js theme `beeson` is in `theme/`, and a demo deck with an example of every layout class is in `index.html`. The in-place editor of a deck, loaded with the URL parameter `edit`, is in `src/editor/` and compiled to `theme/editor.js`. The brand marks are in `brand/`, the matplotlib styles in `styles/`, and the maintainer tooling in `src/`, `scripts/`, and `.github/`. A talk made from the template is one `index.html` next to `theme/` and `brand/`.
+This repository is a talk, "Tracking bifurcations of periodic-orbit families", made from beeson-group/slides, the slide template of the Beeson group. The deck of the talk is `index.html`, and the reveal.js theme `beeson` is in `theme/`. The in-place editor of a deck, loaded with the URL parameter `edit`, is in `src/editor/` and compiled to `theme/editor.js`. The brand marks are in `brand/`, the matplotlib styles in `styles/`, and the maintainer tooling in `src/`, `scripts/`, and `.github/`. A talk made from the template is one `index.html` next to `theme/` and `brand/`.
 
 ## Vocabulary
 

@@ -1,7 +1,7 @@
 {
-  "name": "beeson-slides",
+  "name": "talk-bifurcation-tracking",
   "version": "0.9.0-beta.1",
-  "description": "The HTML slide template of the Beeson group, a reveal.js theme with its demo deck and tooling",
+  "description": "Talk on bifurcations of periodic-orbit families in the ER3BP, made from the Beeson group slide template 0.9.0-beta.1",
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
     "build": "node build.mjs",
