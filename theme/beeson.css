@@ -433,9 +433,9 @@ body.no-lockup .reveal .slides section.closing::before { content: none; }
 .reveal .slides section img[style*="width:"][style*="height:"]:not([style*="object-fit"]),
 .reveal .slides section video[style*="width:"][style*="height:"]:not([style*="object-fit"]) { object-fit: fill !important; }
 /* a figure box around a picture with a width is the size of the picture, hence its caption is under the
-   picture and as wide as it, and so is one around a tycho viewer with a height, i.e. one resized in the editor. the
-   still of a viewer in the print view keeps the box of its viewer */
-.reveal .slides section .figure-box:not(.viewer-still):has(> img[style*="width:"], > video[style*="width:"], > .qr[style*="width:"], > tycho-viewer[style*="height:"]) { width: auto; height: auto; }
+   picture and as wide as it, and so is one around a tycho viewer with a height, i.e. one resized in the editor, or
+   around its still in the print view. the still of a viewer in the print view keeps the box of its viewer */
+.reveal .slides section .figure-box:not(.viewer-still):has(> img[style*="width:"], > video[style*="width:"], > .qr[style*="width:"], > tycho-viewer[style*="height:"], > .viewer-still[style*="height:"]) { width: auto; height: auto; }
 /* the videos of a figure box or a plate are stacked in one place, and a video under a later one that is shown is hidden
    once the later one has faded in, see src/video.ts. in a plate of the class row, the figures are side by side,
    each in an equal share of the plate */
