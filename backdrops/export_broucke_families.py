@@ -25,17 +25,11 @@ end, hence every strand is traced in the same time at an even pace. The result i
 broucke-families.js, i.e. the same JSON wrapped in Beeson.strands( and ); for a deck opened from the
 disk.
 
-With --sample, the sample drawn on the strands slide of the demo deck of the slide template, i.e. eight
-members of each of families 7 and 11 from periapsis, with their pulsating records begun on the ray
-alone, is also written to the path given.
-
 Run it with the Python of the TyCHO checkout, from any folder:
 
-    uv run --project /Users/claudiovestini/git/tycho/code python export_broucke_families.py \
-        [--sample /Users/claudiovestini/git/slides/demo/broucke-sample.js]
+    uv run --project /Users/claudiovestini/git/tycho/code python export_broucke_families.py
 """
 
-import argparse
 import hashlib
 import importlib.util
 import itertools
@@ -80,20 +74,9 @@ EASE = 0.1
 # be told apart in any drawing
 TWIN_TOLERANCE = TOLERANCE / 10
 
-# the sample of the template: eight of the twelve members of each branch below, by their rank in e,
-# at a looser tolerance and coarser digits, so that the file is kept under 200 kB
-SAMPLE_BRANCHES = ((7, "periapsis"), (11, "periapsis"))
-SAMPLE_RANKS = (0, 2, 3, 5, 6, 8, 9, 11)
-SAMPLE_TOLERANCE = 8e-4
-SAMPLE_MAX_STEP = 2 * np.pi / 90
-SAMPLE_DIGITS = 4
-SAMPLE_CLOCK_DIGITS = 4
-
 FRAMES = {"pulsating": "rotating-pulsating", "inertial": "barycentric-inertial"}
-# the records of a member written to the file of the talk, as pairs of a frame and a begin, and those
-# of the sample of the template
+# the records of a member, as pairs of a frame and a begin
 KINDS = (("pulsating", "ray"), ("pulsating", "golden"), ("inertial", "golden"))
-SAMPLE_KINDS = (("pulsating", "ray"), ("inertial", "golden"))
 
 
 def load_build():
@@ -152,7 +135,7 @@ def polyline_distance(a, b):
 def read_members(build, container, tree):
     """The chosen members of every branch, in the order of their records in the file.
 
-    Each member is a dict of its family, branch, rank in e within its branch, e, mu, theta0, the true
+    Each member is a dict of its family, branch, e, mu, theta0, the true
     anomaly ``theta`` of each stored sample in rad, ``frames``, its planar positions per frame,
     ``starts``, the index of the stored sample at which its record is begun per pair of a frame and a
     begin, ``twin``, true
@@ -171,7 +154,7 @@ def read_members(build, container, tree):
             channels = {n: container.view(f"{sid}/channels/{n}") for n in build.CHANNELS}
             eccentricities = np.asarray(container.view(f"{sid}/parameters/eccentricity"))
             chosen = evenly_spaced_members(eccentricities, MEMBERS_PER_BRANCH)
-            for rank, i in enumerate(chosen):
+            for i in chosen:
                 rows = slice(int(offsets[i]), int(offsets[i + 1]))
                 member_channels = {n: np.asarray(v[rows]) for n, v in channels.items()}
                 context = Context({"mu": mu}, member_channels.get, rows.stop - rows.start)
@@ -188,7 +171,6 @@ def read_members(build, container, tree):
                     {
                         "family": int(family),
                         "branch": branch,
-                        "rank": rank,
                         "e": float(eccentricities[i]),
                         "mu": mu,
                         "theta0": theta0,
@@ -252,16 +234,16 @@ def rolled(theta, k):
     return np.r_[k : m - 1, 0 : k + 1], np.r_[theta[k : m - 1], theta[: k + 1] + 2 * np.pi]
 
 
-def kept_samples(frames, theta, tolerance, max_step, forced):
+def kept_samples(frames, theta, forced):
     """The increasing indices of the samples kept of one member, jointly in every frame of frames.
 
-    The samples forced are kept, and one at least every max_step of theta, from the first to the last.
+    The samples forced are kept, and one at least every MAX_STEP of theta, from the first to the last.
     Then, by the Douglas-Peucker algorithm in each frame, the farthest stored sample from the chord
-    between two kept samples is kept while it is farther than tolerance, until a pass over the frames
+    between two kept samples is kept while it is farther than TOLERANCE, until a pass over the frames
     keeps nothing new.
     """
     m = len(theta)
-    grid = np.linspace(theta[0], theta[-1], int(np.ceil((theta[-1] - theta[0]) / max_step)) + 1)
+    grid = np.linspace(theta[0], theta[-1], int(np.ceil((theta[-1] - theta[0]) / MAX_STEP)) + 1)
     kept = set(np.clip(np.searchsorted(theta, grid), 0, m - 1).tolist()) | {0, m - 1} | set(forced)
     while True:
         added = set()
@@ -275,7 +257,7 @@ def kept_samples(frames, theta, tolerance, max_step, forced):
                         continue
                     d = _segment_distance(p[i + 1 : j], p[i], p[j])
                     worst = int(np.argmax(d))
-                    if d[worst] > tolerance:
+                    if d[worst] > TOLERANCE:
                         k = i + 1 + worst
                         added.add(k)
                         stack += [(i, k), (k, j)]
@@ -301,26 +283,26 @@ def clock_of(points):
     )
 
 
-def records_of(members, kinds, tolerance, max_step, digits, clock_digits, twins):
-    """The records of each member for each pair of a frame and a begin of kinds, in this order.
+def records_of(members):
+    """The records of each member for each pair of a frame and a begin of KINDS, in this order.
 
-    The samples are kept by kept_samples(), with the starts of the records written forced, and each
-    record is begun at the start of its frame and begin. With twins false, the pulsating records of a
-    member marked as a twin are left out.
+    The samples are kept by kept_samples(), with the starts of the records forced, and each record is
+    begun at the start of its frame and begin. The pulsating records of a member marked as a twin are
+    left out.
     """
     records = []
     for member in members:
         theta, starts = member["theta"], member["starts"]
-        forced = {starts[kind] for kind in kinds}
-        kept = kept_samples(list(member["frames"].values()), theta, tolerance, max_step, forced)
-        for name, begin in kinds:
-            if name == "pulsating" and member["twin"] and not twins:
+        forced = {starts[kind] for kind in KINDS}
+        kept = kept_samples(list(member["frames"].values()), theta, forced)
+        for name, begin in KINDS:
+            if name == "pulsating" and member["twin"]:
                 continue
             p = member["frames"][name]
             order, theta_rolled = rolled(theta, starts[name, begin])
             mask = np.isin(order, kept)
             points = p[order][mask]
-            t = np.round(clock_of(points), clock_digits)
+            t = np.round(clock_of(points), CLOCK_DIGITS)
             assert np.all(np.diff(t) >= 0) and t[0] == 0 and t[-1] == 1
             records.append(
                 {
@@ -332,16 +314,16 @@ def records_of(members, kinds, tolerance, max_step, digits, clock_digits, twins)
                     "e": round(member["e"], 6),
                     "mu": member["mu"],
                     "theta0": member["theta0"],
-                    "bbox": [round(float(v), digits) for v in (*points.min(axis=0), *points.max(axis=0))],
+                    "bbox": [round(float(v), DIGITS) for v in (*points.min(axis=0), *points.max(axis=0))],
                     "t": t.tolist(),
-                    "theta": np.round(theta_rolled[mask], digits).tolist(),
-                    "points": np.round(points, digits).tolist(),
+                    "theta": np.round(theta_rolled[mask], DIGITS).tolist(),
+                    "points": np.round(points, DIGITS).tolist(),
                 }
             )
     return records
 
 
-def bodies_of(members, tree, digits):
+def bodies_of(members, tree):
     """The positions of the primary m1 and the secondary m2 at theta = 0, where rho = 1 - e, per member."""
     bodies = []
     for member in members:
@@ -355,7 +337,7 @@ def bodies_of(members, tree, digits):
                 "mu": member["mu"],
                 **{
                     name: {
-                        body: [round(float(v), digits) for v in tree.body_position(body, frame, at_periapsis)[0, :2]]
+                        body: [round(float(v), DIGITS) for v in tree.body_position(body, frame, at_periapsis)[0, :2]]
                         for body in ("m1", "m2")
                     }
                     for name, frame in FRAMES.items()
@@ -365,11 +347,11 @@ def bodies_of(members, tree, digits):
     return bodies
 
 
-def readme(summary, order, kinds, last):
-    """The readme key of a written file, between the summary line and the line on the sampling."""
+def readme():
+    """The readme key of the written file."""
     second = next(b for b in ("periapsis", "apoapsis") if b != FIRST_BRANCH)
     return [
-        summary,
+        "Members of Broucke's families 7, 8 and 11 of the planar ER3BP, as polylines for the backdrops of the talk.",
         "Each entry of 'families' is one member in one frame: family (7, 8 or 11), branch ('periapsis' for the "
         "members that start on the x axis at true anomaly theta0 = 0, 'apoapsis' for theta0 = pi), frame, begin "
         "('ray' or 'golden', the point at which the record is begun, described below), thin (1 or 0, described "
@@ -379,7 +361,10 @@ def readme(summary, order, kinds, last):
         "The time t runs from 0 at the first point to 1 at the last, in proportion to the length along the "
         f"polyline, except over the first and the last {EASE:g} of the time, in which the tip is sped up from rest "
         "and slowed to rest. Every strand is thus traced in the same time at an even pace.",
-        order.format(first=FIRST_BRANCH, second=second),
+        "The members are ordered by family, and within a family so that a staggered trace sweeps through it "
+        f"once, i.e. the {FIRST_BRANCH} branch from its largest e down to 0, then the {second} branch from 0 up. The "
+        f"member at e = 0 of the {second} branch is the orbit at e = 0 of the {FIRST_BRANCH} branch, begun on the other "
+        "side of the x axis, hence it does not have a pulsating record.",
         "A record with begin 'golden' is begun at a fraction of the length of its polyline, measured from the point "
         "at theta0, from the golden-ratio sequence over the members, with the same fraction in both frames, so that "
         "the starts of a drawing traced at once are spread evenly along it. The members with thin 1 take the first "
@@ -388,7 +373,9 @@ def readme(summary, order, kinds, last):
         + ", ".join(f"{a:g} deg for family {f}" for f, a in list(START_ANGLE.items())[:-1])
         + ", and {1:g} deg for family {0}".format(*list(START_ANGLE.items())[-1])
         + ", at the crossing farthest from m2, so that the members of a staggered trace are begun one after another "
-        "at one place and are traced there in the same direction. " + kinds + " The records of a member hold the "
+        "at one place and are traced there in the same direction. Every member has an inertial record with begin "
+        "'golden', and two pulsating records, one with each begin. The two records of a member with begin 'golden' "
+        "are begun at the same fraction of their lengths, hence at different samples. The records of a member hold the "
         "same samples, begun at different points, "
         "hence their lists theta hold the same values, rolled and shifted by 2 pi.",
         "The key thin is 1 on every other member of the order above within a family, counted from the member at "
@@ -401,16 +388,10 @@ def readme(summary, order, kinds, last):
         "the barycenter, with the x axis of both frames on the line of apsides at theta = 0. Lengths are "
         "nondimensional, in units of the semi-major axis of the relative orbit of the primaries.",
         "Each entry of 'bodies' gives the positions of m1 and m2 at theta = 0 in both frames, for one member.",
-        last,
+        f"About {MEMBERS_PER_BRANCH} members a branch are chosen evenly spaced in e. The samples of a member are kept "
+        f"jointly in both frames, at least one every {np.degrees(MAX_STEP):g} degrees of true anomaly, and more wherever "
+        f"the computed orbit is farther than {TOLERANCE:g} from the chord, with coordinates rounded to {DIGITS} decimals.",
     ]
-
-
-def sampling(count, tolerance, max_step, digits):
-    return (
-        f"{count} members a branch are chosen evenly spaced in e. The samples of a member are kept jointly in both "
-        f"frames, at least one every {np.degrees(max_step):g} degrees of true anomaly, and more wherever the "
-        f"computed orbit is farther than {tolerance:g} from the chord, with coordinates rounded to {digits} decimals."
-    )
 
 
 def written(document):
@@ -428,10 +409,6 @@ def written(document):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Writes the polylines of the backdrops of the talk.")
-    parser.add_argument("--sample", type=pathlib.Path, help="the path of the sample of the slide template")
-    args = parser.parse_args()
-
     build = load_build()
     input_path = BROUCKE / "broucke-input.tyd"
     container = build.read_input(input_path)
@@ -441,52 +418,19 @@ def main():
     members = read_members(build, container, tree)
 
     document = {
-        "readme": readme(
-            "Members of Broucke's families 7, 8 and 11 of the planar ER3BP, as polylines for the backdrops of the talk.",
-            "The members are ordered by family, and within a family so that a staggered trace sweeps through it "
-            "once, i.e. the {first} branch from its largest e down to 0, then the {second} branch from 0 up. The "
-            "member at e = 0 of the {second} branch is the orbit at e = 0 of the {first} branch, begun on the other "
-            "side of the x axis, hence it does not have a pulsating record.",
-            "Every member has an inertial record with begin 'golden', and two pulsating records, one with each begin. "
-            "The two records of a member with begin 'golden' are begun at the same fraction of their lengths, hence "
-            "at different samples.",
-            sampling(f"About {MEMBERS_PER_BRANCH}", TOLERANCE, MAX_STEP, DIGITS),
-        ),
+        "readme": readme(),
         "source": {
             "container": str(input_path),
             "sha256": hashlib.sha256(input_path.read_bytes()).hexdigest(),
             "script": str(pathlib.Path(__file__).resolve()),
         },
-        "families": records_of(members, KINDS, TOLERANCE, MAX_STEP, DIGITS, CLOCK_DIGITS, twins=False),
-        "bodies": bodies_of(members, tree, DIGITS),
+        "families": records_of(members),
+        "bodies": bodies_of(members, tree),
     }
     OUTPUT.with_suffix(".json").write_text(json.dumps(document, separators=(",", ":")) + "\n")
     OUTPUT.with_suffix(".js").write_text(written(document))
     for path in (OUTPUT.with_suffix(".json"), OUTPUT.with_suffix(".js")):
         print(f"wrote {len(document['families'])} polylines to {path} ({path.stat().st_size / 1e6:.2f} MB)")
-
-    if args.sample:
-        # a member of the sample is begun at the starts of its records in broucke-families.js
-        chosen = [m for m in members if (m["family"], m["branch"]) in SAMPLE_BRANCHES and m["rank"] in SAMPLE_RANKS]
-        records = records_of(
-            chosen, SAMPLE_KINDS, SAMPLE_TOLERANCE, SAMPLE_MAX_STEP, SAMPLE_DIGITS, SAMPLE_CLOCK_DIGITS, twins=True
-        )
-        sample = {
-            "readme": readme(
-                "A sample of the members of Broucke's families 7 and 11 of the planar ER3BP at periapsis, taken from the "
-                "example data of TyCHO for the demo deck and the tests of the template.",
-                "The members are ordered by family, then by "
-                + ("decreasing" if FIRST_BRANCH == "periapsis" else "increasing")
-                + " e, as in the file of the talk, in which the {first} branch is traced first.",
-                "Every member has a pulsating record with begin 'ray' and an inertial record with begin 'golden'. The "
-                "file of the talk also holds pulsating records with begin 'golden'.",
-                sampling("Eight", SAMPLE_TOLERANCE, SAMPLE_MAX_STEP, SAMPLE_DIGITS),
-            ),
-            "families": records,
-            "bodies": bodies_of(chosen, tree, DIGITS),
-        }
-        args.sample.write_text(written(sample))
-        print(f"wrote {len(records)} polylines to {args.sample} ({args.sample.stat().st_size / 1e3:.0f} kB)")
 
 
 if __name__ == "__main__":
