@@ -79,15 +79,14 @@ jobs:
         uses: docker://pragent/pr-agent:0.50.0-github_action
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # GLM-5.3 reviews, and Qwen3.8-Flash-Next takes a call that fails. The gateway takes the
-          # reasoning of a model out of the answer, hence the commands receive clean JSON. A
-          # prompt is fitted into 64k tokens, and a call may think for up to ten minutes. A call
-          # of the primary that runs out of time goes to the fallback at once, since a second
-          # attempt of ten minutes would burn a third of the job
+          # use low reasoning for GLM and disable Qwen thinking to leave time for an answer
+          # bound reasoning and the answer together with max_output_tokens
           config.model: "openai/glm-5"
           config.fallback_models: '["openai/qwen3"]'
           config.custom_model_max_tokens: "1000000"
           config.max_model_tokens: "64000"
+          config.max_output_tokens: "8192"
+          LITELLM.EXTRA_BODY: '{"chat_template_kwargs": {"reasoning_effort": "low", "enable_thinking": false}}'
           config.ai_timeout: "600"
           config.retry_same_model_on_timeout: "false"
           OPENAI.API_BASE: "https://ellm.nrp-nautilus.io/v1"
