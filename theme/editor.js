@@ -1872,9 +1872,9 @@ html.beeson-editor.beeson-notes .reveal .slides section.present > aside.notes:em
       discard: ["Open without saving", "Put the slides back as saved, then choose a file"]
     },
     present: {
-      text: "Save them into the file first, present the saved file without them, or go on editing.",
+      text: "Save them into the file first, discard them and present the saved file, or go on editing.",
       save: ["Save and present", "Save the edits into the file, then show the deck in a new tab"],
-      discard: ["Present the saved file", "Show the deck as saved in a new tab, and keep the edits here"]
+      discard: ["Discard changes", "Put the slides back as saved, then show the deck in a new tab"]
     }
   };
   function askFirst(action) {
@@ -2279,7 +2279,7 @@ html.beeson-editor.beeson-notes .reveal .slides section.present > aside.notes:em
       if (choice === "save") {
         await save();
         if (dirty) return;
-      }
+      } else await discardEdits();
     }
     const params = new URLSearchParams(location.search);
     params.delete("edit");
