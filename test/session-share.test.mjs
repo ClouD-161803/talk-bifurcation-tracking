@@ -11,7 +11,7 @@ import { startRelay } from '../scripts/relay.mjs';
 import { qr } from '../src/session/qr.ts';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
-import { press as key, type, typeKeys } from './helpers/editor.mjs';
+import { click, press as key, type, typeKeys } from './helpers/editor.mjs';
 import { goOffline, tab } from './helpers/offline.mjs';
 import { post, raw, until } from './helpers/session.mjs';
 import { avatars, dialogButton, FITS, HIT, hold, item, menu, press, tap } from './helpers/share.mjs';
@@ -80,22 +80,23 @@ test('the avatars of two and of six people, one person with two pages, and the i
     await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual(await menu(ann), ['Fay Gold']);
     await key(ann, 'Escape');
-    // the menu of another person holds the full name
-    await press(ann, `.beeson-session-people button[aria-label="Cleo Diaz"]`);
+    // the menu of another person opens on a right-click and holds the full name, since a click follows
+    await front(ann);
+    await click(ann, `.beeson-session-people button[aria-label="Cleo Diaz"]`, { button: 'right' });
     await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
-    assert.deepEqual(await menu(ann), ['Cleo Diaz']);
+    assert.deepEqual((await menu(ann)).slice(0, 2), ['Cleo Diaz', 'Follow']);
     await key(ann, 'Escape');
-    // Shift+F10 and Enter with the focus on an avatar open its menu, also with an element selected,
-    // whose menu the same keys open on the canvas
+    // Shift+F10 and Down with the focus on an avatar open its menu, also with an element selected,
+    // whose menu Shift+F10 opens on the canvas
     await show(ann, 'One');
     await caretAtEnd(ann, `document.querySelector('.reveal .slides > section p')`);
     await key(ann, 'Escape');
     await ann.waitFor('window.BeesonEditor.selection().length === 1');
     await ann.evaluate(`document.querySelector('.beeson-session-people button[aria-label="Cleo Diaz"]').focus()`);
-    for (const keys of ['Shift+F10', 'Enter']) {
+    for (const keys of ['Shift+F10', 'ArrowDown']) {
       await key(ann, keys);
       await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
-      assert.deepEqual(await menu(ann), ['Cleo Diaz'], keys);
+      assert.deepEqual((await menu(ann)).slice(0, 2), ['Cleo Diaz', 'Follow'], keys);
       await key(ann, 'Escape');
       await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement?.getAttribute('aria-label') === 'Cleo Diaz'`);
     }
@@ -350,10 +351,11 @@ test('on a phone of 390 px the controls of the session are in view with a hit ar
     await key(phone, 'Escape');
     await phone.waitFor(`!document.querySelector('.beeson-edit-menu')`);
     await hold(phone, '.beeson-session-people button[aria-label="Ben Carter"]', `!!document.querySelector('.beeson-edit-menu')`);
-    assert.deepEqual(await menu(phone), ['Ben Carter']);
-    // the click after the hold leaves the menu open
+    assert.deepEqual((await menu(phone)).slice(0, 2), ['Ben Carter', 'Follow']);
+    // the click after the hold leaves the menu open, and does not follow
     await phone.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
-    assert.deepEqual(await menu(phone), ['Ben Carter']);
+    assert.deepEqual((await menu(phone)).slice(0, 2), ['Ben Carter', 'Follow']);
+    assert.equal(await phone.evaluate('window.BeesonSession.follow().target'), null);
     await key(phone, 'Escape');
     await phone.waitFor(`!document.querySelector('.beeson-edit-menu')`);
   });
