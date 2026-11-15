@@ -283,14 +283,16 @@ export class Presence {
       this.hear();
     });
     client.on('me', () => this.confirm());
-    client.on('applied', () => {
+    const based = () => {
       if (!this.log.seeded) this.seedLog();
       this.reread();
       this.due(false);
-    });
-    // an offset that an operation of this page put in doubt is carried once the base holds it
+    };
+    client.on('applied', based);
+    // the base moved without an apply, e.g. at the broadcast of an operation of this page, which
+    // can carry an offset that this operation put in doubt, or reach a state of another page
     client.on('settled', (moved) => {
-      if (moved) this.due(false);
+      if (moved) based();
     });
     client.on('people', () => {
       // a page that joined cannot carry a state of a version before it, hence it is sent again
