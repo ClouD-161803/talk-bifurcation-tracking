@@ -35,9 +35,10 @@ function usedMacros(text: string): OriginMacro[] {
 
 // the comment of the origin of the copied text. a dash and an angle bracket are written as escapes
 // of JSON, hence a URL or a macro does not close the comment early
+const themeVersion = (): string => (window as unknown as { Beeson?: { version?: string } }).Beeson?.version ?? '';
+
 export function originComment(text: string): string {
-  const version = (window as unknown as { Beeson?: { version?: string } }).Beeson?.version ?? '';
-  const json = JSON.stringify({ deck: deckAddress(), version, macros: usedMacros(text) } satisfies Origin);
+  const json = JSON.stringify({ deck: deckAddress(), version: themeVersion(), macros: usedMacros(text) } satisfies Origin);
   return `${OPEN}${json.replace(/[-<>]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}-->`;
 }
 
@@ -61,10 +62,16 @@ export function originOf(text: string): Origin | null {
 export type Arrival = { origin: Origin; texts: string[]; notes: string[] };
 export type Step = (app: App, arrival: Arrival) => void | Promise<void>;
 
+// the step that names a theme of another version, which may draw a slide otherwise
+function nameTheme(_app: App, arrival: Arrival): void {
+  const [there, here] = [arrival.origin.version, themeVersion()];
+  if (there && here && there !== here) arrival.notes.push(`The deck you pasted from has theme version ${there}, and this deck version ${here}, hence what you pasted may be drawn differently.`);
+}
+
 // the steps of a paste from another deck, run in this order before and after its insert, in the
 // entry of the history of the paste
 export const BEFORE: Step[] = [carryFiles];
-export const AFTER: Step[] = [nameMacros];
+export const AFTER: Step[] = [nameMacros, nameTheme];
 
 // texts inserted by insert, with the steps of a paste from another deck when text names one
 export async function arrive<T>(app: App, text: string, texts: string[], insert: (texts: string[]) => Promise<T>): Promise<T> {
