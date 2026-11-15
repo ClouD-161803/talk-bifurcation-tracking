@@ -58,12 +58,16 @@ test('a page whose applied operation lost its answer, and that missed the end of
   await converge(server, [ann, ben]);
 
   // the requests of Ann reach the edit command, and their answers are lost. the poll held before
-  // is answered at the next news, here a third person who joins, and the polls after it are lost
+  // is answered at the next news, here a third person who joins, and the polls after it are lost.
+  // the state of Ann does not reach the edit command at all. it would be sent only when the caret
+  // of Ann is in the paragraph before the first lost poll, and the paragraph, which Ben changes
+  // below, would then be locked on the page of Ben
   await ann.evaluate(`(() => {
     const fetched = window.fetch;
     window.__polls = 0;
     window.fetch = function (input, init) {
       const url = typeof input === 'string' ? input : input.url;
+      if (window.__lose && url.includes('/.session/presence')) return Promise.reject(new TypeError('the request was lost'));
       const sent = fetched.call(this, input, init);
       if (!window.__lose || !/\\/\\.session\\/(op|events)/.test(url)) return sent;
       if (url.includes('/.session/events')) window.__polls++;
@@ -88,10 +92,6 @@ test('a page whose applied operation lost its answer, and that missed the end of
   await front(ben);
   await ben.waitFor(`${TEXT}.includes('<p>First slide brave</p>')`);
   await show(ben, 'One');
-  // Ann held the paragraph when her page was last heard, and a hold is lost after 15 s of silence
-  await ben.waitFor(`${el(0, 'p')}.classList.contains('beeson-locked')`);
-  await ben.evaluate(`(() => { const p = window.BeesonSession.presence(); p.skew += 15_000; p.check(); return true; })()`);
-  await ben.waitFor(`!${el(0, 'p')}.classList.contains('beeson-locked')`);
   await caretAtEnd(ben, el(0, 'p'));
   for (let i = 0; i < 'brave'.length; i++) await press(ben, 'Backspace');
   await type(ben, 'bold');
@@ -105,5 +105,6 @@ test('a page whose applied operation lost its answer, and that missed the end of
   await ann.waitFor(ONLINE, 20_000);
   const text = await converge(server, [ann]);
   assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide bold</p>').replace('<p>Second slide</p>', '<p>Second slide later</p>'));
-  clean(ann, [...REFUSED, /the answer was lost/]);
+  // the state of Ann that waited is sent first after the restart, with the token of the edit command before
+  clean(ann, [...REFUSED, /the answer was lost/, /status of 404 .*\/\.session\/presence/]);
 });
