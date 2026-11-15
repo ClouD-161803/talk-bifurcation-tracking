@@ -157,8 +157,9 @@ export function install(app: App): void {
   // the run ends once the sheet is shown, since a sheet of a deck opened from a file waits for the
   // folder of the deck to be chosen
   const open = (which: Which) => load().then((s) => void s.open(which).catch((e) => app.fail(e)));
-  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, run: () => open('preamble') });
-  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, run: () => open('bibliography') });
+  // in a session, the sources are the files of the talk folder, which the edit command reads
+  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'In a session, the host edits preamble.tex in the talk folder' : null), run: () => open('preamble') });
+  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'In a session, the host edits references.bib in the talk folder' : null), run: () => open('bibliography') });
   app.commands.define({
     id: 'insert.citation',
     label: 'Citation…',
