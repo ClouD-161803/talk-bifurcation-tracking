@@ -24,7 +24,7 @@ export type SlideChanges = { slides: number[]; removed?: { slides: number[]; ele
 
 type Range = { start: number; end: number };
 
-const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+export const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 
 const visibility = (t: Token): string => {
   if (t.type !== 'start') return '';
