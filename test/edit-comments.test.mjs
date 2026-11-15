@@ -159,3 +159,61 @@ test('the changes of the threads are told, and a shift of an anchor is not', (t)
   assert.deepEqual(comments.since(-1), { v: comments.v, changed: null, removed: null });
   assert.equal(told, 4);
 });
+
+test('the file is written at most once in the given time, and at a stop', { timeout: 60_000 }, async (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'comments.json');
+  const read = () => {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+  const { authority, comments } = open(dir, DECK, { every: 300 });
+  comments.add(ANN, onDeck(authority, 'first'));
+  await until(() => read()?.comments.length === 1, 'the first write');
+  const firstWrite = statSync(file).mtimeMs;
+  comments.add(ANN, onDeck(authority, 'second'));
+  assert.equal(read().comments.length, 1);
+  await until(() => read()?.comments.length === 2, 'the second write');
+  assert.ok(statSync(file).mtimeMs - firstWrite >= 250, `written again after ${statSync(file).mtimeMs - firstWrite} ms`);
+  comments.add(ANN, onDeck(authority, 'third'));
+  assert.equal(comments.seen(BO, Date.now() - 5) > 0, true);
+  assert.equal(comments.seen(BO, 1), comments.list(BO).seen, 'the time of reading does not go back');
+  comments.stopSync();
+  const saved = read();
+  assert.deepEqual(saved.comments.map((c) => c.text), ['first', 'second', 'third']);
+  assert.equal(saved.sum, checksum(DECK));
+  await comments.idle();
+  assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.tmp')), []);
+  const again = open(dir, DECK);
+  assert.deepEqual(again.comments.list(BO).comments.map((c) => c.text), ['first', 'second', 'third']);
+  assert.equal(again.comments.list(BO).seen, saved.seen[BO]);
+  assert.equal(again.comments.list(ANN).seen, 0);
+  assert.deepEqual(again.logged, []);
+});
+
+test('a stop while a write waits for its temporary file keeps the text of the stop', { timeout: 60_000 }, async (t) => {
+  const dir = sessionDir(t);
+  const { authority, comments } = open(dir, DECK, { every: 0 });
+  // begun resolves in the turn in which the timer of comments calls write, hence before any file
+  // call of this write can end. a second timer may run in a later turn, after the write is over
+  const write = comments.write;
+  const begun = new Promise((done) => {
+    comments.write = function () {
+      const writing = write.call(this);
+      done();
+      return writing;
+    };
+  });
+  comments.add(ANN, onDeck(authority, 'first'));
+  await begun;
+  assert.ok(comments.writing, 'a write is in progress');
+  comments.add(ANN, onDeck(authority, 'second'));
+  comments.stopSync();
+  await comments.idle();
+  const saved = JSON.parse(readFileSync(join(dir, 'comments.json'), 'utf8'));
+  assert.deepEqual(saved.comments.map((c) => c.text), ['first', 'second']);
+  assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.tmp')), []);
+});
