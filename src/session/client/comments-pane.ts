@@ -1022,7 +1022,7 @@ export function install(client: Client): void {
     id: 'insert.comment',
     label: 'Comment',
     keys: { mac: ['Mod+Alt+M'], other: ['Alt+Shift+C'] },
-    in: ['canvas', 'text', 'navigator'],
+    in: ['canvas', 'text', 'navigator', 'inspector'],
     inText: true,
     menu: { bar: 'Insert', group: 'comment', order: 40 },
     toolbar: { group: 'insert', order: 30, icon: 'comment', label: 'Comment' },
