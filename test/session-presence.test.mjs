@@ -867,12 +867,15 @@ test('after Leave Session and after the end of the session, no element stays loc
   await caretAtEnd(ben, el(1, 'h2'));
   await typeKeys(ben, 'y');
   assert.deepEqual(await ben.evaluate(`({ held: ${P}.held, timers: ${TIMERS} })`), { held: null, timers: 0 });
-  server.edit.child.kill('SIGTERM');
-  await server.edit.exited;
-  server.edit = null;
-  for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
-  assert.deepEqual(await cy.evaluate(`({ locked: ${LOCKED(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { locked: false, resolved: 0, timers: 0 });
-  assert.deepEqual(await ana.evaluate(`({ held: ${P}.held, timers: ${TIMERS} })`), { held: null, timers: 0 });
+  // a signal ends a process at once on Windows, where a page is thus not told the end of the session
+  if (process.platform !== 'win32') {
+    server.edit.child.kill('SIGTERM');
+    await server.edit.exited;
+    server.edit = null;
+    for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
+    assert.deepEqual(await cy.evaluate(`({ locked: ${LOCKED(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { locked: false, resolved: 0, timers: 0 });
+    assert.deepEqual(await ana.evaluate(`({ held: ${P}.held, timers: ${TIMERS} })`), { held: null, timers: 0 });
+  }
   clean(ana);
   clean(ben);
   clean(cy);
