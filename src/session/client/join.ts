@@ -4,7 +4,7 @@
 import { changes, merge } from '../../editor/merge.ts';
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
-import { beforeJoin, type Copy } from './copy.ts';
+import { accept, beforeJoin, type Copy } from './copy.ts';
 import { make, sheet, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
@@ -132,6 +132,7 @@ export async function askTaken(client: Client, name: string): Promise<boolean> {
 // person. text is the text of the page at version v. a copy of copy.ts is joined from its version,
 // as a reconnect of a page with its edits
 export async function join(client: Client, text: string, v: string, copy: Copy | null = null): Promise<void> {
+  if (copy) copy = await accept(client, copy, text, v);
   // the deck with the edits of the copy and the edits typed since the load, made from text. deck is
   // the base of the copy when the deck was not read since the begin of the session
   const onto = (deck: string): string => {

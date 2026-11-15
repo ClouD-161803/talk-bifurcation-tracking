@@ -6,10 +6,11 @@
 
 import { changes, merge } from '../../editor/merge.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
-import type { Version } from '../protocol.ts';
+import { parseVersion, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Client } from './client.ts';
 import { arm, ask } from './conflicts.ts';
+import { style } from './dom.ts';
 
 const DB = 'beeson-session';
 const STORE = 'copies';
@@ -21,9 +22,12 @@ const BEAT = 10_000;
 const GONE = 60_000;
 // the longest wait in ms for IndexedDB at a join, since a blocked database may never answer
 const OPEN_WAIT = 3000;
+// a copy whose edits are older than this in ms is deleted at a join, with its pictures
+const OLD = 30 * 86_400_000;
 
 type Kept = { path: string; blob: Blob };
-type Row = { id: string; key: string; base: string; v: Version; mine: string; files: Kept[]; beat: number };
+// made is the time of the last change of mine, missing in a record of an older client
+type Row = { id: string; key: string; base: string; v: Version; mine: string; files: Kept[]; beat: number; made?: number };
 export type Copy = { base: string; v: Version; mine: string };
 
 type State = {
@@ -47,9 +51,14 @@ type State = {
   note: string | null;
   // the copy of the page before its join, which the join sets until the first answer of hello
   early: (() => Copy | null) | null;
+  // the files and the time of the copy taken over, given to the store of media once the join accepts it
+  taken: { files: Kept[]; made: number } | null;
   // records of pages that are gone conflicted with the copy taken over, and are merged once it is sent
   left: boolean;
   merging: boolean;
+  // the time of the last change of mine in a record, and this mine
+  made: number;
+  madeOf: string | null;
 };
 
 const states = new WeakMap<Client, State>();
@@ -112,7 +121,7 @@ async function deadRows(st: State): Promise<Row[]> {
 // the edits of each other row written into the text of the oldest row with merge.ts. a row whose
 // texts are too far apart for merge.ts, or whose edits conflict with the copy, is not taken, and is
 // merged after this copy is sent, with the dialog of the conflicts
-function combine(rows: Row[]): { copy: Copy; taken: Row[] } {
+function combine(rows: Row[]): { copy: Copy; taken: Row[]; made: number } {
   const [first, ...rest] = [...rows].sort((a, b) => a.beat - b.beat);
   const copy: Copy = { base: first.base, v: first.v, mine: first.mine };
   const taken = [first];
@@ -123,13 +132,13 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[] } {
     copy.mine = merged.text;
     taken.push(r);
   }
-  return { copy, taken };
+  return { copy, taken, made: Math.max(...taken.map((r) => r.made ?? r.beat)) };
 }
 
 function stateOf(client: Client): State {
   let st = states.get(client);
   if (!st) {
-    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, left: false, merging: false };
+    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null };
     states.set(client, st);
   }
   return st;
@@ -143,35 +152,89 @@ export function beforeJoin(client: Client, fn: (() => Copy | null) | null): void
 // the copy for a record: the state of the replica, or before the join the copy of early
 const current = (client: Client, st: State): Copy | null => client.snapshot() ?? st.early?.() ?? null;
 
+const CSS = `dialog.beeson-session-earlier .row button { min-height: 32px; }`;
+
+// the dialog of a copy of an earlier session, whose deck has changed since. true to add the changes
+async function askEarlier(client: Client, copy: Copy, made: number): Promise<boolean> {
+  style('earlier', CSS);
+  const day = new Date(made).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  const dialog = client.shell.dialog({
+    title: 'Changes from an earlier session',
+    text: `This browser kept your changes${client.shell.onSlides(client.shell.changedSlides(copy.base, copy.mine))} from ${day}, which were not sent. The deck has changed since then.`,
+    className: 'beeson-session-earlier',
+    dismissable: false,
+    stay: ['download'],
+    buttons: [
+      { label: 'Download my version', title: 'Download the deck as it was with your changes', value: 'download' },
+      { label: 'Discard them', title: 'Delete the changes kept in this browser', value: 'discard' },
+      { label: 'Add my changes', title: 'Add your changes to the deck as it is now', value: 'add', primary: true },
+    ],
+    onButton: (value) => {
+      if (value === 'download') client.shell.download(copy.mine);
+    },
+  });
+  const value = await dialog.open('add');
+  dialog.el.remove();
+  // a close by the browser keeps the changes
+  return value !== 'discard';
+}
+
 // the copies of the pages of this address that are gone, merged into one and taken over by this
-// page, whose own record holds them from now on. their files are given back to the store of media
+// page, whose own record holds them from now on. the copies of every address of the origin whose
+// edits are older than OLD are deleted
 export async function restore(client: Client): Promise<Copy | null> {
   const st = stateOf(client);
-  let rows: Row[];
+  let all: Row[];
   try {
-    rows = ((await run('readonly', (s) => s.index('key').getAll(key()))) ?? []) as Row[];
+    all = ((await run('readonly', (s) => s.getAll())) ?? []) as Row[];
   } catch {
     st.unavailable = true;
     return null;
   }
   const gone = await goneOf();
-  const dead = rows.filter((r) => r.id !== st.id && gone(r));
-  if (!dead.length) return null;
-  const { copy, taken } = combine(dead);
-  st.left = dead.length > taken.length;
+  const dead = all.filter((r) => r.id !== st.id && gone(r));
+  const old = dead.filter((r) => Date.now() - (r.made ?? r.beat) > OLD);
+  const here = dead.filter((r) => r.key === key() && !old.includes(r));
+  const { copy, taken, made } = here.length ? combine(here) : { copy: null, taken: [], made: 0 };
+  st.left = here.length > taken.length;
+  if (!old.length && !copy) return null;
   const files = taken.flatMap((r) => r.files ?? []);
-  for (const f of files) client.shell.media.adopt(f.path, f.blob);
-  st.stored = true;
+  if (copy) st.stored = true;
   try {
     await run('readwrite', (s) => {
-      for (const r of taken) s.delete(r.id);
-      s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now() } satisfies Row);
+      for (const r of [...old, ...taken]) s.delete(r.id);
+      if (copy) s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now(), made } satisfies Row);
     });
     st.kept = copy;
   } catch {
     st.unavailable = true;
   }
+  if (!copy) return null;
+  st.last = copy;
+  st.made = made;
+  st.madeOf = copy.mine;
+  st.taken = { files, made };
   st.restored = client.shell.changedSlides(copy.base, copy.mine);
+  return copy;
+}
+
+// the copy taken over by restore() for a join at version v of text, or null when the person
+// discards it. a copy of an earlier session, i.e. of another epoch, whose deck has changed since is
+// added only when the person says so. its files are given to the store of media
+export async function accept(client: Client, copy: Copy, text: string, v: Version): Promise<Copy | null> {
+  const st = stateOf(client);
+  const made = st.taken?.made ?? Date.now();
+  if (parseVersion(copy.v)?.epoch !== parseVersion(v)?.epoch && text !== copy.base && !(await askEarlier(client, copy, made))) {
+    st.taken = null;
+    st.restored = null;
+    st.stored = false;
+    st.kept = null;
+    st.last = null;
+    void run('readwrite', (s) => s.delete(st.id)).catch(() => {});
+    return null;
+  }
+  for (const f of st.taken?.files ?? []) client.shell.media.adopt(f.path, f.blob);
+  st.taken = null;
   arm(client);
   return copy;
 }
@@ -184,11 +247,17 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
   try {
     const dead = await deadRows(st);
     if (!dead.length) return;
-    const { copy, taken } = combine(dead);
+    const { copy, taken, made } = combine(dead);
     st.left = dead.length > taken.length;
     const s = client.snapshot();
     if (!s || client.ended || changes(copy.base, s.mine) === null) return;
     const files = taken.flatMap((r) => r.files ?? []);
+    if (parseVersion(copy.v)?.epoch !== parseVersion(s.v)?.epoch && s.base !== copy.base && !(await askEarlier(client, copy, made))) {
+      await run('readwrite', (store) => {
+        for (const r of taken) store.delete(r.id);
+      });
+      return;
+    }
     // the edits of the copy merged into now, the text of the deck, as Replica.resync merges
     const ours = diff(copy.base, copy.mine);
     const into = (now: string, side: Side) => {
@@ -206,7 +275,7 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
     st.stored = true;
     await run('readwrite', (store) => {
       for (const r of taken) store.delete(r.id);
-      store.put({ id: st.id, key: key(), base: now.base, v: now.v, mine, files: client.shell.media.unsaved(mine).map((f) => ({ path: f.path, blob: f.blob })), beat: Date.now() } satisfies Row);
+      store.put({ id: st.id, key: key(), base: now.base, v: now.v, mine, files: client.shell.media.unsaved(mine).map((f) => ({ path: f.path, blob: f.blob })), beat: Date.now(), made } satisfies Row);
     });
     update();
   } catch {
@@ -254,11 +323,15 @@ export function install(client: Client): void {
     const l = st.last;
     if (l && l.base === s.base && l.v === s.v && l.mine === s.mine && t - st.wroteAt < BEAT) return;
     if (!now && t - st.wroteAt < EVERY) return;
+    if (s.mine !== st.madeOf) {
+      st.madeOf = s.mine;
+      st.made = t;
+    }
     st.last = s;
     st.wroteAt = t;
     st.stored = true;
     const files = client.shell.media.unsaved(s.mine).map((f) => ({ path: f.path, blob: f.blob }));
-    run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t } satisfies Row)).then(
+    run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t, made: st.made } satisfies Row)).then(
       () => {
         const kept = st.last === s && st.stored && s.mine !== s.base ? s : st.kept;
         if (!st.unavailable && kept === st.kept) return;
