@@ -2825,6 +2825,16 @@ async function sameFile(dir, name, size2, hash) {
   return null;
 }
 var isJson = (request) => (request.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase() === "application/json";
+function bodyOf(request) {
+  if (!isJson(request)) return error(415, "the body must be application/json");
+  try {
+    const body = JSON.parse(request.body.toString("utf8"));
+    if (body && typeof body === "object" && !Array.isArray(body)) return body;
+  } catch {
+  }
+  return error(400, "the body is not a JSON object");
+}
+var isResponse = (x) => !!x && typeof x.status === "number" && typeof x.headers === "object";
 async function start(options = {}) {
   const log = options.log ?? ((m) => process.stderr.write(`${m}
 `));
@@ -2945,7 +2955,20 @@ async function start(options = {}) {
       const v = parts.length === 2 && parts[0] === "history" ? history.get(parts[1]) : null;
       return v ? json(200, v) : error(404, "there is no such version");
     }
-    return error(405, "GET");
+    if (request.method !== "POST") return error(405, "GET or POST");
+    if (closed) return error(503, "the edit command is stopping");
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    const person = client === null ? null : people.personOf(client);
+    if (person === null) return error(404, "say hello first");
+    if (parts.length !== 3 || parts[0] !== "history") return error(404, "not found");
+    if (parts[2] === "name") {
+      const named = history.name(parts[1], body.name);
+      if (named === "long") return error(400, "the name must be a text of at most 80 characters");
+      return named ? json(200, named) : error(404, "there is no such version");
+    }
+    return error(404, "not found");
   }
   async function api(route, request) {
     if (route.startsWith("media/")) return media(route.slice(6), request);

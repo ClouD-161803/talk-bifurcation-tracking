@@ -184,6 +184,18 @@ async function sameFile(dir: string, name: string, size: number, hash: string): 
 
 const isJson = (request: Request) => (request.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() === 'application/json';
 
+// the JSON object of a POST, or the answer that refuses it
+function bodyOf(request: Request): Record<string, unknown> | Response {
+  if (!isJson(request)) return error(415, 'the body must be application/json');
+  try {
+    const body = JSON.parse(request.body.toString('utf8'));
+    if (body && typeof body === 'object' && !Array.isArray(body)) return body;
+  } catch {}
+  return error(400, 'the body is not a JSON object');
+}
+
+const isResponse = (x: unknown): x is Response => !!x && typeof (x as Response).status === 'number' && typeof (x as Response).headers === 'object';
+
 export async function start(options: StartOptions = {}): Promise<Running> {
   const log = options.log ?? ((m: string) => process.stderr.write(`${m}\n`));
   // the native realpath resolves the short names of Windows, as realpath of fs/promises does
@@ -318,7 +330,20 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       const v = parts.length === 2 && parts[0] === 'history' ? history.get(parts[1]) : null;
       return v ? json(200, v) : error(404, 'there is no such version');
     }
-    return error(405, 'GET');
+    if (request.method !== 'POST') return error(405, 'GET or POST');
+    if (closed) return error(503, 'the edit command is stopping');
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    const person = client === null ? null : people.personOf(client);
+    if (person === null) return error(404, 'say hello first');
+    if (parts.length !== 3 || parts[0] !== 'history') return error(404, 'not found');
+    if (parts[2] === 'name') {
+      const named = history.name(parts[1], body.name);
+      if (named === 'long') return error(400, 'the name must be a text of at most 80 characters');
+      return named ? json(200, named) : error(404, 'there is no such version');
+    }
+    return error(404, 'not found');
   }
 
   async function api(route: string, request: Request): Promise<Response> {
