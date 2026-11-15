@@ -851,3 +851,22 @@ test('add regression test: a write of index.html that keeps failing is told to t
   assert.ok(edit.stderr.includes(join(talk, '.session', kept[0])), edit.stderr);
   assert.ok(text(join(talk, '.session', kept[0])).startsWith('<!-- two -->\n<!-- one -->\n'));
 });
+
+test('add regression test: a media upload needs the token of a page that is present', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const put = (query) => raw(edit.port, 'PUT', api(`media/plot.png${query}`), { body: 'png' });
+  const ana = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  const ben = (await post(edit.port, api('hello'), { name: 'Ben' })).json();
+  await post(edit.port, api('bye'), { token: ben.token });
+  for (const [query, what] of [['', 'without a token'], [`?token=${'n'.repeat(22)}`, 'with an unknown token'], [`?token=${ben.token}`, 'with the token of a page that left']]) {
+    const answer = await put(query);
+    assert.equal(answer.status, 404, what);
+    assert.deepEqual(answer.json(), { error: 'say hello first' }, what);
+  }
+  assert.equal(existsSync(join(talk, 'media')) && readdirSync(join(talk, 'media')).length, false, 'a refused upload is written');
+  assert.deepEqual((await put(`?token=${ana.token}`)).json(), { path: 'media/plot.png' });
+});
