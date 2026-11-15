@@ -5,7 +5,7 @@
 // write that keeps failing, and a file that is a symbolic link
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -30,6 +30,22 @@ function setup(t, text, options = {}) {
   return { dir, file, authority, disk, lines };
 }
 
+// DECK padded with an HTML comment to about mb megabytes, so that a write takes long enough to be
+// seen in flight
+const big = (mb) => DECK.replace('</body>', `<!-- ${'x'.repeat(mb * 1024 * 1024)} -->\n</body>`);
+
+const temporary = (dir) => readdirSync(dir).filter((n) => n.endsWith('.tmp'));
+
+// resolves once a temporary file of the disk is in dir, i.e. while a write is in flight. the
+// folder is read at every turn of the event loop, since the write lasts some milliseconds
+async function inFlight(dir, timeout = 20_000) {
+  const started = performance.now();
+  while (temporary(dir).length === 0) {
+    if (performance.now() - started > timeout) throw new Error('timed out waiting for a write in flight');
+    await new Promise((done) => setImmediate(done));
+  }
+}
+
 // an insertion into the text of the authority before the first occurrence of what
 function insert(authority, what, text, author = 'Ann') {
   const at = authority.text.indexOf(what);
@@ -52,4 +68,17 @@ test('a backward jump of the wall clock does not hold back the writes while typi
   }
   Date.now = now;
   assert.ok(writtenAt !== null && writtenAt < 2500, `the file was written ${writtenAt} ms after the first operation`);
+});
+
+test('a stop while a write is in flight writes the newest text, and the older write does not land after it', { timeout: 60_000 }, async (t) => {
+  const { dir, file, authority, disk } = setup(t, big(20));
+  insert(authority, '<h2>One', 'ONE ');
+  await inFlight(dir);
+  insert(authority, '<h2>Two', 'TWO ');
+  disk.stopSync();
+  await disk.idle();
+  const after = readFileSync(file, 'utf8');
+  assert.ok(after.includes('ONE <h2>One'), 'the file lacks the operation written first');
+  assert.ok(after.includes('TWO <h2>Two'), 'the file lacks the operation entered just before the stop');
+  assert.deepEqual(temporary(dir), []);
 });
