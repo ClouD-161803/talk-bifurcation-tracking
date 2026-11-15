@@ -111,3 +111,56 @@ test('the selection of another page is framed with a name flag, on its slide onl
   assert.equal(await ben.evaluate(`${C}.resolved().length`), 0);
   clean(ben);
 });
+
+// the states that page sends are held back until release(), which sends the first or the last
+const hold = (page) => page.evaluate(`(() => {
+  const c = ${C};
+  window.__send = c.sendPresence.bind(c);
+  window.__held = [];
+  c.sendPresence = (s) => window.__held.push(s);
+})()`);
+const release = (page, which = 'last') => page.evaluate(`(() => {
+  const c = ${C};
+  c.sendPresence = window.__send;
+  const s = window.__held.${which === 'first' ? 'at(0)' : 'at(-1)'};
+  if (s) c.sendPresence(s);
+  return s ?? null;
+})()`);
+
+test('a selection is read at its element after another person inserts text and a third a slide before it', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy']);
+  for (const page of [ana, ben, cy]) await show(page, 'Two');
+  // the state of Ana is sent once Ben and Cy have changed the text before it, at the version
+  // before their changes, which both carry through the operations they received
+  await hold(ana);
+  await select(ana, el(1, 'li:nth-child(2)'));
+  await until(() => ana.evaluate('window.__held.length > 0'), 'the state of Ana with the list item');
+  await caretAtEnd(ben, el(1, 'p'));
+  await typeKeys(ben, ' with more words');
+  await show(cy, 'One');
+  await cy.evaluate(`${C}.app.commands.run('slide.new')`);
+  await converge(server, [ana, ben, cy]);
+  for (const page of [ben, cy]) {
+    await show(page, 'Two');
+    assert.equal(await page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`), 3);
+  }
+  const sent = await release(ana, 'first');
+  const n = (v) => Number(v.split('.')[1]);
+  const now = await ana.evaluate(`${C}.base.v`);
+  assert.ok(n(now) - n(sent.v) >= 2, `the state of Ana at ${sent.v} is behind the text at ${now}`);
+  for (const [page, name] of [[ben, 'Ben'], [cy, 'Cy']]) {
+    const read = await until(() => page.evaluate(`(() => { const r = ${C}.resolved()[0]; return r?.selected.length ? { selected: r.selected.map((e) => e.textContent), slide: r.slide?.querySelector('h2')?.textContent ?? null } : null; })()`), `the selection of Ana on the page of ${name}`);
+    assert.deepEqual(read.selected, ['Beta'], `on the page of ${name}`);
+    assert.ok(read.slide === 'Two' || read.slide === null, `the slide of Ana on the page of ${name} is Two or in doubt, and it is ${read.slide}`);
+    const d = await until_(page, (d) => d.frames.length === 1, `the frame on the page of ${name}`);
+    around(d.frames[0], await boxOf(page, el(2, 'li:nth-child(2)')), `the item Beta on the page of ${name}`);
+  }
+  // the next state of Ana, of the newest version, reads the slide as well
+  await show(ana, 'Two');
+  await ana.evaluate(`${C}.app.selection.set('elements', [${el(2, 'li:nth-child(1)')}])`);
+  for (const page of [ben, cy]) {
+    const read = await until(() => page.evaluate(`(() => { const r = ${C}.resolved()[0]; return r?.selected[0]?.textContent === 'Alpha' ? r.slide?.querySelector('h2')?.textContent : null; })()`), 'the new selection of Ana');
+    assert.equal(read, 'Two');
+  }
+  for (const page of [ana, ben, cy]) clean(page);
+});
