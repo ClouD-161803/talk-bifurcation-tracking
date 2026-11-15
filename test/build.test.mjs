@@ -24,7 +24,7 @@ test('the theme is built in a folder with a space in its name', (t) => {
   execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
 
   // a talk runs the compiled files, hence each must be built from the current source
-  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/edit.mjs', 'theme/session.js']) {
+  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/editor-tex.js', 'theme/edit.mjs', 'theme/session.js']) {
     assert.ok(readFileSync(join(root, file), 'utf8') === readFileSync(resolve(file), 'utf8'), `${file} is not built from the current source, run npm run build`);
   }
 });
