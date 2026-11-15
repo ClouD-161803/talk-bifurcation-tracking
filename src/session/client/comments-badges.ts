@@ -11,12 +11,12 @@ import { make, style } from './dom.ts';
 const CSS = `
 .beeson-comment-badges { visibility: visible; }
 .beeson-comment-badges[hidden] { display: none; }
-.beeson-comment-badge { position: absolute; left: 0; top: 0; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border: 1.5px solid var(--ed-select, #8a2be2); border-radius: 10px 10px 10px 2px; background: var(--ed-panel, #fff); color: var(--ed-select, #8a2be2); font: 600 11px/17px var(--ed-font, system-ui); text-align: center; pointer-events: auto; cursor: pointer; }
+.beeson-comment-badge { position: absolute; left: 0; top: 0; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border: 1.5px solid var(--ed-select, #8a2be2); border-radius: 10px 10px 10px 2px; background: var(--ed-panel, #fff); color: var(--ed-text, #1d1d1f); font: 600 11px/17px var(--ed-font, system-ui); text-align: center; pointer-events: auto; cursor: pointer; }
 .beeson-comment-badge.slide { border-radius: 10px 10px 2px 10px; }
 .beeson-comment-badge.unread { background: var(--ed-select, #8a2be2); color: var(--ed-on-select, #fff); }
 .beeson-comment-badge::after { content: ''; position: absolute; inset: -7px; }
 .beeson-comment-badge:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 2px; }
-.beeson-edit-nav .row .frame .beeson-comment-count { position: absolute; top: -6px; right: -6px; z-index: 1; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--ed-panel); color: var(--ed-select); box-shadow: 0 0 0 1.5px var(--ed-select); font: 600 10px/16px var(--ed-font); text-align: center; pointer-events: none; }
+.beeson-edit-nav .row .frame .beeson-comment-count { position: absolute; top: -6px; right: -6px; z-index: 1; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--ed-panel); color: var(--ed-text); box-shadow: 0 0 0 1.5px var(--ed-select); font: 600 10px/16px var(--ed-font); text-align: center; pointer-events: none; }
 .beeson-edit-nav .row .frame .beeson-comment-count.unread { background: var(--ed-select); color: var(--ed-on-select); }
 html.beeson-history .beeson-comment-badges, html.beeson-history .beeson-edit-nav .beeson-comment-count { display: none; }
 `;

@@ -28,8 +28,8 @@ const CSS = `
 .beeson-comments h3 { margin: 10px 4px 4px; color: var(--ed-muted); font: 600 11px/1.3 var(--ed-font); }
 .beeson-comments .empty { margin: 16px 8px; color: var(--ed-muted); }
 .beeson-comments article, .beeson-comments .draft { position: relative; margin: 0 0 8px; padding: 8px 8px 8px 11px; border: 1px solid var(--ed-line); border-radius: 8px; background: var(--ed-control); outline: none; }
-.beeson-comments article:focus-visible, .beeson-comments article.focused { border-color: var(--ed-focus); }
-.beeson-comments article.unread { box-shadow: inset 3px 0 0 var(--ed-select); }
+.beeson-comments article:focus-visible, .beeson-comments article.focused { border-color: var(--ed-focus); outline: 2px solid var(--ed-focus); outline-offset: 1px; }
+.beeson-comments article.unread { box-shadow: inset 3px 0 0 var(--ed-focus); }
 .beeson-comments .item + .item { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--ed-line); }
 .beeson-comments .head { display: flex; align-items: center; gap: 6px; min-height: 32px; }
 .beeson-comments .avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font: 600 10px/1 var(--ed-font); }
@@ -37,7 +37,7 @@ const CSS = `
 .beeson-comments .time { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ed-muted); }
 .beeson-comments .anchor, .beeson-comments .resolved-by { margin: 0 0 4px; color: var(--ed-muted); overflow-wrap: anywhere; }
 .beeson-comments .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.beeson-comments .mention { color: var(--ed-select); font-weight: 600; }
+.beeson-comments .mention { color: var(--ed-text); font-weight: 600; text-decoration-line: underline; text-decoration-color: var(--ed-select); text-decoration-thickness: 2px; text-underline-offset: 2px; }
 .beeson-comments button.icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ed-muted); }
 .beeson-comments button.icon:hover { background: var(--ed-hover); color: var(--ed-text); }
 .beeson-comments button.text-button, .beeson-comments .actions button { min-height: 32px; padding: 0 10px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); color: var(--ed-text); font: inherit; }
@@ -54,7 +54,7 @@ const CSS = `
 .beeson-comments .people { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; margin: 2px 0 0; padding: 4px; border: 1px solid var(--ed-menu-line); border-radius: 8px; background: var(--ed-menu); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); list-style: none; }
 .beeson-comments .people li { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 6px; border-radius: 5px; }
 .beeson-comments .people li[aria-selected="true"] { background: var(--ed-select); color: var(--ed-on-select); }
-.beeson-comments .people .here { margin-left: auto; font-size: 11px; opacity: 0.8; }
+.beeson-comments .people .here { margin-left: auto; font-size: 11px; }
 `;
 
 type Filter = 'open' | 'mine' | 'resolved';
