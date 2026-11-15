@@ -583,6 +583,14 @@ const PLAYED = `(() => {
   const play = slider?.parentElement.querySelector('button.ed-play');
   return { paused: v.paused, time: v.currentTime, slider: Number(slider?.value), label: play?.getAttribute('aria-label') ?? null, before: !!play && !!(play.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING) };
 })()`;
+// RECORD writes the time of the selected video and of the slider into window.__plays at each update
+const RECORD = `(() => {
+  const v = window.BeesonEditor.selection()[0];
+  window.__plays = [];
+  const add = () => window.__plays.push({ at: performance.now(), paused: v.paused, time: v.currentTime, slider: Number(document.querySelector('${PANEL} input[name=poster-frame]')?.value) });
+  for (const type of ['playing', 'timeupdate']) v.addEventListener(type, add);
+  return true;
+})()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
 // with late, the state of the video is read late ms later, as on a crowded machine
@@ -600,13 +608,21 @@ async function playInPlace(t, platform, late = 0) {
   assert.equal(s.label, 'Play', 'the Video pane does not have a Play button');
   assert.ok(s.before, 'the Play button is not beside the slider');
 
+  await page.evaluate(RECORD);
   await click(page, await playAt(page));
-  await sleep(900 + late);
+  // the updates of the playing video are read from the record, since it plays on until the read.
+  // the first is at the frame it plays from, and the slider is compared with an update 0.5 s later
+  const later = `window.__plays.find((p) => !p.paused && p.time > ${from + 0.5})`;
+  await page.waitFor(`!!${later}`, 60000);
+  await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
+  await sleep(late);
+  const first = await page.evaluate('window.__plays.find((p) => !p.paused)');
+  assert.ok(first.time >= from - 0.1 && first.time < from + 2, `the video plays from ${first.time} and not from the frame ${from} of the slider`);
+  const on = await page.evaluate(later);
+  assert.ok(Math.abs(on.slider - on.time) < 0.5, `the slider at ${on.slider} does not follow the video at ${on.time}`);
   s = await page.evaluate(PLAYED);
   assert.equal(s.paused, false, 'the video does not play');
   assert.equal(s.label, 'Pause');
-  assert.ok(s.time > from && s.time < from + 2, `the video plays from ${s.time} and not from the frame ${from} of the slider`);
-  assert.ok(Math.abs(s.slider - s.time) < 0.5, `the slider at ${s.slider} does not follow the video at ${s.time}`);
   // Pause pauses it, and the preview is not an edit
   await click(page, await playAt(page));
   await frames(page);
@@ -618,21 +634,18 @@ async function playInPlace(t, platform, late = 0) {
 
   // a change of the slide, and of the selection, stops the preview
   await click(page, await playAt(page));
-  await sleep(300);
   const video = `[...document.querySelectorAll(${js(shownVideo)})].find((v) => v.getBoundingClientRect().width > 0)`;
-  await page.evaluate(`window.__played = ${video}`);
-  assert.equal(await page.evaluate('window.__played.paused'), false);
+  await page.waitFor(`!!(window.__played = ${video}) && !window.__played.paused`);
   await page.evaluate(`Reveal.slide(${VIDEO - 1})`);
-  await sleep(300);
+  await page.waitFor('window.__played.paused').catch(() => {});
   assert.equal(await page.evaluate('window.__played.paused'), true, 'the video plays on after a change of the slide');
   await page.evaluate(`Reveal.slide(${VIDEO})`);
   await frames(page);
   await selectVideo(page);
   await click(page, await playAt(page));
-  await sleep(300);
-  assert.equal(await page.evaluate('window.__played.paused'), false);
+  await page.waitFor('!window.__played.paused');
   await click(page, await page.evaluate(`(() => { const r = document.querySelector('.reveal .slides > section.present').getBoundingClientRect(); return { x: r.left + 40, y: r.bottom - 60 }; })()`));
-  await sleep(300);
+  await page.waitFor('window.BeesonEditor.selection().length === 0').catch(() => {});
   assert.deepEqual(await selection(page), []);
   assert.equal(await page.evaluate('window.__played.paused'), true, 'the video plays on after a change of the selection');
   assert.equal(await render(page), edited);
