@@ -260,10 +260,10 @@ export function install(app: App): void {
     // in a session, the edits are not saved to a file, and its status takes the place of the save
     const first = app.session ? app.session.status : app.dirty ? 'Unsaved changes' : app.note?.text ?? 'No unsaved changes';
     const parts = first ? [first] : [];
-    // a warning, e.g. an error of a save or of a draft, is shown with unsaved changes too, and a
-    // note from before a session is not
-    const warn = !app.session && (app.note?.warn ?? false);
-    if (app.dirty && warn) parts.push(app.note!.text);
+    // a warning, e.g. an error of a save or of a draft, is shown with unsaved changes too. in a
+    // session, the note of a command follows the status until the next edit of the person
+    const warn = app.note?.warn ?? false;
+    if (app.note && (app.session || (app.dirty && warn))) parts.push(app.note.text);
     if (problems.length) parts.push(`${plural(problems.length, 'text')} cannot be edited`);
     const past = app.overflow - app.overFigure;
     if (past) parts.push(`${plural(past, 'text')} run${past === 1 ? 's' : ''} past the slide or into its footnote`);

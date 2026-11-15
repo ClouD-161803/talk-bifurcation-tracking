@@ -120,6 +120,11 @@ export function install(app: App): Port {
 
   const changed = (): void => {
     if (mine) return;
+    // the note of a command is shown in the state line until the next edit of the person
+    if (active && app.note) {
+      app.note = null;
+      app.report();
+    }
     clean = false;
     if (!listeners.size) return;
     pending = true;
@@ -507,6 +512,8 @@ export function install(app: App): Port {
     begin() {
       if (active) return;
       active = true;
+      // a note from before the session is not shown in it
+      app.note = null;
       app.session = session;
       app.emit('session');
       app.report();
