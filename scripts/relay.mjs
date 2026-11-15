@@ -254,7 +254,10 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
         // the place of the answer passes to entry.finish, which holds it until the guest has read it
         hold(session, -reserved);
       }
-      if (body === 'busy') return answer(res, 503, 'the relay is busy');
+      if (body === 'busy') {
+        session.pending.get(id)?.finish(503, 'the relay is busy', { 'retry-after': '1' });
+        return answer(res, 503, 'the relay is busy');
+      }
       if (!body) return answer(res, 413, 'the answer is larger than the limit of the relay');
       const entry = session.pending.get(id);
       if (!entry) return answer(res, 404, 'no request of this id, it may have timed out');
