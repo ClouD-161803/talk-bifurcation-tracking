@@ -20,6 +20,8 @@ export { changes } from '../editor/merge.ts';
 export { tokenize } from '../editor/tokens.ts';
 export { cleanName, start } from './command.ts';
 export { decode, Disk } from './disk.ts';
+export { History, moveMarks, operationOf } from './history.ts';
+export { slideChanges, slidesOf } from '../session/slides.ts';
 
 const USAGE = 'usage: node theme/edit.mjs [folder] [--port N] [--no-open] [--relay URL]';
 
