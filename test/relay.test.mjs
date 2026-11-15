@@ -506,3 +506,21 @@ test('a session ended with a record answers the requests of its guests under .se
     await until(async () => (await guest(key('e'))).status === 502, 'the end to be forgotten after endedMs');
   });
 });
+
+test('the relay refuses a session over its limit of sessions, and a request over the limit of waiting requests of a session', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, sessions: 2, waiting: 2 });
+  t.after(() => relay.close());
+  const key = 'f'.repeat(22);
+  const host = await fakeHost(relay, key);
+  await fakeHost(relay, 'g'.repeat(22));
+  const third = await fetch(`${relay.url}/host/${'h'.repeat(22)}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } });
+  assert.deepEqual({ status: third.status, text: await third.text() }, { status: 503, text: 'the relay holds too many sessions' });
+  // two requests of guests that the host pulled and does not answer yet
+  const guest = () => raw(relay.port, 'GET', `/${key}/index.html`, { host: 'relay' });
+  const waiting = [guest(), guest()];
+  const items = await host.next(2);
+  const over = await guest();
+  assert.deepEqual({ status: over.status, text: over.text }, { status: 503, text: 'the session has too many waiting requests' });
+  for (const item of items) assert.equal(await host.push(item.id, 'deck'), 204);
+  assert.deepEqual((await Promise.all(waiting)).map((a) => a.text), ['deck', 'deck']);
+});
