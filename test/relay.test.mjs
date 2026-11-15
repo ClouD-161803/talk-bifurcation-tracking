@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -100,4 +100,29 @@ test('the relay reads its secret from --secret-file, and refuses one under 16 ch
   // the secret of the file, without its newline, registers a session
   const registered = await fetch(`http://127.0.0.1:${port}/host/${'k'.repeat(22)}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } });
   assert.equal(registered.status, 200);
+});
+
+test('add regression test: a second registration of the key of a live session is refused', { timeout: 120_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, guestMs: 5000 });
+  t.after(() => relay.close());
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const env = { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config };
+  const first = await startEdit(talk, { args: ['--relay', relay.url], env });
+  t.after(() => stopEdit(first));
+  const guest = () => fetch(`${relay.url}/${first.key}/index.html`);
+  await until(async () => (await guest()).status === 200, 'the first edit command to register');
+
+  const taken = await fetch(`${relay.url}/host/${first.key}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } });
+  assert.equal(taken.status, 409);
+
+  // a copy of the talk folder keeps .session/key, and its edit command is told that the key is taken
+  const copy = join(root, 'copy');
+  cpSync(talk, copy, { recursive: true });
+  writeFileSync(join(copy, 'index.html'), DECK.replace('One', 'Copy'));
+  const second = await startEdit(copy, { args: ['--relay', relay.url], env });
+  t.after(() => stopEdit(second));
+  assert.equal(second.key, first.key);
+  await until(() => second.stderr.includes('already shared by another edit command'), 'the second edit command to be refused');
+  for (let i = 0; i < 6; i++) assert.equal(await (await guest()).text(), DECK);
 });
