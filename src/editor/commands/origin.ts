@@ -45,9 +45,10 @@ export function originComment(text: string): string {
 // whether a body stays inside its braces in a line of a preamble, or with bracket whether the
 // default of an argument stays inside its brackets. the braces of t are then closed in order. t
 // does not have a line break, a comment, a backslash at its end, or with bracket a bracket
-// outside its braces
+// outside its braces. it does not have two carets in a row either, with which TeX reads the
+// next characters as another one, e.g. ^^7d as a closing brace
 function contained(t: string, bracket = false): boolean {
-  if (/[\u0000-\u0008\u000a-\u001f\u007f\u2028\u2029]/.test(t)) return false;
+  if (/[\u0000-\u0008\u000a-\u001f\u007f\u2028\u2029]|\^\^/.test(t)) return false;
   let depth = 0;
   for (let i = 0; i < t.length; i++) {
     if (t[i] === '\\') {
