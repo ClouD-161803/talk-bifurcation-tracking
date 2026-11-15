@@ -603,6 +603,23 @@ test('an operation after a sleep of the computer, or after the wall clock went b
   });
 });
 
+test('a removal that the diff of a version places at another equal line is marked as a change of the person who made it', { timeout: 60_000 }, (t) => {
+  const item = '    <li>Item</li>\n';
+  const deck = DECK.replace('  <p style="left: 10px">First slide</p>\n', `  <ul>\n${item}${item}  </ul>\n`);
+  const { authority, history } = open(sessionDir(t), deck);
+  // Ann removes the first of the two equal items, and the diff of the version removes the second
+  const at = deck.indexOf(item);
+  authority.enter([{ start: at, end: at + item.length, text: '' }], ANN);
+  replace(authority, 'Second slide', 'Second slide, typed', BO);
+  const v = history.close();
+  const marks = history.get(v.id).marks;
+  assert.deepEqual(marks.filter((m) => m.start === m.end).map((m) => m.author), [ANN], JSON.stringify(marks));
+  const two = authority.text.indexOf('<h2>Two');
+  assert.ok(marks.filter((m) => m.author === BO).every((m) => m.start > two), JSON.stringify(marks));
+  assert.deepEqual(v.slides, [1, 2]);
+  history.stopSync();
+});
+
 test('large replaces in one version take time in proportion to their patches and marks', { timeout: 120_000 }, (t) => {
   // four replaces of every paragraph of n, by two people in turn, in one version. the close is not
   // timed, since its diff of n changed lines grows faster than n
