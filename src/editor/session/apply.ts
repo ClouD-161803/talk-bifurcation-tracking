@@ -191,6 +191,7 @@ function setContent(ctx: Ctx, live: Element, content: string): void {
     ctx.pairing.inner.delete(el);
   }
   ctx.typeset.push(setContentWithTex(live, content));
+  showSteps(live, false);
   ctx.touched.add(live);
   ctx.changed.push(live);
   ctx.hosts.push(live);
@@ -202,9 +203,14 @@ function coarse(ctx: Ctx, textEl: TextElement): ((after: boolean) => void) | nul
   const range = next && contentRange(next);
   if (!next || !range) return false;
   const caret = keepCaret(ctx.app, textEl.live);
+  const steps = !!textEl.live.querySelector('.fragment');
   setContent(ctx, textEl.live, ctx.text.slice(range.start, range.end));
   // the formulas are typeset after the apply, hence the page reads as the file without them now
   repairText(ctx.pairing, textEl, next, NO_MATH);
+  if (steps || textEl.live.querySelector('.fragment')) {
+    restep(ctx, textEl.live);
+    ctx.app.deck()?.sync?.();
+  }
   caret?.(false);
   return caret;
 }
@@ -234,6 +240,7 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
   for (const c of b.classes) if (!a.classes.includes(c)) (el.classList.add(c), (more = true));
   // every step is shown while the deck is edited, as Doc.place marks the steps of a new slide
   if (b.classes.includes('fragment') && !a.classes.includes('fragment')) el.classList.add('visible');
+  if (a.classes.includes('fragment') && !b.classes.includes('fragment') && !b.classes.includes('visible')) el.classList.remove('visible');
   const style = (el as HTMLElement).style;
   if (style) {
     for (const k of Object.keys(a.style)) if (!(k in b.style)) (style.removeProperty(k), (any = true));
@@ -275,6 +282,26 @@ function redrawn(el: Element, from: Attr[], to: Attr[]): boolean {
   return [...new Set([...Object.keys(a), ...Object.keys(b)])].some((k) => k !== 'class' && k !== 'style' && a[k] !== b[k] && !free.includes(k));
 }
 
+// el and the steps inside it shown, as every step is while the deck is edited
+function showSteps(el: Element, self = true): void {
+  if (self && el.classList.contains('fragment')) el.classList.add('visible');
+  for (const f of el.querySelectorAll('.fragment')) f.classList.add('visible');
+}
+
+// the indexes of the steps of the slide of el, or of every slide under el, written as in the file,
+// before reveal.js sorts and numbers them again at a sync, as it does at an open. reveal.js wrote its
+// own numbers over those of the file, among which a changed index would be written raw
+function restep(ctx: Ctx, el: Element): void {
+  const scope = el.closest('section') ?? el;
+  for (const f of scope.querySelectorAll('.fragment, [data-fragment-index]')) {
+    const src = ctx.pairing.elements.get(f) ?? ctx.pairing.inner.get(f);
+    if (!src) continue;
+    const v = stateOf(src.attrs).attrs['data-fragment-index'];
+    if (v === undefined) f.removeAttribute('data-fragment-index');
+    else if (f.getAttribute('data-fragment-index') !== v) f.setAttribute('data-fragment-index', v);
+  }
+}
+
 // the slides of reveal.js read again, with the theme drawn again around them
 export function refresh(app: App): void {
   (window as unknown as Page).Beeson?.refreshChrome?.();
@@ -312,7 +339,10 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
     if (redrawn(spot.live, from, spot.el.attrs)) return null;
     // a class or an attribute may be read by the theme or by reveal.js, e.g. a step, where a place
     // or a size in the style is not
-    if (setTag(ctx, spot.live, from, spot.el.attrs)) refresh(app);
+    if (setTag(ctx, spot.live, from, spot.el.attrs)) {
+      restep(ctx, spot.live);
+      refresh(app);
+    }
     return done(ctx, false, null);
   }
   if (spot.kind === 'within') return structural(ctx, spot.el, spot.live);
@@ -475,7 +505,7 @@ function nextUnit(ctx: Ctx, placed: Set<Element>, n: Element): Element | null {
 function make(ctx: Ctx, src: SrcEl): Element {
   const node = document.importNode(src.node, true) as Element;
   media.resolve(node);
-  if (node.localName === 'section') for (const f of node.querySelectorAll('.fragment')) f.classList.add('visible');
+  showSteps(node);
   ctx.placed.push(node);
   ctx.changed.push(node);
   return node;
@@ -590,6 +620,7 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   if (app.pairing.problems.length > problems || renderDeck(next, app.pairing, math, app.tagEdits).text !== ctx.text) return null;
   app.typing.attach();
   focus.el?.focus({ preventScroll: true });
+  restep(ctx, live);
   (window as unknown as Page).Beeson?.refreshChrome?.();
   keepSlide(app, current, at);
   const put = () => {
