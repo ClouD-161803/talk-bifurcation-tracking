@@ -349,9 +349,9 @@ test('a hold beats every 5 s, is lost after 15 s of silence, and is taken by ano
   await later(ana, 100);
   await until(async () => (await beat()) === 1, 'the first heartbeat of Ana');
 
-  // 15 s without a heartbeat, on the clock of Ben, end the hold of Ana there
-  await later(ben, 14_900);
-  assert.equal(await ben.evaluate(LOCKED(p)), true, 'still locked at 14.9 s');
+  // 15 s without a heartbeat, on the clock of Ben, end the hold of Ana there. the clock is moved to
+  // 14.9 s after the heartbeat was heard, and the lock is read in the same turn
+  assert.equal(await ben.evaluate(`(() => { const p = ${P}; const o = [...p.others.values()][0]; p.skew += 14_900 - (p.now() - o.heardAt); p.check(); return ${LOCKED(p)}; })()`), true, 'still locked at 14.9 s');
   await later(ben, 100);
   assert.equal(await ben.evaluate(LOCKED(p)), false, 'the hold is lost after 15 s of silence');
   // and the next heartbeat holds it again
