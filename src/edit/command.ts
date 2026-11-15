@@ -470,7 +470,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         // a start during the stop begins a new edit command rather than finding this one
         unlock();
         people.end();
-        const unwritten = disk.stopSync();
+        const unwritten = await disk.stop();
         if (unwritten) {
           const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');

@@ -5,7 +5,7 @@
 // merged as an operation of the author file, on the base of the text written or read lately that is
 // nearest to it, where the file wins a conflict. the reads and the writes are done one at a time
 
-import { chmodSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
 import { chmod, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
@@ -87,8 +87,7 @@ export function renameRetriedSync(from: string, to: string): void {
 }
 
 // a step of a task of the disk, i.e. a stat, a read, or a write of a file, or a pause. a task is a
-// generator of its steps, hence it runs asynchronously while the edit command runs, and at once at
-// a stop
+// generator of its steps, hence it is left at a step when the edit command stops
 type Step = { stat: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { sleep: number };
 type Task<T = void> = Generator<Step, T, any>;
 
@@ -102,30 +101,6 @@ function perform(step: Step): Promise<unknown> {
   if ('stat' in step) return stat(step.stat).catch(missing);
   if ('read' in step) return readFile(step.read);
   return writeFile(step.write, step.bytes).then(() => (step.mode === null ? undefined : chmod(step.write, step.mode)));
-}
-
-const PAUSE = new Int32Array(new SharedArrayBuffer(4));
-
-function performSync(step: Step): unknown {
-  if ('sleep' in step) return void Atomics.wait(PAUSE, 0, 0, step.sleep);
-  if ('stat' in step) return statSync(step.stat, { throwIfNoEntry: false }) ?? null;
-  if ('read' in step) return readFileSync(step.read);
-  writeFileSync(step.write, step.bytes);
-  if (step.mode !== null) chmodSync(step.write, step.mode);
-}
-
-// a task run at once, as at a stop
-function finish(task: Task<unknown>): void {
-  let next = task.next();
-  while (!next.done) {
-    let value: unknown, failed = false;
-    try {
-      value = performSync(next.value);
-    } catch (e) {
-      [value, failed] = [e, true];
-    }
-    next = failed ? task.throw(value) : task.next(value);
-  }
 }
 
 // a copy of text, since a slice keeps in memory the whole text that it was cut from
@@ -309,6 +284,7 @@ export class Disk {
   private poller: ReturnType<typeof setInterval> | null = null;
   private busy: Promise<void> | null = null;
   private stopped = false;
+  private stopping: Promise<number> | null = null;
   private log: (message: string) => void;
   private onWriteError: (error: WriteError | null) => void;
   private onWritten: (n: number) => void;
@@ -371,23 +347,23 @@ export class Disk {
     }, wait);
   }
 
-  // the text of the authority written at once, at a stop of the edit command, after a change of the
-  // file is merged, and the number of operations that are not in the file. a task in flight is left
-  // at its next step, hence its write cannot land after this one
-  stopSync(): number {
-    if (!this.stopped) {
+  // the text of the authority written at a stop of the edit command, after a change of the file is
+  // merged, and the number of operations that are not in the file. a task in flight is left at its
+  // next step, hence its write cannot land after this one
+  stop(): Promise<number> {
+    return (this.stopping ??= (async () => {
       this.stopped = true;
       if (this.timer) clearTimeout(this.timer);
       if (this.poller) clearInterval(this.poller);
       try {
-        finish(this.write(SETTLE_AT_STOP));
+        await this.drive(this.write(SETTLE_AT_STOP), true);
       } catch (e) {
         this.log(`could not write ${this.file}: ${(e as Error).message}`);
       }
       const unwritten = this.authority.n - this.writtenN;
       if (unwritten) this.log(`${unwritten} operations are not written into ${this.file}`);
-    }
-    return this.authority.n - this.writtenN;
+      return unwritten;
+    })());
   }
 
   // resolves once a write or a check in progress is over
@@ -405,8 +381,9 @@ export class Disk {
     await this.busy;
   }
 
-  // a task run asynchronously, and left at the first step that ends after a stop
-  private async drive(task: Task<unknown>): Promise<void> {
+  // a task run asynchronously, and left at the first step that ends after a stop, unless it is the
+  // last task, i.e. the one of the stop
+  private async drive(task: Task<unknown>, last = false): Promise<void> {
     let next = task.next();
     while (!next.done) {
       let value: unknown, failed = false;
@@ -415,7 +392,7 @@ export class Disk {
       } catch (e) {
         [value, failed] = [e, true];
       }
-      if (this.stopped) return void task.return(undefined);
+      if (this.stopped && !last) return void task.return(undefined);
       next = failed ? task.throw(value) : task.next(value);
     }
   }
