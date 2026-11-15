@@ -23,8 +23,8 @@ function setup(t, text, options = {}) {
   const authority = new Authority(text, { epoch: 'E' });
   const lines = [];
   const disk = new Disk(file, authority, false, { log: (m) => lines.push(m), ...options });
-  t.after(() => {
-    disk.stopSync();
+  t.after(async () => {
+    await disk.stop();
     rmSync(dir, { recursive: true, force: true });
   });
   return { dir, file, authority, disk, lines };
@@ -75,7 +75,7 @@ test('a stop while a write is in flight writes the newest text, and the older wr
   insert(authority, '<h2>One', 'ONE ');
   await inFlight(dir);
   insert(authority, '<h2>Two', 'TWO ');
-  disk.stopSync();
+  await disk.stop();
   await disk.idle();
   const after = readFileSync(file, 'utf8');
   assert.ok(after.includes('ONE <h2>One'), 'the file lacks the operation written first');
@@ -87,7 +87,7 @@ test('a stop right after another program wrote the file keeps the change of this
   const { file, authority, disk } = setup(t, DECK);
   insert(authority, '<h2>One', 'ONE ');
   writeFileSync(file, DECK.replace('<h2>Two', 'AGENT <h2>Two'));
-  disk.stopSync();
+  await disk.stop();
   const after = readFileSync(file, 'utf8');
   assert.ok(after.includes('ONE <h2>One'), 'the file lacks the operation entered before the stop');
   assert.ok(after.includes('AGENT <h2>Two'), 'the file lacks the change of the other program');
@@ -297,6 +297,60 @@ test('an outside write back to an earlier text keeps the newer edits of the sess
   assert.ok(authority.text.includes('<p>typo</p>'), 'the session lost its newer edit');
 });
 
+// the longest time between two turns of the event loop while act runs, measured by an interval of
+// 1 ms that turns once more after act, so that a stall at its end is measured
+async function longestStall(act) {
+  let last = performance.now(), longest = 0, turned = null;
+  const timer = setInterval(() => {
+    const now = performance.now();
+    longest = Math.max(longest, now - last);
+    last = now;
+    turned?.();
+  }, 1);
+  try {
+    await act();
+    await new Promise((done) => (turned = done));
+  } finally {
+    clearInterval(timer);
+  }
+  return longest;
+}
+
+// the longest stalls of a merge and of a stop on the demo deck, with a chain of texts that each have
+// one more character in the long line than the one before
+async function stallsOnChain(t, texts) {
+  const deck = readFileSync('index.html', 'utf8'), at = deck.indexOf('\n</tycho-viewer>');
+  const { file, authority, disk } = setup(t, deck, { quiet: 5, latest: 20, poll: 20 });
+  // the chain is filled directly, since a write of each text would take minutes
+  for (let k = 1; k <= texts; k++) disk.remember(`${deck.slice(0, at)}${'x'.repeat(k)}${deck.slice(at)}`);
+  authority.enter([{ start: at, end: at, text: 'x'.repeat(texts) }], 'Ann');
+  await until(() => readFileSync(file, 'utf8') === authority.text, 'the write of the last text of the chain');
+  disk.start();
+  const merge = await longestStall(async () => {
+    writeFileSync(file, authority.text.replace('<h2', 'AGENT <h2'));
+    await until(() => authority.text.includes('AGENT <h2') && readFileSync(file, 'utf8') === authority.text, 'the change of the agent to be merged', 60_000);
+  });
+  const stop = await longestStall(() => {
+    writeFileSync(file, authority.text.replace('</body>', '<p>AGAIN</p>\n</body>'));
+    return disk.stop();
+  });
+  assert.ok(readFileSync(file, 'utf8').includes('<p>AGAIN</p>'), 'the stop did not merge the change of the agent');
+  return { merge, stop };
+}
+
+test('add regression test: a merge and a stop on a chain of 5000 texts of the demo deck hold the event loop no longer than on a chain of 50 texts', { timeout: 300_000 }, async (t) => {
+  let short, long;
+  // a stall over the bound is measured again, since a pause of the garbage collector stalls too
+  for (let tries = 0; tries < 3; tries++) {
+    short = await stallsOnChain(t, 50);
+    long = await stallsOnChain(t, 5000);
+    if (long.merge <= short.merge + 50 && long.stop <= short.stop + 50) break;
+  }
+  const ms = (n) => `${Math.round(n)} ms`;
+  assert.ok(long.merge <= short.merge + 50, `a merge stalled for ${ms(long.merge)} on 5000 texts and ${ms(short.merge)} on 50`);
+  assert.ok(long.stop <= short.stop + 50, `a stop stalled for ${ms(long.stop)} on 5000 texts and ${ms(short.stop)} on 50`);
+});
+
 // a mode set by chmod refuses neither a read nor a write on Windows or to root
 const noChmod = process.platform === 'win32' || process.getuid?.() === 0 ? 'chmod does not refuse a read or a write on Windows or to root' : false;
 
@@ -313,7 +367,7 @@ test('a write that keeps failing is reported with the number of unwritten operat
     await until(() => reports.at(-1) === null && readFileSync(file, 'utf8').includes('ONE '), 'a report that the write succeeded again');
     chmodSync(dir, 0o555);
     insert(authority, '<h2>Two', 'TWO ');
-    assert.equal(disk.stopSync(), 1);
+    assert.equal(await disk.stop(), 1);
   } finally {
     chmodSync(dir, 0o755);
   }
@@ -354,7 +408,7 @@ test('a symbolic link index.html is written through to its target, the mode of t
   }
   const authority = new Authority(DECK, { epoch: 'E' });
   const disk = new Disk(file, authority, false, { quiet: 5, latest: 20 });
-  t.after(() => disk.stopSync());
+  t.after(() => disk.stop());
   assert.equal(existsSync(stale), false, 'the temporary file of an earlier run is still there');
   assert.equal(existsSync(other), true, 'a file that the disk did not write was removed');
   if (!posix) return;
@@ -370,7 +424,7 @@ test('a stop on a changed file that cannot be read logs the error and does not t
   writeFileSync(file, DECK.replace('<h2>Two', 'AGENT <h2>Two'));
   chmodSync(file, 0o000);
   try {
-    assert.doesNotThrow(() => disk.stopSync());
+    await assert.doesNotReject(disk.stop());
     assert.ok(lines.some((l) => l.includes('could not')), 'the error is not in the log');
   } finally {
     chmodSync(file, 0o644);
