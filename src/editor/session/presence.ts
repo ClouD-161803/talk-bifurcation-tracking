@@ -7,7 +7,6 @@ import type { App } from '../app.ts';
 import { growOf, orientOf, view } from '../canvas/frames.ts';
 import { frameOf } from '../canvas/hit.ts';
 import { mathLookup, type MathLookup } from '../math.ts';
-import { caretOf } from './caret.ts';
 
 // a box in fractions of the width and the height of the slide, unturned about its center, the
 // angle deg that it is turned by in degrees, and the px grow that the frame of frames.ts stands
@@ -20,7 +19,8 @@ export type PresenceHooks = {
   // the element whose start tag is at each offset of source(), or null
   elementsAt(offsets: number[]): (Element | null)[];
   // the shapes of els and of the caret bars, read in one pass of layout. at is an offset into the
-  // text of the text element el, in which each formula counts as its TeX
+  // text of the text element el, in which each formula counts as its TeX and each <br> as one
+  // character
   shapes(els: Element[], carets: { el: Element; at: number }[]): { els: (Shape | null)[]; carets: (Shape | null)[] };
   // the offset of the caret of this page in host, or null when the caret is not in host
   caretIn(host: Element): number | null;
@@ -63,14 +63,51 @@ export function hooks(app: App): PresenceHooks {
         }),
       };
     },
-    caretIn: (host) => caretOf(host, mathLookup())?.offset ?? null,
+    caretIn: (host) => caretAt(host, mathLookup()),
     hovered: () => view.hover,
   };
 }
 
-// the box of a collapsed range at offset into the text of host, put after a formula that offset
-// falls inside, as putCaret of caret.ts puts the caret. an empty line has no box, and the first
-// line of host stands in for it
+// the offset of the caret of this page into the text of host, or null when it is not in host. a
+// formula counts as its TeX, as in caret.ts, and a <br> as one character, unlike in caret.ts,
+// since the start of a line after it is another place than the end of the line before
+function caretAt(host: Element, math: MathLookup): number | null {
+  const sel = getSelection();
+  const node = sel?.rangeCount ? sel.focusNode : null;
+  if (!node || !host.contains(node)) return null;
+  const at = sel!.focusOffset;
+  let count = 0;
+  let offset = -1;
+  const visit = (n: Node): void => {
+    if (n.nodeType === Node.TEXT_NODE) {
+      if (n === node) offset = count + at;
+      count += (n as Text).length;
+      return;
+    }
+    if (!(n instanceof Element)) return;
+    if (n.localName === 'br') {
+      count++;
+      return;
+    }
+    const info = n.localName === 'mjx-container' ? math(n) : null;
+    if (info) {
+      count += info.open.length + info.tex.length + info.close.length;
+      if (n.contains(node)) offset = count;
+      return;
+    }
+    n.childNodes.forEach((c, i) => {
+      if (n === node && i === at) offset = count;
+      visit(c);
+    });
+    if (n === node && at >= n.childNodes.length) offset = count;
+  };
+  visit(host);
+  return offset < 0 ? null : offset;
+}
+
+// the box of a collapsed range at offset into the text of host, as caretAt counts it, put after a
+// formula that offset falls inside, as putCaret of caret.ts puts the caret. an empty line has no
+// box, and the first line of host stands in for it
 function caretRect(host: Element, offset: number, math: MathLookup): DOMRect | null {
   let left = Math.max(0, offset);
   let spot: [Node, number] | null = null;
@@ -85,6 +122,14 @@ function caretRect(host: Element, offset: number, math: MathLookup): DOMRect | n
       return false;
     }
     if (!(n instanceof Element)) return false;
+    if (n.localName === 'br') {
+      if (left === 0) {
+        spot = [n.parentNode!, [...n.parentNode!.childNodes].indexOf(n)];
+        return true;
+      }
+      left--;
+      return false;
+    }
     const info = n.localName === 'mjx-container' ? math(n) : null;
     if (info) {
       const length = info.open.length + info.tex.length + info.close.length;
