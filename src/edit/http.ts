@@ -35,8 +35,13 @@ export const MIME: Record<string, string> = {
   '.gif': 'image/gif',
   '.webp': 'image/webp',
   '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
   '.mp4': 'video/mp4',
+  // an m4v is played as an mp4, which every browser names
+  '.m4v': 'video/mp4',
   '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.ogv': 'video/ogg',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',

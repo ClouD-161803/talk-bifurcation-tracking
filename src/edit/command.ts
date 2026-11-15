@@ -19,7 +19,8 @@ import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConf
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
 export const MEDIA_MAX = 64 * 1024 * 1024;
-const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'mp4', 'webm', 'json']);
+// the types of IMAGE_EXT and VIDEO_EXT in src/editor/media/store.ts, and json
+const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'mp4', 'm4v', 'webm', 'mov', 'ogv', 'json']);
 // the time in ms within which the edit command of a lock must answer, shorter in the tests
 const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
 

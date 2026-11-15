@@ -14,7 +14,7 @@ const MB = 1024 * 1024;
 const HOST_MAX = 64 * MB;
 const GUEST_MAX = 16 * MB;
 // the extensions that PUT media/ takes, apart from json, which the editor does not add
-const TAKEN = /\.(png|jpe?g|gif|webp|avif|svg|mp4|webm)$/i;
+const TAKEN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|mp4|m4v|webm|mov|ogv)$/i;
 export const FAILED = 'A picture could not be sent. Try again';
 
 type State = { busy: boolean; failed: boolean; network: boolean };
