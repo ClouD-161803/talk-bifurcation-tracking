@@ -275,3 +275,30 @@ test('a text element that another page holds refuses a caret, a press, a selecti
   clean(ana);
   clean(ben);
 });
+
+// a copy of a slide that holds the element of a state makes its offset doubtful on another page, and
+// a copy of a slide reloads the other pages today. the decision of send() is hence checked on its log
+test('a page sends its state again at a new version when another page could not carry its last state', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await caretAtEnd(ana, el(1, 'p'));
+  await until(() => ben.evaluate(LOCKED(el(1, 'p'))), 'the paragraph that Ana holds to be locked on the page of Ben');
+  const sendsWhen = (carry) => ana.evaluate(`(() => {
+    const p = ${P}, c = ${C}, send = c.sendPresence;
+    // a change of the state that waits for its throttle is sent first
+    p.send();
+    let sent = 0;
+    c.sendPresence = (s) => { sent++; send.call(c, s); };
+    p.log.carry = ${carry};
+    p.sentV = { ...p.sentV, n: p.sentV.n - 1 };
+    p.send();
+    c.sendPresence = send;
+    delete p.log.carry;
+    return sent;
+  })()`);
+  assert.equal(await sendsWhen('(o) => o'), 0, 'a state that the log carries to the same offsets is not sent again');
+  assert.equal(await sendsWhen('() => null'), 1, 'a state with an offset in doubt is sent again');
+  assert.equal(await sendsWhen('() => undefined'), 1, 'a state that the log does not reach is sent again');
+  clean(ana);
+  clean(ben);
+});
