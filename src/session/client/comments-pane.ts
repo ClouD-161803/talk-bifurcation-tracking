@@ -638,6 +638,7 @@ class Pane {
         error.textContent = message(e);
         error.hidden = false;
         over = false;
+        if (told(e)) toast(error.textContent);
       } finally {
         busy = false;
         sync();
@@ -871,12 +872,19 @@ class Pane {
 
 const inHistory = (): boolean => document.documentElement.classList.contains('beeson-history');
 
+const sentence = (text: string): string => `${text[0].toUpperCase()}${text.slice(1)}${/[.!?]$/.test(text) ? '' : '.'}`;
+
+// a 503 of the edit command gives its reason, e.g. that the comments are read only, and the answer
+// of a proxy is markup
+const told = (e: unknown): e is Failure => e instanceof Failure && e.status === 503 && !!e.message && !e.message.includes('<');
+
 // the message of a failed request for the person, which is not sent later
 function message(e: unknown): string {
   if (e instanceof Failure && e.status === 0) return 'Not sent. The connection to the host was lost.';
+  if (told(e)) return `Not sent. ${sentence(e.message)}`;
   if (e instanceof Failure && e.status >= 500) return 'Not sent. The host did not answer.';
   const text = e instanceof Error ? e.message : String(e);
-  return text ? `${text[0].toUpperCase()}${text.slice(1)}${/[.!?]$/.test(text) ? '' : '.'}` : 'The request failed.';
+  return text ? sentence(text) : 'The request failed.';
 }
 
 // a name isolated from the text around it, e.g. a name written right to left, and the text after it
