@@ -721,6 +721,7 @@ const nameOf = (client: Client, person: string): string =>
   person === client.person ? client.name || 'You' : client.known.find((k) => k.person === person)?.name ?? 'Someone';
 
 const PANE_KEY = 'beeson-session-comments-pane';
+const TOASTED = `beeson-session-comment-toasted:${location.pathname}`;
 
 const BUTTON_CSS = `
 .beeson-edit-titlebar .right button.beeson-session-comments { position: relative; }
@@ -768,18 +769,42 @@ export function install(client: Client): void {
       draw();
     });
   };
+
+  // a comment is a candidate for a toast once, when the page first receives it. the comments of the
+  // first answer are not toasted, and the toasted ones are kept through a reload of the page
+  let received: Set<string> | null = null;
   const toasted = new Set<string>();
+  try {
+    for (const id of JSON.parse(sessionStorage.getItem(TOASTED) || '[]') as string[]) toasted.add(id);
+  } catch {
+    // a page without storage toasts again after a reload
+  }
   const kind: ToastKind = { key: 'comments', many: (n) => ({ text: `${n} new comments`, button: { label: 'Show', run: () => pane.openMine() } }) };
-  comments.onChange((fresh) => {
+  comments.onChange(() => {
     schedule();
     badges.schedule();
+    if (comments.rev < 0) return;
+    const first = !received;
+    received ??= new Set();
     const me = `@{${client.person}}`;
-    for (const t of fresh) {
+    let added = false;
+    for (const t of comments.threads.values()) {
       for (const i of itemsOf(t)) {
-        if (i.author === client.person || toasted.has(i.id) || !i.text.includes(me) || stamp(i) <= Math.max(comments.seen, comments.read.get(t.id) ?? 0)) continue;
+        const key = `${i.id}:${stamp(i)}`;
+        if (received.has(key)) continue;
+        received.add(key);
+        if (first || i.author === client.person || toasted.has(i.id) || !i.text.includes(me) || stamp(i) <= Math.max(comments.seen, comments.read.get(t.id) ?? 0)) continue;
         toasted.add(i.id);
+        added = true;
         const n = comments.numberOf(t);
         toast(named(nameOf(client, i.author), ` mentioned you ${n === null ? 'on the deck' : `on slide ${n}`}`), { label: 'Show', run: () => pane.open(t.id) }, kind);
+      }
+    }
+    if (added) {
+      try {
+        sessionStorage.setItem(TOASTED, JSON.stringify([...toasted].slice(-200)));
+      } catch {
+        // kept for this page only
       }
     }
   });
