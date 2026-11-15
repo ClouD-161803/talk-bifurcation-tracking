@@ -73,3 +73,15 @@ test('the outlines and the running heads follow the typing of the person in a se
   t.after(() => c.close());
   assert.deepEqual(await a.evaluate(CHROME), await c.evaluate(CHROME));
 });
+
+test('a slide that becomes a vertical stack, and back, looks as on a fresh page', async (t) => {
+  let base = null;
+  await steps(t, [
+    ['a stack made', (s) => {
+      base = s;
+      const slide = slideWith(s, 'Embedding videos');
+      return once(s, slide, `<section>\n${slide}\n<section>\n  <h2>Below</h2>\n  <p>A slide below.</p>\n</section>\n</section>`);
+    }, false],
+    ['the stack undone', () => base, false],
+  ]);
+});
