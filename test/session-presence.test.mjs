@@ -326,3 +326,50 @@ test('the speaker notes that another page holds are locked, and not framed', { t
   clean(ana);
   clean(ben);
 });
+
+// the clock of the floor rule of page moved by ms, and its deadlines taken
+const later = (page, ms) => page.evaluate(`(() => { const p = ${P}; p.skew += ${ms}; p.check(); return true; })()`);
+
+test('a hold beats every 5 s, is lost after 15 s of silence, and is taken by another person after 30 s without typing', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' typed');
+  await until(() => ben.evaluate(LOCKED(p)), 'the lock of Ana on the page of Ben');
+  const beat = () => ben.evaluate(`${C}.resolved()[0]?.beat`);
+  assert.equal(await beat(), 0);
+
+  // the heartbeat of Ana after 5 s
+  await later(ana, 4900);
+  assert.equal(await ana.evaluate(`${P}.held === ${p}`), true);
+  await later(ana, 100);
+  await until(async () => (await beat()) === 1, 'the first heartbeat of Ana');
+
+  // 15 s without a heartbeat, on the clock of Ben, end the hold of Ana there
+  await later(ben, 14_900);
+  assert.equal(await ben.evaluate(LOCKED(p)), true, 'still locked at 14.9 s');
+  await later(ben, 100);
+  assert.equal(await ben.evaluate(LOCKED(p)), false, 'the hold is lost after 15 s of silence');
+  // and the next heartbeat holds it again
+  await later(ana, 5000);
+  await until(async () => (await beat()) === 2 && (await ben.evaluate(LOCKED(p))), 'the second heartbeat of Ana to lock the paragraph again');
+
+  // 30 s without typing: the paragraph is open to Ben while the heartbeats go on
+  await later(ben, 30_000);
+  await later(ana, 30_000);
+  await until(async () => (await beat()) === 3, 'the third heartbeat of Ana');
+  await later(ben, 0);
+  assert.equal(await ben.evaluate(LOCKED(p)), false, 'Ana has not typed for 30 s');
+  await caretAtEnd(ben, p);
+  // Ana yields the paragraph to Ben
+  await until(() => ana.evaluate(`${LOCKED(p)} && ${P}.held === null`), 'Ana to yield the paragraph');
+  assert.equal(await ana.evaluate(BUBBLE), 'Ben is editing this text now.');
+  assert.deepEqual(await ana.evaluate(`({ caret: ${p}.contains(getSelection().focusNode), focused: document.activeElement === ${p} })`), { caret: false, focused: false });
+  assert.equal(await ben.evaluate(`${P}.held === ${p} && !${LOCKED(p)}`), true, 'Ben holds the paragraph');
+  await typeKeys(ben, ' by Ben');
+  await until(() => ana.evaluate(`${p}.textContent.endsWith('typed by Ben')`), 'the typing of Ben on the page of Ana');
+  clean(ana);
+  clean(ben);
+});
