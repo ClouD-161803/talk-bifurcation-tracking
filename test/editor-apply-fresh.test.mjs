@@ -120,3 +120,169 @@ test('two changes in two text nodes of a paragraph with a formula keep both text
   await applied(b, second, 'two changes');
   assert.deepEqual(await b.evaluate(`(() => { const p = ${p}; return [p.firstChild === window.__first, p.lastChild === window.__last, p.firstChild.data, p.lastChild.data]; })()`), [true, true, 'where X', 'Y is the effective potential.']);
 });
+
+// a generator of numbers in [0, 1) from seed, by mulberry32
+function random(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// the paragraphs, items, and headings of the slides written on one line, outside code and scripts
+// and without math, each with its line and its tag
+function oneLine(lines) {
+  const out = [];
+  let slides = false;
+  let raw = false;
+  for (const [i, l] of lines.entries()) {
+    if (l.startsWith('<section')) slides = true;
+    if (raw || (/<(pre|script)[\s>]/.test(l) && !/<\/(pre|script)>/.test(l))) {
+      raw = !/<\/(pre|script)>/.test(l);
+      continue;
+    }
+    const m = l.match(/^\s*<(p|li|h2)(\s[^>]*)?>(.*)<\/\1>$/);
+    if (slides && m && !/<\/?(p|li|h2|div|ul|ol|section)[\s>]/.test(m[3]) && !/[\\$]/.test(l)) out.push({ i, tag: m[1] });
+  }
+  return out;
+}
+
+// the ranges of the lines of the horizontal slides, from the line of the start tag to that of the
+// end tag. the slides of a stack are written indented, hence a stack is one range
+function slideRanges(lines) {
+  const out = [];
+  for (const [i, l] of lines.entries()) {
+    if (l.startsWith('<section')) out.push([i, i]);
+    else if (l.startsWith('</section>')) out.at(-1)[1] = i;
+  }
+  return out;
+}
+
+const isStack = (lines, r) => lines[r[0] + 1].startsWith('  <section');
+const cut = (lines, r) => lines.slice(r[0], r[1] + 1);
+const WORDS = ['orbit', 'halo', 'family', 'Moon', 'step', 'slide'];
+
+// each change of the text, by its label, its function of the lines and of a pick from a list, and
+// the reload that its apply asks for
+const MUTATIONS = [
+  ['a word', (lines, pick) => {
+    const { i } = pick(oneLine(lines));
+    const words = [...lines[i].matchAll(/(?<![&\w])[A-Za-z]{3,}\b(?![^<]*>)/g)].filter((m) => m.index > lines[i].indexOf('>'));
+    if (!words.length) return;
+    const w = pick(words);
+    lines[i] = lines[i].slice(0, w.index) + pick(WORDS) + lines[i].slice(w.index + w[0].length);
+  }, false],
+  ['a section heading', (lines, pick) => {
+    const all = [...lines.keys()].filter((i) => /^\s*<h2>/.test(lines[i]) && lines[i - 1].includes('class="sec"'));
+    const i = pick(all);
+    lines[i] = lines[i].replace(/<h2>.*<\/h2>/, `<h2>${pick(['Chapter one', 'Chapter two', 'Halo orbits', 'Part three'])}</h2>`);
+  }, false],
+  ['a box moved', (lines, pick) => {
+    const i = pick([...lines.keys()].filter((i) => /translate: -?\d+px -?\d+px/.test(lines[i])));
+    const n = pick([1, 2]);
+    let k = 0;
+    lines[i] = lines[i].replace(/-?\d+(?=px)/g, (v) => (++k === n ? String(Number(v) + pick([-40, -7, 9, 30])) : v));
+  }, false],
+  ['a step', (lines, pick) => {
+    const { i } = pick(oneLine(lines).filter((e) => e.tag === 'p'));
+    lines[i] = lines[i].includes(' class="fragment">') ? lines[i].replace(' class="fragment">', '>') : lines[i].replace(/^(\s*<p)>/, '$1 class="fragment">');
+  }, false],
+  ['a step index', (lines, pick) => {
+    const i = pick([...lines.keys()].filter((i) => /data-fragment-index="\d"/.test(lines[i]) && !lines[i].includes('<video')));
+    const to = pick(['1', '2', '3', '4', null]);
+    lines[i] = lines[i].replace(/ data-fragment-index="\d"/, to === null ? '' : ` data-fragment-index="${to}"`);
+  }, false],
+  ['a line taken', (lines, pick) => {
+    const all = oneLine(lines).filter((e) => e.tag !== 'h2' && (e.tag === 'p' || lines[e.i - 1].includes('<li') || lines[e.i + 1].includes('<li')));
+    lines.splice(pick(all).i, 1);
+  }, false],
+  ['a line twice', (lines, pick) => {
+    const { i } = pick(oneLine(lines));
+    lines.splice(i + 1, 0, lines[i]);
+  }, false],
+  ['a line moved', (lines, pick) => {
+    const all = oneLine(lines).filter((e) => e.tag === 'p' || lines[e.i - 1].includes('<li') || lines[e.i + 1].includes('<li'));
+    const from = pick(all);
+    const to = pick(oneLine(lines).filter((e) => e.tag === from.tag && e.i !== from.i));
+    const [line] = lines.splice(from.i, 1);
+    lines.splice(to.i > from.i ? to.i : to.i + 1, 0, line);
+  }, false],
+  ['a line added', (lines, pick) => {
+    const { i } = pick(oneLine(lines).filter((e) => e.tag === 'p'));
+    lines.splice(i + 1, 0, `${lines[i].match(/^\s*/)[0]}<p>A new ${pick(WORDS)} line.</p>`);
+  }, false],
+  ['slides swapped', (lines, pick) => {
+    const ranges = slideRanges(lines);
+    const a = pick(ranges);
+    const b = pick(ranges.filter((r) => r !== a));
+    const [first, second] = a[0] < b[0] ? [a, b] : [b, a];
+    lines.splice(first[0], second[1] + 1 - first[0], ...cut(lines, second), ...lines.slice(first[1] + 1, second[0]), ...cut(lines, first));
+  }, false],
+  ['a slide taken', (lines, pick) => {
+    const ranges = slideRanges(lines);
+    if (ranges.length < 4) return;
+    const r = pick(ranges.filter((r) => !cut(lines, r).some((l) => l.includes('<script'))));
+    lines.splice(r[0], r[1] + 1 - r[0]);
+  }, false],
+  ['a slide twice', (lines, pick) => {
+    const r = pick(slideRanges(lines).filter((r) => !cut(lines, r).some((l) => l.includes('<script'))));
+    lines.splice(r[1] + 1, 0, ...cut(lines, r));
+  }, false],
+  ['a stack made', (lines, pick) => {
+    const ranges = slideRanges(lines);
+    const k = pick([...ranges.keys()].slice(0, -1).filter((k) => !isStack(lines, ranges[k]) && !isStack(lines, ranges[k + 1])));
+    if (k === undefined) return;
+    const [a, b] = [ranges[k], ranges[k + 1]];
+    for (const i of [a[0], a[1], b[0], b[1]]) lines[i] = `  ${lines[i]}`;
+    lines.splice(b[1] + 1, 0, '</section>');
+    lines.splice(a[0], 0, '<section>');
+  }, false],
+  ['a stack undone', (lines, pick) => {
+    const r = pick(slideRanges(lines).filter((r) => isStack(lines, r)));
+    if (!r) return;
+    for (let i = r[0] + 1; i < r[1]; i++) if (/^ {2}<\/?section/.test(lines[i])) lines[i] = lines[i].slice(2);
+    lines.splice(r[1], 1);
+    lines.splice(r[0], 1);
+  }, false],
+  ['a camera', (lines, pick) => {
+    const i = pick([...lines.keys()].filter((i) => lines[i].includes('class="surface"')));
+    const to = `data-azimuth="${pick([-90, -30, 20, 75])}"`;
+    lines[i] = /data-azimuth="[^"]*"/.test(lines[i]) ? lines[i].replace(/data-azimuth="[^"]*"/, to) : lines[i].replace('class="surface"', `class="surface" ${to}`);
+  }, false],
+  ['a mass ratio', (lines, pick) => {
+    const i = pick([...lines.keys()].filter((i) => lines[i].includes('class="surface"')));
+    lines[i] = lines[i].replace(/data-mu="[^"]*"/, (m) => (m === 'data-mu="0.1"' ? 'data-mu="0.2"' : 'data-mu="0.1"'));
+  }, true],
+];
+
+for (const seed of [1, 2, 3]) {
+  test(`a page after each change of a seeded sequence looks as a fresh page, with the seed ${seed}`, { timeout: 240000 }, async (t) => {
+    let b = await sessionPage(browser);
+    t.after(() => b.close());
+    const rand = random(seed);
+    const pick = (list) => list[Math.floor(rand() * list.length)];
+    let text = b.source;
+    for (let n = 1; n <= 20; n++) {
+      const [label, mutate, reload] = pick(MUTATIONS);
+      const lines = text.split('\n');
+      mutate(lines, pick);
+      if (lines.join('\n') === text) continue;
+      text = lines.join('\n');
+      const at = `seed ${seed}, change ${n}, ${label}`;
+      assert.equal((await applyOn(b, text)).reload, reload, `${at}: the reload of the apply`);
+      if (reload) {
+        assert.deepEqual(b.errors, [], at);
+        await b.close();
+        b = await sessionPage(browser, { deck: freshDeck(t, text), text });
+        continue;
+      }
+      await applied(b, text, at);
+      await looksFresh(t, browser, b, text, at);
+    }
+    assert.deepEqual(b.errors, []);
+  });
+}
