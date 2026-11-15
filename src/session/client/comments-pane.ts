@@ -89,7 +89,7 @@ class Pane {
   private nodes = new Map<string, HTMLElement>();
   private signs = new Map<string, string>();
   private replies = new Map<string, Field>();
-  private groups = new Map<string, HTMLElement>();
+  private groups = new Map<Element | string, HTMLElement>();
   private order: string[] = [];
 
   private readonly client: Client;
@@ -153,11 +153,13 @@ class Pane {
     return n === null ? 'On the slide' : `On Slide ${n}`;
   }
 
-  // the threads in slide order, those on the deck first
+  // the threads in slide order, those on the deck first. a slide of a stack shares its number with
+  // the slides of the stack, hence the order is that of the slides in the deck
   private sorted(places: Map<string, Place>): Comment[] {
+    const index = new Map([...document.querySelectorAll('.reveal .slides section')].map((s, i) => [s, i]));
     const key = (t: Comment) => {
       const p = places.get(t.id);
-      return p?.slide ? (p.number ?? 0) : -1;
+      return p?.slide ? (index.get(p.slide) ?? 0) : -1;
     };
     return [...this.comments.threads.values()].sort((a, b) => key(a) - key(b) || (a.anchor?.start ?? 0) - (b.anchor?.start ?? 0) || a.time - b.time);
   }
@@ -168,18 +170,23 @@ class Pane {
     const shown = this.sorted(places).filter((t) => this.visible(t));
     const want: HTMLElement[] = [];
     if (this.draft) want.push(this.draft.box);
-    let group: string | null = null;
+    // a heading per slide, which reads the number of the slide in the status bar
+    const groups = new Map<Element | string, HTMLElement>();
+    let group: Element | string | null = null;
     for (const t of shown) {
       const p = places.get(t.id) ?? null;
-      const g = p?.slide ? (p.number === null ? 'Slide' : `Slide ${p.number}`) : 'On the deck';
-      if (g !== group) {
-        group = g;
-        let h = this.groups.get(g);
-        if (!h) this.groups.set(g, (h = make('h3', '', g)));
+      const g = p?.slide ?? 'On the deck';
+      if (g !== group && !groups.has(g)) {
+        const text = p?.slide ? (p.number === null ? 'Slide' : `Slide ${p.number}`) : 'On the deck';
+        const h = this.groups.get(g) ?? make('h3');
+        if (h.textContent !== text) h.textContent = text;
+        groups.set(g, h);
         want.push(h);
       }
+      group = g;
       want.push(this.thread(t, p));
     }
+    this.groups = groups;
     this.empty.textContent = FILTERS.find((f) => f[0] === this.filter)![2];
     if (!shown.length && !this.draft) want.push(this.empty);
     // the nodes are put in place one by one, so that a focused field that keeps its place is not
