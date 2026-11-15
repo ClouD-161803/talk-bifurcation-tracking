@@ -153,3 +153,25 @@ test('the input of a keyboard of a phone, whose key is Unidentified, goes into a
   assert.equal(await b.evaluate(`${E}.render()`), once(text, 'viewer\'s attention.</p>', 'viewer\'s attention.x</p>'));
   assert.deepEqual(b.errors, []);
 });
+
+const AGAIN = [
+  ['a tag put into its text', (text) => once(text, 'Design the complete', 'Design the <strong>complete</strong>')],
+  ['a character put at its start', (text) => once(text, 'Design the complete', 'QDesign the complete')],
+];
+
+for (const [label, change] of AGAIN) {
+  test(`a parked caret at the end of its paragraph stays at the end after an apply of ${label}`, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    const second = change(await parkP1(b));
+    assert.equal((await applyOn(b, second)).reload, false);
+    await typeKeys(b, 'Xyz');
+    await b.waitFor(`${P1}.textContent.includes('Xyz')`);
+    const want = once(second, 'viewer\'s attention.</p>', 'viewer\'s attention.Xyz</p>');
+    const got = await b.evaluate(`${E}.render()`);
+    const line = (text) => text.split('\n').find((l) => l.includes('slide first'));
+    assert.equal(line(got), line(want), 'the keys go to the end of the paragraph');
+    assert.equal(got, want);
+    assert.deepEqual(b.errors, []);
+  });
+}
