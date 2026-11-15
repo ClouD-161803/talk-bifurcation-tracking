@@ -24,7 +24,8 @@ const HIT = 32;
 const GESTURE = ['beeson-dragging', 'beeson-sizing', 'beeson-rotating'];
 
 const CSS = `
-.beeson-presence { position: fixed; left: var(--ed-slide-x, 0px); top: var(--ed-slide-y, 0px); width: var(--ed-slide-w, 0px); height: var(--ed-slide-h, 0px); clip-path: var(--ed-clip, none); z-index: 50; pointer-events: none; --edge: #fff; }
+.beeson-presence-cell { position: fixed; inset: 0; clip-path: var(--ed-cell-clip, none); z-index: 50; pointer-events: none; }
+.beeson-presence { position: absolute; left: var(--ed-slide-x, 0px); top: var(--ed-slide-y, 0px); width: var(--ed-slide-w, 0px); height: var(--ed-slide-h, 0px); --edge: #fff; }
 html[data-theme="light"] .beeson-presence { --edge: #1d1d1f; }
 html.beeson-previewing .beeson-presence, html.beeson-playing .beeson-presence, html:not(.beeson-editor) .beeson-presence { visibility: hidden; }
 .beeson-presence .c0 { --tone: var(--data-2); --on: #1d1d1f; }
@@ -66,9 +67,11 @@ const widthOf = (text: string): number => {
 export function install(client: Client): void {
   const { app, shell } = client;
   style('presence', CSS);
+  const cell = make('div', 'beeson-presence-cell');
   const layer = make('div', 'beeson-presence');
-  layer.setAttribute('aria-hidden', 'true');
-  document.body.append(layer);
+  cell.setAttribute('aria-hidden', 'true');
+  cell.append(layer);
+  document.body.append(cell);
   let frame = 0;
   // the time from which each page shows its name, by client id, with its name and selection then
   const named = new Map<string, { at: number; name: string; selected: Element[] }>();
@@ -224,7 +227,7 @@ export function install(client: Client): void {
 
   app.onRefresh(['content', 'selection', 'slide', 'structure'], schedule);
   client.on('resolved', schedule);
-  client.on('ended', () => layer.remove());
+  client.on('ended', () => cell.remove());
 
   // the flags of the element under the pointer show the names, by a class alone
   window.addEventListener('pointermove', () => {
