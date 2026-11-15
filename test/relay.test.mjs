@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { get } from 'node:http';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { startRelay } from '../scripts/relay.mjs';
@@ -125,4 +126,31 @@ test('add regression test: a second registration of the key of a live session is
   assert.equal(second.key, first.key);
   await until(() => second.stderr.includes('already shared by another edit command'), 'the second edit command to be refused');
   for (let i = 0; i < 6; i++) assert.equal(await (await guest()).text(), DECK);
+});
+
+// the names and values of the headers of an answer, as they came on the wire
+const rawHeaders = (url) =>
+  new Promise((done, fail) => {
+    get(url, (res) => {
+      res.resume();
+      const pairs = [];
+      for (let i = 0; i < res.rawHeaders.length; i += 2) pairs.push([res.rawHeaders[i].toLowerCase(), res.rawHeaders[i + 1]]);
+      done(pairs);
+    }).on('error', fail);
+  });
+
+test('add regression test: an answer through the relay carries one Content-Type and one Cache-Control', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(talk, 'plot.png'), 'png');
+  const edit = await startEdit(talk, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  await until(async () => (await fetch(`${relay.url}/${edit.key}/index.html`)).status === 200, 'the edit command to register');
+  for (const [path, type, cache] of [['index.html', 'text/html; charset=utf-8', 'no-store'], ['plot.png', 'image/png', 'no-cache']]) {
+    const headers = await rawHeaders(`${relay.url}/${edit.key}/${path}`);
+    assert.deepEqual(headers.filter(([k]) => k === 'content-type').map(([, v]) => v), [type], path);
+    assert.deepEqual(headers.filter(([k]) => k === 'cache-control').map(([, v]) => v), [cache], path);
+  }
 });
