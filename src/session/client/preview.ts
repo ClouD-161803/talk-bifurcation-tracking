@@ -316,7 +316,7 @@ export class Preview {
     if (b.info.parentNode !== this.bar) this.bar.replaceChildren(b.info, b.slides, b.actions);
     const date = v.name ? `${v.name}, ${dayLabel(v.time)}, ${timeOf(v.time)}` : `${dayLabel(v.time)}, ${timeOf(v.time)}`;
     if (b.date.textContent !== date) b.date.textContent = date;
-    const who = authorsOf(this.client, v.authors);
+    const who = v.start ? make('span', 'who', 'Start of the history') : authorsOf(this.client, v.authors);
     if (!who.isEqualNode(b.who)) {
       b.who.replaceWith(who);
       b.who = who;
