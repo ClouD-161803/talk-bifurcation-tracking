@@ -1,6 +1,7 @@
 // a toast: a short message above the status bar for SHOWN ms, read out by a screen reader, with an
 // optional button. one toast is shown at a time, and the others wait in a queue. the region is kept
-// in the page between toasts, since a screen reader reads a change of a region that it knows
+// in the page between toasts, since a screen reader reads a change of a region that it knows. a toast
+// waits for the close of a modal dialog, which makes the region inert, and its time starts then
 
 import { make, style } from './dom.ts';
 
@@ -19,21 +20,41 @@ export type ToastButton = { label: string; run(): void };
 const queue: { line: (string | Node)[]; button?: ToastButton }[] = [];
 let region: HTMLElement | null = null;
 let timer = 0;
+let waiting = false;
+
+// the empty region put in the page, ahead of its first toast
+export function mountToasts(): void {
+  if (region) return;
+  style('toast', CSS);
+  region = make('div', 'beeson-session-toast');
+  region.setAttribute('role', 'status');
+  document.body.append(region);
+}
 
 // text is a string, or a line of strings and nodes, e.g. with a name in a bdi element
 export function toast(text: string | (string | Node)[], button?: ToastButton): void {
   queue.push({ line: typeof text === 'string' ? [text] : text, button });
-  if (!timer) next();
+  if (!timer && !waiting) next();
 }
 
 function next(): void {
   clearTimeout(timer);
   timer = 0;
   if (!region) {
-    style('toast', CSS);
-    region = make('div', 'beeson-session-toast');
-    region.setAttribute('role', 'status');
-    document.body.append(region);
+    // a region made with its text is not read out, hence the text follows a task later
+    mountToasts();
+    timer = window.setTimeout(next, 0);
+    return;
+  }
+  const modal = queue.length ? document.querySelector('dialog:modal') : null;
+  if (modal) {
+    waiting = true;
+    region.replaceChildren();
+    modal.addEventListener('close', () => {
+      waiting = false;
+      next();
+    }, { once: true });
+    return;
   }
   const shown = queue.shift();
   if (!shown) {

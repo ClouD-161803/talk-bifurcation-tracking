@@ -14,7 +14,7 @@ import { closeMenu } from './menu.ts';
 import { presenceOf } from './presence.ts';
 import { Preview } from './preview.ts';
 import { addStateItem } from './state.ts';
-import { toast } from './toast.ts';
+import { mountToasts, toast } from './toast.ts';
 
 // unnamed versions closer than FOLD ms fold under the newest of them
 const FOLD = 30 * 60_000;
@@ -138,6 +138,8 @@ export function install(client: Client): void {
   const heads = new Map<string, HTMLElement>();
   const notes = new Map<string, HTMLElement>();
   const used = new Set<string>();
+
+  mountToasts();
 
   function build(): HTMLElement {
     style('history', STYLE);
