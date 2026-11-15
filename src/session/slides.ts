@@ -92,8 +92,9 @@ function childrenOf(html: string): Range[] {
 }
 
 // the pairs of an item of a and an item of b that are one item, matched first by equal text in
-// order, and then, between two equal ones, by the most characters shared at the start and the end
-export function pairs(a: string[], b: string[]): { i: number; j: number; same: boolean }[] {
+// order, and then, between two equal ones, by the most characters shared at the start and the end.
+// with half, two items are paired only when they share at least half of the shorter text
+export function pairs(a: string[], b: string[], half = false): { i: number; j: number; same: boolean }[] {
   const out: { i: number; j: number; same: boolean }[] = [];
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) out.push({ i: pre, j: pre, same: true }), pre++;
@@ -112,7 +113,7 @@ export function pairs(a: string[], b: string[]): { i: number; j: number; same: b
   anchors.push([n, m]);
   let i0 = 0, j0 = 0;
   for (const [ai, aj] of anchors) {
-    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj))) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
+    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
     if (ai < n) out.push({ i: pre + ai, j: pre + aj, same: true });
     i0 = ai + 1;
     j0 = aj + 1;
@@ -131,9 +132,10 @@ const shared = (x: string, y: string) => {
 
 // the pairs in order of an item of a and an item of b, as many as the shorter list holds, that
 // share the most characters in all, found by placing the shorter list into the longer one
-function bestPairs(a: string[], b: string[]): [number, number][] {
+function bestPairs(a: string[], b: string[], half: boolean): [number, number][] {
   const n = a.length, m = b.length;
   if (n === 0 || m === 0) return [];
+  if (half) return closePairs(a, b);
   if (n === m) return a.map((_, i) => [i, i]);
   const k = Math.min(n, m);
   const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
@@ -150,12 +152,37 @@ function bestPairs(a: string[], b: string[]): [number, number][] {
   return out.reverse();
 }
 
+// the pairs in order of an item of a and an item of b that share the most characters in all, where
+// an item is left out rather than paired with one that shares less than half of the shorter text
+function closePairs(a: string[], b: string[]): [number, number][] {
+  const n = a.length, m = b.length;
+  const gain = (i: number, j: number) => {
+    const s = shared(a[i], b[j]);
+    return s > 0 && 2 * s >= Math.min(a[i].length, b[j].length) ? s : -1;
+  };
+  const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      const g = gain(i, j);
+      score[i][j] = Math.max(score[i + 1][j], score[i][j + 1], g < 0 ? -1 : g + score[i + 1][j + 1]);
+    }
+  }
+  const out: [number, number][] = [];
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    const g = gain(i, j);
+    if (g >= 0 && score[i][j] === g + score[i + 1][j + 1]) out.push([i++, j++]);
+    else if (score[i][j] === score[i + 1][j]) i++;
+    else j++;
+  }
+  return out;
+}
+
 // the numbers of the slides of after that hold a mark, and what is gone from before. an empty
 // mark, where text was removed, is on a slide when it falls strictly inside it
 export function slideChanges(before: string, beforeSlides: Slide[], after: string, afterSlides: Slide[], marks: Range[]): SlideChanges {
   const a = beforeSlides.map((s) => before.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
-  const matched = pairs(a, b);
+  const matched = pairs(a, b, true);
   // a slide that reads as before is not changed, although a line diff may have marked its start tag
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = new Set<number>();

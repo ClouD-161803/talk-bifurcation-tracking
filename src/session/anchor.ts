@@ -123,29 +123,53 @@ function findInserted(after: string, text: string, inserted: Span[], near: numbe
   return best;
 }
 
-// the slides of a matched to those of b: first by equal text, wherever the slide moved, the nearest
-// between several, and then the others in order by the characters they share
-function matchSlides(a: string[], b: string[]): { to: Int32Array; kept: Uint8Array } {
-  const to = new Int32Array(a.length).fill(-1);
-  const kept = new Uint8Array(a.length);
-  const used = new Uint8Array(b.length);
+// the slides of before matched to those of after. a slide that no patch touches is the same slide at
+// its shifted place. of the others, a slide of equal text is matched first, the nearest between
+// several, and then the rest in order, two slides only when they share at least half of the shorter
+// text. a slide left out is removed
+function matchSlides(before: string, s0: Slide[], after: string, s1: Slide[], patches: Patch[]): { to: Int32Array; kept: Uint8Array } {
+  const to = new Int32Array(s0.length).fill(-1);
+  const kept = new Uint8Array(s0.length);
+  const used = new Uint8Array(s1.length);
+  const starts = new Map(s1.map((s, j) => [s.start, j]));
+  let k = 0;
+  let delta = 0;
+  for (let i = 0; i < s0.length; i++) {
+    const s = s0[i];
+    for (; k < patches.length && patches[k].end <= s.start; k++) delta += patches[k].text.length - (patches[k].end - patches[k].start);
+    let touched = false;
+    for (let q = k; q < patches.length && patches[q].start < s.end && !touched; q++) touched = touches(patches[q], s.start, s.end);
+    const j = touched ? undefined : starts.get(s.start + delta);
+    if (j === undefined || used[j] || s1[j].end - s1[j].start !== s.end - s.start) continue;
+    to[i] = j;
+    kept[i] = 1;
+    used[j] = 1;
+  }
+  const textA = (i: number) => before.slice(s0[i].start, s0[i].end);
+  const restB = [...s1.keys()].filter((j) => !used[j]);
+  const textB = restB.map((j) => after.slice(s1[j].start, s1[j].end));
   const byText = new Map<string, number[]>();
-  b.forEach((t, j) => {
-    const list = byText.get(t);
+  restB.forEach((j, x) => {
+    const list = byText.get(textB[x]);
     if (list) list.push(j);
-    else byText.set(t, [j]);
+    else byText.set(textB[x], [j]);
   });
-  a.forEach((t, i) => {
+  const restA: number[] = [];
+  for (let i = 0; i < s0.length; i++) {
+    if (to[i] >= 0) continue;
+    const t = textA(i);
     let best = -1;
     for (const j of byText.get(t) ?? []) if (!used[j] && (best < 0 || Math.abs(j - i) < Math.abs(best - i))) best = j;
-    if (best < 0) return;
+    if (best < 0) {
+      restA.push(i);
+      continue;
+    }
     to[i] = best;
     kept[i] = 1;
     used[best] = 1;
-  });
-  const restA = [...a.keys()].filter((i) => to[i] < 0);
-  const restB = [...b.keys()].filter((j) => !used[j]);
-  for (const p of pairs(restA.map((i) => a[i]), restB.map((j) => b[j]))) to[restA[p.i]] = restB[p.j];
+  }
+  const left = restB.filter((j) => !used[j]);
+  for (const p of pairs(restA.map(textA), left.map((j) => after.slice(s1[j].start, s1[j].end)), true)) to[restA[p.i]] = left[p.j];
   return { to, kept };
 }
 
@@ -270,14 +294,14 @@ function shiftedSlides(before: string, patches: Patch[], after: string, s0: Slid
   return { s1, to: Int32Array.from(s0.keys()), kept };
 }
 
-function matchedSlides(before: string, s0: Slide[], after: string): Matched {
+function matchedSlides(before: string, s0: Slide[], after: string, patches: Patch[]): Matched {
   const s1 = slidesOf(after);
-  return { s1, ...matchSlides(s0.map((s) => before.slice(s.start, s.end)), s1.map((s) => after.slice(s.start, s.end))) };
+  return { s1, ...matchSlides(before, s0, after, s1, patches) };
 }
 
 function slow(before: string, patches: Patch[], after: string, items: Anchored[], given: Slide[] | null): Moved {
   const s0 = given ?? slidesOf(before);
-  const { s1, to, kept } = shiftedSlides(before, patches, after, s0) ?? matchedSlides(before, s0, after);
+  const { s1, to, kept } = shiftedSlides(before, patches, after, s0) ?? matchedSlides(before, s0, after, patches);
   const index = new Map(s0.map((s, i) => [s.start, i]));
   const inserted = insertedSpans(patches);
   // an element longer than every inserted span and than REMOVED_MAX is neither found by its text nor

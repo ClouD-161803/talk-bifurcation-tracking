@@ -1444,7 +1444,7 @@ function childrenOf(html) {
   }
   return out;
 }
-function pairs(a, b) {
+function pairs(a, b, half = false) {
   const out = [];
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) out.push({ i: pre, j: pre, same: true }), pre++;
@@ -1462,7 +1462,7 @@ function pairs(a, b) {
   anchors2.push([n, m]);
   let i0 = 0, j0 = 0;
   for (const [ai, aj] of anchors2) {
-    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj))) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
+    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
     if (ai < n) out.push({ i: pre + ai, j: pre + aj, same: true });
     i0 = ai + 1;
     j0 = aj + 1;
@@ -1477,9 +1477,10 @@ var shared = (x, y) => {
   while (s < x.length - p && s < y.length - p && x[x.length - 1 - s] === y[y.length - 1 - s]) s++;
   return p + s;
 };
-function bestPairs(a, b) {
+function bestPairs(a, b, half) {
   const n = a.length, m = b.length;
   if (n === 0 || m === 0) return [];
+  if (half) return closePairs(a, b);
   if (n === m) return a.map((_, i) => [i, i]);
   const k = Math.min(n, m);
   const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
@@ -1495,10 +1496,32 @@ function bestPairs(a, b) {
   }
   return out.reverse();
 }
+function closePairs(a, b) {
+  const n = a.length, m = b.length;
+  const gain = (i, j) => {
+    const s = shared(a[i], b[j]);
+    return s > 0 && 2 * s >= Math.min(a[i].length, b[j].length) ? s : -1;
+  };
+  const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      const g = gain(i, j);
+      score[i][j] = Math.max(score[i + 1][j], score[i][j + 1], g < 0 ? -1 : g + score[i + 1][j + 1]);
+    }
+  }
+  const out = [];
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    const g = gain(i, j);
+    if (g >= 0 && score[i][j] === g + score[i + 1][j + 1]) out.push([i++, j++]);
+    else if (score[i][j] === score[i + 1][j]) i++;
+    else j++;
+  }
+  return out;
+}
 function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const a = beforeSlides.map((s) => before2.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
-  const matched = pairs(a, b);
+  const matched = pairs(a, b, true);
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = /* @__PURE__ */ new Set();
   afterSlides.forEach((s, j) => {
@@ -1613,27 +1636,49 @@ function findInserted(after, text, inserted, near) {
   }
   return best;
 }
-function matchSlides(a, b) {
-  const to = new Int32Array(a.length).fill(-1);
-  const kept = new Uint8Array(a.length);
-  const used = new Uint8Array(b.length);
+function matchSlides(before2, s0, after, s1, patches) {
+  const to = new Int32Array(s0.length).fill(-1);
+  const kept = new Uint8Array(s0.length);
+  const used = new Uint8Array(s1.length);
+  const starts = new Map(s1.map((s, j) => [s.start, j]));
+  let k = 0;
+  let delta = 0;
+  for (let i = 0; i < s0.length; i++) {
+    const s = s0[i];
+    for (; k < patches.length && patches[k].end <= s.start; k++) delta += patches[k].text.length - (patches[k].end - patches[k].start);
+    let touched = false;
+    for (let q = k; q < patches.length && patches[q].start < s.end && !touched; q++) touched = touches(patches[q], s.start, s.end);
+    const j = touched ? void 0 : starts.get(s.start + delta);
+    if (j === void 0 || used[j] || s1[j].end - s1[j].start !== s.end - s.start) continue;
+    to[i] = j;
+    kept[i] = 1;
+    used[j] = 1;
+  }
+  const textA = (i) => before2.slice(s0[i].start, s0[i].end);
+  const restB = [...s1.keys()].filter((j) => !used[j]);
+  const textB = restB.map((j) => after.slice(s1[j].start, s1[j].end));
   const byText = /* @__PURE__ */ new Map();
-  b.forEach((t, j) => {
-    const list = byText.get(t);
+  restB.forEach((j, x) => {
+    const list = byText.get(textB[x]);
     if (list) list.push(j);
-    else byText.set(t, [j]);
+    else byText.set(textB[x], [j]);
   });
-  a.forEach((t, i) => {
+  const restA = [];
+  for (let i = 0; i < s0.length; i++) {
+    if (to[i] >= 0) continue;
+    const t = textA(i);
     let best = -1;
     for (const j of byText.get(t) ?? []) if (!used[j] && (best < 0 || Math.abs(j - i) < Math.abs(best - i))) best = j;
-    if (best < 0) return;
+    if (best < 0) {
+      restA.push(i);
+      continue;
+    }
     to[i] = best;
     kept[i] = 1;
     used[best] = 1;
-  });
-  const restA = [...a.keys()].filter((i) => to[i] < 0);
-  const restB = [...b.keys()].filter((j) => !used[j]);
-  for (const p of pairs(restA.map((i) => a[i]), restB.map((j) => b[j]))) to[restA[p.i]] = restB[p.j];
+  }
+  const left = restB.filter((j) => !used[j]);
+  for (const p of pairs(restA.map(textA), left.map((j) => after.slice(s1[j].start, s1[j].end)), true)) to[restA[p.i]] = left[p.j];
   return { to, kept };
 }
 function wholeTag(text, start2, end) {
@@ -1725,13 +1770,13 @@ function shiftedSlides(before2, patches, after, s0) {
   kept[i] = before2.slice(s.start, s.end) === after.slice(s.start, end) ? 1 : 0;
   return { s1, to: Int32Array.from(s0.keys()), kept };
 }
-function matchedSlides(before2, s0, after) {
+function matchedSlides(before2, s0, after, patches) {
   const s1 = slidesOf(after);
-  return { s1, ...matchSlides(s0.map((s) => before2.slice(s.start, s.end)), s1.map((s) => after.slice(s.start, s.end))) };
+  return { s1, ...matchSlides(before2, s0, after, s1, patches) };
 }
 function slow(before2, patches, after, items, given) {
   const s0 = given ?? slidesOf(before2);
-  const { s1, to, kept } = shiftedSlides(before2, patches, after, s0) ?? matchedSlides(before2, s0, after);
+  const { s1, to, kept } = shiftedSlides(before2, patches, after, s0) ?? matchedSlides(before2, s0, after, patches);
   const index = new Map(s0.map((s, i) => [s.start, i]));
   const inserted = insertedSpans(patches);
   const cap2 = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
