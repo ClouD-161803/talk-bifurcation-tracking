@@ -1,6 +1,9 @@
 // the relay of the synchronous editor: a reverse HTTP tunnel through which the guests of a session
 // reach the edit command of the host, which listens on 127.0.0.1 only. it keeps everything in
-// memory, and it never reads or writes a file. run it with
+// memory, and it never reads or writes a file.
+//
+// a relay is for one group whose members trust one another, since a deck is a web page and the
+// sessions of a relay share its origin. run it with
 //
 //   SLIDES_RELAY_SECRET=<the secret of the group, 16 or more characters> node scripts/relay.mjs --port N
 //
@@ -55,7 +58,9 @@ export const DEFAULTS = {
 
 const KEY = /^[A-Za-z0-9_-]{22,128}$/;
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'trailers', 'transfer-encoding', 'upgrade', 'host', 'content-length']);
-const PRIVATE = new Set(['authorization', 'cookie', 'set-cookie', 'forwarded']);
+// a header that would reach past the session of one key is never forwarded, since the sessions of
+// a relay share its origin
+const PRIVATE = new Set(['authorization', 'cookie', 'set-cookie', 'forwarded', 'service-worker-allowed', 'clear-site-data']);
 
 const digest = (s) => createHash('sha256').update(String(s)).digest();
 // a comparison whose time does not depend on where the two strings differ
