@@ -10,7 +10,7 @@
 import { moveAnchors, slideAt, startTagAt, type Anchored } from '../anchor.ts';
 import { apply, diff, type Patch } from '../patch.ts';
 import { slidesOf, type Slide } from '../slides.ts';
-import { parseVersion, type Anchor, type AppliedOp, type Comment, type CommentsAnswer, type CommentsEvent, type Version } from '../protocol.ts';
+import { parseVersion, type Anchor, type AppliedOp, type Comment, type CommentsAnswer, type CommentsEvent, type SeenAnswer, type Version } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { Failure } from './transport.ts';
 
@@ -75,7 +75,11 @@ export class Comments {
       void this.fetch();
     });
     client.on('base', (text, v, ops) => this.advance(text, v, ops));
-    client.on('comments', (event, v) => this.take({ at: v, snapshot: null, event }));
+    client.on('comments', (event, v) => {
+      if (this.times(event.seen, event.read)) this.changed();
+      // an event of the times alone, after a read on another page of the person
+      if (event.changed === null || event.changed.length || event.removed.length) this.take({ at: v, snapshot: null, event });
+    });
     client.on('state', () => {
       if (this.wanted && client.connection === 'online') void this.fetch();
     });
@@ -89,6 +93,18 @@ export class Comments {
   private changed(fresh: Comment[] = []): void {
     this.count++;
     for (const fn of this.listeners) fn(fresh);
+  }
+
+  // the times up to which the person read, kept as the latest of the edit command and of this page
+  private times(seen = 0, read: Record<string, number> = {}): boolean {
+    let changed = seen > this.seen;
+    this.seen = Math.max(this.seen, seen);
+    for (const [id, time] of Object.entries(read)) {
+      if (time <= (this.read.get(id) ?? 0)) continue;
+      this.read.set(id, time);
+      changed = true;
+    }
+    return changed;
   }
 
   private async fetch(): Promise<void> {
@@ -156,13 +172,15 @@ export class Comments {
       if (p.snapshot) {
         this.threads = new Map(list.map((t) => [t.id, t]));
         this.rev = p.snapshot.v;
-        this.seen = Math.max(this.seen, p.snapshot.seen);
+        for (const id of this.read.keys()) if (!this.threads.has(id)) this.read.delete(id);
+        this.times(p.snapshot.seen, p.snapshot.read);
         fresh ??= [];
       } else {
         const e = p.event!;
         if (e.v <= this.rev) continue;
         for (const t of list) this.threads.set(t.id, t);
         for (const id of e.removed!) this.threads.delete(id);
+        for (const id of e.removed!) this.read.delete(id);
         this.rev = e.v;
         (fresh ??= []).push(...list);
       }
@@ -397,7 +415,7 @@ export class Comments {
   }
 
   // the thread of id read by the person. seen is sent up to the oldest comment still unread in
-  // another thread, since the edit command keeps one time per person
+  // another thread, and the time of the thread alone when seen does not reach it
   markRead(id: string): void {
     const t = this.threads.get(id);
     if (!t || !this.unread(t)) return;
@@ -410,16 +428,14 @@ export class Comments {
     }
     const time = oldest === Infinity ? newest : oldest - 1;
     this.changed();
-    if (time <= this.seen) return;
-    void this.client.transport.post<{ seen: number }>('comments/seen', { token: this.client.token, time }).then(
-      (a) => {
-        if (a.seen > this.seen) {
-          this.seen = a.seen;
-          this.changed();
-        }
-      },
-      () => {},
-    );
+    const read = this.read.get(id)!;
+    const bodies = [...(time > this.seen ? [{ time }] : []), ...(time < read ? [{ time: read, thread: id }] : [])];
+    for (const body of bodies) {
+      void this.client.transport.post<SeenAnswer>('comments/seen', { token: this.client.token, ...body }).then(
+        (a) => this.times(a.seen, a.read) && this.changed(),
+        () => {},
+      );
+    }
   }
 
   // the number of a slide of the deck in the status bar, or null
