@@ -229,3 +229,20 @@ test('the names that the edit command gives to the files of one drop are written
 
   clean(ann);
 });
+
+test('after a rename, the page shows the file in media/ for an image of another page that names the first name', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  leftover(server, 'photo.png', DARK);
+  const ann = await tab(browser, sessionUrl(server.edit));
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'photo.png', LIGHT)]);
+  await ann.waitFor(`${IMAGES} === 1`);
+  assert.deepEqual(sources(await converge(server, [ann]))[0], ['media/photo-2.png']);
+  writeOutside(server, '<img src="media/photo.png" alt="folder">');
+  await ann.waitFor(`${TEXT}.includes('alt="folder"')`);
+  await show(ann, 'Two');
+  await ann.waitFor(SHOWN_ALT('folder', 'media/photo.png'), 15_000);
+  clean(ann);
+});
