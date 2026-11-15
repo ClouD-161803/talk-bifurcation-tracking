@@ -5,9 +5,9 @@
 // entry of the history, mark the deck as changed, keep a draft, or start a save
 
 import type { App } from '../app.ts';
-import { mathLookup } from '../math.ts';
+import { mathLookup, type MathLookup } from '../math.ts';
 import { edits, mergeEdits } from '../merge.ts';
-import { pair, pairElement, renderDeck, type Pairing } from '../render.ts';
+import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
 import { parseSource } from '../source.ts';
 import { applyAt, refresh, repairText, type Done } from './apply.ts';
 import { graft, locate, retag, windowOf, type Spot } from './tree.ts';
@@ -108,18 +108,15 @@ export function install(app: App): Port {
   }, true);
   const intoComposition = (spot: Spot): boolean => !!composing && spot.kind !== 'reload' && spot.kind !== 'tag' && (spot.live === composing || spot.live.contains(composing));
 
-  // the source made to read as the deck with the edits of the person, as at a save: each edit of
-  // the text of a text element or of a start tag is read into the tree of the source, and any
-  // other edit parses the deck again. false when the deck does not read as its own text
-  function rebase(): boolean {
-    const source = app.source!;
-    const math = mathLookup();
-    const rendered = renderDeck(source, app.pairing!, math, app.tagEdits);
-    const edits = [...rendered.edits].sort((a, b) => b.start - a.start);
+  // the source made to read as the rendered deck, as at a save: each edit of the text of a text
+  // element or of a start tag is read into the tree of the source, and any other edit parses the
+  // deck again. false when the deck does not read as its own text
+  function rebase(rendered: Rendered, math: MathLookup): boolean {
+    const cuts = [...rendered.edits].sort((a, b) => b.start - a.start);
     let ok = true;
-    for (let i = 0; i < edits.length && ok; i++) {
-      const e = edits[i];
-      if (i > 0 && e.end > edits[i - 1].start) ok = false;
+    for (let i = 0; i < cuts.length && ok; i++) {
+      const e = cuts[i];
+      if (i > 0 && e.end > cuts[i - 1].start) ok = false;
       else ok = rebaseOne(app.source!.text.slice(0, e.start) + e.text + app.source!.text.slice(e.end), math);
     }
     app.tagEdits.clear();
@@ -132,13 +129,13 @@ export function install(app: App): Port {
     } catch {
       return false;
     }
-    app.pairing = pair(app.source, app.slides(), mathLookup());
+    app.pairing = pair(app.source, app.slides(), math);
     app.typing.attach();
-    clean = renderDeck(app.source, app.pairing, mathLookup()).text === rendered.text;
+    clean = renderDeck(app.source, app.pairing, math).text === rendered.text;
     return clean;
   }
 
-  function rebaseOne(next: string, math: ReturnType<typeof mathLookup>): boolean {
+  function rebaseOne(next: string, math: MathLookup): boolean {
     const source = app.source!;
     const w = windowOf(source.text, next);
     if (!w) return true;
@@ -206,12 +203,15 @@ export function install(app: App): Port {
     for (;;) {
       await quiet();
       if (!ready()) return reload();
-      const seen = current();
+      // the deck is rendered once, and not at all while the source reads as it
+      const math = clean ? null : mathLookup();
+      const rendered = math && renderDeck(app.source!, app.pairing!, math, app.tagEdits);
+      const seen = rendered ? rendered.text : app.source!.text;
       const from = handed ?? seen;
       let target = text;
       // an edit of the person that the client has not read is kept, and wins at a conflict
       if (from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours').text;
-      if (!clean && !rebase()) return reload();
+      if (rendered && !rebase(rendered, math)) return reload();
       const source = app.source!;
       const w = windowOf(source.text, target);
       const spot = w && locate(source, app.pairing!, w.start, w.endA);
