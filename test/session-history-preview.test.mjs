@@ -1,0 +1,109 @@
+// the preview of Version History in Chrome, on the edit command started on a temporary talk folder
+// with SLIDES_HISTORY set so that a version is closed only when it is named: the layout of a phone
+// in portrait and in landscape with 1, 8, and 40 changed slides, the slide after a hidden slide, a
+// changed step and changed notes, the keys inside the preview, a new list that leaves the bar
+// alone, one read of the text per preview, the memory of a preview hidden, and converge() of the
+// helpers, which ends at its time limit
+
+import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
+import { Worker } from 'node:worker_threads';
+import { launch } from '../scripts/chrome.mjs';
+import { front } from './helpers/apply.mjs';
+import { C, clean, ONLINE, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
+import { click, press } from './helpers/editor.mjs';
+
+// a version is closed only when the current state is named
+const HELD = { SLIDES_HISTORY: JSON.stringify({ quiet: 3_600_000, longest: 3_600_000 }) };
+
+const PANE = '.beeson-session-history';
+const SHOWN = `!!document.querySelector('${PANE}:not([hidden])')`;
+const BAR = '.beeson-session-preview .bar';
+const FRAME = `document.querySelector('.beeson-session-preview iframe')`;
+const CURRENT = `${FRAME}?.contentWindow?.Reveal?.getCurrentSlide()?.querySelector('h2')?.textContent`;
+const button = (scope, text) => `[...document.querySelectorAll('${scope} button')].find((b) => b.textContent === ${JSON.stringify(text)} && b.getClientRects().length)`;
+const rowByTitle = (title) => `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === ${JSON.stringify(title)})`;
+
+// a tap on the element of expression, scrolled into view in a pane that scrolls
+async function tapOrClick(page, expression) {
+  await page.waitFor(`!!(${expression})`);
+  const point = await page.evaluate(`(() => { const el = ${expression}; el.scrollIntoView({ block: 'nearest' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  await click(page, point);
+}
+
+const press$ = (page, scope, text) => tapOrClick(page, button(scope, text));
+
+async function openPane(page) {
+  await front(page);
+  await press(page, 'Mod+Alt+Shift+H');
+  await page.waitFor(SHOWN);
+}
+
+// the current state named through the client, which closes a version, resolved with the version
+const nameNow = (page, name) => page.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: ${JSON.stringify(name)} })`);
+const rename = (page, id, name) => page.evaluate(`${C}.transport.post('history/' + ${JSON.stringify(id)} + '/name', { token: ${C}.token, name: ${JSON.stringify(name)} }).then(() => true)`);
+
+// index.html written outside the editor, and the page once it holds the text of mark
+async function write(server, page, text, mark) {
+  writeFileSync(server.file, text);
+  await page.waitFor(`${ONLINE} && ${TEXT}.includes(${JSON.stringify(mark)})`, 30_000);
+}
+
+const HEAD = TALK.slice(0, TALK.indexOf('<section>'));
+const TAIL = TALK.slice(TALK.lastIndexOf('</section>') + '</section>'.length);
+
+// a deck of 45 slides, of which the first changed ones carry mark in their heading
+const many = (changed, mark) => HEAD + Array.from({ length: 45 }, (_, i) => `\n<section>\n  <h2>Slide ${i + 1}${i < changed ? ` ${mark}` : ''}</h2>\n  <p>Text ${i + 1}</p>\n</section>\n`).join('') + TAIL;
+
+// the preview at the size of a phone, as numbers that the test bounds: the height of the iframe, the
+// places of Restore and More, the rows of the bar, the slide buttons, and the sheet of the pane
+const MEASURE = `(() => {
+  const box = (el) => {
+    if (!el || !el.getClientRects().length) return null;
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { inside: r.left >= 0 && r.right <= innerWidth + 0.5 && r.top >= 0 && r.bottom <= innerHeight + 0.5, hit: el.contains(hit), big: r.width >= 32 && r.height >= 32 };
+  };
+  const bar = document.querySelector('${BAR}');
+  const parts = [...bar.children].filter((c) => c.getClientRects().length && c.getBoundingClientRect().height > 0).map((c) => c.getBoundingClientRect()).sort((a, b) => a.top - b.top);
+  let rows = 0;
+  let bottom = -Infinity;
+  for (const r of parts) if (r.top >= bottom - 1) { rows++; bottom = r.bottom; } else bottom = Math.max(bottom, r.bottom);
+  const slides = [...bar.querySelectorAll('button.slide')];
+  const pane = document.querySelector('${PANE}').getBoundingClientRect();
+  const shown = [...document.querySelectorAll('${PANE} .row')].filter((r) => r.getClientRects().length);
+  return {
+    frame: Math.round(${FRAME}.getBoundingClientRect().height),
+    restore: box(${button(BAR, 'Restore this version')}),
+    more: box(bar.querySelector('button.more')),
+    rows,
+    slides: slides.length,
+    oneRow: new Set(slides.map((b) => Math.round(b.getBoundingClientRect().top))).size <= 1,
+    name: !!${button(BAR, 'Name this version')},
+    sheet: { phone: innerWidth < 600, low: pane.height < innerHeight * 0.55 - 1, rows: shown.length, chosen: shown.length === 1 && shown[0].getAttribute('aria-current') === 'true', versions: box(${button(PANE, 'Versions')}) },
+  };
+})()`;
+
+test('converge ends with a failure at its time limit while one page is in step with the file and another is not', { timeout: 60_000 }, async () => {
+  const helpers = pathToFileURL(resolve('test/helpers/client.mjs')).href;
+  // a worker, since a converge that loops without an await holds the thread that runs it
+  const worker = new Worker(`(async () => {
+    const { parentPort } = require('node:worker_threads');
+    const { converge } = await import(${JSON.stringify(helpers)});
+    const page = (text) => ({ send: async () => ({}), evaluate: async () => text });
+    const server = { read: () => 'the text of the file, which is long enough to be cut in the message' };
+    converge(server, [page(server.read()), page('the text of another file')], 'the pages to agree', 300).then(() => parentPort.postMessage({ value: true }), (e) => parentPort.postMessage({ error: e.message }));
+  })()`, { eval: true });
+  let timer;
+  const answer = await Promise.race([
+    new Promise((done) => worker.once('message', done)),
+    new Promise((done) => (timer = setTimeout(() => done({ hung: true }), 20_000))),
+  ]);
+  clearTimeout(timer);
+  await worker.terminate();
+  assert.deepEqual(answer.hung, undefined, 'converge did not end within 20 s');
+  assert.match(answer.error ?? '', /^timed out waiting for the pages to agree\npage 0: agrees\npage 1: "the text of another file" where the file has "the text of the file, which is long enough to be cut in the message"$/);
+});
