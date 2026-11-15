@@ -41,6 +41,14 @@ export async function openDeck(browser, url, file) {
   return page;
 }
 
+// deck B given the macros of deck A, as written in its page, hence a paste opens no dialog of the
+// macros, which test/editor-cross-deck-macros.test.mjs covers
+const MACROS_OF_A = String.raw`({ orb: ['\\mathcal{O}_{\\half #1}', 1], half: '\\tfrac{1}{2}', dash: '\\text{a--b}', unused: '\\mathrm{u}' })`;
+export async function withMacrosOfA(page) {
+  await page.evaluate(`(() => { window.beesonMacros = ${MACROS_OF_A}; return true; })()`);
+  return page;
+}
+
 export const render = (page) => page.evaluate('window.BeesonEditor.render()');
 export const status = (page) => page.evaluate('window.BeesonEditor.status()');
 

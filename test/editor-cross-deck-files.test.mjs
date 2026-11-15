@@ -9,7 +9,7 @@ import { statSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, SAVE_INTO, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status } from './helpers/cross-deck.mjs';
+import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, SAVE_INTO, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 
 let browser;
 let server;
@@ -23,7 +23,10 @@ after(async () => {
 });
 
 const size = (path) => statSync(`${DIR}/a/${path}`).size;
-const deck = (file) => openDeck(browser, `${server.origin}/${file}?${QUERY}`, file);
+const deck = async (file) => {
+  const page = await openDeck(browser, `${server.origin}/${file}?${QUERY}`, file);
+  return file === B ? withMacrosOfA(page) : page;
+};
 
 // deck B names media/orbit.png, and has media/clip.png on the disk without naming it, hence both
 // names are taken. it has figs/shared.png with the bytes of deck A, and figs/orbit.png with others

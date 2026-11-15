@@ -150,7 +150,7 @@ async function folderOf(address: string, name: string): Promise<Folder | null> {
   return picked;
 }
 
-const listed = (n: string[]) => (n.length < 3 ? n.join(' and ') : `${n.slice(0, -1).join(', ')}, and ${n.at(-1)}`);
+export const listed = (n: string[]) => (n.length < 3 ? n.join(' and ') : `${n.slice(0, -1).join(', ')}, and ${n.at(-1)}`);
 
 // the step of a paste from another deck that carries its files, in commands/origin.ts
 export async function carryFiles(app: App, arrival: Arrival): Promise<void> {

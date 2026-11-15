@@ -6,6 +6,7 @@
 import type { App } from '../app.ts';
 import { deckMacros } from '../math.ts';
 import { carryFiles } from '../media/carry.ts';
+import { nameMacros } from './macros.ts';
 import { MARK } from './slide.ts';
 
 export type OriginMacro = { name: string; body: string; args: number };
@@ -63,7 +64,7 @@ export type Step = (app: App, arrival: Arrival) => void | Promise<void>;
 // the steps of a paste from another deck, run in this order before and after its insert, in the
 // entry of the history of the paste
 export const BEFORE: Step[] = [carryFiles];
-export const AFTER: Step[] = [];
+export const AFTER: Step[] = [nameMacros];
 
 // texts inserted by insert, with the steps of a paste from another deck when text names one
 export async function arrive<T>(app: App, text: string, texts: string[], insert: (texts: string[]) => Promise<T>): Promise<T> {

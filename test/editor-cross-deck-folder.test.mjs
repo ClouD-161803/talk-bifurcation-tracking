@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { click } from './helpers/editor.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { A, B, FILES, FIRST_B, QUERY, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status } from './helpers/cross-deck.mjs';
+import { A, B, FILES, FIRST_B, QUERY, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 
 let browser;
 let serverA;
@@ -36,7 +36,7 @@ async function decks(t) {
   t.after(() => a.close());
   const text = await copySlide(a, FILES);
   const figure = await copyFigure(a, FILES, 'img[src$="orbit.png"]');
-  const b = await openDeck(browser, `${serverB.origin}/${B}?${QUERY}`, B);
+  const b = await withMacrosOfA(await openDeck(browser, `${serverB.origin}/${B}?${QUERY}`, B));
   t.after(() => b.close());
   return { a, b, text, figure };
 }
