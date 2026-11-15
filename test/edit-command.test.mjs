@@ -888,3 +888,24 @@ test('add regression test: a media upload takes every type of picture and video 
     assert.equal(served.headers['content-type'], type, ext);
   }
 });
+
+test('add regression test: a media upload through the relay is limited to 16 MB, and one of the host to 64 MB', { timeout: 120_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // a relay that passes larger bodies, so that the limit of the edit command is tested
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, bodyBytes: 32 * 1024 * 1024 });
+  t.after(() => relay.close());
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const host = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  assert.equal((await post(edit.port, api('share'), { relay: relay.url, secret: SECRET })).status, 200);
+  const guest = await (await fetch(`${relay.url}${api('hello')}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Ben' }) })).json();
+  const body = Buffer.alloc(16 * 1024 * 1024 + 1);
+  const relayed = await fetch(`${relay.url}${api(`media/big.mp4?token=${guest.token}`)}`, { method: 'PUT', body });
+  assert.equal(relayed.status, 413);
+  assert.match((await relayed.json()).error, /16 MB/);
+  const direct = await raw(edit.port, 'PUT', api(`media/big.mp4?token=${host.token}`), { body });
+  assert.deepEqual(direct.json(), { path: 'media/big.mp4' });
+  assert.deepEqual(readdirSync(join(talk, 'media')), ['big.mp4']);
+});
