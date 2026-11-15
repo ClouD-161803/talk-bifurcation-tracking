@@ -220,3 +220,26 @@ test('add regression test: the relay holds the bodies of slow uploads and slow r
     await until(() => relay.held() === 0, 'the answer to be given back at the close');
   });
 });
+
+test('add regression test: a slow upload through the relay is not cut by the timeout of the answer', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, guestMs: 1500 });
+  t.after(() => relay.close());
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  await until(async () => (await fetch(`${relay.url}/${edit.key}/index.html`)).status === 200, 'the edit command to register');
+  const socket = connect(relay.port, '127.0.0.1');
+  t.after(() => socket.destroy());
+  let got = '';
+  socket.on('data', (d) => (got += d));
+  socket.write(`PUT /${edit.key}/.session/media/slow.png HTTP/1.1\r\nHost: relay\r\nContent-Length: 6000\r\nConnection: close\r\n\r\n`);
+  // the body is sent over 2.5 s, longer than guestMs, as on a slow uplink
+  for (let i = 0; i < 6; i++) {
+    socket.write('x'.repeat(1000));
+    if (i < 5) await new Promise((done) => setTimeout(done, 500));
+  }
+  await until(() => got.includes('\r\n\r\n') && got, 'the answer to the upload');
+  assert.match(got, /^HTTP\/1\.1 200/, got);
+  assert.match(got, /"path":"media\/slow\.png"/);
+});
