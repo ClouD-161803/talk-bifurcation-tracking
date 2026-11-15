@@ -126,6 +126,8 @@ function bodyOf(req, max, take = () => true) {
   });
 }
 
+// the bytes of a body that are written to a socket at once
+const PIECE = 64 * 1024;
 function answer(res, status, body = '', headers = {}) {
   if (res.headersSent || res.destroyed) return;
   const bytes = Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
@@ -135,7 +137,18 @@ function answer(res, status, body = '', headers = {}) {
   for (const [k, v] of Object.entries(headers)) all[k.toLowerCase()] = v;
   all['content-length'] = String(bytes.length);
   res.writeHead(status, all);
-  res.end(bytes);
+  // a large body is written in pieces, each once the one before it has left the process. Windows
+  // copies a write of any size into the kernel at once, and the answer of a guest that does not
+  // read would then be given back while the machine still holds it
+  let at = 0;
+  const next = () => {
+    if (res.destroyed) return;
+    const piece = bytes.subarray(at, at + PIECE);
+    at += piece.length;
+    if (at < bytes.length) res.write(piece, next);
+    else res.end(piece);
+  };
+  next();
 }
 
 /**
