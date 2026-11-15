@@ -2,8 +2,8 @@
 // by tex/install.ts at their first use. a sheet edits preamble.tex or references.bib next to the
 // deck with a live effect on the open deck, and a save writes the changed sources and tex.js, with
 // the text that npm run tex writes. the files are read over http, from the folder of the deck in
-// Chrome and Edge, or from the files chosen with a file input elsewhere. a later part reads the
-// bibliography and adds an entry to it through bibliography() and setBibliography()
+// Chrome and Edge, or from the files chosen with a file input elsewhere. the list of the
+// bibliography of tex/cite.ts reads the same files through the store
 
 import { readBibtex, type Bibliography, type Entry } from '../../bibtex.ts';
 import { readPreamble, type MacroDef, type Preamble, type Resolve, type Skipped } from '../../preamble.ts';
@@ -13,6 +13,7 @@ import type { App } from '../app.ts';
 import type { Entry as Step } from '../history.ts';
 import { trapTab } from '../ui/dialog.ts';
 import { injectStyle, make } from '../ui/dom.ts';
+import { citations, type Store } from './cite.ts';
 import type { TexHost, TexSheets, Which } from './install.ts';
 
 const CSS = `
@@ -595,6 +596,35 @@ function sheets(host: TexHost): TexSheets {
   }
   const sentence = (parts: string[]): string => parts.filter(Boolean).join('. ');
 
+  // the store as the list of the bibliography reads it. an entry pasted into the list is added to
+  // references.bib at once, so that its reference is drawn before the sheet reads the text again
+  const picker = (): boolean => !!app.handle && 'showDirectoryPicker' in window && !!window.showDirectoryPicker;
+  const store: Store = {
+    app,
+    loaded: () => loaded,
+    entries: () => bib.entries,
+    ensure: () =>
+      ensure().catch((error: unknown) => {
+        loading = null;
+        throw error;
+      }),
+    local: () => !/^https?:$/.test(location.protocol),
+    chooseLabel: () => (picker() ? 'Choose Folder…' : 'Choose Files…'),
+    choose() {
+      const read = store.ensure();
+      if (!picker()) input.click();
+      return read;
+    },
+    add(sources) {
+      const before = stateOf('bibliography');
+      const now = text.bibliography;
+      const after = { text: `${now}${now && !now.endsWith('\n') ? '\n' : ''}${sources.map((t) => `\n${t}\n`).join('')}`, start: -1, end: -1 };
+      put('bibliography', after);
+      bib = readBibtex(text.bibliography);
+      app.history.push({ label: 'Insert Citation', undo: () => put('bibliography', before), redo: () => put('bibliography', after) });
+    },
+  };
+
   return {
     async open(which) {
       shown = which;
@@ -654,14 +684,7 @@ function sheets(host: TexHost): TexSheets {
       return sentence([out.length ? `Put ${listed(out.map(([name]) => name))} next to it` : '', why]);
     },
     dirty: () => loaded && (text.preamble !== saved.preamble || text.bibliography !== saved.bibliography),
-    bibliography: () => (loaded ? text.bibliography : null),
-    setBibliography(value, label = LABEL.bibliography) {
-      const before = stateOf('bibliography');
-      const after = { text: value, start: -1, end: -1 };
-      put('bibliography', after);
-      app.history.push({ label, undo: () => put('bibliography', before), redo: () => put('bibliography', after) });
-    },
-    load: ensure,
+    ...citations(store),
   };
 }
 

@@ -282,7 +282,8 @@ export function stripRuntime(root: ParentNode): void {
 // the declarations and the attributes of an element inside a text element that are compared with the
 // file, i.e. those that the editor writes under the scope rule
 const LIVE_STYLE = ['translate', 'rotate', 'width', 'font-size', 'text-align'];
-const LIVE_ATTRS = ['alt', 'src', 'poster', 'href', 'muted', 'loop', 'colspan', 'rowspan'];
+// data-key is the papers of a citation, changed in its pane
+const LIVE_ATTRS = ['alt', 'src', 'poster', 'href', 'muted', 'loop', 'colspan', 'rowspan', 'data-key'];
 
 let probe: HTMLElement | null = null;
 

@@ -137,6 +137,8 @@ installFollow(app);
 installOverflow(app);
 installTyping(app);
 installMathPop(app);
+// before installKeys, since the keys of the list of the citations are taken before those of the editor
+installTex(app);
 installSelection(app);
 installFileCommands(app);
 installEditCommands(app);
@@ -168,7 +170,6 @@ installClipboardCommands(app);
 installInsertCommands(app);
 installTableCommands(app);
 installMediaCommands(app);
-installTex(app);
 installFindCommands(app);
 installStepsCommands(app);
 installCodeCommands(app);

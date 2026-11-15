@@ -1,7 +1,8 @@
 // the Format tab of the inspector, whose panes follow the selection as in the Format inspector of
-// Keynote: the Slide pane with nothing selected, Text and Arrange for a text or a text element, Image,
-// Video, or QR with Arrange for a picture, Text and Arrange for several text elements, and Arrange
-// alone for a figure around an image or a video, for another element, or for several others.
+// Keynote: the Slide pane with nothing selected, Text and Arrange for a text or a text element, with
+// Citation first for a citation chosen in a text, Image, Video, or QR with Arrange for a picture,
+// Text and Arrange for several text elements, and Arrange alone for a figure around an image or a
+// video, for another element, or for several others.
 // with more than one pane, the panes are tabs of a segmented control, and the tab chosen last is
 // kept for the next selection that has it. the panes are built again only when the selection or
 // the slide changes, and else read again in place, so that a field keeps its focus while the deck
@@ -28,9 +29,10 @@ import { selectedLines } from '../commands/line.ts';
 import { shapePane } from './shape.ts';
 import { selectedShapes } from '../commands/shape.ts';
 import { lockedSelection } from '../commands/order.ts';
+import { citationOf, citationPane } from '../tex/install.ts';
 
-export type PaneKind = 'slide' | 'table' | 'text' | 'image' | 'video' | 'qr' | 'formula' | 'code' | 'surface' | 'line' | 'shape' | 'backdrop' | 'arrange';
-const TAB_NAMES: Record<PaneKind, string> = { slide: 'Slide', table: 'Table', text: 'Text', image: 'Image', video: 'Video', qr: 'QR Code', formula: 'Formula', code: 'Code', surface: 'Surface', line: 'Line', shape: 'Shape', backdrop: 'Backdrop', arrange: 'Arrange' };
+export type PaneKind = 'slide' | 'table' | 'text' | 'citation' | 'image' | 'video' | 'qr' | 'formula' | 'code' | 'surface' | 'line' | 'shape' | 'backdrop' | 'arrange';
+const TAB_NAMES: Record<PaneKind, string> = { slide: 'Slide', table: 'Table', text: 'Text', citation: 'Citation', image: 'Image', video: 'Video', qr: 'QR Code', formula: 'Formula', code: 'Code', surface: 'Surface', line: 'Line', shape: 'Shape', backdrop: 'Backdrop', arrange: 'Arrange' };
 const isCode = (el: Element | undefined) => !!el?.closest('pre')?.querySelector(':scope > code');
 // a text element with words, which the Text pane formats together with others, as text boxes in Keynote
 const TEXT_ELEMENT = 'h1, h2, h3, p, ul, ol, div.foot';
@@ -38,6 +40,8 @@ const TEXT_ELEMENT = 'h1, h2, h3, p, ul, ol, div.foot';
 // the panes of the selection, and the elements that tell one selection from another
 function viewOf(app: App): { tabs: PaneKind[]; items: readonly Element[] } {
   const sel = app.selection;
+  const cite = citationOf(app);
+  if (cite) return { tabs: ['citation', 'text', 'arrange'], items: [sel.items[0], cite] };
   const formula = formulaView(app);
   if (formula) return formula;
   if (sel.kind === 'text') return { tabs: sel.items[0]?.matches('td, th') ? ['table', 'text', 'arrange'] : isCode(sel.items[0]) ? ['code', 'text', 'arrange'] : ['text', 'arrange'], items: sel.items };
@@ -70,6 +74,7 @@ function paneOf(app: App, kind: PaneKind, run: ReturnType<typeof runner>): Contr
     case 'slide': return slidePane(app, run);
     case 'table': return tablePane(app, run);
     case 'text': return textPane(app, run);
+    case 'citation': return citationPane(app);
     case 'image': return imagePane(app, run);
     case 'video': return videoPane(app, run);
     case 'qr': return qrPane(app, run);

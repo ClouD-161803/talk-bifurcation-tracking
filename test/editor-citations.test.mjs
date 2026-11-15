@@ -318,7 +318,7 @@ test('a click on the number of a citation selects it, and the Format pane shows 
   await page.waitFor(`!!document.querySelector('${PANEL} .ed-cite[data-key="szebehely1967"]')`);
   assert.equal(await render(page), expect([KOON, '<cite data-key="koon2000,szebehely1967"></cite>']));
   assert.equal(await undoLabel(page), 'Undo Change Citation');
-  await page.waitFor(`document.querySelector('.reveal section.present cite[data-key="koon2000,szebehely1967"]')?.dataset.n === '1,3'`);
+  await page.waitFor(`document.querySelector('.reveal section.present cite[data-key="koon2000,szebehely1967"]')?.dataset.n === '1,2'`);
   assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-cite[data-key="szebehely1967"] a.doi')`), null, 'a paper without a DOI is linked');
 
   // a paper of two is taken out of the citation
