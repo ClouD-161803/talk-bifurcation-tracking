@@ -9,7 +9,7 @@ import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
-import { C, clean, converge, open, sessionUrl, show, talk, TEXT } from './helpers/client.mjs';
+import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TEXT } from './helpers/client.mjs';
 import { click, type, typeKeys } from './helpers/editor.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 import { post, until } from './helpers/session.mjs';
@@ -922,4 +922,29 @@ test('a name with markup is shown as text in the flag', { timeout: 120_000 }, as
   assert.equal(text, '<i>Ana</i>');
   clean(ana);
   clean(ben);
+});
+
+test('after a restart, a page that rejoins second is read by the other page', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  const { port } = server.edit;
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await select(ana, el(1, 'ul'));
+  await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben');
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await until(() => ana.evaluate(`${C}.connection !== 'online'`), 'Ana offline');
+  await until(() => ben.evaluate(`${C}.connection !== 'online'`), 'Ben offline');
+  await server.start(['--port', String(port)]);
+  await ben.evaluate(`${C}.tryNow(); true`);
+  await ben.waitFor(ONLINE, 20_000);
+  await until(() => ben.evaluate(`${C}.people.length === 1`), 'Ben alone at the edit command');
+  await ana.evaluate(`${C}.tryNow(); true`);
+  await ana.waitFor(ONLINE, 20_000);
+  await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben after the restart', 10_000);
+  // the requests to the edit command that stopped, the polls with the tokens of before, and the
+  // hello without a name, which the edit command refuses after a kill that lost the person
+  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  clean(ana, refused);
+  clean(ben, refused);
 });
