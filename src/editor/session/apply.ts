@@ -282,6 +282,9 @@ const MOTION = ['data-duration', 'data-stagger', 'data-loop'];
 // src/surface.ts. a surface and a plot read every other attribute and their labels once, at mount
 const CAMERA = ['data-azimuth', 'data-elevation', 'data-zoom', 'data-turn', 'data-zscale'];
 const DRAWN = '.surface, .plot';
+// the theme draws a backdrop into its element once, hence an element does not become a backdrop or
+// stop being one in place
+const backdropOf = (attrs: Attr[]): boolean => stateOf(attrs).classes.includes('backdrop');
 
 // a change of the start tag of el from the attributes from to those of to that a drawing of the
 // theme around el does not read again
@@ -352,7 +355,7 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
   if (spot.kind === 'tag') {
     const from = spot.el.attrs;
     if (!retag(ctx.source, spot.el, text)) return within(ctx, spot.el, spot.live);
-    if (redrawn(spot.live, from, spot.el.attrs)) return null;
+    if (redrawn(spot.live, from, spot.el.attrs) || backdropOf(from) !== backdropOf(spot.el.attrs)) return null;
     // a class or an attribute may be read by the theme or by reveal.js, e.g. a step, where a place
     // or a size in the style is not
     if (setTag(ctx, spot.live, from, spot.el.attrs)) {
@@ -487,7 +490,7 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
 
 // the op of an old unit a changed into b, or null when b is placed in its stead
 function change(ctx: Ctx, pl: Planner, a: SrcEl, b: SrcEl, node: Element | null): Op | null {
-  if (!node || a.tag !== b.tag || RAW_TEXT.has(a.tag) || !a.open !== !b.open || isStack(a) !== isStack(b)) return null;
+  if (!node || a.tag !== b.tag || RAW_TEXT.has(a.tag) || !a.open !== !b.open || isStack(a) !== isStack(b) || backdropOf(a.attrs) !== backdropOf(b.attrs)) return null;
   const aText = isTextElement(a);
   if (aText !== isTextElement(b)) return null;
   if (aText) {
