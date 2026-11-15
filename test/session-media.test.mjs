@@ -246,3 +246,23 @@ test('after a rename, the page shows the file in media/ for an image of another 
   await ann.waitFor(SHOWN_ALT('folder', 'media/photo.png'), 15_000);
   clean(ann);
 });
+
+test('undo and redo of a picture that the edit command renamed', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  leftover(server, 'plot.png', DARK);
+  const ann = await tab(browser, sessionUrl(server.edit));
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`${IMAGES} === 1`);
+  assert.deepEqual(sources(await converge(server, [ann]))[0], ['media/plot-2.png']);
+  await keys(ann, 'Mod+Z');
+  await until(() => !server.read().includes('<img'), 'the undo of the drop in index.html', 15_000);
+  await converge(server, [ann]);
+  await keys(ann, 'Mod+Shift+Z');
+  await until(() => server.read().includes('<img'), 'the redo of the drop in index.html', 15_000);
+  assert.deepEqual(sources(await converge(server, [ann]))[0], ['media/plot-2.png']);
+  assert.deepEqual(media(server), ['plot-2.png', 'plot.png']);
+  clean(ann);
+});
