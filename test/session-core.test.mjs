@@ -299,6 +299,30 @@ test('after a restart of the edit command, a resync keeps an operation in flight
   assert.equal(apply(lost.base, lost.outgoing().patches), lost.mine);
 });
 
+test('a replica keeps its base, its text, and its operation in flight through a new client id', () => {
+  const base = '<p>Hello world</p>\n';
+  const e = new Authority(base, { epoch: 'E' });
+  const a = new Replica('aaaaaaaa', base, 'E.0');
+  a.edit('<p>Hello brave world</p>\n');
+  const request = a.outgoing();
+  const { op } = e.submit(request, 'A');
+  a.edit('<p>Hello brave world!</p>\n');
+  a.rebind('cccccccc');
+  assert.equal(a.client, 'cccccccc');
+  assert.equal(a.inFlight, true);
+  // a hello asks for the seq of the old client id while its operation is in flight
+  assert.equal(a.sender, 'aaaaaaaa');
+  assert.equal(a.base, base);
+  assert.equal(a.mine, '<p>Hello brave world!</p>\n');
+  // the broadcast under the old client id still acknowledges the operation
+  assert.equal(a.receive(op), null);
+  assert.equal(a.inFlight, false);
+  assert.equal(a.sender, 'cccccccc');
+  const next = a.outgoing();
+  assert.deepEqual([next.client, next.seq], ['cccccccc', request.seq + 1]);
+  assert.equal(apply(a.base, next.patches), '<p>Hello brave world!</p>\n');
+});
+
 test('replicas converge on a short text that changes() gives up on', () => {
   const text = ['<section>', '  <h2>One</h2>', '  <p>First</p>', '</section>', ''].join('\n');
   for (let seed = 201; seed <= 260; seed++) session(seed, { text, steps: 120 });
