@@ -1580,7 +1580,9 @@ function moveMarks(marks, patches, author) {
 function clip(marks, patches, author) {
   const ranges = rangesOf(patches);
   const out = [];
+  const dropped = [];
   for (const m of marks) {
+    const n = out.length;
     for (let k2 = first(ranges.length, (i) => ranges[i].end >= m.start); k2 < ranges.length && ranges[k2].start <= m.end; k2++) {
       const r = ranges[k2];
       if (m.start === m.end || r.start === r.end) {
@@ -1590,8 +1592,20 @@ function clip(marks, patches, author) {
         out.push({ start: Math.max(m.start, r.start), end: Math.min(m.end, r.end), author: m.author });
       }
     }
+    if (out.length === n) dropped.push(m);
   }
   const kept = tidy(out);
+  dropped.sort((a, b) => a.start - b.start);
+  const furthest = [];
+  dropped.forEach((m, i) => furthest.push(i > 0 && dropped[furthest[i - 1]].end >= m.end ? furthest[i - 1] : i));
+  const gap = (m, r) => Math.max(0, m.start - r.end, r.start - m.end);
+  const nearest = (r) => {
+    const i = first(dropped.length, (k2) => dropped[k2].start > r.start);
+    const before2 = i > 0 ? dropped[furthest[i - 1]] : null;
+    const after = i < dropped.length ? dropped[i] : null;
+    if (before2 && (!after || gap(before2, r) <= gap(after, r))) return before2.author;
+    return after?.author ?? author;
+  };
   const added = [];
   let k = 0;
   let reach = -1;
@@ -1599,7 +1613,7 @@ function clip(marks, patches, author) {
     const empty = r.start === r.end;
     while (k < kept.length && (empty ? kept[k].start <= r.start : kept[k].start < r.end)) reach = Math.max(reach, kept[k++].end);
     if (empty ? reach >= r.start : reach > r.start) continue;
-    added.push({ start: r.start, end: r.end, author });
+    added.push({ start: r.start, end: r.end, author: nearest(r) });
     reach = Math.max(reach, r.end);
   }
   return added.length ? tidy([...kept, ...added]) : kept;

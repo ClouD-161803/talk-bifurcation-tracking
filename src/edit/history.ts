@@ -141,11 +141,15 @@ export function moveMarks(marks: Mark[], patches: Patch[], author: string): Mark
 }
 
 // the marks of a version kept to the ranges that the version changed, since a change made and
-// undone in one version is not a change of it. a range without a mark is given to author
+// undone in one version is not a change of it. a range without a mark is given to the author of
+// the nearest mark that was left out, as when the diff of the version places a change at another
+// equal line, and to author when no mark was left out
 function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
   const ranges = rangesOf(patches);
   const out: Mark[] = [];
+  const dropped: Mark[] = [];
   for (const m of marks) {
+    const n = out.length;
     // the ends of the ranges do not decrease, hence the ranges that meet m follow one another
     for (let k = first(ranges.length, (i) => ranges[i].end >= m.start); k < ranges.length && ranges[k].start <= m.end; k++) {
       const r = ranges[k];
@@ -156,8 +160,23 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
         out.push({ start: Math.max(m.start, r.start), end: Math.min(m.end, r.end), author: m.author });
       }
     }
+    if (out.length === n) dropped.push(m);
   }
   const kept = tidy(out);
+  dropped.sort((a, b) => a.start - b.start);
+  // the index of the dropped mark that reaches furthest among the first i + 1
+  const furthest: number[] = [];
+  dropped.forEach((m, i) => furthest.push(i > 0 && dropped[furthest[i - 1]].end >= m.end ? furthest[i - 1] : i));
+  const gap = (m: Mark, r: Range) => Math.max(0, m.start - r.end, r.start - m.end);
+  // of the dropped marks that start at or before r the nearest reaches furthest, and of those after
+  // it the nearest starts first
+  const nearest = (r: Range): string => {
+    const i = first(dropped.length, (k) => dropped[k].start > r.start);
+    const before = i > 0 ? dropped[furthest[i - 1]] : null;
+    const after = i < dropped.length ? dropped[i] : null;
+    if (before && (!after || gap(before, r) <= gap(after, r))) return before.author;
+    return after?.author ?? author;
+  };
   // a range is held by a mark that starts before its end, or at its place when it is empty, and
   // reaches into it. reach is the furthest end of those marks
   const added: Mark[] = [];
@@ -167,7 +186,7 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
     const empty = r.start === r.end;
     while (k < kept.length && (empty ? kept[k].start <= r.start : kept[k].start < r.end)) reach = Math.max(reach, kept[k++].end);
     if (empty ? reach >= r.start : reach > r.start) continue;
-    added.push({ start: r.start, end: r.end, author });
+    added.push({ start: r.start, end: r.end, author: nearest(r) });
     reach = Math.max(reach, r.end);
   }
   return added.length ? tidy([...kept, ...added]) : kept;
