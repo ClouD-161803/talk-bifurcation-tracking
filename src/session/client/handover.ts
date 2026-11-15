@@ -2,6 +2,7 @@
 // import a stateful module of the editor, hence the parts of the shell that it needs come here
 
 import type { App } from '../../editor/app.ts';
+import type { Edit } from '../../editor/merge.ts';
 import type { Port } from '../../editor/session/session.ts';
 import type { Dialog, DialogOptions } from '../../editor/ui/dialog.ts';
 import type { MenuItem, MenuOptions, OpenMenu } from '../../editor/ui/menu.ts';
@@ -19,6 +20,12 @@ export type Handover = {
   download(text: string): void;
   // a menu of ui/menu.ts, e.g. of an avatar, which closes any menu open before
   menu(items: MenuItem[], options: MenuOptions): OpenMenu;
+  // the numbers of the slides, from 1, of the ranges in a text of the deck, as the navigator counts them
+  slidesAt(text: string, ranges: Edit[]): number[];
+  // the slides of after that differ from before, by their numbers in after
+  changedSlides(before: string, after: string): number[];
+  // ' on slide 3', ' on slides 3 and 5', or '' without a slide
+  onSlides(numbers: number[]): string;
 };
 
 // window.BeesonSession, defined by theme/session.js. start() resolves with false when the page is

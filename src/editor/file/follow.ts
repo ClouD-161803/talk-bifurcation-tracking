@@ -36,7 +36,7 @@ export function onSlides(numbers: number[]): string {
 
 // the numbers of the slides, from 1, of the ranges in a text of the deck, i.e. of the sections
 // that are children of its div.slides, as the navigator counts them
-function slidesAt(text: string, ranges: Edit[]): number[] {
+export function slidesAt(text: string, ranges: Edit[]): number[] {
   const sections = parseSource(text).slides.children.flatMap((c) => (c.kind === 'element' && c.tag === 'section' && c.open ? [{ start: c.open.start, end: c.close?.end ?? c.open.end }] : []));
   const out = new Set<number>();
   for (const r of ranges) {
@@ -48,7 +48,7 @@ function slidesAt(text: string, ranges: Edit[]): number[] {
 }
 
 // the slides of after that differ from before, by their numbers in after
-function changedSlides(before: string, after: string): number[] {
+export function changedSlides(before: string, after: string): number[] {
   try {
     const hunks = changes(before, after);
     if (!hunks) return [];
