@@ -2968,6 +2968,10 @@ async function start(options = {}) {
       if (named === "long") return error(400, "the name must be a text of at most 80 characters");
       return named ? json(200, named) : error(404, "there is no such version");
     }
+    if (parts[2] === "restore") {
+      const restored = history.restore(parts[1], person);
+      return restored ? json(200, { id: restored.id, v: authority.version }) : error(404, "there is no such version");
+    }
     return error(404, "not found");
   }
   async function api(route, request) {
@@ -3173,6 +3177,12 @@ async function start(options = {}) {
     rev: () => history.rev,
     write: (answer) => {
       answer.history = history.rev;
+    }
+  });
+  people.feed({
+    rev: () => history.restores,
+    write: (answer, seen) => {
+      if (seen >= 0 && history.restored) answer.restored = history.restored;
     }
   });
   disk.start();
