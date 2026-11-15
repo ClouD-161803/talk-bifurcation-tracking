@@ -62,6 +62,8 @@ export class Comments {
   private slides: { text: string; slides: Slide[] } | null = null;
   private reread: string | null = null;
   private rereading = false;
+  // the id of each request whose answer may have been lost, by its text, sent again with it
+  private unsent = new Map<string, { id: string; on: unknown[] }>();
 
   constructor(client: Client) {
     this.client = client;
@@ -310,14 +312,17 @@ export class Comments {
       const { anchor: a, slide: s } = item;
       if (s && !item.removed && (!el || (a && a.start !== s.start))) {
         try {
-          const thread = await client.transport.post<Comment>('comments', {
-            token: client.token,
-            anchor: el ? { start: a!.start, end: a!.end } : null,
-            slide: { start: s.start, end: s.end },
-            base: base.v,
-            text,
-            mentions,
-          });
+          const thread = await this.once(JSON.stringify(['', text, mentions]), [el, slide], (id) =>
+            client.transport.post<Comment>('comments', {
+              token: client.token,
+              anchor: el ? { start: a!.start, end: a!.end } : null,
+              slide: { start: s.start, end: s.end },
+              base: base.v,
+              text,
+              mentions,
+              id,
+            }),
+          );
           this.put(thread, base.v, el ? item : { anchor: s, slide: s });
           return thread;
         } catch (e) {
@@ -338,9 +343,25 @@ export class Comments {
     this.changed();
   }
 
+  // a request sent with the id kept for key while on holds the same, so that the edit command makes
+  // nothing new when the request is sent again after its answer was lost
+  private async once<T>(key: string, on: unknown[], send: (id: string) => Promise<T>): Promise<T> {
+    let kept = this.unsent.get(key);
+    if (!kept || kept.on.some((x, i) => x !== on[i])) this.unsent.set(key, (kept = { id: crypto.randomUUID(), on }));
+    try {
+      const answer = await send(kept.id);
+      this.unsent.delete(key);
+      return answer;
+    } catch (e) {
+      if (!(e instanceof Failure && e.retried)) this.unsent.delete(key);
+      throw e;
+    }
+  }
+
   // a request on a thread, whose answer replaces the comments of the thread and keeps its anchors
   async act(id: string, route: 'reply' | 'edit' | 'delete' | 'resolve' | 'reopen', body: Record<string, unknown> = {}): Promise<void> {
-    const answer = await this.client.transport.post<Comment | Record<string, never>>(`comments/${id}/${route}`, { token: this.client.token, ...body });
+    const send = (more: Record<string, unknown>) => this.client.transport.post<Comment | Record<string, never>>(`comments/${id}/${route}`, { token: this.client.token, ...body, ...more });
+    const answer = route === 'reply' ? await this.once(JSON.stringify([id, body.text, body.mentions]), [], (reply) => send({ id: reply })) : await send({});
     const t = this.threads.get(id);
     if (!('id' in answer)) this.threads.delete(id);
     else if (t) {
