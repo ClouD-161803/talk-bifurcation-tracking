@@ -11,6 +11,8 @@ import { apply, checksum, diff, mergePatches, shift, size, valid, wellFormed } f
 export type Side = 'ours' | 'theirs';
 
 type Flight = {
+  // the client id under which the operation was sent, which rebind() does not change
+  client: string;
   seq: number;
   // the patches of the operation moved onto base, or null once an operation of another browser
   // conflicts with them, since the authority then refuses the operation
@@ -21,7 +23,7 @@ type Flight = {
 };
 
 export class Replica {
-  readonly client: string;
+  private id: string;
   base: string;
   mine: string;
   epoch: string;
@@ -44,7 +46,7 @@ export class Replica {
   constructor(client: string, text: string, v: Version, seq = 0) {
     const parsed = parseVersion(v);
     if (!parsed) throw new Error(`${v} is not a version`);
-    this.client = client;
+    this.id = client;
     this.base = text;
     this.mine = text;
     this.epoch = parsed.epoch;
@@ -54,6 +56,22 @@ export class Replica {
 
   get version(): Version {
     return formatVersion(this.epoch, this.n);
+  }
+
+  get client(): string {
+    return this.id;
+  }
+
+  // the client id under which the operation in flight was sent, or client. a hello passes it as
+  // was, and its answer tells by applied whether the text holds the operation
+  get sender(): string {
+    return this.flight?.client ?? this.id;
+  }
+
+  // the page goes on under a new client id, e.g. after a restart of the edit command. base, mine,
+  // and the operation in flight are kept, and the next resync decides whether the text holds it
+  rebind(client: string): void {
+    this.id = client;
   }
 
   // true while an operation of this browser waits for its broadcast
@@ -81,8 +99,8 @@ export class Replica {
     if (this.flight || this.needsResync || this.blocked || this.n < this.waitFor || this.mine === this.base) return null;
     const patches = diff(this.base, this.mine);
     if (patches.length === 0) return null;
-    this.flight = { seq: ++this.seq, patches, answered: false, accepted: null };
-    return { client: this.client, seq: this.seq, base: this.version, patches };
+    this.flight = { client: this.id, seq: ++this.seq, patches, answered: false, accepted: null };
+    return { client: this.id, seq: this.seq, base: this.version, patches };
   }
 
   // the answer of the edit command to a request of outgoing(). an accepted operation is applied at
@@ -187,7 +205,7 @@ export class Replica {
       return;
     }
     const next = apply(this.base, op.patches);
-    if (op.client === this.client && this.flight?.seq === op.seq) {
+    if (op.client === this.flight?.client && op.seq === this.flight.seq) {
       // the broadcast of the operation of this browser, which the deck already reads as
       this.flight = null;
     } else if (this.mine === this.base && !this.flight) {

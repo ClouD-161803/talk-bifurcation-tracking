@@ -104,12 +104,11 @@ export class Sync {
   }
 
   // the page goes on under a new client id, e.g. after a restart of the edit command. its edits
-  // are kept in mine, and they are merged into the whole text of the next resync
+  // and the operation in flight are kept, and they are merged into the whole text of the next
+  // resync
   move(client: string): void {
     if (client === this.replica.client) return;
-    const old = this.replica;
-    this.replica = new Replica(client, old.base, old.version);
-    this.replica.edit(old.mine);
+    this.replica.rebind(client);
     this.lost = true;
   }
 }
