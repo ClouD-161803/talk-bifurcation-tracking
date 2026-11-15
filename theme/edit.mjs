@@ -2382,7 +2382,7 @@ var Comments = class {
       if (gone || !this.threads.has(id)) removed.add(id);
       else changed.add(id);
     }
-    return { v: this.v, changed: [...changed].map((id) => this.threads.get(id)), removed: [...removed] };
+    return { v: this.v, changed: [...this.threads.values()].filter((t) => changed.has(t.id)), removed: [...removed] };
   }
   // a new thread of person. anchor and slide are of the text at version base
   add(person, body) {

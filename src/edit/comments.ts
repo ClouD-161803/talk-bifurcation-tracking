@@ -191,7 +191,8 @@ export class Comments {
       if (gone || !this.threads.has(id)) removed.add(id);
       else changed.add(id);
     }
-    return { v: this.v, changed: [...changed].map((id) => this.threads.get(id)!), removed: [...removed] };
+    // in the order of list(), which a page keeps for threads of the same time
+    return { v: this.v, changed: [...this.threads.values()].filter((t) => changed.has(t.id)), removed: [...removed] };
   }
 
   // a new thread of person. anchor and slide are of the text at version base
