@@ -17,7 +17,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
-import { BUBBLE, LOCKED, session } from './helpers/presence.mjs';
+import { BUBBLE, LOCKED, select, session } from './helpers/presence.mjs';
 import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -1069,4 +1069,17 @@ test('Version History takes the caret out of the text, hence another person can 
   assert.deepEqual([focused, await ben.evaluate(LOCKED(el(0, 'h2'))), await ben.evaluate(BUBBLE)], [true, false, null]);
   clean(ann);
   clean(ben);
+});
+
+test('Shift+F10 does not open the menu of the selected element over Version History', { timeout: 180_000 }, async (t) => {
+  const { pages: [ann] } = await session(t, ['Ann']);
+  await show(ann, 'One');
+  await select(ann, el(0, 'h2'));
+  await openPane(ann);
+  // the key opens a menu while its keydown is handled, hence the menu would be in the page once press ends
+  await press(ann, 'Shift+F10');
+  assert.equal(await ann.evaluate(`document.querySelectorAll('.beeson-edit-menu').length`), 0);
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  clean(ann);
 });
