@@ -94,3 +94,39 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
   for (let i = 0; i < 3; i++) replace(authority, /First slide[^<]*/, `First slide ${i}`);
   assert.equal(status(ok), 409, 'the base is older than the log');
 });
+
+test('a thread takes replies, edits, deletes, a resolve, and a reopen, within its limits', (t) => {
+  const { authority, comments } = open(sessionDir(t), DECK, { maxChars: 60_000 });
+  const thread = comments.add(ANN, onDeck(authority, 'Question'));
+  const replied = comments.reply(thread.id, BO, { text: 'Answer', mentions: [ANN] });
+  const reply = replied.replies[0];
+  assert.deepEqual([reply.author, reply.text, replied.mentions], [BO, 'Answer', [ANN]]);
+  assert.equal(comments.edit(thread.id, BO, { text: 'Not mine' }).status, 403);
+  assert.equal(comments.edit(thread.id, ANN, { text: 'Question, edited' }).text, 'Question, edited');
+  assert.equal(typeof comments.list(ANN).comments[0].edited, 'number');
+  assert.equal(comments.edit(thread.id, BO, { reply: reply.id, text: 'Answer, edited' }).replies[0].text, 'Answer, edited');
+  assert.equal(comments.edit(thread.id, BO, { reply: 'nope', text: 'x' }).status, 404);
+  assert.equal(comments.edit(thread.id, ANN, { text: '' }).status, 400);
+  assert.equal(comments.remove(thread.id, ANN, { reply: reply.id }).status, 403);
+  assert.deepEqual(comments.remove(thread.id, BO, { reply: reply.id }).replies, []);
+  assert.equal(comments.resolve(thread.id, BO, true).resolved.by, BO);
+  assert.equal(comments.resolve(thread.id, ANN, false).resolved, undefined);
+  assert.equal(comments.reply('nope', BO, { text: 'x' }).status, 404);
+  for (let i = 0; i < 200; i++) assert.equal(comments.reply(thread.id, BO, { text: `r${i}` }).replies.length, i + 1);
+  assert.equal(comments.reply(thread.id, BO, { text: 'one too many' }).status, 409);
+  // the characters of every text of the deck together
+  let added = 0;
+  while (comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).id) added++;
+  assert.equal(added, 14);
+  assert.equal(comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).status, 413);
+  assert.equal(comments.remove(thread.id, BO, {}).status, 403);
+  assert.equal(comments.remove(thread.id, ANN, {}), null);
+  assert.equal(comments.list(ANN).comments.length, added);
+  assert.ok(comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).id, 'a delete gives the characters back');
+});
+
+test('a deck holds at most 2000 threads', (t) => {
+  const { authority, comments } = open(sessionDir(t), DECK);
+  for (let i = 0; i < 2000; i++) assert.ok(comments.add(ANN, onDeck(authority, `t${i}`)).id);
+  assert.equal(comments.add(ANN, onDeck(authority, 'one too many')).status, 409);
+});
