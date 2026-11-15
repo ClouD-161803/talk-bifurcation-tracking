@@ -25,6 +25,8 @@ export type PresenceState = {
   following: string | null;
   mode: 'edit' | 'present' | 'history';
   held: number | null;
+  // the page is hidden, e.g. in a tab behind another
+  away: boolean;
   // counts the heartbeats of a hold, since the edit command relays a state without a time, and a
   // state sent again unchanged cannot be told from the last one
   beat: number;
@@ -46,6 +48,10 @@ export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret' | 'hel
 const THROTTLE = 200;
 const REST = 200;
 const TYPING = 2000;
+// in ms, the time after which a hidden page is sent as away, since a page that closes is hidden
+// just before or just after its bye, and a state that reaches the edit command after the bye
+// brings the page back
+const HIDING = 1000;
 // in ms, the floor rule of UI.md section 3: the heartbeat of a hold, the silence after which a hold
 // is lost, the time without typing after which another person may take the element, and the gap
 // within which two claims count as made at the same time
@@ -216,6 +222,7 @@ function parseState(raw: unknown): PresenceState | null {
     mode,
     held: isInt(s.held) ? s.held : null,
     beat: isInt(s.beat) ? s.beat : 0,
+    away: s.away === true,
   };
 }
 
@@ -244,6 +251,8 @@ export class Presence {
   private lastSelected: Element[] = [];
   private lastSlide: Element | null = null;
   private timer = 0;
+  // set at pagehide, when the page says bye, after which it sends no state
+  private left = false;
   private restTimer = 0;
   private typingTimer = 0;
   private typedAt = -Infinity;
@@ -306,6 +315,13 @@ export class Presence {
     app.selection.listen(() => this.moved());
     app.listen('slide', () => this.due(true));
     document.addEventListener('selectionchange', () => this.moved());
+    let hiding = 0;
+    document.addEventListener('visibilitychange', () => {
+      clearTimeout(hiding);
+      if (document.visibilityState === 'hidden') hiding = window.setTimeout(() => this.due(true), HIDING);
+      else this.due(true);
+    });
+    window.addEventListener('pagehide', () => (this.left = true));
     document.addEventListener('input', (ev) => {
       if (!app.hostOf(ev.target)) return;
       this.typed();
@@ -442,7 +458,7 @@ export class Presence {
   // the log of this page puts an offset of the last state in doubt or does not reach v, since
   // another page could then not carry it either, e.g. in the copy of a duplicated slide
   private send(): void {
-    if (this.client.connection !== 'online' || this.unconfirmed) return;
+    if (this.left || this.client.connection !== 'online' || this.unconfirmed) return;
     const state = this.build();
     if (!state) return;
     const v = parseVersion(state.v)!;
@@ -493,6 +509,7 @@ export class Presence {
       mode: this.fields.mode,
       held: this.holding && this.holding === host ? caretEl : null,
       beat: this.beat,
+      away: document.visibilityState === 'hidden',
     };
   }
 
@@ -562,7 +579,7 @@ export class Presence {
     const prev = o.resolvedKey === key || o.ahead ? o.resolved : null;
     if (!o.ahead) o.resolvedKey = key;
     if (o.ahead && prev) {
-      o.resolved = { ...prev, name, color, typing: s.typing, following: s.following, mode: s.mode, beat: s.beat };
+      o.resolved = { ...prev, name, color, typing: s.typing, following: s.following, mode: s.mode, beat: s.beat, away: s.away };
       return;
     }
     const at = (i: number, before: Element | null | undefined): Element | null => {
@@ -590,6 +607,7 @@ export class Presence {
       mode: s.mode,
       held: at(1, prev?.held),
       beat: s.beat,
+      away: s.away,
     };
   }
 
