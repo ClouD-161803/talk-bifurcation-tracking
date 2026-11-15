@@ -6,7 +6,8 @@
 // index.html, Name, Download, the page offline while the pane is open, and a phone of 390 px
 
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
@@ -14,7 +15,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
-import { raw, until } from './helpers/session.mjs';
+import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
 // a version is closed 2 s after the last operation, hence the keys of one typeKeys are one version
@@ -36,6 +37,7 @@ const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.versio
 const button = (scope, text) => `[...document.querySelectorAll('${scope} button')].find((b) => b.textContent === ${JSON.stringify(text)} && b.getClientRects().length)`;
 const INERT = `['.beeson-edit-menubar', '.beeson-edit-top', '.beeson-edit-nav', '.reveal'].map((s) => document.querySelector(s)?.inert)`;
 const TIME = /^\d{1,2}:\d{2}\s?[AP]M$/;
+const MIN = 60_000;
 // the versions as the edit command lists them to the page, newest first
 const versionsOf = (page) => page.evaluate(`${C}.transport.get('history', { token: ${C}.token }).then((a) => a.versions)`);
 // the open dialog of the pane, its field, and its buttons
@@ -434,6 +436,36 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   clean(ann);
 });
 
+const AFTER = TALK.indexOf('First slide') + 'First slide'.length;
+
+// a history written by hand: versions are { time, name?, id? }, oldest first, each of which adds an
+// x after First slide, and text is the deck at the newest of them
+function craft(versions) {
+  const lines = [JSON.stringify({ kind: 'base', time: versions[0].time - MIN, text: TALK })];
+  versions.forEach((v, i) => {
+    const id = v.id ?? `v${i}`;
+    lines.push(JSON.stringify({ kind: 'version', id, time: v.time, authors: ['pa'], slides: [1], patches: [{ start: AFTER, end: AFTER, text: 'x' }], marks: [{ start: AFTER, end: AFTER + 1, author: 'pa' }] }));
+    if (v.name) lines.push(JSON.stringify({ kind: 'name', id, name: v.name }));
+  });
+  return { jsonl: `${lines.join('\n')}\n`, text: TALK.slice(0, AFTER) + 'x'.repeat(versions.length) + TALK.slice(AFTER) };
+}
+
+// the edit command on a talk folder whose .session/history.jsonl is written before it starts
+async function crafted(t, { jsonl, text }, env = {}) {
+  const folder = talkFolder(t, text);
+  for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
+  mkdirSync(join(folder.talk, '.session'));
+  writeFileSync(join(folder.talk, '.session', 'history.jsonl'), jsonl);
+  const file = join(folder.talk, 'index.html');
+  const server = { ...folder, file, read: () => readFileSync(file, 'utf8') };
+  server.edit = await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config, ...env } });
+  t.after(async () => {
+    await stopEdit(server.edit);
+    rmSync(folder.root, { recursive: true, force: true });
+  });
+  return server;
+}
+
 // the requests of the page whose address includes part, counted in window.__count[part]
 const countRequests = (page, part) => page.evaluate(`(() => {
   window.__count ??= {};
@@ -524,6 +556,65 @@ test('Name this version shows the name that a save replaces, an empty name under
   });
   clean(ann);
   clean(ben);
+});
+
+test('a fold stays open, and the focus stays on its control, while new versions arrive', { timeout: 300_000 }, async (t) => {
+  const now = Date.now();
+  const midnight = new Date(now).setHours(0, 0, 0, 0);
+  // two unnamed versions a second apart, on the day of the new versions
+  const first = Math.max(now - 3 * MIN, midnight + 1000);
+  const server = await crafted(t, craft([{ time: first }, { time: first + 1000 }]), QUICK);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  await openPane(ann);
+  await ann.waitFor(`${LIST}.length === 4`);
+  // Bo writes over HTTP, since reveal.js moves the focus to body when the tab of Ann is shown again
+  const { port, base } = server.edit;
+  const bo = (await post(port, `${base}.session/hello`, { name: 'Bo' })).json();
+  const at = bo.text.indexOf('Second slide') + 'Second slide'.length;
+  let v = bo.v;
+  let count = 2;
+  // Bo inserts word, and Ann waits for the version of Bo in the fold
+  async function version(word) {
+    count++;
+    const answer = (await post(port, `${base}.session/op`, { token: bo.token, seq: count - 2, base: v, patches: [{ start: at, end: at, text: word }] })).json();
+    assert.equal(answer.ok, true);
+    v = answer.v;
+    await ann.waitFor(`(${LIST}).find((x) => x.fold)?.fold.endsWith('${count - 1} more')`, 20_000);
+  }
+
+  await t.test('an open fold stays open when a newer version joins it', async () => {
+    await press$(ann, PANE, 'Show 1 more');
+    await ann.waitFor(`${LIST}[3]?.hidden === false`);
+    await version(' a');
+    const fold = await ann.evaluate(`(() => { const f = document.querySelector('${PANE} .fold'); return { text: f.textContent, expanded: f.getAttribute('aria-expanded'), hidden: f.nextElementSibling.hidden }; })()`);
+    assert.deepEqual(fold, { text: 'Hide 2 more', expanded: 'true', hidden: false });
+  });
+
+  await t.test('the focus stays on the fold button and on Name this version', async () => {
+    await ann.evaluate(`document.querySelector('${PANE} .fold').focus(), true`);
+    await version(' b');
+    assert.equal(await ann.evaluate(`document.activeElement === document.querySelector('${PANE} .fold')`), true);
+    await ann.evaluate(`document.querySelector('${PANE} .name-current').focus(), true`);
+    await version(' c');
+    assert.equal(await ann.evaluate(`document.activeElement === document.querySelector('${PANE} .name-current')`), true);
+  });
+
+  await t.test('the focus stays on Restore this version, and an open More menu is closed with the focus on More', async () => {
+    await tapOrClick(ann, `document.querySelectorAll('${PANE} .versions .row.version')[1]`);
+    await ann.waitFor(`!!(${button(BAR, 'Restore this version')})`);
+    await ann.evaluate(`(${button(BAR, 'Restore this version')}).focus(), true`);
+    await version(' d');
+    assert.equal(await ann.evaluate(`document.activeElement === (${button(BAR, 'Restore this version')})`), true);
+    await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
+    await ann.waitFor(`!!document.querySelector('.beeson-session-menu')`);
+    await version(' e');
+    await ann.waitFor(`!document.querySelector('.beeson-session-menu')`);
+    assert.equal(await ann.evaluate(`document.activeElement === document.querySelector('${BAR} button.more') && document.activeElement.isConnected`), true);
+  });
+  clean(ann);
 });
 
 test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
