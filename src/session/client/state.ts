@@ -1,5 +1,5 @@
 // the save state of a session, a button in .right of the title bar in place of Autosave, whose
-// text is given to the status bar as well. a click on it while offline reconnects at once, and
+// text is given to the title as well. a click on it while offline reconnects at once, and
 // otherwise it saves, which in a session waits for the acknowledgments. a second button beside it
 // is Try now while a reconnect waits, and Load again while the page is blocked
 
@@ -10,8 +10,10 @@ import { failedLine, lostLine, retry as retryUpload } from './media.ts';
 import { isLeaving } from './people.ts';
 
 // the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
-// of their own, see people.ts
+// of their own, see people.ts. the button is drawn without its text while the title shows it, i.e.
+// from the width at which menubar.ts shows the state, and while the title has room for it
 const CSS = `
+@media (min-width: 900px) { .beeson-edit-titlebar:has(.doc:not(.tight) .state) .right button.beeson-session-state .name { display: none; } }
 .beeson-edit-titlebar .right button.beeson-session-state, .beeson-edit-titlebar .right button.beeson-session-action { position: relative; }
 .beeson-edit-titlebar .right button.beeson-session-state::after, .beeson-edit-titlebar .right button.beeson-session-action::after { content: ''; position: absolute; inset: -5px -2px; }
 .beeson-edit-titlebar .right button.beeson-session-state svg { flex: none; color: var(--ed-muted); }
