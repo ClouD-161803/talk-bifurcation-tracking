@@ -18,6 +18,9 @@ const OF_SLIDES = new Set(['edit.cut', 'element.delete']);
 // the commands that change text anywhere in the deck, refused while any text element is held. a
 // section is moved by its head, whose slides are not read here
 const ANYWHERE = new Set(['find.replaceOne', 'find.replaceAndFind', 'find.replaceAll', 'slide.moveSection']);
+// the commands of a caret that also change the text element before it, or with joinForward after
+// it, unless the caret is in a nested item
+const BESIDE = new Set(['text.joinBackward', 'text.joinForward', 'text.indent']);
 // the commands of a selection that change nothing
 const READ = /^(view|zoom|go|help|window|file)\.|^edit\.copy$|^find\.(open|next|previous|close|useSelection)$/;
 
@@ -128,6 +131,15 @@ function refused(app: App, presence: Presence, c: Command, arg: unknown): Resolv
   const cell = (arg as { cell?: unknown } | null | undefined)?.cell;
   const table = (cell instanceof Element ? cell : sel.kind === 'text' ? sel.items[0] : null)?.closest('table');
   if (table && ((c.undoable && c.id.startsWith('table.')) || c.id.startsWith('edit.paste'))) return presence.lockOf(table);
+  // a join and Tab at the first level of a list also change the text element beside the caret
+  if (sel.kind === 'text' && BESIDE.has(c.id)) {
+    const host = sel.items[0];
+    const node = getSelection()?.focusNode;
+    const li = (node instanceof Element ? node : node?.parentElement)?.closest('li');
+    const beside = li && li !== host && host.contains(li) ? null : c.id === 'text.joinForward' ? host.nextElementSibling : host.previousElementSibling;
+    const by = beside && presence.lockOf(beside);
+    if (by) return by;
+  }
   if (READ.test(c.id) || (sel.kind !== 'elements' && sel.kind !== 'text')) return null;
   for (const el of sel.items) {
     const by = presence.lockOf(el);
