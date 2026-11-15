@@ -466,3 +466,30 @@ test('add regression test: a request body aborted by the browser does not stop t
   assert.equal(edit.child.exitCode, null, edit.stderr);
   await until(() => text(join(talk, 'index.html')).startsWith('<!-- kept -->'), 'the operation to be written');
 });
+
+test('add regression test: share requests at the same time leave no relay link running after the end of sharing', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const secret = 'a secret of the group, long enough';
+  const relay = await startRelay({ host: '127.0.0.1', secret, guestMs: 2000 });
+  t.after(() => relay.close());
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const share = `${edit.base}.session/share`;
+  const guest = () => fetch(`${relay.url}${edit.base}index.html`).then((r) => r.status);
+  // a link left running registers the session again within a few round trips of the relay
+  const unreachable = async () => {
+    for (let i = 0; i < 40; i++) assert.equal(await guest(), 502, `guest request ${i}`);
+  };
+
+  const both = await Promise.all([post(edit.port, share, { relay: relay.url, secret }), post(edit.port, share, { relay: relay.url, secret })]);
+  assert.deepEqual(both.map((r) => r.status), [200, 200]);
+  assert.deepEqual((await raw(edit.port, 'DELETE', share)).json(), { link: null });
+  await unreachable();
+
+  const [shared, stopped] = await Promise.all([post(edit.port, share, { relay: relay.url, secret }), raw(edit.port, 'DELETE', share)]);
+  assert.equal(shared.status, 200);
+  assert.deepEqual(stopped.json(), { link: null });
+  assert.deepEqual((await raw(edit.port, 'GET', share)).json(), { link: null }, 'a stop sent during a share ends it');
+  await unreachable();
+});
