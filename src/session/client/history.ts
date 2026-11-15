@@ -10,7 +10,6 @@ import type { Client } from './client.ts';
 import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
 import { authorsOf, dateOf, dayLabel, personOf, slidesText, timeOf, whenOf } from './labels.ts';
-import { closeMenu } from './menu.ts';
 import { presenceOf } from './presence.ts';
 import { Preview } from './preview.ts';
 import { addStateItem } from './state.ts';
@@ -353,18 +352,7 @@ export function install(client: Client): void {
     }
     const v = info as VersionInfo;
     shownTime = v.time;
-    // the bar is made again, hence its focused control is focused again after, or More when its menu
-    // was open, which is closed since its items are of the bar before
-    const el = preview.el;
-    const controls = () => [...el.querySelectorAll<HTMLElement>('.bar :is(button, input)')];
-    const before = controls();
-    const at = before.indexOf(document.activeElement as HTMLElement);
-    const text = before[at]?.textContent;
-    const menu = before.some((b) => b.getAttribute('aria-expanded') === 'true') && closeMenu();
     preview.showVersion(v);
-    if (at < 0 && !menu) return;
-    const after = controls();
-    (at >= 0 && after[at]?.textContent === text ? after[at] : after.find((b) => b.classList.contains('more')))?.focus();
   }
 
   function choose(select: Selected): void {

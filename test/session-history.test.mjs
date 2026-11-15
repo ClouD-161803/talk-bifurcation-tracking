@@ -663,17 +663,19 @@ test('a fold stays open, and the focus stays on its control, while new versions 
     assert.equal(await ann.evaluate(`document.activeElement === document.querySelector('${PANE} .name-current')`), true);
   });
 
-  await t.test('the focus stays on Restore this version, and an open More menu is closed with the focus on More', async () => {
+  await t.test('the focus stays on Restore this version, and an open More menu stays open', async () => {
     await tapOrClick(ann, `document.querySelectorAll('${PANE} .versions .row.version')[1]`);
     await ann.waitFor(`!!(${button(BAR, 'Restore this version')})`);
     await ann.evaluate(`(${button(BAR, 'Restore this version')}).focus(), true`);
     await version(' d');
     assert.equal(await ann.evaluate(`document.activeElement === (${button(BAR, 'Restore this version')})`), true);
     await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
-    await ann.waitFor(`!!document.querySelector('.beeson-session-menu')`);
+    await ann.waitFor(`document.activeElement?.closest('.beeson-session-menu') !== null`);
+    await ann.evaluate(`window.__more = document.querySelector('${BAR} button.more'), true`);
     await version(' e');
-    await ann.waitFor(`!document.querySelector('.beeson-session-menu')`);
-    assert.equal(await ann.evaluate(`document.activeElement === document.querySelector('${BAR} button.more') && document.activeElement.isConnected`), true);
+    assert.deepEqual(await ann.evaluate(`[window.__more.isConnected, window.__more.getAttribute('aria-expanded'), !!document.activeElement?.closest('.beeson-session-menu')]`), [true, 'true', true]);
+    await press(ann, 'Escape');
+    await ann.waitFor(`!document.querySelector('.beeson-session-menu') && document.activeElement === window.__more`);
   });
   clean(ann);
 });
