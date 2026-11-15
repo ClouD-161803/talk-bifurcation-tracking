@@ -185,11 +185,9 @@ export function install(app: App): void {
   wire(autosave, () => app.commands.run('file.autosave'), fail);
   app.listen('report', () => {
     fileEl.textContent = app.handle?.name ?? fileName();
-    // a session does not autosave, see session/session.ts
-    autosave.hidden = !!app.session;
-    autosave.setAttribute('aria-pressed', String(app.autosave));
     // in a session the edits go to the edit command, and its save state takes the place of the switch
     autosave.hidden = !!app.session;
+    autosave.setAttribute('aria-pressed', String(app.autosave));
     autosave.classList.toggle('on', app.autosave);
     which.hidden = !app.pairing?.problems.length;
     stateEl.textContent = app.line.text;
