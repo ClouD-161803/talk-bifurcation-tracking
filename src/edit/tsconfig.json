@@ -5,5 +5,5 @@
     "types": ["node"]
   },
   "include": ["./**/*.ts", "../session/**/*.ts", "../editor/merge.ts", "../editor/tokens.ts"],
-  "exclude": []
+  "exclude": ["../session/qr.ts"]
 }
