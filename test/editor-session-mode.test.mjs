@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { editorPage } from './helpers/editor.mjs';
+import { editorPage, press } from './helpers/editor.mjs';
 import { E } from './helpers/apply.mjs';
 import { CLIENT, HELD_SAVER, NO_TABS, TIMERS, draftText, fileMenu, keepOldDraft, release, typeGo } from './helpers/session-mode.mjs';
 
@@ -320,5 +320,26 @@ test('begin() is idempotent, and end() without begin() does nothing', async () =
     assert.deepEqual(errors(plain), []);
   } finally {
     await plain.close();
+  }
+});
+
+// a command that fails is reported with a note of the editor. Present fails here, since the saver of
+// the session rejects, as the client does once the session has ended
+test('the state line of a session shows why a command failed, until the next edit', async () => {
+  const page = await editorPage(browser, { client: CLIENT, query: SESSION });
+  try {
+    await page.evaluate(`(${E}.session.setStatus('Saved'), ${E}.session.onSave(() => ((window.__saves = (window.__saves ?? 0) + 1), Promise.reject(new Error('The session has ended')))), true)`);
+    await typeGo(page);
+    await press(page, 'Mod+Enter');
+    await page.waitFor('window.__saves === 1');
+    await page.waitFor(`!document.querySelector('.beeson-edit-show')`);
+    // the sentence after it is of the typed text, which runs past its slide
+    assert.match((await status(page)).message, /^Saved\. The session has ended(\.|$)/, 'the state line does not show the failure');
+    assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-titlebar .state').classList.contains('warn')`), true);
+    await typeGo(page);
+    await page.waitFor(`!${E}.status().message.includes('The session has ended')`, 5000);
+    assert.deepEqual(errors(page), []);
+  } finally {
+    await page.close();
   }
 });
