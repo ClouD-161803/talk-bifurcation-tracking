@@ -293,7 +293,7 @@ export function install(app: App): Port {
     const mj = (window as unknown as Page).MathJax;
     const all = [...done.typeset];
     if (made.length && mj?.typesetPromise) all.push(mj.typesetPromise(made));
-    if (!all.length) return;
+    if (!all.length && !made.length) return;
     await Promise.allSettled(all);
     mine = true;
     try {
