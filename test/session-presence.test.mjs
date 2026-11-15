@@ -830,3 +830,43 @@ test('a listener of the client that throws is reported, and the page goes on pol
   clean(ana);
   clean(ben, [/a part failed/]);
 });
+
+// the timers of presence on page that are set: the ticker of the floor rule, the throttle of a
+// state, the rest of the caret, and the end of typing
+const TIMERS = `(() => { const p = ${P}; return [p.ticker, p.timer, p.restTimer, p.typingTimer].filter((id) => id !== 0).length; })()`;
+
+test('after Leave Session and after the end of the session, no element stays locked, and no timer of presence runs', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered soon
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
+  const pages = [];
+  for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name }));
+  await converge(server, pages);
+  const [ana, ben, cy] = pages;
+  const p = el(1, 'p');
+  for (const page of [ana, ben, cy]) await show(page, 'Two');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, 'x');
+  await until(() => server.read().includes('<p>Second slidex</p>'), 'the letter of Ana in index.html');
+  await until(async () => (await ben.evaluate(LOCKED(p))) && (await cy.evaluate(LOCKED(p))), 'the paragraph locked on the pages of Ben and Cy');
+  await front(ben);
+  await ben.evaluate(`${C}.leave()`);
+  await until(() => ben.evaluate(`${C}.connection === 'ended'`), 'Ben to leave');
+  await until(() => ben.evaluate(`${C}.people.length === 2`), 'the answer of the poll of Ben after he left');
+  assert.deepEqual(await ben.evaluate(`({ locked: ${LOCKED(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { locked: false, resolved: 0, timers: 0 });
+  // a caret and keys after the end begin no hold
+  await ben.evaluate(`document.querySelectorAll('dialog[open]').forEach((d) => d.close())`);
+  await caretAtEnd(ben, el(1, 'h2'));
+  await typeKeys(ben, 'y');
+  assert.deepEqual(await ben.evaluate(`({ held: ${P}.held, timers: ${TIMERS} })`), { held: null, timers: 0 });
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
+  assert.deepEqual(await cy.evaluate(`({ locked: ${LOCKED(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { locked: false, resolved: 0, timers: 0 });
+  assert.deepEqual(await ana.evaluate(`({ held: ${P}.held, timers: ${TIMERS} })`), { held: null, timers: 0 });
+  clean(ana);
+  clean(ben);
+  clean(cy);
+});
