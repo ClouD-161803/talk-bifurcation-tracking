@@ -528,6 +528,32 @@ test('the field counts the text as it is sent, with each mention as the id of it
   clean(a);
 });
 
+test('after E on a thread, the focus is on the next thread, which alone takes Tab, and an edit returns the focus to its thread', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  for (const [k, text] of [[0, 'First'], [1, 'Second'], [1, 'Third']]) await post(a, k, text);
+  await openPane(a);
+  await sees(a, `[...document.querySelectorAll('${PANE} article .text')].map((p) => p.textContent).sort()`, ['First', 'Second', 'Third']);
+  const ids = await a.evaluate(`[...document.querySelectorAll('${PANE} article')].map((n) => n.dataset.id)`);
+  const TABBABLE = `[...document.querySelectorAll('${PANE} article')].filter((n) => n.tabIndex === 0).map((n) => n.dataset.id)`;
+  await a.evaluate(`document.querySelector('${ARTICLE(ids[0])}').focus()`);
+  await press(a, 'E');
+  await sees(a, `[${ACTIVE}, ${TABBABLE}]`, [ids[1], [ids[1]]]);
+  await press(a, 'J');
+  await sees(a, ACTIVE, ids[2]);
+  await click(a, `${ARTICLE(ids[2])} > .item:first-child .more`);
+  await menu(a, 'Edit');
+  await sees(a, `document.activeElement?.matches('${ARTICLE(ids[2])} textarea')`, true);
+  await press(a, 'Escape');
+  await sees(a, ACTIVE, ids[2]);
+  await click(a, `${ARTICLE(ids[2])} > .item:first-child .more`);
+  await menu(a, 'Edit');
+  await sees(a, `document.activeElement?.matches('${ARTICLE(ids[2])} textarea')`, true);
+  await typeKeys(a, ' edited');
+  await click(a, `${ARTICLE(ids[2])} > .item:first-child .actions .primary`);
+  await sees(a, `[${ACTIVE}, document.querySelector('${ARTICLE(ids[2])} .text')?.textContent ?? null]`, [ids[2], 'Third edited']);
+  clean(a);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
