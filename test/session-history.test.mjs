@@ -701,6 +701,37 @@ test('a compaction that drops the version in the preview closes the preview, sel
   clean(ben);
 });
 
+test('the restore of a version of another year names its year, and the time of the version, in the dialog, the row, and the toast', { timeout: 300_000 }, async (t) => {
+  const year = new Date().getFullYear() - 1;
+  const old = new Date(year, 10, 3, 14, 41).getTime();
+  const server = await crafted(t, craft([{ time: old, name: 'Submitted' }, { time: Date.now() - 60 * MIN }]), HELD);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await ben.send('Emulation.setLocaleOverride', { locale: 'en-GB' });
+  await converge(server, [ann, ben]);
+  // the day with its year, and the time, of the version in the locale of a page
+  const whenIn = (page) => page.evaluate(`[new Date(${old}).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }), new Date(${old}).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })]`);
+  const [day, time] = await whenIn(ann);
+  assert.ok(day.includes(String(year)), day);
+  await recordToasts(ben);
+  await openPane(ann);
+  await ann.waitFor(`(${LIST}).some((x) => x.title === 'Submitted')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .versions .row.version')].find((r) => r.querySelector('.title').textContent === 'Submitted')`);
+  await press$(ann, BAR, 'Restore this version');
+  await ann.waitFor(`document.querySelector('${DIALOG} h3')?.textContent === 'Restore this version?'`);
+  assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} p').textContent`), `The deck goes back to how it was on ${day} at ${time}. The current version stays in the history.`);
+  await press$(ann, DIALOG, 'Restore');
+  await ann.waitFor(`!(${SHOWN})`, 20_000);
+  await ben.waitFor('window.__toasts.length > 0');
+  assert.deepEqual(await ben.evaluate('window.__toasts'), [`Ann restored the version of ${(await whenIn(ben)).join(', ')}|status`]);
+  await openPane(ann);
+  await ann.waitFor(`document.querySelector('${PANE} .versions .row.version .sub')?.textContent === ${JSON.stringify(`Restored the version of ${day}, ${time}`)}`);
+  clean(ann);
+  clean(ben);
+});
+
 test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
