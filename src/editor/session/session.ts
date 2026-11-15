@@ -300,13 +300,18 @@ export function install(app: App): Port {
     }
     parked = { host, range };
   }
-  const types = (ev: KeyboardEvent): boolean => !ev.isComposing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && (ev.key.length === 1 || ev.key === 'Backspace' || ev.key === 'Delete' || ev.key === 'Enter');
-  window.addEventListener('keydown', (ev) => {
+  // a character typed with Option or AltGr types, and a dead key or an input method starts to
+  // type, where a shortcut does not
+  const types = (ev: KeyboardEvent): boolean =>
+    !ev.isComposing &&
+    (ev.key.length === 1
+      ? !ev.metaKey && (!ev.ctrlKey || ev.altKey || ev.getModifierState('AltGraph'))
+      : !ev.ctrlKey && !ev.metaKey && !ev.altKey && ['Backspace', 'Delete', 'Enter', 'Dead', 'Process'].includes(ev.key));
+  function unpark(): void {
     const p = parked;
-    if (!p || !types(ev)) return;
     parked = null;
     const was = document.activeElement;
-    if (!p.host.isConnected || (was !== p.host && was !== document.body)) return;
+    if (!p || !p.host.isConnected || (was !== p.host && was !== document.body)) return;
     app.showSlide(p.host);
     if (was === p.host) return;
     (p.host as HTMLElement).focus({ preventScroll: true });
@@ -314,6 +319,13 @@ export function install(app: App): Port {
     if (!sel || document.activeElement !== p.host) return;
     sel.removeAllRanges();
     sel.addRange(p.range);
+  }
+  window.addEventListener('keydown', (ev) => {
+    if (parked && types(ev)) unpark();
+  }, true);
+  // the keyboard of a phone sends the key Unidentified, and its input is known at beforeinput
+  window.addEventListener('beforeinput', () => {
+    if (parked) unpark();
   }, true);
   window.addEventListener('pointerdown', () => void (parked = null), true);
   document.addEventListener('focusin', () => void (parked = null), true);
