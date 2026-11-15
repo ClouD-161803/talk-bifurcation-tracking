@@ -653,7 +653,7 @@ export class Client {
         }
         continue;
       }
-      if (this.gone || generation !== this.generation) continue;
+      if (this.ended || this.gone || generation !== this.generation) continue;
       this.online();
       this.bounces = 0;
       await this.take(answer);
