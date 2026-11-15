@@ -1,10 +1,10 @@
 // the presence of the other people on the canvas, as in UI.md section 3: a frame in the tone of a
-// person around each element of the shown slide that the person selected, a name flag on its upper
-// left corner, and the caret bar of a person in a text element. the boxes are read in one animation
-// frame in fractions of the slide, and shell/canvas.ts lays .beeson-presence over the slide with the
-// custom properties of .reveal, hence a pointer move, a scroll, or a zoom does not read layout.
-// during a drag of the own selection the boxes of the last read are moved by the translates that
-// the drag writes
+// person around each element of the shown slide that the person selected, one around a group, a
+// name flag on its upper left corner, and the caret bar of a person in a text element. the boxes are
+// read in one animation frame in fractions of the slide, and shell/canvas.ts lays .beeson-presence
+// over the slide with the custom properties of .reveal, hence a pointer move, a scroll, or a zoom
+// does not read layout. during a drag of the own selection the boxes of the last read are moved by
+// the translates that the drag writes
 
 import type { Shape } from '../../editor/session/presence.ts';
 import type { Client } from './client.ts';
@@ -78,9 +78,10 @@ export function install(client: Client): void {
   let hovered: Element | null = null;
   // the chips of the last draw, each at a fraction of the slide and px from it, for a press
   let chips: { flags: HTMLElement; id: string; x: number; y: number; dx: number; dy: number }[] = [];
-  // the shapes of the last read: of each element, and each caret by client with its element and
-  // its offset, with the size of the slide
-  let kept = { els: new Map<Element, Kept>(), carets: new Map<string, Kept & { el: Element; offset: number }>(), W: 1, H: 1 };
+  // the shapes of the last read: of each element or group by the element that heads it, the
+  // members of each group, and each caret by client with its element and its offset, with the
+  // size of the slide
+  let kept = { els: new Map<Element, Kept>(), groups: new Map<Element, Element[]>(), carets: new Map<string, Kept & { el: Element; offset: number }>(), W: 1, H: 1 };
 
   const schedule = (): void => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -114,15 +115,23 @@ export function install(client: Client): void {
   // every read of layout is made here, before the writes of draw. during a drag of the own
   // selection the last read is kept while it holds every element and caret
   function measure(els: Element[], carets: Resolved[]): void {
-    const known = els.every((el) => kept.els.has(el)) && carets.every((r) => kept.carets.get(r.client)?.el === r.caret!.el && kept.carets.get(r.client)?.offset === r.caret!.at);
+    const members = new Set([...kept.groups.values()].flat());
+    const known = els.every((el) => kept.els.has(el) || members.has(el)) && carets.every((r) => kept.carets.get(r.client)?.el === r.caret!.el && kept.carets.get(r.client)?.offset === r.caret!.at);
     if (known && GESTURE.some((c) => document.documentElement.classList.contains(c))) return;
-    const shapes = els.length || carets.length ? shell.presence.shapes(els, carets.map((r) => r.caret!)) : { els: [], carets: [] };
+    const groups = els.length > 1 ? shell.groups(els) : [];
+    const grouped = new Set(groups.flatMap((g) => g.els));
+    const singles = els.filter((el) => !grouped.has(el));
+    const shapes = singles.length || carets.length ? shell.presence.shapes(singles, carets.map((r) => r.caret!)) : { els: [], carets: [] };
     const slides = app.slides() as HTMLElement;
-    kept = { els: new Map(), carets: new Map(), W: slides.offsetWidth || 1, H: slides.offsetHeight || 1 };
-    els.forEach((el, i) => {
+    kept = { els: new Map(), groups: new Map(), carets: new Map(), W: slides.offsetWidth || 1, H: slides.offsetHeight || 1 };
+    singles.forEach((el, i) => {
       const s = shapes.els[i];
       if (s) kept.els.set(el, { s, at: offset(el) });
     });
+    for (const g of groups) {
+      kept.els.set(g.els[0], { s: g.shape, at: offset(g.els[0]) });
+      kept.groups.set(g.els[0], g.els);
+    }
     carets.forEach((r, i) => {
       const s = shapes.carets[i];
       const { el, at } = r.caret!;
@@ -155,12 +164,22 @@ export function install(client: Client): void {
     for (const r of list) for (const el of r.selected) if (on(el)) byEl.set(el, [...(byEl.get(el) ?? []), r]);
     const carets = list.filter((r) => r.caret && on(r.caret.el));
     measure([...byEl.keys()], carets);
+    // the people of each element, or of the group that it is a member of
+    const head = new Map<Element, Element>();
+    for (const [h, members] of kept.groups) for (const m of members) head.set(m, h);
+    const units = new Map<Element, Resolved[]>();
+    for (const [el, people] of byEl) {
+      const h = head.get(el) ?? el;
+      const all = units.get(h) ?? [];
+      for (const r of people) if (!all.includes(r)) all.push(r);
+      units.set(h, all);
+    }
     const nodes: HTMLElement[] = [];
     const next = new Map<Element, HTMLElement>();
     const placedChips: typeof chips = [];
     let soonest = Infinity;
     const soon = (at: number) => (soonest = Math.min(soonest, at));
-    for (const [el, people] of byEl) {
+    for (const [el, people] of units) {
       const k = kept.els.get(el);
       if (!k) continue;
       const s = moved(k, el);
@@ -182,8 +201,8 @@ export function install(client: Client): void {
         left += m.width + 2;
       }
       if (people.length > FLAGS) flags.append(make('div', 'flag more', `+${people.length - FLAGS}`));
-      if (el === hovered) flags.classList.add('hover');
-      next.set(el, flags);
+      if (el === hovered || kept.groups.get(el)?.includes(hovered!)) flags.classList.add('hover');
+      for (const m of kept.groups.get(el) ?? [el]) next.set(m, flags);
       nodes.push(flags);
     }
     for (const r of carets) {
