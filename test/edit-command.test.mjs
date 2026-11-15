@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { request as httpRequest } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
 import { startRelay } from '../scripts/relay.mjs';
 import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
@@ -492,4 +492,32 @@ test('add regression test: share requests at the same time leave no relay link r
   assert.deepEqual(stopped.json(), { link: null });
   assert.deepEqual((await raw(edit.port, 'GET', share)).json(), { link: null }, 'a stop sent during a share ends it');
   await unreachable();
+});
+
+test('add regression test: the saved secret of the relay is sent only to the saved address', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const secret = 'a secret of the group, long enough';
+  const relay = await startRelay({ host: '127.0.0.1', secret });
+  t.after(() => relay.close());
+  const seen = [];
+  const other = createServer((req, res) => {
+    seen.push(req.headers.authorization ?? '');
+    res.writeHead(401).end();
+  });
+  await new Promise((done) => other.listen(0, '127.0.0.1', done));
+  t.after(() => other.close());
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const share = `${edit.base}.session/share`;
+  assert.equal((await post(edit.port, share, { relay: relay.url, secret })).status, 200);
+  assert.deepEqual((await raw(edit.port, 'DELETE', share)).json(), { link: null });
+
+  const moved = await post(edit.port, share, { relay: `http://127.0.0.1:${other.address().port}` });
+  assert.equal(moved.status, 400);
+  assert.match(moved.json().error, /secret/);
+  assert.deepEqual(seen, [], 'the saved secret reached another address');
+  // the saved address goes on with the saved secret
+  assert.equal((await post(edit.port, share, {})).status, 200);
+  assert.equal(JSON.parse(text(join(config, 'beeson-slides', 'relay.json'))).relay, relay.url);
 });
