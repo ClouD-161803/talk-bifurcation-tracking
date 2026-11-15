@@ -6,7 +6,7 @@
 // the letters as outlines, at 3.6 px per TeX point, hence its text of 10 pt is 36 px on a slide.
 //
 // compileFigure does not write anything into the folder of the talk, and writeFigure writes its text,
-// so that a command of the editor can compile a source that is not saved yet.
+// hence a source can be compiled before it is saved.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
