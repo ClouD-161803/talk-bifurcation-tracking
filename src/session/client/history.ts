@@ -32,6 +32,8 @@ html.beeson-editor body > .beeson-session-history[hidden] { display: none; }
 @media (max-width: 599.98px) {
   html.beeson-editor.beeson-history { --ed-insp-col: 0px; }
   html.beeson-editor body > .beeson-session-history { position: fixed; left: 0; right: 0; bottom: 28px; height: 55vh; height: 55dvh; z-index: 70; border-left: 0; border-top: 1px solid var(--ed-line); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18); }
+  /* the slide of the canvas is fitted to the room above the sheet */
+  html.beeson-editor.beeson-history:has(body > .beeson-session-history:not(.peek)) .beeson-edit-canvas { margin-bottom: 55vh; margin-bottom: 55dvh; }
   /* while a version is previewed, the sheet shrinks to the row of the version and Versions */
   html.beeson-editor body > .beeson-session-history.peek { height: auto; max-height: 55vh; max-height: 55dvh; padding-bottom: 6px; }
   .beeson-session-history.peek > :not(.head, .rows), .beeson-session-history.peek .rows > :not(.row[aria-current="true"], .folded), .beeson-session-history.peek .folded > :not([aria-current="true"]) { display: none; }
