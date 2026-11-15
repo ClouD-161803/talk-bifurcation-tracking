@@ -63,8 +63,8 @@ export class People {
   private file: string | null;
   private members = new Map<string, Member>();
   // the person, the kind, and the token of every page that said hello, so that a browser back
-  // from a sleep keeps its person
-  private clients = new Map<string, { person: string; host: boolean; token: string }>();
+  // from a sleep keeps its person, and whether the page said bye since
+  private clients = new Map<string, { person: string; host: boolean; token: string; left?: true }>();
   // the client id of each token
   private tokens = new Map<string, string>();
   private records = new Map<string, PersonRecord>();
@@ -215,7 +215,10 @@ export class People {
     return true;
   }
 
+  // the page left, and a request of it that arrives later does not bring it back, only a hello
   bye(client: string): void {
+    const known = this.clients.get(client);
+    if (known) known.left = true;
     if (this.members.delete(client)) this.changed();
   }
 
@@ -324,7 +327,7 @@ export class People {
       this.clients.delete(client);
       this.clients.set(client, known);
     }
-    if (!member && known && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
+    if (!member && known && !known.left && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
       const { person, name, color } = record;
       const now = Date.now();
       member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, writeSeen: 0, lastAnswer: 0, polls: 0 };
