@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { press, typeKeys } from './helpers/editor.mjs';
+import { press, type, typeKeys } from './helpers/editor.mjs';
 import { E, applyOn, caretAtEnd, sessionPage, showSlide } from './helpers/apply.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 
@@ -105,5 +105,51 @@ test('a caret whose paragraph is moved to another slide is let go once the perso
   await typeKeys(b, 'Xyz');
   assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'the person stays on the slide');
   assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.deepEqual(b.errors, []);
+});
+
+// the text with the paragraph of the caret moved under the heading of the slide of code boxes,
+// which is not shown
+const moveP1 = (text) => once(once(text, LINE, ''), '  <h2>Code boxes, you guessed it...</h2>\n', '  <h2>Code boxes, you guessed it...</h2>\n' + LINE);
+
+// the caret at the end of the paragraph, parked by an apply that moves the paragraph, which returns
+// this text
+async function parkP1(b) {
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  const text = moveP1(b.source);
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'the person stays on the slide');
+  return text;
+}
+
+test('a character typed with Option after a caret is parked goes into its paragraph', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await parkP1(b);
+  // Option+L of a German layout of a Mac types @
+  const base = { key: '@', code: 'KeyL', windowsVirtualKeyCode: 76, modifiers: 1 };
+  await b.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '@', unmodifiedText: 'l' });
+  await b.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  await typeKeys(b, 'x');
+  await b.waitFor(`${P1}.textContent.endsWith('x')`);
+  assert.equal(await b.evaluate(`${P1}.textContent.slice(-12)`), 'attention.@x');
+  assert.deepEqual(b.errors, []);
+});
+
+test('the input of a keyboard of a phone, whose key is Unidentified, goes into a parked caret', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  const text = await parkP1(b);
+  const base = { key: 'Unidentified', code: '', windowsVirtualKeyCode: 229, modifiers: 0 };
+  await b.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
+  await b.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'a key that does not type leaves the person on the slide');
+  // the keyboard inserts its text, which a beforeinput of the focused element announces
+  await b.evaluate(`document.activeElement.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: 'x' }))`);
+  assert.deepEqual(await b.evaluate(`({ shown: Reveal.getCurrentSlide().contains(${P1}), active: document.activeElement === ${P1} })`), { shown: true, active: true }, 'the slide of the paragraph is shown, with the caret in it');
+  await type(b, 'x');
+  await b.waitFor(`${P1}.textContent.endsWith('x')`);
+  assert.equal(await b.evaluate(`${E}.render()`), once(text, 'viewer\'s attention.</p>', 'viewer\'s attention.x</p>'));
   assert.deepEqual(b.errors, []);
 });
