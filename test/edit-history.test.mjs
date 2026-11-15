@@ -93,9 +93,12 @@ test('the text of every version is rebuilt from the file after a restart', { tim
   }
   history.name([...texts.keys()][10], 'Draft');
   history.stopSync();
+  const removed = history.list().versions.map((v) => v.removed);
+  assert.ok(removed.some((r) => r?.slides.length), 'some versions remove a slide');
   const again = open(dir, authority.text);
   assert.deepEqual(again.logged, []);
   const listed = again.history.list();
+  assert.deepEqual(listed.versions.map((v) => v.removed), removed);
   assert.deepEqual(listed.versions.slice(0, -1).map((v) => v.id), [...texts.keys()].reverse());
   assert.equal(again.history.textOf(listed.versions.at(-1).id), DECK);
   assert.equal(listed.versions.find((v) => v.name)?.id, [...texts.keys()][10]);
