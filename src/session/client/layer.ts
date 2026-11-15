@@ -240,6 +240,17 @@ export function install(client: Client): void {
       c.dataset.client = r.client;
       Object.assign(c.style, { left: `${(cx / W) * 100}%`, top: `${((cy - length / 2) / H) * 100}%`, height: `${(length / H) * 100}%`, transform: k.deg ? `rotate(${k.deg}deg)` : '' });
       nodes.push(c);
+      // a caret has a flag at its top end, unless the frame of the person around its text element
+      // shows the flag of the person already
+      if (units.get(head.get(r.caret!.el) ?? r.caret!.el)?.slice(0, FLAGS).includes(r)) continue;
+      const flags = make('div', 'flags');
+      flags.dataset.caret = r.client;
+      const tip = { x: cx + (length / 2) * Math.sin(a), y: cy - (length / 2) * Math.cos(a) };
+      Object.assign(flags.style, { left: `${(tip.x / W) * 100}%`, top: `${(tip.y / H) * 100}%` });
+      const m = flagOf(r, now, soon);
+      flags.append(m.flag);
+      if (m.chip) placedChips.push({ flags, id: r.client, x: tip.x / W, y: tip.y / H, dx: 0, dy: -3 - 16 });
+      nodes.push(flags);
     }
     layer.replaceChildren(...nodes);
     flagsOf = next;
