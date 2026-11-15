@@ -247,15 +247,28 @@ test('at a start, the anchors are moved by the patches that the history found, o
   reads(changed, h.slide, '<section>\n  <h2>One');
   assert.equal(p.removed, undefined);
   moved.comments.stopSync();
-  // without the patches, an anchor that is not a start tag of its name falls back to its slide
+  // without the patches, an anchor is read by the check of its element
+  const file = join(dir, 'comments.json');
+  const saved = readJson(file);
   const edited = changed.replace('<h2>Two</h2>', '<h2>Two!</h2>');
   const third = open(dir, edited);
   const [p3, h3] = third.comments.list(ANN).comments;
-  reads(edited, p3.anchor, '<section>\n  <h2>Two!');
-  assert.deepEqual(p3.removed, { text: null });
+  reads(edited, p3.anchor, '<p>Second slide</p>');
+  reads(edited, p3.slide, '<section>\n  <h2>Two!');
+  assert.equal(p3.removed, undefined);
   reads(edited, h3.anchor, '<h2>One</h2>');
   assert.equal(h3.removed, undefined);
   third.comments.stopSync();
+  // and in a file without the checks, an anchor that is not a start tag of its name falls back to its slide
+  for (const c of saved.comments) delete c.check;
+  writeFileSync(file, JSON.stringify(saved));
+  const fourth = open(dir, edited);
+  const [p4, h4] = fourth.comments.list(ANN).comments;
+  reads(edited, p4.anchor, '<section>\n  <h2>Two!');
+  assert.deepEqual(p4.removed, { text: null });
+  reads(edited, h4.anchor, '<h2>One</h2>');
+  assert.equal(h4.removed, undefined);
+  fourth.comments.stopSync();
 });
 
 test('a file of comments that cannot be read is moved aside', async (t) => {
@@ -300,6 +313,65 @@ test('a thread sent with an old base is moved to the current text in less than h
     reads(authority.text, thread.anchor, '<p style="left: 2px">Paragraph 2 of slide 9,');
   }
   assert.ok(2 * added < entered, `the thread took ${(added / 1e6).toFixed(1)} ms, and the operations ${(entered / 1e6).toFixed(1)} ms`);
+});
+
+// a deck where a paragraph inserted above the first of two paragraphs moves the second by the
+// distance between them
+const LIST = DECK.replace('<h2>Two</h2>', '<h2>Two</h2>\n  <p>One</p>\n  <p>Two</p>');
+
+test('at a start after a crash, a thread is placed by the check of its element, not by its offset alone', async (t) => {
+  await t.test('an element of the same name at the old offset', () => {
+    const dir = sessionDir(t);
+    const first = open(dir, LIST);
+    first.comments.add(ANN, { base: first.authority.version, anchor: tagRange(LIST, '<p>Two'), slide: slideRange(LIST, '<p>Two'), text: 'two' });
+    first.comments.stopSync();
+    const shifted = LIST.replace('  <p>One</p>', '  <p>New</p>\n  <p>One</p>');
+    assert.equal(shifted.indexOf('<p>One'), LIST.indexOf('<p>Two'));
+    const [thread] = open(dir, shifted).comments.list(ANN).comments;
+    reads(shifted, thread.anchor, '<p>Two</p>');
+    reads(shifted, thread.slide, '<section>\n  <h2>Two');
+    assert.equal(thread.removed, undefined);
+  });
+
+  await t.test('an element changed after the last write falls back to its slide', () => {
+    const dir = sessionDir(t);
+    const first = open(dir, LIST);
+    first.comments.add(ANN, { base: first.authority.version, anchor: tagRange(LIST, '<p>Two'), slide: slideRange(LIST, '<p>Two'), text: 'two' });
+    first.comments.stopSync();
+    const edited = LIST.replace('<p>Two</p>', '<p>Two, edited</p>');
+    const [thread] = open(dir, edited).comments.list(ANN).comments;
+    reads(edited, thread.anchor, '<section>\n  <h2>Two');
+    assert.deepEqual(thread.removed, { text: null });
+  });
+
+  await t.test('a file written without the checks is read as before', () => {
+    const dir = sessionDir(t);
+    const first = open(dir, LIST);
+    first.comments.add(ANN, { base: first.authority.version, anchor: tagRange(LIST, '<p>Two'), slide: slideRange(LIST, '<p>Two'), text: 'two' });
+    first.comments.stopSync();
+    const file = join(dir, 'comments.json');
+    const saved = readJson(file);
+    for (const c of saved.comments) delete c.check;
+    writeFileSync(file, JSON.stringify(saved));
+    const edited = LIST.replace('<p>Two</p>', '<p>Two, edited</p>');
+    const [thread] = open(dir, edited).comments.list(ANN).comments;
+    reads(edited, thread.anchor, '<p>Two, edited</p>');
+    assert.equal(thread.removed, undefined);
+  });
+});
+
+test('after the edit command was killed, a start places a thread by the check of its element', (t) => {
+  const dir = sessionDir(t);
+  const L0 = DECK.replace('<p>Second slide</p>', '<ul>\n    <li>Build</li>\n  </ul>');
+  const first = open(dir, L0);
+  first.comments.add(ANN, { base: first.authority.version, anchor: tagRange(L0, '<li>Build'), slide: slideRange(L0, '<li>Build'), text: 'build' });
+  replace(first.authority, '<li>Build</li>', '<li>Test</li>\n    <li>Build</li>');
+  // the file of the comments holds the text after this operation, and the history the text before
+  first.comments.stopSync();
+  const L2 = first.authority.text.replace('<li>Test</li>', '<li>Mock</li>\n    <li>Test</li>');
+  const [thread] = open(dir, L2, {}, { before: L0, patches: diff(L0, L2) }).comments.list(ANN).comments;
+  reads(L2, thread.anchor, '<li>Build</li>');
+  assert.equal(thread.removed, undefined);
 });
 
 test('the comments stay under the body limit of the relay, counted in bytes as they are sent, and a deletion is never refused', async (t) => {
