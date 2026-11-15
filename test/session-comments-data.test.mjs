@@ -378,3 +378,51 @@ test('a reply of another person in a thread of the person is unread until the pe
   clean(a);
   clean(b);
 });
+
+test('an answer of GET comments older than the base is moved through the operations applied since', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t);
+  await show(a, 'Two');
+  await click(a, '.reveal .slides > section:nth-child(2) > p');
+  await comment(a, 'On the paragraph');
+  await badge(a, 'Two', 'p', '1');
+
+  // after the reload, the answer of GET comments waits until window.__goComments(), and the
+  // comments are taken out of each answer of events, as when the change log of the edit command
+  // does not reach back. the typing of Ben moves the anchor in the meantime
+  await a.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `{
+      const fetched = window.fetch;
+      window.__comments = [];
+      window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : input.url;
+        const answer = fetched.call(this, input, init);
+        if (url.includes('/.session/events')) {
+          return answer.then(async (r) => {
+            if (!r.ok) return r;
+            const body = await r.json();
+            delete body.comments;
+            return new Response(JSON.stringify(body), { status: r.status, headers: r.headers });
+          });
+        }
+        if (!url.includes('/.session/comments?') || window.__goingComments) return answer;
+        return answer.then((r) => new Promise((done) => window.__comments.push(() => done(r))));
+      };
+      window.__goComments = () => {
+        window.__goingComments = true;
+        for (const go of window.__comments.splice(0)) go();
+      };
+    }`,
+  });
+  await reload(a);
+  await a.waitFor('window.__comments.length === 1');
+  await show(b, 'One');
+  await caretAtEnd(b, el(0, 'h2'));
+  await type(b, ' typed');
+  await until(() => server.read().includes('<h2>One typed</h2>'), 'the typing to reach index.html');
+  await a.waitFor(`${C}.base.text.includes('<h2>One typed</h2>')`);
+  assert.equal(await a.evaluate('window.__comments.length'), 1, 'the answer of GET comments waits');
+  await a.evaluate('window.__goComments()');
+  await badge(a, 'Two', 'p', '1');
+  clean(a);
+  clean(b);
+});
