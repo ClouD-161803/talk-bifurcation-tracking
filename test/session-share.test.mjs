@@ -329,7 +329,7 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
   });
   // the refusals of the edit command to connect are answers of share with an error
   clean(host, [/\.session\/share/]);
-  clean(guest, [/502/]);
+  clean(guest, [/502/, /410/]);
 });
 
 test('on a phone of 390 px the controls of the session are in view with a hit area of 32 px, and the dialogs fit', { timeout: 300_000 }, async (t) => {

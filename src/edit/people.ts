@@ -284,7 +284,7 @@ export class People {
     if (!this.untold.size) for (const done of this.toldWaiters.splice(0)) done();
   }
 
-  private endedBy(): Ended {
+  endedBy(): Ended {
     return { by: (this.hostPerson && this.records.get(this.hostPerson)?.name) || null };
   }
 

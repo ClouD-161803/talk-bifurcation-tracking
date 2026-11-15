@@ -224,7 +224,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           await Promise.race([told, new Promise((done) => (timer = setTimeout(done, END_WAIT)))]);
           clearTimeout(timer);
         }
-        await relay?.stop();
+        await relay?.stop(people.endedBy());
         relay = null;
         return json(200, { link: null });
       });

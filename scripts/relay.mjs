@@ -19,7 +19,10 @@
 //                                  host carries in x-relay-token beside the secret. 409 while
 //                                  another edit command pulls for key, or had a pull answered in
 //                                  the last 5 s, unless the request carries the token of the session
-//   DELETE /host/<key>             ends the session of key
+//   DELETE /host/<key>             ends the session of key. a JSON object in the body is the
+//                                  record of the end, which the relay keeps for 24 h and answers
+//                                  with 410 to the guests of key under /<key>/.session/, until
+//                                  key is registered again
 //   POST /host/<key>/pull          a long poll of at most 25 s, several at once, answered with
 //                                  [{ id, method, path, query, headers, body }], where path is the
 //                                  raw path with the key, query the raw query, and body the bytes in
@@ -28,11 +31,12 @@
 //                                  headers in x-relay-headers as a JSON object, and the raw body
 //   ANY /<key>/<rest>              a request of a guest, queued for the edit command of key and
 //                                  answered with its pushed answer. 502 when no edit command is
-//                                  registered for key, and 504 when it does not answer in 60 s
+//                                  registered for key, 410 after an end with a record, and 504
+//                                  when it does not answer in 60 s
 //
 // limits: 16 MB per body, 256 MB of bodies held at once, of which a session holds a quarter at
 // most and 4 MB are kept for bodies of at most 64 kB, 256 waiting requests per session, 64
-// sessions, and a session dropped after 90 s without a pull. hop-by-hop headers, cookies, and credentials are not forwarded
+// sessions, a session dropped after 90 s without a pull, and 256 ends of at most 1 kB kept. hop-by-hop headers, cookies, and credentials are not forwarded
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -64,6 +68,10 @@ export const DEFAULTS = {
   // a registration without the token of a session is refused this long after a pull was answered,
   // since the pulls of a live edit command are all answered at once by a burst of requests
   answeredMs: 5000,
+  // the ends kept with their records, the newest of them
+  endedSessions: 256,
+  endedMs: 24 * 60 * 60 * 1000,
+  endedBytes: 1024,
   connections: 2048,
 };
 
@@ -172,6 +180,8 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
   // not yet pulled, pending every request that waits for its answer, pulls the waiting pulls, and
   // held the bytes of the bodies of the session
   const sessions = new Map();
+  // key -> { record, at } of a session ended with a record, oldest first
+  const ended = new Map();
   let held = 0;
 
   // whether n more bytes of a body of which sofar bytes are held fit in the memory, for session.
@@ -228,6 +238,7 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
       const live = session && (session.pulls.length > 0 || Date.now() - session.answeredAt < limits.answeredMs);
       if (live && !same(req.headers['x-relay-token'], session.token)) return answer(res, 409, 'this session is already shared by another edit command');
       const token = randomBytes(16).toString('base64url');
+      ended.delete(key);
       if (session) session.token = token;
       else sessions.set(key, { token, queue: [], pending: new Map(), pulls: [], lastPull: Date.now(), answeredAt: 0, held: 0 });
       return answer(res, 200, { token });
@@ -236,7 +247,18 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (!session) return answer(res, 404, 'no session of this key');
     if (!authorized(req, session)) return answer(res, 401, 'wrong token');
     if (action === undefined && req.method === 'DELETE') {
+      const body = await bodyOf(req, limits.endedBytes);
       drop(key);
+      if (body === null) return answer(res, 413, 'the record of the end is larger than the limit of the relay');
+      if (body.length) {
+        let record;
+        try {
+          record = JSON.parse(body.toString('utf8'));
+        } catch {}
+        if (!record || typeof record !== 'object' || Array.isArray(record)) return answer(res, 400, 'the record of the end must be a JSON object');
+        ended.set(key, { record: body, at: Date.now() });
+        for (const k of ended.keys()) if (ended.size > limits.endedSessions) ended.delete(k);
+      }
       return answer(res, 200, {});
     }
     if (action === 'pull' && req.method === 'POST' && id === undefined) {
@@ -311,6 +333,9 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (!KEY.test(key)) return answer(res, 404, 'not found');
     const session = sessions.get(key);
     if (!session) {
+      const end = ended.get(key);
+      if (end && Date.now() - end.at > limits.endedMs) ended.delete(key);
+      else if (end && path.startsWith(`/${key}/.session/`)) return answer(res, 410, end.record, { 'content-type': 'application/json' });
       if (req.method === 'GET' && String(req.headers.accept ?? '').includes('text/html')) return answer(res, 502, NOT_RUNNING, { 'content-type': 'text/html; charset=utf-8' });
       return answer(res, 502, 'no edit command is registered for this session');
     }
@@ -382,6 +407,7 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
   const sweeper = setInterval(() => {
     const now = Date.now();
     for (const [key, session] of sessions) if (session.pulls.length === 0 && now - session.lastPull > limits.idleMs) drop(key);
+    for (const [key, end] of ended) if (now - end.at > limits.endedMs) ended.delete(key);
   }, Math.max(50, Math.min(5000, limits.idleMs / 3)));
 
   await new Promise((done, fail) => {

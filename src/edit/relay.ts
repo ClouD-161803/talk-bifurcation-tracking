@@ -7,6 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readBody, type Request, type Response } from './http.ts';
+import type { Ended } from '../session/protocol.ts';
 
 export const RELAY_BODY = 16 * 1024 * 1024;
 const PULLS = 4;
@@ -105,12 +106,14 @@ export class RelayLink {
     for (let i = 0; i < PULLS; i++) void this.pullLoop();
   }
 
-  async stop(): Promise<void> {
+  // ended is the record of End session, which the relay answers to the guests that come later
+  async stop(ended?: Ended): Promise<void> {
     this.running = false;
     for (const c of this.controllers) c.abort();
     // an answer of ended still in flight would reach the guest as a 502 once the session is deleted
     await Promise.race([Promise.allSettled([...this.serving]), sleep(1500)]);
-    await fetch(`${this.relay}/host/${this.key}`, { method: 'DELETE', headers: this.auth(), signal: AbortSignal.timeout(3000) }).catch(() => {});
+    const body = ended && JSON.stringify({ ended });
+    await fetch(`${this.relay}/host/${this.key}`, { method: 'DELETE', headers: { ...this.auth(), ...(body && { 'Content-Type': 'application/json' }) }, body, signal: AbortSignal.timeout(3000) }).catch(() => {});
   }
 
   private auth(): Record<string, string> {

@@ -1899,11 +1899,13 @@ var RelayLink = class {
     this.running = true;
     for (let i = 0; i < PULLS; i++) void this.pullLoop();
   }
-  async stop() {
+  // ended is the record of End session, which the relay answers to the guests that come later
+  async stop(ended) {
     this.running = false;
     for (const c of this.controllers) c.abort();
     await Promise.race([Promise.allSettled([...this.serving]), sleep(1500)]);
-    await fetch(`${this.relay}/host/${this.key}`, { method: "DELETE", headers: this.auth(), signal: AbortSignal.timeout(3e3) }).catch(() => {
+    const body = ended && JSON.stringify({ ended });
+    await fetch(`${this.relay}/host/${this.key}`, { method: "DELETE", headers: { ...this.auth(), ...body && { "Content-Type": "application/json" } }, body, signal: AbortSignal.timeout(3e3) }).catch(() => {
     });
   }
   auth() {
@@ -2175,7 +2177,7 @@ async function start(options = {}) {
           await Promise.race([told, new Promise((done) => timer = setTimeout(done, END_WAIT))]);
           clearTimeout(timer);
         }
-        await relay?.stop();
+        await relay?.stop(people.endedBy());
         relay = null;
         return json(200, { link: null });
       });

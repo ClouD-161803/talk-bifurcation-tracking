@@ -167,7 +167,10 @@ export class Client {
     this.app = app;
     this.port = port;
     this.shell = shell;
-    this.transport = new Transport(location.href);
+    // the end that the relay keeps after End session, e.g. for a guest that was offline then
+    this.transport = new Transport(location.href, (ended) => {
+      if (this.sync) this.end(ended);
+    });
     port.onChange(() => this.onChange());
     port.onSave(() => this.flush());
     // the port found that the page does not read as its text after an apply

@@ -1,8 +1,9 @@
 // the requests of a page to the edit command, under .session/ next to the page. a request that does
 // not get an answer of the edit command throws a Failure, whose status is 0 for the network, 502
-// when the relay does not reach an edit command, and the status of any other error
+// when the relay does not reach an edit command, 410 when the relay answers that the session ended,
+// and the status of any other error
 
-import type { EventsAnswer, HelloAnswer, HelloRequest, NameAnswer, OpAnswer, OpPost, Taken, Token, Version } from '../protocol.ts';
+import type { Ended, EventsAnswer, HelloAnswer, HelloRequest, NameAnswer, OpAnswer, OpPost, Taken, Token, Version } from '../protocol.ts';
 
 // a request with this status, or 0 for the network, may succeed when it is sent again later, e.g.
 // while the edit command restarts
@@ -25,9 +26,12 @@ const POLL_WAIT = 45_000;
 
 export class Transport {
   private readonly base: URL;
+  // told the record of the end that the relay answers to any request after End session
+  private readonly onEnded: (ended: Ended) => void;
 
-  constructor(page: string) {
+  constructor(page: string, onEnded: (ended: Ended) => void = () => {}) {
     this.base = new URL('.session/', page);
+    this.onEnded = onEnded;
   }
 
   url(route: string, query: Record<string, string> = {}): string {
@@ -92,7 +96,9 @@ export class Transport {
         // the answer of a relay or a proxy is not JSON
       }
       if (!response.ok || value === null || typeof value !== 'object') {
-        const message = (value as { error?: unknown } | null)?.error;
+        const ended = response.status === 410 ? (value as { ended?: Partial<Ended> } | null)?.ended : undefined;
+        if (ended && typeof ended === 'object') this.onEnded({ by: typeof ended.by === 'string' ? ended.by : null });
+        const message = ended ? 'The session has ended' : (value as { error?: unknown } | null)?.error;
         // an answer that is not of the edit command, e.g. of a captive portal, is taken as the network
         throw new Failure(response.ok ? 0 : response.status, typeof message === 'string' ? message : text.slice(0, 200));
       }
