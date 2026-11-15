@@ -43,8 +43,8 @@ export function originComment(text: string): string {
 }
 
 // the origin of a text of the clipboard, or null for a text without it, e.g. of an older editor.
-// any page can write the clipboard, hence a deck that is not an address of http, https, or file
-// gives null, and a macro that theme/macros.js would not read as one is dropped
+// any page can write the clipboard, hence a deck that is not a string with an address of http,
+// https, or file gives null, and a macro that theme/macros.js would not read as one is dropped
 export function originOf(text: string): Origin | null {
   const at = text.indexOf(MARK);
   if (at < 0) return null;
@@ -53,7 +53,7 @@ export function originOf(text: string): Origin | null {
   if (!rest.startsWith(OPEN) || end < 0) return null;
   try {
     const o = JSON.parse(rest.slice(OPEN.length, end));
-    if (!/^(https?|file):$/.test(new URL(o.deck).protocol)) return null;
+    if (typeof o.deck !== 'string' || !/^(https?|file):$/.test(new URL(o.deck).protocol)) return null;
     const macros = (Array.isArray(o.macros) ? o.macros : []).filter(
       (m: OriginMacro | null) => typeof m?.name === 'string' && /^[a-zA-Z]+$/.test(m.name) && typeof m.body === 'string' && Number.isInteger(m.args) && m.args >= 0 && m.args <= 9 && ['undefined', 'string'].includes(typeof m.default),
     );
