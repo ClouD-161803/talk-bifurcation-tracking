@@ -349,19 +349,32 @@ export class Preview {
     info.append(make('span', 'date', `Set aside, ${dayLabel(a.time)}, ${timeOf(a.time)}`), authorsOf(this.client, [a.author]));
     const actions = make('div', 'actions');
     actions.append(this.button('Download', () => void this.download('aside', a.id)));
-    this.bar.replaceChildren(info, actions);
+    const slides = make('div', 'slides');
+    this.bar.replaceChildren(info, slides, actions);
     this.text = null;
-    void this.fillAside(a.id, info);
+    void this.fillAside(a.id, info, slides);
   }
 
-  private async fillAside(id: string, info: HTMLElement): Promise<void> {
+  // the page of the text set aside, at the first slide on which it differs from the current deck
+  private async fillAside(id: string, info: HTMLElement, bar: HTMLElement): Promise<void> {
     const key = this.key;
     const frame = this.frameFor('aside');
     try {
       const text = await this.textOf('aside', id);
       if (key !== this.key) return;
-      const w = await this.write(frame, text, tokenize(text), this.url('aside', id));
-      if (key === this.key && w) this.keys(w);
+      const tokens = tokenize(text);
+      const slides = slidesOf(text, tokens);
+      // a slide differs when no slide of the current deck reads as it does
+      const now = this.client.snapshot()?.mine ?? text;
+      const kept = new Set(slidesOf(now).map((s) => now.slice(s.start, s.end)));
+      const differ = [...new Set(slides.filter((s) => !kept.has(text.slice(s.start, s.end))).map((s) => s.number))];
+      bar.replaceChildren(...differ.map((n) => this.button(slidesText([n]), () => this.go(n), 'slide')));
+      const w = await this.write(frame, text, tokens, this.url('aside', id));
+      if (key !== this.key || !w) return;
+      this.keys(w);
+      this.slides = slides;
+      this.sections = sectionsOf(w.document, text, slides);
+      if (differ.length) this.go(differ[0]);
     } catch (e) {
       if (key === this.key) info.append(make('span', 'removed', (e as Error).message));
     }
