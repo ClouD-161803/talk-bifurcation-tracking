@@ -712,6 +712,23 @@ test('two valid concurrent edits merge into a text with the tag skeleton of one 
   assert.ok(conflicts > 0, 'no two edits conflicted');
 });
 
+test('a replace in every paragraph and a word typed at once in one of them are both in the text at the end', () => {
+  // changes() gives up beyond 2000 changed lines, and gives one hunk for one long line
+  for (const join of ['\n', '']) {
+    const base = `<section>\n${Array.from({ length: 3000 }, (_, i) => `<p>Item ${i} uses foo here</p>`).join(join)}\n</section>\n`;
+    const replaced = base.replaceAll('foo', 'bar');
+    const typed = base.replace('Item 1500 uses', 'Item 1500 still uses');
+    const patches = diff(base, replaced);
+    assert.ok(valid(patches, base.length, base), `${patches.length} patches are not a valid operation`);
+    const widest = Math.max(...patches.map((p) => p.end - p.start));
+    assert.ok(widest < 100, `a patch of the replace covers ${widest} of ${base.length} characters`);
+    const text = race(base, replaced, typed, true);
+    assert.ok(text.includes('Item 1500 still uses'), 'the typed word was lost');
+    const bars = text.split('bar').length - 1;
+    assert.ok(bars >= 2990, `the replace is left in ${bars} of 3000 paragraphs`);
+  }
+});
+
 // the shortest time of a few runs of fn, in ms
 function timeOf(fn, runs = 5) {
   let best = Infinity;
