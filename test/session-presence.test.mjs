@@ -499,3 +499,20 @@ test('a page that reads its source again keeps a remote edit that waits for its 
   clean(ana);
   clean(ben);
 });
+
+// the elements that page reads as selected by the first other page, by their text
+const theirs = (page) => page.evaluate(`(${C}.resolved()[0]?.selected ?? []).map((e) => e.textContent.trim())`);
+
+test('after a page deletes an element and selects the next one, the other page reads the selection', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await select(ana, el(1, 'li:nth-child(1)'));
+  await until(async () => (await theirs(ben)).join() === 'Alpha', 'the selection of Alpha on the page of Ben');
+  await ana.evaluate(`${C}.app.commands.run('element.delete')`);
+  await converge(server, [ana, ben]);
+  await select(ana, el(1, 'li'));
+  await until(async () => (await theirs(ben)).join() === 'Beta', 'the selection of Beta on the page of Ben', 5000);
+  clean(ana);
+  clean(ben);
+});
