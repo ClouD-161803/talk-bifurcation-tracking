@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
 import { isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
-import { readApplied, writeApplied } from './applied.ts';
+import { AppliedTable, readApplied } from './applied.ts';
 import { Disk, readText, renameRetriedSync } from './disk.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
@@ -194,8 +194,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   if (earlier) throw new AlreadyRunning(earlier);
   const appliedFile = join(root, '.session', 'applied.json');
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
+  const appliedTable = new AppliedTable(appliedFile, log);
   const onWritten = (n: number) => {
-    if (authority.written(n)) writeApplied(appliedFile, authority.table(), log);
+    if (authority.written(n)) appliedTable.write(authority.table());
   };
   // the pages are told of a write that fails, since an operation is acknowledged before it is written
   const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
@@ -532,6 +533,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         unlock();
         people.end();
         const unwritten = await disk.stop();
+        await appliedTable.stop();
         if (unwritten) {
           const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');

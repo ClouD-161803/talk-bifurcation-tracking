@@ -5,7 +5,8 @@
 
 import { randomBytes } from 'node:crypto';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { renameRetriedSync } from './disk.ts';
+import { unlink, writeFile } from 'node:fs/promises';
+import { renameRetried, renameRetriedSync } from './disk.ts';
 
 // the pairs of the file, without those that are malformed, or none when the file is missing
 export function readApplied(file: string): [string, number][] {
@@ -18,9 +19,8 @@ export function readApplied(file: string): [string, number][] {
   }
 }
 
-// written at once by a temporary file and a rename, since it follows a write of index.html also at
-// the stop, right before the exit
-export function writeApplied(file: string, table: [string, number][], log: (message: string) => void): void {
+// written at once by a temporary file and a rename, at the stop, right before the exit
+function writeApplied(file: string, table: [string, number][], log: (message: string) => void): void {
   const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`;
   try {
     writeFileSync(tmp, JSON.stringify(table));
@@ -30,5 +30,50 @@ export function writeApplied(file: string, table: [string, number][], log: (mess
     try {
       unlinkSync(tmp);
     } catch {}
+  }
+}
+
+// the table written by a temporary file and a rename, one write at a time, so that a rename that is
+// tried again does not hold the pages, and the newest table written once the write in flight ends
+export class AppliedTable {
+  private next: [string, number][] | null = null;
+  private saving: Promise<void> | null = null;
+  private stopped = false;
+  private readonly file: string;
+  private readonly log: (message: string) => void;
+
+  constructor(file: string, log: (message: string) => void) {
+    this.file = file;
+    this.log = log;
+  }
+
+  write(table: [string, number][]): void {
+    this.next = table;
+    if (!this.saving && !this.stopped) this.saving = this.flush();
+  }
+
+  // at the stop, after the last write of index.html. the write in flight ends first, since its
+  // older table would otherwise replace the newest one
+  async stop(): Promise<void> {
+    this.stopped = true;
+    await this.saving;
+    if (this.next) writeApplied(this.file, this.next, this.log);
+    this.next = null;
+  }
+
+  private async flush(): Promise<void> {
+    while (this.next && !this.stopped) {
+      const table = this.next;
+      this.next = null;
+      const tmp = `${this.file}.${randomBytes(6).toString('hex')}.tmp`;
+      try {
+        await writeFile(tmp, JSON.stringify(table));
+        await renameRetried(tmp, this.file);
+      } catch (e) {
+        await unlink(tmp).catch(() => {});
+        this.log(`could not write ${this.file}: ${(e as Error).message}`);
+      }
+    }
+    this.saving = null;
   }
 }

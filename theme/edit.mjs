@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
 import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync5, realpathSync as realpathSync2, unlinkSync as unlinkSync4, writeFileSync as writeFileSync4 } from "node:fs";
-import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile3 } from "node:fs/promises";
+import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createHash, randomBytes as randomBytes4 } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -761,6 +761,7 @@ var Authority = class {
 // src/edit/applied.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { readFileSync as readFileSync2, unlinkSync as unlinkSync2, writeFileSync } from "node:fs";
+import { unlink, writeFile as writeFile2 } from "node:fs/promises";
 
 // src/edit/disk.ts
 import { readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync } from "node:fs";
@@ -1306,6 +1307,43 @@ function writeApplied(file, table, log) {
     }
   }
 }
+var AppliedTable = class {
+  constructor(file, log) {
+    this.next = null;
+    this.saving = null;
+    this.stopped = false;
+    this.file = file;
+    this.log = log;
+  }
+  write(table) {
+    this.next = table;
+    if (!this.saving && !this.stopped) this.saving = this.flush();
+  }
+  // at the stop, after the last write of index.html. the write in flight ends first, since its
+  // older table would otherwise replace the newest one
+  async stop() {
+    this.stopped = true;
+    await this.saving;
+    if (this.next) writeApplied(this.file, this.next, this.log);
+    this.next = null;
+  }
+  async flush() {
+    while (this.next && !this.stopped) {
+      const table = this.next;
+      this.next = null;
+      const tmp = `${this.file}.${randomBytes2(6).toString("hex")}.tmp`;
+      try {
+        await writeFile2(tmp, JSON.stringify(table));
+        await renameRetried(tmp, this.file);
+      } catch (e) {
+        await unlink(tmp).catch(() => {
+        });
+        this.log(`could not write ${this.file}: ${e.message}`);
+      }
+    }
+    this.saving = null;
+  }
+};
 
 // src/edit/http.ts
 import { open, realpath as realpath2, stat as stat2 } from "node:fs/promises";
@@ -1431,7 +1469,7 @@ var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeN
 // src/edit/people.ts
 import { randomBytes as randomBytes3 } from "node:crypto";
 import { readFileSync as readFileSync3, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
-import { unlink, writeFile as writeFile2 } from "node:fs/promises";
+import { unlink as unlink2, writeFile as writeFile3 } from "node:fs/promises";
 var HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25e3;
 var GAP = 100;
 var GONE = Number(process.env.SLIDES_GONE_MS) || 4e4;
@@ -1792,10 +1830,10 @@ var People = class {
     const tmp = `${this.file}.${randomBytes3(6).toString("hex")}.tmp`;
     this.saving = (async () => {
       try {
-        await writeFile2(tmp, this.json());
+        await writeFile3(tmp, this.json());
         await renameRetried(tmp, this.file);
       } catch (e) {
-        await unlink(tmp).catch(() => {
+        await unlink2(tmp).catch(() => {
         });
         this.log(`could not write ${this.file}: ${e.message}`);
         this.dirty = true;
@@ -2151,8 +2189,9 @@ async function start(options = {}) {
   if (earlier) throw new AlreadyRunning(earlier);
   const appliedFile = join4(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
+  const appliedTable = new AppliedTable(appliedFile, log);
   const onWritten = (n) => {
-    if (authority.written(n)) writeApplied(appliedFile, authority.table(), log);
+    if (authority.written(n)) appliedTable.write(authority.table());
   };
   const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join4(root, ".session", "people.json"), log);
@@ -2242,7 +2281,7 @@ async function start(options = {}) {
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
       try {
-        await writeFile3(join4(real, candidate), request.body, { flag: "wx" });
+        await writeFile4(join4(real, candidate), request.body, { flag: "wx" });
         return json(200, { path: `media/${candidate}` });
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -2463,6 +2502,7 @@ async function start(options = {}) {
       unlock();
       people.end();
       const unwritten2 = await disk.stop();
+      await appliedTable.stop();
       if (unwritten2) {
         const kept = keepUnwritten(root, disk.bom ? `\uFEFF${authority.text}` : authority.text);
         log(kept ? `the text of the session is kept in ${kept}` : "the text of the session could not be kept in any file");
