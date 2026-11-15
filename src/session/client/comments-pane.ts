@@ -331,6 +331,7 @@ class Pane {
     people.setAttribute('role', 'listbox');
     people.setAttribute('aria-label', 'People');
     people.hidden = true;
+    area.setAttribute('role', 'combobox');
     area.setAttribute('aria-autocomplete', 'list');
     area.setAttribute('aria-controls', people.id);
     area.setAttribute('aria-expanded', 'false');
