@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
+import { click } from './helpers/editor.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { A, B, FILES, FIRST_B, QUERY, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status } from './helpers/cross-deck.mjs';
 
@@ -62,11 +63,13 @@ const PICKER = (paths) => `(async () => {
   return true;
 })()`;
 
-// the dialog for the folder of deck A, its text, and the press of a button of it
+// the dialog for the folder of deck A, its text, and a trusted click on a button of it, which
+// grants the picker
 async function answer(page, label) {
   await page.waitFor(`!!document.querySelector('${DIALOG}[open]')`, 20000);
   const text = await page.evaluate(`document.querySelector('${DIALOG}').textContent`);
-  await page.evaluate(`[...document.querySelectorAll('${DIALOG} button')].find((b) => b.textContent === ${JSON.stringify(label)}).click()`);
+  const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll('${DIALOG} button')].find((b) => b.textContent === ${JSON.stringify(label)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  await click(page, at);
   return text;
 }
 
@@ -144,4 +147,18 @@ test('in a browser without a folder picker, e.g. on a phone, the dialog is skipp
   assert.equal(await b.evaluate(`!!document.querySelector('${DIALOG}[open]')`), false);
   assert.equal(sectionOf(await render(b), FILES), sectionOf(a.source, FILES));
   assert.match((await status(b)).message, /were not copied from the folder a, since this browser cannot open a folder\./);
+});
+
+test('a folder chosen after a cancelled dialog in the same page is read', async (t) => {
+  const { a, b, text } = await decks(t);
+  await b.evaluate(PICKER(FIGS));
+  await pasteSlides(b, FIRST_B, text);
+  await answer(b, 'Paste Without Files');
+  await pasted(b);
+  await b.evaluate('window.BeesonEditor.undo()');
+  await pasteSlides(b, FIRST_B, text);
+  await answer(b, 'Choose Folder…');
+  await pasted(b);
+  assert.equal(await b.evaluate('window.__picks.length'), 1);
+  assert.equal(sectionOf(await render(b), FILES), CARRIED(sectionOf(a.source, FILES)));
 });
