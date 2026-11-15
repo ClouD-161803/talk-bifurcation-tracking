@@ -261,6 +261,52 @@ test('a person who opens a draft of a comment stops following', { timeout: 300_0
   clean(b);
 });
 
+test('while the comments are read only, a draft and a reply stay in their fields, the reason is toasted, and only a press sends again', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'Before');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  // from now on the edit command answers each new comment and reply as it does while comments.json
+  // can be neither read nor set aside
+  const reason = 'the comments could not be read at the start, hence they are read only until the edit command is started again';
+  const told = `Not sent. ${reason[0].toUpperCase()}${reason.slice(1)}.`;
+  await a.evaluate(`(() => {
+    window.__posts = 0;
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      if (init?.method === 'POST' && /\\/\\.session\\/comments(\\/[^/]+\\/reply)?$/.test(url)) {
+        window.__posts++;
+        return Promise.resolve(new Response(JSON.stringify({ error: ${JSON.stringify(reason)} }), { status: 503, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return fetched.call(this, input, init);
+    };
+  })()`);
+  await recordToasts(a);
+  const field = (box) => `(() => { const b = document.querySelector(${JSON.stringify(box)}); return b && { value: b.querySelector('textarea').value, error: b.querySelector('.error:not([hidden])')?.textContent ?? null, sending: b.querySelector('.actions .primary').disabled }; })()`;
+
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await type(a, 'A kept draft');
+  await click(a, `${PANE} .draft .actions .primary`);
+  await sees(a, field(`${PANE} .draft`), { value: 'A kept draft', error: told, sending: false });
+  await sees(a, 'window.__toasts', [told]);
+
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await type(a, 'A kept reply');
+  await click(a, `${ARTICLE(id)} .reply .actions .primary`);
+  await sees(a, field(`${ARTICLE(id)} .reply`), { value: 'A kept reply', error: told, sending: false });
+  await sees(a, 'window.__posts', 2, 'one request for each press');
+
+  await click(a, `${PANE} .draft .actions .primary`);
+  await sees(a, 'window.__posts', 3, 'one request for the second press');
+  await sees(a, field(`${PANE} .draft`), { value: 'A kept draft', error: told, sending: false });
+  assert.deepEqual(await stored(a), [{ text: 'Before', mentions: [], replies: [] }]);
+  assert.equal(await a.evaluate('window.__posts'), 3);
+  clean(a, [/status of 503/]);
+});
+
 test('the pane groups the threads by their slide, and two slides with one number in the status bar have a heading each', { timeout: 300_000 }, async (t) => {
   const server = await talkWith(t, `<section>
   <h2>One</h2>
