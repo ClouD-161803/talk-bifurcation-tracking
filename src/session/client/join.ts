@@ -5,7 +5,7 @@ import { changes, merge } from '../../editor/merge.ts';
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { accept, beforeJoin, type Copy } from './copy.ts';
-import { make, sheet, style } from './dom.ts';
+import { bdi, make, sheet, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
 export const NAME = 'beeson-session-name';
@@ -121,6 +121,7 @@ export async function askTaken(client: Client, name: string): Promise<boolean> {
     ],
     dismissable: false,
   });
+  dialog.heading.replaceChildren(bdi(name), ' has joined this deck before. Is that you?');
   try {
     return (await dialog.open('claim')) === 'claim';
   } finally {

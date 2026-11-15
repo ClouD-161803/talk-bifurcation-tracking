@@ -6,7 +6,7 @@
 
 import type { Shape } from '../../editor/session/presence.ts';
 import type { Client } from './client.ts';
-import { make, style } from './dom.ts';
+import { bdi, make, style } from './dom.ts';
 import type { Resolved } from './presence.ts';
 
 // in ms, the time that a flag shows the name before it collapses to a chip with initials
@@ -113,7 +113,9 @@ export function install(client: Client): void {
         if (!collapsed && !r.typing) soonest = Math.min(soonest, from + NAMED);
         const flag = make('div', `flag c${r.color % 4}${collapsed ? ' chip' : ''}`);
         flag.dataset.client = r.client;
-        flag.append(make('span', 'long', r.typing ? `${r.name} is typing` : r.name), make('span', 'short', initials(r.name)));
+        const long = make('span', 'long');
+        long.append(bdi(r.name), r.typing ? ' is typing' : '');
+        flag.append(long, make('span', 'short', initials(r.name)));
         flag.title = r.name;
         flags.append(flag);
       }

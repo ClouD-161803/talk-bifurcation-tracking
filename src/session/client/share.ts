@@ -7,7 +7,7 @@
 import type { ShareAnswer } from '../protocol.ts';
 import { qr } from '../qr.ts';
 import type { Client } from './client.ts';
-import { make, sheet, style } from './dom.ts';
+import { bdi, make, sheet, style } from './dom.ts';
 import { disc, everyone, type Someone } from './people.ts';
 
 const COPIED = 2000;
@@ -206,7 +206,8 @@ function openShare(client: Client): void {
     people.replaceChildren(...all.map((p) => {
       const li = make('li');
       li.dataset.person = p.person;
-      const name = make('span', 'name', p.person === client.person ? `${p.name} (you)` : p.name);
+      const name = make('span', 'name');
+      name.append(bdi(p.name), p.person === client.person ? ' (you)' : '');
       li.append(disc(client, p.person), name, make('span', 'activity', lineOf(p)));
       return li;
     }));

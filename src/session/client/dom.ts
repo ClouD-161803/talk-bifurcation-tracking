@@ -9,6 +9,10 @@ export function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = 
   return el;
 }
 
+// a name in running text, isolated from the text around it, which a name in a right-to-left script
+// would otherwise reorder
+export const bdi = (name: string): HTMLElement => make('bdi', '', name);
+
 // css added once to the head, as style#beeson-session-<id>
 export function style(id: string, css: string): void {
   const key = `beeson-session-${id}`;

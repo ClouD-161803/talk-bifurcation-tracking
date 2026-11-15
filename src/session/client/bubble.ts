@@ -11,13 +11,14 @@ const CSS = `
 
 let shown: { el: HTMLElement; timer: number } | null = null;
 
-export function bubble(near: Element | null, text: string): void {
+export function bubble(near: Element | null, text: string | (string | Node)[]): void {
   style('bubble', CSS);
   if (shown) {
     clearTimeout(shown.timer);
     shown.el.remove();
   }
-  const el = make('div', 'beeson-bubble', text);
+  const el = make('div', 'beeson-bubble');
+  el.append(...(typeof text === 'string' ? [text] : text));
   el.setAttribute('role', 'status');
   document.body.append(el);
   // under near, or over it when the window has no room below, and inside the window

@@ -8,7 +8,7 @@ import type { App } from '../../editor/app.ts';
 import type { Command } from '../../editor/commands.ts';
 import { bubble } from './bubble.ts';
 import type { Client } from './client.ts';
-import { style } from './dom.ts';
+import { bdi, style } from './dom.ts';
 import { presenceOf, type Presence, type Resolved } from './presence.ts';
 
 // the commands that change a slide as a whole, refused when the slide holds a locked element, and
@@ -21,8 +21,8 @@ const ANYWHERE = new Set(['find.replaceOne', 'find.replaceAndFind', 'find.replac
 // the commands of a selection that change nothing
 const READ = /^(view|zoom|go|help|window|file)\.|^edit\.copy$|^find\.(open|next|previous|close|useSelection)$/;
 
-export const refusal = (by: Resolved): string => `${by.name} is typing here. You can edit this text once they leave it or stop for 30 s.`;
-export const taken = (by: Resolved): string => `${by.name} is editing this text now.`;
+export const refusal = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is typing here. You can edit this text once they leave it or stop for 30 s.'];
+export const taken = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is editing this text now.'];
 
 export function install(client: Client): void {
   const presence = presenceOf(client);
