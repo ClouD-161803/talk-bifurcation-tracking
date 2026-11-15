@@ -88,9 +88,10 @@ export type WriteError = { message: string; unwritten: number };
 // and the browser then says hello again. known is sent only when it changed since the last answer
 // to this page, and so is writeError, which is null once a write succeeded after a failed one.
 // after ended, every poll of the page is answered with ended until it says hello.
-// history is the rev of the version history when it changed since the last answer to this page,
-// and restored is sent once to each page that was there at a restore. a page reads the history
-// again after each hello, since what changed before is not sent to it
+// history is the rev of the version history when it changed since the last answer to this page.
+// restored is the latest restore, sent once to each page whose version since is before it, also to
+// a page that was dropped meanwhile. a page reads the history again after each hello, since what
+// changed before is not sent to it
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;

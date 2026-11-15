@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
 import { apply, copy, diff } from '../session/patch.ts';
-import { VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
+import { parseVersion, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, renameRetriedSync } from './disk.ts';
 
@@ -234,8 +234,7 @@ class Unreadable extends Error {}
 export class History {
   // grows with every change of the list of versions or of the texts set aside
   rev = 0;
-  // the last restore, and the count of restores
-  restored: Restored | null = null;
+  // the count of restores
   restores = 0;
   // the patches from the text of the last version to index.html at the start, or null when the
   // history began at this start
@@ -269,6 +268,8 @@ export class History {
   private broken = false;
   private stopped = false;
   private asides: AsideInfo[] = [];
+  // the last restore, with the n of the version of the authority that it made
+  private restored: { n: number; told: Restored } | null = null;
   private listeners = new Set<() => void>();
 
   // dir is the .session folder of the talk
@@ -375,10 +376,18 @@ export class History {
     if (this.authority.text === target) return { id: null };
     this.authority.enter(operationOf(this.authority.text, target), person);
     const v = this.close(false, was.id);
-    this.restored = { by: person, id: was.id, time: was.time };
+    this.restored = { n: this.authority.n, told: { by: person, id: was.id, time: was.time } };
     this.restores++;
     this.changed();
     return { id: v?.id ?? null };
+  }
+
+  // the last restore when it is after the version since of a page, which is the latest restore
+  // that the page has not had. every restore is after a version of an earlier start
+  restoredAfter(since: unknown): Restored | null {
+    const at = parseVersion(since);
+    if (!at || !this.restored) return null;
+    return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
   }
 
   // a text that a person set aside, or null when it is too large

@@ -570,11 +570,13 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       answer.history = history.rev;
     },
   });
-  // a restore is told only to the pages that were there, as a toast
+  // a restore is told as a toast to each page of a version before it, also to a page that was
+  // dropped while it was away
   people.feed({
     rev: () => history.restores,
-    write: (answer, seen) => {
-      if (seen >= 0 && history.restored) answer.restored = history.restored;
+    write: (answer, _seen, since) => {
+      const restored = history.restoredAfter(since);
+      if (restored) answer.restored = restored;
     },
   });
   disk.start();

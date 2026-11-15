@@ -37,8 +37,9 @@ type Member = Person & { state: unknown; lastSeen: number; joined: number; polle
 
 // a source of news for the answers of events beside the operations and the people, e.g. the
 // version history. rev grows with each change, and write adds to an answer the news after the rev
-// that the page has had, which is -1 when it may have missed news
-export type Feed = { rev: () => number; write: (answer: EventsAnswer, seen: number) => void };
+// that the page has had, which is -1 when it may have missed news, or after the version since of
+// its poll
+export type Feed = { rev: () => number; write: (answer: EventsAnswer, seen: number, since: string) => void };
 
 type Poll = {
   client: string;
@@ -393,7 +394,7 @@ export class People {
     const answer: EventsAnswer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list() };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
     if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
-    if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i]));
+    if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i], since));
     return answer;
   }
 
