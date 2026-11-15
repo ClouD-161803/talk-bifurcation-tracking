@@ -29,6 +29,9 @@ const HOLD = 500;
 const SLOP = 10;
 const OTHERS = 4;
 const OTHERS_NARROW = 2;
+// announcements less than SAY_GAP ms apart are read together, the last SAID lines of them
+const SAY_GAP = 1000;
+const SAID = 8;
 
 // the hit area of each control is 32 px, around a circle of 22 px
 const CSS = `
@@ -287,9 +290,26 @@ export function install(client: Client): void {
   box.setAttribute('role', 'group');
   box.setAttribute('aria-label', 'People in this session');
   bar.insertBefore(box, bar.querySelector('.beeson-session-state'));
-  const live = make('div', 'beeson-session-live');
-  live.setAttribute('role', 'status');
+  const region = () => {
+    const el = make('div', 'beeson-session-live');
+    el.setAttribute('role', 'status');
+    return el;
+  };
+  const live = region();
   document.body.append(live);
+  // the page outside a modal dialog is inert, hence each modal dialog gets a status region when it
+  // opens, which the announcements go into while this dialog is the top one
+  const modals: HTMLDialogElement[] = [];
+  const opened = new MutationObserver((records) => {
+    for (const { target: d } of records) {
+      if (!(d instanceof HTMLDialogElement)) continue;
+      modals.splice(modals.indexOf(d) >>> 0, 1);
+      if (!d.open || !d.matches(':modal')) continue;
+      modals.push(d);
+      if (!d.querySelector(':scope > .beeson-session-live')) d.append(region());
+    }
+  });
+  opened.observe(document.body, { subtree: true, attributeFilter: ['open'] });
 
   const avatars = new Map<string, HTMLButtonElement>();
   const avatar = (person: string): HTMLButtonElement => {
@@ -326,6 +346,19 @@ export function install(client: Client): void {
   ];
   const others = () => everyone(client).filter((p) => p.person !== client.person);
 
+  let said: string[] = [];
+  let saidAt = 0;
+  // the lines added to those of an announcement less than SAY_GAP ago, so that a quick second one
+  // does not cut the first
+  const say = (lines: string[]) => {
+    const now = performance.now();
+    said = (now - saidAt < SAY_GAP ? [...said, ...lines] : lines).slice(-SAID);
+    saidAt = now;
+    const top = modals.filter((d) => d.isConnected && d.open).at(-1)?.querySelector<HTMLElement>(':scope > .beeson-session-live') ?? live;
+    for (const el of document.querySelectorAll<HTMLElement>('.beeson-session-live')) if (el !== top) el.textContent = '';
+    top.textContent = said.join(' ');
+  };
+
   let seen: Map<string, string> | null = null;
   const announce = (all: Someone[]) => {
     const now = new Map(all.filter((p) => p.person !== client.person).map((p) => [p.person, p.name]));
@@ -333,7 +366,7 @@ export function install(client: Client): void {
       const lines: string[] = [];
       for (const [person, name] of now) if (!seen.has(person)) lines.push(`${name} joined the session.`);
       for (const [person, name] of seen) if (!now.has(person)) lines.push(`${name} left the session.`);
-      if (lines.length) live.textContent = lines.join(' ');
+      if (lines.length) say(lines);
     }
     seen = now;
   };
@@ -392,9 +425,10 @@ export function install(client: Client): void {
     if (done) return;
     done = true;
     watch.disconnect();
+    opened.disconnect();
     if (openOwner && box.contains(openOwner)) openMenu?.close();
     box.remove();
-    live.remove();
+    for (const el of document.querySelectorAll('.beeson-session-live')) el.remove();
     row?.classList.remove('beeson-session-bar');
     client.app.report();
   };
