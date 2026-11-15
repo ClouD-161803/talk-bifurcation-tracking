@@ -117,3 +117,19 @@ test('a theme of another version is named in the note of the paste with the sent
   assert.match(message, /media\/path\.js is drawn once the deck is saved and opened again\./);
   assert.ok(message.includes(`theme version 0.0.1, and this deck version ${version}, hence what you pasted may be drawn differently.`), message);
 });
+
+test('a macro with an optional argument is listed with its default, also when only the default differs', async (t) => {
+  const a = await deck(A);
+  t.after(() => a.close());
+  await define(a, String.raw`({ orb: ['\\mathcal{O}_{#1}', 1, 'k'], half: '\\tfrac{1}{2}', dash: '\\text{a--b}' })`);
+  const text = await copySlide(a, FILES);
+  const b = await deck(B);
+  t.after(() => b.close());
+  await define(b, String.raw`({ orb: ['\\mathcal{O}_{#1}', 1, 'j'], half: '\\tfrac{1}{2}', dash: '\\text{a--b}' })`);
+  await pasteSlides(b, FIRST_B, text);
+  await b.waitFor(SHOWN, 30000);
+  await pasted(b);
+  const shown = await read(b);
+  assert.equal(shown.lines, String.raw`orb: ['\\mathcal{O}_{#1}', 1, 'k'],`);
+  assert.match(shown.text, /\\orb are drawn with the definition of this deck/);
+});
