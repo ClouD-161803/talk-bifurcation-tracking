@@ -112,6 +112,9 @@ function sectionsOf(doc: Document, text: string, slides: Slide[]): (Element | nu
 
 type RevealLike = { isReady?(): boolean; on?(type: string, fn: () => void): void; getIndices(el: Element): { h: number; v?: number }; slide(h: number, v?: number): void };
 
+// the parts of the bar of a version, built once and changed where a version differs
+type VersionBar = { info: HTMLElement; date: HTMLElement; who: HTMLElement; slides: HTMLElement; shown: string; actions: HTMLElement };
+
 export type Actions = {
   restore(v: VersionInfo, text: string | null): Promise<void>;
   name(v: VersionInfo): void;
@@ -123,10 +126,12 @@ export class Preview {
   private readonly pane: HTMLElement;
   private readonly actions: Actions;
   private readonly bar: HTMLElement;
+  private versionBar: VersionBar | null = null;
   private frame: HTMLIFrameElement;
   private changes = true;
   // the key of what is shown, e.g. version:<id>
   private key = '';
+  private version: VersionInfo | null = null;
   private texts = new Map<string, Promise<string>>();
   private text: string | null = null;
   private slides: Slide[] = [];
@@ -217,18 +222,11 @@ export class Preview {
     return b;
   }
 
-  showVersion(v: VersionInfo): void {
-    const key = `version:${v.id}`;
-    const fresh = key !== this.key;
-    this.key = key;
+  private buildVersionBar(): VersionBar {
     const info = make('div', 'info');
-    info.append(make('span', 'date', v.name ? `${v.name}, ${dayLabel(v.time)}, ${timeOf(v.time)}` : `${dayLabel(v.time)}, ${timeOf(v.time)}`), authorsOf(this.client, v.authors));
-    const slides = make('div', 'slides');
-    for (const n of v.slides) slides.append(this.button(slidesText([n]), () => this.go(n), 'slide'));
-    const removed: string[] = [];
-    if (v.removed?.slides.length) removed.push(`${slidesText(v.removed.slides)} removed`);
-    if (v.removed?.elements) removed.push(`${v.removed.elements} ${v.removed.elements > 1 ? 'elements' : 'element'} removed`);
-    if (removed.length) slides.append(make('span', 'removed', removed.join(', ')));
+    const date = make('span', 'date');
+    const who = make('span', 'who');
+    info.append(date, who);
     const actions = make('div', 'actions');
     const label = make('label', 'changes');
     const box = make('input');
@@ -239,12 +237,49 @@ export class Preview {
       this.frame.contentDocument?.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
     });
     label.append(box, document.createTextNode('Show changes'));
-    const text = () => this.text;
-    const more = this.button('⋯', () => openMenu(more, [{ label: 'Download This Version', run: () => void this.download('version', v.id) }]), 'more');
+    const more = this.button('⋯', () => this.more(more), 'more');
     more.setAttribute('aria-label', 'More');
     more.setAttribute('aria-haspopup', 'menu');
-    actions.append(label, this.button('Restore this version', () => void this.actions.restore(v, text())), this.button('Name this version', () => this.actions.name(v)), more);
-    this.bar.replaceChildren(info, slides, actions);
+    const restore = () => this.version && void this.actions.restore(this.version, this.text);
+    const name = () => this.version && this.actions.name(this.version);
+    actions.append(label, this.button('Restore this version', restore), this.button('Name this version', name), more);
+    return { info, date, who, slides: make('div', 'slides'), shown: '', actions };
+  }
+
+  private more(button: HTMLElement): void {
+    const v = this.version;
+    if (!v) return;
+    openMenu(button, [{ label: 'Download This Version', run: () => void this.download('version', v.id) }]);
+  }
+
+  // the bar of version v, where only what differs from the bar shown is changed, so that the focus
+  // and an open menu of More stay at a new read of the list
+  showVersion(v: VersionInfo): void {
+    const key = `version:${v.id}`;
+    const fresh = key !== this.key;
+    this.key = key;
+    this.version = v;
+    const b = (this.versionBar ??= this.buildVersionBar());
+    if (b.info.parentNode !== this.bar) this.bar.replaceChildren(b.info, b.slides, b.actions);
+    const date = v.name ? `${v.name}, ${dayLabel(v.time)}, ${timeOf(v.time)}` : `${dayLabel(v.time)}, ${timeOf(v.time)}`;
+    if (b.date.textContent !== date) b.date.textContent = date;
+    const who = authorsOf(this.client, v.authors);
+    if (!who.isEqualNode(b.who)) {
+      b.who.replaceWith(who);
+      b.who = who;
+    }
+    const shown = JSON.stringify([v.slides, v.removed ?? null]);
+    if (shown !== b.shown) {
+      b.shown = shown;
+      const focused = b.slides.contains(document.activeElement) ? document.activeElement!.textContent : null;
+      const nodes: Node[] = v.slides.map((n) => this.button(slidesText([n]), () => this.go(n), 'slide'));
+      const removed: string[] = [];
+      if (v.removed?.slides.length) removed.push(`${slidesText(v.removed.slides)} removed`);
+      if (v.removed?.elements) removed.push(`${v.removed.elements} ${v.removed.elements > 1 ? 'elements' : 'element'} removed`);
+      if (removed.length) nodes.push(make('span', 'removed', removed.join(', ')));
+      b.slides.replaceChildren(...nodes);
+      if (focused !== null) [...b.slides.querySelectorAll('button')].find((x) => x.textContent === focused)?.focus();
+    }
     if (fresh) void this.fill(v);
   }
 
@@ -252,6 +287,7 @@ export class Preview {
     const key = `aside:${a.id}`;
     if (key === this.key) return;
     this.key = key;
+    this.version = null;
     const info = make('div', 'info');
     info.append(make('span', 'date', `Set aside, ${dayLabel(a.time)}, ${timeOf(a.time)}`), authorsOf(this.client, [a.author]));
     const actions = make('div', 'actions');
