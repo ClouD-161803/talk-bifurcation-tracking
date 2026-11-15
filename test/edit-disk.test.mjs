@@ -299,6 +299,22 @@ test('an outside write back to an earlier text keeps the newer edits of the sess
   assert.ok(authority.text.includes('<p>typo</p>'), 'the session lost its newer edit');
 });
 
+test('add regression test: a program that changes a line that it changed before replaces its earlier change, and keeps an edit of a person that it did not read', { timeout: 60_000 }, async (t) => {
+  const { file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
+  disk.start();
+  writeFileSync(file, DECK.replace('One', 'One first'));
+  await until(() => authority.text.includes('One first'), 'the first change to be merged');
+  writeFileSync(file, DECK.replace('One', 'One second'));
+  await until(() => authority.text.includes('second'), 'the second change to be merged');
+  assert.equal(authority.text, DECK.replace('One', 'One second'), 'the second change was merged on the text before the first one');
+  // a person types on the other slide, and the program writes once more from its own copy
+  insert(authority, 'Second slide', 'Very ');
+  await until(() => readFileSync(file, 'utf8') === authority.text, 'the edit of the person to be written');
+  writeFileSync(file, DECK.replace('One', 'One third'));
+  await until(() => authority.text.includes('third'), 'the third change to be merged');
+  assert.equal(authority.text, DECK.replace('One', 'One third').replace('Second slide', 'Very Second slide'));
+});
+
 // the longest time between two turns of the event loop while act runs, measured by an interval of
 // 1 ms that turns once more after act, so that a stall at its end is measured
 async function longestStall(act) {
