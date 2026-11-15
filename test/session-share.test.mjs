@@ -343,7 +343,7 @@ test('on a phone of 390 px the controls of the session are in view with a hit ar
   assert.deepEqual(list.map((a) => a.text), ['BC', 'CD', '+1', 'PP']);
 
   const controls = await phone.evaluate(`[...document.querySelectorAll('.beeson-edit-titlebar .right button')].filter((b) => b.getClientRects().length).map((b) => ({ name: b.getAttribute('aria-label') ?? b.textContent, ...${HIT}(b) }))`);
-  assert.deepEqual(controls.map((c) => bare(c.name)), ['Ben Carter', 'Cleo Diaz', '1 more person', 'Pia Park, you', 'Saved to index.html', 'Share']);
+  assert.deepEqual(controls.map((c) => bare(c.name)), ['Ben Carter', 'Cleo Diaz', '1 more person', 'Pia Park, you', 'Saved to index.html', 'Comments', 'Share']);
   for (const c of controls) {
     assert.ok(c.inside && c.hit, `${c.name} is in view and takes a tap`);
     assert.ok(c.width >= 32 && c.height >= 32, `${c.name} has a hit area of ${c.width} by ${c.height} px`);
