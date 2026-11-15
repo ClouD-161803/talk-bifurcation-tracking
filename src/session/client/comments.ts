@@ -92,7 +92,15 @@ export class Comments {
 
   private changed(fresh: Comment[] = []): void {
     this.count++;
-    for (const fn of this.listeners) fn(fresh);
+    for (const fn of this.listeners) {
+      try {
+        fn(fresh);
+      } catch (e) {
+        // a listener that fails is reported, as Client.emit reports it, and the others go on
+        if (typeof reportError === 'function') reportError(e);
+        else console.error(e);
+      }
+    }
   }
 
   // the times up to which the person read, kept as the latest of the edit command and of this page
