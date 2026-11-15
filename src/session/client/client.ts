@@ -439,8 +439,12 @@ export class Client {
         const side = (this.fresh || this.inbox.length) && this.hooks.side?.(sync, this.fresh, this.inbox);
         if (side) {
           const wins = await side;
-          if (sync.settle(this.fresh, this.inbox.splice(0), wins) !== null) stale = true;
+          const was = { text: sync.base, v: sync.version };
+          const whole = this.fresh;
+          const ops = this.inbox.splice(0);
+          if (sync.settle(whole, ops, wins) !== null) stale = true;
           this.fresh = null;
+          if (sync.version !== was.v) this.emit('base', was.text, was.v, whole ? null : ops);
         }
         if (this.fresh) {
           const { text, v } = this.fresh;
