@@ -11,6 +11,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, ops, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { until } from './helpers/session.mjs';
+import { cleanPersonName, nameKey } from '../src/session/protocol.ts';
 
 // the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
@@ -191,6 +192,22 @@ test('a name held by another person asks whether it is this person, and Yes take
   assert.equal(await b.evaluate(`${C}.name`), 'Ann');
   clean(a);
   clean(b);
+});
+
+test('a name keeps an emoji with joiners and a name in a right-to-left script, and loses every other format character', () => {
+  for (const name of ['👨\u200d👩\u200d👧\u200d👦', 'مه\u200cسا', 'דוד כהן', '❤️ Ann']) assert.equal(cleanPersonName(name), name);
+  const format = ['\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2066', '\u2067', '\u2068', '\u2069', '\u200e', '\u200f', '\u061c', '\u0600', '\u06dd', '\u070f', '\u08e2', '\ufff9', '\ufffb', '\u200b', '\u2060', '\ufeff', '\u00ad', '\u{13430}', '\u{e0041}'];
+  for (const c of format) {
+    const code = `U+${c.codePointAt(0).toString(16)}`;
+    assert.equal(cleanPersonName(`A${c}nn`), 'Ann', code);
+    assert.equal(cleanPersonName(`${c}Ann${c}`), 'Ann', code);
+  }
+  // a joiner is kept only between two characters that are not spaces
+  for (const j of ['\u200c', '\u200d']) {
+    assert.equal(cleanPersonName(`${j}Ann ${j} Ben${j}`), 'Ann Ben');
+    assert.equal(nameKey(`An${j}n`), nameKey('Ann'));
+  }
+  assert.equal(nameKey('👨\u200d👩\u200d👧'), nameKey('👨👩👧'));
 });
 
 test('a lone surrogate typed into the deck is written as U+FFFD, on the page and in the file', { timeout: 120_000 }, async (t) => {
