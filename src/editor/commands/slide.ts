@@ -16,7 +16,7 @@ import { tokenize } from '../tokens.ts';
 import { nextShown, setTransition, transitionOf } from '../review/transitions.ts';
 import { sample } from './layout.ts';
 import { injectStyle } from '../ui/dom.ts';
-import { originComment } from './origin.ts';
+import { arrive, originComment } from './origin.ts';
 
 // the mark that opens the text of slides on the clipboard, so that a paste in the navigator tells
 // slides apart from other text
@@ -202,9 +202,11 @@ async function deleteSlides(app: App, slides: Element[], focusNav: boolean): Pro
 async function pasteSlides(app: App, text: string, focusNav: boolean): Promise<boolean> {
   const texts = slidesIn(text);
   if (!texts?.length) return false;
-  const { root, before } = placeAfter(app);
-  const nodes = await docOf(app).insert(texts.map((t) => freshIds(app, t)), root, before, 'paste slides');
-  land(app, nodes, nodes[0], focusNav);
+  await arrive(app, text, texts, async (from) => {
+    const { root, before } = placeAfter(app);
+    const nodes = await docOf(app).insert(from.map((t) => freshIds(app, t)), root, before, 'paste slides');
+    land(app, nodes, nodes[0], focusNav);
+  });
   return true;
 }
 

@@ -1,8 +1,11 @@
 // the origin of a copy of slides or elements, written in a comment after the mark of
 // commands/slide.ts: the address of the deck, the version of its theme, and the macros of the deck
-// that the copied text uses. an editor without this comment skips it, as it skips any comment
+// that the copied text uses. an editor without this comment skips it, as it skips any comment.
+// a paste of a text from another deck runs the steps of arrive()
 
+import type { App } from '../app.ts';
 import { deckMacros } from '../math.ts';
+import { carryFiles } from '../media/carry.ts';
 import { MARK } from './slide.ts';
 
 export type OriginMacro = { name: string; body: string; args: number };
@@ -50,4 +53,29 @@ export function originOf(text: string): Origin | null {
   } catch {
     return null;
   }
+}
+
+// a paste from another deck: its origin, the texts of its slides or elements, which a step before
+// the insert may rewrite, and the sentences that the editor shows in one note after the paste
+export type Arrival = { origin: Origin; texts: string[]; notes: string[] };
+export type Step = (app: App, arrival: Arrival) => void | Promise<void>;
+
+// the steps of a paste from another deck, run in this order before and after its insert, in the
+// entry of the history of the paste
+export const BEFORE: Step[] = [carryFiles];
+export const AFTER: Step[] = [];
+
+// texts inserted by insert, with the steps of a paste from another deck when text names one
+export async function arrive<T>(app: App, text: string, texts: string[], insert: (texts: string[]) => Promise<T>): Promise<T> {
+  const origin = originOf(text);
+  if (!origin || origin.deck === deckAddress()) return insert(texts);
+  const arrival: Arrival = { origin, texts, notes: [] };
+  for (const step of BEFORE) await step(app, arrival);
+  const out = await insert(arrival.texts);
+  for (const step of AFTER) await step(app, arrival);
+  if (arrival.notes.length) {
+    app.note = { text: arrival.notes.join(' '), warn: true };
+    app.report();
+  }
+  return out;
 }

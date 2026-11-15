@@ -26,7 +26,7 @@ import { tokenize } from '../tokens.ts';
 import { keepBeside } from './place.ts';
 import { keepPlaces } from '../canvas/drag.ts';
 import { MARK, docOf, slidesIn } from './slide.ts';
-import { originComment } from './origin.ts';
+import { arrive, originComment } from './origin.ts';
 import { cellAt, clearRange, pasteAtCell, pasteRange, pasteTable, rangeText, selectedRange } from './table.ts';
 import { display } from '../keymap.ts';
 import { removeJoining } from '../text/elements.ts';
@@ -521,7 +521,7 @@ export function install(app: App): void {
         const html = cellAt(a) ? (text === clip?.text ? clip.html : '') || (read ? await readHtml() : '') : '';
         if (!(await pasteAtCell(a, text, html))) document.execCommand('insertText', false, host ? spaced(host, text) : text);
       }
-    } else if (els) await pasteElements(a, els);
+    } else if (els) await arrive(a, text, els, (from) => pasteElements(a, from));
     else if (slides) await a.commands.run('slide.paste', slides);
     else {
       // a range of cells or a table is pasted onto the selected range, or else onto the slide as a

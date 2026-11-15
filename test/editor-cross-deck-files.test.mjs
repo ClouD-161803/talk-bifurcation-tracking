@@ -30,13 +30,11 @@ const deck = (file) => openDeck(browser, `${server.origin}/${file}?${QUERY}`, fi
 const CARRIED = (text) => text.replace('src="figs/orbit.png"', 'src="media/orbit-2.png"').replace('src="figs/clip.mp4"', 'src="media/clip.mp4"').replace('poster="figs/clip.png"', 'poster="media/clip-2.png"');
 
 // the images and videos under the slide headed title on deck B, once each is loaded or failed
-const loaded = (page, title) =>
-  page.waitFor(`(() => {
-    const s = [...document.querySelectorAll('.reveal .slides > section')].find((x) => x.querySelector('h2')?.textContent.trim() === ${JSON.stringify(title)});
-    const media = s ? [...s.querySelectorAll('img, video')] : [];
-    if (!media.length || !media.every((m) => (m.localName === 'img' ? m.complete : m.readyState >= 1 || m.error))) return null;
-    return media.map((m) => [m.getAttribute('src').slice(0, 5), m.localName === 'img' ? m.naturalWidth > 0 : m.readyState >= 1]);
-  })()`, 20000);
+async function loaded(page, title) {
+  const media = `[...[...document.querySelectorAll('.reveal .slides > section')].find((x) => x.querySelector('h2')?.textContent.trim() === ${JSON.stringify(title)})?.querySelectorAll('img, video') ?? []]`;
+  await page.waitFor(`${media}.length > 0 && ${media}.every((m) => (m.localName === 'img' ? m.complete : m.readyState >= 1 || m.error))`, 20000);
+  return page.evaluate(`${media}.map((m) => [m.getAttribute('src').slice(0, 5), m.localName === 'img' ? m.naturalWidth > 0 : m.readyState >= 1])`);
+}
 
 test('slides pasted from another deck carry their files into media, in one entry of the history', async (t) => {
   const a = await deck(A);
