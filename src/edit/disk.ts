@@ -2,7 +2,8 @@
 // most once per 250 ms of quiet and at the latest 1 s after the first unwritten operation, by a
 // temporary file in the same folder and a rename over the file. a change that the edit command did
 // not write itself is found by a stat every 500 ms, and merged as an operation of the author file,
-// on the base of the text written lately that is nearest to it, where the file wins a conflict
+// on the base of the text written or read lately that is nearest to it, where the file wins a
+// conflict
 
 import { readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
@@ -11,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { changes } from '../editor/merge.ts';
 import type { Authority } from '../session/authority.ts';
-import { apply, diff, mergePatches, size } from '../session/patch.ts';
+import { apply, diff, mergePatches, size, type Patch } from '../session/patch.ts';
 
 export const AUTHOR = 'file';
 const QUIET = 250;
@@ -22,8 +23,13 @@ const POLL = 500;
 const SETTLE = 2000;
 const SETTLE_EMPTY = 5000;
 const SETTLE_AT_STOP = 7000;
-const RING_TEXTS = 64;
-const RING_CHARS = 8 * 1024 * 1024;
+// the chain of the texts written or read keeps the last 5000 of them, and at most 64 MB of the
+// patches that lead back to them
+const CHAIN_TEXTS = 5000;
+const CHAIN_BYTES = 64 * 1024 * 1024;
+// the texts of the chain that are nearest to a change of the file by the count of their lines, and
+// that are compared by a diff
+const NEAREST = 8;
 
 export class NotUtf8 extends Error {}
 
@@ -108,6 +114,49 @@ function finish(task: Task<unknown>): void {
   }
 }
 
+// a copy of text, since a slice keeps in memory the whole text that it was cut from
+const copy = (text: string) => (text.length < 16 ? text : Buffer.from(text, 'utf16le').toString('utf16le'));
+const weight = (delta: Patch[]) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
+
+// the lines of a text turned back by a delta of the chain. count is told the lines that the delta
+// removes and adds
+function stepBack(lines: string[], delta: Patch[], count?: (lines: string[], by: number) => void): string[] {
+  const starts = new Array<number>(lines.length);
+  for (let i = 0, at = 0; i < lines.length; i++) {
+    starts[i] = at;
+    at += lines[i].length + 1;
+  }
+  const lineOf = (at: number) => {
+    let lo = 0, hi = lines.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= at) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  const out: string[] = [];
+  let next = 0;
+  // the patches that touch a common line are applied together, to the lines that they touch
+  for (let j = 0; j < delta.length; ) {
+    const a = lineOf(delta[j].start);
+    let k = j, b = lineOf(delta[j].end);
+    while (k + 1 < delta.length && lineOf(delta[k + 1].start) <= b) b = lineOf(delta[++k].end);
+    const old = lines.slice(a, b + 1), segment = old.join('\n'), at = starts[a];
+    let changed = segment.slice(0, delta[j].start - at);
+    for (let m = j; m <= k; m++) changed += delta[m].text + segment.slice(delta[m].end - at, m < k ? delta[m + 1].start - at : segment.length);
+    const now = changed.split('\n');
+    count?.(old, -1);
+    count?.(now, 1);
+    for (let i = next; i < a; i++) out.push(lines[i]);
+    for (const line of now) out.push(line);
+    next = b + 1;
+    j = k + 1;
+  }
+  for (let i = next; i < lines.length; i++) out.push(lines[i]);
+  return out;
+}
+
 function removeQuietly(file: string): void {
   try {
     unlinkSync(file);
@@ -123,8 +172,12 @@ export class Disk {
   private authority: Authority;
   private known = '';
   private written: string;
-  // the texts written or read lately, newest last, as the candidate bases of a change of the file
-  private ring: { n: number; text: string }[] = [];
+  // the newest text written or read, and a chain of the patches that turn each text written or read
+  // before it back into the one before, newest last. these texts are the candidate bases of a change
+  // of the file
+  private head: string;
+  private back: Patch[][] = [];
+  private backBytes = 0;
   private firstUnwritten: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private poller: ReturnType<typeof setInterval> | null = null;
@@ -140,7 +193,7 @@ export class Disk {
     this.written = authority.text;
     this.log = options.log ?? (() => {});
     this.timing = { quiet: options.quiet ?? QUIET, latest: options.latest ?? LATEST, poll: options.poll ?? POLL };
-    this.remember(authority.n, authority.text);
+    this.head = authority.text;
     try {
       this.known = signature(statSync(file));
     } catch {}
@@ -210,11 +263,14 @@ export class Disk {
     return join(dirname(this.file), `.${basename(this.file)}.${randomBytes(6).toString('hex')}.tmp`);
   }
 
-  private remember(n: number, text: string): void {
-    if (this.ring.length && this.ring[this.ring.length - 1].text === text) return;
-    this.ring.push({ n, text });
-    let chars = this.ring.reduce((s, e) => s + e.text.length, 0);
-    while (this.ring.length > 1 && (this.ring.length > RING_TEXTS || chars > RING_CHARS)) chars -= this.ring.shift()!.text.length;
+  private remember(text: string): void {
+    if (text === this.head) return;
+    // the changes are not widened to tokens as in diff(), since only their size matters here
+    const delta = (changes(text, this.head) ?? diff(text, this.head)).map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
+    this.back.push(delta);
+    this.backBytes += weight(delta);
+    this.head = text;
+    while (this.back.length > CHAIN_TEXTS || this.backBytes > CHAIN_BYTES) this.backBytes -= weight(this.back.shift()!);
   }
 
   private *write(limit = Infinity): Task {
@@ -234,7 +290,7 @@ export class Disk {
   // the text of the authority into the file, by a temporary file and a rename, or changed when
   // another program wrote the file in the meantime
   private *put(): Task<'changed' | void> {
-    const text = this.authority.text, n = this.authority.n;
+    const text = this.authority.text;
     if (text === this.written) return;
     const tmp = this.tmpName();
     let renamed = false, made: Stats;
@@ -265,7 +321,7 @@ export class Disk {
     }
     this.written = text;
     this.known = signature(made!);
-    this.remember(n, text);
+    this.remember(text);
   }
 
   // a change of the file that the edit command did not write, or false when the file was still
@@ -312,40 +368,86 @@ export class Disk {
       this.known = sig;
       return true;
     }
-    this.known = sig;
     // the bytes of the last write or read, as after a touch of the file
-    if (read.text === this.written && read.bom === this.bom) return true;
+    if (read.text === this.written && read.bom === this.bom) {
+      this.known = sig;
+      return true;
+    }
+    // the signature is kept only after the merge, since a stop leaves this task at a step of the merge
+    yield* this.merge(read.text);
+    this.known = sig;
     this.bom = read.bom;
-    this.merge(read.text);
     this.written = read.text;
     if (this.authority.text !== read.text) this.schedule();
     return true;
   }
 
   // the text now on disk, written by another program from a text that it read some time before
-  merge(theirs: string): void {
-    const current = this.authority.text;
-    if (theirs === current) return;
-    let base: string | null = null, best = Infinity;
-    for (let i = this.ring.length - 1; i >= 0; i--) {
-      const text = this.ring[i].text;
-      const found = text === theirs ? [] : changes(text, theirs);
-      if (found && size(found) < best) {
-        best = size(found);
-        base = text;
-      }
-    }
-    let merged: string;
-    if (base === null) {
-      merged = theirs;
-    } else {
+  private *merge(theirs: string): Task {
+    if (theirs !== this.authority.text) {
+      const base = yield* this.nearest(theirs);
+      // the session may have changed while the chain was searched
+      const current = this.authority.text;
       const file = diff(base, theirs);
       const session = diff(base, current);
-      merged = apply(base, mergePatches(session, file, 'ours').patches);
+      const merged = apply(base, mergePatches(session, file, 'ours').patches);
+      const patches = diff(current, merged);
+      if (patches.length) this.authority.enter(patches, AUTHOR);
     }
-    const patches = diff(current, merged);
-    if (patches.length) this.authority.enter(patches, AUTHOR);
-    this.remember(this.authority.n, theirs);
+    this.remember(theirs);
+  }
+
+  // the text of the chain that is nearest to theirs. the texts are rebuilt as lines from the newest
+  // back, each is measured by the lines that it has more or fewer of than theirs, and the nearest few
+  // are compared by a diff. a change based on a text older than the chain is merged on the kept text
+  // nearest to it, hence the edits of the session between the two texts are reverted, since the file
+  // lacks them
+  private *nearest(theirs: string): Task<string> {
+    // the count of each line in the text minus its count in theirs, and the distance, i.e. the
+    // characters of the lines that are counted more or fewer times
+    const counts = new Map<string, number>();
+    let distance = 0;
+    const count = (lines: string[], by: number) => {
+      for (const line of lines) {
+        const was = counts.get(line) ?? 0, now = was + by;
+        distance += (Math.abs(now) - Math.abs(was)) * (line.length + 1);
+        if (now) counts.set(line, now);
+        else counts.delete(line);
+      }
+    };
+    let lines = this.head.split('\n');
+    count(lines, 1);
+    count(theirs.split('\n'), -1);
+    // the nearest texts by the count of their lines, as their steps back from the head
+    const best: { distance: number; steps: number }[] = [];
+    const keep = (steps: number) => {
+      let i = best.length;
+      while (i > 0 && best[i - 1].distance > distance) i--;
+      if (i < NEAREST) best.splice(i, 0, { distance, steps });
+      if (best.length > NEAREST) best.pop();
+    };
+    keep(0);
+    for (let steps = 1; steps <= this.back.length; steps++) {
+      if (distance === 0 && lines.join('\n') === theirs) return theirs;
+      lines = stepBack(lines, this.back[this.back.length - steps], count);
+      keep(steps);
+      if (steps % 256 === 0) yield { sleep: 0 };
+    }
+    if (distance === 0 && lines.join('\n') === theirs) return theirs;
+    // the nearest few are rebuilt and compared by a diff. a text too far apart for changes() ranks by
+    // the count of its lines, and of two equal texts the newer is taken
+    let base = '', rank = [Infinity, Infinity];
+    lines = this.head.split('\n');
+    const farthest = Math.max(...best.map((b) => b.steps));
+    for (let steps = 0; steps <= farthest; steps++) {
+      if (steps) lines = stepBack(lines, this.back[this.back.length - steps]);
+      const candidate = best.find((b) => b.steps === steps);
+      if (!candidate) continue;
+      const text = lines.join('\n'), found = changes(text, theirs), real = found ? size(found) : Infinity;
+      if (real < rank[0] || (real === rank[0] && candidate.distance < rank[1])) [base, rank] = [text, [real, candidate.distance]];
+      yield { sleep: 0 };
+    }
+    return base;
   }
 }
 
