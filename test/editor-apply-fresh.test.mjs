@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { editorPage, typeKeys } from './helpers/editor.mjs';
+import { click, editorPage, press, typeKeys } from './helpers/editor.mjs';
 import { E, applied, applyOn, caretAtEnd, front, sessionPage, showSlide } from './helpers/apply.mjs';
 import { freshDeck, looksFresh } from './helpers/fresh.mjs';
 
@@ -106,6 +106,36 @@ test('a text element whose tags do not balance asks for a reload, and a slide pu
     ['a slide put before', (s) => once(s, slideWith(s, 'Embedding TyCHO'), `<section>\n  <h2>A new slide</h2>\n  <p>Its only paragraph.</p>\n</section>\n${slideWith(s, 'Embedding TyCHO')}`), false],
     ['an em left open', (s) => once(s, 'Direct the viewer', 'Direct <em>the viewer'), true],
   ]);
+});
+
+// an edit of the editor on page a, by a command on two selected text elements, applied on page b
+async function commanded(t, heading, first, second, run) {
+  const a = await sessionPage(browser);
+  const b = await sessionPage(browser);
+  t.after(() => Promise.all([a.close(), b.close()]));
+  await front(a);
+  await showSlide(a, heading);
+  await click(a, `section.present ${first}`);
+  await press(a, 'Escape');
+  await click(a, `section.present ${second}`, { modifiers: 'Shift' });
+  await a.waitFor(`${E}.selection().length === 2`);
+  await run(a);
+  await a.waitFor('window.__changes > 0');
+  const text = await a.evaluate(`${E}.session.text()`);
+  assert.notEqual(text, a.source, `${heading}: the command changed the text`);
+  assert.equal((await applyOn(b, text)).reload, false, `${heading}: the reload of the apply`);
+  await applied(b, text, heading);
+  await looksFresh(t, browser, b, text, heading);
+}
+
+test('a start tag of a text element that a structural apply keeps is set on the page', async (t) => {
+  await commanded(t, 'Presenting in HTML', 'h1', 'p.sub', (a) => press(a, 'ArrowRight'));
+  await commanded(t, 'Show your steps', 'h2', '> p', (a) => a.evaluate(`${E}.exec('text.align.center')`));
+  const items = '<li class="fragment" data-fragment-index="2">Two elements with the same index are shown together.</li>\n    <li class="fragment" data-fragment-index="3">When';
+  await steps(t, [['a class added to two items', (s) => once(s, items, items.replaceAll('class="fragment"', 'class="fragment fade-up"')), false]]);
+  await steps(t, [['the steps taken off two items', (s) => once(s, items, items.replaceAll(' class="fragment" data-fragment-index="2"', '').replace(' class="fragment" data-fragment-index="3"', '')), false]]);
+  await steps(t, [['a width of a paragraph and a text of the next item', (s) => once(s, '<p>Design the complete slide first, then break it up into steps. Direct the viewer\'s attention.</p>\n  <ul>\n    <li class="fragment" data-fragment-index="1">Each', '<p style="width: 400px">Design the complete slide first, then break it up into steps. Direct the viewer\'s attention.</p>\n  <ul>\n    <li class="fragment" data-fragment-index="1">Every'), false]]);
+  await steps(t, [['a class of a heading and a new paragraph', (s) => once(s, '<h2>Show your steps one at a time</h2>\n', '<h2 class="center">Show your steps one at a time</h2>\n  <p>New</p>\n'), false]]);
 });
 
 test('two changes in two text nodes of a paragraph with a formula keep both text nodes', async (t) => {
