@@ -154,3 +154,21 @@ test('add regression test: an answer through the relay carries one Content-Type 
     assert.deepEqual(headers.filter(([k]) => k === 'cache-control').map(([, v]) => v), [cache], path);
   }
 });
+
+test('add regression test: the relay does not forward Service-Worker-Allowed or Set-Cookie', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const key = 'h'.repeat(22);
+  const auth = { authorization: `Bearer ${SECRET}` };
+  const { token } = await (await fetch(`${relay.url}/host/${key}`, { method: 'POST', headers: auth })).json();
+  const host = { ...auth, 'x-relay-token': token };
+  const pulled = fetch(`${relay.url}/host/${key}/pull`, { method: 'POST', headers: host }).then((r) => r.json());
+  const answered = rawHeaders(`${relay.url}/${key}/index.html`);
+  const [item] = await pulled;
+  const forwarded = { 'content-type': 'text/html', 'service-worker-allowed': '/', 'set-cookie': 'a=1', 'clear-site-data': '"storage"', 'x-session-version': 'e.1' };
+  const push = await fetch(`${relay.url}/host/${key}/push/${item.id}`, { method: 'POST', headers: { ...host, 'x-relay-status': '200', 'x-relay-headers': JSON.stringify(forwarded) }, body: 'deck' });
+  assert.equal(push.status, 204);
+  const names = (await answered).map(([k]) => k);
+  assert.ok(names.includes('x-session-version'));
+  for (const name of ['service-worker-allowed', 'set-cookie', 'clear-site-data']) assert.ok(!names.includes(name), name);
+});
