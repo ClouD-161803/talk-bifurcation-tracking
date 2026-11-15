@@ -443,3 +443,33 @@ test('a slide rewritten by typing keeps its threads, since each operation is sma
   reads(text, items[1].slide, '<section class="wide">');
   assert.ok(items.every((it) => it.removed === undefined));
 });
+
+test('an inserting operation takes about as long with threads of removed elements as with threads on elements', () => {
+  const slide = (k) => [`<h2>Slide ${k}</h2>`, ...Array.from({ length: 6 }, (_, i) => `<p style="left: ${i}px">Paragraph ${i} of slide ${k}, on the unstable manifold of the halo orbit.</p>`)];
+  const before = deck(...Array.from({ length: 300 }, (_, k) => slide(k)));
+  const slides = slidesOf(before);
+  const at = before.indexOf('<p style="left: 3px">Paragraph 3 of slide 150,');
+  const patches = [{ start: at, end: at, text: '<p>New</p>\n  ' }];
+  const after = before.slice(0, at) + patches[0].text + before.slice(at);
+  const live = [];
+  const removed = [];
+  for (let k = 0; k < 2000; k++) {
+    const s = slides[(k * 7) % slides.length];
+    const tag = { start: s.start, end: s.open, tag: 'section' };
+    live.push(onElement(before.slice(0, s.end), `<p style="left: ${k % 6}px">Paragraph ${k % 6} of slide ${(k * 7) % slides.length},`));
+    removed.push({ anchor: tag, slide: tag, removed: { text: `<p>Removed paragraph ${k}, which held a long text of its own about the transfer.</p>` } });
+  }
+  const median = (items) => {
+    const times = [];
+    for (let run = 0; run < 7; run++) {
+      const t0 = process.hrtime.bigint();
+      moveAnchors(before, patches, after, items, slides);
+      times.push(Number(process.hrtime.bigint() - t0));
+    }
+    return times.sort((x, y) => x - y)[3];
+  };
+  // measured again before the test fails, since another process may take the processor for a while
+  let ratio = Infinity;
+  for (let attempt = 0; attempt < 3 && ratio > 3; attempt++) ratio = median(removed) / median(live);
+  assert.ok(ratio <= 3, `the threads of removed elements took ${ratio.toFixed(1)} times as long`);
+});
