@@ -165,6 +165,39 @@ test('the flag of an element at the top edge of the slide is drawn whole in a la
   clean(ben);
 });
 
+// the caret bar of page with its box, and the flag over it
+const CARET = `(() => {
+  const c = document.querySelector('.beeson-presence .caret');
+  if (!c) return null;
+  const r = c.getBoundingClientRect();
+  const flag = [...document.querySelectorAll('.beeson-presence .flags')].find((f) => f.dataset.caret !== undefined);
+  const b = flag?.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top, h: r.height, flag: b ? { x: b.left, y: b.top, w: b.width, h: b.height, text: flag.querySelector('.long').textContent } : null };
+})()`;
+
+test('the caret of a person has a name flag at its top, unless the frame of the person around its text element shows the flag', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await front(ana);
+  await caretAtEnd(ana, el(1, 'p'));
+  const d = await untilDrawn(ben, (d) => d.carets.length === 1 && d.frames.length === 1 && d.flags.length === 1, 'the frame, the flag, and the caret of Ana on the page of Ben');
+  assert.equal(d.flags[0].client, await ana.evaluate(`${C}.client`), 'the one flag is that of the frame of Ana');
+  assert.equal((await ben.evaluate(CARET)).flag, null, 'the caret does not have a flag of its own');
+  // the paragraph taken out of the selection of Ana as Ben hears it, so that only the caret is drawn
+  await front(ben);
+  await ben.evaluate(`(() => { const c = ${C}; const all = c.resolved.bind(c); c.resolved = () => all().map((r) => ({ ...r, selected: [] })); c.app.invalidate('selection'); })()`);
+  const e = await until(async () => {
+    await frame(ben);
+    const e = await ben.evaluate(CARET);
+    return e?.flag ? e : null;
+  }, 'the flag of the caret of Ana on the page of Ben');
+  assert.equal(e.flag.text, 'Ana');
+  assert.ok(Math.abs(e.flag.y + e.flag.h - e.y) < 6 && Math.abs(e.flag.x - e.x) < 6, `the flag sits on the top of the caret, at ${JSON.stringify(e)}`);
+  clean(ana);
+  clean(ben);
+});
+
 // the caret of the page in px of the slide: its center, its length, and its angle from upright, from
 // the box of the turned caret, whose width is the length times the sine of the angle
 const REAL = `(() => {
