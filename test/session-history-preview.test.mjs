@@ -102,7 +102,7 @@ test('on a phone in portrait and in landscape, with 1, 8, and 40 changed slides,
     await nameNow(ann, title);
   }
   await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
-  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
   await ann.waitFor(SHOWN);
   await ann.waitFor(`!!(${rowByTitle('Forty changed')})`);
   // the least height of the iframe at each size
@@ -125,12 +125,12 @@ test('on a phone in portrait and in landscape, with 1, 8, and 40 changed slides,
         assert.equal(m.sheet.phone, narrow);
         // below 600 px Name and Download are in the More menu
         await press$(ann, BAR, '⋯');
-        await ann.waitFor(`!!document.querySelector('.beeson-session-menu')`);
-        const items = await ann.evaluate(`[...document.querySelectorAll('.beeson-session-menu button')].map((b) => b.textContent)`);
+        await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
+        const items = await ann.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((b) => b.textContent)`);
         const wide = await ann.evaluate(`document.querySelector('${BAR}').getBoundingClientRect().width >= 600`);
         assert.deepEqual([items, m.name], wide ? [['Download This Version'], true] : [['Name this version', 'Download This Version'], false]);
         await press(ann, 'Escape');
-        await ann.waitFor(`!document.querySelector('.beeson-session-menu')`);
+        await ann.waitFor(`!document.querySelector('.beeson-edit-menu')`);
         if (narrow) {
           await press$(ann, PANE, 'Versions');
           await ann.waitFor(`[...document.querySelectorAll('${PANE} .row')].filter((r) => r.getClientRects().length).length > 1`);
@@ -250,7 +250,7 @@ test('a new list leaves the bar alone, the text of a version is read once per pr
   const download = async () => {
     await ann.evaluate('window.__downloaded = null, true');
     await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
-    await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Download This Version')`);
+    await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Download This Version')`);
     await ann.waitFor('typeof window.__downloaded === "string"');
     assert.match(await ann.evaluate('window.__downloaded'), /<h2>One first<\/h2>/);
   };
@@ -267,13 +267,13 @@ test('a new list leaves the bar alone, the text of a version is read once per pr
     await ann.waitFor(`document.querySelector('${BAR} .date')?.textContent.startsWith('First again,')`);
     assert.deepEqual(await ann.evaluate(`[document.activeElement === window.__focused, window.__focused.isConnected]`), [true, true]);
     await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
-    await ann.waitFor(`document.activeElement?.closest('.beeson-session-menu') !== null`);
+    await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     await ann.evaluate(`window.__more = document.querySelector('${BAR} button.more'), true`);
     await rename(ann, first, 'First');
     await ann.waitFor(`document.querySelector('${BAR} .date')?.textContent.startsWith('First,')`);
-    assert.deepEqual(await ann.evaluate(`[window.__more.isConnected, window.__more.getAttribute('aria-expanded'), !!document.activeElement?.closest('.beeson-session-menu')]`), [true, 'true', true]);
+    assert.deepEqual(await ann.evaluate(`[window.__more.isConnected, window.__more.getAttribute('aria-expanded'), !!document.querySelector('.beeson-edit-menu')]`), [true, 'true', true]);
     await press(ann, 'Escape');
-    await ann.waitFor(`!document.querySelector('.beeson-session-menu') && document.activeElement === window.__more`);
+    await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement === window.__more`);
   });
 
   await t.test('the preview keeps the text of the version it shows, and of no other one', async () => {

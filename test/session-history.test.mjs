@@ -205,7 +205,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .versions .row.version')][1]`);
     await ann.waitFor(`document.querySelector('${PANE} .row[aria-current="true"]')?.dataset.id === 'version:${id}'`);
     await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
-    await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Download This Version')`);
+    await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Download This Version')`);
     await ann.waitFor('typeof window.__downloaded === "string"');
     const served = await raw(server.edit.port, 'GET', `${server.edit.base}index.html?version=${id}`);
     assert.equal(await ann.evaluate('window.__downloaded'), served.text);
@@ -215,7 +215,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
   await t.test('the guest opens the pane from the menu of the save state and sees the same list', async () => {
     await front(ben);
     await tapOrClick(ben, `document.querySelector('.beeson-session-state')`);
-    await tapOrClick(ben, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`);
+    await tapOrClick(ben, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
     await ben.waitFor(SHOWN);
     await ben.waitFor(`${LIST}.length === 3`);
     assert.deepEqual((await ben.evaluate(LIST)).map((x) => x.title ?? x.day ?? x.fold), (await ann.evaluate(LIST)).map((x) => x.title ?? x.day ?? x.fold));
@@ -233,7 +233,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     assert.equal(await ben.evaluate('document.activeElement === window.__before'), true);
     // an item of the menu run by the keyboard, i.e. a click on the focused item
     await ben.evaluate(`(() => { const b = document.querySelector('.beeson-session-state'); b.focus(); b.click(); return true; })()`);
-    const item = `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`;
+    const item = `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`;
     await ben.waitFor(`!!(${item})`);
     await ben.evaluate(`(() => { const b = ${item}; b.focus(); b.click(); return true; })()`);
     await ben.waitFor(SHOWN);
@@ -446,7 +446,7 @@ test('the pane of a page offline reads the versions once the page is online agai
   await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'OK');
   await server.start(['--port', String(port)]);
   await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
-  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Try Now')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Try Now')`);
   await ann.waitFor(ONLINE, 20_000);
   await ann.waitFor(`${LIST}[0]?.day === 'Today'`, 20_000);
   assert.equal(await ann.evaluate(`${LIST}[1].title`), 'Kept');
@@ -466,7 +466,7 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   await type(ann, ' on a phone');
   await converge(server, [ann]);
   await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
-  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
   await ann.waitFor(SHOWN);
   await press$(ann, PANE, 'Name this version');
   await nameIt(ann, 'Phone');
@@ -672,12 +672,12 @@ test('a fold stays open, and the focus stays on its control, while new versions 
     await version(' d');
     assert.equal(await ann.evaluate(`document.activeElement === (${button(BAR, 'Restore this version')})`), true);
     await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
-    await ann.waitFor(`document.activeElement?.closest('.beeson-session-menu') !== null`);
+    await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     await ann.evaluate(`window.__more = document.querySelector('${BAR} button.more'), true`);
     await version(' e');
-    assert.deepEqual(await ann.evaluate(`[window.__more.isConnected, window.__more.getAttribute('aria-expanded'), !!document.activeElement?.closest('.beeson-session-menu')]`), [true, 'true', true]);
+    assert.deepEqual(await ann.evaluate(`[window.__more.isConnected, window.__more.getAttribute('aria-expanded'), !!document.querySelector('.beeson-edit-menu')]`), [true, 'true', true]);
     await press(ann, 'Escape');
-    await ann.waitFor(`!document.querySelector('.beeson-session-menu') && document.activeElement === window.__more`);
+    await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement === window.__more`);
   });
   clean(ann);
 });
