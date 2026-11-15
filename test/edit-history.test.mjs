@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
@@ -550,4 +551,53 @@ test('200 versions of a deck of 400 kB keep the changes of each version, not a c
   // a copy of the deck per version would be 80 MB
   assert.ok(growth < 16, `the heap grew by ${growth.toFixed(1)} MB`);
   history.stopSync();
+});
+
+test('an operation after a sleep of the computer, or after the wall clock went back, begins a new version', { timeout: 60_000 }, async (t) => {
+  // the wall clock, and the clock of the timers, which stands while the computer sleeps
+  const opened = () => {
+    const c = { wall: 1_700_000_000_000, clock: 1000 };
+    return { c, ...open(sessionDir(t), DECK, { quiet: 60_000, longest: 300_000, now: () => c.wall, clock: () => c.clock }) };
+  };
+
+  await t.test('a sleep of 8 hours, in which only the wall clock goes on', () => {
+    const { c, authority, history } = opened();
+    replace(authority, 'One', 'Uno', ANN);
+    const afterAnn = authority.text;
+    c.wall += 8 * 3600_000;
+    c.clock += 10;
+    replace(authority, 'Two', 'Deux', BO);
+    history.close();
+    const versions = history.list().versions.reverse();
+    assert.deepEqual(versions.map((v) => v.authors), [[ANN], [BO]]);
+    assert.deepEqual(versions.map((v) => v.slides), [[1], [2]]);
+    assert.equal(history.textOf(versions[0].id), afterAnn);
+    history.stopSync();
+  });
+
+  await t.test('a wall clock set back an hour, after which the quiet time passes on the clock of the timers', () => {
+    const { c, authority, history } = opened();
+    replace(authority, 'One', 'Uno', ANN);
+    c.wall -= 3600_000;
+    c.clock += 60_000;
+    replace(authority, 'Two', 'Deux', BO);
+    history.close();
+    assert.deepEqual(history.list().versions.reverse().map((v) => v.authors), [[ANN], [BO]]);
+    history.stopSync();
+  });
+
+  await t.test('operations that go on for longer than the longest time', () => {
+    const { c, authority, history } = opened();
+    replace(authority, '</body>', '<i>0</i></body>', ANN);
+    for (let i = 1; i <= 10; i++) {
+      c.wall += 30_000;
+      c.clock += 30_000;
+      replace(authority, '</body>', `<i>${i}</i></body>`, ANN);
+    }
+    history.close();
+    const versions = history.list().versions.reverse();
+    assert.equal(versions.length, 2);
+    assert.ok(history.textOf(versions[0].id).includes('<i>9</i></body>'));
+    history.stopSync();
+  });
 });
