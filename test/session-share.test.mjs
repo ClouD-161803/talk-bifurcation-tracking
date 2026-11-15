@@ -109,3 +109,56 @@ test('the avatars of two and of six people, one person with two pages, and the i
   clean(ann);
   clean(ben);
 });
+
+test('Change Name is seen on the other page, also for one word and an emoji, and a taken name is asked about', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const ann = await open(browser, url, { name: 'Ann Smith' });
+  const ben = await open(browser, url, { name: 'Ben Carter' });
+  await shown(ben, 2);
+
+  const rename = async (name) => {
+    await press(ann, '.beeson-session-people .me');
+    await ann.waitFor(`!!${item('Change Name…')}`);
+    assert.deepEqual(await menu(ann), [await ann.evaluate(`${C}.name`), 'Change Name…']);
+    await press(ann, item('Change Name…'));
+    await ann.waitFor(`document.querySelector('dialog.beeson-session-rename')?.open && document.activeElement === document.querySelector('dialog.beeson-session-rename input')`);
+    await ann.evaluate(`document.querySelector('dialog.beeson-session-rename input').select()`);
+    await type(ann, name);
+    await key(ann, 'Enter');
+  };
+
+  for (const [name, initials] of [['Cher', 'CH'], ['👩‍🚀 Ada Byron', '👩‍🚀B'], ['Ann Smith', 'AS']]) {
+    await rename(name);
+    await ann.waitFor(`!document.querySelector('dialog.beeson-session-rename') && ${C}.name === ${JSON.stringify(name)}`);
+    await front(ben);
+    const selector = `.beeson-session-people button[aria-label=${JSON.stringify(name)}]`;
+    await ben.waitFor(`!!document.querySelector(${JSON.stringify(selector)})`);
+    assert.deepEqual((await avatars(ben))[0], { text: initials, label: name, me: false });
+    assert.equal((await avatars(ann)).at(-1).text, initials);
+  }
+
+  await t.test('a name held by another person asks, and Use another name keeps the dialog', async () => {
+    await rename('ben carter');
+    await ann.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'Ben Carter has joined this deck before. Is that you?')`);
+    await press(ann, dialogButton('beeson-edit-dialog', 'Use another name'));
+    await ann.waitFor(`document.querySelector('dialog.beeson-session-rename')?.open && document.activeElement === document.querySelector('dialog.beeson-session-rename input')`);
+    assert.equal(await ann.evaluate(`${C}.name`), 'Ann Smith');
+    await press(ann, dialogButton('beeson-session-rename', 'Cancel'));
+    await ann.waitFor(`!document.querySelector('dialog.beeson-session-rename')`);
+  });
+
+  await t.test('Yes takes the person over after a reload, with one avatar for the two pages', async () => {
+    await rename('ben carter');
+    await ann.waitFor(`!!${dialogButton('beeson-edit-dialog', 'Yes, continue')}`);
+    await press(ann, dialogButton('beeson-edit-dialog', 'Yes, continue')).catch((e) => {
+      if (!/navigated or closed/.test(e.message)) throw e;
+    });
+    await until(() => ann.evaluate(`document.readyState === 'complete' && ${ONLINE} && ${C}.name === 'Ben Carter'`).catch(() => false), 'the page to join as Ben Carter');
+    assert.equal(await ann.evaluate(`${C}.person`), await ben.evaluate(`${C}.person`));
+    assert.deepEqual(await shown(ben, 1), [{ text: 'BC', label: 'Ben Carter, you', me: true }]);
+  });
+  clean(ben);
+});
