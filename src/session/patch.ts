@@ -67,9 +67,12 @@ function before(a: Patch, b: Patch, aFirst: boolean): boolean {
 // patches are moved and never cut, hence an operation is applied whole or not at all
 export function shift(patches: Patch[], over: Patch[], overFirst = true): Patch[] | null {
   const out: Patch[] = [];
-  let j = 0, delta = 0;
+  let j = 0, k = 0, delta = 0;
   for (const p of patches) {
-    for (const q of over) if (conflict(p, q)) return null;
+    // a patch of over that ends at or before p conflicts neither with p nor with a later patch,
+    // and of the others only those that start before the end of p can conflict with it
+    while (k < over.length && over[k].end <= p.start) k++;
+    for (let i = k; i < over.length && over[i].start < p.end; i++) if (conflict(p, over[i])) return null;
     while (j < over.length && before(over[j], p, overFirst)) {
       delta += over[j].text.length - (over[j].end - over[j].start);
       j++;
@@ -118,10 +121,22 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
 // conflict with a patch of theirs
 export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours'): { patches: Patch[]; conflicts: Patch[] } {
-  const conflicts = ours.filter((o) => theirs.some((t) => conflict(o, t)));
-  if (conflicts.length === 0) return { patches: combine(theirs, ours), conflicts };
-  const keptTheirs = wins === 'ours' ? theirs.filter((t) => !conflicts.some((o) => conflict(o, t))) : theirs;
-  const keptOurs = wins === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o));
+  // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
+  // as in shift()
+  const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
+  let k = 0, any = false;
+  for (let i = 0; i < ours.length; i++) {
+    const o = ours[i];
+    while (k < theirs.length && theirs[k].end <= o.start) k++;
+    for (let j = k; j < theirs.length && theirs[j].start < o.end; j++) {
+      if (conflict(o, theirs[j])) hitOurs[i] = hitTheirs[j] = 1;
+    }
+    any ||= hitOurs[i] === 1;
+  }
+  const conflicts = ours.filter((_, i) => hitOurs[i]);
+  if (!any) return { patches: combine(theirs, ours), conflicts };
+  const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
+  const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
 }
 
