@@ -742,3 +742,24 @@ test('add regression test: a second start refuses to run while the first edit co
   }
   assert.equal((await raw(first.port, 'GET', `${first.base}index.html`)).status, 200);
 });
+
+test('add regression test: a guest who knows the person id of the host cannot rename the host or drop its pages', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const guest = async (body) => (await fetch(`${relay.url}${api('hello')}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
+  const host = (await post(edit.port, api('hello'), { name: 'Claudio' })).json();
+  assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${host.v}`)).status, 200);
+  assert.equal((await post(edit.port, api('share'), { relay: relay.url, secret: SECRET })).status, 200);
+
+  // person ids are public, since every page reads them in people and known
+  const mallory = await guest({ name: 'Mallory', person: host.person });
+  assert.equal(mallory.name, 'Claudio');
+  assert.deepEqual(mallory.known.map((p) => p.name), ['Claudio'], 'the host is renamed by a guest');
+  for (let i = 0; i < 8; i++) await guest({ name: 'claudio', claim: true });
+  assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=`)).status, 200, 'the page of the host is dropped for a page of a guest');
+});
