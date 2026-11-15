@@ -17,13 +17,11 @@ import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, type } from './helpers/editor.mjs';
-import { CONFLICTS, copied, downloads, dropFiles, goOffline, goOnline, press, released, ROWS, rows, tab } from './helpers/offline.mjs';
+import { ACTION, CONFLICTS, copied, downloads, dropFiles, edit, el, goOffline, goOnline, press, released, ROWS, rows, SHOWN, tab } from './helpers/offline.mjs';
 import { raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
 const IMAGE = resolve('demo/figure-light.png');
-const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
-const ACTION = `(() => { const b = document.querySelector('.beeson-session-action'); return b && !b.hidden ? b.textContent : null; })()`;
 // a request to an edit command that is not running fails in the console of the page, and the first
 // poll after a restart is answered 404, since the token is of the edit command before
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
@@ -41,12 +39,6 @@ async function select(page, expression, from, to) {
     return document.activeElement === host;
   })()`);
   assert.ok(ok, `the text of ${expression} is selected`);
-}
-
-async function edit(page, slide, selector, text) {
-  await show(page, slide === 0 ? 'One' : 'Two');
-  await caretAtEnd(page, el(slide, selector));
-  await type(page, text);
 }
 
 test('the save state names the slides of the edits that wait, and the dialog of the end names those that did not reach the host', { timeout: 120_000 }, async (t) => {
@@ -269,9 +261,6 @@ test('the dialog of the conflicts at a reconnect keeps either version, and every
     await ben.close();
   });
 });
-
-// an image of the page whose src is path, loaded, or null
-const SHOWN = (path) => `[...document.querySelectorAll('.reveal .slides img')].some((i) => i.getAttribute('src') === ${JSON.stringify(path)} && i.complete && i.naturalWidth > 0)`;
 
 test('a picture dropped by one page is uploaded into media/ before the operation that names it, and the other page shows it', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });

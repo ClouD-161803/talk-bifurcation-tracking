@@ -1,8 +1,10 @@
 // helpers of the browser tests of the offline path of a session: a page that is a tab of the one
 // browser of a test, whose requests to the edit command can be cut, the copies of the edits that
-// the client keeps in IndexedDB, and the downloads of a page
+// the client keeps in IndexedDB, the downloads of a page, and the edits and pictures of a page
 
-import { C, ONLINE } from './client.mjs';
+import { caretAtEnd } from './apply.mjs';
+import { C, ONLINE, show } from './client.mjs';
+import { type } from './editor.mjs';
 
 /**
  * A page of the editor at url as a tab of the browser of the test, i.e. with the localStorage of
@@ -96,4 +98,18 @@ export async function dropFiles(page, paths) {
   const at = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height * 0.75 }; })()`);
   const data = { items: [], files: paths, dragOperationsMask: 1 };
   for (const type of ['dragEnter', 'dragOver', 'drop']) await page.send('Input.dispatchDragEvent', { type, x: at.x, y: at.y, data });
+}
+
+// the element of selector in the slide of index slide, as an expression of the page
+export const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
+// the label of the button beside the save state, or null while it is hidden
+export const ACTION = `(() => { const b = document.querySelector('.beeson-session-action'); return b && !b.hidden ? b.textContent : null; })()`;
+// an image of the page whose src is path, loaded, or null
+export const SHOWN = (path) => `[...document.querySelectorAll('.reveal .slides img')].some((i) => i.getAttribute('src') === ${JSON.stringify(path)} && i.complete && i.naturalWidth > 0)`;
+
+/** Types text at the end of the element of selector on slide One (0) or Two (1). */
+export async function edit(page, slide, selector, text) {
+  await show(page, slide === 0 ? 'One' : 'Two');
+  await caretAtEnd(page, el(slide, selector));
+  await type(page, text);
 }
