@@ -323,3 +323,43 @@ test('the save state of a failed upload is cleared once the deck no longer names
   assert.equal(await ann.evaluate(ACTION), null);
   clean(ann, PROXIED);
 });
+
+test('an upload whose answer was lost after the write is sent again without a second copy in media/', { timeout: 120_000 }, async (t) => {
+  await t.test('the page', async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const p = await proxy(t, server.edit);
+    const ann = await tab(browser, p.url);
+    p.next('lose');
+    await show(ann, 'One');
+    await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+    await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`);
+    assert.deepEqual(media(server), ['plot.png']);
+    await click(ann, '.beeson-session-action');
+    const text = await converge(server, [ann]);
+    assert.deepEqual(sources(text)[0], ['media/plot.png']);
+    assert.deepEqual(media(server), ['plot.png']);
+    assert.equal(p.puts, 2);
+    clean(ann, PROXIED);
+  });
+
+  await t.test('the edit command', async (t) => {
+    const server = await talk(t);
+    const { port, base } = server.edit;
+    const { token } = (await post(port, `${base}.session/hello`, { name: 'Ann' })).json();
+    const sha = (body) => createHash('sha256').update(body).digest('hex');
+    const put = (name, body, hash) => raw(port, 'PUT', `${base}.session/media/${name}?token=${token}`, { body, headers: hash ? { 'x-content-sha256': hash } : {} });
+    assert.deepEqual((await put('x.png', 'one', sha('one'))).json(), { path: 'media/x.png' });
+    // the same bytes under the name, or under a numbered name of it, are answered without a write
+    assert.deepEqual((await put('x.png', 'one', sha('one'))).json(), { path: 'media/x.png' });
+    assert.deepEqual((await put('x.png', 'two', sha('two'))).json(), { path: 'media/x-2.png' });
+    assert.deepEqual((await put('x.png', 'two', sha('two'))).json(), { path: 'media/x-2.png' });
+    assert.deepEqual((await put('X.PNG', 'two', sha('two').toUpperCase())).json(), { path: 'media/x-2.png' });
+    // without the header, a new name is given as before
+    assert.deepEqual((await put('x.png', 'one')).json(), { path: 'media/x-3.png' });
+    // a hash that is not the one of the body is refused
+    assert.equal((await put('x.png', 'three', sha('one'))).status, 400);
+    assert.deepEqual(media(server), ['x-2.png', 'x-3.png', 'x.png']);
+  });
+});
