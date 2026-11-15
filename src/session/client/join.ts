@@ -1,21 +1,23 @@
 // the join of a page: the name of the person, asked once per browser, and the person id, kept
 // in localStorage, which may be blocked or full in a private window
 
-import { cleanPersonName, NAME_MAX, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
+import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
-import { make, style } from './dom.ts';
+import { make, sheet, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
 const NAME = 'beeson-session-name';
 const PERSON = 'beeson-session-person';
+// the key of a name that the next join of the page claims, set by Change Name before a reload
+const CLAIM = 'beeson-session-claim';
 
 const CSS = `
-dialog.beeson-session-join label { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; }
-dialog.beeson-session-join label > span:first-child { flex: none; }
-dialog.beeson-session-join input { flex: 1; min-width: 0; height: 32px; box-sizing: border-box; padding: 0 8px; font: inherit; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); color: var(--ed-text); }
-dialog.beeson-session-join .swatch { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--ed-pressed); color: var(--ed-text); font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif; }
-dialog.beeson-session-join .error { margin: -8px 0 12px; color: var(--ed-text); }
-dialog.beeson-session-join .error:empty { display: none; }
+.beeson-session-name label { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; }
+.beeson-session-name label > span:first-child { flex: none; }
+.beeson-session-name input { flex: 1; min-width: 0; height: 32px; box-sizing: border-box; padding: 0 8px; font: inherit; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); color: var(--ed-text); }
+.beeson-session-name .swatch { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--tone, var(--ed-pressed)); color: var(--ink, var(--ed-text)); font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.beeson-session-name .error { margin: -8px 0 12px; color: var(--ed-text); }
+.beeson-session-name .error:empty { display: none; }
 `;
 
 export function stored(key: string): string | null {
@@ -49,16 +51,17 @@ export function initials(name: string): string {
 // the address is of the machine of the edit command for the host, and of the relay for a guest
 const isHost = (): boolean => ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
 
-function askName(client: Client, error = ''): Promise<string> {
+// the field Your name of the join dialog and of Change Name, with the initials of the name beside it
+export function nameField(value: string, error = ''): { body: HTMLElement; input: HTMLInputElement; swatch: HTMLElement; note: HTMLElement } {
   style('join', CSS);
-  const body = make('div');
+  const body = make('div', 'beeson-session-name');
   const label = make('label');
   const input = make('input');
   input.type = 'text';
   input.maxLength = NAME_MAX;
   input.autocomplete = 'name';
   input.spellcheck = false;
-  input.value = stored(NAME) ?? '';
+  input.value = value;
   const swatch = make('span', 'swatch');
   swatch.setAttribute('aria-hidden', 'true');
   const show = () => (swatch.textContent = initials(input.value));
@@ -68,12 +71,17 @@ function askName(client: Client, error = ''): Promise<string> {
   const note = make('p', 'error', error);
   note.setAttribute('role', 'alert');
   body.append(label, note);
+  return { body, input, swatch, note };
+}
+
+function askName(client: Client, error = ''): Promise<string> {
+  const { body, input, note } = nameField(stored(NAME) ?? '', error);
   return new Promise((done) => {
     const dialog = client.shell.dialog({
       title: isHost() ? 'Start the session' : 'Join the session',
       text: 'Type the name that the others will see on your edits and comments.',
       body,
-      className: 'beeson-session-join',
+      className: `beeson-session-join ${sheet()}`,
       dismissable: false,
       stay: ['join'],
       buttons: [{ label: 'Join', value: 'join', primary: true }],
@@ -95,7 +103,7 @@ function askName(client: Client, error = ''): Promise<string> {
   });
 }
 
-async function askTaken(client: Client, name: string): Promise<boolean> {
+export async function askTaken(client: Client, name: string): Promise<boolean> {
   const dialog = client.shell.dialog({
     title: `${name} has joined this deck before. Is that you?`,
     buttons: [
@@ -117,6 +125,11 @@ export async function join(client: Client, text: string, v: string): Promise<voi
   let name = cleanPersonName(stored(NAME) ?? '');
   let error = '';
   let claim = false;
+  try {
+    // the flag is cleared by a write, since the tests keep the keys of each page apart in setItem
+    claim = !!name && sessionStorage.getItem(CLAIM) === nameKey(name);
+    sessionStorage.setItem(CLAIM, '');
+  } catch {}
   for (;;) {
     if (!name) name = await askName(client, error);
     const request: HelloRequest = { name, v, ...(claim ? { claim } : {}) };
@@ -145,6 +158,14 @@ export async function join(client: Client, text: string, v: string): Promise<voi
     client.begin(answer, text, v);
     return;
   }
+}
+
+// the name of another person taken over at the next join of the page, i.e. after a reload
+export function claimOnReload(name: string): void {
+  store(NAME, name);
+  try {
+    sessionStorage.setItem(CLAIM, nameKey(name));
+  } catch {}
 }
 
 // Change Name of the menu of the own avatar
