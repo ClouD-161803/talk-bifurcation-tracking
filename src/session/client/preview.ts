@@ -39,8 +39,10 @@ const CSS = `
 .beeson-session-preview iframe { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--ed-canvas); }
 `;
 
-// drawn into the page of the iframe
+// drawn into the page of the iframe, which shows the slide as the canvas of the editor does, without
+// the controls of the show
 const FRAME_CSS = `
+.reveal :is(.progress, .scrub, .slide-number), .theme-switch { display: none !important; }
 [data-beeson-changed] { outline: 6px solid var(--beeson-changed) !important; outline-offset: 6px !important; }
 section[data-beeson-changed] { outline-offset: -6px !important; }
 html.beeson-hide-changes [data-beeson-changed] { outline: none !important; }
@@ -53,13 +55,14 @@ const TWO_ROWS = 600;
 // the keys that reach reveal.js in the preview, which move through its slides
 const NAVIGATION = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
-// text with a base element at the start of its head, so that its relative addresses resolve as in
-// a page loaded from href. the address of the page is about:srcdoc, which may not be changed to one
-// of http, hence the history of the page is not written, e.g. the hash of the slide by reveal.js
+// text with a base element and FRAME_CSS at the start of its head, so that its relative addresses
+// resolve as in a page loaded from href. the address of the page is about:srcdoc, which may not be
+// changed to one of http, hence the history of the page is not written, e.g. the hash of the slide
+// by reveal.js
 function withBase(text: string, tokens: Token[], href: string): string {
   const head = tokens.find((t) => t.type === 'start' && t.name === 'head');
   const at = head ? head.end : (tokens.find((t) => t.type === 'start')?.start ?? 0);
-  const base = `<base href="${href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"><script>history.pushState = history.replaceState = () => {};</script>`;
+  const base = `<base href="${href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"><script>history.pushState = history.replaceState = () => {};</script><style>${FRAME_CSS}</style>`;
   return text.slice(0, at) + base + text.slice(at);
 }
 
@@ -396,9 +399,6 @@ export class Preview {
     this.text = text;
     this.slides = slidesOf(text, tokens);
     this.sections = sectionsOf(doc, text, this.slides);
-    const css = doc.createElement('style');
-    css.textContent = FRAME_CSS;
-    doc.head.append(css);
     doc.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
     const targets = targetsOf(text, this.slides, detail.marks);
     const notes = new Set<number>();
