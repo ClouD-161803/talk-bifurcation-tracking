@@ -18,7 +18,7 @@ export type * from '../session/protocol.ts';
 export { changes } from '../editor/merge.ts';
 export { tokenize } from '../editor/tokens.ts';
 export { cleanName, start } from './command.ts';
-export { decode } from './disk.ts';
+export { decode, Disk } from './disk.ts';
 
 const USAGE = 'usage: node theme/edit.mjs [folder] [--port N] [--no-open] [--relay URL]';
 
