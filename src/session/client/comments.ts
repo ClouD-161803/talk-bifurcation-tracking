@@ -61,6 +61,7 @@ export class Comments {
   private count = 0;
   private slides: { text: string; slides: Slide[] } | null = null;
   private reread: string | null = null;
+  private rereading = false;
 
   constructor(client: Client) {
     this.client = client;
@@ -253,10 +254,26 @@ export class Comments {
     if (c && c.base === held.text && c.text === text && c.count === this.count) return c.places;
     const threads = [...this.threads.values()];
     let items = threads.map(anchored);
-    if (text !== held.text) items = moveAnchors(held.text, diff(held.text, text), text, items).items;
+    const patches = text === held.text ? [] : diff(held.text, text);
+    if (patches.length) items = moveAnchors(held.text, patches, text, items).items;
+    // a difference of tags, from edits of this page that wait, may pair an anchor with a twin of its
+    // element. the deck is read again, and a thread keeps the element where it was shown meanwhile
+    if (this.reread !== text && patches.some((p) => /[<>]/.test(p.text + held.text.slice(p.start, p.end)))) {
+      this.reread = text;
+      this.rereading = true;
+      void this.client.port.rebase().catch(() => {}).then(() => {
+        this.rereading = false;
+        this.changed();
+      });
+    }
     const slides = this.slidesOf(text);
     const places = new Map<string, Place>();
     threads.forEach((t, i) => {
+      const was = this.rereading ? c?.places.get(t.id) : undefined;
+      if (was && (was.el ?? was.slide)?.isConnected) {
+        places.set(t.id, was);
+        return;
+      }
       const a = items[i];
       const el = a.anchor && !onSlide(t) && !a.removed ? this.find(a.anchor) : null;
       const slide = (a.slide && this.find(a.slide)) || el?.closest('.reveal .slides section') || null;
@@ -279,8 +296,9 @@ export class Comments {
     const port = client.port;
     for (let k = 0; ; k++) {
       await client.flush();
-      // an element inserted in this page has an offset once the source is read from the deck
-      if (k > 0 || (el && port.offsetOf(el) === null) || port.offsetOf(slide) === null) await port.rebase();
+      // an element inserted in this page has an offset once the source is read from the deck, and an
+      // element after a removal in this page may be paired with a twin until then
+      await port.rebase();
       const base = client.base!;
       const source = client.app.source!.text;
       const at = (x: Element) => {
