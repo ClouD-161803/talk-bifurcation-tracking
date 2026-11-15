@@ -558,7 +558,8 @@ export class Client {
       for (;;) {
         try {
           const answer = await this.transport.op(op);
-          this.online();
+          // an edit command that does not know the token is online after the hello of the rejoin
+          if (answer.ok || answer.reason !== 'unknown') this.online();
           this.sync!.answer(op, answer);
           break;
         } catch (e) {
