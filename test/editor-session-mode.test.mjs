@@ -146,3 +146,26 @@ test('23: begin() clears the changes of the file from the state line, and end() 
   await session.waitFor(`${E}.status().message.includes('The file was changed')`);
   assert.equal(await kept(session), true, 'the page was loaded again over its edits');
 });
+
+// 24: the state line of a session does not speak of the autosave, and its switch is hidden
+test('24: a session hides the Autosave switch and its sentence until end()', async () => {
+  const page = await editorPage(browser, { clear: true });
+  try {
+    if (!(await status(page)).supported) return;
+    await page.evaluate(`${E}.toggleAutosave(), true`);
+    await typeGo(page);
+    assert.match((await status(page)).message, /autosave starts after the first save/);
+    const autosave = `document.querySelector('button.autosave')`;
+    const shown = () => page.evaluate(`${autosave}.getClientRects().length > 0`);
+    assert.equal(await shown(), true);
+    await page.evaluate(`(${E}.session.begin(), ${E}.session.setStatus('Saved'), true)`);
+    assert.match((await status(page)).message, /^Saved/);
+    assert.doesNotMatch((await status(page)).message, /autosave/);
+    assert.equal(await shown(), false, 'the Autosave switch is shown in a session');
+    await page.evaluate(`${E}.session.end(), true`);
+    assert.equal(await shown(), true, 'the Autosave switch is hidden after end()');
+    assert.match((await status(page)).message, /autosave starts after the first save/);
+  } finally {
+    await page.close();
+  }
+});
