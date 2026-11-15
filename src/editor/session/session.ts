@@ -6,7 +6,7 @@
 
 import type { App } from '../app.ts';
 import { mathLookup, type MathLookup } from '../math.ts';
-import { apply as applyEdits, edits, mergeEdits } from '../merge.ts';
+import { apply as applyEdits, edits, mergeEdits, type Edit } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
 import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
 import { applyAt, refresh, repairText, type Done } from './apply.ts';
@@ -52,6 +52,26 @@ function windowIn(source: Source, b: string): Window | null {
   return w;
 }
 
+// an edit over lines of text split into an edit of each changed line, narrowed to the characters
+// that differ, when it keeps the number of lines. e itself otherwise
+function byLine(text: string, e: Edit): Edit[] {
+  const a = text.slice(e.start, e.end).split('\n');
+  const b = e.text.split('\n');
+  if (a.length < 2 || a.length !== b.length) return [e];
+  const out: Edit[] = [];
+  let at = e.start;
+  a.forEach((x, i) => {
+    const y = b[i];
+    let p = 0;
+    while (p < x.length && p < y.length && x[p] === y[p]) p++;
+    let q = 0;
+    while (q < x.length - p && q < y.length - p && x[x.length - 1 - q] === y[y.length - 1 - q]) q++;
+    if (x !== y) out.push({ start: at + p, end: at + x.length - q, text: y.slice(p, y.length - q) });
+    at += x.length + 1;
+  });
+  return out;
+}
+
 export function install(app: App): Port {
   // clean holds while the source reads as the deck, i.e. since the last open or apply without an
   // edit of the person after it. mine holds while an apply changes the page, whose events are not
@@ -72,12 +92,10 @@ export function install(app: App): Port {
   let flushing = false;
   let net = 0;
 
-  // the text element of an open composition of an input method. the changes of its slide are held
-  // back until the composition ends, while behind holds the text shown and the text wanted, and the
-  // applies held resolve with the turn that makes the deck read as the text wanted
+  // the text element of an open composition of an input method. the changes of its text are held
+  // back until the composition ends, while behind holds the text shown and the text wanted
   let composing: Element | null = null;
   let behind: { shown: string; want: string } | null = null;
-  const held: ((a: Applied) => void)[] = [];
 
   // the caret of a text element that an apply moved to a slide that is not shown, see park
   let parked: { host: Element; range: Range } | null = null;
@@ -95,7 +113,6 @@ export function install(app: App): Port {
     handed = clean ? app.source!.text : null;
     behind = null;
     parked = null;
-    for (const fn of held.splice(0)) fn(reload());
   });
 
   const changed = (): void => {
@@ -133,19 +150,49 @@ export function install(app: App): Port {
     }
   }
 
+  // the changes held back are applied once the composition ends. a browser may not send its end
+  // when the text loses the focus, e.g. Safari on a click, or when the page is hidden, and the
+  // focusout waits a task for the end that Firefox sends after it
+  const ended = (): void => {
+    if (behind) void run(null).then((r) => {
+      if (r.reload) for (const fn of [...reloaders]) fn();
+    });
+  };
   document.addEventListener('compositionstart', (ev) => void (composing = app.hostOf(ev.target)), true);
   document.addEventListener('compositionend', () => {
     composing = null;
-    if (behind) void run(null);
+    ended();
   }, true);
-  const intoComposition = (spot: Spot): boolean => !!composing && spot.kind !== 'reload' && spot.kind !== 'tag' && (spot.live === composing || spot.live.contains(composing));
+  document.addEventListener('focusout', () => {
+    if (behind && composing) setTimeout(ended);
+  }, true);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden || !composing) return;
+    composing = null;
+    ended();
+  });
 
-  // the range in the source of the innermost slide of the open composition
-  function composingSlide(): { start: number; end: number } | null {
-    if (!composing?.isConnected) composing = null;
-    const slide = composing?.closest('section');
-    const s = slide && app.pairing!.elements.get(slide);
-    return (s && s.source === app.source && elementRange(s)) || null;
+  // the text element of the open composition, which is over once the element is taken off the page
+  // or does not have the focus
+  function composition(): Element | null {
+    const a = document.activeElement;
+    if (composing && (!composing.isConnected || !a || !composing.contains(a))) composing = null;
+    return composing;
+  }
+
+  // whether the apply of the window w at spot would set or move the composing text. a change
+  // within one of its parents that leaves the unit of the composing text as it is keeps its node
+  function intoComposition(spot: Spot, w: Window): boolean {
+    const c = composing;
+    if (!c || spot.kind === 'reload' || spot.kind === 'tag') return false;
+    if (spot.live === c) return true;
+    if (!spot.live.contains(c)) return false;
+    if (spot.kind === 'text') return true;
+    let u = c;
+    while (u.parentElement && u.parentElement !== spot.live) u = u.parentElement;
+    const s = app.pairing!.elements.get(u);
+    const r = s && s.source === app.source && elementRange(s);
+    return !r || (w.start < r.end && w.endA > r.start);
   }
 
   // the source made to read as the rendered deck, as at a save: each edit of the text of a text
@@ -274,9 +321,8 @@ export function install(app: App): Port {
     if (!mine) parked = null;
   });
 
-  // the turn of an apply of text, or of the changes held back when text is null. null while a
-  // change is held back
-  async function turn(text: string | null): Promise<Applied | null> {
+  // the turn of an apply of text, or of the changes held back when text is null
+  async function turn(text: string | null): Promise<Applied> {
     await quiet();
     if (!ready()) return reload();
     if (text === null && !behind) return { reload: false, changed: [] };
@@ -290,50 +336,61 @@ export function install(app: App): Port {
     if (text !== null && from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours').text;
     if (text !== null) handed = text;
     if (rendered && !rebase(rendered, math)) return reload();
-    const source = app.source!;
-    // the changes on the slide of an open composition are held back, and every change when the
-    // others still reach the composing text
-    let shown = target;
-    const slide = composingSlide();
-    if (slide) {
-      const all = edits(source.text, target);
-      const rest = all.filter((e) => (e.start >= slide.end || e.end <= slide.start) && !(e.start === e.end && e.start > slide.start && e.start < slide.end));
-      if (rest.length < all.length) shown = applyEdits(source.text, rest);
-    }
-    let w = windowIn(source, shown);
-    const spot = w && locate(source, app.pairing!, w.start, w.endA);
-    if (spot?.kind === 'reload') return reload();
-    if (spot && intoComposition(spot)) {
-      shown = source.text;
-      w = null;
-    }
-    behind = shown === target ? null : { shown, want: target };
-    let changed: Element[] = [];
-    if (w && spot) {
+    const changed: Element[] = [];
+    const typesets: Promise<void>[] = [];
+    // the deck made to read as next by one apply: false when the page is loaded again, and null
+    // when the apply would set or move the text of an open composition
+    const put = (next: string): boolean | null => {
+      const w = windowIn(app.source!, next);
+      if (!w) return true;
+      const spot = locate(app.source!, app.pairing!, w.start, w.endA);
+      if (spot.kind === 'reload') return false;
+      if (intoComposition(spot, w)) return null;
       const had = app.caretHost();
       let done: Done | null;
       mine = true;
       try {
-        done = applyAt(app, shown, w, spot);
+        done = applyAt(app, next, w, spot);
       } finally {
         mine = false;
       }
       if (!done) {
         clean = false;
-        return reload();
+        return false;
       }
       const mark = done.caret ? markOf() : null;
       if (had?.isConnected && !app.current()?.contains(had)) park(had);
-      settle(shown, done);
-      await typeset(done, mark);
-      changed = done.changed.filter((el) => el.isConnected);
-    } else app.saved = shown;
+      settle(next, done);
+      typesets.push(typeset(done, mark));
+      changed.push(...done.changed);
+      return true;
+    };
+    // the edits of list by as few applies as go around the composing text, from the last to the
+    // first, so that the offsets of the others hold. an edit that reaches into it is held back, and
+    // an edit of lines next to it, which edits makes one, is taken line by line
+    const around = (list: Edit[]): boolean => {
+      if (!list.length) return true;
+      const r = put(applyEdits(app.source!.text, list));
+      if (r !== null) return r;
+      if (list.length === 1) {
+        const lines = byLine(app.source!.text, list[0]);
+        return lines[0] === list[0] || around(lines);
+      }
+      const mid = list.length >> 1;
+      return around(list.slice(mid)) && around(list.slice(0, mid));
+    };
+    composition();
+    const first = put(target);
+    if (first === false || (first === null && !around(edits(app.source!.text, target)))) return reload();
+    const shown = app.source!.text;
+    app.saved = shown;
+    behind = shown === target ? null : { shown, want: target };
+    await Promise.all(typesets);
     if (listeners.size && target !== handed) pending = true;
-    return behind ? null : { reload: false, changed };
+    return { reload: false, changed: changed.filter((el) => el.isConnected) };
   }
 
-  // a turn queued after the others. the promise of a turn that holds back a change resolves with the
-  // turn that applies it
+  // a turn queued after the others
   function run(text: string | null): Promise<Applied> {
     queued += 1;
     return new Promise<Applied>((resolve, reject) => {
@@ -342,9 +399,7 @@ export function install(app: App): Port {
           applying = true;
           try {
             const r = await turn(text);
-            if (!r) return void held.push(resolve);
             if (r.reload) behind = null;
-            for (const fn of held.splice(0)) fn(r);
             resolve(r);
           } catch (e) {
             reject(e);
