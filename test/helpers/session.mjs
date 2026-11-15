@@ -32,8 +32,9 @@ export function talkFolder(t, bytes = DECK) {
 
 // the edit command on folder, resolved with { child, url, port, key, base, stderr } once it prints
 // its JSON line
-export function startEdit(folder, { args = [], env = {} } = {}) {
-  const child = spawn(process.execPath, [EDIT, folder, '--port', '0', '--no-open', ...args], {
+// port null starts the edit command without --port
+export function startEdit(folder, { args = [], env = {}, port = 0 } = {}) {
+  const child = spawn(process.execPath, [EDIT, folder, ...(port === null ? [] : ['--port', String(port)]), '--no-open', ...args], {
     env: { ...process.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

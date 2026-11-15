@@ -983,3 +983,23 @@ test('add regression test: End session tells a guest whose poll is on its way th
   assert.deepEqual((await ending).json(), { link: null });
   assert.equal((await fetch(`${relay.url}${edit.base}index.html`)).status, 502);
 });
+
+test('add regression test: a start without --port takes the port of the last start in the talk folder, then the default port, then any port', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const env = { XDG_CONFIG_HOME: config, APPDATA: config };
+  const first = await startEdit(talk, { env });
+  await stopEdit(first);
+  // the page of the host keeps its address, and with it the copies of its edits, while the port stays
+  const second = await startEdit(talk, { env, port: null });
+  t.after(() => stopEdit(second));
+  assert.equal(second.port, first.port);
+  await stopEdit(second);
+  const busy = createNetServer();
+  await new Promise((done, fail) => busy.once('error', fail).listen(first.port, '127.0.0.1', done));
+  t.after(() => busy.close());
+  const third = await startEdit(talk, { env, port: null });
+  t.after(() => stopEdit(third));
+  assert.notEqual(third.port, first.port);
+  assert.equal(text(join(talk, '.session', 'port')), `${third.port}\n`);
+});
