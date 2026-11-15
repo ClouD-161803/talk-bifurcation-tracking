@@ -10,6 +10,11 @@ The rules below are for work on the template itself, i.e. the theme, the editor,
 - The files in `theme/vendor/` are copied from `node_modules` by `scripts/vendor.mjs`, apart from the TyCHO runtime and the Latin Modern Roman faces, which are copied by hand. Add a library that a deck loads to `scripts/vendor.mjs`, together with its license.
 - The orbit engine in `src/orbits.ts` is a port of the MIT-licensed `orbits.ts` of claudiovestini.com, and not of DyLAN code.
 
+## Features
+
+- Do not take a design decision that ties a feature to Chrome or to any one browser.
+- Do not make a user reach for a terminal. Whatever a talk needs from a command, e.g. `tex.js` from `npm run tex`, is written by the editor as well.
+
 ## Theme
 
 - Take every color from the custom properties of `theme/beeson.css`, and use orange for motion and progress and violet for structure.

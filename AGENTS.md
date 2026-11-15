@@ -24,7 +24,7 @@ A hard invariant is never traded away for another goal, and when a change would 
 - Set a width in px in a `style` only on a heading, a paragraph, a list, a `math` div, a caption, or a cell in the top row of a table. A picture, a QR code, a TyCHO viewer, a shape, and a backdrop may take a width as well.
 - Set a height in px in a `style` only on a shape, a backdrop, a row of a table, or an image or a video that has a width.
 - Give a figure a version for each mode with `for-dark` and `for-light`, or the class `white-figure` or `invert`, since a figure may otherwise be visible in one mode only.
-- Write a math macro used on more than one slide into `theme/macros.js`.
+- Write a math macro used on more than one slide into `preamble.tex`, and a paper that a slide cites into `references.bib`, and run `npm run tex` after you change either file.
 - Put the speaker notes of a slide in an `aside.notes`.
 - Do not write `data-moves-on`, which is set by the theme when the deck is started.
 - Someone may have the deck open in the editor while you change `index.html`. The editor then loads your change, and at the next save it merges the unsaved edits of this person into it.
@@ -35,6 +35,7 @@ A hard invariant is never traded away for another goal, and when a change would 
 
 ```sh
 npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, and the bundles theme/beeson.js, theme/editor.js, and theme/editor-tex.js
+npm run tex                                 # tex.js, from preamble.tex and references.bib next to index.html
 npm run check                               # screenshots of every slide in both modes into check/, and the problems of the page
 npm run check -- --browser firefox          # the same in Firefox, or in Safari with --browser safari
 npm run pdf                                 # slides.pdf, one page per step
