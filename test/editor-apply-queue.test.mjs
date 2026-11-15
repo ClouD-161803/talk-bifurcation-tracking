@@ -55,6 +55,118 @@ async function row(page, n, modifiers = '') {
   await frame(page);
 }
 
+test('an edit typed between two queued applies is kept through both, and told through onChange after them', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  const one = once(b.source, 'Copy-paste the code', 'Paste the code');
+  const two = once(one, 'Thank you', 'Thanks');
+  const told = await changes(b);
+  // the client wrote two against one, the text of the apply before it
+  const result = await b.evaluate(`(() => {
+    const first = ${E}.apply(${JSON.stringify(one)});
+    document.execCommand('insertText', false, ' Typed.');
+    const second = ${E}.apply(${JSON.stringify(two)});
+    return Promise.all([first, second]).then((r) => r.map((x) => x.reload));
+  })()`);
+  assert.deepEqual(result, [false, false]);
+  const want = once(two, 'viewer\'s attention.</p>', 'viewer\'s attention. Typed.</p>');
+  assert.equal(await render(b), want);
+  await b.waitFor(`window.__changes > ${told}`);
+  assert.equal(await sessionText(b), want);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a box that the document model inserts while two applies arrive is kept, with its entry of the history', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  const one = once(b.source, 'Copy-paste the code', 'Paste the code');
+  const two = once(one, 'Thank you', 'Thanks');
+  const told = await changes(b);
+  await closeGate(b);
+  await b.evaluate(`(() => {
+    ${E}.doc.insert(${JSON.stringify('<p>Inserted \\(x^2\\) here.</p>')}, window.__shown);
+    return true;
+  })()`);
+  await b.waitFor('window.__held > 0');
+  await start(b, 'one', one);
+  await start(b, 'two', two);
+  await openGate(b);
+  await b.waitFor(resolved('one', 'two'));
+  assert.deepEqual(await b.evaluate('window.__results'), { one: false, two: false });
+  const got = await render(b);
+  for (const part of ['Inserted \\(x^2\\) here.', 'Paste the code', 'Thanks']) assert.ok(got.includes(part), `the page renders ${part}`);
+  assert.equal(await b.evaluate(`[...document.querySelectorAll('.reveal p')].some((p) => p.textContent.startsWith('Inserted'))`), true, 'the box is on the page');
+  const s = await b.evaluate(`${E}.status()`);
+  assert.deepEqual(s.problems, []);
+  assert.equal(s.undo, true, 'the insert is kept in the history');
+  await b.waitFor(`window.__changes > ${told}`);
+  assert.equal(await sessionText(b), got);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a content that the document model sets while an apply arrives is kept, and told through onChange after the apply', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await typeKeys(b, '!');
+  await b.waitFor('window.__changes > 0');
+  // the client reads the text in its listener of onChange, and writes the apply against it
+  const mine = await sessionText(b);
+  assert.ok(mine.includes('attention.!</p>'));
+  await closeGate(b);
+  await b.evaluate(`(() => {
+    ${E}.doc.setContent(${P1}, ${JSON.stringify('Local \\(y\\) content')});
+    return true;
+  })()`);
+  await b.waitFor(`window.__held > 0 && ${P1} === undefined`);
+  const told = await changes(b);
+  await start(b, 'remote', once(mine, 'Thank you', 'Remote Thank you'));
+  await openGate(b);
+  await b.waitFor(resolved('remote'));
+  assert.equal(await b.evaluate('window.__results.remote'), false);
+  const want = once(once(mine, 'Thank you', 'Remote Thank you'), 'Design the complete slide first, then break it up into steps. Direct the viewer\'s attention.!', 'Local \\(y\\) content');
+  assert.equal(await render(b), want);
+  await b.waitFor(`window.__changes > ${told}`);
+  assert.equal(await sessionText(b), want);
+  assert.deepEqual(b.errors, []);
+});
+
+test('slides duplicated while an apply arrives are kept, as the apply merges onto the text read before the duplicate', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  const n = await b.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].indexOf(window.__shown)`);
+  await row(b, n);
+  await row(b, n + 1, 'Shift');
+  assert.equal((await b.evaluate(`${E}.state('slide.duplicate')`)).label, 'Duplicate Slides');
+  const count = await b.evaluate(SECTIONS);
+  const mine = await sessionText(b);
+  const told = await changes(b);
+  // the first copy is done, and the duplicate waits for the typeset of the second copy, whose node
+  // is on the page
+  await closeGate(b, `${SECTIONS} === ${count + 2}`);
+  await b.evaluate(`(() => {
+    ${E}.exec('slide.duplicate');
+    return true;
+  })()`);
+  await b.waitFor('window.__held > 0');
+  await start(b, 'remote', once(mine, '<h1>Thank you</h1>', '<h1>Thank you XYZ</h1>'));
+  await openGate(b);
+  await b.waitFor(resolved('remote'));
+  assert.equal(await b.evaluate('window.__results.remote'), false);
+  assert.equal(await b.evaluate(SECTIONS), count + 2, 'both copies are on the page');
+  const got = await render(b);
+  assert.equal(got.split('<h2>Show your steps one at a time</h2>').length, 3, 'both copies are in the text');
+  assert.ok(got.includes('<h1>Thank you XYZ</h1>'), 'the change of the other person is in the text');
+  await b.waitFor(`window.__changes > ${told}`);
+  assert.equal(await sessionText(b), got);
+  assert.deepEqual(b.errors, []);
+});
+
 test('an edit of the person is kept when the apply removes more than half of the text', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
