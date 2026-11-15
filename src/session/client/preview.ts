@@ -22,6 +22,7 @@ const CSS = `
 .beeson-session-preview .date { font-weight: 600; overflow-wrap: anywhere; }
 .beeson-session-preview .who { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
 .beeson-session-preview .removed { color: var(--ed-muted); }
+.beeson-session-preview .removed:empty { display: none; }
 .beeson-session-preview .actions { margin-left: auto; }
 .beeson-session-preview.two .actions { flex: 1 0 100%; margin-left: 0; }
 .beeson-session-preview label.changes { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; white-space: nowrap; }
@@ -113,7 +114,7 @@ function sectionsOf(doc: Document, text: string, slides: Slide[]): (Element | nu
 type RevealLike = { isReady?(): boolean; on?(type: string, fn: () => void): void; getIndices(el: Element): { h: number; v?: number }; slide(h: number, v?: number): void };
 
 // the parts of the bar of a version, built once and changed where a version differs
-type VersionBar = { info: HTMLElement; date: HTMLElement; who: HTMLElement; slides: HTMLElement; shown: string; actions: HTMLElement };
+type VersionBar = { info: HTMLElement; date: HTMLElement; who: HTMLElement; slides: HTMLElement; shown: string; failed: HTMLElement; actions: HTMLElement };
 
 export type Actions = {
   restore(v: VersionInfo, text: string | null): Promise<void>;
@@ -243,7 +244,7 @@ export class Preview {
     const restore = () => this.version && void this.actions.restore(this.version, this.text);
     const name = () => this.version && this.actions.name(this.version);
     actions.append(label, this.button('Restore this version', restore), this.button('Name this version', name), more);
-    return { info, date, who, slides: make('div', 'slides'), shown: '', actions };
+    return { info, date, who, slides: make('div', 'slides'), shown: '', failed: make('span', 'removed'), actions };
   }
 
   private more(button: HTMLElement): void {
@@ -268,6 +269,7 @@ export class Preview {
       b.who.replaceWith(who);
       b.who = who;
     }
+    if (fresh) b.failed.textContent = '';
     const shown = JSON.stringify([v.slides, v.removed ?? null]);
     if (shown !== b.shown) {
       b.shown = shown;
@@ -277,7 +279,7 @@ export class Preview {
       if (v.removed?.slides.length) removed.push(`${slidesText(v.removed.slides)} removed`);
       if (v.removed?.elements) removed.push(`${v.removed.elements} ${v.removed.elements > 1 ? 'elements' : 'element'} removed`);
       if (removed.length) nodes.push(make('span', 'removed', removed.join(', ')));
-      b.slides.replaceChildren(...nodes);
+      b.slides.replaceChildren(...nodes, b.failed);
       if (focused !== null) [...b.slides.querySelectorAll('button')].find((x) => x.textContent === focused)?.focus();
     }
     if (fresh) void this.fill(v);
@@ -329,6 +331,7 @@ export class Preview {
     try {
       [detail, text] = await Promise.all([this.client.transport.get<VersionDetail>(`history/${encodeURIComponent(v.id)}`, { token: this.client.token }), this.textOf('version', v.id)]);
     } catch {
+      if (key === this.key && this.versionBar) this.versionBar.failed.textContent = 'The version could not be read';
       return;
     }
     if (key !== this.key) return;
