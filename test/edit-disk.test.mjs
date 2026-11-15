@@ -5,7 +5,7 @@
 // write that keeps failing, and a file that is a symbolic link
 
 import assert from 'node:assert/strict';
-import { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -416,6 +416,26 @@ test('a symbolic link index.html is written through to its target, the mode of t
   await until(() => readFileSync(target, 'utf8').includes('ONE '), 'the edit in the target of the link', 5000);
   assert.ok(lstatSync(file).isSymbolicLink(), 'index.html is no longer a symbolic link');
   assert.equal(statSync(target).mode & 0o777, 0o444);
+});
+
+test('add regression test: a symbolic link index.html replaced by a file is merged from this file, and the edits of the session are written into it', { timeout: 60_000, skip: process.platform === 'win32' && 'a symbolic link needs a privilege on Windows' }, async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'slides disk-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, 'index.html'), target = join(dir, 'real.html'), saved = join(dir, 'agent.tmp');
+  writeFileSync(target, DECK);
+  symlinkSync('real.html', file);
+  const authority = new Authority(DECK, { epoch: 'E' });
+  const disk = new Disk(file, authority, false, { quiet: 5, latest: 20, poll: 20 });
+  t.after(() => disk.stop());
+  disk.start();
+  // an agent that saves by a temporary file and a rename, which replaces the link
+  writeFileSync(saved, DECK.replace('<h2>Two', 'AGENT <h2>Two'));
+  renameSync(saved, file);
+  await until(() => authority.text.includes('AGENT <h2>Two'), 'the change of the agent to be merged', 5000);
+  insert(authority, '<h2>One', 'ANN ');
+  await until(() => readFileSync(file, 'utf8') === authority.text, 'the edit of the person in index.html', 5000);
+  assert.ok(!lstatSync(file).isSymbolicLink(), 'index.html is a symbolic link again');
+  assert.ok(authority.text.includes('ANN <h2>One'));
 });
 
 test('a stop on a changed file that cannot be read logs the error and does not throw it', { timeout: 60_000, skip: noChmod }, async (t) => {
