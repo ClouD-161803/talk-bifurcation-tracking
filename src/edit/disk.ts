@@ -288,7 +288,11 @@ export class Disk {
       this.stopped = true;
       if (this.timer) clearTimeout(this.timer);
       if (this.poller) clearInterval(this.poller);
-      finish(this.write(SETTLE_AT_STOP));
+      try {
+        finish(this.write(SETTLE_AT_STOP));
+      } catch (e) {
+        this.log(`could not write ${this.file}: ${(e as Error).message}`);
+      }
       const unwritten = this.authority.n - this.writtenN;
       if (unwritten) this.log(`${unwritten} operations are not written into ${this.file}`);
     }
