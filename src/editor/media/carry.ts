@@ -10,7 +10,7 @@ import type { App } from '../app.ts';
 import type { Arrival } from '../commands/origin.ts';
 import { tokenize } from '../tokens.ts';
 import { Dialog, host } from '../ui/dialog.ts';
-import { make } from '../ui/dom.ts';
+import { injectStyle, make } from '../ui/dom.ts';
 import { taken } from './actions.ts';
 import { FOLDER, media, safeName } from './store.ts';
 
@@ -40,7 +40,7 @@ function refsIn(text: string): Ref[] {
 // not read
 async function fetched(url: string, size = -1): Promise<Read> {
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, { signal: stop.signal });
     const page = /^text\/html\b/i.test(r.headers.get('content-type') ?? '') && !/\.html?$/i.test(new URL(url).pathname);
     const length = r.headers.get('content-length');
     if (r.ok && !page && size >= 0 && length && !r.headers.has('content-encoding') && +length !== size) {
@@ -49,7 +49,7 @@ async function fetched(url: string, size = -1): Promise<Read> {
     }
     return r.ok && !page ? await r.blob() : 'missing';
   } catch {
-    return 'refused';
+    return stop.signal.aborted ? 'missing' : 'refused';
   }
 }
 
@@ -93,6 +93,13 @@ const canPick = (): boolean => !!picker() || ('webkitdirectory' in HTMLInputElem
 
 const folders = new Map<string, Folder>();
 let dialog: Dialog | null = null;
+// the dialog over the page while the files are read, hence an edit does not join the entry of the
+// history of the paste. it is drawn only after 400 ms, so that a fast read does not flash it, and
+// its Stop aborts the reads with stop
+let busy: Dialog | null = null;
+let stop = new AbortController();
+const BUSY = `dialog.beeson-edit-dialog.paste-busy[open], dialog.beeson-edit-dialog.paste-busy[open]::backdrop { animation: beeson-busy 400ms step-end; }
+@keyframes beeson-busy { from { opacity: 0; } }`;
 // the folder picked in the click on the button of the open dialog
 let picked: Promise<Folder | null> = Promise.resolve(null);
 
@@ -158,8 +165,11 @@ async function folderOf(address: string, name: string): Promise<Folder | null> {
     },
   });
   dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in the folder ${name ? `${name} ` : ''}of ${address}. The browser lets this page read them only once you choose this folder.`;
-  if ((await dialog.open('choose')) !== 'choose') return null;
-  return picked;
+  // the dialog of the reads gives way to this one, and comes back at its answer
+  busy?.close(null);
+  const v = await dialog.open('choose');
+  void busy?.open();
+  return v === 'choose' ? picked : null;
 }
 
 export const listed = (n: string[]) => (n.length < 3 ? n.join(' and ') : `${n.slice(0, -1).join(', ')}, and ${n.at(-1)}`);
@@ -169,6 +179,20 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   const refs = arrival.texts.map(refsIn);
   const paths = [...new Set(refs.flat().map((r) => r.path))];
   if (!paths.length) return;
+  stop = new AbortController();
+  injectStyle('paste-busy', BUSY);
+  busy ??= new Dialog({ title: 'Copying the files of the paste…', buttons: [{ label: 'Stop', value: 'stop' }], className: 'paste-busy', dismissable: false, stay: ['stop'], onButton: () => stop.abort() });
+  void busy.open();
+  try {
+    await carry(app, arrival, refs, paths);
+  } finally {
+    busy.close(null);
+  }
+}
+
+// the files of paths read and kept, and arrival rewritten. a file not read when Stop is pressed is
+// not copied
+async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[]): Promise<void> {
   const read = new Map<string, Read>();
   // the files of one deck are all refused once one is
   for (const p of paths) read.set(p, [...read.values()].includes('refused') ? 'refused' : await fetched(new URL(p, arrival.origin.deck).href));
@@ -176,7 +200,7 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   const refused = paths.filter((p) => read.get(p) === 'refused');
   const folder = refused.length && canPick() ? await folderOf(arrival.origin.deck, name) : null;
   if (folder) {
-    for (const p of refused) read.set(p, (await folder(p)) ?? 'missing');
+    for (const p of refused) read.set(p, stop.signal.aborted ? 'missing' : ((await folder(p)) ?? 'missing'));
     if (refused.some((p) => read.get(p) instanceof Blob)) folders.set(arrival.origin.deck, folder);
   }
   const isTaken = taken(app);
@@ -184,12 +208,16 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   const lost: string[] = [];
   for (const p of paths) {
     const blob = read.get(p);
-    if (!(blob instanceof Blob)) {
+    if (!(blob instanceof Blob) || stop.signal.aborted) {
       lost.push(p);
       continue;
     }
     if (await same(blob, await here(p, blob.size))) continue;
     const { path, fresh } = await pathFor(blob, decoded(p.split(/[?#]/)[0].split('/').pop() ?? ''), isTaken);
+    if (stop.signal.aborted) {
+      lost.push(p);
+      continue;
+    }
     to.set(p, fresh ? media.add(blob, path.slice(FOLDER.length + 1), isTaken).path : path);
   }
   arrival.texts = arrival.texts.map((text, i) => {
