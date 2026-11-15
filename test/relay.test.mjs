@@ -420,7 +420,7 @@ test('a push that the relay refuses is answered to the guest at once, and pushes
 });
 
 test('a registration without the token is refused right after the pulls of the session were answered', { timeout: 60_000 }, async (t) => {
-  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, answeredMs: 500 });
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
   const key = 't'.repeat(22);
   const host = await fakeHost(relay, key);
