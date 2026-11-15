@@ -12,7 +12,7 @@ import { qr } from '../src/session/qr.ts';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
 import { press as key, type, typeKeys } from './helpers/editor.mjs';
-import { until } from './helpers/session.mjs';
+import { post, until } from './helpers/session.mjs';
 import { avatars, dialogButton, FITS, HIT, hold, item, menu, press, tap } from './helpers/share.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -377,5 +377,60 @@ test('add regression test: an avatar keeps the keyboard focus when a person befo
   await cleo.close();
   assert.deepEqual((await shown(ann, 1)).map((a) => a.text), ['AS']);
   assert.equal(await ann.evaluate(focused), 'Ann Smith, you', 'the focus after Cleo Diaz left');
+  clean(ann);
+});
+
+test('add regression test: who joins is announced while a modal dialog is open, and two joins within a second are both announced', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
+  const join = async (name) => {
+    const answer = await post(server.edit.port, `${server.edit.base}.session/hello`, { name });
+    assert.equal(answer.status, 200, answer.text);
+  };
+  // window.__said records every text written into a status region of the announcements, with its
+  // time
+  await ann.evaluate(`(() => {
+    window.__said = [];
+    const last = new WeakMap();
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll('.beeson-session-live')) {
+        if (!el.textContent || last.get(el) === el.textContent) continue;
+        last.set(el, el.textContent);
+        window.__said.push({ t: performance.now(), text: el.textContent });
+      }
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  })()`);
+  await press(ann, '.beeson-session-share');
+  await ann.waitFor(`document.querySelector(${JSON.stringify(SHARE)})?.open && !!document.getElementById('beeson-session-relay')`);
+
+  await t.test('a join is announced in the open Share dialog, where a screen reader hears it', async () => {
+    await join('Hal Hart');
+    await ann.waitFor(`!!document.querySelector('dialog:modal .beeson-session-live[role=status]')?.textContent.includes('Hal Hart joined the session.')`);
+    const { nodes } = await ann.send('Accessibility.getFullAXTree');
+    const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+    const text = (n) => [n.name?.value ?? '', ...(n.childIds ?? []).map((id) => byId.get(id)).filter(Boolean).map(text)].join(' ');
+    assert.ok(nodes.some((n) => !n.ignored && n.role?.value === 'status' && text(n).includes('Hal Hart joined the session.')), 'a status region in the accessibility tree holds the sentence');
+  });
+
+  await t.test('a second join within a second keeps the first in the region', async () => {
+    let checked = 0;
+    for (const [a, b] of [['Ivy Ives', 'Jo Jones'], ['Kim Kerr', 'Lou Lamb'], ['Max Moss', 'Ned Nash']]) {
+      await join(a);
+      await ann.waitFor(`window.__said.some((s) => s.text.includes('${a} joined the session.'))`);
+      await join(b);
+      await ann.waitFor(`window.__said.some((s) => s.text.includes('${b} joined the session.'))`);
+      const said = await ann.evaluate('window.__said');
+      const first = said.find((s) => s.text.includes(`${a} joined the session.`));
+      const second = said.find((s) => s.text.includes(`${b} joined the session.`));
+      // on a page so slow that the second join is drawn over a second after the first, the first
+      // may be replaced, hence the pair is not counted
+      if (second.t - first.t > 900) continue;
+      assert.ok(second.text.includes(`${a} joined the session.`), `the region reads ${JSON.stringify(second.text)}`);
+      checked++;
+    }
+    assert.ok(checked > 0, 'two joins came within a second of each other');
+  });
   clean(ann);
 });
