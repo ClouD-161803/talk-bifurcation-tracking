@@ -88,9 +88,11 @@ let pages = 0;
  * and the operations that it sends in sessionStorage, which a reload keeps, and with
  * window.__corrupt set it sends each operation with a patch out of bounds. The page reads as
  * visible while it is behind another page, unless window.__visibility is set. script runs after
- * this script and before the scripts of the page, e.g. NET of net.mjs.
+ * this script and before the scripts of the page, e.g. NET of net.mjs, and before(page) runs before
+ * the page is loaded, e.g. to block a file. ready = false does not wait for the editor to be ready,
+ * e.g. while a dialog holds the start of the session.
  */
-export async function open(browser, url, { name = 'Ann', width = 1280, height = 800, mobile = false, wait = true, script = '' } = {}) {
+export async function open(browser, url, { name = 'Ann', width = 1280, height = 800, mobile = false, wait = true, ready = true, script = '', before = null } = {}) {
   const page = await browser.newPage({ width, height, mobile });
   const prefix = `page${++pages}:`;
   await page.send('Page.addScriptToEvaluateOnNewDocument', {
@@ -128,7 +130,9 @@ export async function open(browser, url, { name = 'Ann', width = 1280, height = 
     }
     ${script}`,
   });
+  await before?.(page);
   await page.goto(url);
+  if (!ready) return page;
   await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
   if (wait) await page.waitFor(ONLINE);
   return page;

@@ -157,3 +157,86 @@ test('a page that is blocked while it waits to load again offers the copy and Lo
   assert.ok(server.read().includes('<title>A session, renamed</title>'));
   clean(page, [/status of 400/]);
 });
+
+// the fetch of start() is the one request of the page for its own address with session
+const VERSION = 'index.html?edit&session';
+const NOT_RUNNING = "The host's edit command is not running";
+const button = (label) => `[...${DIALOG}.querySelectorAll('.row button')].find((b) => b.textContent === ${JSON.stringify(label)})`;
+
+test('a page whose fetch of its version fails or is answered 502 says that the host is not running, and joins once an answer comes', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const relayed = `__net.rule(${JSON.stringify(VERSION)}, 'answer', { status: 502, body: 'no edit command is registered for this session', type: 'text/plain' })`;
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${relayed};`, ready: false });
+  await page.waitFor(`${DIALOG}?.querySelector('h3').textContent === ${JSON.stringify(NOT_RUNNING)}`);
+  assert.deepEqual(await page.evaluate(`({ text: ${DIALOG}.querySelector('p').textContent, buttons: [...${DIALOG}.querySelectorAll('.row button')].map((b) => b.textContent) })`), {
+    text: 'This link works again once the host starts it.',
+    buttons: ['Try now'],
+  });
+  // the fetch is sent again after 1 s, and the deck is not opened without the session meanwhile
+  await page.waitFor(`__net.count(${JSON.stringify(VERSION)}) === 2`);
+  assert.deepEqual(await page.evaluate(`({ client: window.BeesonSession.client(), dialog: ${DIALOG}?.querySelector('h3').textContent })`), { client: null, dialog: NOT_RUNNING });
+  // a fetch that throws keeps the dialog, and the next answer closes it
+  await page.evaluate(`__net.clear() && __net.rule(${JSON.stringify(VERSION)}, 'cut', { times: 1 }) && (${button('Try now')}.click(), true)`);
+  await page.waitFor(`__net.count(${JSON.stringify(VERSION)}) === 3`);
+  assert.equal(await page.evaluate(`${DIALOG}?.querySelector('h3').textContent`), NOT_RUNNING);
+  await page.evaluate(`${button('Try now')}.click()`);
+  await page.waitFor(ONLINE);
+  assert.equal(await page.evaluate(`!!${DIALOG}`), false);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' joined');
+  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide joined</p>'));
+  clean(page, [/status of 502/, /Failed to fetch/]);
+});
+
+test('a page whose fetch of its version is answered 404 offers Load again, and one answered 200 without a version is edited without a session', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // the rule holds for the first load only
+  const first = `sessionStorage.getItem('__loads') === '1' && __net.rule(${JSON.stringify(VERSION)}, 'answer', { status: 404, body: 'not found', type: 'text/plain' })`;
+  const refused = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${first};`, ready: false });
+  await refused.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'This page cannot join the session'`);
+  assert.deepEqual(await refused.evaluate(`({ text: ${DIALOG}.querySelector('p').textContent, buttons: [...${DIALOG}.querySelectorAll('.row button')].map((b) => b.textContent), client: window.BeesonSession.client() })`), {
+    text: 'The edit command answered 404. Load the page again, or open the address that the host shared.',
+    buttons: ['Load again'],
+    client: null,
+  });
+  await refused.evaluate(`${button('Load again')}.click()`).catch((e) => {
+    if (!/Inspected target navigated or closed/.test(e.message)) throw e;
+  });
+  await until(async () => (await loads(refused).catch(() => 0)) > 1, 'the page to load again');
+  await refused.waitFor(ONLINE);
+
+  const plain = await open(browser, sessionUrl(server.edit), { script: `${NET}\n__net.rule(${JSON.stringify(VERSION)}, 'answer', { status: 200, body: ${JSON.stringify(TALK)}, type: 'text/html', times: 1 });`, ready: false });
+  await plain.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'This page is not served by an edit command'`);
+  assert.equal(await plain.evaluate(`window.BeesonSession.client()`), null);
+  clean(refused, [/status of 404/]);
+  clean(plain);
+});
+
+test('a page whose theme/session.js does not load says so, and Load again joins', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const block = (urls) => async (page) => {
+    await page.send('Network.enable', {});
+    await page.send('Network.setBlockedURLs', { urls });
+  };
+  const page = await open(browser, sessionUrl(server.edit), { ready: false, before: block(['*/theme/session.js']) });
+  await page.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'The session could not start'`);
+  assert.deepEqual(await page.evaluate(`({ text: ${DIALOG}.querySelector('p').textContent, buttons: [...${DIALOG}.querySelectorAll('.row button')].map((b) => b.textContent), session: typeof window.BeesonSession })`), {
+    text: 'theme/session.js could not be loaded. Load the page again to join the session.',
+    buttons: ['Load again'],
+    session: 'undefined',
+  });
+  await block([])(page);
+  await page.evaluate(`${button('Load again')}.click()`).catch((e) => {
+    if (!/Inspected target navigated or closed/.test(e.message)) throw e;
+  });
+  await until(async () => (await loads(page).catch(() => 0)) > 1, 'the page to load again');
+  await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+  clean(page, [/ERR_BLOCKED_BY_CLIENT/]);
+});
