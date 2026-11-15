@@ -1381,9 +1381,9 @@ function writeApplied(file, table, log) {
 
 // src/edit/comments.ts
 import { randomBytes as randomBytes3 } from "node:crypto";
-import { mkdirSync, readFileSync as readFileSync3, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync4, unlinkSync as unlinkSync3, writeFileSync as writeFileSync3 } from "node:fs";
 import { unlink, writeFile as writeFile2 } from "node:fs/promises";
-import { join as join2 } from "node:path";
+import { join as join4 } from "node:path";
 
 // src/session/slides.ts
 var VOID = /* @__PURE__ */ new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
@@ -1897,6 +1897,330 @@ function checkAnchors(text, items, slides = slidesOf(text)) {
   return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], [])), slides };
 }
 
+// src/edit/relay.ts
+import { mkdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync2, chmodSync } from "node:fs";
+import { homedir } from "node:os";
+import { join as join3 } from "node:path";
+
+// src/edit/http.ts
+import { open, realpath as realpath2, stat as stat2 } from "node:fs/promises";
+import { extname, join as join2, relative, sep } from "node:path";
+var MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".bmp": "image/bmp",
+  ".mp4": "video/mp4",
+  // an m4v is played as an mp4, which every browser names
+  ".m4v": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".ogv": "video/ogg",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".txt": "text/plain; charset=utf-8",
+  ".wasm": "application/wasm",
+  ".pdf": "application/pdf",
+  ".ico": "image/x-icon"
+};
+var json = (status, value) => ({
+  status,
+  headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
+  body: JSON.stringify(value)
+});
+var error = (status, message) => json(status, { error: message });
+var hiddenSegment = (s) => s.startsWith(".") || s.endsWith(".") || s.endsWith(" ") || s.toLowerCase() === "node_modules";
+function segmentsOf(rest) {
+  const out = [];
+  for (const raw of rest.split("/")) {
+    let s;
+    try {
+      s = decodeURIComponent(raw);
+    } catch {
+      return null;
+    }
+    if (s === "" || hiddenSegment(s) || /[\\/:\0]/.test(s)) return null;
+    out.push(s);
+  }
+  return out;
+}
+async function fileInside(root, segments) {
+  try {
+    const real = await realpath2(join2(root, ...segments));
+    if (!real.startsWith(root + sep) || relative(root, real).split(sep).some(hiddenSegment)) return null;
+    return (await stat2(real)).isFile() ? real : null;
+  } catch {
+    return null;
+  }
+}
+function rangeOf(header, size2) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header ?? "");
+  if (!m || !m[1] && !m[2]) return null;
+  const start2 = m[1] ? Number(m[1]) : Math.max(0, size2 - Number(m[2]));
+  const end = m[1] && m[2] ? Math.min(Number(m[2]), size2 - 1) : size2 - 1;
+  return start2 > end || start2 >= size2 ? "bad" : { start: start2, end };
+}
+async function serveFile(file, request, maxBytes = Infinity) {
+  const info2 = await stat2(file);
+  const etag = `W/"${info2.size.toString(16)}-${Math.floor(info2.mtimeMs).toString(16)}"`;
+  const headers = {
+    "Content-Type": MIME[extname(file).toLowerCase()] ?? "application/octet-stream",
+    "Cache-Control": "no-cache",
+    ETag: etag,
+    "Accept-Ranges": "bytes",
+    "X-Content-Type-Options": "nosniff"
+  };
+  if (request.headers["if-none-match"] === etag) return { status: 304, headers };
+  const range = rangeOf(request.headers.range, info2.size);
+  if (range === "bad") return { status: 416, headers: { ...headers, "Content-Range": `bytes */${info2.size}` } };
+  if (range) {
+    const end = Math.min(range.end, range.start + maxBytes - 1);
+    return { status: 206, headers: { ...headers, "Content-Range": `bytes ${range.start}-${end}/${info2.size}` }, body: { file, start: range.start, end } };
+  }
+  if (info2.size > maxBytes) return error(413, "the file is too large for the relay, ask for a range");
+  return { status: 200, headers, body: { file, start: 0, end: info2.size - 1 } };
+}
+async function readBody(body) {
+  const length = Math.max(0, body.end - body.start + 1);
+  const buffer = Buffer.alloc(length);
+  if (length === 0) return buffer;
+  const handle = await open(body.file, "r");
+  try {
+    let at = 0;
+    while (at < length) {
+      const { bytesRead } = await handle.read(buffer, at, length - at, body.start + at);
+      if (bytesRead === 0) break;
+      at += bytesRead;
+    }
+    return buffer.subarray(0, at);
+  } finally {
+    await handle.close();
+  }
+}
+function withParam(query, name, value) {
+  const parts = query.split("&").filter((p) => p !== "" && decodeName(p) !== name);
+  parts.push(`${name}=${encodeURIComponent(value)}`);
+  return parts.join("&");
+}
+var decodeName = (part) => {
+  const raw = part.split("=")[0];
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, " "));
+  } catch {
+    return raw;
+  }
+};
+var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeName));
+
+// src/edit/relay.ts
+var RELAY_BODY = 16 * 1024 * 1024;
+var PULLS = 4;
+var FILE_ANSWERS = 8;
+function configFile() {
+  if (process.platform === "win32") return join3(process.env.APPDATA || join3(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
+  return join3(process.env.XDG_CONFIG_HOME || join3(homedir(), ".config"), "beeson-slides", "relay.json");
+}
+function loadConfig() {
+  try {
+    const value = JSON.parse(readFileSync3(configFile(), "utf8"));
+    return { relay: typeof value.relay === "string" ? value.relay : void 0, secret: typeof value.secret === "string" ? value.secret : void 0 };
+  } catch {
+    return {};
+  }
+}
+function saveConfig(config) {
+  const file = configFile();
+  mkdirSync(join3(file, ".."), { recursive: true, mode: 448 });
+  writeFileSync2(file, `${JSON.stringify(config, null, 2)}
+`, { mode: 384 });
+  try {
+    chmodSync(file, 384);
+  } catch {
+  }
+}
+var ADDRESS_RULE = "the address of the relay must start with https://";
+function relayAddress(value) {
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    const url = new URL(value);
+    const local = url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost");
+    if (url.protocol !== "https:" && !local || url.username || url.password || url.search || url.hash) return null;
+    return url.href.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+var sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+var asciiJson = (value) => JSON.stringify(value).replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+var Taken = class extends Error {
+  constructor() {
+    super("this session is already shared by another edit command, e.g. one started in a copy of this talk folder");
+  }
+};
+var RelayLink = class {
+  constructor(relay, secret, key, handle, log) {
+    this.token = "";
+    this.running = false;
+    this.registering = null;
+    this.controllers = /* @__PURE__ */ new Set();
+    // the requests of guests being answered, which a stop lets finish
+    this.serving = /* @__PURE__ */ new Set();
+    this.fileSlots = FILE_ANSWERS;
+    this.fileQueue = [];
+    this.relay = relay;
+    this.secret = secret;
+    this.key = key;
+    this.handle = handle;
+    this.log = log;
+    this.link = `${relay}/${key}/index.html?edit&session`;
+  }
+  // false once stopped, or once another edit command took the key
+  get active() {
+    return this.running;
+  }
+  // registers the session and starts the pulls. rejects when the relay refuses the registration
+  async start() {
+    await this.register();
+    this.running = true;
+    for (let i = 0; i < PULLS; i++) void this.pullLoop();
+  }
+  async stop() {
+    this.running = false;
+    for (const c of this.controllers) c.abort();
+    await Promise.race([Promise.allSettled([...this.serving]), sleep(1500)]);
+    await fetch(`${this.relay}/host/${this.key}`, { method: "DELETE", headers: this.auth(), signal: AbortSignal.timeout(3e3) }).catch(() => {
+    });
+  }
+  auth() {
+    return { Authorization: `Bearer ${this.secret}`, "x-relay-token": this.token };
+  }
+  register() {
+    this.registering ??= (async () => {
+      try {
+        const response = await fetch(`${this.relay}/host/${this.key}`, { method: "POST", headers: this.auth(), signal: AbortSignal.timeout(1e4) });
+        if (response.status === 409) {
+          await response.body?.cancel();
+          throw new Taken();
+        }
+        if (!response.ok) throw new Error(`the relay refused the session with ${response.status} ${(await response.text()).slice(0, 200)}`);
+        const { token } = await response.json();
+        if (typeof token !== "string") throw new Error("the relay did not give a token");
+        this.token = token;
+      } finally {
+        this.registering = null;
+      }
+    })();
+    return this.registering;
+  }
+  async pullLoop() {
+    let backoff = 500;
+    while (this.running) {
+      const controller = new AbortController();
+      this.controllers.add(controller);
+      const timer = setTimeout(() => controller.abort(), 4e4);
+      try {
+        const response = await fetch(`${this.relay}/host/${this.key}/pull`, { method: "POST", headers: this.auth(), signal: controller.signal });
+        if (response.status === 401 || response.status === 404) {
+          await response.body?.cancel();
+          if (!this.running) break;
+          await this.register();
+          continue;
+        }
+        if (!response.ok) throw new Error(`pull answered ${response.status}`);
+        const pulled = await response.json();
+        if (Array.isArray(pulled)) {
+          for (const item of pulled) {
+            const serving = this.serve(item);
+            this.serving.add(serving);
+            void serving.finally(() => this.serving.delete(serving));
+          }
+        }
+        backoff = 500;
+      } catch (e) {
+        if (!this.running) break;
+        if (e instanceof Taken) {
+          this.running = false;
+          this.log(`the session is no longer shared: ${e.message}`);
+          break;
+        }
+        this.log(`the relay is not reached, trying again: ${e.message}`);
+        await sleep(backoff);
+        backoff = Math.min(backoff * 2, 1e4);
+      } finally {
+        clearTimeout(timer);
+        this.controllers.delete(controller);
+      }
+    }
+  }
+  async serve(item) {
+    if (!item || typeof item.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(item.id)) return;
+    let response;
+    let body;
+    let slot = false;
+    try {
+      const ok = typeof item.method === "string" && typeof item.path === "string" && typeof item.query === "string" && typeof item.body === "string";
+      if (!ok || !item.path.startsWith(`/${this.key}/`)) throw new Error("malformed request");
+      const headers = {};
+      for (const [k, v] of Object.entries(item.headers ?? {})) if (typeof v === "string") headers[k.toLowerCase()] = v;
+      response = await this.handle({ method: item.method, path: item.path, query: item.query, headers, body: Buffer.from(item.body, "base64"), direct: false });
+      const b = response.body;
+      if (b !== void 0 && typeof b === "object" && !Buffer.isBuffer(b)) {
+        if (this.fileSlots > 0) this.fileSlots--;
+        else await new Promise((done) => this.fileQueue.push(done));
+        slot = true;
+      }
+      body = b === void 0 ? Buffer.alloc(0) : typeof b === "string" ? Buffer.from(b) : Buffer.isBuffer(b) ? b : await readBody(b);
+    } catch (e) {
+      response = { status: 502, headers: { "Content-Type": "text/plain" } };
+      body = Buffer.from(e.message);
+    }
+    if (body.length > RELAY_BODY) {
+      response = { status: 413, headers: { "Content-Type": "text/plain" } };
+      body = Buffer.from("the answer is too large for the relay");
+    }
+    try {
+      const push = async () => {
+        const token = this.token;
+        const pushed2 = await fetch(`${this.relay}/host/${this.key}/push/${item.id}`, {
+          method: "POST",
+          headers: { ...this.auth(), "Content-Type": "application/octet-stream", "x-relay-status": String(response.status), "x-relay-headers": asciiJson(response.headers) },
+          body,
+          signal: AbortSignal.timeout(6e4)
+        });
+        await pushed2.body?.cancel();
+        return { status: pushed2.status, token };
+      };
+      let pushed = await push();
+      if (pushed.status === 401 && this.running) {
+        if (this.registering) await this.registering.catch(() => {
+        });
+        if (this.token === pushed.token) await this.register();
+        pushed = await push();
+      }
+      if (pushed.status < 200 || pushed.status > 299) this.log(`the relay refused an answer with ${pushed.status}`);
+    } catch (e) {
+      this.log(`an answer did not reach the relay: ${e.message}`);
+    } finally {
+      if (slot) {
+        const next = this.fileQueue.shift();
+        if (next) next();
+        else this.fileSlots++;
+      }
+    }
+  }
+};
+
 // src/edit/comments.ts
 var MENTIONS_MAX = 50;
 var LOG_MAX = 4e3;
@@ -1906,7 +2230,10 @@ var fail = (status, error2) => ({ status, error: error2 });
 var isFailure = (x) => !!x && typeof x.error === "string" && typeof x.status === "number";
 var isNumber = (x) => typeof x === "number" && Number.isFinite(x);
 var isInt = (x) => Number.isSafeInteger(x) && x >= 0;
-var charsOf = (t) => t.text.length + t.replies.reduce((n, r) => n + r.text.length, 0);
+var bytesOf = (x) => Buffer.byteLength(JSON.stringify(x));
+var headBytes = (t) => bytesOf({ ...t, replies: [] }) + 1;
+var replyBytes = (r) => bytesOf(r) + 1;
+var tooLarge = () => fail(413, "the comments of the deck are too large");
 var readOnly = () => fail(503, "the comments could not be read at the start, hence they are read only until the edit command is started again");
 function cleanText(raw) {
   if (typeof raw !== "string" || !raw.trim()) return fail(400, "the text is empty");
@@ -1944,7 +2271,10 @@ var Comments = class {
     this.v = 0;
     this.threads = /* @__PURE__ */ new Map();
     this.seenBy = /* @__PURE__ */ new Map();
-    this.chars = 0;
+    // the bytes of every thread, and of the head of each as last counted, since a shift of its anchors
+    // is not counted again
+    this.bytes = 0;
+    this.heads = /* @__PURE__ */ new Map();
     // true when the file could not be read nor set aside, hence it is neither written nor changed
     this.locked = false;
     this.slides = null;
@@ -1959,17 +2289,17 @@ var Comments = class {
     this.edits = 0;
     this.saved = 0;
     this.stopped = false;
-    this.file = join2(dir, "comments.json");
+    this.file = join4(dir, "comments.json");
     this.authority = authority;
     this.now = options.now ?? Date.now;
     this.log = options.log ?? (() => {
     });
     this.every = options.every ?? 1e3;
-    this.maxChars = options.maxChars ?? 16 * 1024 * 1024;
+    this.maxBytes = options.maxBytes ?? RELAY_BODY / 2;
     this.text = authority.text;
     this.sum = checksum(this.text);
     try {
-      mkdirSync(dir, { recursive: true });
+      mkdirSync2(dir, { recursive: true });
     } catch {
     }
     const saved = this.load();
@@ -2004,7 +2334,7 @@ var Comments = class {
     if (isFailure(mentions)) return mentions;
     if (this.locked) return readOnly();
     if (this.threads.size >= THREADS_MAX) return fail(409, `a deck holds at most ${THREADS_MAX} threads`);
-    if (this.chars + text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
+    if (this.bytes + bytesOf(text) > this.maxBytes) return tooLarge();
     const n = typeof body.base === "string" ? this.authority.reach(body.base) : null;
     if (n === null) return fail(409, "base is not in the log, read the deck again");
     const at = this.anchorsAt(n, body.anchor, body.slide);
@@ -2012,8 +2342,12 @@ var Comments = class {
     const item = this.toCurrent(n, at);
     const thread = { id: newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
     if (item.removed) thread.removed = item.removed;
+    if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
+    const head = headBytes(thread);
+    if (this.bytes + head > this.maxBytes) return tooLarge();
     this.threads.set(thread.id, thread);
-    this.chars += text.length;
+    this.heads.set(thread.id, head);
+    this.bytes += head;
     this.changed([thread.id]);
     return thread;
   }
@@ -2026,10 +2360,13 @@ var Comments = class {
     if (isFailure(mentions)) return mentions;
     if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
     if (this.locked) return readOnly();
-    if (this.chars + text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
-    thread.replies.push({ id: newId(), author: person, time: this.now(), text });
-    this.chars += text.length;
+    const reply = { id: newId(), author: person, time: this.now(), text };
+    const size2 = replyBytes(reply);
+    if (this.bytes + size2 > this.maxBytes) return tooLarge();
+    thread.replies.push(reply);
+    this.bytes += size2;
     this.mention(thread, mentions);
+    this.recount(thread);
     this.changed([id]);
     return thread;
   }
@@ -2045,11 +2382,14 @@ var Comments = class {
     const mentions = cleanMentions(body.mentions);
     if (isFailure(mentions)) return mentions;
     if (this.locked) return readOnly();
-    if (this.chars + text.length - target.text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
-    this.chars += text.length - target.text.length;
+    const edited = this.now();
+    const grow = target === thread ? headBytes({ ...thread, text, edited }) - this.heads.get(id) : replyBytes({ ...target, text, edited }) - replyBytes(target);
+    if (grow > 0 && this.bytes + grow > this.maxBytes) return tooLarge();
+    if (target !== thread) this.bytes += grow;
     target.text = text;
-    target.edited = this.now();
+    target.edited = edited;
     this.mention(thread, mentions);
+    this.recount(thread);
     this.changed([id]);
     return thread;
   }
@@ -2063,12 +2403,13 @@ var Comments = class {
     if (this.locked) return readOnly();
     if (target === thread) {
       this.threads.delete(id);
-      this.chars -= charsOf(thread);
+      this.bytes -= this.heads.get(id) + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
+      this.heads.delete(id);
       this.changed([id], true);
       return null;
     }
     thread.replies = thread.replies.filter((r) => r !== target);
-    this.chars -= target.text.length;
+    this.bytes -= replyBytes(target);
     this.changed([id]);
     return thread;
   }
@@ -2079,6 +2420,7 @@ var Comments = class {
     if (this.locked) return readOnly();
     if (resolved) thread.resolved = { by: person, time: this.now() };
     else delete thread.resolved;
+    this.recount(thread);
     this.changed([id]);
     return thread;
   }
@@ -2100,7 +2442,7 @@ var Comments = class {
     if (this.saved === this.edits || this.locked) return;
     const tmp = this.tmpName();
     try {
-      writeFileSync2(tmp, this.serialize());
+      writeFileSync3(tmp, this.serialize());
       renameRetriedSync(tmp, this.file);
       this.saved = this.edits;
     } catch (e) {
@@ -2159,7 +2501,7 @@ var Comments = class {
   load() {
     let data;
     try {
-      data = JSON.parse(readFileSync3(this.file, "utf8"));
+      data = JSON.parse(readFileSync4(this.file, "utf8"));
     } catch (e) {
       if (e.code === "ENOENT") return null;
       return this.unreadable();
@@ -2174,7 +2516,10 @@ var Comments = class {
         continue;
       }
       this.threads.set(t.id, t);
-      this.chars += charsOf(t);
+    }
+    for (const t of this.threads.values()) {
+      this.recount(t);
+      for (const r of t.replies) this.bytes += replyBytes(r);
     }
     for (const [person, time] of Object.entries(d.seen)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
     if (bad) this.setAside(false, `${bad} of the threads could not be read, hence they were left out`);
@@ -2186,7 +2531,7 @@ var Comments = class {
   }
   // the file set aside before it is written again, or else kept and never written in this run
   setAside(move, why) {
-    const aside = join2(this.file, "..", `comments-unreadable-${Date.now()}.json`);
+    const aside = join4(this.file, "..", `comments-unreadable-${Date.now()}.json`);
     if (setAsideSync(this.file, aside, move)) {
       this.log(`${why}, and the file was set aside as ${aside}`);
       this.dirty();
@@ -2194,6 +2539,12 @@ var Comments = class {
       this.locked = true;
       this.log(`${why}, and the file could not be set aside, hence the comments are read only until the next start`);
     }
+  }
+  // the bytes of the head of t counted again, after a change of it
+  recount(t) {
+    const head = headBytes(t);
+    this.bytes += head - (this.heads.get(t.id) ?? 0);
+    this.heads.set(t.id, head);
   }
   // the anchors of the file placed on the text of this start
   place(sum, found) {
@@ -2216,6 +2567,11 @@ var Comments = class {
     t.slide = item.slide;
     if (item.removed) t.removed = item.removed;
     else delete t.removed;
+    this.recount(t);
+    if (t.removed?.text && this.bytes > this.maxBytes) {
+      t.removed = { text: null };
+      this.recount(t);
+    }
   }
   operation(op, after) {
     const threads = [...this.threads.values()];
@@ -2251,7 +2607,7 @@ var Comments = class {
     return JSON.stringify({ sum: this.sum, comments: [...this.threads.values()], seen: Object.fromEntries(this.seenBy) });
   }
   tmpName() {
-    return join2(this.file, "..", `.comments.json.${randomBytes3(6).toString("hex")}.tmp`);
+    return join4(this.file, "..", `.comments.json.${randomBytes3(6).toString("hex")}.tmp`);
   }
   dirty() {
     this.edits++;
@@ -2292,9 +2648,9 @@ var Comments = class {
 };
 
 // src/edit/history.ts
-import { appendFileSync, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync4, statSync as statSync2, truncateSync, unlinkSync as unlinkSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { appendFileSync, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync5, statSync as statSync2, truncateSync, unlinkSync as unlinkSync4, writeFileSync as writeFileSync4 } from "node:fs";
 import { randomBytes as randomBytes4 } from "node:crypto";
-import { join as join3 } from "node:path";
+import { join as join5 } from "node:path";
 var isVersionId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
 var newId2 = () => randomBytes4(9).toString("base64url");
 var ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
@@ -2471,8 +2827,8 @@ var History = class {
     this.restored = null;
     this.listeners = /* @__PURE__ */ new Set();
     this.dir = dir;
-    this.file = join3(dir, "history.jsonl");
-    this.asideDir = join3(dir, "aside");
+    this.file = join5(dir, "history.jsonl");
+    this.asideDir = join5(dir, "aside");
     this.authority = authority;
     this.quiet = options.quiet ?? 6e4;
     this.longest = options.longest ?? 3e5;
@@ -2485,7 +2841,7 @@ var History = class {
     this.log = options.log ?? (() => {
     });
     try {
-      mkdirSync2(dir, { recursive: true });
+      mkdirSync3(dir, { recursive: true });
     } catch {
     }
     let loaded = false;
@@ -2493,7 +2849,7 @@ var History = class {
       loaded = this.load();
     } catch (e) {
       if (!(e instanceof Unreadable)) this.log(`could not read ${this.file}: ${e.message}`);
-      const aside = join3(dir, `history-unreadable-${Date.now()}.jsonl`);
+      const aside = join5(dir, `history-unreadable-${Date.now()}.jsonl`);
       if (setAsideSync(this.file, aside)) this.log(`the version history could not be read, hence it was kept in ${aside} and a new history begins`);
       else {
         this.frozen = true;
@@ -2586,16 +2942,16 @@ var History = class {
     const bytes = Buffer.from(text, "utf8");
     if (bytes.length > this.asideBytes) return null;
     const aside = { id: newId2(), time: this.now(), author };
-    mkdirSync2(this.asideDir, { recursive: true });
-    const tmp = join3(this.asideDir, `.${asideName(aside)}.tmp`);
-    writeFileSync3(tmp, bytes);
-    renameRetriedSync(tmp, join3(this.asideDir, asideName(aside)));
+    mkdirSync3(this.asideDir, { recursive: true });
+    const tmp = join5(this.asideDir, `.${asideName(aside)}.tmp`);
+    writeFileSync4(tmp, bytes);
+    renameRetriedSync(tmp, join5(this.asideDir, asideName(aside)));
     this.asides.push(aside);
     const theirs = this.asides.filter((a) => a.author === author);
     for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) {
       this.asides.splice(this.asides.indexOf(old), 1);
       try {
-        unlinkSync4(join3(this.asideDir, asideName(old)));
+        unlinkSync4(join5(this.asideDir, asideName(old)));
       } catch {
       }
     }
@@ -2607,7 +2963,7 @@ var History = class {
     const aside = this.asides.find((a) => a.id === id);
     if (!aside) return null;
     try {
-      return readFileSync4(join3(this.asideDir, asideName(aside)), "utf8");
+      return readFileSync5(join5(this.asideDir, asideName(aside)), "utf8");
     } catch {
       return null;
     }
@@ -2742,9 +3098,9 @@ var History = class {
     for (const v of named) lines.push(JSON.stringify({ kind: "name", id: v.id, name: v.name }));
     const data = `${lines.join("\n")}
 `;
-    const tmp = join3(this.dir, `.history.jsonl.${randomBytes4(6).toString("hex")}.tmp`);
+    const tmp = join5(this.dir, `.history.jsonl.${randomBytes4(6).toString("hex")}.tmp`);
     try {
-      writeFileSync3(tmp, data);
+      writeFileSync4(tmp, data);
       renameRetriedSync(tmp, this.file);
       this.bytes = Buffer.byteLength(data);
       this.names = named.length;
@@ -2781,7 +3137,7 @@ var History = class {
   load() {
     let content;
     try {
-      content = readFileSync4(this.file, "utf8");
+      content = readFileSync5(this.file, "utf8");
     } catch (e) {
       if (e.code === "ENOENT") return false;
       throw e;
@@ -2863,130 +3219,9 @@ function info(v) {
   return out;
 }
 
-// src/edit/http.ts
-import { open, realpath as realpath2, stat as stat2 } from "node:fs/promises";
-import { extname, join as join4, relative, sep } from "node:path";
-var MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".json": "application/json",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".avif": "image/avif",
-  ".bmp": "image/bmp",
-  ".mp4": "video/mp4",
-  // an m4v is played as an mp4, which every browser names
-  ".m4v": "video/mp4",
-  ".webm": "video/webm",
-  ".mov": "video/quicktime",
-  ".ogv": "video/ogg",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".otf": "font/otf",
-  ".txt": "text/plain; charset=utf-8",
-  ".wasm": "application/wasm",
-  ".pdf": "application/pdf",
-  ".ico": "image/x-icon"
-};
-var json = (status, value) => ({
-  status,
-  headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
-  body: JSON.stringify(value)
-});
-var error = (status, message) => json(status, { error: message });
-var hiddenSegment = (s) => s.startsWith(".") || s.endsWith(".") || s.endsWith(" ") || s.toLowerCase() === "node_modules";
-function segmentsOf(rest) {
-  const out = [];
-  for (const raw of rest.split("/")) {
-    let s;
-    try {
-      s = decodeURIComponent(raw);
-    } catch {
-      return null;
-    }
-    if (s === "" || hiddenSegment(s) || /[\\/:\0]/.test(s)) return null;
-    out.push(s);
-  }
-  return out;
-}
-async function fileInside(root, segments) {
-  try {
-    const real = await realpath2(join4(root, ...segments));
-    if (!real.startsWith(root + sep) || relative(root, real).split(sep).some(hiddenSegment)) return null;
-    return (await stat2(real)).isFile() ? real : null;
-  } catch {
-    return null;
-  }
-}
-function rangeOf(header, size2) {
-  const m = /^bytes=(\d*)-(\d*)$/.exec(header ?? "");
-  if (!m || !m[1] && !m[2]) return null;
-  const start2 = m[1] ? Number(m[1]) : Math.max(0, size2 - Number(m[2]));
-  const end = m[1] && m[2] ? Math.min(Number(m[2]), size2 - 1) : size2 - 1;
-  return start2 > end || start2 >= size2 ? "bad" : { start: start2, end };
-}
-async function serveFile(file, request, maxBytes = Infinity) {
-  const info2 = await stat2(file);
-  const etag = `W/"${info2.size.toString(16)}-${Math.floor(info2.mtimeMs).toString(16)}"`;
-  const headers = {
-    "Content-Type": MIME[extname(file).toLowerCase()] ?? "application/octet-stream",
-    "Cache-Control": "no-cache",
-    ETag: etag,
-    "Accept-Ranges": "bytes",
-    "X-Content-Type-Options": "nosniff"
-  };
-  if (request.headers["if-none-match"] === etag) return { status: 304, headers };
-  const range = rangeOf(request.headers.range, info2.size);
-  if (range === "bad") return { status: 416, headers: { ...headers, "Content-Range": `bytes */${info2.size}` } };
-  if (range) {
-    const end = Math.min(range.end, range.start + maxBytes - 1);
-    return { status: 206, headers: { ...headers, "Content-Range": `bytes ${range.start}-${end}/${info2.size}` }, body: { file, start: range.start, end } };
-  }
-  if (info2.size > maxBytes) return error(413, "the file is too large for the relay, ask for a range");
-  return { status: 200, headers, body: { file, start: 0, end: info2.size - 1 } };
-}
-async function readBody(body) {
-  const length = Math.max(0, body.end - body.start + 1);
-  const buffer = Buffer.alloc(length);
-  if (length === 0) return buffer;
-  const handle = await open(body.file, "r");
-  try {
-    let at = 0;
-    while (at < length) {
-      const { bytesRead } = await handle.read(buffer, at, length - at, body.start + at);
-      if (bytesRead === 0) break;
-      at += bytesRead;
-    }
-    return buffer.subarray(0, at);
-  } finally {
-    await handle.close();
-  }
-}
-function withParam(query, name, value) {
-  const parts = query.split("&").filter((p) => p !== "" && decodeName(p) !== name);
-  parts.push(`${name}=${encodeURIComponent(value)}`);
-  return parts.join("&");
-}
-var decodeName = (part) => {
-  const raw = part.split("=")[0];
-  try {
-    return decodeURIComponent(raw.replace(/\+/g, " "));
-  } catch {
-    return raw;
-  }
-};
-var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeName));
-
 // src/edit/people.ts
 import { randomBytes as randomBytes5 } from "node:crypto";
-import { readFileSync as readFileSync5, unlinkSync as unlinkSync5, writeFileSync as writeFileSync4 } from "node:fs";
+import { readFileSync as readFileSync6, unlinkSync as unlinkSync5, writeFileSync as writeFileSync5 } from "node:fs";
 import { unlink as unlink2, writeFile as writeFile3 } from "node:fs/promises";
 var HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25e3;
 var GAP = 100;
@@ -3002,7 +3237,7 @@ var MAX_STATE = 8 * 1024;
 var newId3 = () => randomBytes5(16).toString("base64url");
 function readPeople(file) {
   try {
-    const value = JSON.parse(readFileSync5(file, "utf8"));
+    const value = JSON.parse(readFileSync6(file, "utf8"));
     if (!Array.isArray(value)) return [];
     return value.filter(
       (r) => r && isPersonId(r.person) && cleanPersonName(r.name) && Number.isInteger(r.color) && r.color >= 0 && r.color < COLORS.length && Number.isFinite(r.first) && Number.isFinite(r.last)
@@ -3380,214 +3615,13 @@ var People = class {
     this.dirty = false;
     const tmp = `${this.file}.${randomBytes5(6).toString("hex")}.tmp`;
     try {
-      writeFileSync4(tmp, this.json());
+      writeFileSync5(tmp, this.json());
       renameRetriedSync(tmp, this.file);
     } catch (e) {
       this.log(`could not write ${this.file}: ${e.message}`);
       try {
         unlinkSync5(tmp);
       } catch {
-      }
-    }
-  }
-};
-
-// src/edit/relay.ts
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync6, writeFileSync as writeFileSync5, chmodSync } from "node:fs";
-import { homedir } from "node:os";
-import { join as join5 } from "node:path";
-var RELAY_BODY = 16 * 1024 * 1024;
-var PULLS = 4;
-var FILE_ANSWERS = 8;
-function configFile() {
-  if (process.platform === "win32") return join5(process.env.APPDATA || join5(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
-  return join5(process.env.XDG_CONFIG_HOME || join5(homedir(), ".config"), "beeson-slides", "relay.json");
-}
-function loadConfig() {
-  try {
-    const value = JSON.parse(readFileSync6(configFile(), "utf8"));
-    return { relay: typeof value.relay === "string" ? value.relay : void 0, secret: typeof value.secret === "string" ? value.secret : void 0 };
-  } catch {
-    return {};
-  }
-}
-function saveConfig(config) {
-  const file = configFile();
-  mkdirSync3(join5(file, ".."), { recursive: true, mode: 448 });
-  writeFileSync5(file, `${JSON.stringify(config, null, 2)}
-`, { mode: 384 });
-  try {
-    chmodSync(file, 384);
-  } catch {
-  }
-}
-var ADDRESS_RULE = "the address of the relay must start with https://";
-function relayAddress(value) {
-  if (typeof value !== "string" || value.length > 2048) return null;
-  try {
-    const url = new URL(value);
-    const local = url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost");
-    if (url.protocol !== "https:" && !local || url.username || url.password || url.search || url.hash) return null;
-    return url.href.replace(/\/+$/, "");
-  } catch {
-    return null;
-  }
-}
-var sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-var asciiJson = (value) => JSON.stringify(value).replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
-var Taken = class extends Error {
-  constructor() {
-    super("this session is already shared by another edit command, e.g. one started in a copy of this talk folder");
-  }
-};
-var RelayLink = class {
-  constructor(relay, secret, key, handle, log) {
-    this.token = "";
-    this.running = false;
-    this.registering = null;
-    this.controllers = /* @__PURE__ */ new Set();
-    // the requests of guests being answered, which a stop lets finish
-    this.serving = /* @__PURE__ */ new Set();
-    this.fileSlots = FILE_ANSWERS;
-    this.fileQueue = [];
-    this.relay = relay;
-    this.secret = secret;
-    this.key = key;
-    this.handle = handle;
-    this.log = log;
-    this.link = `${relay}/${key}/index.html?edit&session`;
-  }
-  // false once stopped, or once another edit command took the key
-  get active() {
-    return this.running;
-  }
-  // registers the session and starts the pulls. rejects when the relay refuses the registration
-  async start() {
-    await this.register();
-    this.running = true;
-    for (let i = 0; i < PULLS; i++) void this.pullLoop();
-  }
-  async stop() {
-    this.running = false;
-    for (const c of this.controllers) c.abort();
-    await Promise.race([Promise.allSettled([...this.serving]), sleep(1500)]);
-    await fetch(`${this.relay}/host/${this.key}`, { method: "DELETE", headers: this.auth(), signal: AbortSignal.timeout(3e3) }).catch(() => {
-    });
-  }
-  auth() {
-    return { Authorization: `Bearer ${this.secret}`, "x-relay-token": this.token };
-  }
-  register() {
-    this.registering ??= (async () => {
-      try {
-        const response = await fetch(`${this.relay}/host/${this.key}`, { method: "POST", headers: this.auth(), signal: AbortSignal.timeout(1e4) });
-        if (response.status === 409) {
-          await response.body?.cancel();
-          throw new Taken();
-        }
-        if (!response.ok) throw new Error(`the relay refused the session with ${response.status} ${(await response.text()).slice(0, 200)}`);
-        const { token } = await response.json();
-        if (typeof token !== "string") throw new Error("the relay did not give a token");
-        this.token = token;
-      } finally {
-        this.registering = null;
-      }
-    })();
-    return this.registering;
-  }
-  async pullLoop() {
-    let backoff = 500;
-    while (this.running) {
-      const controller = new AbortController();
-      this.controllers.add(controller);
-      const timer = setTimeout(() => controller.abort(), 4e4);
-      try {
-        const response = await fetch(`${this.relay}/host/${this.key}/pull`, { method: "POST", headers: this.auth(), signal: controller.signal });
-        if (response.status === 401 || response.status === 404) {
-          await response.body?.cancel();
-          if (!this.running) break;
-          await this.register();
-          continue;
-        }
-        if (!response.ok) throw new Error(`pull answered ${response.status}`);
-        const pulled = await response.json();
-        if (Array.isArray(pulled)) {
-          for (const item of pulled) {
-            const serving = this.serve(item);
-            this.serving.add(serving);
-            void serving.finally(() => this.serving.delete(serving));
-          }
-        }
-        backoff = 500;
-      } catch (e) {
-        if (!this.running) break;
-        if (e instanceof Taken) {
-          this.running = false;
-          this.log(`the session is no longer shared: ${e.message}`);
-          break;
-        }
-        this.log(`the relay is not reached, trying again: ${e.message}`);
-        await sleep(backoff);
-        backoff = Math.min(backoff * 2, 1e4);
-      } finally {
-        clearTimeout(timer);
-        this.controllers.delete(controller);
-      }
-    }
-  }
-  async serve(item) {
-    if (!item || typeof item.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(item.id)) return;
-    let response;
-    let body;
-    let slot = false;
-    try {
-      const ok = typeof item.method === "string" && typeof item.path === "string" && typeof item.query === "string" && typeof item.body === "string";
-      if (!ok || !item.path.startsWith(`/${this.key}/`)) throw new Error("malformed request");
-      const headers = {};
-      for (const [k, v] of Object.entries(item.headers ?? {})) if (typeof v === "string") headers[k.toLowerCase()] = v;
-      response = await this.handle({ method: item.method, path: item.path, query: item.query, headers, body: Buffer.from(item.body, "base64"), direct: false });
-      const b = response.body;
-      if (b !== void 0 && typeof b === "object" && !Buffer.isBuffer(b)) {
-        if (this.fileSlots > 0) this.fileSlots--;
-        else await new Promise((done) => this.fileQueue.push(done));
-        slot = true;
-      }
-      body = b === void 0 ? Buffer.alloc(0) : typeof b === "string" ? Buffer.from(b) : Buffer.isBuffer(b) ? b : await readBody(b);
-    } catch (e) {
-      response = { status: 502, headers: { "Content-Type": "text/plain" } };
-      body = Buffer.from(e.message);
-    }
-    if (body.length > RELAY_BODY) {
-      response = { status: 413, headers: { "Content-Type": "text/plain" } };
-      body = Buffer.from("the answer is too large for the relay");
-    }
-    try {
-      const push = async () => {
-        const token = this.token;
-        const pushed2 = await fetch(`${this.relay}/host/${this.key}/push/${item.id}`, {
-          method: "POST",
-          headers: { ...this.auth(), "Content-Type": "application/octet-stream", "x-relay-status": String(response.status), "x-relay-headers": asciiJson(response.headers) },
-          body,
-          signal: AbortSignal.timeout(6e4)
-        });
-        await pushed2.body?.cancel();
-        return { status: pushed2.status, token };
-      };
-      let pushed = await push();
-      if (pushed.status === 401 && this.running) {
-        if (this.registering) await this.registering.catch(() => {
-        });
-        if (this.token === pushed.token) await this.register();
-        pushed = await push();
-      }
-      if (pushed.status < 200 || pushed.status > 299) this.log(`the relay refused an answer with ${pushed.status}`);
-    } catch (e) {
-      this.log(`an answer did not reach the relay: ${e.message}`);
-    } finally {
-      if (slot) {
-        const next = this.fileQueue.shift();
-        if (next) next();
-        else this.fileSlots++;
       }
     }
   }

@@ -26,14 +26,15 @@ import {
 } from '../session/protocol.ts';
 import { slidesOf, type Slide } from '../session/slides.ts';
 import { renameRetried, renameRetriedSync, setAsideSync } from './disk.ts';
+import { RELAY_BODY } from './relay.ts';
 
 export type CommentsOptions = {
   now?: () => number;
   log?: (message: string) => void;
   // the shortest time between two writes of the file, in ms
   every?: number;
-  // the characters of every text of every thread together
-  maxChars?: number;
+  // the bytes of every thread as the comments are sent, together
+  maxBytes?: number;
 };
 
 export type Failure = { status: number; error: string };
@@ -48,7 +49,11 @@ const fail = (status: number, error: string): Failure => ({ status, error });
 export const isFailure = (x: unknown): x is Failure => !!x && typeof (x as Failure).error === 'string' && typeof (x as Failure).status === 'number';
 const isNumber = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const isInt = (x: unknown): x is number => Number.isSafeInteger(x) && (x as number) >= 0;
-const charsOf = (t: Comment) => t.text.length + t.replies.reduce((n, r) => n + r.text.length, 0);
+const bytesOf = (x: unknown) => Buffer.byteLength(JSON.stringify(x));
+// the bytes of a thread without its replies, and of a reply, each with the comma after it
+const headBytes = (t: Comment) => bytesOf({ ...t, replies: [] }) + 1;
+const replyBytes = (r: CommentReply) => bytesOf(r) + 1;
+const tooLarge = () => fail(413, 'the comments of the deck are too large');
 const readOnly = () => fail(503, 'the comments could not be read at the start, hence they are read only until the edit command is started again');
 
 // a text of a comment, or a failure
@@ -97,10 +102,13 @@ export class Comments {
   private readonly now: () => number;
   private readonly log: (message: string) => void;
   private readonly every: number;
-  private readonly maxChars: number;
+  private readonly maxBytes: number;
   private threads = new Map<string, Comment>();
   private seenBy = new Map<string, number>();
-  private chars = 0;
+  // the bytes of every thread, and of the head of each as last counted, since a shift of its anchors
+  // is not counted again
+  private bytes = 0;
+  private heads = new Map<string, number>();
   // true when the file could not be read nor set aside, hence it is neither written nor changed
   private locked = false;
   // the text that the anchors are of, its checksum, and its slides when they are known
@@ -127,7 +135,7 @@ export class Comments {
     this.now = options.now ?? Date.now;
     this.log = options.log ?? (() => {});
     this.every = options.every ?? 1000;
-    this.maxChars = options.maxChars ?? 16 * 1024 * 1024;
+    this.maxBytes = options.maxBytes ?? RELAY_BODY / 2;
     this.text = authority.text;
     this.sum = checksum(this.text);
     try {
@@ -169,7 +177,7 @@ export class Comments {
     if (isFailure(mentions)) return mentions;
     if (this.locked) return readOnly();
     if (this.threads.size >= THREADS_MAX) return fail(409, `a deck holds at most ${THREADS_MAX} threads`);
-    if (this.chars + text.length > this.maxChars) return fail(413, 'the comments of the deck are too large');
+    if (this.bytes + bytesOf(text) > this.maxBytes) return tooLarge();
     const n = typeof body.base === 'string' ? this.authority.reach(body.base) : null;
     if (n === null) return fail(409, 'base is not in the log, read the deck again');
     const at = this.anchorsAt(n, body.anchor, body.slide);
@@ -177,8 +185,12 @@ export class Comments {
     const item = this.toCurrent(n, at);
     const thread: Comment = { id: newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
     if (item.removed) thread.removed = item.removed;
+    if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
+    const head = headBytes(thread);
+    if (this.bytes + head > this.maxBytes) return tooLarge();
     this.threads.set(thread.id, thread);
-    this.chars += text.length;
+    this.heads.set(thread.id, head);
+    this.bytes += head;
     this.changed([thread.id]);
     return thread;
   }
@@ -192,10 +204,13 @@ export class Comments {
     if (isFailure(mentions)) return mentions;
     if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
     if (this.locked) return readOnly();
-    if (this.chars + text.length > this.maxChars) return fail(413, 'the comments of the deck are too large');
-    thread.replies.push({ id: newId(), author: person, time: this.now(), text });
-    this.chars += text.length;
+    const reply: CommentReply = { id: newId(), author: person, time: this.now(), text };
+    const size = replyBytes(reply);
+    if (this.bytes + size > this.maxBytes) return tooLarge();
+    thread.replies.push(reply);
+    this.bytes += size;
     this.mention(thread, mentions);
+    this.recount(thread);
     this.changed([id]);
     return thread;
   }
@@ -212,11 +227,14 @@ export class Comments {
     const mentions = cleanMentions(body.mentions);
     if (isFailure(mentions)) return mentions;
     if (this.locked) return readOnly();
-    if (this.chars + text.length - target.text.length > this.maxChars) return fail(413, 'the comments of the deck are too large');
-    this.chars += text.length - target.text.length;
+    const edited = this.now();
+    const grow = target === thread ? headBytes({ ...thread, text, edited }) - this.heads.get(id)! : replyBytes({ ...(target as CommentReply), text, edited }) - replyBytes(target as CommentReply);
+    if (grow > 0 && this.bytes + grow > this.maxBytes) return tooLarge();
+    if (target !== thread) this.bytes += grow;
     target.text = text;
-    target.edited = this.now();
+    target.edited = edited;
     this.mention(thread, mentions);
+    this.recount(thread);
     this.changed([id]);
     return thread;
   }
@@ -231,12 +249,13 @@ export class Comments {
     if (this.locked) return readOnly();
     if (target === thread) {
       this.threads.delete(id);
-      this.chars -= charsOf(thread);
+      this.bytes -= this.heads.get(id)! + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
+      this.heads.delete(id);
       this.changed([id], true);
       return null;
     }
     thread.replies = thread.replies.filter((r) => r !== target);
-    this.chars -= target.text.length;
+    this.bytes -= replyBytes(target as CommentReply);
     this.changed([id]);
     return thread;
   }
@@ -248,6 +267,7 @@ export class Comments {
     if (this.locked) return readOnly();
     if (resolved) thread.resolved = { by: person, time: this.now() };
     else delete thread.resolved;
+    this.recount(thread);
     this.changed([id]);
     return thread;
   }
@@ -350,7 +370,10 @@ export class Comments {
         continue;
       }
       this.threads.set(t.id, t);
-      this.chars += charsOf(t);
+    }
+    for (const t of this.threads.values()) {
+      this.recount(t);
+      for (const r of t.replies) this.bytes += replyBytes(r);
     }
     for (const [person, time] of Object.entries(d.seen as Record<string, unknown>)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
     if (bad) this.setAside(false, `${bad} of the threads could not be read, hence they were left out`);
@@ -372,6 +395,13 @@ export class Comments {
       this.locked = true;
       this.log(`${why}, and the file could not be set aside, hence the comments are read only until the next start`);
     }
+  }
+
+  // the bytes of the head of t counted again, after a change of it
+  private recount(t: Comment): void {
+    const head = headBytes(t);
+    this.bytes += head - (this.heads.get(t.id) ?? 0);
+    this.heads.set(t.id, head);
   }
 
   // the anchors of the file placed on the text of this start
@@ -396,6 +426,12 @@ export class Comments {
     t.slide = item.slide;
     if (item.removed) t.removed = item.removed;
     else delete t.removed;
+    this.recount(t);
+    // a removed text is left out when it would pass the limit, since a deletion is never refused
+    if (t.removed?.text && this.bytes > this.maxBytes) {
+      t.removed = { text: null };
+      this.recount(t);
+    }
   }
 
   private operation(op: AppliedOp, after: string): void {
