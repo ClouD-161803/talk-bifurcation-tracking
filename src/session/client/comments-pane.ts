@@ -10,7 +10,7 @@ import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comments.ts';
 import { make, style } from './dom.ts';
 import { closeMenu, openMenu } from './menu.ts';
-import { toast } from './toast.ts';
+import { toast, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 
 // the tone and the initials of a person, until people.ts of the avatars gives them
@@ -603,6 +603,13 @@ class Pane {
     if (read || this.shell.tab.shown()) this.comments.markRead(id);
   }
 
+  // the comments for the person, from the button Show of a joined toast
+  openMine(): void {
+    this.filter = 'mine';
+    this.shell.tab.set(true);
+    this.render();
+  }
+
   // the first open thread on the element or slide target
   openAt(target: Element): void {
     const places = this.comments.places();
@@ -706,6 +713,7 @@ export function install(client: Client): void {
     });
   };
   const toasted = new Set<string>();
+  const kind: ToastKind = { key: 'comments', many: (n) => ({ text: `${n} new comments`, button: { label: 'Show', run: () => pane.openMine() } }) };
   comments.onChange((fresh) => {
     schedule();
     badges.schedule();
@@ -715,7 +723,7 @@ export function install(client: Client): void {
         if (i.author === client.person || toasted.has(i.id) || !i.text.includes(me) || stamp(i) <= Math.max(comments.seen, comments.read.get(t.id) ?? 0)) continue;
         toasted.add(i.id);
         const n = comments.numberOf(t);
-        toast(`${nameOf(client, i.author)} mentioned you ${n === null ? 'on the deck' : `on slide ${n}`}`, { label: 'Show', run: () => pane.open(t.id) });
+        toast(`${nameOf(client, i.author)} mentioned you ${n === null ? 'on the deck' : `on slide ${n}`}`, { label: 'Show', run: () => pane.open(t.id) }, kind);
       }
     }
   });

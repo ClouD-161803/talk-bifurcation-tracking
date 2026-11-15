@@ -22,6 +22,7 @@ import { install as presence, presenceOf } from './presence.ts';
 import { install as share, pageLink } from './share.ts';
 import { install as state } from './state.ts';
 import { withClass } from './dom.ts';
+import { timing } from './toast.ts';
 import { mayRetry } from './transport.ts';
 
 // each part reads the Client and its events. the avatars go before the save state, and Share
@@ -103,12 +104,14 @@ async function start(given: Handover): Promise<boolean> {
   return true;
 }
 
-// presence() and follow() are read by the tests, e.g. to move the clock of the floor rule
-const entry: Entry & { client(): Client | null; rename: typeof rename; presence(): ReturnType<typeof presenceOf> | null; follow: typeof followOf } = {
+// presence() and follow() are read by the tests, e.g. to move the clock of the floor rule, and
+// toasts.shown is set by the tests
+const entry: Entry & { client(): Client | null; rename: typeof rename; presence(): ReturnType<typeof presenceOf> | null; follow: typeof followOf; toasts: typeof timing } = {
   start,
   client: () => current,
   rename,
   presence: () => (current && presenceOf(current)) ?? null,
   follow: followOf,
+  toasts: timing,
 };
 (window as { BeesonSession?: Entry }).BeesonSession = entry;
