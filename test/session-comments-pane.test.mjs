@@ -447,6 +447,25 @@ test('an edit of a comment keeps two mentions with one shown name apart', { time
   clean(a);
 });
 
+test('the field counts the text as it is sent, with each mention as the id of its person and each character once', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann', 'Ben']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(a, '@Be');
+  await sees(a, `document.querySelectorAll('${PANE} .draft .people li').length`, 1);
+  await press(a, 'Enter');
+  await type(a, 'x'.repeat(3985));
+  // the field reads @Ben and 3985 x, 3990 characters, and sends a mention of 25 characters
+  const SEND = `(() => { const d = document.querySelector('${DRAFT}'); return [d.value.length, document.querySelector('${PANE} .draft .actions .primary').disabled, document.querySelector('${PANE} .draft .error').hidden]; })()`;
+  await sees(a, SEND, [3990, true, false]);
+  await a.evaluate(`document.querySelector('${DRAFT}').select()`);
+  await type(a, '😀'.repeat(2100));
+  await sees(a, `(() => { const d = document.querySelector('${DRAFT}'); return [Array.from(d.value).length, document.querySelector('${PANE} .draft .actions .primary').disabled]; })()`, [2100, false]);
+  clean(a);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
