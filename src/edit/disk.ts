@@ -37,7 +37,7 @@ const RETRY = new Set(['EPERM', 'EBUSY', 'EACCES']);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 // a rename over a file that another program may hold open for a moment, as on Windows
-async function renameRetried(from: string, to: string): Promise<void> {
+export async function renameRetried(from: string, to: string): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await rename(from, to);
@@ -48,7 +48,7 @@ async function renameRetried(from: string, to: string): Promise<void> {
   }
 }
 
-function renameRetriedSync(from: string, to: string): void {
+export function renameRetriedSync(from: string, to: string): void {
   const wait = new Int32Array(new SharedArrayBuffer(4));
   for (let attempt = 0; ; attempt++) {
     try {

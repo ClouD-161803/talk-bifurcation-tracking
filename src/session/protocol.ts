@@ -8,7 +8,12 @@ export type Version = string;
 // the characters start to end of a text replaced by text, with offsets in UTF-16 code units
 export type Patch = { start: number; end: number; text: string };
 
-export type Person = { client: string; name: string; color: number; host: boolean };
+// a page of a session. person is the id that the browser keeps in localStorage, hence one person
+// on two devices has two pages
+export type Person = { client: string; person: string; name: string; color: number; host: boolean };
+
+// a person who joined the session at some time, as kept in .session/people.json
+export type KnownPerson = { person: string; name: string; color: number };
 
 // state is opaque to the edit command, e.g. the slide, the selection, and the caret of a person
 export type Presence = { client: string; name: string; color: number; state: unknown };
@@ -20,22 +25,34 @@ export type AppliedOp = {
   v: Version;
   client: string;
   seq: number;
+  // the person id, or file for a change of index.html from outside
   author: string;
   time: number;
   patches: Patch[];
   sum: string;
 };
 
-// POST hello. v is the version of the text that the editor read, when it read one
-export type HelloRequest = { name: string; client?: string; v?: Version };
+// POST hello. v is the version of the text that the editor read, when it read one. a person id
+// that is missing or malformed is replaced by a new one. claim takes over the person who holds the
+// name, i.e. one person on a second device
+export type HelloRequest = { name: string; person?: string; client?: string; v?: Version; claim?: boolean };
+// the answer of hello and of name when another person holds the name, and nothing is changed
+export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise
 export type HelloAnswer = {
   client: string;
+  person: string;
+  name: string;
   color: number;
   host: boolean;
   v: Version;
   people: Person[];
+  known: KnownPerson[];
 } & ({ ops: AppliedOp[]; text?: undefined } | { text: string; ops?: undefined });
+
+// POST name: a new name of the person of the page client
+export type NameRequest = { client: string; name: string };
+export type NameAnswer = { name: string } | Taken;
 
 // POST op. base is the version of the text that the patches are of
 export type OpRequest = { client: string; seq: number; base: Version; patches: Patch[] };
@@ -45,14 +62,20 @@ export type OpRequest = { client: string; seq: number; base: Version; patches: P
 export type RefusalReason = 'stale' | 'conflict' | 'invalid' | 'unknown';
 export type OpAnswer = { ok: true; v: Version } | { ok: false; reason: RefusalReason; v: Version };
 
+// the end of a session for a page: the edit command stopped, or the host ended the sharing. by is
+// the name of the host, or null when it is not known
+export type Ended = { by: string | null };
+
 // GET events?client=&since=. ops is null when since is of another epoch or older than the log,
-// and the browser then says hello again. ended is true when the edit command stops
+// and the browser then says hello again. known is sent only when it changed since the last answer
+// to this page. after ended, every poll of the page is answered with ended until it says hello
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
   presence: Presence[];
   people: Person[];
-  ended?: true;
+  known?: KnownPerson[];
+  ended?: Ended;
 };
 
 export type PresenceRequest = { client: string; state: unknown };
@@ -70,6 +93,14 @@ export type ErrorAnswer = { error: string };
 
 // the tones of theme/beeson.css that the color index of a person stands for
 export const COLORS = ['--data-2', '--data-3', '--data-5', '--data-7'] as const;
+
+// a name as it is kept: trimmed, inner whitespace collapsed, and cut to NAME_MAX characters
+export const NAME_MAX = 40;
+export const cleanPersonName = (raw: unknown): string =>
+  typeof raw === 'string' ? Array.from(raw.replace(/\s+/g, ' ').trim()).slice(0, NAME_MAX).join('').trim() : '';
+// two names are one when their keys are equal
+export const nameKey = (name: string): string => cleanPersonName(name).normalize('NFC').toLowerCase();
+export const isPersonId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(id);
 
 export const formatVersion = (epoch: string, n: number): Version => `${epoch}.${n}`;
 

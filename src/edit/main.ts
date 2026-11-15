@@ -13,7 +13,7 @@ export type { AuthorityOptions, Observer, Submission } from '../session/authorit
 export { Replica } from '../session/replica.ts';
 export type { Side } from '../session/replica.ts';
 export { apply, checksum, combine, conflict, diff, invert, mergePatches, shift, shiftOffset, size, valid, widen } from '../session/patch.ts';
-export { COLORS, formatVersion, parseVersion } from '../session/protocol.ts';
+export { cleanPersonName, COLORS, formatVersion, isPersonId, NAME_MAX, nameKey, parseVersion } from '../session/protocol.ts';
 export type * from '../session/protocol.ts';
 export { changes } from '../editor/merge.ts';
 export { tokenize } from '../editor/tokens.ts';
@@ -76,6 +76,8 @@ async function main(argv: string[]): Promise<void> {
   const page = `${running.url}index.html?edit&session`;
   process.stderr.write(`Editing ${running.root}\nat ${page}\nKeep this window open while you edit, and close it or press Ctrl+C to stop.\n`);
   if (open) openBrowser(page);
+  // a write to a terminal that was closed fails, and must not end the command before its stop
+  for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
   const stop = () => {
     void running.close().finally(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000).unref();

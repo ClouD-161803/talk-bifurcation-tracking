@@ -9,11 +9,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomBytes } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
-import type { HelloRequest, OpRequest } from '../session/protocol.ts';
+import type { HelloRequest, NameRequest, OpRequest } from '../session/protocol.ts';
 import { Disk, readText } from './disk.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { isClientId, MAX_STATE, People } from './people.ts';
-import { loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig } from './relay.ts';
+import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig } from './relay.ts';
 
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
@@ -84,7 +84,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const key = keyOf(root);
   const authority = new Authority(text);
   const disk = new Disk(index, authority, bom, { log });
-  const people = new People(authority);
+  const people = new People(authority, join(root, '.session', 'people.json'), log);
   let port = 0;
   let relay: RelayLink | null = null;
 
@@ -92,6 +92,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (!request.direct) return error(403, 'only the host can share a session');
     if (request.method === 'GET') return json(200, { link: relay?.link ?? null });
     if (request.method === 'DELETE') {
+      // the guests are told before the relay that carries the answers is left
+      people.endGuests();
       await relay?.stop();
       relay = null;
       return json(200, { link: null });
@@ -107,7 +109,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const saved = loadConfig();
     const address = relayAddress(body.relay ?? saved.relay);
     const secret = body.secret ?? saved.secret;
-    if (!address) return json(400, { link: null, error: 'the address of the relay is not an http or https URL' });
+    if (!address) return json(400, { link: null, error: ADDRESS_RULE });
     if (typeof secret !== 'string' || secret.length < 16) return json(400, { link: null, error: 'the secret has fewer than 16 characters' });
     try {
       await connect(address, secret);
@@ -157,7 +159,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       const waiting = people.events(query.get('client') ?? '', query.get('since') ?? '');
       return waiting ? json(200, await waiting) : error(404, 'say hello first');
     }
-    if (!['hello', 'op', 'presence', 'bye'].includes(route)) return error(404, 'not found');
+    if (!['hello', 'name', 'op', 'presence', 'bye'].includes(route)) return error(404, 'not found');
     if (request.method !== 'POST') return error(405, 'POST');
     if (!isJson(request)) return error(415, 'the body must be application/json');
     let body: Record<string, unknown>;
@@ -169,20 +171,28 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     }
     if (route === 'hello') {
       const hello = body as Partial<HelloRequest>;
-      const name = (typeof hello.name === 'string' ? hello.name.trim().slice(0, 64) : '') || 'Guest';
-      const member = people.hello(name, hello.client, request.direct);
-      if (!member) return error(503, 'the session is full');
-      const answer = { client: member.client, color: member.color, host: member.host, v: authority.version, people: people.list() };
+      const joined = people.hello(hello.name, hello.person, hello.client, request.direct, hello.claim === true);
+      if ('taken' in joined) return json(200, { taken: joined.taken });
+      if ('empty' in joined) return error(400, 'the name is empty');
+      if ('full' in joined) return error(503, 'the session is full');
+      const { member } = joined;
+      const answer = { client: member.client, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known() };
       const ops = typeof hello.v === 'string' ? authority.since(hello.v) : null;
       return json(200, ops ? { ...answer, ops } : { ...answer, text: authority.text });
     }
     if (route === 'op') {
-      const name = people.nameOf(body.client);
-      if (name === null) return json(200, { ok: false, reason: 'unknown', v: authority.version });
+      const person = people.personOf(body.client);
+      if (person === null) return json(200, { ok: false, reason: 'unknown', v: authority.version });
       if (Array.isArray(body.patches) && body.patches.length > 100_000) return json(200, { ok: false, reason: 'invalid', v: authority.version });
-      return json(200, authority.submit(body as unknown as OpRequest, name).answer);
+      return json(200, authority.submit(body as unknown as OpRequest, person).answer);
     }
     if (!isClientId(body.client)) return error(400, 'client is missing');
+    if (route === 'name') {
+      const renamed = people.rename(body.client, (body as Partial<NameRequest>).name);
+      if (!renamed) return error(404, 'say hello first');
+      if ('empty' in renamed) return error(400, 'the name is empty');
+      return json(200, renamed);
+    }
     if (route === 'presence') {
       if ((JSON.stringify(body.state ?? null) ?? '').length > MAX_STATE) return error(413, 'the presence is too large');
       return people.presence(body.client, body.state ?? null) ? json(200, {}) : error(404, 'say hello first');
@@ -296,7 +306,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   if (options.relay) {
     const address = relayAddress(options.relay);
     const secret = process.env.SLIDES_RELAY_SECRET || loadConfig().secret;
-    if (!address) log(`${options.relay} is not an http or https URL, and the session is not shared`);
+    if (!address) log(`${ADDRESS_RULE}, and the session is not shared`);
     else if (!secret || secret.length < 16) log('the secret of the relay is not set, and the session is not shared');
     else await connect(address, secret).then(() => log(`shared at ${relay!.link}`), (e) => log(`the session is not shared: ${(e as Error).message}`));
   }

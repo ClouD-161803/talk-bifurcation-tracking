@@ -36,13 +36,17 @@ export function saveConfig(config: RelayConfig): void {
   } catch {}
 }
 
-// the address of a relay without a trailing slash, or null when it is not an http or https URL
-// without credentials, query, or fragment
+export const ADDRESS_RULE = 'the address of the relay must start with https://';
+
+// the address of a relay without a trailing slash, or null when it is not an https URL, or an http
+// URL of this computer, without credentials, query, or fragment. a guest needs https, since
+// navigator.clipboard and crypto.randomUUID work only in a secure context
 export function relayAddress(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 2048) return null;
   try {
     const url = new URL(value);
-    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password || url.search || url.hash) return null;
+    const local = url.protocol === 'http:' && (url.hostname === '127.0.0.1' || url.hostname === 'localhost');
+    if ((url.protocol !== 'https:' && !local) || url.username || url.password || url.search || url.hash) return null;
     return url.href.replace(/\/+$/, '');
   } catch {
     return null;
@@ -66,6 +70,8 @@ export class RelayLink {
   private running = false;
   private registering: Promise<void> | null = null;
   private controllers = new Set<AbortController>();
+  // the requests of guests being answered, which a stop lets finish
+  private serving = new Set<Promise<void>>();
   private log: (message: string) => void;
 
   constructor(relay: string, secret: string, key: string, handle: (request: Request) => Promise<Response>, log: (message: string) => void) {
@@ -87,6 +93,8 @@ export class RelayLink {
   async stop(): Promise<void> {
     this.running = false;
     for (const c of this.controllers) c.abort();
+    // an answer of ended still in flight would reach the guest as a 502 once the session is deleted
+    await Promise.race([Promise.allSettled([...this.serving]), sleep(1500)]);
     await fetch(`${this.relay}/host/${this.key}`, { method: 'DELETE', headers: this.auth(), signal: AbortSignal.timeout(3000) }).catch(() => {});
   }
 
@@ -125,7 +133,13 @@ export class RelayLink {
         }
         if (!response.ok) throw new Error(`pull answered ${response.status}`);
         const pulled = (await response.json()) as Pulled[];
-        if (Array.isArray(pulled)) for (const item of pulled) void this.serve(item);
+        if (Array.isArray(pulled)) {
+          for (const item of pulled) {
+            const serving = this.serve(item);
+            this.serving.add(serving);
+            void serving.finally(() => this.serving.delete(serving));
+          }
+        }
         backoff = 500;
       } catch (e) {
         if (!this.running) break;
