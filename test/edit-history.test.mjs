@@ -593,6 +593,21 @@ test('an operation after a sleep of the computer, or after the wall clock went b
     history.stopSync();
   });
 
+  await t.test('a wall clock set back, after which the clock of the timers passes the longest time in steps under the quiet time', () => {
+    const { c, authority, history } = opened();
+    replace(authority, '</body>', '<i>0</i></body>', ANN);
+    c.wall -= 3600_000;
+    for (let i = 1; i <= 10; i++) {
+      c.clock += 30_000;
+      replace(authority, '</body>', `<i>${i}</i></body>`, ANN);
+    }
+    history.close();
+    const versions = history.list().versions.reverse();
+    assert.equal(versions.length, 3);
+    assert.ok(history.textOf(versions[1].id).includes('<i>9</i></body>'));
+    history.stopSync();
+  });
+
   await t.test('operations that go on for longer than the longest time', () => {
     const { c, authority, history } = opened();
     replace(authority, '</body>', '<i>0</i></body>', ANN);
