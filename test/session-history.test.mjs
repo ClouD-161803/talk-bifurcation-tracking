@@ -35,7 +35,7 @@ const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.versio
   : el.matches('h3') ? { day: el.textContent } : el.matches('.fold') ? { fold: el.textContent } : { empty: el.textContent })`;
 // the buttons of the pane and of the bar of the preview that are shown, by their text
 const button = (scope, text) => `[...document.querySelectorAll('${scope} button')].find((b) => b.textContent === ${JSON.stringify(text)} && b.getClientRects().length)`;
-const INERT = `['.beeson-edit-menubar', '.beeson-edit-top', '.beeson-edit-nav', '.reveal'].map((s) => document.querySelector(s)?.inert)`;
+const INERT = `['.beeson-edit-menubar', '.beeson-edit-top', '.beeson-edit-nav', '.reveal', '.beeson-edit-bottom'].map((s) => document.querySelector(s)?.inert)`;
 const TIME = /^\d{1,2}:\d{2}\s?[AP]M$/;
 const MIN = 60_000;
 // the time t written in the page as the pane writes it, in the locale of the page
@@ -108,7 +108,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await ann.waitFor(`[...document.querySelectorAll('.beeson-edit-menu .item')].some((i) => i.textContent.startsWith('Version History'))`);
     await ann.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.textContent.startsWith('Version History')).click(), true`);
     await ann.waitFor(SHOWN);
-    assert.deepEqual(await ann.evaluate(INERT), [true, true, true, true]);
+    assert.deepEqual(await ann.evaluate(INERT), [true, true, true, true, true]);
     assert.deepEqual(await ann.evaluate(LIST), [{ empty: 'No earlier versions yet.' }]);
     assert.equal(await ann.evaluate(`document.querySelector('${PANE} .row.current').getAttribute('aria-current')`), 'true');
   });
@@ -139,7 +139,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     assert.equal(await ann.evaluate(`document.querySelectorAll('.reveal .slides > section').length`), 2);
     await press(ann, 'Escape');
     await ann.waitFor(`!(${SHOWN})`);
-    assert.deepEqual(await ann.evaluate(INERT), [false, false, false, false]);
+    assert.deepEqual(await ann.evaluate(INERT), [false, false, false, false, false]);
     assert.equal(await ann.evaluate(`document.documentElement.classList.contains('beeson-history')`), false);
     assert.equal(await converge(server, [ann, ben]), TALK.replace('<p>Second slide</p>', '<p>Second slide by Ben</p>'));
   });
