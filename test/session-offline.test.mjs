@@ -319,11 +319,11 @@ test('a picture dropped by one page is uploaded into media/ before the operation
   await t.test('a picture over the limit is refused at the drop, with the limit in the message', async () => {
     const big = join(server.root, 'big.png');
     writeFileSync(big, '');
-    truncateSync(big, 65 * 1024 * 1024);
+    truncateSync(big, 17 * 1024 * 1024);
     const before = await ann.evaluate(TEXT);
     await front(ann);
     await dropFiles(ann, [big]);
-    await ann.waitFor(`/^big\\.png is larger than 64 MB/.test(${C}.app.note?.text ?? '')`);
+    await ann.waitFor(`/^big\\.png is larger than 16 MB/.test(${C}.app.note?.text ?? '')`);
     assert.equal(await ann.evaluate(TEXT), before);
     assert.equal(await converge(server, [ann, ben]), before);
   });

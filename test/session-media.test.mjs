@@ -266,3 +266,17 @@ test('undo and redo of a picture that the edit command renamed', { timeout: 120_
   assert.deepEqual(media(server), ['plot-2.png', 'plot.png']);
   clean(ann);
 });
+
+test('a picture over 16 MB is refused on the host as well, and a video of the host up to 64 MB is not', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await tab(browser, sessionUrl(server.edit));
+  assert.equal(await ann.evaluate(`${C}.host`), true);
+  const refuse = (name, type, mb) => ann.evaluate(`${C}.shell.media.refuse(new File([new Uint8Array(${mb} * 1024 * 1024)], ${JSON.stringify(name)}, { type: ${JSON.stringify(type)} }))`);
+  assert.equal(await refuse('big.png', 'image/png', 17), 'big.png is larger than 16 MB, the largest file that can be sent to the others');
+  assert.equal(await refuse('big.png', 'image/png', 15), null);
+  assert.equal(await refuse('big.mp4', 'video/mp4', 17), null);
+  assert.equal(await refuse('big.mp4', 'video/mp4', 65), 'big.mp4 is larger than 64 MB, the largest file that can be sent to the others');
+  clean(ann);
+});
