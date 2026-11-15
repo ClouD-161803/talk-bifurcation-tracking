@@ -27,6 +27,10 @@ export type ClientEvents = {
   people: [];
   known: [];
   presence: [];
+  // the operations of an answer, before they are applied, e.g. for the log of presence.ts
+  ops: [AppliedOp[]];
+  // resolved() changed
+  resolved: [];
   // an apply changed the deck, with the elements that it changed
   applied: [Element[]];
   // connection, saving, retryAt, blocked, or warning changed
@@ -88,6 +92,12 @@ export class Client {
   hooks: Hooks = {};
 
   private sync: Sync | null = null;
+  // the text of the authority that this page received last, and its version, which the offsets of
+  // a presence state refer to
+  get base(): { text: string; v: Version } | null {
+    return this.sync && { text: this.sync.base, v: this.sync.version };
+  }
+
   // the version after the operations taken from the last answer, which the next poll asks after
   private since: Version = '';
   // counts the hellos after the first, so that a poll sent before one is not taken
@@ -142,7 +152,8 @@ export class Client {
     return () => void set.delete(fn as (...args: never[]) => void);
   }
 
-  private emit<K extends keyof ClientEvents>(event: K, ...args: ClientEvents[K]): void {
+  // also by a part for an event that it owns, e.g. resolved of presence.ts
+  emit<K extends keyof ClientEvents>(event: K, ...args: ClientEvents[K]): void {
     for (const fn of [...(this.listeners.get(event) ?? [])]) (fn as (...a: ClientEvents[K]) => void)(...args);
   }
 
@@ -170,7 +181,7 @@ export class Client {
     this.accept(answer);
     this.sync = new Sync(answer.client, text, v);
     if (answer.text !== undefined) this.fresh = { text: answer.text, v: answer.v };
-    else this.inbox.push(...answer.ops);
+    else this.receive(answer.ops);
     this.since = answer.v;
     this.setConnection('online');
     window.addEventListener('pagehide', () => {
@@ -468,7 +479,7 @@ export class Client {
           if (answer.text !== undefined) {
             this.fresh = { text: answer.text, v: answer.v };
             this.inbox = [];
-          } else if (!moved) this.inbox.push(...answer.ops);
+          } else if (!moved) this.receive(answer.ops);
           this.since = answer.v;
           break;
         }
@@ -520,9 +531,15 @@ export class Client {
       this.pump();
       return;
     }
-    if (answer.ops.length) this.inbox.push(...answer.ops);
+    if (answer.ops.length) this.receive(answer.ops);
     this.since = answer.v;
     void this.drive();
+  }
+
+  private receive(ops: AppliedOp[]): void {
+    if (!ops.length) return;
+    this.inbox.push(...ops);
+    this.emit('ops', ops);
   }
 
   // resolves at the next reconnect, i.e. after the next delay of RETRY or at Try now. every request
