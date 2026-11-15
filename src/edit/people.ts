@@ -107,9 +107,13 @@ export class People {
     const id = earlier ?? randomBytes(12).toString('base64url');
     const token = earlier ? (rawToken as string) : newId();
     if (!this.members.has(id)) {
+      // the page dropped for a new one is of the same kind, and a page of the host is dropped only
+      // for another page of the host, since person ids are public
       const pages = [...this.members.values()].filter((m) => m.person === person);
-      if (pages.length >= MAX_PAGES) this.members.delete(pages[0].client);
-      if (!this.hasPlace(host)) return { full: true };
+      const dropped = pages.length < MAX_PAGES ? undefined : (pages.find((m) => m.host === host) ?? (host ? pages[0] : undefined));
+      if (pages.length >= MAX_PAGES && !dropped) return { full: true };
+      if (!this.hasPlace(host, dropped)) return { full: true };
+      if (dropped) this.members.delete(dropped.client);
     }
     const now = Date.now();
     let record = this.records.get(person);
@@ -293,9 +297,10 @@ export class People {
     return member ?? null;
   }
 
-  private hasPlace(host: boolean): boolean {
-    if (this.members.size >= MAX_PEOPLE) return false;
-    return host || [...this.members.values()].filter((m) => !m.host).length < MAX_GUESTS;
+  // whether a page of the kind of host has a place, once the page leaving is dropped
+  private hasPlace(host: boolean, leaving?: Member): boolean {
+    if (this.members.size - (leaving ? 1 : 0) >= MAX_PEOPLE) return false;
+    return host || [...this.members.values()].filter((m) => !m.host && m !== leaving).length < MAX_GUESTS;
   }
 
   private changed(): void {
