@@ -18,10 +18,12 @@ dialog.paste-macros pre { margin: 0 0 12px; padding: 8px 10px; max-height: 40vh;
 dialog.paste-macros p.hint { margin: 0 0 12px; color: var(--ed-text); }
 `;
 
-// a macro as an entry of window.beesonMacros, its body a string of JavaScript in single quotes
+// a text as a string of JavaScript in single quotes
+const quoted = (t: string): string => `'${t.replace(/[\\']/g, (c) => `\\${c}`).replace(/[\n\r\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}'`;
+// a macro as an entry of window.beesonMacros
 const line = (m: OriginMacro): string => {
-  const body = `'${m.body.replace(/[\\']/g, (c) => `\\${c}`).replace(/[\n\r\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}'`;
-  return `${m.name}: ${m.args ? `[${body}, ${m.args}]` : body},`;
+  const body = quoted(m.body);
+  return `${m.name}: ${m.args ? `[${body}, ${m.args}${m.default === undefined ? '' : `, ${quoted(m.default)}`}]` : body},`;
 };
 
 // a macro off this deck: its line, its name, and whether this deck lacks it
@@ -79,12 +81,10 @@ function show(app: App, offs: Off[]): void {
   void dialog.open('copy');
 }
 
-// the third item of a macro with an optional argument is not read by deckMacros(), hence it is
-// neither compared nor written
 export function nameMacros(app: App, arrival: Arrival): void {
   const own = new Map(deckMacros().map((m) => [m.name, m]));
   const offs = arrival.origin.macros
-    .filter((m) => own.get(m.name)?.body !== m.body || own.get(m.name)?.args !== m.args)
+    .filter((m) => own.get(m.name)?.body !== m.body || own.get(m.name)?.args !== m.args || own.get(m.name)?.default !== m.default)
     .map((m) => ({ line: line(m), name: `\\${m.name}`, lacking: !own.has(m.name) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   if (!offs.length) return;

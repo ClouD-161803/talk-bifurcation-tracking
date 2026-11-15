@@ -9,7 +9,7 @@ import { carryFiles } from '../media/carry.ts';
 import { nameMacros } from './macros.ts';
 import { MARK } from './slide.ts';
 
-export type OriginMacro = { name: string; body: string; args: number };
+export type OriginMacro = { name: string; body: string; args: number; default?: string };
 export type Origin = { deck: string; version: string; macros: OriginMacro[] };
 
 const OPEN = '<!--beeson-origin ';
@@ -25,7 +25,7 @@ function usedMacros(text: string): OriginMacro[] {
     for (const [, name] of t.matchAll(/\\([a-zA-Z]+)/g)) {
       const m = all.get(name);
       if (!m || out.has(name)) continue;
-      out.set(name, { name, body: m.body, args: m.args });
+      out.set(name, { name, body: m.body, args: m.args, default: m.default });
       scan(m.body);
     }
   };
@@ -55,10 +55,10 @@ export function originOf(text: string): Origin | null {
     const o = JSON.parse(rest.slice(OPEN.length, end));
     if (!/^(https?|file):$/.test(new URL(o.deck).protocol)) return null;
     const macros = (Array.isArray(o.macros) ? o.macros : []).filter(
-      (m: OriginMacro | null) => typeof m?.name === 'string' && /^[a-zA-Z]+$/.test(m.name) && typeof m.body === 'string' && Number.isInteger(m.args) && m.args >= 0 && m.args <= 9,
+      (m: OriginMacro | null) => typeof m?.name === 'string' && /^[a-zA-Z]+$/.test(m.name) && typeof m.body === 'string' && Number.isInteger(m.args) && m.args >= 0 && m.args <= 9 && ['undefined', 'string'].includes(typeof m.default),
     );
     const version = typeof o.version === 'string' && /^[\w.+-]{0,40}$/.test(o.version) ? o.version : '';
-    return { deck: o.deck, version, macros: macros.map(({ name, body, args }: OriginMacro) => ({ name, body, args })) };
+    return { deck: o.deck, version, macros: macros.map(({ name, body, args, default: d }: OriginMacro) => ({ name, body, args, default: d })) };
   } catch {
     return null;
   }

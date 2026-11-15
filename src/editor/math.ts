@@ -189,13 +189,14 @@ function keepCode(host: Element, content: string): boolean {
 }
 
 // a macro of the deck, from theme/macros.js as MathJax was given it, with its number of arguments
-// and its replacement. deck is false for a command of TeX
-export type Macro = { name: string; args: number; body: string; deck: boolean };
+// and its replacement, and the default of its first argument where this argument is optional.
+// deck is false for a command of TeX
+export type Macro = { name: string; args: number; body: string; default?: string; deck: boolean };
 
 export function deckMacros(): Macro[] {
   const w = window as unknown as { MathJax?: { config?: { tex?: { macros?: unknown } } }; beesonMacros?: unknown };
-  const raw = (w.MathJax?.config?.tex?.macros ?? w.beesonMacros ?? {}) as Record<string, string | [string, number]>;
-  return Object.entries(raw).map(([name, v]) => (Array.isArray(v) ? { name, body: String(v[0]), args: Number(v[1]) || 0, deck: true } : { name, body: String(v), args: 0, deck: true }));
+  const raw = (w.MathJax?.config?.tex?.macros ?? w.beesonMacros ?? {}) as Record<string, string | [string, number, string?]>;
+  return Object.entries(raw).map(([name, v]) => (Array.isArray(v) ? { name, body: String(v[0]), args: Number(v[1]) || 0, ...(v.length > 2 && { default: String(v[2]) }), deck: true } : { name, body: String(v), args: 0, deck: true }));
 }
 
 // the commands of TeX that completions offers after the macros of the deck, with their number of
