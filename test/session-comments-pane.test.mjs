@@ -248,6 +248,19 @@ test('the item Comment of the context menu of the background of a slide anchors 
   clean(a);
 });
 
+test('a person who opens a draft of a comment stops following', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const ann = await a.evaluate(`${C}.person`);
+  await b.evaluate(`window.BeesonSession.follow().start(${JSON.stringify(ann)})`);
+  await b.waitFor(`window.BeesonSession.follow().target === ${JSON.stringify(ann)}`);
+  // the command on the slide shown, which leaves the selection as it is
+  await b.evaluate(`window.BeesonEditor.exec('insert.comment')`);
+  await b.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await sees(b, `window.BeesonSession.follow().target`, null);
+  clean(a);
+  clean(b);
+});
+
 test('the pane groups the threads by their slide, and two slides with one number in the status bar have a heading each', { timeout: 300_000 }, async (t) => {
   const server = await talkWith(t, `<section>
   <h2>One</h2>
