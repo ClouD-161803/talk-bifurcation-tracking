@@ -94,17 +94,18 @@ const canPick = (): boolean => !!picker() || ('webkitdirectory' in HTMLInputElem
 const folders = new Map<string, Folder>();
 let dialog: Dialog | null = null;
 // the dialog over the page while the files are read, hence an edit does not join the entry of the
-// history of the paste. it is drawn only DELAY ms after it is opened, so that a fast read does not
-// flash it. its Stop aborts the reads with stop, and is not taken before the dialog is drawn
+// history of the paste. it is drawn only DELAY ms after its first frame, so that a fast read does
+// not flash it. its Stop aborts the reads with stop, and is not taken before the dialog is drawn
 let busy: Dialog | null = null;
 let stop = new AbortController();
-let opened = 0;
+let opened = Infinity;
 const DELAY = 400;
 const BUSY = `dialog.beeson-edit-dialog.paste-busy[open], dialog.beeson-edit-dialog.paste-busy[open]::backdrop { animation: beeson-busy ${DELAY}ms step-end; }
 @keyframes beeson-busy { from { opacity: 0; } }`;
 function showBusy(): void {
-  opened = performance.now();
+  opened = Infinity;
   void busy?.open();
+  requestAnimationFrame((at) => (opened = at));
 }
 // the folder picked in the click on the button of the open dialog
 let picked: Promise<Folder | null> = Promise.resolve(null);
