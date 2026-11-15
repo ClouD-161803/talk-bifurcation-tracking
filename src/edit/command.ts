@@ -19,6 +19,8 @@ import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConf
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
 export const MEDIA_MAX = 64 * 1024 * 1024;
+// the largest upload of a page that does not run on the machine of the host
+export const GUEST_MEDIA_MAX = 16 * 1024 * 1024;
 // the types of IMAGE_EXT and VIDEO_EXT in src/editor/media/store.ts, and json
 const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'mp4', 'm4v', 'webm', 'mov', 'ogv', 'json']);
 // the time in ms within which the edit command of a lock must answer, shorter in the tests
@@ -227,6 +229,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const clean = cleanName(name);
     if (!clean) return error(415, 'the file must be an image, a video, or json');
     if (request.body.length > MEDIA_MAX) return error(413, 'the file is larger than 64 MB');
+    if (!request.direct && request.body.length > GUEST_MEDIA_MAX) return error(413, 'the file is larger than 16 MB, the limit of an upload through the relay');
     const dir = join(root, 'media');
     await mkdir(dir, { recursive: true });
     const real = await realpath(dir);
