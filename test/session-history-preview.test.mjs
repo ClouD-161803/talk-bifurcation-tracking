@@ -253,6 +253,25 @@ test('the preview draws the slide as the canvas does, without the switch of the 
   clean(ann);
 });
 
+test('the preview of a text set aside lists the slides on which it differs from the current deck, and opens on the first of them', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const aside = await ann.evaluate(`${C}.transport.post('aside', { token: ${C}.token, text: ${JSON.stringify(TALK.replace('<p>Second slide</p>', '<p>Second slide set aside</p>'))} })`);
+  await openPane(ann);
+  await tapOrClick(ann, `document.querySelector('${PANE} .row[data-id="aside:${aside.id}"]')`);
+  await ann.waitFor(`!!${FRAME}?.contentWindow?.Reveal?.isReady() && !!${FRAME}.contentDocument.querySelector('.theme-switch')`, 30_000);
+  assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('${BAR} button.slide')].map((b) => b.textContent)`), ['Slide 2']);
+  await ann.waitFor(`${CURRENT} === 'Two'`);
+  assert.equal(await ann.evaluate(`${FRAME}.contentDocument.querySelector('.theme-switch').getClientRects().length`), 0);
+  await ann.evaluate(`${FRAME}.contentWindow.Reveal.slide(0), true`);
+  await ann.waitFor(`${CURRENT} === 'One'`);
+  await press$(ann, BAR, 'Slide 2');
+  await ann.waitFor(`${CURRENT} === 'Two'`);
+  clean(ann);
+});
+
 test('a new list leaves the bar alone, the text of a version is read once per preview, and a hidden preview keeps nothing', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
