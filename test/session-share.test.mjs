@@ -277,6 +277,7 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
     await host.waitFor(`[...document.querySelectorAll('dialog[open] p')].some((p) => p.textContent === 'Guests can no longer edit. The deck stays open for you.')`);
     await press(host, `([...document.querySelectorAll('dialog[open]')].pop().querySelector('button.primary'))`);
     await host.waitFor(`!!document.getElementById('beeson-session-relay')`);
+    assert.equal(await host.evaluate('document.activeElement?.id'), 'beeson-session-relay', 'the focus after End session');
     await front(guest);
     await guest.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'Ann Smith ended the session')`);
     await until(async () => (await fetch(link)).status === 502, 'the link to answer 502');
@@ -356,4 +357,25 @@ test('on a phone of 390 px the controls of the session are in view with a hit ar
     clean(page);
   });
   clean(phone);
+});
+
+test('add regression test: an avatar keeps the keyboard focus when a person before it leaves', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const ann = await open(browser, url, { name: 'Ann Smith' });
+  const ben = await open(browser, url, { name: 'Ben Carter' });
+  const cleo = await open(browser, url, { name: 'Cleo Diaz' });
+  assert.deepEqual((await shown(ann, 3)).map((a) => a.text), ['BC', 'CD', 'AS']);
+  const focused = `document.activeElement?.getAttribute('aria-label')`;
+  await ann.evaluate(`document.querySelector('.beeson-session-people button[aria-label="Cleo Diaz"]').focus()`);
+  await ben.close();
+  assert.deepEqual((await shown(ann, 2)).map((a) => a.text), ['CD', 'AS']);
+  assert.equal(await ann.evaluate(focused), 'Cleo Diaz', 'the focus after Ben Carter left');
+  await ann.evaluate(`document.querySelector('.beeson-session-people .me').focus()`);
+  await cleo.close();
+  assert.deepEqual((await shown(ann, 1)).map((a) => a.text), ['AS']);
+  assert.equal(await ann.evaluate(focused), 'Ann Smith, you', 'the focus after Cleo Diaz left');
+  clean(ann);
 });
