@@ -871,3 +871,20 @@ test('add regression test: a media upload needs the token of a page that is pres
   assert.equal(existsSync(join(talk, 'media')) && readdirSync(join(talk, 'media')).length, false, 'a refused upload is written');
   assert.deepEqual((await put(`?token=${ana.token}`)).json(), { path: 'media/plot.png' });
 });
+
+test('add regression test: a media upload takes every type of picture and video that the editor takes, and serves it with its type', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const { token } = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  for (const [ext, type] of [['bmp', 'image/bmp'], ['m4v', 'video/mp4'], ['mov', 'video/quicktime'], ['ogv', 'video/ogg']]) {
+    const answer = await raw(edit.port, 'PUT', api(`media/clip.${ext}?token=${token}`), { body: 'bytes' });
+    assert.equal(answer.status, 200, `${ext}: ${answer.text}`);
+    assert.deepEqual(answer.json(), { path: `media/clip.${ext}` });
+    const served = await raw(edit.port, 'GET', `${edit.base}media/clip.${ext}`);
+    assert.equal(served.status, 200, ext);
+    assert.equal(served.headers['content-type'], type, ext);
+  }
+});
