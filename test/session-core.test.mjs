@@ -8,6 +8,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { Authority, Replica, apply, changes, checksum, conflict, diff, invert, mergePatches, shift, shiftOffset, tokenize, valid } from '../theme/edit.mjs';
 
 const deck = readFileSync(new URL('../test-deck.html', import.meta.url), 'utf8').replace(/^﻿/, '');
@@ -422,6 +424,27 @@ test('replicas converge on a short text that changes() gives up on', () => {
   const patches = diff(text, other);
   assert.equal(patches.length, 1);
   assert.equal(apply(text, patches), other);
+});
+
+test('the log of the authority does not keep a copy of the text per operation', () => {
+  // a slice of 13 or more characters keeps the whole string that it was cut from alive in V8
+  setFlagsFromString('--expose-gc');
+  const gc = globalThis.gc ?? runInNewContext('gc');
+  const a = new Authority('abcdefghij\n'.repeat(95_000), { epoch: 'E' });
+  gc();
+  const before = process.memoryUsage().heapUsed;
+  for (let i = 0; i < 1000; i++) {
+    const at = (i * 7919) % (a.text.length - 20);
+    if (i % 2) {
+      // a change of the file, whose patches diff() cuts from a whole new text
+      const text = `${a.text.slice(0, at)}${'y'.repeat(20)}${a.text.slice(at + 20)}`;
+      a.enter([{ start: at, end: at + 20, text: text.slice(at, at + 20) }], 'file');
+    } else a.submit({ client: 'c', seq: i + 1, base: a.version, patches: [{ start: at, end: at + 20, text: 'x'.repeat(20) }] }, 'C');
+  }
+  assert.equal(a.n, 1000);
+  gc();
+  const grown = (process.memoryUsage().heapUsed - before) / 2 ** 20;
+  assert.ok(grown < 8, `1000 operations on a text of 1 MB grew the heap by ${grown.toFixed(1)} MB`);
 });
 
 test('two patches conflict when they share a character or one is an insertion strictly inside the other', () => {
