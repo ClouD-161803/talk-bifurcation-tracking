@@ -13,7 +13,7 @@ import type { HelloRequest, NameRequest, OpRequest } from '../session/protocol.t
 import { Disk, readText } from './disk.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { isClientId, MAX_STATE, People } from './people.ts';
-import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig } from './relay.ts';
+import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
 
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
@@ -102,7 +102,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
 
   async function share(request: Request): Promise<Response> {
     if (!request.direct) return error(403, 'only the host can share a session');
-    if (request.method === 'GET') return json(200, { link: relay?.link ?? null });
+    if (request.method === 'GET') return json(200, { link: relay?.active ? relay.link : null });
     if (request.method === 'DELETE') {
       return serial(async () => {
         // the guests are told before the relay that carries the answers is left
@@ -132,7 +132,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       try {
         await connect(address, secret);
       } catch (e) {
-        return json(502, { link: null, error: (e as Error).message });
+        return json(e instanceof Taken ? 409 : 502, { link: null, error: (e as Error).message });
       }
       if (body.relay !== undefined || body.secret !== undefined) saveConfig({ relay: address, secret });
       return json(200, { link: relay!.link });
@@ -355,7 +355,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     key,
     root,
     authority,
-    link: () => relay?.link ?? null,
+    link: () => (relay?.active ? relay.link : null),
     close: () =>
       (closing ??= (async () => {
         closed = true;

@@ -13,7 +13,9 @@
 //   POST /host/<key>               registers the edit command for key, with
 //                                  Authorization: Bearer <secret>. key is 22 to 128 characters of
 //                                  base64url. answers { token }, which every later request of the
-//                                  host carries in x-relay-token beside the secret
+//                                  host carries in x-relay-token beside the secret. 409 while
+//                                  another edit command pulls for key, unless the request carries
+//                                  the token of the session
 //   DELETE /host/<key>             ends the session of key
 //   POST /host/<key>/pull          a long poll of at most 25 s, several at once, answered with
 //                                  [{ id, method, path, query, headers, body }], where path is the
@@ -142,6 +144,9 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (action === undefined && req.method === 'POST') {
       if (!authorized(req, null)) return answer(res, 401, 'wrong secret');
       if (!session && sessions.size >= limits.sessions) return answer(res, 503, 'the relay holds too many sessions');
+      // a session whose edit command has a pull waiting is kept by it, e.g. against a copy of its
+      // talk folder. the pulls of a command that died end with its connections, hence it can start again
+      if (session && session.pulls.length > 0 && !same(req.headers['x-relay-token'], session.token)) return answer(res, 409, 'this session is already shared by another edit command');
       const token = randomBytes(16).toString('base64url');
       if (session) session.token = token;
       else sessions.set(key, { token, queue: [], pending: new Map(), pulls: [], lastPull: Date.now() });

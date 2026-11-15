@@ -58,6 +58,12 @@ const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 // header values are latin-1, hence the JSON of the headers is kept in ASCII
 const asciiJson = (value: unknown) => JSON.stringify(value).replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
+export class Taken extends Error {
+  constructor() {
+    super('this session is already shared by another edit command, e.g. one started in a copy of this talk folder');
+  }
+}
+
 type Pulled = { id: string; method: string; path: string; query: string; headers: Record<string, string>; body: string };
 
 export class RelayLink {
@@ -83,6 +89,11 @@ export class RelayLink {
     this.link = `${relay}/${key}/index.html?edit&session`;
   }
 
+  // false once stopped, or once another edit command took the key
+  get active(): boolean {
+    return this.running;
+  }
+
   // registers the session and starts the pulls. rejects when the relay refuses the registration
   async start(): Promise<void> {
     await this.register();
@@ -105,7 +116,11 @@ export class RelayLink {
   private register(): Promise<void> {
     this.registering ??= (async () => {
       try {
-        const response = await fetch(`${this.relay}/host/${this.key}`, { method: 'POST', headers: { Authorization: `Bearer ${this.secret}` }, signal: AbortSignal.timeout(10_000) });
+        const response = await fetch(`${this.relay}/host/${this.key}`, { method: 'POST', headers: this.auth(), signal: AbortSignal.timeout(10_000) });
+        if (response.status === 409) {
+          await response.body?.cancel();
+          throw new Taken();
+        }
         if (!response.ok) throw new Error(`the relay refused the session with ${response.status} ${(await response.text()).slice(0, 200)}`);
         const { token } = (await response.json()) as { token?: unknown };
         if (typeof token !== 'string') throw new Error('the relay did not give a token');
@@ -144,6 +159,11 @@ export class RelayLink {
         backoff = 500;
       } catch (e) {
         if (!this.running) break;
+        if (e instanceof Taken) {
+          this.running = false;
+          this.log(`the session is no longer shared: ${e.message}`);
+          break;
+        }
         this.log(`the relay is not reached, trying again: ${(e as Error).message}`);
         await sleep(backoff);
         backoff = Math.min(backoff * 2, 10_000);
