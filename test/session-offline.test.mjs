@@ -393,3 +393,43 @@ test('an edit typed after a load that takes over a copy, before hello is answere
   assert.equal(await converge(server, [a]), TALK.replace('<p>First slide</p>', '<p>First slide TOKH1</p>').replace('<p>Second slide</p>', '<p>Second slide TOKH2</p>'));
   clean(a);
 });
+
+test('the copies of two closed tabs that changed the same text are both sent, the second after the first with the dialog of the conflicts', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url);
+  const b = await tab(browser, url);
+  const probe = await probeOf(browser, server);
+  await converge(server, [a, b]);
+  await goOffline(a);
+  await goOffline(b);
+  await show(a, 'One');
+  await select(a, el(0, 'p'), 0, 5);
+  await type(a, 'TOKTA');
+  await edit(a, 1, 'li', ' by A');
+  await show(b, 'One');
+  await select(b, el(0, 'p'), 0, 5);
+  await type(b, 'TOKTB');
+  await edit(b, 1, 'p', ' by B');
+  const idA = await copied(a, '<li>Alpha by A</li>');
+  const idB = await copied(b, '<p>Second slide by B</p>');
+  await a.close();
+  await released(probe, idA);
+  await b.close();
+  await released(probe, idB);
+
+  const c = await tab(browser, url);
+  const first = await until(() => (server.read().includes('<p>TOKTA slide</p>') ? 'TOKTA' : server.read().includes('<p>TOKTB slide</p>') ? 'TOKTB' : null), 'the copy of one tab to reach the file');
+  const second = first === 'TOKTA' ? 'TOKTB' : 'TOKTA';
+  await front(c);
+  await c.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`);
+  assert.deepEqual((await c.evaluate(CONFLICTS)).items, [`Slide 1: “${second} slide”`]);
+  await press(c, 'Keep mine');
+  const text = await converge(server, [c]);
+  assert.equal(text, TALK.replace('<p>First slide</p>', `<p>${second} slide</p>`).replace('<li>Alpha</li>', '<li>Alpha by A</li>').replace('<p>Second slide</p>', '<p>Second slide by B</p>'));
+  await c.waitFor(`${STATE} === 'Sent your changes on slides 1 and 2 from before the page was closed'`);
+  await c.waitFor(`(${ROWS}).then((r) => r.length === 0)`);
+  clean(c);
+});
