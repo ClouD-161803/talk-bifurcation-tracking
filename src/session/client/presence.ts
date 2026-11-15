@@ -90,6 +90,17 @@ function slide(a: string, p: Patch): [number, number] {
   return [l, r];
 }
 
+const NAME = /[\w-]/;
+
+// the offset of the < of a tag whose name p changes, e.g. of <p> to <h3>, which replaces the element
+// there, or -1. a change of the attributes keeps the element
+function renamed(a: string, p: Patch): number {
+  if (!NAME.test(p.text[0] ?? '') && !(p.end > p.start && NAME.test(a[p.start]))) return -1;
+  let i = p.start;
+  while (i > 0 && p.start - i < 64 && NAME.test(a[i - 1])) i--;
+  return a[i - 1] === '<' ? i - 1 : -1;
+}
+
 // patches of the text a, sorted, as they move offsets of a
 export function carried(a: string, patches: readonly Patch[]): Carried[] {
   const out: Carried[] = [];
@@ -97,7 +108,8 @@ export function carried(a: string, patches: readonly Patch[]): Carried[] {
     const p = trim(a, raw);
     if (p.start === p.end && !p.text) continue;
     const [l, r] = slide(a, p);
-    out.push({ lo: p.start - l, hi: p.end + r, delta: p.text.length - (p.end - p.start) });
+    const tag = renamed(a, p);
+    out.push({ lo: tag < 0 ? p.start - l : Math.min(tag, p.start - l), hi: p.end + r, delta: p.text.length - (p.end - p.start) });
   }
   return out;
 }
