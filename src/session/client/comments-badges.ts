@@ -1,6 +1,7 @@
 // the badges of the comments on the canvas and the counts on the rows of the navigator. a badge holds
-// the count of the open threads of an element, 4 px outside its upper right corner, or of a slide,
-// inside its upper right corner, and it is filled violet while one of them is unread. the boxes of
+// the count of the open threads of an element, 4 px outside its upper right corner, or 18 px while
+// the element is selected, so that the grips of its frame stay free, or of a slide, inside its
+// upper right corner, and it is filled violet while one of them is unread. the boxes of
 // the elements are read in one requestAnimationFrame after a change of the deck, of the slide, or
 // of the threads, and they are kept in px of the slide. a scroll or a zoom then moves the badges
 // by the origin and the scale of the stage alone, without reading the box of any element
@@ -24,7 +25,7 @@ html.beeson-history .beeson-comment-badges, html.beeson-history .beeson-edit-nav
 const KEY = 'beeson-comment-badges';
 const H = 20;
 
-type Box = { target: Element; slide: boolean; x: number; y: number; w: number; badge: HTMLButtonElement };
+type Box = { target: Element; slide: boolean; selected: boolean; x: number; y: number; w: number; badge: HTMLButtonElement };
 
 export class Badges {
   readonly layer = make('div', 'beeson-badges beeson-comment-badges');
@@ -112,7 +113,8 @@ export class Badges {
       badge.title = label;
       badge.classList.toggle('unread', g.unread);
       badge.classList.toggle('slide', g.slide);
-      boxes.push({ target, slide: g.slide, x: (r.right - origin.x) / scale, y: (r.top - origin.y) / scale, w: 20 + 7 * (String(g.n).length - 1), badge });
+      const selected = app.selection.kind === 'elements' && app.selection.has(target);
+      boxes.push({ target, slide: g.slide, selected, x: (r.right - origin.x) / scale, y: (r.top - origin.y) / scale, w: 20 + 7 * (String(g.n).length - 1), badge });
     }
     this.boxes = boxes;
     this.layer.replaceChildren(...boxes.map((b) => b.badge));
@@ -137,7 +139,7 @@ export class Badges {
     const stage = this.comments.client.app.stage;
     const { origin: o, scale: s, viewport: v } = stage;
     for (const b of this.boxes) {
-      let left = b.slide ? o.x + b.x * s - b.w - 6 : o.x + b.x * s + 4;
+      let left = b.slide ? o.x + b.x * s - b.w - 6 : o.x + b.x * s + (b.selected ? 18 : 4);
       let top = b.slide ? o.y + b.y * s + 6 : o.y + b.y * s - 4 - H;
       left = Math.max(v.left + 2, Math.min(left, v.right - b.w - 2));
       top = Math.max(v.top + 2, Math.min(top, v.bottom - H - 2));
