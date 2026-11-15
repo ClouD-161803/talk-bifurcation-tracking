@@ -13,7 +13,14 @@ import { renameRetried, renameRetriedSync } from './disk.ts';
 const HOLD = 25_000;
 const GAP = 100;
 const GONE = 40_000;
+// a page that has not polled this long after its hello is dropped
+const FIRST_POLL = 5000;
 const MAX_PEOPLE = 64;
+// the pages that come through the relay, hence MAX_PEOPLE - MAX_GUESTS places are kept for the pages
+// of this computer
+const MAX_GUESTS = 48;
+// the pages of one person, beyond which the page that joined first is dropped
+const MAX_PAGES = 8;
 const MAX_CLIENTS = 1024;
 const MAX_KNOWN = 1024;
 const SAVE_GAP = 1000;
@@ -22,7 +29,7 @@ export const MAX_STATE = 8 * 1024;
 // a person of people.json, with the times of the first and the last join in ms
 export type PersonRecord = KnownPerson & { first: number; last: number };
 
-type Member = Person & { state: unknown; lastSeen: number; seen: number; knownSeen: number; lastAnswer: number; polls: number };
+type Member = Person & { state: unknown; lastSeen: number; joined: number; polled: boolean; seen: number; knownSeen: number; lastAnswer: number; polls: number };
 
 type Poll = {
   client: string;
@@ -80,7 +87,7 @@ export class People {
     this.log = log;
     if (file) for (const r of readPeople(file)) this.records.set(r.person, r);
     authority.observe(() => this.wake());
-    this.sweeper = setInterval(() => this.sweep(), 5000);
+    this.sweeper = setInterval(() => this.sweep(), 1000);
     this.sweeper.unref?.();
   }
 
@@ -99,7 +106,11 @@ export class People {
     const earlier = isToken(rawToken) ? this.tokens.get(rawToken) : undefined;
     const id = earlier ?? randomBytes(12).toString('base64url');
     const token = earlier ? (rawToken as string) : newId();
-    if (!this.members.has(id) && this.members.size >= MAX_PEOPLE) return { full: true };
+    if (!this.members.has(id)) {
+      const pages = [...this.members.values()].filter((m) => m.person === person);
+      if (pages.length >= MAX_PAGES) this.members.delete(pages[0].client);
+      if (!this.hasPlace(host)) return { full: true };
+    }
     const now = Date.now();
     let record = this.records.get(person);
     if (!record) {
@@ -127,9 +138,9 @@ export class People {
       this.tokens.delete(old);
     }
     let member = this.members.get(id);
-    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, seen: -1, knownSeen: this.knownRev };
+    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev };
     if (member) Object.assign(member, fields);
-    else this.members.set(id, (member = { client: id, ...fields, state: null, lastAnswer: 0, polls: 0 }));
+    else this.members.set(id, (member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 }));
     this.renamed(person);
     this.changed();
     return { member, token };
@@ -194,6 +205,7 @@ export class People {
       const poll: Poll = { client, since, done, hold: setTimeout(() => this.answer(poll), HOLD), gap: null };
       this.polls.add(poll);
       member.polls++;
+      member.polled = true;
       if (this.ended || this.hasNews(poll)) this.soon(poll);
     });
   }
@@ -261,14 +273,21 @@ export class People {
     let member = this.members.get(client);
     const known = this.clients.get(client);
     const record = known && this.records.get(known.person);
-    if (!member && known && record && this.members.size < MAX_PEOPLE) {
+    const pages = known ? [...this.members.values()].filter((m) => m.person === known.person).length : 0;
+    if (!member && known && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
       const { person, name, color } = record;
-      member = { client, person, name, color, host: known.host, state: null, lastSeen: Date.now(), seen: -1, knownSeen: -1, lastAnswer: 0, polls: 0 };
+      const now = Date.now();
+      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, lastAnswer: 0, polls: 0 };
       this.members.set(client, member);
       this.changed();
     }
     if (member) member.lastSeen = Date.now();
     return member ?? null;
+  }
+
+  private hasPlace(host: boolean): boolean {
+    if (this.members.size >= MAX_PEOPLE) return false;
+    return host || [...this.members.values()].filter((m) => !m.host).length < MAX_GUESTS;
   }
 
   private changed(): void {
@@ -324,7 +343,7 @@ export class People {
     const now = Date.now();
     let gone = false;
     for (const [client, member] of this.members) {
-      if (member.polls === 0 && now - member.lastSeen > GONE) {
+      if (member.polls === 0 && (now - member.lastSeen > GONE || (!member.polled && now - member.joined > FIRST_POLL))) {
         this.members.delete(client);
         gone = true;
       }
