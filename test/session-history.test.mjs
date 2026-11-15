@@ -497,7 +497,7 @@ test('the pane of a page offline reads the versions once the page is online agai
   clean(ann, [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/(events|history)\?/]);
 });
 
-test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 px', { timeout: 300_000 }, async (t) => {
+test('on a phone of 390 px the slide of the canvas is above the sheet, and the pane, the bar, and every button take a tap of 32 px', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
@@ -510,6 +510,15 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
   await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
   await ann.waitFor(SHOWN);
+  // the slide is fitted to the room between the toolbar and the sheet
+  const room = `(() => {
+    const slide = document.querySelector('.reveal:not(.beeson-peek)').getBoundingClientRect();
+    const canvas = document.querySelector('.beeson-edit-canvas').getBoundingClientRect();
+    const sheet = document.querySelector('${PANE}').getBoundingClientRect();
+    return { below: slide.top >= canvas.top - 0.5, above: slide.bottom <= sheet.top + 0.5, shown: slide.height >= 100 };
+  })()`;
+  await ann.waitFor(`Object.values(${room}).every(Boolean)`).catch(() => {});
+  assert.deepEqual(await ann.evaluate(room), { below: true, above: true, shown: true });
   await press$(ann, PANE, 'Name this version');
   await nameIt(ann, 'Phone');
   await ann.waitFor(`${LIST}[1]?.title === 'Phone'`);
