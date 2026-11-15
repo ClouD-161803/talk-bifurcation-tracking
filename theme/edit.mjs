@@ -1766,6 +1766,9 @@ var History = class {
     if (!loaded) {
       this.base = { time: this.now(), text };
       this.lastText = text;
+      const start2 = this.version([], [], [], text);
+      start2.start = true;
+      this.versions.push(start2);
       this.writeAll();
     } else {
       this.found = { before: this.lastText, patches: copied(diff2(this.lastText, text)) };
@@ -2098,6 +2101,7 @@ var History = class {
     const removed = r.removed;
     if (removed && numbers(removed.slides) && Number.isInteger(removed.elements)) v.removed = { slides: removed.slides, elements: removed.elements };
     if (isVersionId(r.restored)) v.restored = r.restored;
+    if (r.start === true) v.start = true;
     return { kind: "version", v };
   }
   readAsides() {
@@ -2119,6 +2123,7 @@ function info(v) {
   if (v.name) out.name = v.name;
   if (v.removed) out.removed = v.removed;
   if (v.restored) out.restored = v.restored;
+  if (v.start) out.start = true;
   return out;
 }
 

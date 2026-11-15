@@ -52,7 +52,7 @@ test('a version is closed after a quiet time, and at the latest after the longes
     const last = performance.now();
     replace(authority, 'Two', 'Deux', ANN);
     assert.equal(closedAt, null);
-    await until(() => history.list().versions.length === 1, 'the version to be closed');
+    await until(() => history.list().versions.length === 2, 'the version to be closed');
     assert.ok(closedAt - last >= 2_000, `closed ${closedAt - last} ms after the last operation`);
     assert.equal(history.list().versions[0].slides.join(), '1,2');
     history.stopSync();
@@ -74,7 +74,7 @@ test('a version is closed after a quiet time, and at the latest after the longes
     assert.ok(closedAt - last < 5_000, 'the version was closed by the quiet time');
     replace(authority, '</body>', '<i>after</i></body>', ANN);
     history.stopSync();
-    assert.equal(history.list().versions.length, 2, 'the operation after the close begins the next version');
+    assert.equal(history.list().versions.length, 3, 'the operation after the close begins the next version');
   });
 });
 
@@ -96,7 +96,8 @@ test('the text of every version is rebuilt from the file after a restart', { tim
   const again = open(dir, authority.text);
   assert.deepEqual(again.logged, []);
   const listed = again.history.list();
-  assert.deepEqual(listed.versions.map((v) => v.id), [...texts.keys()].reverse());
+  assert.deepEqual(listed.versions.slice(0, -1).map((v) => v.id), [...texts.keys()].reverse());
+  assert.equal(again.history.textOf(listed.versions.at(-1).id), DECK);
   assert.equal(listed.versions.find((v) => v.name)?.id, [...texts.keys()][10]);
   for (const [id, text] of texts) assert.equal(again.history.textOf(id), text, `the text of version ${id}`);
   assert.deepEqual(again.history.found.patches, []);
@@ -114,13 +115,14 @@ test('a last line cut by a crash is left out, and the file is appended to whole 
   const whole = readFileSync(file, 'utf8');
   appendFileSync(file, '{"kind":"version","id":"cut","time":1,"authors":["Ann"],"patches":[{"sta');
   const again = open(dir, t1);
-  assert.deepEqual(again.history.list().versions.map((v) => v.id), [v1.id]);
+  const start = history.list().versions.at(-1).id;
+  assert.deepEqual(again.history.list().versions.map((v) => v.id), [v1.id, start]);
   assert.equal(readFileSync(file, 'utf8'), whole);
   replace(again.authority, 'Two', 'Deux', BO);
   const v2 = again.history.close();
   again.history.stopSync();
   const third = open(dir, again.authority.text);
-  assert.deepEqual(third.history.list().versions.map((v) => v.id), [v2.id, v1.id]);
+  assert.deepEqual(third.history.list().versions.map((v) => v.id), [v2.id, v1.id, start]);
   assert.equal(third.history.textOf(v1.id), t1);
   assert.equal(third.history.textOf(v2.id), again.authority.text);
 });
@@ -140,7 +142,7 @@ test('a file that cannot be read is moved aside, and a new history begins', { ti
       const aside = readdirSync(dir).filter((n) => n.startsWith('history-unreadable-'));
       assert.equal(aside.length, 1);
       assert.equal(readFileSync(join(dir, aside[0]), 'utf8'), content);
-      assert.deepEqual(history.list().versions, []);
+      assert.deepEqual(history.list().versions.map((v) => [v.start, history.textOf(v.id)]), [[true, DECK]]);
       assert.equal(history.found, null);
       assert.deepEqual(JSON.parse(readFileSync(join(dir, 'history.jsonl'), 'utf8').split('\n')[0]).text, DECK);
     });
@@ -308,7 +310,7 @@ test('the file is written anew past its size limit, without the old versions, an
   const file = join(dir, 'history.jsonl');
   const size = statSync(file).size;
   const again = open(dir, authority.text, { maxBytes: size + 100, now: () => clock });
-  assert.equal(again.history.list().versions.length, 9);
+  assert.equal(again.history.list().versions.length, 10);
   // one more version passes the limit
   replace(again.authority, 'First slide', 'First slide, later', BO);
   const last = again.history.close();
@@ -423,7 +425,7 @@ test('a restore is a new version on top, which every page gets as an operation o
   const ann = await s.hello('Ann');
   const bo = await s.hello('Bo');
   assert.equal((await s.op(ann, 1, 'One', 'Uno')).ok, true);
-  const v1 = await s.closed(ann, 1);
+  const v1 = await s.closed(ann, 2);
   const t1 = await s.current();
   const second = await s.op(ann, 2, 'Two', 'Deux');
   assert.equal(second.ok, true);
@@ -432,7 +434,7 @@ test('a restore is a new version on top, which every page gets as an operation o
   assert.equal(typeof restored.id, 'string');
   assert.notEqual(restored.v, second.v);
   const versions = (await s.list(bo)).versions;
-  assert.equal(versions.length, 3);
+  assert.equal(versions.length, 4);
   assert.equal(versions[2].id, v1.id);
   assert.equal(versions[0].id, restored.id);
   assert.equal(versions[0].restored, v1.id);
@@ -462,7 +464,7 @@ test('an operation in flight during a restore is applied on top, unless it confl
   const ann = await s.hello('Ann');
   const bo = await s.hello('Bo');
   assert.equal((await s.op(ann, 1, 'One', 'Uno')).ok, true);
-  const v1 = await s.closed(ann, 1);
+  const v1 = await s.closed(ann, 2);
   const t1 = await s.current();
   const changed = await s.op(ann, 2, 'Uno', 'Eins');
   // two operations of Bo of the version before the restore, sent after it
@@ -474,7 +476,7 @@ test('an operation in flight during a restore is applied on top, unless it confl
   const refused = (await post(s.edit.port, s.api('op'), { token: bo.token, seq: 2, base: changed.v, patches: [{ start: held, end: held + 4, text: 'Een' }] })).json();
   assert.deepEqual([refused.ok, refused.reason], [false, 'conflict']);
   assert.equal(await s.current(), t1.replace('Second slide', 'Zweite slide'));
-  await s.closed(ann, 4);
+  await s.closed(ann, 5);
   const [latest, restore] = (await s.list(ann)).versions;
   assert.equal(restore.restored, v1.id);
   assert.deepEqual(latest.authors, [bo.person]);
@@ -524,8 +526,8 @@ test('a change of index.html while the edit command was not running becomes a ve
   t.after(() => stopEdit(second));
   const bo = (await post(second.port, api(second, 'hello'), { name: 'Bo' })).json();
   const { versions } = (await raw(second.port, 'GET', `${api(second, 'history')}?token=${bo.token}`)).json();
-  assert.deepEqual(versions.map((v) => v.authors), [['file'], [ann.person]]);
-  assert.deepEqual(versions.map((v) => v.slides), [[2], [1]]);
+  assert.deepEqual(versions.map((v) => v.authors), [['file'], [ann.person], []]);
+  assert.deepEqual(versions.map((v) => v.slides), [[2], [1], []]);
   const detail = (await raw(second.port, 'GET', `${api(second, `history/${versions[0].id}`)}?token=${bo.token}`)).json();
   assert.ok(detail.marks.every((m) => m.author === 'file'));
   assert.equal((await raw(second.port, 'GET', `${second.base}index.html?version=${versions[1].id}`)).text, written);
@@ -549,7 +551,7 @@ test('200 versions of a deck of 400 kB keep the changes of each version, not a c
   gc();
   gc();
   const growth = (process.memoryUsage().heapUsed - before) / 2 ** 20;
-  assert.equal(history.list().versions.length, 200);
+  assert.equal(history.list().versions.length, 201);
   // a copy of the deck per version would be 80 MB
   assert.ok(growth < 16, `the heap grew by ${growth.toFixed(1)} MB`);
   history.stopSync();
@@ -570,7 +572,7 @@ test('an operation after a sleep of the computer, or after the wall clock went b
     c.clock += 10;
     replace(authority, 'Two', 'Deux', BO);
     history.close();
-    const versions = history.list().versions.reverse();
+    const versions = history.list().versions.reverse().slice(1);
     assert.deepEqual(versions.map((v) => v.authors), [[ANN], [BO]]);
     assert.deepEqual(versions.map((v) => v.slides), [[1], [2]]);
     assert.equal(history.textOf(versions[0].id), afterAnn);
@@ -584,7 +586,7 @@ test('an operation after a sleep of the computer, or after the wall clock went b
     c.clock += 60_000;
     replace(authority, 'Two', 'Deux', BO);
     history.close();
-    assert.deepEqual(history.list().versions.reverse().map((v) => v.authors), [[ANN], [BO]]);
+    assert.deepEqual(history.list().versions.reverse().map((v) => v.authors), [[], [ANN], [BO]]);
     history.stopSync();
   });
 
@@ -598,8 +600,8 @@ test('an operation after a sleep of the computer, or after the wall clock went b
     }
     history.close();
     const versions = history.list().versions.reverse();
-    assert.equal(versions.length, 2);
-    assert.ok(history.textOf(versions[0].id).includes('<i>9</i></body>'));
+    assert.equal(versions.length, 3);
+    assert.ok(history.textOf(versions[1].id).includes('<i>9</i></body>'));
     history.stopSync();
   });
 });
@@ -671,7 +673,7 @@ test('names given again and again to one version do not grow history.jsonl witho
   const names = readFileSync(file, 'utf8').split('\n').filter((line) => line.includes('"kind":"name"'));
   assert.ok(names.length <= 1002, `${names.length} lines of a name`);
   const again = open(dir, authority.text);
-  assert.deepEqual(again.history.list().versions.map((x) => [x.id, x.name]), [[v.id, 'a'.repeat(79)]]);
+  assert.deepEqual(again.history.list().versions.map((x) => [x.id, x.name]), [[v.id, 'a'.repeat(79)], [history.list().versions[1].id, undefined]]);
 });
 
 test('the text of every version is right after the file is written anew with texts kept in memory', { timeout: 60_000 }, (t) => {
@@ -732,7 +734,7 @@ test('an unreadable history.jsonl that another program holds open is copied asid
     replace(authority, 'One', 'Uno', ANN);
     history.close();
     history.stopSync();
-    assert.equal(open(dir, authority.text).history.list().versions.length, 1);
+    assert.equal(open(dir, authority.text).history.list().versions.length, 2);
   });
 
   await t.test('the file kept as it is when the copy fails too', () => {
@@ -747,7 +749,7 @@ test('an unreadable history.jsonl that another program holds open is copied asid
     history.stopSync();
     assert.equal(readFileSync(join(dir, 'history.jsonl'), 'utf8'), content);
     assert.ok(logged.some((m) => /not written/.test(m)), logged.join('\n'));
-    assert.equal(history.list().versions.length, 1, 'the history of this run is kept in memory');
+    assert.equal(history.list().versions.length, 2, 'the history of this run is kept in memory');
   });
 });
 
@@ -756,9 +758,9 @@ test('a page that was dropped while two restores were made is told the later one
   const ann = await s.hello('Ann');
   const bo = await s.hello('Bo');
   assert.equal((await s.op(ann, 1, 'One', 'Uno')).ok, true);
-  const v1 = await s.closed(ann, 1);
+  const v1 = await s.closed(ann, 2);
   const second = await s.op(ann, 2, 'Two', 'Deux');
-  const v2 = await s.closed(ann, 2);
+  const v2 = await s.closed(ann, 3);
   // a page that does not poll after its hello is dropped, as one that was away for too long
   const dropped = (page) => until(async () => !(await s.events(ann, second.v)).presence.some((p) => p.client === page.client), `${page.client} to be dropped`, 60_000);
   await dropped(bo);

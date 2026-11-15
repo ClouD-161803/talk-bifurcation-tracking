@@ -4,9 +4,10 @@
 // version before, at once when a person names the current state or restores a version, and at a
 // stop. the versions are kept in .session/history.jsonl, appended only: a first line
 // { kind: "base", time, text }, then a line { kind: "version", id, time, authors, patches, marks,
-// slides, removed?, restored? } per version, whose patches turn the text of the version before
-// into its own, and a line { kind: "name", id, name } per name given or taken off. the texts that
-// a person set aside at a conflict are kept in .session/aside/, one file each
+// slides, removed?, restored?, start? } per version, whose patches turn the text of the version
+// before into its own, and a line { kind: "name", id, name } per name given or taken off. a new
+// history begins with a version of the base marked start. the texts that a person set aside at a
+// conflict are kept in .session/aside/, one file each
 
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
@@ -314,6 +315,10 @@ export class History {
     if (!loaded) {
       this.base = { time: this.now(), text };
       this.lastText = text;
+      // the deck as it read at the start is the first version, so that it can be restored
+      const start = this.version([], [], [], text);
+      start.start = true;
+      this.versions.push(start);
       this.writeAll();
     } else {
       this.found = { before: this.lastText, patches: copied(diff(this.lastText, text)) };
@@ -672,6 +677,7 @@ export class History {
     const removed = r.removed as Version['removed'];
     if (removed && numbers(removed.slides) && Number.isInteger(removed.elements)) v.removed = { slides: removed.slides, elements: removed.elements };
     if (isVersionId(r.restored)) v.restored = r.restored;
+    if (r.start === true) v.start = true;
     return { kind: 'version', v };
   }
 
@@ -695,5 +701,6 @@ function info(v: Version): VersionInfo {
   if (v.name) out.name = v.name;
   if (v.removed) out.removed = v.removed;
   if (v.restored) out.restored = v.restored;
+  if (v.start) out.start = true;
   return out;
 }
