@@ -31,6 +31,17 @@ export const FAILED = 'A picture could not be sent. Try again';
 type State = { busy: boolean; failed: boolean; network: boolean };
 const states = new WeakMap<Client, State>();
 
+// the SHA-256 of blob in hex, or null where crypto.subtle is missing, i.e. outside a secure context
+async function sha256(blob: Blob): Promise<string | null> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  try {
+    return Array.from(new Uint8Array(await subtle.digest('SHA-256', await blob.arrayBuffer())), (b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
+  }
+}
+
 // the ranges of text, as [start, end), that the patches of diff(base, text) insert
 function inserted(base: string, text: string): [number, number][] {
   const out: [number, number][] = [];
@@ -148,12 +159,13 @@ export function install(client: Client): void {
     try {
       for (const f of files) {
         const name = f.path.slice(f.path.lastIndexOf('/') + 1);
+        const hash = await sha256(f.blob);
         const abort = new AbortController();
         const timer = setTimeout(() => abort.abort(), wait + (UPLOAD_PER_MB * f.blob.size) / MB);
         let response: Response;
         let answer: { path?: unknown; error?: unknown } | null;
         try {
-          response = await fetch(client.url(`media/${encodeURIComponent(name)}`, { token: client.token }), { method: 'PUT', body: f.blob, headers: { 'Content-Type': f.blob.type || 'application/octet-stream' }, cache: 'no-store', signal: abort.signal });
+          response = await fetch(client.url(`media/${encodeURIComponent(name)}`, { token: client.token }), { method: 'PUT', body: f.blob, headers: { 'Content-Type': f.blob.type || 'application/octet-stream', ...(hash && { 'x-content-sha256': hash }) }, cache: 'no-store', signal: abort.signal });
           answer = await response.json().catch(() => null);
         } catch (e) {
           throw new Failure(0, e instanceof Error ? e.message : String(e));
