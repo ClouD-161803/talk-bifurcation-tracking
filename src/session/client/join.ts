@@ -37,11 +37,18 @@ export function store(key: string, value: string): void {
   }
 }
 
+type Segmenter = { segment(s: string): Iterable<{ segment: string }> };
+let segmenter: Segmenter | null | undefined;
+
 // the first graphemes of the first and the last word, or the first two of a one-word name
 export function initials(name: string): string {
   const graphemes = (s: string): string[] => {
-    const Segmenter = (Intl as { Segmenter?: new (l?: string, o?: { granularity: 'grapheme' }) => { segment(s: string): Iterable<{ segment: string }> } }).Segmenter;
-    return Segmenter ? Array.from(new Segmenter(undefined, { granularity: 'grapheme' }).segment(s), (x) => x.segment) : Array.from(s);
+    // one segmenter for every call, since the avatars are drawn at each answer of a poll
+    if (segmenter === undefined) {
+      const Made = (Intl as { Segmenter?: new (l?: string, o?: { granularity: 'grapheme' }) => Segmenter }).Segmenter;
+      segmenter = Made ? new Made(undefined, { granularity: 'grapheme' }) : null;
+    }
+    return segmenter ? Array.from(segmenter.segment(s), (x) => x.segment) : Array.from(s);
   };
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (!words.length) return '';

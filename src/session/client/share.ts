@@ -337,7 +337,7 @@ function openShare(client: Client): void {
   if (client.host) dialog.setButtons([{ label: 'Done', value: 'done', primary: true }]);
   else show();
   showPeople();
-  const off = [client.on('people', showPeople), client.on('known', showPeople), client.on('presence', showPeople), client.on('state', () => client.connection === 'ended' && dialog.close(null))];
+  const off = [client.on('people', showPeople), client.on('known', showPeople), client.on('state', () => client.connection === 'ended' && dialog.close(null))];
   void dialog.open('done').then(() => {
     clearTimeout(copiedTimer);
     for (const fn of off) fn();
