@@ -5,7 +5,7 @@
 // write that keeps failing, and a file that is a symbolic link
 
 import assert from 'node:assert/strict';
-import { chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -198,14 +198,17 @@ test('a write that keeps failing is reported with the number of unwritten operat
   }
 });
 
-test('a symbolic link index.html is written through to its target', { timeout: 60_000 }, async (t) => {
+test('a symbolic link index.html is written through to its target, and the mode of the file is kept', { timeout: 60_000 }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'slides disk-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  // a symbolic link needs a privilege on Windows
+  // a symbolic link needs a privilege on Windows, and a file there has no mode bits but read-only
   const posix = process.platform !== 'win32';
   const file = join(dir, 'index.html'), target = join(dir, 'real.html');
   writeFileSync(posix ? target : file, DECK);
-  if (posix) symlinkSync('real.html', file);
+  if (posix) {
+    chmodSync(target, 0o444);
+    symlinkSync('real.html', file);
+  }
   const authority = new Authority(DECK, { epoch: 'E' });
   const disk = new Disk(file, authority, false, { quiet: 5, latest: 20 });
   t.after(() => disk.stopSync());
@@ -213,4 +216,5 @@ test('a symbolic link index.html is written through to its target', { timeout: 6
   insert(authority, '<h2>One', 'ONE ');
   await until(() => readFileSync(target, 'utf8').includes('ONE '), 'the edit in the target of the link', 5000);
   assert.ok(lstatSync(file).isSymbolicLink(), 'index.html is no longer a symbolic link');
+  assert.equal(statSync(target).mode & 0o777, 0o444);
 });
