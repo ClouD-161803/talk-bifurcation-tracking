@@ -72,3 +72,28 @@ test('a version is closed after a quiet time, and at the latest after the longes
     assert.equal(history.list().versions.length, 2, 'the operation after the close begins the next version');
   });
 });
+
+test('the text of every version is rebuilt from the file after a restart', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const { authority, history } = open(dir, DECK);
+  const texts = new Map();
+  // more versions than are kept between two texts held in memory
+  for (let i = 0; i < 130; i++) {
+    const n = i % 7;
+    if (n === 0) replace(authority, '</body>', `<section>\n  <h2>Added ${i}</h2>\n</section>\n</body>`, i % 2 ? ANN : BO);
+    else if (n === 3) replace(authority, /<section>\n {2}<h2>Added \d+<\/h2>\n<\/section>\n/, '', ANN);
+    else replace(authority, /First slide[^<]*/, `First slide ${i}`, BO);
+    const v = history.close();
+    texts.set(v.id, authority.text);
+  }
+  history.name([...texts.keys()][10], 'Draft');
+  history.stopSync();
+  const again = open(dir, authority.text);
+  assert.deepEqual(again.logged, []);
+  const listed = again.history.list();
+  assert.deepEqual(listed.versions.map((v) => v.id), [...texts.keys()].reverse());
+  assert.equal(listed.versions.find((v) => v.name)?.id, [...texts.keys()][10]);
+  for (const [id, text] of texts) assert.equal(again.history.textOf(id), text, `the text of version ${id}`);
+  assert.deepEqual(again.history.found.patches, []);
+  assert.equal(again.history.textOf('unknown'), null);
+});
