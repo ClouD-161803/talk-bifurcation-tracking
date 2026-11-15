@@ -264,6 +264,8 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   const before = await converge(server, [a, b]);
   const thread = (anchor) => [{ anchor, texts: ['On the paragraph'] }];
 
+  // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
+  await until(() => b.evaluate(`!document.querySelector('.reveal .slides > section:nth-child(2) > p').classList.contains('beeson-locked')`), 'the paragraph that Ann left to be free on the page of Ben');
   await show(b, 'Two');
   await click(b, '.reveal section.present > p');
   await press(b, 'Escape');
