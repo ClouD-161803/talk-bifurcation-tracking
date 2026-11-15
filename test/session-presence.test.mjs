@@ -543,3 +543,47 @@ test('an element that a page makes itself is read by the other page once its ope
   clean(ana);
   clean(ben);
 });
+
+// the polls of events of page wait while a gate is closed, and window.__waiting counts the polls
+// that wait
+const gatePolls = (page) => page.evaluate(`(() => {
+  const f = window.fetch;
+  window.__gate = null;
+  window.__waiting = 0;
+  window.fetch = function (input, init) {
+    const url = typeof input === 'string' ? input : input.url;
+    if (!url.includes('/.session/events') || !window.__gate) return f.call(this, input, init);
+    window.__waiting++;
+    return window.__gate.then(() => (window.__waiting--, f.call(this, input, init)));
+  };
+  return true;
+})()`);
+const closePolls = (page) => page.evaluate(`(window.__gate = new Promise((done) => (window.__open = done)), true)`);
+const openPolls = (page) => page.evaluate(`(window.__gate = null, window.__open(), true)`);
+// the last state that page sent, once the edit command has it
+const posted = (page) => until(() => page.evaluate(`(() => { const c = ${C}; return !c.presenceBusy && !c.presenceDue && ${P}.sent; })()`), 'the state of the page at the edit command');
+
+test('a state of a version ahead of the page is read once an acknowledgment of the page reaches it', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'One');
+  await gatePolls(ben);
+  await select(ana, el(1, 'li:nth-child(2)'));
+  await until(async () => (await theirs(ben)).join() === 'Beta', 'the selection of Beta on the page of Ben');
+  // the poll of Ben at the edit command is answered at a change of his presence, and the next one
+  // waits, hence the broadcast of his operation waits with the next state of Ana
+  await closePolls(ben);
+  await caretAtEnd(ben, el(0, 'p'));
+  await until(() => ben.evaluate('window.__waiting > 0'), 'a poll of Ben to wait');
+  await typeKeys(ben, 'x');
+  await until(() => ben.evaluate(`(() => { const c = ${C}, s = c.snapshot(); return !c.sending && s.mine !== s.base; })()`), 'the operation of Ben to be answered');
+  await until(() => ana.evaluate(`${C}.base.text.includes('First slidex')`), 'the operation of Ben on the page of Ana');
+  await select(ana, el(1, 'li:nth-child(1)'));
+  await until(() => ana.evaluate(`(() => { const s = ${P}.sent; return s.v === ${C}.base.v && s.selected.length === 1; })()`), 'the state of Ana with Alpha at the new version');
+  const sent = await posted(ana);
+  await openPolls(ben);
+  await until(async () => (await ben.evaluate(`${C}.base.v`)) === sent.v, 'the base of Ben to reach the state of Ana');
+  await until(async () => (await theirs(ben)).join() === 'Alpha', 'the selection of Alpha on the page of Ben', 5000);
+  clean(ana);
+  clean(ben);
+});
