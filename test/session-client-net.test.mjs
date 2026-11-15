@@ -390,14 +390,26 @@ test('a rejoin of a second page of a person keeps the name that another page of 
   await b.waitFor(ONLINE);
   assert.equal(await b.evaluate(`${C}.person`), await a.evaluate(`${C}.person`));
   await converge(server, [a, b]);
-  // the next poll of b is refused, as after a sleep of its tab, and b says hello again
-  const hellos = await b.evaluate(`(__net.rule('/.session/events', 'answer', { status: 404, body: '{"error":"the page is not in the session"}', times: 1 }), __net.count('/.session/hello'))`);
-  assert.equal(await a.evaluate(`window.BeesonSession.rename(${C}, 'Ann Smith')`), 'renamed');
-  await b.waitFor(`__net.count('/.session/hello') === ${hellos + 1} && ${ONLINE} && !${C}.joining`);
   const own = (page) => page.evaluate(`({ name: ${C}.name, known: ${C}.known.find((p) => p.person === ${C}.person).name, stored: localStorage.getItem('beeson-session-name') })`);
-  assert.deepEqual(await own(b), { name: 'Ann Smith', known: 'Ann Smith', stored: 'Ann Smith' });
+  const named = (name) => `${C}.name === '${name}' && localStorage.getItem('beeson-session-name') === '${name}'`;
+  // b hears a first change of the name in the answer of its poll
+  assert.equal(await a.evaluate(`window.BeesonSession.rename(${C}, 'Ann Smith')`), 'renamed');
+  await b.waitFor(named('Ann Smith'));
+  // the next poll of b is refused, as after a sleep of its tab, and its hello is held, hence b does
+  // not hear the second change of the name before the answer of the hello
+  const hellos = await b.evaluate(`(__net.rule('/.session/events', 'answer', { status: 404, body: '{"error":"the page is not in the session"}', times: 1 }), __net.rule('/.session/hello', 'hold', { times: 1 }), __net.count('/.session/hello'))`);
+  // an edit of a answers the poll of b in flight
+  await front(a);
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'p'));
+  await type(a, ' x');
+  await b.waitFor(`__net.held.some((h) => h.url.includes('/.session/hello'))`);
+  assert.equal(await a.evaluate(`window.BeesonSession.rename(${C}, 'Ann Jones')`), 'renamed');
+  await b.evaluate(`__net.release('/.session/hello')`);
+  await b.waitFor(`__net.count('/.session/hello') === ${hellos + 1} && ${ONLINE} && !${C}.joining`);
+  assert.deepEqual(await own(b), { name: 'Ann Jones', known: 'Ann Jones', stored: 'Ann Jones' });
   await converge(server, [a, b]);
-  assert.deepEqual(await own(a), { name: 'Ann Smith', known: 'Ann Smith', stored: 'Ann Smith' });
+  assert.deepEqual(await own(a), { name: 'Ann Jones', known: 'Ann Jones', stored: 'Ann Jones' });
   clean(a);
   clean(b);
 });
