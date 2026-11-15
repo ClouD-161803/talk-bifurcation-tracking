@@ -427,6 +427,28 @@ function sheets(host: TexHost): TexSheets {
     void define(tex);
   }
 
+  // the deck drawn with the tex.js next to it, which changed on disk, e.g. in a session. its text
+  // is not JSON, hence it is run as an inline script. the redraws run one at a time, so that an
+  // older text is not drawn last
+  let redrawing: Promise<void> = Promise.resolve();
+  const redraw = (): Promise<void> =>
+    (redrawing = redrawing.catch(() => {}).then(async () => {
+      const found = await fetched('tex.js');
+      if (found === null) return;
+      const script = document.createElement('script');
+      script.textContent = found;
+      document.head.append(script);
+      script.remove();
+      const tex = (window as unknown as { beesonTex?: Tex }).beesonTex;
+      if (!tex) return;
+      refresh();
+      await define(tex);
+      if (!loaded) return;
+      files.clear();
+      await load();
+      fill();
+    }));
+
   // the lists of the sheets
   const line = (attrs: Record<string, string>, ...parts: (string | Node)[]): HTMLElement => {
     const div = make('div');
@@ -747,6 +769,7 @@ function sheets(host: TexHost): TexSheets {
       return sentence([out.length ? `Put ${listed(out.map(([name]) => name))} next to it` : '', why]);
     },
     dirty: () => loaded && (text.preamble !== saved.preamble || text.bibliography !== saved.bibliography),
+    redraw,
     ...citations(store),
   };
 }

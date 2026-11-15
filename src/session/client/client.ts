@@ -113,6 +113,9 @@ export class Client {
 
   // the version after the operations taken from the last answer, which the next poll asks after
   private since: Version = '';
+  // the count of the changes of tex.js of the last answer. a count that differs, also after a
+  // restart of the edit command, draws the deck again with tex.js
+  private tex = 0;
   // counts the hellos after the first, so that a poll sent before one is not taken
   private generation = 0;
   private readonly listeners = new Map<keyof ClientEvents, Set<(...args: never[]) => void>>();
@@ -340,6 +343,7 @@ export class Client {
     this.host = a.host;
     this.people = a.people;
     this.known = a.known;
+    this.texCount(a.tex);
     this.emit('me');
     this.emit('people');
     this.emit('known');
@@ -681,6 +685,7 @@ export class Client {
       this.end(answer.ended);
       return;
     }
+    this.texCount(answer.tex);
     if (answer.writeError !== undefined) this.setWarning(answer.writeError ? `The deck cannot be written on the host's machine: ${answer.writeError.message}` : null);
     this.people = answer.people;
     this.presence = answer.presence;
@@ -704,6 +709,12 @@ export class Client {
     if (answer.ops.length) this.receive(answer.ops);
     this.since = answer.v;
     void this.drive();
+  }
+
+  private texCount(count: number): void {
+    if (typeof count !== 'number' || count === this.tex) return;
+    this.tex = count;
+    void this.port.redrawTex();
   }
 
   private receive(ops: AppliedOp[]): void {
