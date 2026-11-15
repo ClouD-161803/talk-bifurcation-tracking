@@ -870,3 +870,41 @@ test('after Leave Session and after the end of the session, no element stays loc
   clean(ben);
   clean(cy);
 });
+
+test('unsent edits of the sender are taken out of its offsets', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  // the operations of Ana wait until window.__go
+  await ana.evaluate(`(() => {
+    const f = window.fetch;
+    const gate = new Promise((done) => (window.__go = done));
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('/.session/op')) return gate.then(() => f.call(this, input, init));
+      return f.call(this, input, init);
+    };
+    return true;
+  })()`);
+  await show(ana, 'One');
+  await caretAtEnd(ana, el(0, 'p'));
+  await typeKeys(ana, ' with many more words');
+  // Ben changes slide One, which Ana applies over her unsent words
+  await show(ben, 'One');
+  await caretAtEnd(ben, el(0, 'h2'));
+  await type(ben, ' x');
+  await until(() => ana.evaluate(`${el(0, 'h2')}.textContent === 'One x'`), 'the edit of Ben on the page of Ana');
+  await until(() => ana.evaluate(`window.BeesonEditor.session.copy().includes('First slide with many more words') && !${C}.acked()`), 'Ana with unsent words');
+  await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
+  await show(ana, 'Two');
+  await select(ana, el(1, 'li:nth-child(2)'));
+  const id = await ana.evaluate(`${C}.client`);
+  await until(async () => {
+    const sent = await ana.evaluate(`JSON.stringify(${P}.sent)`);
+    const s = JSON.parse(sent);
+    if (!s || s.caret || s.selected.length !== 1) return false;
+    return (await ben.evaluate(`JSON.stringify(${C}.presence.find((p) => p.client === ${JSON.stringify(id)})?.state)`)) === sent;
+  }, 'the state of Ana with one selected element on the page of Ben');
+  assert.deepEqual(await selectedOf(ben, 'Ana'), ['Beta']);
+  await ana.evaluate('window.__go()');
+  clean(ana);
+  clean(ben);
+});
