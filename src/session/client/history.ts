@@ -59,6 +59,7 @@ html.beeson-editor body > .beeson-session-history[hidden] { display: none; }
 .beeson-session-history .aside-list[hidden] { display: none; }
 dialog.beeson-session-history-dialog input { display: block; width: 100%; box-sizing: border-box; height: 32px; margin: 0 0 16px; padding: 0 8px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); color: var(--ed-text); font: inherit; }
 dialog.beeson-session-history-dialog .row button { min-height: 32px; }
+dialog.beeson-session-history-dialog .count { margin: -8px 0 16px; color: var(--ed-error); }
 `;
 
 type Selected = { kind: 'current' } | { kind: 'version'; id: string } | { kind: 'aside'; id: string };
@@ -109,6 +110,7 @@ export function install(client: Client): void {
   let selected: Selected = { kind: 'current' };
   const opened = new Set<string>();
   let back: Element | null = null;
+  let naming = false;
 
   function build(): HTMLElement {
     style('history', STYLE);
@@ -280,21 +282,46 @@ export function install(client: Client): void {
     void d.open('ok').then(() => d.el.remove());
   }
 
+  // the name of the newest version when the deck has not changed since, which a name of Current
+  // version replaces, or an empty text
+  async function newestName(): Promise<string> {
+    const v = answer?.versions[0];
+    const snap = client.snapshot();
+    if (!v?.name || !snap || snap.mine !== snap.base) return '';
+    try {
+      const url = new URL(location.href);
+      url.search = `?version=${encodeURIComponent(v.id)}`;
+      url.hash = '';
+      const r = await fetch(url.href, { cache: 'no-store' });
+      const text = r.ok ? (await r.text()).replace(/^﻿/, '') : null;
+      const now = client.snapshot();
+      return text !== null && now && text === now.base && now.mine === now.base ? v.name : '';
+    } catch {
+      return '';
+    }
+  }
+
   async function name(id: string, was: string): Promise<void> {
+    if (naming) return;
+    naming = true;
+    try {
+      await ask(id, id === 'current' ? await newestName() : was);
+    } finally {
+      naming = false;
+    }
+  }
+
+  async function ask(id: string, was: string): Promise<void> {
     const input = make('input');
     input.type = 'text';
-    input.maxLength = VERSION_NAME_MAX;
     input.value = was;
     input.spellcheck = false;
     input.setAttribute('aria-label', 'Name of the version');
-    input.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' && !ev.isComposing) {
-        ev.preventDefault();
-        d.close('save');
-      }
-    });
+    const count = make('p', 'count');
+    count.id = 'beeson-session-name-count';
+    count.hidden = true;
     const body = make('div');
-    body.append(input);
+    body.append(input, count);
     const d = client.shell.dialog({
       title: 'Name this version',
       body,
@@ -304,9 +331,27 @@ export function install(client: Client): void {
       ],
       className: 'beeson-session-history-dialog',
     });
-    const value = await d.open();
+    const save = d.buttons.get('save')!;
+    // a name is counted in characters as the edit command keeps it. an empty name takes the name of a
+    // version off, and under Current version it does nothing
+    const update = () => {
+      const n = Array.from(input.value.replace(/\s+/g, ' ').trim()).length;
+      const over = n > VERSION_NAME_MAX;
+      count.hidden = !over;
+      count.textContent = over ? `${n} of at most ${VERSION_NAME_MAX} characters` : '';
+      if (over) input.setAttribute('aria-describedby', count.id);
+      else input.removeAttribute('aria-describedby');
+      const label = !n && id !== 'current' && was ? 'Remove Name' : 'Save';
+      if (save.textContent !== label) save.textContent = label;
+      save.disabled = over || (!n && id !== 'current' && !was);
+    };
+    input.addEventListener('input', update);
+    update();
+    const answered = d.open();
+    input.select();
+    const value = await answered;
     d.el.remove();
-    if (value !== 'save') return;
+    if (value !== 'save' || (id === 'current' && !input.value.trim())) return;
     try {
       const v = await client.transport.post<VersionInfo>(`history/${encodeURIComponent(id)}/name`, { token: client.token, name: input.value });
       if (answer) {
