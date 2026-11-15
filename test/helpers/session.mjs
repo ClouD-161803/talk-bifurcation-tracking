@@ -13,9 +13,16 @@ export const DECK = ['<!doctype html>', '<html>', '<body>', '<section>', '  <h2>
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+// the edit commands that run
+const running = new Set();
+
 // a talk folder with index.html and a temporary configuration folder, removed by the caller
 export function talkFolder(t, bytes = DECK) {
   const root = mkdtempSync(join(tmpdir(), 'slides edit-'));
+  // the hooks of a test run in the order in which they were added, and the ones after a failed hook
+  // are skipped. an edit command in this folder is therefore stopped here, before the caller removes
+  // the folder, since a write into .session/ during the removal makes it fail
+  t.after(() => Promise.all([...running].filter((state) => state.folder.startsWith(root)).map(stopEdit)));
   const talk = join(root, 'talk');
   mkdirSync(talk);
   writeFileSync(join(talk, 'index.html'), bytes);
@@ -30,7 +37,9 @@ export function startEdit(folder, { args = [], env = {} } = {}) {
     env: { ...process.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const state = { child, stderr: '', exited: new Promise((done) => child.once('exit', (code) => done(code))) };
+  const state = { child, folder: resolve(folder), stderr: '', exited: new Promise((done) => child.once('exit', (code) => done(code))) };
+  running.add(state);
+  child.once('exit', () => running.delete(state));
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk) => (state.stderr += chunk));
   return new Promise((done, fail) => {
