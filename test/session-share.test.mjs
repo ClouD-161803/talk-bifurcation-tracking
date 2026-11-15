@@ -314,6 +314,8 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
   });
 
   await t.test('End session asks, tells the guest, and the link answers as the relay does without a host', async () => {
+    // the row of Lea Lane, whose page was closed, leaves the list of the dialog and moves the button
+    await host.waitFor(`document.querySelectorAll('dialog.beeson-session-share-dialog ul.people li').length === 2`);
     await front(host);
     await press(host, dialogButton('beeson-session-share-dialog', 'End session'));
     await host.waitFor(`[...document.querySelectorAll('dialog[open] p')].some((p) => p.textContent === 'Guests can no longer edit. The deck stays open for you.')`);
