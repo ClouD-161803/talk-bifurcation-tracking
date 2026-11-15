@@ -269,6 +269,34 @@ test('a file of comments that cannot be read is moved aside', async (t) => {
   }
 });
 
+test('a thread sent with an old base is moved to the current text in less than half the time that the operations since took', (t) => {
+  const slide = (k) => ['<section>', `  <h2>Slide ${k}</h2>`, ...Array.from({ length: 4 }, (_, i) => `  <p style="left: ${i}px">Paragraph ${i} of slide ${k}, on the manifold.</p>`), '</section>'].join('\n');
+  const deck = ['<!doctype html>', '<body>', ...Array.from({ length: 200 }, (_, k) => slide(k)), '</body>', ''].join('\n');
+  const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 1000 } });
+  const read = authority.text;
+  const base = authority.version;
+  comments.add(ANN, { base, anchor: tagRange(read, '<p style="left: 1px">Paragraph 1 of slide 5,'), slide: null, text: 'x' });
+  const drags = [];
+  let text = read;
+  for (let k = 0; k < 600; k++) {
+    const after = text.replace(`left: ${k % 4}px">Paragraph ${k % 4} of slide ${(k * 7) % 200},`, `left: ${k % 4}5px">Paragraph ${k % 4} of slide ${(k * 7) % 200},`);
+    drags.push(diff(text, after));
+    text = after;
+  }
+  const t0 = process.hrtime.bigint();
+  for (const patches of drags) assert.equal(authority.enter(patches, ANN).answer.ok, true);
+  const entered = Number(process.hrtime.bigint() - t0);
+  // the best of three, since another process may take the processor for a while
+  let added = Infinity;
+  for (let attempt = 0; attempt < 3 && 2 * added >= entered; attempt++) {
+    const t1 = process.hrtime.bigint();
+    const thread = comments.add(BO, { base, anchor: tagRange(read, '<p style="left: 2px">Paragraph 2 of slide 9,'), slide: null, text: 'old base' });
+    added = Math.min(added, Number(process.hrtime.bigint() - t1));
+    reads(authority.text, thread.anchor, '<p style="left: 2px">Paragraph 2 of slide 9,');
+  }
+  assert.ok(2 * added < entered, `the thread took ${(added / 1e6).toFixed(1)} ms, and the operations ${(entered / 1e6).toFixed(1)} ms`);
+});
+
 test('a shift of the anchors by typing is written to the file', async (t) => {
   const dir = sessionDir(t);
   const file = join(dir, 'comments.json');
