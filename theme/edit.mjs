@@ -15,8 +15,8 @@ import { join as join4, resolve, sep as sep2 } from "node:path";
 
 // src/session/protocol.ts
 var COLORS = ["--data-2", "--data-3", "--data-5", "--data-7"];
-var HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}]$/u;
-var SELECTOR = /^[\ufe00-\ufe0f\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}]$/u;
+var HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}\p{Cf}]$/u;
+var SELECTOR = /^[\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
 var JOINER = /^[\u200c\u200d]$/u;
 var shows = (c) => c !== void 0 && !HIDDEN.test(c) && !/\s/.test(c);
 function shown(raw) {
@@ -32,7 +32,7 @@ function shown(raw) {
 }
 var NAME_MAX = 40;
 var cleanPersonName = (raw) => typeof raw === "string" ? shown(Array.from(shown(raw).replace(/\s+/g, " ").trim()).slice(0, NAME_MAX).join("")).trim() : "";
-var nameKey = (name) => cleanPersonName(name).normalize("NFKC").replace(/[\u200c\u200d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, "").toLowerCase();
+var nameKey = (name) => cleanPersonName(name).normalize("NFKC").replace(/[\p{Cf}\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, "").toLowerCase();
 var isPersonId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{22,64}$/.test(id);
 var isToken = (token) => typeof token === "string" && /^[A-Za-z0-9_-]{22,64}$/.test(token);
 var formatVersion = (epoch, n) => `${epoch}.${n}`;
@@ -359,8 +359,72 @@ function mergePatches(theirs, ours, wins = "ours") {
 }
 var cached = null;
 function tokensOf(text) {
-  if (cached?.text !== text) cached = { text, tokens: tokenize(text) };
-  return cached.tokens;
+  if (cached?.text === text) return cached.tokens;
+  const tokens = (cached && retokenize(cached, text)) ?? tokenize(text);
+  cached = { text, tokens, odd: text.includes("\u0130") };
+  return tokens;
+}
+var AHEAD = 12;
+function sharedStart(a, b, n) {
+  let i = 0;
+  for (let w = 4096; w > 1; w >>= 4) while (i + w <= n && a.slice(i, i + w) === b.slice(i, i + w)) i += w;
+  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+  return i;
+}
+function sharedEnd(a, b, n) {
+  let i = 0;
+  for (let w = 4096; w > 1; w >>= 4) while (i + w <= n && a.slice(a.length - i - w, a.length - i) === b.slice(b.length - i - w, b.length - i)) i += w;
+  while (i < n && a.charCodeAt(a.length - 1 - i) === b.charCodeAt(b.length - 1 - i)) i++;
+  return i;
+}
+function moved(t, d) {
+  if (t.type !== "start") return { ...t, start: t.start + d, end: t.end + d };
+  return { ...t, start: t.start + d, end: t.end + d, attrs: t.attrs.map((a) => ({ ...a, start: a.start + d, end: a.end + d })) };
+}
+function retokenize(last, text) {
+  const old = last.tokens, n = text.length, d = n - last.text.length;
+  const both = Math.min(n, last.text.length);
+  const p = sharedStart(last.text, text, both);
+  const tail = n - sharedEnd(last.text, text, both - p);
+  if (last.odd || text.slice(p, tail).includes("\u0130")) return null;
+  let lo = 0, hi = old.length;
+  while (lo < hi) {
+    const mid = lo + hi >> 1;
+    if (old[mid].end + AHEAD <= p) lo = mid + 1;
+    else hi = mid;
+  }
+  let kept = lo;
+  while (kept > 0 && old[kept - 1].type === "start") kept--;
+  const from = kept ? old[kept - 1].end : 0;
+  const joins = (at) => {
+    let lo2 = 0, hi2 = old.length - 1;
+    while (lo2 <= hi2) {
+      const mid = lo2 + hi2 >> 1;
+      if (old[mid].start < at) lo2 = mid + 1;
+      else if (old[mid].start > at) hi2 = mid - 1;
+      else return mid > 0 && old[mid - 1].type === "start" ? -1 : mid;
+    }
+    return -1;
+  };
+  for (let width = 1024; ; width *= 4) {
+    const to = Math.min(n, Math.max(from, tail) + width);
+    if (2 * (to - from) > n) return null;
+    const out = old.slice(0, kept);
+    let afterStart = false;
+    let wider = false;
+    for (const t of tokenize(text.slice(from, to))) {
+      const start2 = t.start + from;
+      const j = start2 >= tail && !afterStart ? joins(start2 - d) : -1;
+      if (j >= 0) {
+        for (let i = j; i < old.length; i++) out.push(d ? moved(old[i], d) : old[i]);
+        return out;
+      }
+      if (wider = to < n && t.end + from + AHEAD > to) break;
+      out.push(moved(t, from));
+      afterStart = t.type === "start";
+    }
+    if (!wider && to === n) return out;
+  }
 }
 function tagAt(tokens, i) {
   let lo = 0, hi = tokens.length - 1;
