@@ -5,7 +5,7 @@
 
 import type { App } from '../app.ts';
 import { growOf, orientOf, view } from '../canvas/frames.ts';
-import { frameOf } from '../canvas/hit.ts';
+import { frameOf, holdsSeveral, mediaIn } from '../canvas/hit.ts';
 import { mathLookup, type MathLookup } from '../math.ts';
 
 // a box in fractions of the width and the height of the slide, unturned about its center, the
@@ -26,6 +26,9 @@ export type PresenceHooks = {
   caretIn(host: Element): number | null;
   // the element under the pointer, which frames.ts draws the hover frame on
   hovered(): Element | null;
+  // the object one level inside container under target, as a second click selects it, when
+  // container holds several objects, e.g. a figure of a plate, or null
+  childIn(container: Element, target: Element): Element | null;
 };
 
 export function hooks(app: App): PresenceHooks {
@@ -65,6 +68,7 @@ export function hooks(app: App): PresenceHooks {
     },
     caretIn: (host) => caretAt(host, mathLookup()),
     hovered: () => view.hover,
+    childIn: (container, target) => (holdsSeveral(container) ? mediaIn(container, target) : null),
   };
 }
 
