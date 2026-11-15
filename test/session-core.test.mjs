@@ -450,7 +450,7 @@ function timeOf(fn, runs = 5) {
   return best;
 }
 
-test('shift and mergePatches take a time linear in the number of patches', () => {
+test('shift and mergePatches take a time linear in the number of patches, and an operation has at most 2000 patches', () => {
   // n insertions at the even offsets of a text, and n at its odd offsets, which do not conflict
   const at = (n, odd) => Array.from({ length: n }, (_, i) => ({ start: 2 * i + odd, end: 2 * i + odd, text: odd ? 'y' : 'x' }));
   const time = (n) => {
@@ -465,6 +465,9 @@ test('shift and mergePatches take a time linear in the number of patches', () =>
   let r = ratio();
   if (r >= 30) r = ratio();
   assert.ok(r < 30, `ten times the patches took ${r.toFixed(1)} times as long`);
+  const text = 'ab'.repeat(3000);
+  assert.equal(valid(at(2000, 0), text.length), true);
+  assert.equal(valid(at(2001, 0), text.length), false);
 });
 
 test('two values of one attribute set at once conflict, and the last writer wins', () => {
