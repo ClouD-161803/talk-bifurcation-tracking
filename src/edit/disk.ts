@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { changes } from '../editor/merge.ts';
 import type { Authority } from '../session/authority.ts';
-import { apply, diff, mergePatches, size, type Patch } from '../session/patch.ts';
+import { apply, diff, mergePatches, type Patch } from '../session/patch.ts';
 
 export const AUTHOR = 'file';
 const QUIET = 250;
@@ -27,9 +27,14 @@ const SETTLE_AT_STOP = 7000;
 // patches that lead back to them
 const CHAIN_TEXTS = 5000;
 const CHAIN_BYTES = 64 * 1024 * 1024;
-// the texts of the chain that are nearest to a change of the file by the count of their lines, and
-// that are compared by a diff
-const NEAREST = 8;
+// the search for the base of a change of the file yields to the event loop after SLICE ms, ends
+// after BUDGET ms with the nearest text found so far, and gives up a line diff of more than
+// MAX_LINES lines, as changes() does. it keeps the lines of a text of the chain every few steps,
+// about KEPT_CHARS characters in all, so that a candidate is rebuilt from a kept text near it
+const SLICE = 15;
+const BUDGET = 5000;
+const MAX_LINES = 2000;
+const KEPT_CHARS = 16 * 1024 * 1024;
 
 export class NotUtf8 extends Error {}
 
@@ -181,6 +186,70 @@ function stepBack(lines: string[], delta: Patch[], count?: (lines: string[], by:
   return out;
 }
 
+// the size of a line diff, i.e. the lines removed and added, and the characters that differ
+// inside them, and the steps back from the head of the text that it was measured on
+type Rank = { lines: number; chars: number; steps: number };
+const order = (r: Rank, s: Rank) => r.lines - s.lines || r.chars - s.chars || r.steps - s.steps;
+
+// the size of a line diff of the lines a and b, found with the Myers algorithm. a run of changed
+// lines counts the characters between the common start and end of its two sides. null when more
+// than cap lines differ
+function measure(a: string[], b: string[], cap: number): { lines: number; chars: number } | null {
+  let pre = 0;
+  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
+  let suf = 0;
+  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
+  const n = a.length - pre - suf, m = b.length - pre - suf, max = Math.min(n + m, cap), off = max + 1;
+  const v = new Int32Array(2 * max + 3), rows: Int32Array[] = [];
+  let found = -1;
+  for (let d = 0; d <= max && found < 0; d++) {
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && a[pre + x] === b[pre + y]) {
+        x++;
+        y++;
+      }
+      v[off + k] = x;
+      if (x >= n && y >= m) {
+        found = d;
+        break;
+      }
+    }
+    // the row of the diagonals -d to d, for the way back
+    rows.push(v.slice(off - d, off + d + 1));
+  }
+  if (found < 0) return null;
+  // the way back, one removed or added line per round, joined into runs of changed lines
+  const runs: { a0: number; a1: number; b0: number; b1: number }[] = [];
+  let x = n, y = m;
+  for (let d = found; d > 0; d--) {
+    const row = rows[d - 1], k = x - y;
+    const down = k === -d || (k !== d && row[k - 1 + d - 1] < row[k + 1 + d - 1]);
+    const pk = down ? k + 1 : k - 1, px = row[pk + d - 1], py = px - pk;
+    const ex = down ? px : px + 1, ey = down ? py + 1 : py;
+    const later = runs[runs.length - 1];
+    if (later && later.a0 === ex && later.b0 === ey) [later.a0, later.b0] = [px, py];
+    else runs.push({ a0: px, a1: ex, b0: py, b1: ey });
+    [x, y] = [px, py];
+  }
+  let chars = 0;
+  for (const r of runs) {
+    const old = a.slice(pre + r.a0, pre + r.a1).join('\n'), now = b.slice(pre + r.b0, pre + r.b1).join('\n');
+    // whole lines removed or added count their line breaks
+    if (r.a0 === r.a1 || r.b0 === r.b1) {
+      chars += old.length + now.length + 1;
+      continue;
+    }
+    let p = 0;
+    while (p < old.length && p < now.length && old.charCodeAt(p) === now.charCodeAt(p)) p++;
+    let s = 0;
+    while (s < old.length - p && s < now.length - p && old.charCodeAt(old.length - 1 - s) === now.charCodeAt(now.length - 1 - s)) s++;
+    chars += old.length + now.length - 2 * (p + s);
+  }
+  return { lines: found, chars };
+}
+
 function removeQuietly(file: string): void {
   try {
     unlinkSync(file);
@@ -192,7 +261,8 @@ export type WriteError = { message: string; unwritten: number };
 
 // onWriteError is called at each failed write, and with null at the first write that succeeds after
 // one failed. onWritten is called with n once the file holds the text of version n of the authority.
-// quiet, latest, and poll are the times of the writes and the checks in ms, shorter in the tests
+// quiet, latest, and poll are the times of the writes and the checks in ms, and budget the time of
+// the search for the base of a change of the file, shorter in the tests
 export type DiskOptions = {
   log?: (message: string) => void;
   onWriteError?: (error: WriteError | null) => void;
@@ -200,6 +270,7 @@ export type DiskOptions = {
   quiet?: number;
   latest?: number;
   poll?: number;
+  budget?: number;
 };
 
 export class Disk {
@@ -231,7 +302,7 @@ export class Disk {
   private log: (message: string) => void;
   private onWriteError: (error: WriteError | null) => void;
   private onWritten: (n: number) => void;
-  private timing: { quiet: number; latest: number; poll: number };
+  private timing: { quiet: number; latest: number; poll: number; budget: number };
 
   constructor(file: string, authority: Authority, bom: boolean, options: DiskOptions = {}) {
     this.file = file;
@@ -242,7 +313,12 @@ export class Disk {
     this.log = options.log ?? (() => {});
     this.onWriteError = options.onWriteError ?? (() => {});
     this.onWritten = options.onWritten ?? (() => {});
-    this.timing = { quiet: options.quiet ?? QUIET, latest: options.latest ?? LATEST, poll: options.poll ?? POLL };
+    this.timing = {
+      quiet: options.quiet ?? QUIET,
+      latest: options.latest ?? LATEST,
+      poll: options.poll ?? POLL,
+      budget: options.budget ?? BUDGET,
+    };
     this.head = authority.text;
     try {
       this.target = realpathSync(file);
@@ -492,57 +568,85 @@ export class Disk {
     this.remember(theirs);
   }
 
-  // the text of the chain that is nearest to theirs. the texts are rebuilt as lines from the newest
-  // back, each is measured by the lines that it has more or fewer of than theirs, and the nearest few
-  // are compared by a diff. a change based on a text older than the chain is merged on the kept text
-  // nearest to it, hence the edits of the session between the two texts are reverted, since the file
-  // lacks them
+  // the text of the chain nearest to theirs, i.e. with the smallest line diff to it, then with the
+  // fewest characters changed inside the changed lines, then the newest. the texts are rebuilt as
+  // lines from the head back, and each gets a lower bound of its rank: the lines that it has more or
+  // fewer of than theirs, and the difference of the lengths. the texts are then measured in the order
+  // of their bounds, until the bound of the next is above the best rank found. a change based on a
+  // text older than the chain is merged on the kept text nearest to it, hence the edits of the
+  // session between the two texts are reverted, since the file lacks them
   private *nearest(theirs: string): Task<string> {
-    // the count of each line in the text minus its count in theirs, and the distance, i.e. the
-    // characters of the lines that are counted more or fewer times
+    const back = this.back, budget = this.timing.budget;
+    let slice = performance.now();
+    const deadline = slice + budget;
+    function* breathe(): Task {
+      if (performance.now() - slice < SLICE) return;
+      yield { sleep: 0 };
+      slice = performance.now();
+    }
+    // the count of each line in the text minus its count in theirs, and the lines counted more or
+    // fewer times
     const counts = new Map<string, number>();
     let distance = 0;
     const count = (lines: string[], by: number) => {
       for (const line of lines) {
         const was = counts.get(line) ?? 0, now = was + by;
-        distance += (Math.abs(now) - Math.abs(was)) * (line.length + 1);
+        distance += Math.abs(now) - Math.abs(was);
         if (now) counts.set(line, now);
         else counts.delete(line);
       }
     };
-    let lines = this.head.split('\n');
+    const mine = theirs.split('\n');
+    let lines = this.head.split('\n'), length = this.head.length;
     count(lines, 1);
-    count(theirs.split('\n'), -1);
-    // the nearest texts by the count of their lines, as their steps back from the head
-    const best: { distance: number; steps: number }[] = [];
-    const keep = (steps: number) => {
-      let i = best.length;
-      while (i > 0 && best[i - 1].distance > distance) i--;
-      if (i < NEAREST) best.splice(i, 0, { distance, steps });
-      if (best.length > NEAREST) best.pop();
+    count(mine, -1);
+    const every = Math.max(1, Math.ceil((back.length * Math.max(1, length)) / KEPT_CHARS));
+    const kept = new Map<number, string[]>();
+    const bounds: Rank[] = [];
+    // a cast, since the narrowing of typescript does not see the assignments in consider()
+    let best = null as { rank: Rank; lines: string[] } | null, over = false;
+    const consider = (steps: number, at: string[]) => {
+      const size = measure(at, mine, Math.min(best?.rank.lines ?? MAX_LINES, MAX_LINES));
+      const rank = size && { ...size, steps };
+      if (rank && (!best || order(rank, best.rank) < 0)) best = { rank, lines: at };
     };
-    keep(0);
-    for (let steps = 1; steps <= this.back.length; steps++) {
-      if (distance === 0 && lines.join('\n') === theirs) return theirs;
-      lines = stepBack(lines, this.back[this.back.length - steps], count);
-      keep(steps);
-      if (steps % 256 === 0) yield { sleep: 0 };
+    for (let steps = 0; ; steps++) {
+      if (steps) {
+        const delta = back[back.length - steps];
+        lines = stepBack(lines, delta, count);
+        for (const p of delta) length += p.text.length - (p.end - p.start);
+      }
+      if (distance === 0 && length === theirs.length && lines.join('\n') === theirs) return theirs;
+      bounds.push({ lines: distance, chars: Math.abs(length - theirs.length), steps });
+      if (steps % every === 0) kept.set(steps, lines);
+      // the head is measured first, so that a search cut short by the budget has a base
+      if (steps === 0) consider(0, lines);
+      if (steps === back.length) break;
+      yield* breathe();
+      if ((over = performance.now() >= deadline)) break;
     }
-    if (distance === 0 && lines.join('\n') === theirs) return theirs;
-    // the nearest few are rebuilt and compared by a diff. a text too far apart for changes() ranks by
-    // the count of its lines, and of two equal texts the newer is taken
-    let base = '', rank = [Infinity, Infinity];
-    lines = this.head.split('\n');
-    const farthest = Math.max(...best.map((b) => b.steps));
-    for (let steps = 0; steps <= farthest; steps++) {
-      if (steps) lines = stepBack(lines, this.back[this.back.length - steps]);
-      const candidate = best.find((b) => b.steps === steps);
-      if (!candidate) continue;
-      const text = lines.join('\n'), found = changes(text, theirs), real = found ? size(found) : Infinity;
-      if (real < rank[0] || (real === rank[0] && candidate.distance < rank[1])) [base, rank] = [text, [real, candidate.distance]];
-      yield { sleep: 0 };
+    function* rebuild(steps: number): Task<string[]> {
+      const from = steps - (steps % every);
+      let at = kept.get(from)!;
+      for (let s = from + 1; s <= steps; s++) {
+        at = stepBack(at, back[back.length - s]);
+        yield* breathe();
+      }
+      return at;
     }
-    return base;
+    bounds.sort(order);
+    for (const bound of bounds) {
+      if (over || (best && order(bound, best.rank) > 0) || bound.lines > MAX_LINES) break;
+      if (bound.steps) consider(bound.steps, yield* rebuild(bound.steps));
+      yield* breathe();
+      over = performance.now() >= deadline;
+    }
+    // the search does not cover a chain whose texts are all near theirs by their bounds, e.g. after
+    // thousands of moves of slides, on a slow machine
+    if (over) this.log(`the search for the text that another program changed into ${this.file} was cut after ${budget / 1000} s, and the change is merged on the nearest text found by then`);
+    if (best) return best.lines.join('\n');
+    // every text is too far from theirs for a line diff, and the one with the smallest bound is taken
+    return (yield* rebuild(bounds[0].steps)).join('\n');
   }
 }
 
