@@ -30,6 +30,7 @@ function shown(raw) {
   });
   return kept.join("");
 }
+var FULL = "the session is full";
 var NAME_MAX = 40;
 var cleanPersonName = (raw) => typeof raw === "string" ? shown(Array.from(shown(raw).replace(/\s+/g, " ").trim()).slice(0, NAME_MAX).join("")).trim() : "";
 var nameKey = (name) => cleanPersonName(name).normalize("NFKC").replace(/[\p{Cf}\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, "").toLowerCase();
@@ -2314,7 +2315,7 @@ async function start(options = {}) {
       const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ("taken" in joined) return json(200, { taken: joined.taken });
       if ("empty" in joined) return error(400, "the name is empty");
-      if ("full" in joined) return error(503, "the session is full");
+      if ("full" in joined) return error(503, FULL);
       const { member, token } = joined;
       const applied = typeof hello.was === "string" ? authority.applied(hello.was) : void 0;
       const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), ...applied === void 0 ? {} : { applied } };

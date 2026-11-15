@@ -137,6 +137,9 @@ function shown(raw: string): string {
   return kept.join('');
 }
 
+// the error of a hello refused while the session holds as many pages as it takes
+export const FULL = 'the session is full';
+
 // a name as it is kept: without characters that do not show, trimmed, inner whitespace collapsed,
 // and cut to NAME_MAX characters. a name that is empty after this is refused
 export const NAME_MAX = 40;

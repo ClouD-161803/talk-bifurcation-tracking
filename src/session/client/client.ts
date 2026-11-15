@@ -12,7 +12,7 @@ import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
-import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Taken, Token, Version } from '../protocol.ts';
+import { FULL, type AppliedOp, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
@@ -87,6 +87,8 @@ export class Client {
   saving = false;
   // the time of the next reconnect in ms of Date.now(), or null
   retryAt: number | null = null;
+  // the first hello was refused since the session is full, and is sent again at the next reconnect
+  full = false;
   // an operation of this page was refused as invalid after a resync, and nothing is sent any more
   blocked = false;
   // a warning of the edit command shown in the save state while the page is online, e.g. that it
@@ -207,10 +209,12 @@ export class Client {
     for (;;) {
       try {
         const answer = await this.transport.hello(request);
+        this.full = false;
         this.online();
         return answer;
       } catch (e) {
         if (e instanceof Failure && !e.retried) throw e;
+        this.full = e instanceof Failure && e.status === 503 && e.message === FULL;
         await this.offline(e);
       }
     }

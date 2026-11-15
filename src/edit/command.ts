@@ -10,7 +10,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
-import { isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
+import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { AppliedTable, readApplied } from './applied.ts';
 import { Disk, readText, renameRetriedSync } from './disk.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
@@ -332,7 +332,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ('taken' in joined) return json(200, { taken: joined.taken });
       if ('empty' in joined) return error(400, 'the name is empty');
-      if ('full' in joined) return error(503, 'the session is full');
+      if ('full' in joined) return error(503, FULL);
       const { member, token } = joined;
       const applied = typeof hello.was === 'string' ? authority.applied(hello.was) : undefined;
       const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), ...(applied === undefined ? {} : { applied }) };

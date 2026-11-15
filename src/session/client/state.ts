@@ -33,6 +33,7 @@ function view(client: Client): View {
       const kept = keptLine(client);
       if (kept) return { text: kept, icon: 'cloud-off', warn: true, action: retry };
       const left = client.retryAt === null ? 0 : Math.max(0, Math.ceil((client.retryAt - Date.now()) / 1000));
+      if (client.full) return { text: `The session is full. ${left ? `Trying again in ${left} s` : 'Trying again…'}`, icon: 'cloud-off', warn: true, action: retry };
       return { text: `Offline. ${left ? `Reconnecting in ${left} s` : 'Reconnecting…'}`, icon: 'cloud-off', warn: true, action: retry };
     }
     case 'no-host':
