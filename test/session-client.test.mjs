@@ -180,6 +180,8 @@ test('a name held by another person asks whether it is this person, and Yes take
   const b = await open(browser, sessionUrl(server.edit), { name: 'ann', wait: false });
   const asked = `document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent`;
   await b.waitFor(`${asked} === 'Ann has joined this deck before. Is that you?'`);
+  // the name is isolated from the text around it, which a name in a right-to-left script would reorder
+  assert.equal(await b.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] h3 bdi')?.textContent`), 'Ann');
   assert.deepEqual(await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].map((x) => x.textContent)`), ['Use another name', 'Yes, continue']);
   await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].find((x) => x.textContent === 'Use another name').click()`);
   await b.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
