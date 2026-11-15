@@ -3,7 +3,7 @@
 // into source.text, hence the ranges after a change are moved by the change of its length
 
 import { RAW_TEXT, tokenize, type Range } from '../tokens.ts';
-import { contentRange, elementRange, segmentsOf, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
+import { contentRange, elementRange, segmentsOf, VOID, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
 import { fragmentRoot, parseFragment } from '../model/fragments.ts';
 import { isTextElement, type Pairing } from '../render.ts';
 
@@ -67,6 +67,25 @@ function adopt(el: SrcEl, source: Source): void {
   for (const c of el.children) if (c.kind === 'element') adopt(c, source);
 }
 
+// how the elements in bytes, the bytes of el, are closed. 'closed' when each is closed by its end
+// tag inside them, apart from el when its end tag is left out. 'open' when one is left open, or is
+// closed by the end tag of an element around it, since the parser of the whole file may carry it
+// over the elements after el, where a parse of bytes alone closes it at their end. 'out' when an end
+// tag closes an element around el, i.e. the change reaches past el and is read at its parent
+export function closing(bytes: string, el: SrcEl): 'closed' | 'open' | 'out' {
+  const open: string[] = [];
+  for (const t of tokenize(bytes)) {
+    if (t.type === 'start' && !t.selfClosing && !VOID.has(t.name)) open.push(t.name);
+    else if (t.type === 'end') {
+      const i = open.lastIndexOf(t.name);
+      if (i < 0) return open.length > (el.open ? 1 : 0) ? 'open' : 'out';
+      if (i < open.length - 1) return 'open';
+      open.pop();
+    }
+  }
+  return open.length === 0 || (open.length === 1 && !el.close) ? 'closed' : 'open';
+}
+
 // el read again from text, a text that differs from source.text only inside el, as a new node in
 // its place, with the ranges after it moved and source.text set to text. null, with nothing
 // changed, when the new bytes are not one element of the tag of el
@@ -76,6 +95,7 @@ export function graft(source: Source, el: SrcEl, text: string): SrcEl | null {
   if (!r || !parent) return null;
   const d = text.length - source.text.length;
   const bytes = text.slice(r.start, r.end + d);
+  if (closing(bytes, el) !== 'closed') return null;
   let root: SrcEl | null;
   let kids: number;
   try {

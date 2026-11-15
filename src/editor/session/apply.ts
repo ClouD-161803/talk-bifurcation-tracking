@@ -15,7 +15,7 @@ import { stateOf } from '../tags.ts';
 import { RAW_TEXT, type Attr } from '../tokens.ts';
 import { caretOf, mapOffset, putCaret, textIn } from './caret.ts';
 import { refreshHeads } from '../history.ts';
-import { atPath, decodedIn, graft, liveChild, pathOf, retag, retext, textAt, type Spot, type Window } from './tree.ts';
+import { atPath, closing, decodedIn, graft, liveChild, pathOf, retag, retext, textAt, type Spot, type Window } from './tree.ts';
 
 export const NO_MATH: MathLookup = () => null;
 const SVG = 'http://www.w3.org/2000/svg';
@@ -327,6 +327,10 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
       refreshHeads(textEl.live);
       return done(ctx, false, null);
     }
+    // an element left open inside the text element is carried over the elements after it by the
+    // parser of the whole file
+    const r = elementRange(textEl.src);
+    if (r && closing(text.slice(r.start, r.end + text.length - ctx.source.text.length), textEl.src) === 'open') return null;
     const caret = coarse(ctx, textEl);
     if (caret === false) return within(ctx, spot.el, spot.live);
     if (!checkText(ctx, textEl.live)) return null;
