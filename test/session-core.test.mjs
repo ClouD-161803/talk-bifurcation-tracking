@@ -310,6 +310,20 @@ test('a repeated sequence number of a client with another base or other patches 
   assert.equal(a.text, 'abcd\n');
 });
 
+test('a replica repairs a lone surrogate in mine', () => {
+  const base = '<p>hi 😀</p>\n';
+  const a = new Authority(base, { epoch: 'E' });
+  const r = new Replica('me', base, 'E.0');
+  // half of an emoji, e.g. left by a script that set a text node, is sent as U+FFFD
+  assert.equal(r.edit('<p>hi \uD83D and more</p>\n'), '<p>hi � and more</p>\n');
+  assert.equal(r.edit('<p>hi � and more</p>\n'), null, 'a well-formed text is taken as it is');
+  const request = r.outgoing();
+  const { answer, op } = a.submit(request, 'me');
+  assert.equal(answer.ok, true);
+  r.receive(op);
+  assert.equal(r.mine, a.text);
+});
+
 test('a replica reads the whole state again after a checksum mismatch, and keeps its own edits', () => {
   const a = new Authority('one two three', { epoch: 'E' });
   const r = new Replica('me', 'one two three', 'E.0');
