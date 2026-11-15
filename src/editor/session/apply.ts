@@ -295,6 +295,10 @@ const MOTION = ['data-duration', 'data-stagger', 'data-loop'];
 // src/surface.ts. a surface and a plot read every other attribute and their labels once, at mount
 const CAMERA = ['data-azimuth', 'data-elevation', 'data-zoom', 'data-turn', 'data-zscale'];
 const DRAWN = '.surface, .plot';
+const figureOf = (attrs: Attr[]): string | null => {
+  const s = stateOf(attrs);
+  return s.classes.includes('tikz') ? (s.attrs['data-figure'] ?? '') : null;
+};
 // the theme draws a backdrop into its element once, hence an element does not become a backdrop or
 // stop being one in place
 const backdropOf = (attrs: Attr[]): boolean => stateOf(attrs).classes.includes('backdrop');
@@ -302,6 +306,10 @@ const backdropOf = (attrs: Attr[]): boolean => stateOf(attrs).classes.includes('
 // a change of the start tag of el from the attributes from to those of to that a drawing of the
 // theme around el does not read again
 function redrawn(el: Element, from: Attr[], to: Attr[]): boolean {
+  // a TikZ figure loads the output named by data-figure only at mount, see mountFigures() in
+  // src/tikz.ts. the spans of its parts are watched there, hence a change of data-part is not a
+  // reload
+  if (figureOf(from) !== figureOf(to)) return true;
   const holder = el.closest(DRAWN);
   if (!holder) return false;
   const a = stateOf(from).attrs;
