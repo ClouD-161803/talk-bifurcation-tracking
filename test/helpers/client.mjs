@@ -161,9 +161,12 @@ export async function converge(server, list, what = 'the pages and index.html to
     const text = server.read();
     const diff = last.map((got, i) => {
       if (got === null) return `page ${i}: not online or not acknowledged`;
+      if (got === text) return `page ${i}: agrees`;
+      const n = Math.min(got.length, text.length);
       let at = 0;
-      while (got[at] === text[at]) at++;
-      return `page ${i}: ${JSON.stringify(got.slice(at - 40, at + 60))} where the file has ${JSON.stringify(text.slice(at - 40, at + 60))}`;
+      while (at < n && got[at] === text[at]) at++;
+      const from = Math.max(0, at - 40);
+      return `page ${i}: ${JSON.stringify(got.slice(from, at + 60))} where the file has ${JSON.stringify(text.slice(from, at + 60))}`;
     });
     throw new Error(`${e.message}\n${diff.join('\n')}`);
   }
