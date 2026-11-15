@@ -97,16 +97,23 @@ test('the edits of two pages reach each other and index.html byte for byte', { t
     assert.equal(text, before.replace('<p>First slide</p>', '<p>First slide from Ann</p>').replace('<p>Second slide</p>', '<p>Second slide from Ben</p>'));
   });
 
+  // the loads of both pages before and after each change of one page that the other page takes
+  const loaded = {};
+  const both = async () => [await loads(a), await loads(b)];
+
   await t.test('a new slide and a moved element reach the other page', async () => {
     await show(a, 'Two');
+    let before = await both();
     await a.evaluate(`window.BeesonEditor.exec('slide.new')`);
-    // the apply of a new slide draws the sections of page b anew
     assert.equal((await converge(server, [a, b])).match(/<section/g).length, 3);
+    loaded['a new slide of page a'] = [before, await both()];
     await show(b, 'One');
+    before = await both();
     await click(b, '.reveal section.present > h2');
     await press(b, 'Escape');
     await press(b, 'ArrowRight');
     const text = await converge(server, [a, b]);
+    loaded['an element moved on page b'] = [before, await both()];
     assert.equal(text.match(/<section/g).length, 3);
     assert.ok(text.includes('<h2 style="translate: 1px 0px">One more</h2>'), text);
     for (const page of [a, b]) {
@@ -121,16 +128,32 @@ test('the edits of two pages reach each other and index.html byte for byte', { t
     await typeKeys(a, ' and Gamma');
     assert.equal(await converge(server, [a, b]), before.replace('<li>Beta</li>', '<li>Beta and Gamma</li>'));
     await front(a);
+    const counts = await both();
     await press(a, 'Mod+Z');
     assert.equal(await converge(server, [a, b]), before);
+    loaded['an undo on page a'] = [counts, await both()];
     assert.equal(await b.evaluate(`${el(1, 'li:last-child')}.textContent`), 'Beta');
   });
 
   await t.test('a change of index.html by another program reaches both pages', async () => {
     const before = await converge(server, [a, b]);
+    const counts = await both();
     writeFileSync(server.file, before.replace('<li>Alpha</li>', '<li>Alpha, changed outside</li>'));
     await converge(server, [a, b]);
+    loaded['a change of index.html by another program'] = [counts, await both()];
     for (const page of [a, b]) assert.equal(await page.evaluate(`${el(1, 'li')}.textContent`), 'Alpha, changed outside');
+  });
+
+  await t.test('a new slide of page a does not load page b again', () => {
+    const [before, after] = loaded['a new slide of page a'];
+    assert.deepEqual(after, before);
+  });
+
+  await t.test('a moved element, an undo, and a change of index.html by another program do not load a page again', () => {
+    for (const what of ['an element moved on page b', 'an undo on page a', 'a change of index.html by another program']) {
+      const [before, after] = loaded[what];
+      assert.deepEqual(after, before, what);
+    }
   });
 
   await t.test('a change of the head loads both pages again, and they join again', async () => {
