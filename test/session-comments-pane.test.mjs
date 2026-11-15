@@ -235,6 +235,19 @@ test('a held text element takes a comment from the context menu, and its thread 
   clean(b);
 });
 
+test('the item Comment of the context menu of the background of a slide anchors the draft on the slide', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  assert.equal(await a.evaluate(`${C}.app.selection.has(${el(0, 'p')})`), true);
+  const at = await a.evaluate(`(() => { const r = Reveal.getCurrentSlide().getBoundingClientRect(); return { x: r.right - 30, y: r.bottom - 30 }; })()`);
+  await click(a, at, { button: 'right' });
+  await menu(a, 'Comment');
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  assert.equal(await a.evaluate(`document.querySelector('${PANE} .draft .anchor').textContent`), 'On Slide 1');
+  clean(a);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
