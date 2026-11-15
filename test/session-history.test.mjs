@@ -202,7 +202,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await ann.evaluate(`${C}.shell.download = (text) => { window.__downloaded = text; }, true`);
     const id = await rowId(ann, 1);
     await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .versions .row.version')][1]`);
-    await ann.waitFor(`${FRAME}?.src.includes('version=${id}')`);
+    await ann.waitFor(`document.querySelector('${PANE} .row[aria-current="true"]')?.dataset.id === 'version:${id}'`);
     await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
     await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Download This Version')`);
     await ann.waitFor('typeof window.__downloaded === "string"');
@@ -740,7 +740,7 @@ test('a compaction that drops the version in the preview closes the preview, sel
   await ann.waitFor(`!!document.querySelector('${PANE} [data-id="version:v0"]')`);
   await recordToasts(ann);
   await tapOrClick(ann, `document.querySelector('${PANE} [data-id="version:v0"]')`);
-  await ann.waitFor(`${FRAME}?.src.includes('version=v0')`);
+  await ann.waitFor(`document.querySelector('${PANE} .row[aria-current="true"]')?.dataset.id === 'version:v0'`);
   await show(ben, 'Two');
   await caretAtEnd(ben, el(1, 'p'));
   await typeKeys(ben, ' compact');
@@ -946,7 +946,6 @@ test('Keep theirs at a conflict sets the text of the page aside, which Show open
     await press$(ann, '.beeson-session-toast', 'Show');
     await ann.waitFor(SHOWN);
     await ann.waitFor(`document.querySelector('${PANE} .aside-list .row')?.getAttribute('aria-current') === 'true'`);
-    await ann.waitFor(`${FRAME}?.src.includes('aside=')`);
     await ann.waitFor(`!!${FRAME}.contentDocument?.body?.textContent.includes('Opening slide')`, 30_000);
     // the button of the toast is gone, hence the focus goes back to the button of the save state
     await press(ann, 'Escape');

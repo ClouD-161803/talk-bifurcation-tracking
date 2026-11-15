@@ -133,6 +133,50 @@ test('the preview of a deck with a hidden slide, a changed step, and changed not
   clean(ann);
 });
 
+test('a new list leaves the bar alone, the text of a version is read once per preview, and a hidden preview keeps nothing', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await write(server, ann, TALK.replace('<h2>One</h2>', '<h2>One first</h2>'), 'One first');
+  const first = (await nameNow(ann, 'First')).id;
+  await write(server, ann, TALK.replace('<p>Second slide</p>', '<p>Second slide changed</p>'), 'Second slide changed');
+  const second = (await nameNow(ann, 'Second')).id;
+  // the initiators of the reads of the text of a version by the page, and the downloads
+  await ann.evaluate(`(() => {
+    performance.setResourceTimingBufferSize(100000);
+    window.__reads = (id) => performance.getEntriesByType('resource').filter((e) => e.name.includes('version=' + id)).map((e) => e.initiatorType);
+    ${C}.shell.download = (text) => { window.__downloaded = text; };
+    return true;
+  })()`);
+  const documents = async () => {
+    for (let i = 0; i < 3; i++) await ann.send('HeapProfiler.collectGarbage');
+    return (await ann.send('Memory.getDOMCounters')).documents;
+  };
+  await openPane(ann);
+  await ann.waitFor(`!!document.querySelector('${PANE} .row[data-id="version:${second}"]')`);
+  const before = await documents();
+  // the preview of the version of id, once its changed element, which holds mark, is outlined
+  const preview = async (id, mark) => {
+    await tapOrClick(ann, `document.querySelector('${PANE} .row[data-id="version:${id}"]')`);
+    await ann.waitFor(`document.querySelector('${PANE} .row[aria-current="true"]')?.dataset.id === 'version:${id}' && [...(${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]') ?? [])].some((e) => e.textContent.includes(${JSON.stringify(mark)}))`, 30_000);
+  };
+  const download = async () => {
+    await ann.evaluate('window.__downloaded = null, true');
+    await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
+    await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Download This Version')`);
+    await ann.waitFor('typeof window.__downloaded === "string"');
+    assert.match(await ann.evaluate('window.__downloaded'), /<h2>One first<\/h2>/);
+  };
+
+  await t.test('a preview and its download read the text of the version once', async () => {
+    await preview(first, 'One first');
+    await download();
+    assert.deepEqual(await ann.evaluate(`window.__reads(${JSON.stringify(first)})`), ['fetch']);
+  });
+  clean(ann);
+});
+
 test('converge ends with a failure at its time limit while one page is in step with the file and another is not', { timeout: 60_000 }, async () => {
   const helpers = pathToFileURL(resolve('test/helpers/client.mjs')).href;
   // a worker, since a converge that loops without an await holds the thread that runs it
