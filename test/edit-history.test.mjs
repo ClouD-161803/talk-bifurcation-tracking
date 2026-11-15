@@ -893,3 +893,20 @@ test('a version name is kept without the characters that do not show', { timeout
   assert.equal(history.name(v.id, '​'.repeat(80)).name, undefined, 'a name of hidden characters takes the name off');
   history.stopSync();
 });
+
+test('the texts kept in memory as starting points of a rebuild stay within their budget in bytes', { timeout: 60_000 }, (t) => {
+  const deck = DECK.replace('</body>', `<p>${'x'.repeat(10_000)}</p>\n</body>`);
+  const { authority, history } = open(sessionDir(t), deck, { checkpointBytes: 1 });
+  const texts = [];
+  for (let i = 0; i < 400; i++) {
+    replace(authority, /First slide[^<]*/, `First slide ${i}`, ANN);
+    texts.push([history.close().id, authority.text]);
+  }
+  // read from the private map. a budget below the deck is raised to four texts of the deck, at two
+  // bytes a character
+  const kept = [...history.checkpoints.values()];
+  const bytes = kept.reduce((sum, text) => sum + 2 * text.length, 0);
+  assert.ok(kept.length > 0 && bytes <= 4 * 2 * authority.text.length, `${kept.length} texts of ${bytes} bytes`);
+  for (const [id, text] of texts) assert.equal(history.textOf(id), text, `the text of version ${id}`);
+  history.stopSync();
+});
