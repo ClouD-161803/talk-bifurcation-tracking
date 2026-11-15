@@ -288,6 +288,28 @@ test('the pane groups the threads by their slide, and two slides with one number
   clean(a);
 });
 
+test('a reply being typed when its thread is resolved by another person stays, and sending it reopens the thread', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'Thread to resolve');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  await openPane(b);
+  await sees(b, `!!document.querySelector('${ARTICLE(id)}')`, true);
+  await click(b, `${ARTICLE(id)} .reply textarea`);
+  await type(b, 'Reply before resolve');
+  await act(a, id, 'resolve');
+  await sees(b, `!!document.querySelector('${ARTICLE(id)} .resolved-by')`, true);
+  assert.deepEqual(await b.evaluate(`(() => {
+    const area = document.querySelector('${ARTICLE(id)} .reply textarea');
+    return { by: document.querySelector('${ARTICLE(id)} .resolved-by').textContent.replace(/, .*/, ''), value: area?.value, focused: document.activeElement === area };
+  })()`), { by: 'Resolved by Ann', value: 'Reply before resolve', focused: true });
+  await click(b, `${ARTICLE(id)} .reply .actions .primary`);
+  await sees(a, `(() => { const t = document.querySelector('${ARTICLE(id)}'); return t && [!!t.querySelector('.resolved-by'), [...t.querySelectorAll('.text')].map((p) => p.textContent)]; })()`, [false, ['Thread to resolve', 'Reply before resolve']]);
+  clean(a);
+  clean(b);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
