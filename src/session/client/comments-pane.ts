@@ -95,6 +95,12 @@ class Pane {
   private replies = new Map<string, Field>();
   private groups = new Map<Element | string, HTMLElement>();
   private order: string[] = [];
+  // the replies kept through a reload whose thread is not drawn yet
+  private pending = new Map<string, Kept>();
+  private saveTimer = 0;
+  private savedAt = -Infinity;
+  // the texts are written once those kept before a reload are read
+  private restored = false;
 
   private readonly client: Client;
   private readonly comments: Comments;
@@ -113,6 +119,7 @@ class Pane {
       this.filters.append(b);
     }
     this.root.append(this.filters, this.list);
+    window.addEventListener('pagehide', () => this.write());
     this.root.addEventListener('keydown', (ev) => this.onKey(ev));
     this.root.addEventListener('focusin', (ev) => {
       const article = (ev.target as Element).closest?.('article');
@@ -229,6 +236,57 @@ class Pane {
     this.updateDraft();
   }
 
+  // the draft and the replies being typed written to sessionStorage, at most once a second
+  keep(): void {
+    if (this.saveTimer) return;
+    this.saveTimer = window.setTimeout(() => this.write(), Math.max(0, this.savedAt + 1000 - performance.now()));
+  }
+
+  private write(): void {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = 0;
+    if (!this.restored) return;
+    this.savedAt = performance.now();
+    const replies: Record<string, Kept> = {};
+    for (const [id, k] of this.pending) if (this.comments.threads.has(id)) replies[id] = k;
+    for (const [id, f] of this.replies) if (f.area.value.trim()) replies[id] = f.kept();
+    const d = this.draft;
+    const draft = d?.field.area.value.trim() ? { ...d.field.kept(), slide: spotOf(d.slide), el: d.el ? spotOf(d.el) : null } : null;
+    try {
+      sessionStorage.setItem(TEXTS, draft || Object.keys(replies).length ? JSON.stringify({ draft, replies }) : '');
+    } catch {
+      // kept for this page only
+    }
+  }
+
+  // the draft and the replies kept before the page loaded again, once the threads are read
+  restore(): void {
+    this.restored = true;
+    let saved: Saved | null = null;
+    try {
+      saved = JSON.parse(sessionStorage.getItem(TEXTS) || 'null') as Saved | null;
+    } catch {
+      return;
+    }
+    for (const [id, k] of Object.entries(saved?.replies ?? {})) {
+      if (!this.comments.threads.has(id)) continue;
+      const f = this.replies.get(id);
+      if (!f) this.pending.set(id, k);
+      else if (!f.area.value) {
+        f.load(k);
+        f.box.classList.add('open');
+      }
+    }
+    const d = saved?.draft;
+    if (!d?.text || this.draft?.field.area.value) return;
+    const el = d.el ? elementOf(d.el) : null;
+    const slide = el?.closest(SLIDES) ?? (d.slide ? elementOf(d.slide) : null) ?? this.shell.target().slide;
+    if (!slide) return;
+    this.drafted(el, slide);
+    this.draft?.field.load(d);
+    this.render();
+  }
+
   private thread(t: Comment, p: Place | null, force = false): HTMLElement {
     let node = this.nodes.get(t.id);
     if (!node) {
@@ -343,6 +401,8 @@ class Pane {
   private replyField(t: Comment): Field {
     let f = this.replies.get(t.id);
     if (!f) {
+      const kept = this.pending.get(t.id);
+      this.pending.delete(t.id);
       f = this.field('Reply', 'Reply', async (text, mentions) => {
         await this.comments.act(t.id, 'reply', { text, mentions });
         // a reply to a thread that another person resolved while it was typed reopens it
@@ -350,9 +410,11 @@ class Pane {
         this.comments.markRead(t.id);
       }, () => {
         f!.box.classList.remove('open');
+        this.keep();
         this.nodes.get(t.id)?.focus();
-      });
+      }, kept);
       f.box.classList.add('reply');
+      if (kept?.text) f.box.classList.add('open');
       const field = f;
       f.area.addEventListener('focus', () => field.box.classList.add('open'));
       f.area.addEventListener('blur', () => setTimeout(() => {
@@ -422,6 +484,7 @@ class Pane {
       reset: () => {
         f.load({ text: '', marks: [] });
         error.hidden = true;
+        this.keep();
       },
     };
     const fit = () => {
@@ -514,6 +577,7 @@ class Pane {
       close();
       fit();
       sync();
+      this.keep();
       area.focus();
     };
     const submit = async () => {
@@ -542,6 +606,7 @@ class Pane {
       fit();
       sync();
       update();
+      this.keep();
     });
     area.addEventListener('click', update);
     area.addEventListener('blur', () => setTimeout(close, 150));
@@ -582,9 +647,16 @@ class Pane {
   }
 
   // a new comment on el, or on slide when el is null, as a draft at the top of the pane
-  startDraft(el: Element | null, slide: Element): void {
+  startDraft(el: Element | null, slide: Element, focus = true): void {
     this.shell.tab.set(true);
     if (this.filter === 'resolved') this.filter = 'open';
+    this.drafted(el, slide);
+    this.render();
+    if (focus) this.draft?.field.area.focus();
+  }
+
+  // the draft on el or slide, made without a render
+  private drafted(el: Element | null, slide: Element): void {
     if (!this.draft) {
       const box = make('div', 'draft');
       const label = make('p', 'anchor');
@@ -592,11 +664,13 @@ class Pane {
         const d = this.draft!;
         const thread = await this.comments.add(d.el, d.slide, text, mentions);
         this.draft = null;
+        this.keep();
         this.focused = thread.id;
         this.render();
         this.nodes.get(thread.id)?.focus();
       }, () => {
         this.draft = null;
+        this.keep();
         this.render();
       });
       box.append(label, field.box);
@@ -606,8 +680,6 @@ class Pane {
     this.draft.slide = slide;
     const n = this.comments.numberAt(slide);
     this.draft.label.textContent = el ? this.label(null, null, el) : n === null ? 'On the slide' : `On Slide ${n}`;
-    this.render();
-    this.draft.field.area.focus();
   }
 
   private updateDraft(): void {
@@ -762,6 +834,24 @@ function message(e: unknown): string {
 const named = (name: string, after: string): Node[] => [make('bdi', '', name), document.createTextNode(after)];
 
 const SLIDES = '.reveal .slides section';
+const TEXTS = `beeson-session-comment-texts:${location.pathname}`;
+
+// an element of the deck as the index of its slide, its index in the slide, or -1 for the slide,
+// and its tag, which find it again after a reload of the same deck
+type Spot = { slide: number; at: number; tag: string };
+type Saved = { draft: (Kept & { slide: Spot | null; el: Spot | null }) | null; replies: Record<string, Kept> };
+
+function spotOf(el: Element): Spot | null {
+  const slide = el.closest(SLIDES);
+  if (!slide) return null;
+  return { slide: [...document.querySelectorAll(SLIDES)].indexOf(slide), at: el === slide ? -1 : [...slide.querySelectorAll('*')].indexOf(el), tag: el.localName };
+}
+
+function elementOf(s: Spot): Element | null {
+  const slide = document.querySelectorAll(SLIDES)[s.slide];
+  const el = !slide || s.at < 0 ? slide : slide.querySelectorAll('*')[s.at];
+  return el?.localName === s.tag ? el : null;
+}
 
 const nameOf = (client: Client, person: string): string =>
   person === client.person ? client.name || 'You' : client.known.find((k) => k.person === person)?.name ?? 'Someone';
@@ -853,6 +943,7 @@ export function install(client: Client): void {
         // kept for this page only
       }
     }
+    if (first) pane.restore();
   });
   for (const e of ['known', 'people', 'state', 'applied', 'me'] as const) client.on(e, schedule);
   client.app.onRefresh(['structure', 'content'], () => shell.tab.shown() && schedule());
