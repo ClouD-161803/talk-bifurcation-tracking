@@ -162,3 +162,127 @@ test('Change Name is seen on the other page, also for one word and an emoji, and
   });
   clean(ben);
 });
+
+test('the Share dialog connects a host to the relay, and a guest joins through the link, edits, and leaves', { timeout: 300_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, guestMs: 10_000 });
+  t.after(() => relay.close());
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const host = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
+
+  const openShare = async (page) => {
+    await press(page, '.beeson-session-share');
+    await page.waitFor(`document.querySelector(${JSON.stringify(SHARE)})?.open`);
+  };
+  const connect = async (address, secret) => {
+    await host.evaluate(`(() => {
+      const set = (id, v) => { const el = document.getElementById(id); el.value = v; };
+      set('beeson-session-relay', ${JSON.stringify(address)});
+      set('beeson-session-secret', ${JSON.stringify(secret)});
+    })()`);
+    await press(host, dialogButton('beeson-session-share-dialog', 'Connect'));
+  };
+  const error = (id) => host.evaluate(`document.getElementById('beeson-session-${id}-error').textContent`);
+
+  await openShare(host);
+  await host.waitFor(`!!document.getElementById('beeson-session-relay')`);
+  assert.equal(await host.evaluate(`document.querySelector('${SHARE} p').textContent`), 'Guests join through the relay of your group.');
+  assert.equal(await host.evaluate(`document.getElementById('beeson-session-secret').type`), 'password');
+  await press(host, `(${dialogButton('beeson-session-share-dialog', 'Show')})`);
+  assert.equal(await host.evaluate(`document.getElementById('beeson-session-secret').type`), 'text');
+
+  await connect('http://relay.example.org', SECRET);
+  await host.waitFor(`!!document.getElementById('beeson-session-relay-error').textContent`);
+  assert.equal(await error('relay'), 'The address of the relay must start with https://');
+  await connect(relay.url, 'not the secret of the group');
+  await host.waitFor(`!!document.getElementById('beeson-session-secret-error').textContent`);
+  assert.match(await error('secret'), /^The relay refused the session with 401/);
+  assert.equal(await error('relay'), '');
+
+  await connect(relay.url, SECRET);
+  await host.waitFor(`!!document.querySelector('${SHARE} input[readonly]')`);
+  const link = `${relay.url}/${server.edit.key}/index.html?edit&session`;
+  assert.equal(await host.evaluate(`document.querySelector('${SHARE} input[readonly]').value`), link);
+  assert.equal(await host.evaluate(`document.querySelector('${SHARE} p').textContent`), 'Anyone with this link can edit the deck while the session runs.');
+  assert.deepEqual(await host.evaluate(`[...document.querySelectorAll('${SHARE} .row button')].map((b) => b.textContent)`), ['End session', 'Done']);
+
+  await t.test('the QR code holds the link, black on white with a quiet zone of four modules', async () => {
+    const drawn = await host.evaluate(`(() => {
+      const svg = document.querySelector('${SHARE} .qr svg');
+      const r = svg.getBoundingClientRect();
+      return { size: [r.width, r.height], box: svg.getAttribute('viewBox'), ground: svg.querySelector('rect').getAttribute('fill'), ink: svg.querySelector('path').getAttribute('fill'), d: svg.querySelector('path').getAttribute('d') };
+    })()`);
+    const want = qr(link);
+    const n = want.length;
+    assert.deepEqual(drawn.size, [160, 160]);
+    assert.equal(drawn.box, `0 0 ${n + 8} ${n + 8}`);
+    assert.deepEqual([drawn.ground, drawn.ink], ['#fff', '#000']);
+    const got = Array.from({ length: n + 8 }, () => Array(n + 8).fill(false));
+    for (const [, x, y, w] of drawn.d.matchAll(/M(\d+) (\d+)h(\d+)v1h-\d+z/g)) for (let i = 0; i < Number(w); i++) got[Number(y)][Number(x) + i] = true;
+    assert.equal(drawn.d.replace(/M(\d+) (\d+)h(\d+)v1h-\d+z/g, ''), '');
+    // the quiet zone is light, and the modules inside it are the code of the link
+    assert.ok(got.every((row, y) => row.every((dark, x) => !dark || (x >= 4 && y >= 4 && x < n + 4 && y < n + 4))));
+    assert.deepEqual(got.slice(4, n + 4).map((row) => row.slice(4, n + 4)), want);
+  });
+
+  await t.test('Copy puts the link into the clipboard and reads Copied', async () => {
+    await host.send('Browser.grantPermissions', { origin: new URL(server.edit.url).origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
+    await press(host, `${SHARE} button.copy`);
+    await host.waitFor(`document.querySelector('${SHARE} button.copy').textContent === 'Copied'`);
+    assert.equal(await host.evaluate('navigator.clipboard.readText()'), link);
+    await host.waitFor(`document.querySelector('${SHARE} button.copy').textContent === 'Copy'`, 10_000);
+  });
+
+  // the guest pages are of the origin of the relay, hence their storage is apart from the host's
+  const guest = await open(browser, link, { name: 'Gus Grant' });
+  assert.equal(await guest.evaluate(`${C}.host`), false);
+
+  await t.test('a guest who joins through the link edits, and sees the link and the people in Share', async () => {
+    await show(guest, 'One');
+    await caretAtEnd(guest, `document.querySelector('.reveal .slides > section h2')`);
+    await typeKeys(guest, ' guest');
+    assert.equal(await converge(server, [host, guest]), TALK.replace('<h2>One</h2>', '<h2>One guest</h2>'));
+    await openShare(guest);
+    assert.equal(await guest.evaluate(`document.querySelector('${SHARE} input[readonly]').value`), link);
+    assert.equal(await guest.evaluate(`!!document.querySelector('${SHARE} .qr svg')`), true);
+    assert.deepEqual(await guest.evaluate(`[...document.querySelectorAll('${SHARE} .row button')].map((b) => b.textContent)`), ['Done']);
+    assert.equal(await guest.evaluate(`document.querySelector('${SHARE} h4').textContent`), 'People in this session (2)');
+    assert.deepEqual(await guest.evaluate(`[...document.querySelectorAll('${SHARE} ul.people .name')].map((n) => n.textContent)`), ['Ann Smith', 'Gus Grant (you)']);
+    await press(guest, dialogButton('beeson-session-share-dialog', 'Done'));
+    await guest.waitFor(`!document.querySelector(${JSON.stringify(SHARE)})`);
+    // the list of the host follows the guest
+    await host.waitFor(`document.querySelector('${SHARE} h4').textContent === 'People in this session (2)'`);
+  });
+
+  await t.test('Leave Session leaves the session of a guest, who can join again', async () => {
+    const lea = await open(browser, link, { name: 'Lea Lane' });
+    await until(async () => (await avatars(host)).length === 3, 'Lea Lane on the page of the host');
+    await press(lea, '.beeson-session-people .me');
+    await lea.waitFor(`!!${item('Leave Session')}`);
+    assert.deepEqual(await menu(lea), ['Lea Lane', 'Change Name…', 'Leave Session']);
+    await press(lea, item('Leave Session'));
+    await lea.waitFor(`document.querySelector('dialog.beeson-session-left')?.open`);
+    assert.deepEqual(await lea.evaluate(`({ title: document.querySelector('dialog.beeson-session-left h3').textContent, connection: ${C}.connection, controls: !!document.querySelector('.beeson-session-share, .beeson-session-people, .beeson-session-state') })`), { title: 'You left the session', connection: 'ended', controls: false });
+    await until(async () => (await avatars(host)).length === 2, 'Lea Lane to leave the page of the host');
+    await lea.evaluate(`(${dialogButton('beeson-session-left', 'Join again')}).click()`).catch(() => {});
+    await lea.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+    await until(async () => (await avatars(host)).length === 3, 'Lea Lane to join again');
+    await lea.close();
+  });
+
+  await t.test('End session asks, tells the guest, and the link answers as the relay does without a host', async () => {
+    await front(host);
+    await press(host, dialogButton('beeson-session-share-dialog', 'End session'));
+    await host.waitFor(`[...document.querySelectorAll('dialog[open] p')].some((p) => p.textContent === 'Guests can no longer edit. The deck stays open for you.')`);
+    await press(host, `([...document.querySelectorAll('dialog[open]')].pop().querySelector('button.primary'))`);
+    await host.waitFor(`!!document.getElementById('beeson-session-relay')`);
+    await front(guest);
+    await guest.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'Ann Smith ended the session')`);
+    await until(async () => (await fetch(link)).status === 502, 'the link to answer 502');
+    assert.equal(await host.evaluate(ONLINE), true);
+  });
+  // the refusals of the edit command to connect are answers of share with an error
+  clean(host, [/\.session\/share/]);
+  clean(guest, [/502/]);
+});
