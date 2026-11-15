@@ -89,3 +89,15 @@ export function putCaret(host: Element, offset: number, math: MathLookup): void 
   const [node, at] = spot ?? [host, host.childNodes.length];
   sel.collapse(node, at);
 }
+
+// the presses and keys of the person, which tell a caret moved by the person from a caret moved by
+// MathJax, whose nodes the selection follows
+let acts = 0;
+for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => void (acts += 1), true);
+
+export type Mark = { active: Element | null; acts: number };
+
+export const markOf = (): Mark => ({ active: document.activeElement, acts });
+
+// whether the person moved the caret since mark, i.e. focused another element, pressed, or typed
+export const moved = (mark: Mark): boolean => document.activeElement !== mark.active || acts !== mark.acts;

@@ -10,6 +10,7 @@ import { apply as applyEdits, edits, mergeEdits } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
 import { elementRange, parseSource } from '../source.ts';
 import { applyAt, refresh, repairText, type Done } from './apply.ts';
+import { markOf, moved, type Mark } from './caret.ts';
 import { graft, locate, retag, windowOf, type Spot } from './tree.ts';
 
 // what an apply did: the elements it changed, e.g. for a flash, and reload when the deck could not
@@ -200,8 +201,8 @@ export function install(app: App): Port {
   }
 
   // after MathJax: the formulas of the new content are typeset, the new elements are drawn by the
-  // theme, and the caret is put back
-  async function typeset(done: Done): Promise<void> {
+  // theme, and the caret is put back unless the person moved it since mark
+  async function typeset(done: Done, mark: Mark | null): Promise<void> {
     const made = done.placed.filter((n) => n.isConnected);
     const mj = (window as unknown as Page).MathJax;
     const all = [...done.typeset];
@@ -216,7 +217,7 @@ export function install(app: App): Port {
       for (const n of made) page.Beeson?.mount?.(n);
       if (made.length) refresh(app);
       for (const el of done.hosts) if (el.isConnected && app.pairing?.byLive.has(el)) app.history.track(el);
-      done.caret?.();
+      if (done.caret && mark && !moved(mark)) done.caret();
     } finally {
       mine = false;
     }
@@ -269,8 +270,9 @@ export function install(app: App): Port {
         clean = false;
         return reload();
       }
+      const mark = done.caret ? markOf() : null;
       settle(shown, done);
-      await typeset(done);
+      await typeset(done, mark);
       changed = done.changed.filter((el) => el.isConnected);
     } else app.saved = shown;
     if (listeners.size && target !== handed) pending = true;
