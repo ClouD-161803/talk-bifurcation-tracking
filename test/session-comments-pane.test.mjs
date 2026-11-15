@@ -340,6 +340,53 @@ test('a live update that moves the thread of a reply being typed keeps its node,
   clean(b);
 });
 
+test('offline, Resolve, Reopen, Edit, Delete, and the send buttons are disabled, and a failed action does not promise a later send', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a] } = await pair(t, ['Ann']);
+  const { port } = server.edit;
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'Before the stop');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  const one = await post(a, 1, 'Resolved before the stop');
+  await act(a, one, 'resolve');
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await type(a, 'Typed before the stop');
+  await until(() => readFileSync(join(server.talk, '.session', 'comments.json'), 'utf8').includes('"resolved"'), 'the edit command to write the comments');
+
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await a.waitFor(`/^Offline/.test(${STATE})`);
+  const CONTROLS = (thread) => `[...document.querySelectorAll('${ARTICLE(thread)} :is(.resolve, .text-button, .more, .reply .actions .primary)')].map((b) => [b.getAttribute('aria-label') || b.textContent, b.disabled, b.title])`;
+  await sees(a, CONTROLS(id), [['Resolve', true, OFFLINE], ['Thread actions', true, OFFLINE], ['Reply', true, OFFLINE]]);
+  await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="resolved"]').click()`);
+  await sees(a, CONTROLS(one), [['Reopen', true, OFFLINE], ['Thread actions', true, OFFLINE]]);
+  await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="open"]').click()`);
+  // the key E on a thread does nothing while offline
+  await a.evaluate(`document.querySelector('${ARTICLE(id)}').focus()`);
+  await press(a, 'E');
+  assert.deepEqual(await a.evaluate(TOASTS), []);
+  assert.equal(await a.evaluate(`document.querySelector('${ARTICLE(id)} .reply textarea').value`), 'Typed before the stop');
+
+  await server.start(['--port', String(port)]);
+  await front(a);
+  await click(a, '.beeson-session-action');
+  await a.waitFor(ONLINE);
+  await sees(a, CONTROLS(id), [['Resolve', false, 'Resolve'], ['Thread actions', false, 'Thread actions'], ['Reply', false, '']]);
+  // a request resolve that fails as on a network error
+  await a.evaluate(`(() => {
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      return url.includes('/resolve') ? Promise.reject(new TypeError('Failed to fetch')) : fetched.call(this, input, init);
+    };
+  })()`);
+  await click(a, `${ARTICLE(id)} .resolve`);
+  await sees(a, `${TOASTS}.length`, 1);
+  assert.notEqual((await a.evaluate(TOASTS))[0], OFFLINE);
+  assert.equal(await converge(server, [a]), TALK);
+  clean(a, REFUSED);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);

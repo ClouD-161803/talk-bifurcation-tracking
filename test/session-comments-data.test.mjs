@@ -19,7 +19,8 @@ import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Alt+Shift+C';
 const PANE = '.beeson-edit-inspector .panel.comments';
-const OFFLINE = 'Comments are sent once you are back online';
+// the message of a send whose answer did not arrive, which is not sent again without a press
+const LOST = 'Not sent. The connection to the host was lost.';
 const ARTICLES = `document.querySelectorAll('${PANE} article').length`;
 // the id of each thread in the pane, followed by * when the thread is unread
 const UNREAD = `[...document.querySelectorAll('${PANE} article')].map((a) => a.dataset.id + (a.classList.contains('unread') ? '*' : ''))`;
@@ -259,7 +260,7 @@ test('a thread whose answer was lost is made once when it is sent again', { time
   await b.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
   await type(b, 'Sent once');
   await click(b, `${PANE} .draft .actions .primary`);
-  await sees(b, `document.querySelector('${PANE} .draft .error:not([hidden])')?.textContent ?? null`, OFFLINE);
+  await sees(b, `document.querySelector('${PANE} .draft .error:not([hidden])')?.textContent ?? null`, LOST);
   await sees(b, `document.querySelector('${PANE} .draft .actions .primary').disabled`, false);
   await click(b, `${PANE} .draft .actions .primary`);
   await b.waitFor(`!document.querySelector('${PANE} .draft')`);
