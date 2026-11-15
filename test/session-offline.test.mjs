@@ -531,3 +531,37 @@ test('a copy of an earlier session is added to a deck that changed since only wh
     await page.close();
   });
 });
+
+test('the dialog of the conflicts at a join that takes over a copy downloads the version of the person', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url);
+  const ben = await open(browser, url, { name: 'Ben' });
+  await converge(server, [a, ben]);
+  await goOffline(a);
+  await show(a, 'One');
+  await select(a, el(0, 'p'), 0, 5);
+  await type(a, 'TOKA');
+  const id = await copied(a, '<p>TOKA slide</p>');
+  await a.close();
+  await released(ben, id);
+  await show(ben, 'One');
+  await select(ben, el(0, 'p'), 0, 5);
+  await type(ben, 'TOKB');
+  await until(() => server.read().includes('<p>TOKB slide</p>'), 'the edit of Ben to reach the file');
+
+  const again = await tab(browser, url, { wait: false });
+  await front(again);
+  await again.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`);
+  assert.deepEqual((await again.evaluate(CONFLICTS)).items, ['Slide 1: “TOKA slide”']);
+  await press(again, 'Download my version');
+  const [file] = await downloads(again);
+  assert.ok(file.text.includes('<p>TOKA slide</p>'), 'the download holds the version of the person');
+  assert.ok(await again.evaluate(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`));
+  await press(again, 'Keep theirs');
+  assert.equal(await converge(server, [again, ben]), TALK.replace('<p>First slide</p>', '<p>TOKB slide</p>'));
+  clean(again);
+  clean(ben);
+});
