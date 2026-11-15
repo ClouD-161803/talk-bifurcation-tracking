@@ -21,12 +21,14 @@ export const NO_MATH: MathLookup = () => null;
 const SVG = 'http://www.w3.org/2000/svg';
 
 // what an apply changed on the page. touched holds for the elements changed, replaced, or taken
-// off the page, whose entries of the history are pruned. hosts are the text elements whose content
+// off the page, whose entries of the history are pruned, and within holds for an element inside
+// which the apply changed, placed, or took an element. hosts are the text elements whose content
 // was set and placed the new elements, which are typeset by the promises of typeset, and caret
 // puts the caret back after them
 export type Done = {
   changed: Element[];
   touched: (el: Element) => boolean;
+  within: (root: Element) => boolean;
   hosts: Element[];
   placed: Element[];
   typeset: Promise<unknown>[];
@@ -41,21 +43,27 @@ type Ctx = {
   text: string;
   touched: Set<Element>;
   gone: Element[];
+  // the parents of the elements taken off the page
+  cuts: Element[];
   changed: Element[];
   hosts: Element[];
   placed: Element[];
   typeset: Promise<unknown>[];
 };
 
-const done = (ctx: Ctx, structural: boolean, caret: (() => void) | null): Done => ({
-  changed: [...new Set(ctx.changed)].filter((el) => el.isConnected),
-  touched: (el) => ctx.touched.has(el) || ctx.gone.some((g) => g.contains(el)),
-  hosts: ctx.hosts,
-  placed: ctx.placed,
-  typeset: ctx.typeset,
-  structural,
-  caret,
-});
+const done = (ctx: Ctx, structural: boolean, caret: (() => void) | null): Done => {
+  const marks = [...ctx.touched, ...ctx.placed, ...ctx.cuts].filter((el) => el.isConnected);
+  return {
+    changed: [...new Set(ctx.changed)].filter((el) => el.isConnected),
+    touched: (el) => ctx.touched.has(el) || ctx.gone.some((g) => g.contains(el)),
+    within: (root) => marks.some((m) => root.contains(m)),
+    hosts: ctx.hosts,
+    placed: ctx.placed,
+    typeset: ctx.typeset,
+    structural,
+    caret,
+  };
+};
 
 type Jax = { MathJax?: { startup?: { document?: { getMathItemsWithin(els: Element[]): { typesetRoot?: Element; math: string; display: boolean; start: { delim?: string }; end: { delim?: string } }[] } } } };
 
@@ -260,7 +268,7 @@ export function refresh(app: App): void {
 }
 
 function makeCtx(app: App, text: string): Ctx {
-  return { app, source: app.source!, pairing: app.pairing!, text, touched: new Set(), gone: [], changed: [], hosts: [], placed: [], typeset: [] };
+  return { app, source: app.source!, pairing: app.pairing!, text, touched: new Set(), gone: [], cuts: [], changed: [], hosts: [], placed: [], typeset: [] };
 }
 
 // the deck made to read as text, which differs from the text of the source in w, at spot. null when
@@ -543,6 +551,7 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
       ctx.touched.add(d.node);
       continue;
     }
+    if (d.node.parentElement) ctx.cuts.push(d.node.parentElement);
     d.node.remove();
     detached.add(d.node);
     ctx.gone.push(d.node);

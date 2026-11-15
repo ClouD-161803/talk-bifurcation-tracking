@@ -281,6 +281,7 @@ export class Doc {
           await this.after(parent);
         },
         touches: [...nodes, parent],
+        detaches: nodes,
       });
       return nodes;
     } finally {
@@ -324,6 +325,7 @@ export class Doc {
           await this.after(rec.parent);
         },
         touches: [el, rec.parent],
+        detaches: [el],
       });
     } finally {
       done();
@@ -391,6 +393,7 @@ export class Doc {
           await this.after(parent);
         },
         touches: [el, node, parent],
+        detaches: [el, node],
       });
       return node;
     } finally {

@@ -193,7 +193,7 @@ export function install(app: App): Port {
     clean = true;
     mine = true;
     try {
-      app.history.prune(done.touched);
+      app.history.prune(done.touched, done.within);
       for (const el of done.changed) if (app.pairing?.byLive.has(el)) app.history.track(el);
     } finally {
       mine = false;
