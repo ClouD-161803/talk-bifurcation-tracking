@@ -247,6 +247,18 @@ test('a figure knows the commands of amsmath, amssymb, and bm that a macro of th
   assert.equal(compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{$\\vb{r}$}') }).errors, undefined);
 });
 
+// the preamble reader takes an operator of amsmath and the kinds of theorem of amsthm, which a
+// preamble defines while it is read, before the wrapper loads a package after it
+test('a figure is compiled with a preamble that defines an operator and kinds of theorem', { skip: WITHOUT_TEX }, (t) => {
+  const preamble = '\\DeclareMathOperator{\\Jac}{J}\n\\newtheorem{theorem}{Theorem}\n\\theoremstyle{definition}\n\\newtheorem*{remark}{Remark}\n';
+  const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': preamble });
+  const source = DECAY.replace('{amplitude}', '{$\\Jac x$}');
+  assert.equal(compileFigure({ dir, name: 'decay', source }).errors, undefined);
+  // a preamble that loads the same packages itself does not clash
+  writeFileSync(join(dir, 'preamble.tex'), `\\usepackage{amsmath,amsthm}\n${preamble}`);
+  assert.equal(compileFigure({ dir, name: 'decay', source }).errors, undefined);
+});
+
 const page = (body) => `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<script src="tex.js"></script>\n</head>\n<body>\n<div class="reveal"><div class="slides">\n${body}\n</div></div>\n</body>\n</html>\n`;
 // npm run tex on the deck of a folder, with TeX only in the folder texbin when it is given
 const tex = (root, texbin) => {
