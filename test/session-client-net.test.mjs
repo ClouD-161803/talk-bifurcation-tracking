@@ -354,3 +354,23 @@ test('the operations of the answer that ends the session are taken before its di
   clean(ann, REFUSED);
   clean(ben, REFUSED);
 });
+
+test('a page whose poll is refused again right after each hello waits longer before each next hello', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  // as for a page evicted by the ninth page of its person: every poll is answered 404
+  const from = await page.evaluate(`(__net.rule('/.session/events', 'answer', { status: 404, body: '{"error":"the page is not in the session"}' }), Date.now())`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  // the edit answers the poll in flight, and the next one is refused
+  await type(page, ' x');
+  const hellos = `__net.log.filter((l) => l.url.includes('/.session/hello') && l.at >= ${from}).map((l) => l.at)`;
+  await page.waitFor(`${hellos}.length >= 3`, 15_000);
+  const at = await page.evaluate(hellos);
+  const gaps = at.slice(1).map((t, i) => t - at[i]);
+  assert.ok(gaps[0] >= 900 && gaps[1] >= 1800, `the gaps between the hellos are ${gaps.join(', ')} ms`);
+  clean(page);
+});
