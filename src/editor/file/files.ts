@@ -419,19 +419,22 @@ export function install(app: App): void {
     location.reload();
   }
 
-  // the address of the deck with the parameters of this page but edit, and with extra
+  // the address of the deck with the parameters of this page but edit, and with extra. the version
+  // v of a session is left out too, since it would play the deck as it was when the page was loaded
   function deckAddress(extra: string[] = []): string {
     const params = new URLSearchParams(location.search);
-    params.delete('edit');
+    for (const name of ['edit', 'session', 'v']) params.delete(name);
     for (const name of extra) params.set(name, '');
     // a parameter without a value, such as still, is kept without an equals sign
     const query = params.toString().replace(/=(?=&|$)/g, '');
     return `${pageOf()}${query ? `?${query}` : ''}`;
   }
 
-  // with unsaved changes, the user is asked first, and false is returned for no export or show
+  // with unsaved changes, the user is asked first, and false is returned for no export or show. in a
+  // session every edit is shared, and the edits of this page are sent first
   async function savedFirst(action: 'present' | 'export' | 'print' | 'pptx'): Promise<boolean> {
-    if (!app.dirty) return true;
+    if (app.session) await app.session.save();
+    if (!app.dirty || app.session) return true;
     const choice = await askFirst(action);
     if (!choice) return false;
     if (choice === 'save') await save();
@@ -619,15 +622,15 @@ export function install(app: App): void {
 
   // the saved deck at hash, without the editor, played in place or, with tab, in a new tab. with
   // unsaved changes, the user is asked to save or discard them first. the show in place takes the
-  // full screen before the save, while the click on the dialog still counts. null is returned when
-  // nothing is played
+  // full screen before the save, while the click on the dialog still counts. in a session the edits
+  // are sent first without a question. null is returned when nothing is played
   async function present(hash = '', tab = false): Promise<{ win: Window | null } | null> {
-    const choice = app.dirty ? await askFirst('present') : 'saved';
+    const choice = app.session ? 'save' : app.dirty ? await askFirst('present') : 'saved';
     if (!choice) return null;
     const show = tab ? null : startShow(app);
-    if (choice === 'save') await save();
+    if (choice === 'save') await save().catch((e) => (show?.end(), Promise.reject(e)));
     if (choice === 'discard') await discardEdits();
-    if (choice === 'save' && app.dirty) {
+    if (choice === 'save' && app.dirty && !app.session) {
       show?.end();
       return null;
     }
