@@ -23,6 +23,7 @@ export { decode, Disk } from './disk.ts';
 export { History, moveMarks, operationOf } from './history.ts';
 export { slideChanges, slidesOf } from '../session/slides.ts';
 export { checkAnchors, moveAnchors, REMOVED_MAX, slideAnchorAt, slideAt, startTagAt } from '../session/anchor.ts';
+export { Comments } from './comments.ts';
 
 const USAGE = 'usage: node theme/edit.mjs [folder] [--port N] [--no-open] [--relay URL]';
 

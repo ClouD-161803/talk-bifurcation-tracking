@@ -15,6 +15,9 @@ import { join as join5, resolve, sep as sep2 } from "node:path";
 
 // src/session/protocol.ts
 var VERSION_NAME_MAX = 80;
+var COMMENT_MAX = 4e3;
+var REPLIES_MAX = 200;
+var THREADS_MAX = 2e3;
 var COLORS = ["--data-2", "--data-3", "--data-5", "--data-7"];
 var HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}\p{Cf}]$/u;
 var SELECTOR = /^[\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
@@ -3237,11 +3240,11 @@ async function start(options = {}) {
   server.headersTimeout = 2e4;
   server.requestTimeout = 12e4;
   const ports = options.port !== void 0 ? [options.port] : [.../* @__PURE__ */ new Set([savedPort(root) ?? DEFAULT_PORT, DEFAULT_PORT, 0])];
-  await new Promise((done, fail) => {
+  await new Promise((done, fail2) => {
     const tryListen = (i) => {
       server.once("error", (e) => {
         if ((e.code === "EADDRINUSE" || e.code === "EACCES") && i + 1 < ports.length) tryListen(i + 1);
-        else fail(e);
+        else fail2(e);
       });
       server.listen(ports[i], "127.0.0.1", () => {
         server.removeAllListeners("error");
@@ -3798,6 +3801,382 @@ function checkAnchors(text, items, slides = slidesOf(text)) {
   return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], [])), slides };
 }
 
+// src/edit/comments.ts
+import { randomBytes as randomBytes6 } from "node:crypto";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync7, renameSync as renameSync2, unlinkSync as unlinkSync6, writeFileSync as writeFileSync6 } from "node:fs";
+import { unlink as unlink2, writeFile as writeFile4 } from "node:fs/promises";
+import { join as join6 } from "node:path";
+var MENTIONS_MAX = 50;
+var LOG_MAX = 4e3;
+var isCommentId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
+var newId3 = () => randomBytes6(9).toString("base64url");
+var fail = (status, error2) => ({ status, error: error2 });
+var isFailure = (x) => !!x && typeof x.error === "string" && typeof x.status === "number";
+var isNumber = (x) => typeof x === "number" && Number.isFinite(x);
+var isInt = (x) => Number.isSafeInteger(x) && x >= 0;
+var charsOf = (t) => t.text.length + t.replies.reduce((n, r) => n + r.text.length, 0);
+function cleanText(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return fail(400, "the text is empty");
+  if (Array.from(raw).length > COMMENT_MAX) return fail(413, `the text is longer than ${COMMENT_MAX} characters`);
+  return raw;
+}
+function cleanMentions(raw) {
+  if (raw === void 0 || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > MENTIONS_MAX || !raw.every(isPersonId)) return fail(400, "mentions must be person ids");
+  return [...new Set(raw)];
+}
+var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && /^[a-z][^\s/>]{0,63}$/.test(a.tag);
+var isReply = (r) => !!r && isCommentId(r.id) && isPersonId(r.author) && isNumber(r.time) && typeof r.text === "string" && (r.edited === void 0 || isNumber(r.edited));
+function readThread(t) {
+  if (!t || typeof t !== "object") return null;
+  const c = t;
+  if (!isCommentId(c.id) || !isPersonId(c.author) || !isNumber(c.time) || typeof c.text !== "string") return null;
+  if (!(c.anchor === null || isAnchor(c.anchor)) || !(c.slide === null || isAnchor(c.slide))) return null;
+  if (!Array.isArray(c.replies) || c.replies.length > REPLIES_MAX || !c.replies.every(isReply)) return null;
+  if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
+  if (c.edited !== void 0 && !isNumber(c.edited)) return null;
+  if (c.resolved !== void 0 && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
+  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || typeof c.removed.text === "string"))) return null;
+  const out = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
+  if (c.removed) out.removed = { text: c.removed.text };
+  if (c.edited !== void 0) out.edited = c.edited;
+  if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
+  return out;
+}
+var Comments = class {
+  // dir is the .session folder of the talk, and found the patches from the text of the last version
+  // of the history to index.html at this start
+  constructor(dir, authority, found, options = {}) {
+    // grows with every change of a thread, but not with a shift of its anchors
+    this.v = 0;
+    this.threads = /* @__PURE__ */ new Map();
+    this.seenBy = /* @__PURE__ */ new Map();
+    this.chars = 0;
+    this.slides = null;
+    // the changes after v = logStart, in order
+    this.changes = [];
+    this.logStart = 0;
+    this.listeners = /* @__PURE__ */ new Set();
+    this.timer = null;
+    this.writing = null;
+    this.lastWrite = 0;
+    // the count of changes, and the count that the file holds
+    this.edits = 0;
+    this.saved = 0;
+    this.stopped = false;
+    this.file = join6(dir, "comments.json");
+    this.authority = authority;
+    this.now = options.now ?? Date.now;
+    this.log = options.log ?? (() => {
+    });
+    this.every = options.every ?? 1e3;
+    this.maxChars = options.maxChars ?? 16 * 1024 * 1024;
+    this.text = authority.text;
+    this.sum = checksum(this.text);
+    try {
+      mkdirSync4(dir, { recursive: true });
+    } catch {
+    }
+    const saved = this.load();
+    if (saved) this.place(saved.sum, found);
+    authority.observe((op, text) => this.operation(op, text));
+  }
+  onChange(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  list(person) {
+    return { v: this.v, at: this.authority.version, comments: [...this.threads.values()], seen: this.seenBy.get(person) ?? 0 };
+  }
+  // the changes after rev seen of a page, which holds -1 when it may have missed some
+  since(seen) {
+    if (seen < this.logStart) return { v: this.v, changed: null, removed: null };
+    const changed = /* @__PURE__ */ new Set();
+    const removed = /* @__PURE__ */ new Set();
+    for (let k = this.changes.length - 1; k >= 0 && this.changes[k].v > seen; k--) {
+      const { id, gone } = this.changes[k];
+      if (changed.has(id) || removed.has(id)) continue;
+      if (gone || !this.threads.has(id)) removed.add(id);
+      else changed.add(id);
+    }
+    return { v: this.v, changed: [...changed].map((id) => this.threads.get(id)), removed: [...removed] };
+  }
+  // a new thread of person. anchor and slide are of the text at version base
+  add(person, body) {
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (this.threads.size >= THREADS_MAX) return fail(409, `a deck holds at most ${THREADS_MAX} threads`);
+    if (this.chars + text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
+    const n = typeof body.base === "string" ? this.authority.reach(body.base) : null;
+    if (n === null) return fail(409, "base is not in the log, read the deck again");
+    const at = this.anchorsAt(n, body.anchor, body.slide);
+    if (isFailure(at)) return at;
+    const item = this.toCurrent(n, at);
+    const thread = { id: newId3(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
+    if (item.removed) thread.removed = item.removed;
+    this.threads.set(thread.id, thread);
+    this.chars += text.length;
+    this.changed([thread.id]);
+    return thread;
+  }
+  reply(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
+    if (this.chars + text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
+    thread.replies.push({ id: newId3(), author: person, time: this.now(), text });
+    this.chars += text.length;
+    this.mention(thread, mentions);
+    this.changed([id]);
+    return thread;
+  }
+  // a new text of the thread, or of its reply of id body.reply, by its author
+  edit(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    const target = this.target(thread, body.reply);
+    if (isFailure(target)) return target;
+    if (target.author !== person) return fail(403, "only the author may edit a comment");
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (this.chars + text.length - target.text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
+    this.chars += text.length - target.text.length;
+    target.text = text;
+    target.edited = this.now();
+    this.mention(thread, mentions);
+    this.changed([id]);
+    return thread;
+  }
+  // the thread, or its reply of id body.reply, deleted by its author. null when the thread is gone
+  remove(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    const target = this.target(thread, body.reply);
+    if (isFailure(target)) return target;
+    if (target.author !== person) return fail(403, "only the author may delete a comment");
+    if (target === thread) {
+      this.threads.delete(id);
+      this.chars -= charsOf(thread);
+      this.changed([id], true);
+      return null;
+    }
+    thread.replies = thread.replies.filter((r) => r !== target);
+    this.chars -= target.text.length;
+    this.changed([id]);
+    return thread;
+  }
+  resolve(id, person, resolved) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    if (resolved === !!thread.resolved) return thread;
+    if (resolved) thread.resolved = { by: person, time: this.now() };
+    else delete thread.resolved;
+    this.changed([id]);
+    return thread;
+  }
+  // the time up to which person has read the comments, which only grows
+  seen(person, time) {
+    if (!isNumber(time) || time < 0) return fail(400, "time must be a time in ms");
+    const seen = Math.max(this.seenBy.get(person) ?? 0, Math.min(time, this.now()));
+    if (seen !== this.seenBy.get(person)) {
+      this.seenBy.set(person, seen);
+      this.dirty();
+    }
+    return seen;
+  }
+  stopSync() {
+    if (this.stopped) return;
+    this.stopped = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (this.saved === this.edits) return;
+    const tmp = this.tmpName();
+    try {
+      writeFileSync6(tmp, this.serialize());
+      renameRetriedSync(tmp, this.file);
+      this.saved = this.edits;
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      try {
+        unlinkSync6(tmp);
+      } catch {
+      }
+    }
+  }
+  // resolves once a write in progress is over
+  async idle() {
+    while (this.writing) await this.writing;
+  }
+  target(thread, reply) {
+    if (reply === void 0 || reply === null) return thread;
+    return thread.replies.find((r) => r.id === reply) ?? fail(404, "there is no such reply");
+  }
+  mention(thread, mentions) {
+    for (const m of mentions) if (!thread.mentions.includes(m) && thread.mentions.length < 4 * MENTIONS_MAX) thread.mentions.push(m);
+  }
+  // the anchors of a request, checked against the text at version n
+  anchorsAt(n, anchor, slide) {
+    const text = this.authority.textAt(n);
+    const range = (x) => x === null || x === void 0 ? null : x && typeof x === "object" && isInt(x.start) && isInt(x.end) ? x : void 0;
+    const a = range(anchor);
+    const s = range(slide);
+    if (a === void 0 || s === void 0) return fail(400, "anchor and slide must be ranges or null");
+    const slides = slidesOf(text);
+    let slideTag = null;
+    if (s) {
+      slideTag = slideAnchorAt(slides, s.start);
+      if (!slideTag || slideTag.start !== s.start || slideTag.end !== s.end) return fail(400, "slide is not the start tag of a slide");
+    }
+    if (!a) return { anchor: slideTag, slide: slideTag };
+    const tag = startTagAt(text, a.start);
+    if (!tag || tag.end !== a.end) return fail(400, "anchor is not a start tag");
+    const holder = slideAnchorAt(slides, tag.start);
+    if (s && holder?.start !== slideTag.start) return fail(400, "slide does not hold the anchor");
+    return { anchor: tag, slide: holder };
+  }
+  // anchors of the text at version n moved to the current text
+  toCurrent(n, item) {
+    let text = this.authority.textAt(n);
+    for (const op of this.authority.since(formatVersion(this.authority.epoch, n)) ?? []) {
+      const after = apply(text, op.patches);
+      item = moveAnchors(text, op.patches, after, [item]).items[0];
+      text = after;
+    }
+    return item;
+  }
+  // the threads read from the file, or null when there is none or it cannot be read
+  load() {
+    let data;
+    try {
+      data = JSON.parse(readFileSync7(this.file, "utf8"));
+    } catch (e) {
+      if (e.code === "ENOENT") return null;
+      return this.unreadable();
+    }
+    const d = data;
+    if (!d || typeof d !== "object" || typeof d.sum !== "string" || !Array.isArray(d.comments) || d.comments.length > THREADS_MAX || !d.seen || typeof d.seen !== "object") return this.unreadable();
+    const threads = d.comments.map(readThread);
+    if (threads.some((t) => t === null)) return this.unreadable();
+    for (const t of threads) {
+      this.threads.set(t.id, t);
+      this.chars += charsOf(t);
+    }
+    for (const [person, time] of Object.entries(d.seen)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
+    return { sum: d.sum };
+  }
+  unreadable() {
+    const aside = join6(this.file, "..", `comments-unreadable-${Date.now()}.json`);
+    try {
+      renameSync2(this.file, aside);
+      this.log(`the comments could not be read, hence they were moved to ${aside}`);
+    } catch {
+    }
+    return null;
+  }
+  // the anchors of the file placed on the text of this start
+  place(sum, found) {
+    const threads = [...this.threads.values()];
+    let items = threads;
+    let moved2 = threads.map(() => false);
+    if (sum !== this.sum && found && found.patches.length && checksum(found.before) === sum) {
+      const r = moveAnchors(found.before, found.patches, this.text, items);
+      items = r.items;
+      moved2 = r.changed;
+    }
+    const checked = checkAnchors(this.text, items);
+    this.slides = checked.slides;
+    threads.forEach((t, k) => this.setAnchors(t, checked.items[k]));
+    const ids = threads.filter((_, k) => moved2[k] || checked.changed[k]).map((t) => t.id);
+    if (ids.length || sum !== this.sum) this.changed(ids);
+  }
+  setAnchors(t, item) {
+    t.anchor = item.anchor;
+    t.slide = item.slide;
+    if (item.removed) t.removed = item.removed;
+    else delete t.removed;
+  }
+  operation(op, after) {
+    const threads = [...this.threads.values()];
+    let r;
+    try {
+      r = moveAnchors(this.text, op.patches, after, threads, this.slides);
+    } catch (e) {
+      this.log(`the anchors of the comments could not be moved, hence they were checked: ${e.message}`);
+      r = checkAnchors(after, threads);
+    }
+    this.text = after;
+    this.sum = op.sum;
+    this.slides = r.slides;
+    const ids = [];
+    threads.forEach((t, k) => {
+      this.setAnchors(t, r.items[k]);
+      if (r.changed[k]) ids.push(t.id);
+    });
+    if (ids.length) this.changed(ids);
+    else if (threads.length) this.dirty();
+  }
+  changed(ids, gone = false) {
+    for (const id of ids) this.changes.push({ v: ++this.v, id, gone });
+    if (this.changes.length > LOG_MAX) {
+      const cut = this.changes.length - LOG_MAX;
+      this.logStart = this.changes[cut - 1].v;
+      this.changes = this.changes.slice(cut);
+    }
+    this.dirty();
+    if (ids.length) for (const fn of this.listeners) fn();
+  }
+  serialize() {
+    return JSON.stringify({ sum: this.sum, comments: [...this.threads.values()], seen: Object.fromEntries(this.seenBy) });
+  }
+  tmpName() {
+    return join6(this.file, "..", `.comments.json.${randomBytes6(6).toString("hex")}.tmp`);
+  }
+  dirty() {
+    this.edits++;
+    this.schedule();
+  }
+  // a write at most once in every ms, one at a time
+  schedule() {
+    if (this.stopped || this.timer || this.writing) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.writing = this.write().finally(() => {
+        this.writing = null;
+        if (this.saved !== this.edits) this.schedule();
+      });
+    }, Math.max(0, this.lastWrite + this.every - Date.now()));
+    this.timer.unref?.();
+  }
+  async write() {
+    if (this.stopped) return;
+    const edits = this.edits;
+    this.lastWrite = Date.now();
+    const tmp = this.tmpName();
+    try {
+      await writeFile4(tmp, this.serialize());
+      if (this.stopped) {
+        await unlink2(tmp).catch(() => {
+        });
+        return;
+      }
+      await renameRetried(tmp, this.file);
+      this.saved = Math.max(this.saved, edits);
+    } catch (e) {
+      await unlink2(tmp).catch(() => {
+      });
+      this.log(`could not write ${this.file}, trying again: ${e.message}`);
+    }
+  }
+};
+
 // src/edit/main.ts
 var USAGE = "usage: node theme/edit.mjs [folder] [--port N] [--no-open] [--relay URL]";
 function openBrowser(url) {
@@ -3882,14 +4261,14 @@ Keep this window open while you edit, and close it or press Ctrl+C to stop.
     void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
     void running.unwritten.then((unwritten) => setTimeout(() => process.exit(unwritten ? 1 : 0), 3e3).unref());
   };
-  const fail = (e) => {
+  const fail2 = (e) => {
     process.stderr.write(`The edit command failed: ${e?.stack ?? e}
 `);
     void running.close().finally(() => process.exit(1));
     void running.unwritten.then(() => setTimeout(() => process.exit(1), 3e3).unref());
   };
-  process.on("uncaughtException", fail);
-  process.on("unhandledRejection", fail);
+  process.on("uncaughtException", fail2);
+  process.on("unhandledRejection", fail2);
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
     try {
       process.on(signal, stop);
@@ -3908,6 +4287,7 @@ if (isMain) void main(process.argv.slice(2));
 export {
   Authority,
   COLORS,
+  Comments,
   Disk,
   History,
   NAME_MAX,
