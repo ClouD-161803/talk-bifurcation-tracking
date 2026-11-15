@@ -1,7 +1,7 @@
 // a paste of a text whose origin was written by another page, which any page can put on the
 // clipboard. a macro whose name, arguments, or body would not be read as such in theme/macros.js
-// is not listed, an origin whose deck is not an address of http, https, or file is pasted as a
-// text without origin, and an entry of the macros that is not a macro is skipped
+// is not listed, an origin whose deck is not a string with an address of http, https, or file is
+// pasted as a text without origin, and an entry of the macros that is not a macro is skipped
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -44,10 +44,10 @@ test('a crafted name or number of arguments is not listed, and a line break is e
   assert.equal(lines, String.raw`cr: 'a\u000db\u2028c',` + '\n' + String.raw`dash: '\\text{a--b}',`);
 });
 
-test('an origin whose deck is not an address of http, https, or file is pasted as a text without origin', async (t) => {
+for (const [what, other] of [['an address of http, https, or file', () => 'javascript:alert(1)'], ['a string', (o) => [o.deck]]]) test(`an origin whose deck is not ${what} is pasted as a text without origin`, async (t) => {
   const a = await deck(A);
   t.after(() => a.close());
-  const text = withOrigin(await copySlide(a, FILES), (o) => ({ ...o, deck: 'javascript:alert(1)' }));
+  const text = withOrigin(await copySlide(a, FILES), (o) => ({ ...o, deck: other(o) }));
   const b = await deck(B);
   t.after(() => b.close());
   await pasteSlides(b, FIRST_B, text);
