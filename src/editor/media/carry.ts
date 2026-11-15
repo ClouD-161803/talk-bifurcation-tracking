@@ -15,8 +15,9 @@ import { taken } from './actions.ts';
 import { FOLDER, media, safeName } from './store.ts';
 
 type Ref = { start: number; end: number; name: string; path: string };
-// a file of the first deck, or why it was not read: refused by the browser, or not found
-type Read = Blob | 'refused' | 'missing';
+// a file of the first deck, or why it was not read: refused by the browser, or not found. a file
+// of this deck of another length than the carried file is 'other'
+type Read = Blob | 'refused' | 'missing' | 'other';
 
 // the attributes of text that name a file of the deck by a relative path
 function refsIn(text: string): Ref[] {
@@ -35,27 +36,34 @@ function refsIn(text: string): Ref[] {
 
 // a fetch that a browser refuses, e.g. from file:// or from another port, rejects, and a file
 // that the server does not have is answered with an error status, or with a page of HTML by a
-// server that falls back to index.html
-async function fetched(url: string): Promise<Read> {
+// server that falls back to index.html. with size, a body of another length by Content-Length is
+// not read
+async function fetched(url: string, size = -1): Promise<Read> {
   try {
     const r = await fetch(url);
     const page = /^text\/html\b/i.test(r.headers.get('content-type') ?? '') && !/\.html?$/i.test(new URL(url).pathname);
+    const length = r.headers.get('content-length');
+    if (r.ok && !page && size >= 0 && length && !r.headers.has('content-encoding') && +length !== size) {
+      void r.body?.cancel();
+      return 'other';
+    }
     return r.ok && !page ? await r.blob() : 'missing';
   } catch {
     return 'refused';
   }
 }
 
-// the bytes of this deck at path, or null where the page cannot read them
-async function here(path: string): Promise<Blob | null> {
+// the bytes of this deck at path, 'other' for a file of another length than size, or null where
+// the page cannot read them
+async function here(path: string, size: number): Promise<Blob | 'other' | null> {
   const own = media.get(path);
   if (own) return own.blob;
-  const r = await fetched(new URL(path, location.href).href);
-  return r instanceof Blob ? r : null;
+  const r = await fetched(new URL(path, location.href).href, size);
+  return r instanceof Blob || r === 'other' ? r : null;
 }
 
-async function same(a: Blob, b: Blob | null): Promise<boolean> {
-  if (!b || a.size !== b.size) return false;
+async function same(a: Blob, b: Blob | 'other' | null): Promise<boolean> {
+  if (!(b instanceof Blob) || a.size !== b.size) return false;
   const [x, y] = await Promise.all([a.arrayBuffer(), b.arrayBuffer()]).then((v) => v.map((buf) => new Uint8Array(buf)));
   return x.every((v, i) => v === y[i]);
 }
@@ -70,7 +78,7 @@ async function pathFor(blob: Blob, name: string, isTaken: (path: string) => bool
   for (let i = 1; ; i++) {
     if (i > 100) return { path: `${FOLDER}/${stem}-${Date.now().toString(36)}${ext}`, fresh: true };
     const path = `${FOLDER}/${i === 1 ? clean : `${stem}-${i}${ext}`}`;
-    const there = await here(path);
+    const there = await here(path, blob.size);
     if (await same(blob, there)) return { path, fresh: false };
     if (!there && !isTaken(path)) return { path, fresh: true };
   }
@@ -180,7 +188,7 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
       lost.push(p);
       continue;
     }
-    if (await same(blob, await here(p))) continue;
+    if (await same(blob, await here(p, blob.size))) continue;
     const { path, fresh } = await pathFor(blob, decoded(p.split(/[?#]/)[0].split('/').pop() ?? ''), isTaken);
     to.set(p, fresh ? media.add(blob, path.slice(FOLDER.length + 1), isTaken).path : path);
   }
