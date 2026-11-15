@@ -11,6 +11,7 @@ import { Dialog } from '../ui/dialog.ts';
 import { icon } from '../ui/icons.ts';
 import { openMenu } from '../ui/menu.ts';
 import { hooks } from './presence.ts';
+import { slideHooks } from './slides.ts';
 import type { Port } from './session.ts';
 
 // read while editor.js runs, since currentScript is null afterward
@@ -38,6 +39,6 @@ export function load(app: App, port: Port): () => Promise<boolean> {
       return false;
     }
     const bar = document.querySelector<HTMLElement>('.beeson-edit-titlebar .right') ?? document.body;
-    return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text), menu: (items, options) => openMenu(app, items, options), slidesAt, changedSlides, onSlides, media, presence: hooks(app) });
+    return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text), menu: (items, options) => openMenu(app, items, options), slidesAt, changedSlides, onSlides, media, presence: hooks(app), slides: slideHooks(app) });
   };
 }

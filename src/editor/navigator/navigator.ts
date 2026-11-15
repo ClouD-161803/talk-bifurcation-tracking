@@ -173,6 +173,8 @@ export class Navigator implements Pane {
   private last: Element | null = null;
   // the Slide Sorter of sorter.ts, whose tile takes the focus in place of a row while it is shown
   table: { shown: boolean; focus(slide: Element | null): void } | null = null;
+  // called after each refresh of the rows or the tiles, e.g. by theme/session.js
+  refreshed: (() => void) | null = null;
 
   constructor(app: App) {
     injectStyle('nav', CSS);
@@ -438,6 +440,7 @@ export class Navigator implements Pane {
     });
     if (changed && this.thumbs) this.thumbs.setHosts(new Map([...this.rows].map(([s, r]) => [s, r.pic])));
     this.paint(focusIn || this.list.contains(document.activeElement));
+    this.refreshed?.();
   }
 
   // the current row and the selected rows are marked, the current row is kept in view, and the

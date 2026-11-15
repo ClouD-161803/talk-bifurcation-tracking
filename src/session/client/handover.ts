@@ -6,6 +6,7 @@ import type { Edit } from '../../editor/merge.ts';
 import type { MediaStore } from '../../editor/media/store.ts';
 import type { Port } from '../../editor/session/session.ts';
 import type { PresenceHooks } from '../../editor/session/presence.ts';
+import type { SlideHooks } from '../../editor/session/slides.ts';
 import type { Dialog, DialogOptions } from '../../editor/ui/dialog.ts';
 import type { MenuItem, MenuOptions, OpenMenu } from '../../editor/ui/menu.ts';
 
@@ -32,6 +33,8 @@ export type Handover = {
   media: MediaStore;
   // what presence.ts and layer.ts of the client read of the editor, from src/editor/session/presence.ts
   presence: PresenceHooks;
+  // what the navigator and the Slide Sorter give the client, from src/editor/session/slides.ts
+  slides: SlideHooks;
 };
 
 // window.BeesonSession, defined by theme/session.js. start() resolves with false when the page is
