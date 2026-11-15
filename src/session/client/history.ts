@@ -44,7 +44,7 @@ html.beeson-editor body > .beeson-session-history[hidden] { display: none; }
 .beeson-session-history h2 { flex: 1; min-width: 0; margin: 0; font: 600 13px/1.3 var(--ed-font); }
 .beeson-session-history .back, .beeson-session-history .name-current, .beeson-session-preview .bar button { min-height: 32px; padding: 0 10px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); white-space: nowrap; }
 .beeson-session-history label.named { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 14px; }
-.beeson-session-history label.named input { margin: 0; width: 16px; height: 16px; }
+.beeson-session-history label.named input { margin: 0; width: 16px; height: 16px; accent-color: var(--ed-select); }
 .beeson-session-history h3 { margin: 12px 14px 4px; color: var(--ed-muted); font: 600 11px/1.3 var(--ed-font); }
 .beeson-session-history .rows { display: flex; flex-direction: column; padding: 0 6px; }
 .beeson-session-history .row { display: flex; flex-direction: column; align-items: stretch; gap: 2px; min-height: 40px; box-sizing: border-box; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; }

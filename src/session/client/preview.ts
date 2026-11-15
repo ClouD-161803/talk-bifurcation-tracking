@@ -33,7 +33,7 @@ const CSS = `
 .beeson-session-preview.two .actions { flex: 1 0 100%; margin-left: 0; }
 .beeson-session-preview.two .actions .name { display: none; }
 .beeson-session-preview label.changes { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; white-space: nowrap; }
-.beeson-session-preview label.changes input { margin: 0; width: 16px; height: 16px; }
+.beeson-session-preview label.changes input { margin: 0; width: 16px; height: 16px; accent-color: var(--ed-select); }
 .beeson-session-preview .bar button.slide { padding: 0 8px; }
 .beeson-session-preview .bar button.more { min-width: 32px; padding: 0 6px; }
 .beeson-session-preview iframe { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--ed-canvas); }
