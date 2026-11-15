@@ -574,9 +574,11 @@ export function install(app: App): void {
           for (const el of placed(a, s)) {
             const has = a.doc.tagState(el).style;
             const style: Record<string, null> = {};
-            // the box of a backdrop resized by its grips is put back with its offset
+            // the box of a backdrop resized by its grips is put back with its offset, and the height of a tycho viewer,
+            // which a resize writes with its width, is taken off with the width
             const box = el.matches('.backdrop');
-            for (const k of ['translate', 'rotate', 'width', 'height', 'z-index', 'position']) if (k in has && (box || k !== 'width' || el.matches(SIZED)) && (box || k !== 'height') && (k !== 'translate' || !el.matches(KEPT))) style[k] = null;
+            const viewer = el.matches('tycho-viewer');
+            for (const k of ['translate', 'rotate', 'width', 'height', 'z-index', 'position']) if (k in has && (box || k !== 'width' || el.matches(SIZED)) && (box || viewer || k !== 'height') && (k !== 'translate' || !el.matches(KEPT))) style[k] = null;
             a.doc.setTag(el, { style }, 'reset slide');
           }
         }
