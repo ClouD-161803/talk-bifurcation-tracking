@@ -33,6 +33,9 @@ export type HistoryOptions = {
   // the person removed first
   asideBytes?: number;
   asideFiles?: number;
+  // the texts kept as starting points of a rebuild take at most checkpointBytes, at two bytes a
+  // character, or four texts of the deck when they are larger
+  checkpointBytes?: number;
   now?: () => number;
   // the time in ms of a clock that does not jump, which stands while the computer sleeps, as the
   // timers do
@@ -51,7 +54,7 @@ export const isVersionId = (id: unknown): id is string => typeof id === 'string'
 const newId = () => randomBytes(9).toString('base64url');
 const ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
 // a text is rebuilt from the nearest text kept, one every STEP versions at the start, and fewer
-// once more than CHECKPOINTS are kept
+// once more than CHECKPOINTS are kept or their budget in bytes is passed
 const STEP = 50;
 const CHECKPOINTS = 64;
 
@@ -254,6 +257,7 @@ export class History {
   private readonly keep: number;
   private readonly asideBytes: number;
   private readonly asideFiles: number;
+  private readonly checkpointBytes: number;
   private readonly now: () => number;
   private readonly clock: () => number;
   private readonly log: (message: string) => void;
@@ -293,6 +297,7 @@ export class History {
     this.keep = options.keep ?? 30 * 24 * 3600 * 1000;
     this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
     this.asideFiles = options.asideFiles ?? 50;
+    this.checkpointBytes = options.checkpointBytes ?? 16 * 1024 * 1024;
     this.now = options.now ?? Date.now;
     this.clock = options.clock ?? (() => performance.now());
     this.log = options.log ?? (() => {});
@@ -495,9 +500,12 @@ export class History {
   private checkpoint(i: number, text: string): void {
     if ((i + 1) % this.step !== 0) return;
     this.checkpoints.set(i, text);
-    if (this.checkpoints.size <= CHECKPOINTS) return;
-    this.step *= 2;
-    for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+    const budget = Math.max(this.checkpointBytes, 4 * 2 * text.length);
+    const bytes = () => [...this.checkpoints.values()].reduce((sum, t) => sum + 2 * t.length, 0);
+    while (this.checkpoints.size > CHECKPOINTS || bytes() > budget) {
+      this.step *= 2;
+      for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+    }
   }
 
   // a new version of text, which patches make from the text of the last version

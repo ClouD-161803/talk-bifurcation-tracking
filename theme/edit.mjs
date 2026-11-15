@@ -1739,6 +1739,7 @@ var History = class {
     this.keep = options.keep ?? 30 * 24 * 3600 * 1e3;
     this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
     this.asideFiles = options.asideFiles ?? 50;
+    this.checkpointBytes = options.checkpointBytes ?? 16 * 1024 * 1024;
     this.now = options.now ?? Date.now;
     this.clock = options.clock ?? (() => performance.now());
     this.log = options.log ?? (() => {
@@ -1922,9 +1923,12 @@ var History = class {
   checkpoint(i, text) {
     if ((i + 1) % this.step !== 0) return;
     this.checkpoints.set(i, text);
-    if (this.checkpoints.size <= CHECKPOINTS) return;
-    this.step *= 2;
-    for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+    const budget = Math.max(this.checkpointBytes, 4 * 2 * text.length);
+    const bytes = () => [...this.checkpoints.values()].reduce((sum, t) => sum + 2 * t.length, 0);
+    while (this.checkpoints.size > CHECKPOINTS || bytes() > budget) {
+      this.step *= 2;
+      for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+    }
   }
   // a new version of text, which patches make from the text of the last version
   version(authors, patches, marks, text, time = this.now()) {
