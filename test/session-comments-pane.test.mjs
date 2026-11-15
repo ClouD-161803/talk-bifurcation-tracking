@@ -199,6 +199,42 @@ const toastTime = (page, ms) => page.evaluate(`(() => { const o = window.BeesonS
 // waits until the clock of page has run ms past now
 const elapse = (page, ms) => page.evaluate(`(() => { window.__until = performance.now() + ${ms}; return true; })()`).then(() => page.waitFor('performance.now() > window.__until', ms + 15_000));
 
+test('a held text element takes a comment from the context menu, and its thread opens without the refusal of the floor rule', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const p = el(0, 'p');
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'Before the hold');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  await a.evaluate(`${C}.app.selection.clear()`);
+
+  await show(b, 'One');
+  // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
+  await until(async () => !(await b.evaluate(LOCKED(p))), 'the paragraph that Ann left to be free on the page of Ben');
+  await caretAtEnd(b, p);
+  await until(() => a.evaluate(LOCKED(p)), 'the paragraph that Ben holds to be locked on the page of Ann');
+
+  await t.test('the item Comment of the context menu of a held element anchors the draft on it', async () => {
+    await front(a);
+    await click(a, '.reveal .slides > section:nth-child(1) p', { button: 'right' });
+    await menu(a, 'Comment');
+    await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+    assert.equal(await a.evaluate(`document.querySelector('${PANE} .draft .anchor').textContent`), 'On Paragraph: First slide');
+    await press(a, 'Escape');
+    await a.waitFor(`!document.querySelector('${PANE} .draft')`);
+  });
+
+  await t.test('a thread of a held element opens with its slide shown and the thread focused, without a selection or a bubble', async () => {
+    await show(a, 'Two');
+    await a.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
+    await click(a, `${ARTICLE(id)} .text`);
+    await sees(a, ACTIVE, id);
+    assert.deepEqual(await a.evaluate(`({ slide: Reveal.getIndices().h, selected: ${C}.app.selection.has(${p}), bubble: ${BUBBLE} })`), { slide: 0, selected: false, bubble: null });
+  });
+  clean(a);
+  clean(b);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
