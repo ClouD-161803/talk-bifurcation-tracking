@@ -83,12 +83,13 @@ test('a refused read asks once for the folder of the first deck, and reads the f
   assert.equal(await render(b), b.source.replace(first, `${first}\n    ${CARRIED(sectionOf(a.source, FILES))}`));
   assert.deepEqual(await b.evaluate('window.__picks.map((o) => o.mode)'), ['read']);
   assert.equal(await b.evaluate(`[...document.querySelectorAll('.reveal img[src^="blob:"]')].every((i) => i.complete && i.naturalWidth > 0)`), true);
-  // the next paste from deck A reads the same folder without the dialog
+  // the next paste from deck A reads the same folder without the dialog, and names the file that
+  // the first paste carried
   await pasteElements(b, FIRST_B, figure);
   await pasted(b);
   assert.equal(await b.evaluate(`!!document.querySelector('${DIALOG}[open]')`), false);
   assert.equal(await b.evaluate('window.__picks.length'), 1);
-  assert.match(sectionOf(await render(b), FIRST_B), /<img src="media\/orbit-3\.png" alt="An orbit of deck A">/);
+  assert.match(sectionOf(await render(b), FIRST_B), /<img src="media\/orbit-2\.png" alt="An orbit of deck A">/);
   assert.deepEqual(errors(b), []);
 });
 
@@ -161,4 +162,16 @@ test('a folder chosen after a cancelled dialog in the same page is read', async 
   await pasted(b);
   assert.equal(await b.evaluate('window.__picks.length'), 1);
   assert.equal(sectionOf(await render(b), FILES), CARRIED(sectionOf(a.source, FILES)));
+});
+
+test('a folder without any of the files is not kept, and the next paste asks again', async (t) => {
+  const { b, text } = await decks(t);
+  await b.evaluate(PICKER([]));
+  await pasteSlides(b, FIRST_B, text);
+  await answer(b, 'Choose Folder…');
+  await pasted(b);
+  await pasteSlides(b, FIRST_B, text);
+  await answer(b, 'Paste Without Files');
+  await pasted(b);
+  assert.equal(await b.evaluate('window.__picks.length'), 1);
 });
