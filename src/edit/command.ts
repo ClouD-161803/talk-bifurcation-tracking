@@ -3,14 +3,14 @@
 // index.html. a request through a relay is handled by the same code as a direct one, with host
 // false and without the check of the Host header, since the relay already matched the key
 
-import { createReadStream, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
 import { isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
-import { Disk, readText } from './disk.ts';
+import { Disk, readText, renameRetriedSync } from './disk.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
@@ -38,6 +38,44 @@ export type Running = {
   link: () => string | null;
   close: () => Promise<void>;
 };
+
+// the address of an edit command that already runs on the talk folder
+export type Found = { url: string; port: number; key: string };
+
+export class AlreadyRunning extends Error {
+  readonly found: Found;
+  constructor(found: Found) {
+    super(`the edit command already runs for this folder at ${found.url}`);
+    this.found = found;
+  }
+}
+
+type Lock = { pid: number; port: number; root: string };
+
+// the edit command of .session/lock, when it runs on root, its process is alive, and its port
+// answers for key. a lock left by a command that died, or copied with the talk folder, is not
+async function holderOf(file: string, root: string, key: string): Promise<Found | null> {
+  let lock: Lock;
+  try {
+    lock = JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(lock?.pid) || !Number.isInteger(lock?.port) || lock.root !== root || lock.pid === process.pid) return null;
+  try {
+    process.kill(lock.pid, 0);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EPERM') return null;
+  }
+  const url = `http://127.0.0.1:${lock.port}/${key}/`;
+  try {
+    const answer = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(2000) });
+    await answer.body?.cancel();
+    return answer.status === 302 ? { url, port: lock.port, key } : null;
+  } catch {
+    return null;
+  }
+}
 
 // the key of the session, kept in .session/key so that a link survives a restart
 function keyOf(root: string): string {
@@ -86,6 +124,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const index = join(root, 'index.html');
   const { text, bom } = readText(index);
   const key = keyOf(root);
+  const lockFile = join(root, '.session', 'lock');
+  const earlier = await holderOf(lockFile, root, key);
+  if (earlier) throw new AlreadyRunning(earlier);
   const authority = new Authority(text);
   const disk = new Disk(index, authority, bom, { log });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
@@ -346,6 +387,26 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     tryListen(options.port ?? DEFAULT_PORT);
   });
   port = (server.address() as { port: number }).port;
+  // a second start at the same time is found by the lock that the first one created
+  const lock = JSON.stringify({ pid: process.pid, port, root } satisfies Lock);
+  try {
+    writeFileSync(lockFile, lock, { flag: 'wx' });
+  } catch {
+    const other = await holderOf(lockFile, root, key);
+    if (other) {
+      people.end();
+      await new Promise((done) => server.close(done));
+      throw new AlreadyRunning(other);
+    }
+    const tmp = `${lockFile}.${randomBytes(6).toString('hex')}.tmp`;
+    writeFileSync(tmp, lock);
+    renameRetriedSync(tmp, lockFile);
+  }
+  const unlock = () => {
+    try {
+      if (readFileSync(lockFile, 'utf8') === lock) unlinkSync(lockFile);
+    } catch {}
+  };
   disk.start();
 
   if (options.relay) {
@@ -368,6 +429,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     close: () =>
       (closing ??= (async () => {
         closed = true;
+        // a start during the stop begins a new edit command rather than finding this one
+        unlock();
         people.end();
         disk.stopSync();
         // a share in progress sees closed and stops its link, hence the stop waits behind it

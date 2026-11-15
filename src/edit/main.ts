@@ -5,7 +5,7 @@
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { start } from './command.ts';
+import { AlreadyRunning, start } from './command.ts';
 import { NotUtf8 } from './disk.ts';
 
 export { Authority } from '../session/authority.ts';
@@ -62,6 +62,14 @@ async function main(argv: string[]): Promise<void> {
   try {
     running = await start({ folder, port, relay });
   } catch (e) {
+    if (e instanceof AlreadyRunning) {
+      // the page of the first edit command is opened, and its address printed as a start would
+      const { url, port: p, key } = e.found;
+      process.stdout.write(`${JSON.stringify({ url, port: p, key })}\n`);
+      process.stderr.write(`The edit command already runs for this folder at ${url}index.html?edit&session\n`);
+      if (open) openBrowser(`${url}index.html?edit&session`);
+      return;
+    }
     const err = e as NodeJS.ErrnoException;
     const message =
       err instanceof NotUtf8
