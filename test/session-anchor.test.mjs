@@ -461,6 +461,23 @@ test('a slide rewritten by typing keeps its threads, since each operation is sma
   assert.ok(items.every((it) => it.removed === undefined));
 });
 
+test('an element taken from its place and inserted at two places is followed to the nearest', () => {
+  const before = deck(['<h2>Alpha</h2>', `<p>${'A long first paragraph. '.repeat(4)}</p>`, '<p>Moved</p>', '<p>Two</p>', '<p>Three</p>']);
+  const line = '  <p>Moved</p>\n';
+  const first = before.indexOf('  <p>A long');
+  const from = before.indexOf(line);
+  const last = before.indexOf('  <p>Three');
+  const patches = [
+    { start: first, end: first, text: line },
+    { start: from, end: from + line.length, text: '' },
+    { start: last, end: last, text: line },
+  ];
+  let after = before;
+  for (const p of [...patches].reverse()) after = after.slice(0, p.start) + p.text + after.slice(p.end);
+  const [item] = moveAnchors(before, patches, after, [onElement(before, '<p>Moved')]).items;
+  assert.equal(item.anchor.start, nth(after, '<p>Moved', 1));
+});
+
 test('an inserting operation takes about as long with threads of removed elements as with threads on elements', () => {
   const slide = (k) => [`<h2>Slide ${k}</h2>`, ...Array.from({ length: 6 }, (_, i) => `<p style="left: ${i}px">Paragraph ${i} of slide ${k}, on the unstable manifold of the halo orbit.</p>`)];
   const before = deck(...Array.from({ length: 300 }, (_, k) => slide(k)));
