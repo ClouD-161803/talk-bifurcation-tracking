@@ -315,6 +315,16 @@ test('add regression test: a program that changes a line that it changed before 
   assert.equal(authority.text, DECK.replace('One', 'One third').replace('Second slide', 'Very Second slide'));
 });
 
+test('add regression test: a program that writes back the text before its own change undoes this change', { timeout: 60_000 }, async (t) => {
+  const { file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
+  disk.start();
+  writeFileSync(file, DECK.replace('</body>', '<p>typo</p>\n</body>'));
+  await until(() => authority.text.includes('<p>typo</p>'), 'the typo to be merged');
+  writeFileSync(file, DECK);
+  await until(() => readFileSync(file, 'utf8') === authority.text, 'the file and the session to hold one text');
+  assert.equal(authority.text, DECK, 'the change that the program took back is still in the session');
+});
+
 // the longest time between two turns of the event loop while act runs, measured by an interval of
 // 1 ms that turns once more after act, so that a stall at its end is measured
 async function longestStall(act) {
