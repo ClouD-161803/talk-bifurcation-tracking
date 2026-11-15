@@ -81,3 +81,52 @@ test('a held list item refuses Backspace and Delete from the item beside it, and
   clean(ben);
 });
 
+test('Undo and Redo are refused as a whole when a part of their entry changes a held text element, and the entry is kept', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  const free = (page) => until(() => page.evaluate(`${P}.locks.size === 0 && !${C}.resolved().some((r) => r.held)`), 'no text element to be held');
+
+  // a redo of typing
+  await caretAtEnd(ben, p);
+  await typeKeys(ben, ' by Ben');
+  await converge(server, [ana, ben]);
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  await converge(server, [ana, ben]);
+  await leave(ben);
+  await free(ana);
+  await caretAtEnd(ana, p);
+  await until(() => ben.evaluate(LOCKED(p)), 'the paragraph that Ana holds to be locked on the page of Ben');
+  await unbubble(ben);
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.redo')`);
+  assert.equal(await ben.evaluate(`${p}.textContent`), 'Second slide', 'the redo leaves the held paragraph as it was');
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'edit.redo');
+  assert.equal(await ben.evaluate(`${C}.app.history.canRedo`), true, 'the entry of the redo is kept');
+  await front(ana);
+  await leave(ana);
+  await free(ben);
+
+  // an undo of a command, whose entry is a transaction
+  await front(ben);
+  await ben.evaluate(`${C}.app.selection.set('elements', [${p}])`);
+  await ben.evaluate(`${C}.app.commands.run('text.bigger')`);
+  await converge(server, [ana, ben]);
+  await ben.evaluate(`${C}.app.selection.clear()`);
+  const h3 = el(1, 'h3');
+  await caretAtEnd(ana, h3);
+  await until(() => ben.evaluate(LOCKED(h3)), 'the subheading that Ana holds to be locked on the page of Ben');
+  await unbubble(ben);
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  assert.equal(await ben.evaluate(`${h3}?.isConnected ?? false`), true, 'the undo leaves the held subheading in place');
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'edit.undo');
+  assert.equal(await ben.evaluate(`${C}.app.history.undoLabel`), 'Bigger', 'the entry of the undo is kept');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<h3>Second slide<\/h3>/);
+  clean(ana);
+  clean(ben);
+});
+
