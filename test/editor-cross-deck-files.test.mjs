@@ -119,3 +119,20 @@ test('a file whose path has a malformed escape is carried under a safe name', as
   await pasted(b);
   assert.equal(sectionOf(await render(b), FILES), CARRIED(sectionOf(a.source, FILES)).replace('src="figs/shared.png"', 'src="media/100-.png"'));
 });
+
+test('a second paste of the same slide names the files that the first paste carried', async (t) => {
+  const a = await deck(A);
+  t.after(() => a.close());
+  const text = await copySlide(a, FILES);
+  const b = await deck(B);
+  t.after(() => b.close());
+  for (let i = 0; i < 2; i++) {
+    await pasteSlides(b, FIRST_B, text);
+    await pasted(b);
+  }
+  const out = await render(b);
+  assert.equal(out.split(CARRIED(sectionOf(a.source, FILES))).length, 3, 'the two pastes do not name the same files');
+  const saved = await b.evaluate(SAVE_INTO('twice'));
+  assert.deepEqual(saved.files, { 'orbit-2.png': size('figs/orbit.png'), 'clip.mp4': size('figs/clip.mp4'), 'clip-2.png': size('figs/clip.png') });
+});
+
