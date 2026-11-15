@@ -9,6 +9,7 @@
 
 import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/session.ts';
+import { apply, diff, mergePatches } from '../patch.ts';
 import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Taken, Token, Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
@@ -54,8 +55,6 @@ const RETRY = [1, 2, 4, 8, 16, 30];
 const SAVING = 500;
 // the longest wait in ms for onChange after an apply that a change of the person ran into
 const LATE_CHANGE = 2000;
-// the longest wait in ms for the edits of this page before it is loaded again
-const BEFORE_RELOAD = 2000;
 export const BLOCKED = 'Your changes cannot be sent. Load the page again.';
 
 export class Client {
@@ -119,9 +118,15 @@ export class Client {
   private inbox: AppliedOp[] = [];
   // the whole text of an answer of hello, merged by resync
   private fresh: { text: string; v: Version } | null = null;
-  // after an apply that left the deck at another text: the deck is not read again, and the page is
-  // loaded again
+  // after an apply that left the deck at another text: nothing is applied to the deck, the edits of
+  // the person are read by capture(), and the page is loaded again once they are acknowledged
   private frozen = false;
+  // the text that the deck reads as, apart from the edits that the person made since, or null once
+  // this is not known, e.g. after an apply that the deck did not take
+  private handed: string | null = null;
+  // the text of an apply that returned reload, which the deck does not read as, and which text() of
+  // the port gives while a change of the person settles
+  private unshown: string | null = null;
   private rewrites: ((text: string) => string)[] = [];
 
   private sending: OpPost | null = null;
@@ -144,11 +149,7 @@ export class Client {
     port.onChange(() => this.onChange());
     port.onSave(() => this.flush());
     // the port found that the page does not read as its text after an apply
-    port.onReload(() => {
-      if (this.frozen || this.ended) return;
-      this.frozen = true;
-      void this.reload();
-    });
+    port.onReload(() => this.freeze(null));
   }
 
   on<K extends keyof ClientEvents>(event: K, fn: (...args: ClientEvents[K]) => void): () => void {
@@ -186,6 +187,7 @@ export class Client {
   begin(answer: HelloAnswer, text: string, v: Version): void {
     this.accept(answer);
     this.sync = new Sync(answer.client, text, v);
+    this.handed = text;
     if (answer.text !== undefined) this.fresh = { text: answer.text, v: answer.v };
     else this.receive(answer.ops);
     this.since = answer.v;
@@ -239,7 +241,12 @@ export class Client {
 
   // every edit of this page is acknowledged by the edit command
   acked(): boolean {
-    return !!this.sync && (this.frozen || !this.dirty) && !this.rewrites.length && !this.sending && this.sync.acked;
+    return !!this.sync && !this.dirty && !this.rewrites.length && !this.sending && this.sync.acked;
+  }
+
+  // the page waits for its acknowledgments to load again, and the deck lacks the operations since
+  get reloading(): boolean {
+    return this.frozen;
   }
 
   // fn applied to the text of the deck at the next drive, which runs now, e.g. for the name of an
@@ -252,6 +259,11 @@ export class Client {
   // the text of the authority that this page applied, its version, and the text of the deck
   snapshot(): { base: string; v: Version; mine: string } | null {
     return this.sync && { base: this.sync.base, v: this.sync.version, mine: this.sync.mine };
+  }
+
+  // the page loaded again by the person, e.g. with Load again while it is blocked
+  loadAgain(): void {
+    location.reload();
   }
 
   // the save state is drawn again, e.g. after a failed upload
@@ -290,8 +302,14 @@ export class Client {
 
   private onChange(): void {
     this.changes++;
-    this.dirty = true;
     for (const fn of this.changeWaiters.splice(0)) fn();
+    // read at once, where the port gives the text of the deck
+    if (this.frozen) {
+      this.dirty = !this.capture();
+      void this.drive();
+      return;
+    }
+    this.dirty = true;
     this.frame();
     this.check();
   }
@@ -330,16 +348,23 @@ export class Client {
     try {
       for (;;) {
         if (this.frozen) {
-          // the broadcast of an operation of this page acknowledges it, hence operations are taken
-          if (this.inbox.length) sync.receive(this.inbox.splice(0));
+          // the edits are sent and their broadcasts taken, and nothing is applied to the deck
+          // a change of the person that settles calls onChange, which captures it
+          if (this.dirty) this.dirty = !this.capture();
+          for (const fn of this.rewrites.splice(0)) sync.edit(fn(sync.mine));
+          if (this.fresh) sync.resync(this.fresh.text, this.fresh.v);
           this.fresh = null;
+          if (this.inbox.length) sync.receive(this.inbox.splice(0));
           break;
         }
         let stale = false;
         if (this.dirty) {
           this.dirty = false;
           const text = this.read();
-          if (text !== null && sync.edit(text) !== null) stale = true;
+          if (text !== null) {
+            if (sync.edit(text) !== null) stale = true;
+            this.handed = text;
+          }
         }
         for (const fn of this.rewrites.splice(0)) {
           const text = fn(sync.mine);
@@ -369,21 +394,30 @@ export class Client {
   }
 
   private async applyMine(): Promise<boolean> {
+    // e.g. after onReload during the side hook
+    if (this.frozen) return false;
     const text = this.sync!.mine;
     const before = this.changes;
     let applied: Applied;
     try {
       applied = await this.port.apply(text);
     } catch {
-      applied = { reload: true, changed: [] };
-    }
-    // a change of the person that ran into the apply is reported after it, and explains a difference
-    if (!applied.reload && this.changes === before && this.read() !== text) await this.reported(before);
-    if (applied.reload || (this.changes === before && this.read() !== text)) {
-      this.frozen = true;
-      void this.reload();
+      // the deck may be changed in part, hence it is not read again
+      this.freeze(null);
       return false;
     }
+    // the port leaves the deck as it was at a reload, with the edits of the person
+    if (applied.reload) {
+      this.freeze(text);
+      return false;
+    }
+    // a change of the person that ran into the apply is reported after it, and explains a difference
+    if (this.changes === before && this.read() !== text) await this.reported(before);
+    if (this.changes === before && this.read() !== text) {
+      this.freeze(null);
+      return false;
+    }
+    this.handed = text;
     this.changed = applied.changed;
     this.emit('applied', applied.changed);
     return true;
@@ -400,13 +434,49 @@ export class Client {
     });
   }
 
-  // the page loaded again, once the edits of this page are acknowledged or BEFORE_RELOAD has passed
+  // the page loads again: the slides are made inert, the edits of the person are read once more when
+  // the deck is known to hold them apart from unshown, the text of the apply, and the page loads
+  // again once every edit is acknowledged, also after a reconnect. null: the deck is not known
+  private freeze(unshown: string | null): void {
+    if (this.frozen || this.ended) return;
+    this.frozen = true;
+    this.unshown = unshown;
+    if (unshown === null) this.handed = null;
+    this.dirty = !this.capture();
+    this.slides().inert = true;
+    clearTimeout(this.savingTimer);
+    this.savingTimer = 0;
+    this.saving = true;
+    this.emit('state');
+    void this.reload();
+  }
+
+  private slides(): HTMLElement {
+    return this.app.slides() as HTMLElement;
+  }
+
+  // the edits of the person since the deck read as handed, merged into mine, where they win at a
+  // conflict. false while the port gives unshown, as it does until a change of the person settles
+  private capture(): boolean {
+    const sync = this.sync, handed = this.handed;
+    if (!sync || handed === null) return true;
+    const deck = this.read();
+    if (deck === null || deck === this.unshown) return false;
+    if (deck === handed) return true;
+    const theirs = diff(handed, sync.mine);
+    const ours = diff(handed, deck).filter((o) => !theirs.some((t) => t.start === o.start && t.end === o.end && t.text === o.text));
+    sync.edit(apply(handed, mergePatches(theirs, ours, 'ours').patches));
+    this.handed = deck;
+    return true;
+  }
+
+  // the session may end or the page be blocked first, and the dialog of this state takes over
   private async reload(): Promise<void> {
-    if (!this.acked()) {
-      await new Promise<void>((done) => {
-        const timer = setTimeout(done, BEFORE_RELOAD);
-        this.ackWaiters.push({ done: () => (clearTimeout(timer), done()), fail: () => {} });
-      });
+    try {
+      await this.flush();
+    } catch {
+      if (this.ended) this.slides().inert = false;
+      return;
     }
     location.reload();
   }
@@ -422,7 +492,7 @@ export class Client {
       return;
     }
     if (sync.needsResync) {
-      if (!this.frozen) void this.rejoin();
+      void this.rejoin();
       return;
     }
     if (sync.mine !== sync.base && this.hooks.ready && !this.hooks.ready(sync.mine)) return;
@@ -607,11 +677,14 @@ export class Client {
     if (this.acked()) {
       clearTimeout(this.savingTimer);
       this.savingTimer = 0;
-      if (this.saving) {
-        this.saving = false;
+      const waiting = this.ackWaiters.splice(0);
+      // a page that waits to load again stays at Saving… until it loads, and the event lets copy.ts
+      // drop its record before
+      if (this.frozen ? waiting.length : this.saving) {
+        this.saving = this.frozen;
         this.emit('state');
       }
-      for (const w of this.ackWaiters.splice(0)) w.done();
+      for (const w of waiting) w.done();
     } else if (!this.saving && !this.savingTimer && !this.ended) {
       this.savingTimer = window.setTimeout(() => {
         this.savingTimer = 0;

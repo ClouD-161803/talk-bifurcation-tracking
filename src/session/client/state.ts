@@ -89,13 +89,13 @@ export function install(client: Client): void {
     client.port.setStatus(v.text);
   };
   button.addEventListener('click', () => {
-    if (client.blocked) location.reload();
+    if (client.blocked) client.loadAgain();
     else if (doing === 'upload') retryUpload(client);
     else if (client.retryAt !== null) client.tryNow();
     else void client.flush().catch(() => {});
   });
   action.addEventListener('click', () => {
-    if (doing === 'reload') location.reload();
+    if (doing === 'reload') client.loadAgain();
     else if (doing === 'upload') retryUpload(client);
     else client.tryNow();
   });
