@@ -449,6 +449,26 @@ test('a replica back from a break shows the conflicts of the missed operations, 
   assert.equal(ours.conflicts.length, 1);
 });
 
+test('a resync after a restart shows the conflicts with the whole text, and the side that wins is kept', () => {
+  const base = '<p style="left: 10px">Hi</p>\n<p>Two</p>\n<p>Three</p>\n';
+  const now = base.replace('10px', '30px').replace('Two', 'Deux');
+  const mine = base.replace('10px', '20px').replace('Three', 'Drei');
+  const r = new Replica('me', base, 'E.4');
+  r.edit(mine);
+  const seen = [];
+  r.clone().resync(now, 'F.0', 'ours', seen);
+  assert.equal(seen.length, 1);
+  assert.equal(r.base, base, 'a resync of the clone changed the replica');
+  assert.equal(r.mine, mine);
+  const conflicts = [];
+  assert.equal(r.resync(now, 'F.0', 'theirs', conflicts), now.replace('Three', 'Drei'));
+  assert.equal(conflicts.length, 1);
+  assert.equal(r.version, 'F.0');
+  const ours = new Replica('me', base, 'E.4');
+  ours.edit(mine);
+  assert.equal(ours.resync(now, 'F.0'), mine.replace('Two', 'Deux'));
+});
+
 // the start and end tags of a text, in order
 const skeleton = (text) =>
   tokenize(text)
