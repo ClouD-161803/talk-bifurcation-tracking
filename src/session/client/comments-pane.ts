@@ -107,8 +107,6 @@ class Pane {
       b.addEventListener('click', () => this.setFilter(f));
       this.filters.append(b);
     }
-    this.list.setAttribute('role', 'list');
-    this.list.setAttribute('aria-label', 'Comments');
     this.root.append(this.filters, this.list);
     this.root.addEventListener('keydown', (ev) => this.onKey(ev));
     this.root.addEventListener('focusin', (ev) => {
@@ -208,7 +206,6 @@ class Pane {
     if (!node) {
       node = make('article');
       node.dataset.id = t.id;
-      node.setAttribute('role', 'listitem');
       node.addEventListener('click', (ev) => {
         if ((ev.target as Element).closest('button, textarea, a, .people')) return;
         this.open(t.id);
