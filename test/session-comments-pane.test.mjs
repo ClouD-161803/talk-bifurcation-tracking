@@ -387,6 +387,49 @@ test('offline, Resolve, Reopen, Edit, Delete, and the send buttons are disabled,
   clean(a, REFUSED);
 });
 
+test('a draft and a reply being typed are kept through a reload of the page, and removed when sent or discarded', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'A thread');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  // the times of the writes of the typed texts into sessionStorage
+  await a.evaluate(`(() => {
+    window.__writes = [];
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      if (this === sessionStorage && /comment/.test(k) && /Half/.test(v)) window.__writes.push(performance.now());
+      return set.call(this, k, v);
+    };
+  })()`);
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await typeKeys(a, 'Half a reply');
+  await caretAtEnd(a, el(0, 'h2'));
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(a, 'Half a draft');
+  await a.waitFor(`Object.keys(sessionStorage).some((k) => /comment/.test(k) && /Half a draft/.test(sessionStorage.getItem(k)) && /Half a reply/.test(sessionStorage.getItem(k)))`);
+  const writes = await a.evaluate('window.__writes');
+  assert.ok(writes.every((w, i) => i === 0 || w - writes[i - 1] >= 900), `the writes are a second apart or more: ${JSON.stringify(writes)}`);
+
+  const count = await loads(a);
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again');
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await sees(a, `(() => { const d = document.querySelector('${DRAFT}'); return d && [d.value, document.querySelector('${PANE} .draft .anchor').textContent]; })()`, ['Half a draft', 'On Heading: One']);
+  await sees(a, `document.querySelector('${ARTICLE(id)} .reply textarea')?.value ?? null`, 'Half a reply');
+
+  await click(a, `${ARTICLE(id)} .reply .actions .primary`);
+  await sees(a, THREADS, [{ anchor: 'On Paragraph: First slide', texts: ['A thread', 'Half a reply'] }]);
+  await a.evaluate(`document.querySelector('${DRAFT}').focus()`);
+  await press(a, 'Escape');
+  await a.waitFor(`!document.querySelector('${PANE} .draft')`);
+  await sees(a, `Object.keys(sessionStorage).filter((k) => /comment/.test(k) && /Half/.test(sessionStorage.getItem(k)))`, []);
+  assert.equal(await converge(server, [a]), TALK);
+  clean(a);
+});
+
 test('a mention is toasted once, also after a reload of the page and a later change of its thread', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   const id = await post(b, 1, 'Look, @Ann');
