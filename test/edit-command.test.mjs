@@ -535,3 +535,22 @@ test('add regression test: .session/ is ignored by git in a talk whose .gitignor
   assert.equal(text(join(talk, '.session', '.gitignore')), '*\n');
   if (hasGit) assert.deepEqual(git('status', '--porcelain', '-uall').stdout.split('\n').filter((l) => l.includes('.session')), []);
 });
+
+test('add regression test: a dot folder or node_modules is not served under another spelling of its path', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(talk, '.git'));
+  writeFileSync(join(talk, '.git', 'config'), 'token');
+  mkdirSync(join(talk, 'node_modules', 'x'), { recursive: true });
+  writeFileSync(join(talk, 'node_modules', 'x', 'index.js'), 'x');
+  // a link inside the talk folder stands for a short name of Windows, e.g. GIT~1
+  if (process.platform !== 'win32') {
+    symlinkSync(join(talk, '.git'), join(talk, 'GIT~1'));
+    symlinkSync(join(talk, 'node_modules'), join(talk, 'NODE_M~1'));
+  }
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const paths = ['node_modules./x/index.js', 'node_modules%20/x/index.js', '.git./config', 'index.html.', 'index.html%20'];
+  if (process.platform !== 'win32') paths.push('GIT~1/config', 'NODE_M~1/x/index.js');
+  for (const path of paths) assert.equal((await raw(edit.port, 'GET', `${edit.base}${path}`)).status, 404, path);
+});
