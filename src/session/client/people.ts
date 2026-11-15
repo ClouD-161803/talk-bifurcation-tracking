@@ -111,6 +111,14 @@ export function personItems(someone: Someone): MenuItem[] {
   return [{ note: someone.name }, ...extras.flatMap((fn) => fn(someone))];
 }
 
+let press: ((person: string) => void) | null = null;
+
+// fn runs at a click, a tap, Enter, or Space on the avatar of another person in place of its menu,
+// e.g. to follow the person. the menu then opens on the other ways of wireMenu
+export function onPersonPress(fn: ((person: string) => void) | null): void {
+  press = fn;
+}
+
 let openOwner: HTMLElement | null = null;
 let openMenu: OpenMenu | null = null;
 
@@ -131,10 +139,12 @@ function showMenu(client: Client, owner: HTMLElement, items: () => MenuItem[], k
 }
 
 // the menu of owner on a press of the mouse, a tap, a hold of a touch or a pen, a right-click, and
-// Enter, Space, Down, Shift+F10, or the Menu key
-export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuItem[]): void {
-  owner.setAttribute('aria-haspopup', 'menu');
-  owner.setAttribute('aria-expanded', 'false');
+// Enter, Space, Down, Shift+F10, or the Menu key. with act, a press, a tap, Enter, and Space run act
+export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuItem[], act?: () => void): void {
+  if (!act) {
+    owner.setAttribute('aria-haspopup', 'menu');
+    owner.setAttribute('aria-expanded', 'false');
+  }
   const isOpen = () => openOwner === owner && !!openMenu;
   const toggle = (keyboard: boolean) => {
     if (isOpen()) openMenu!.close();
@@ -153,7 +163,7 @@ export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuIt
     if (ev.pointerType === 'mouse') {
       if (ev.button !== 0) return;
       ev.preventDefault();
-      toggle(false);
+      if (!act) toggle(false);
       return;
     }
     // iOS Safari fires no contextmenu at a long press, hence the hold is timed here
@@ -171,13 +181,14 @@ export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuIt
   });
   for (const type of ['pointerup', 'pointercancel', 'pointerleave']) owner.addEventListener(type, stop);
   owner.addEventListener('click', (ev) => {
-    if (ev.detail === 0) return toggle(true);
-    if (pointer === 'mouse') return;
+    if (ev.detail === 0) return act ? act() : toggle(true);
+    if (pointer === 'mouse') return act?.();
     if (held) {
       held = false;
       return;
     }
-    toggle(false);
+    if (act) act();
+    else toggle(false);
   });
   owner.addEventListener('contextmenu', (ev) => {
     ev.preventDefault();
@@ -186,6 +197,8 @@ export function wireMenu(client: Client, owner: HTMLElement, items: () => MenuIt
   });
   owner.addEventListener('keydown', (ev) => {
     const menuKey = ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey);
+    // the click of the button runs act
+    if (act && !menuKey && (ev.key === 'Enter' || ev.key === ' ')) return;
     if (!(menuKey || ev.key === 'Enter' || ev.key === ' ' || ev.key === 'ArrowDown')) return;
     ev.preventDefault();
     ev.stopPropagation();
@@ -332,7 +345,7 @@ export function install(client: Client): void {
         if (person === client.person) return ownItems();
         const someone = everyone(client).find((p) => p.person === person);
         return someone ? personItems(someone) : [];
-      });
+      }, press && person !== client.person ? () => press?.(person) : undefined);
       avatars.set(person, el);
     }
     return b;
