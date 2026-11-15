@@ -101,10 +101,9 @@ export function disc(client: Client, person: string, size = 22): HTMLElement {
 const extras: ((someone: Someone) => MenuItem[])[] = [];
 
 // items added under the full name in the menu of the avatar of another person, e.g. Follow and Go
-// to Slide 7. the function returned removes them
-export function addPersonItems(fn: (someone: Someone) => MenuItem[]): () => void {
+// to Slide 7
+export function addPersonItems(fn: (someone: Someone) => MenuItem[]): void {
   extras.push(fn);
-  return () => void extras.splice(extras.indexOf(fn) >>> 0, 1);
 }
 
 export function personItems(someone: Someone): MenuItem[] {

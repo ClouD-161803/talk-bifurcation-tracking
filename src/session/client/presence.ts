@@ -264,8 +264,6 @@ export class Presence {
   private lastSelected: Element[] = [];
   private lastSlide: Element | null = null;
   private timer = 0;
-  // set at pagehide, when the page says bye, after which it sends no state
-  private left = false;
   private restTimer = 0;
   private typingTimer = 0;
   private typedAt = -Infinity;
@@ -356,7 +354,6 @@ export class Presence {
       if (document.visibilityState === 'hidden') hiding = window.setTimeout(() => this.due(true), HIDING);
       else this.due(true);
     });
-    window.addEventListener('pagehide', () => (this.left = true));
     document.addEventListener('input', (ev) => {
       if (!app.hostOf(ev.target)) return;
       this.typed();
@@ -497,7 +494,7 @@ export class Presence {
   // the log of this page puts an offset of the last state in doubt or does not reach v, since
   // another page could then not carry it either, e.g. in the copy of a duplicated slide
   private send(): void {
-    if (this.left || this.client.connection !== 'online') return;
+    if (this.client.gone || this.client.connection !== 'online') return;
     const state = this.build();
     if (!state) return;
     const v = parseVersion(state.v)!;

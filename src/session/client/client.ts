@@ -82,8 +82,6 @@ export class Client {
   people: Person[] = [];
   known: KnownPerson[] = [];
   presence: Presence[] = [];
-  // the elements that the last apply changed, e.g. for a flash
-  changed: Element[] = [];
   connection: Connection = 'joining';
   // true once an edit of this page has waited for its acknowledgment over SAVING ms
   saving = false;
@@ -99,7 +97,7 @@ export class Client {
   left = false;
   // the page is hidden for good and said bye. it sends nothing after it, since a poll would bring
   // it back into the session, and its unsent edits are kept by the copy
-  private gone = false;
+  gone = false;
   hooks: Hooks = {};
   // the presence of the other pages, read as elements of this page, set by presence.ts
   resolved: () => Resolved[] = () => [];
@@ -477,7 +475,6 @@ export class Client {
       return false;
     }
     this.handed = text;
-    this.changed = applied.changed;
     this.emit('applied', applied.changed);
     return true;
   }
