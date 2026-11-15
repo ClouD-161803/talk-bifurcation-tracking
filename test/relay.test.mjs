@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { get } from 'node:http';
+import { createServer, get } from 'node:http';
 import { connect } from 'node:net';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -243,4 +243,49 @@ test('add regression test: a slow upload through the relay is not cut by the tim
   await until(() => got.includes('\r\n\r\n') && got, 'the answer to the upload');
   assert.match(got, /^HTTP\/1\.1 200/, got);
   assert.match(got, /"path":"media\/slow\.png"/);
+});
+
+test('add regression test: an answer that the relay refuses is pushed again after a registration, or logged', { timeout: 60_000 }, async (t) => {
+  // a fake relay that hands out one request per id in ids, and answers the pushes of an id in turn
+  const ids = ['a1', 'b2'];
+  const pushAnswers = { a1: [401, 204], b2: [500] };
+  const pushes = [];
+  let registrations = 0;
+  const fake = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      const token = req.headers['x-relay-token'];
+      if (/^\/host\/[^/]+$/.test(req.url) && req.method === 'POST') {
+        registrations++;
+        return res.end(JSON.stringify({ token: `t${registrations}` }));
+      }
+      if (req.url.endsWith('/pull')) {
+        const id = ids.shift();
+        if (!id) return setTimeout(() => res.end('[]'), 200);
+        const key = req.url.split('/')[2];
+        return res.end(JSON.stringify([{ id, method: 'GET', path: `/${key}/index.html`, query: '', headers: {}, body: '' }]));
+      }
+      if (req.url.includes('/push/')) {
+        const id = req.url.split('/').pop();
+        const status = pushAnswers[id]?.shift() ?? 204;
+        pushes.push({ id, token, status, body: Buffer.concat(chunks).toString() });
+        res.statusCode = status;
+        return res.end();
+      }
+      res.end();
+    });
+  });
+  await new Promise((done) => fake.listen(0, '127.0.0.1', done));
+  t.after(() => fake.close());
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { args: ['--relay', `http://127.0.0.1:${fake.address().port}`], env: { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  await until(() => pushes.length >= 3, 'three pushes');
+  const a1 = pushes.filter((p) => p.id === 'a1');
+  assert.deepEqual(a1.map((p) => p.token), ['t1', 't2'], 'the answer refused with 401 is pushed again with the token of a new registration');
+  assert.match(a1[1].body, /First slide/);
+  assert.equal(pushes.filter((p) => p.id === 'b2').length, 1, 'an answer refused otherwise is pushed once');
+  await until(() => /500/.test(edit.stderr), 'the refused push to be logged');
 });
