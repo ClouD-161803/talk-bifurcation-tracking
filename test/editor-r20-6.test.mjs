@@ -267,7 +267,7 @@ for (const platform of PLATFORMS) {
     await tap(page, 'L1');
     await tap(page, 'Moon');
     edited = await render(page);
-    assert.equal(edited, replaced(page.source, TUBES_UNIT, `\n  ${TUBES}\n    <span class="label" data-at="L1" data-dy="-34">\\(\\LL{1}\\)</span>\n    <span class="label" data-at="moon" data-dy="36">Moon</span>\n  </div>`));
+    assert.equal(edited, replaced(page.source, TUBES_UNIT, `\n  ${TUBES}\n    <span class="label" data-at="L1" data-dy="-34">\\(\\mathcal{L}_{1}\\)</span>\n    <span class="label" data-at="moon" data-dy="36">Moon</span>\n  </div>`));
     const labs = await page.evaluate(`[...document.querySelectorAll('${BACK} .label')].map((l) => l.style.left)`);
     assert.equal(labs.length, 2);
     assert.ok(labs.every((l) => l && l !== '0px'), `the labels are at ${labs}`);
