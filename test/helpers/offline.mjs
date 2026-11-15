@@ -24,7 +24,7 @@ export async function tab(browser, url, { name = 'Ann', script = '', wait = true
       const fetched = window.fetch;
       const pending = new Set();
       window.fetch = function (input, init) {
-        const url = typeof input === 'string' ? input : input.url;
+        const url = input instanceof Request ? input.url : String(input);
         if (!url.includes('/.session/')) return fetched.call(this, input, init);
         if (window.__offline || (window.__blockOps && url.includes('/.session/op'))) return Promise.reject(new TypeError('Failed to fetch'));
         if (window.__failMedia && url.includes('/.session/media/')) return Promise.resolve(new Response('{"error":"the test refused the upload"}', { status: 500, headers: { 'Content-Type': 'application/json' } }));
