@@ -941,3 +941,20 @@ test('a version that restored another is told as such after a restart', { timeou
   const again = open(dir, authority.text);
   assert.equal(again.history.list().versions[0].restored, v1.id);
 });
+
+test('a restore that changes two slides takes in an operation in flight on a slide between them', { timeout: 60_000 }, (t) => {
+  const deck = DECK.replace('</body>', '<section>\n  <h2>Three</h2>\n</section>\n</body>');
+  const { authority, history } = open(sessionDir(t), deck);
+  const v1 = history.name('current', 'Before');
+  replace(authority, 'One', 'Uno', ANN);
+  replace(authority, 'Three', 'Drei', ANN);
+  history.close();
+  // an operation of Bo on the second slide, sent before the restore and applied after it
+  const base = authority.version;
+  const at = authority.text.indexOf('Second slide');
+  history.restore(v1.id, ANN);
+  const { answer } = authority.submit({ client: 'bo', seq: 1, base, patches: [{ start: at, end: at + 6, text: 'Zweite' }] }, BO);
+  assert.equal(answer.ok, true, JSON.stringify(answer));
+  assert.equal(authority.text, deck.replace('Second slide', 'Zweite slide'));
+  history.stopSync();
+});
