@@ -884,6 +884,11 @@ var Disk = class {
     this.retryAt = 0;
     this.back = [];
     this.backBytes = 0;
+    // the texts written since the last text that another program wrote, i.e. the steps back that the
+    // search for a base goes. a program that writes the file has read at least its own last text,
+    // hence an older text is not its base, although it may be nearer: a program that changes First
+    // into Second would otherwise add Second next to First, and it could not take a change back
+    this.reach = 0;
     this.firstUnwritten = null;
     this.timer = null;
     this.poller = null;
@@ -1000,6 +1005,7 @@ var Disk = class {
     const delta = reverse(text, this.head);
     this.back.push(delta);
     this.backBytes += weight(delta);
+    this.reach++;
     this.head = text;
     while (this.back.length > CHAIN_TEXTS || this.backBytes > CHAIN_BYTES) this.backBytes -= weight(this.back.shift());
   }
@@ -1133,16 +1139,17 @@ var Disk = class {
       if (patches.length) this.authority.enter(patches, AUTHOR);
     }
     this.remember(theirs);
+    this.reach = 0;
   }
-  // the text of the chain nearest to theirs, i.e. with the smallest line diff to it, then with the
-  // fewest characters changed inside the changed lines, then the newest. the texts are rebuilt as
-  // lines from the head back, and each gets a lower bound of its rank: the lines that it has more or
-  // fewer of than theirs, and the difference of the lengths. the texts are then measured in the order
-  // of their bounds, until the bound of the next is above the best rank found. a change based on a
-  // text older than the chain is merged on the kept text nearest to it, hence the edits of the
-  // session between the two texts are reverted, since the file lacks them
+  // the text nearest to theirs among the last reach + 1 of the chain, i.e. with the smallest line
+  // diff to it, then with the fewest characters changed inside the changed lines, then the newest.
+  // the texts are rebuilt as lines from the head back, and each gets a lower bound of its rank: the
+  // lines that it has more or fewer of than theirs, and the difference of the lengths. the texts are
+  // then measured in the order of their bounds, until the bound of the next is above the best rank
+  // found. a change based on a text older than the chain is merged on the kept text nearest to it,
+  // hence the edits of the session between the two texts are reverted, since the file lacks them
   *nearest(theirs) {
-    const back = this.back, budget = this.timing.budget;
+    const back = this.back, budget = this.timing.budget, reach = Math.min(this.reach, back.length);
     let slice = performance.now();
     const deadline = slice + budget;
     function* breathe() {
@@ -1164,7 +1171,7 @@ var Disk = class {
     let lines = this.head.split("\n"), length = this.head.length;
     count(lines, 1);
     count(mine, -1);
-    const every = Math.max(1, Math.ceil(back.length * Math.max(1, length) / KEPT_CHARS));
+    const every = Math.max(1, Math.ceil(reach * Math.max(1, length) / KEPT_CHARS));
     const kept = /* @__PURE__ */ new Map();
     const bounds = [];
     let best = null, over = false;
@@ -1183,7 +1190,7 @@ var Disk = class {
       bounds.push({ lines: distance, chars: Math.abs(length - theirs.length), steps });
       if (steps % every === 0) kept.set(steps, lines);
       if (steps === 0) consider(0, lines);
-      if (steps === back.length) break;
+      if (steps === reach) break;
       yield* breathe();
       if (over = performance.now() >= deadline) break;
     }
