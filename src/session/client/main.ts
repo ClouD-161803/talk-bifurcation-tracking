@@ -5,6 +5,7 @@
 import type { Entry, Handover } from './handover.ts';
 import { Client } from './client.ts';
 import { install as conflicts } from './conflicts.ts';
+import { install as copy, restore } from './copy.ts';
 import { install as end } from './end.ts';
 import { join, rename } from './join.ts';
 import { install as people } from './people.ts';
@@ -12,7 +13,7 @@ import { install as share, pageLink } from './share.ts';
 import { install as state } from './state.ts';
 
 // each part reads the Client and its events. the avatars go before the save state, and Share last
-const PARTS: ((client: Client) => void)[] = [state, end, conflicts, people, share];
+const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, people, share];
 
 let current: Client | null = null;
 
@@ -46,7 +47,9 @@ async function start(handover: Handover): Promise<boolean> {
   const client = new Client(handover);
   current = client;
   for (const install of PARTS) install(client);
-  void join(client, text, v).catch((e) => app.fail(e));
+  void restore(client)
+    .then((kept) => join(client, text, v, kept))
+    .catch((e) => app.fail(e));
   return true;
 }
 

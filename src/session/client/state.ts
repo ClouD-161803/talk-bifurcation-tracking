@@ -4,6 +4,7 @@
 // is Try now while a reconnect waits, and Load again while the page is blocked
 
 import { BLOCKED, type Client } from './client.ts';
+import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
 
 // the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
@@ -26,6 +27,8 @@ function view(client: Client): View {
     case 'joining':
       return { text: 'Joining…', icon: 'cloud', warn: false, action: retry };
     case 'offline': {
+      const kept = keptLine(client);
+      if (kept) return { text: kept, icon: 'cloud-off', warn: true, action: retry };
       const left = client.retryAt === null ? 0 : Math.max(0, Math.ceil((client.retryAt - Date.now()) / 1000));
       return { text: `Offline. ${left ? `Reconnecting in ${left} s` : 'Reconnecting…'}`, icon: 'cloud-off', warn: true, action: retry };
     }
@@ -35,6 +38,8 @@ function view(client: Client): View {
       // the one place for a warning of the edit command, e.g. that it cannot write index.html
       if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
+      const restored = restoredLine(client);
+      if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
       return { text: client.host ? 'Saved to index.html' : 'Saved', icon: 'cloud', warn: false, action: null };
   }
 }

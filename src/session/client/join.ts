@@ -3,6 +3,7 @@
 
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
+import type { Copy } from './copy.ts';
 import { make, sheet, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
@@ -120,8 +121,9 @@ export async function askTaken(client: Client, name: string): Promise<boolean> {
 }
 
 // the first hello of the page, with the dialog when the browser does not know the name of its
-// person. text is the text of the page at version v
-export async function join(client: Client, text: string, v: string): Promise<void> {
+// person. text is the text of the page at version v. a copy of copy.ts is joined from its version,
+// as a reconnect of a page with its edits
+export async function join(client: Client, text: string, v: string, copy: Copy | null = null): Promise<void> {
   let name = cleanPersonName(stored(NAME) ?? '');
   let error = '';
   let claim = false;
@@ -132,7 +134,7 @@ export async function join(client: Client, text: string, v: string): Promise<voi
   } catch {}
   for (;;) {
     if (!name) name = await askName(client, error);
-    const request: HelloRequest = { name, v, ...(claim ? { claim } : {}) };
+    const request: HelloRequest = { name, v: copy?.v ?? v, ...(claim ? { claim } : {}) };
     const person = stored(PERSON);
     if (person) request.person = person;
     let answer: HelloAnswer | Taken;
@@ -155,7 +157,8 @@ export async function join(client: Client, text: string, v: string): Promise<voi
     }
     store(NAME, answer.name);
     store(PERSON, answer.person);
-    client.begin(answer, text, v);
+    if (copy) client.rewrite(() => copy.mine);
+    client.begin(answer, copy?.base ?? text, copy?.v ?? v);
     return;
   }
 }
