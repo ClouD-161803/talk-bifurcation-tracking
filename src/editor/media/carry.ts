@@ -169,7 +169,10 @@ async function folderOf(address: string, name: string): Promise<Folder | null> {
   busy?.close(null);
   const v = await dialog.open('choose');
   void busy?.open();
-  return v === 'choose' ? picked : null;
+  if (v !== 'choose') return null;
+  // a picker may not answer, e.g. while the browser lists a large folder, hence Stop ends the wait
+  const stopped = new Promise<null>((done) => stop.signal.addEventListener('abort', () => done(null)));
+  return Promise.race([picked, stopped]);
 }
 
 export const listed = (n: string[]) => (n.length < 3 ? n.join(' and ') : `${n.slice(0, -1).join(', ')}, and ${n.at(-1)}`);
