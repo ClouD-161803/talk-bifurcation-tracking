@@ -1,15 +1,17 @@
 // slides pasted from a plain deck into a page of a session, and slides copied in a session. a file
 // that the session does not take is not added by the paste, which names it with the reason, and the
 // later edits of the page still reach index.html. a copy in a session names its deck by a tag in
-// place of the key of the session
+// place of the key of the session, and a plain deck asks for the talk folder of the session
 
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
+import { serve } from '../scripts/webdriver.mjs';
 import { clean, converge, open, sessionUrl, talk, TEXT } from './helpers/client.mjs';
-import { A, BACKDROP, DIR, FILES, QUERY, copySlide, openDeck, pasteSlides, pasted, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { click } from './helpers/editor.mjs';
 import { edit } from './helpers/offline.mjs';
 
 const MB = 1024 * 1024;
@@ -30,6 +32,15 @@ async function deckA(browser, server, change = () => {}) {
   cpSync(resolve(DIR, 'a'), dir, { recursive: true });
   change(dir);
   return openDeck(browser, `${server.edit.url}${A}?${QUERY}`, A);
+}
+
+/** Waits for the folder dialog of a paste, clicks its button label, and returns its text. */
+async function answer(page, label) {
+  await page.waitFor(`!!document.querySelector('${DIALOG}[open]')`, 20000);
+  const text = await page.evaluate(`document.querySelector('${DIALOG}').textContent`);
+  const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll('${DIALOG} button')].find((b) => b.textContent === ${JSON.stringify(label)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  await click(page, at);
+  return text;
 }
 
 test('a slide pasted into a session comes without the file of trajectories of its backdrop, and the later edits of the page reach index.html', { timeout: 180_000 }, async (t) => {
@@ -77,6 +88,8 @@ test('a picture over the limit of a session is not added by a paste, and the lat
 test('a copy in a session', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
+  const stat = await serve('.');
+  t.after(() => stat.close());
   const server = await talk(t);
   mkdirSync(join(server.talk, 'media'));
   writeFileSync(join(server.talk, 'media/fig.png'), readFileSync(resolve('demo/figure-light.png')));
@@ -103,6 +116,20 @@ test('a copy in a session', { timeout: 180_000 }, async (t) => {
     const after = await converge(server, [ann, ben]);
     assert.equal(after.match(/<img src="media\/fig\.png" alt="A figure">/g).length, 2);
     assert.equal((await status(ben)).message.includes('not copied'), false);
+  });
+
+  await t.test('asks a plain deck for the talk folder of the session, without its key', async (t) => {
+    const b = await openDeck(browser, `${stat.origin}/${B}?${QUERY}`, B);
+    t.after(() => b.close());
+    await pasteSlides(b, FIRST_B, text);
+    const asked = await answer(b, 'Paste Without Files');
+    assert.ok(asked.includes('The images, videos, and backdrops that you pasted are files in the talk folder of the session.'), asked);
+    assert.ok(!asked.includes(server.edit.key), asked);
+    await pasted(b);
+    const { message } = await status(b);
+    assert.ok(message.endsWith('media/fig.png was not copied from the talk folder of the session.'), message);
+    // deck B does not read the file from the address of the copy
+    assert.equal(b.errors.filter((e) => e.includes('session-')).length, 0, b.errors.join('\n'));
   });
 
   clean(ann);
