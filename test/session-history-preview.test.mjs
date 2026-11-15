@@ -196,6 +196,26 @@ test('the preview of a deck with a hidden slide, a changed step, and changed not
     assert.deepEqual(step, { changed: true, opacity: '1', visibility: 'visible', outline: 'solid' });
     assert.equal(await ann.evaluate(`document.querySelector('${BAR} .notes')?.textContent`), 'Notes of Slide 2 changed');
   });
+
+  await t.test('in the preview the arrows move through its slides, the keys of reveal.js are held, and Esc leaves Version History', async () => {
+    const r = await ann.evaluate(`(() => { const r = ${FRAME}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    // a click on a slide plays its next step, see src/click.ts
+    await click(ann, r);
+    await ann.waitFor(`document.activeElement === ${FRAME}`);
+    await press(ann, 'Home');
+    await ann.waitFor(`${CURRENT} === 'One'`);
+    // O opens the overview of reveal.js. the keys of the page are taken in order, hence O is
+    // taken once the arrow after it moves the slide
+    await press(ann, 'o');
+    await press(ann, 'ArrowRight');
+    await ann.waitFor(`${CURRENT} === 'Three'`);
+    await ann.evaluate(`window.__shown = ${FRAME}.contentWindow, true`);
+    assert.equal(await ann.evaluate('window.__shown.Reveal.isOverview()'), false);
+    await press(ann, 'Escape');
+    await ann.waitFor(`!(${SHOWN})`);
+    assert.equal(await ann.evaluate('window.__shown.Reveal.isOverview()'), false);
+    assert.equal(await ann.evaluate(`document.documentElement.classList.contains('beeson-history')`), false);
+  });
   clean(ann);
 });
 
