@@ -392,15 +392,25 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     return { anchor: found, text };
   };
 
-  const move = (it: Anchored): Anchored => {
-    if (it.removed?.text) {
-      const o = findInserted(after, it.removed.text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : 0);
-      const t = o >= 0 ? startTagAt(after, o) : null;
-      if (t) {
-        const slide = slideAt(s1, o);
-        return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
-      }
+  // the element of a removed text that the patches inserted again into the slide of it, or anywhere
+  // for a thread of the deck, unless the same operation took the text from elsewhere
+  const reattach = (it: Anchored, text: string): Anchored | null => {
+    let within: Span | null = null;
+    if (it.slide) {
+      const i = index.get(it.slide.start) ?? -1;
+      if (i < 0 || to[i] < 0) return null;
+      within = s1[to[i]];
     }
+    const o = findInserted(after, text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : 0, within);
+    const t = o >= 0 ? startTagAt(after, o) : null;
+    if (!t || patches.some((p) => p.end - p.start >= text.length && before.slice(p.start, p.end).includes(text))) return null;
+    const slide = slideAt(s1, o);
+    return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
+  };
+
+  const move = (it: Anchored): Anchored => {
+    const again = it.removed?.text ? reattach(it, it.removed.text) : null;
+    if (again) return again;
     const a = it.anchor;
     if (!a) return withRemoved(null, null, it.removed);
     let i = it.slide ? (index.get(it.slide.start) ?? -1) : -1;
