@@ -2,8 +2,9 @@
 // most once per 250 ms of quiet and at the latest 1 s after the first unwritten operation, by a
 // temporary file next to the file and a rename over it, and at once at a stop. a change that the
 // edit command did not write itself is found by a stat every 500 ms and before each write, and
-// merged as an operation of the author file, on the base of the text written or read lately that is
-// nearest to it, where the file wins a conflict. the reads and the writes are done one at a time
+// merged as an operation of the author file, where the file wins a conflict. its base is the
+// nearest text among the last one that another program wrote and the ones that the edit command
+// wrote after it. the reads and the writes are done one at a time
 
 import { readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
 import { chmod, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
@@ -280,6 +281,11 @@ export class Disk {
   private head: string;
   private back: Patch[][] = [];
   private backBytes = 0;
+  // the texts written since the last text that another program wrote, i.e. the steps back that the
+  // search for a base goes. a program that writes the file has read at least its own last text,
+  // hence an older text is not its base, although it may be nearer: a program that changes First
+  // into Second would otherwise add Second next to First, and it could not take a change back
+  private reach = 0;
   private firstUnwritten: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private poller: ReturnType<typeof setInterval> | null = null;
@@ -407,6 +413,7 @@ export class Disk {
     const delta = reverse(text, this.head);
     this.back.push(delta);
     this.backBytes += weight(delta);
+    this.reach++;
     this.head = text;
     while (this.back.length > CHAIN_TEXTS || this.backBytes > CHAIN_BYTES) this.backBytes -= weight(this.back.shift()!);
   }
@@ -558,9 +565,9 @@ export class Disk {
       // last taken, is merged on it, since its tail is not in any text of the chain. a rest written
       // into a handle on a file that a write of the edit command has replaced is not in the file
       const base = this.taken !== null && theirs.startsWith(this.taken) ? this.taken : yield* this.nearest(theirs);
-      // theirs is an earlier text of the session, as from an editor that saves a copy it did not
-      // reload, or from a git checkout. the newer edits of the session are kept and written back,
-      // since a stale save must not revert the edits of everyone
+      // theirs is a text that the file held before edits of the session, as from an editor that
+      // saves a copy it did not reload, or from a git checkout. the newer edits of the session are
+      // kept and written back, since a stale save must not revert the edits of everyone
       if (base === theirs) this.log(`${this.file} was written with an earlier text of the session, and the edit command keeps the newer edits and writes them back`);
       // the session may have changed while the chain was searched
       const current = this.authority.text;
@@ -571,17 +578,18 @@ export class Disk {
       if (patches.length) this.authority.enter(patches, AUTHOR);
     }
     this.remember(theirs);
+    this.reach = 0;
   }
 
-  // the text of the chain nearest to theirs, i.e. with the smallest line diff to it, then with the
-  // fewest characters changed inside the changed lines, then the newest. the texts are rebuilt as
-  // lines from the head back, and each gets a lower bound of its rank: the lines that it has more or
-  // fewer of than theirs, and the difference of the lengths. the texts are then measured in the order
-  // of their bounds, until the bound of the next is above the best rank found. a change based on a
-  // text older than the chain is merged on the kept text nearest to it, hence the edits of the
-  // session between the two texts are reverted, since the file lacks them
+  // the text nearest to theirs among the last reach + 1 of the chain, i.e. with the smallest line
+  // diff to it, then with the fewest characters changed inside the changed lines, then the newest.
+  // the texts are rebuilt as lines from the head back, and each gets a lower bound of its rank: the
+  // lines that it has more or fewer of than theirs, and the difference of the lengths. the texts are
+  // then measured in the order of their bounds, until the bound of the next is above the best rank
+  // found. a change based on a text older than the chain is merged on the kept text nearest to it,
+  // hence the edits of the session between the two texts are reverted, since the file lacks them
   private *nearest(theirs: string): Task<string> {
-    const back = this.back, budget = this.timing.budget;
+    const back = this.back, budget = this.timing.budget, reach = Math.min(this.reach, back.length);
     let slice = performance.now();
     const deadline = slice + budget;
     function* breathe(): Task {
@@ -605,7 +613,7 @@ export class Disk {
     let lines = this.head.split('\n'), length = this.head.length;
     count(lines, 1);
     count(mine, -1);
-    const every = Math.max(1, Math.ceil((back.length * Math.max(1, length)) / KEPT_CHARS));
+    const every = Math.max(1, Math.ceil((reach * Math.max(1, length)) / KEPT_CHARS));
     const kept = new Map<number, string[]>();
     const bounds: Rank[] = [];
     // a cast, since the narrowing of typescript does not see the assignments in consider()
@@ -626,7 +634,7 @@ export class Disk {
       if (steps % every === 0) kept.set(steps, lines);
       // the head is measured first, so that a search cut short by the budget has a base
       if (steps === 0) consider(0, lines);
-      if (steps === back.length) break;
+      if (steps === reach) break;
       yield* breathe();
       if ((over = performance.now() >= deadline)) break;
     }

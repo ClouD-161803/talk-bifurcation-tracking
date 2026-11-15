@@ -291,12 +291,13 @@ test('a search for the base that runs out of its time merges on the nearest text
 test('an outside write back to an earlier text keeps the newer edits of the session, and says so in a line of the log', { timeout: 60_000 }, async (t) => {
   const { file, authority, disk, lines } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
   disk.start();
-  writeFileSync(file, DECK.replace('</body>', '<p>typo</p>\n</body>'));
-  await until(() => authority.text.includes('<p>typo</p>'), 'the typo to be merged');
+  insert(authority, 'Second slide', 'Very ');
+  await until(() => readFileSync(file, 'utf8') === authority.text, 'the edit of the person to be written');
+  // an editor that did not reload the file saves its copy
   writeFileSync(file, DECK);
   await until(() => lines.some((l) => l.includes('earlier text')), 'a line of the log on the earlier text');
   await until(() => readFileSync(file, 'utf8') === authority.text, 'the session text to be written back');
-  assert.ok(authority.text.includes('<p>typo</p>'), 'the session lost its newer edit');
+  assert.ok(authority.text.includes('Very Second slide'), 'the session lost its newer edit');
 });
 
 test('add regression test: a program that changes a line that it changed before replaces its earlier change, and keeps an edit of a person that it did not read', { timeout: 60_000 }, async (t) => {
