@@ -93,7 +93,11 @@ function answer(res, status, body = '', headers = {}) {
   if (res.headersSent || res.destroyed) return;
   const bytes = Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
   const type = Buffer.isBuffer(body) || typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json';
-  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', ...headers, 'Content-Length': String(bytes.length) });
+  // lowercase names, so that a forwarded header replaces a default rather than doubling it
+  const all = { 'content-type': type, 'cache-control': 'no-store' };
+  for (const [k, v] of Object.entries(headers)) all[k.toLowerCase()] = v;
+  all['content-length'] = String(bytes.length);
+  res.writeHead(status, all);
   res.end(bytes);
 }
 
