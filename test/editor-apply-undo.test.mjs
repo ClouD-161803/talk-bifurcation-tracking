@@ -85,3 +85,29 @@ test('an insert or a duplicate of the person, and the redo of a removal, are dro
   assert.equal((await status(b)).redo, false, 'the redo of the removal of a list is dropped');
   assert.deepEqual(b.errors, []);
 });
+
+// test/pages/editor-r29-1.html, opened from the folder of the theme, with a line on its third slide
+// from its shape to the right edge of its table, which sits in the flow under a paragraph
+const GLUED = once(once(readFileSync('test/pages/editor-r29-1.html', 'utf8').replaceAll('"../../theme/', '"theme/'),
+  '<table><tr>', '<table data-anchor="a2"><tr>'),
+  'translate: 1300px 700px"></div>', 'translate: 1300px 700px" data-anchor="a1"></div>\n  <svg class="line" width="1148" height="360" style="translate: 252px 400px; z-index: 1" data-from="a1 0.5 0.5" data-to="a2 1 0.5"><defs><marker id="line-1" orient="auto-start-reverse"><path d="M-4-2.5 1 0-4 2.5z"></path></marker></defs><line x1="1148" y1="360" x2="0" y2="0"></line></svg>');
+
+test('typing that moves an attached line is dropped when another person moves the line', async (t) => {
+  const b = await sessionPage(browser, { deck: freshDeck(t, GLUED), text: GLUED, page: { width: 1600, height: 1000 } });
+  t.after(() => b.close());
+  await b.evaluate('Reveal.slide(2)');
+  await b.waitFor('Reveal.getIndices().h === 2');
+  await frame(b);
+  const line = () => sessionText(b).then((s) => s.match(/<svg class="line"[^>]*>/)[0]);
+  const drawn = await line();
+  await caretAtEnd(b, `Reveal.getCurrentSlide().querySelector('p')`);
+  await typeKeys(b, ' and many more words that wrap the paragraph onto a second line and onto a third line of the column');
+  await b.waitFor(`${E}.state('edit.undo').label === 'Undo Typing'`);
+  await b.evaluate(`document.activeElement.blur()`);
+  const typed = await line();
+  assert.notEqual(typed, drawn, 'the typing moves the line');
+  const moved = typed.replace(/translate: (\d+)px/, (_, x) => `translate: ${Number(x) + 100}px`);
+  assert.equal((await applyOn(b, once(await sessionText(b), typed, moved))).reload, false);
+  assert.equal((await status(b)).undo, false, 'the typing is dropped');
+  assert.deepEqual(b.errors, []);
+});
