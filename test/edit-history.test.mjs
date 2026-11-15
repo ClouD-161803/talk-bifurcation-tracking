@@ -648,6 +648,17 @@ test('large replaces in one version take time in proportion to their patches and
   }
 });
 
+test('the texts set aside are limited per person, and the text of another person is kept', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  let clock = 1_000_000;
+  const { history } = open(dir, DECK, { asideFiles: 3, now: () => clock++ });
+  const mine = history.setAside(`${DECK}MY LOST WORK`, ANN);
+  const theirs = Array.from({ length: 5 }, () => history.setAside('x', BO).id);
+  assert.equal(history.asideText(mine.id), `${DECK}MY LOST WORK`);
+  assert.deepEqual(history.list().aside.map((a) => a.id), [...theirs.slice(2).reverse(), mine.id]);
+  assert.equal(readdirSync(join(dir, 'aside')).length, 4);
+});
+
 test('a page that was dropped while two restores were made is told the later one, and a page that came after them is not told', { timeout: 180_000 }, async (t) => {
   const s = await session(t);
   const ann = await s.hello('Ann');
