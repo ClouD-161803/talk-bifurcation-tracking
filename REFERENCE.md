@@ -62,6 +62,50 @@ A plot of a deck is selected, moved, copied, deleted, given steps, grouped, lock
 
 A text on the page that cannot be found in the file is skipped, e.g. after a change to a file that the editor does not read again. The number of skipped texts is shown in the state in the toolbar. Press Which? next to the state to see the list of these texts, with their slides and the reasons.
 
+## The synchronous editor
+
+With the synchronous editor, several people edit one deck at the same time, each in a browser, and each change is shown to the others as it is made. A session is free, since neither an account nor a paid service is needed.
+
+To host a session, run `npm run edit` in the talk folder, or double-click `Edit.command` on macOS, `Edit.cmd` on Windows, or `Edit.sh` on Linux, for which Node.js 20 or later is needed. The editor is then opened in your browser at an address such as `http://127.0.0.1:8765/<key>/index.html?edit&session`, which is also printed in the window. The port of the last start is used again, 8765 at the first start, and a free port when this one is in use. Choose a port with `npm run edit -- --port N`, keep the browser closed with `--no-open`, and share through a relay from the start with `--relay URL`. Close the window or press Ctrl+C to stop the session. The edits are written into `index.html` within a second, with every other byte kept, and a new picture or video into `media/`. The rest of the session is kept in `.session/`, which is ignored by git. When `index.html` cannot be written at the stop, the text is kept in `.session/unwritten-<time>.html`, or in the temporary folder of the system when `.session/` cannot be written, and its path is printed in the window.
+
+A guest joins through a relay, since the edit command can be reached only from the computer of the host. Press Share in the title bar, type the address of the relay of your group and its secret once, and press Connect. Both are kept in `~/.config/beeson-slides/relay.json`, under `$XDG_CONFIG_HOME` when this variable is set, or in `%APPDATA%\beeson-slides\relay.json` on Windows. The link of the session is then shown with Copy and a QR code. A guest opens the link in a current browser, on a computer or a phone, without installing anything, and types a name under Join the session. In the menu of your own avatar, change the name with Change Name…, and as a guest leave with Leave Session. With Leave Session, the waiting edits are sent first, and the deck can then be downloaded with Download a copy or joined again with Join again. A guest edits as the host does, apart from Open, Open Recent, and Revert to Saved, which are off for everyone.
+
+Each person is given a color of the plot palette (`--data-2`, `--data-3`, `--data-5`, or `--data-7`) and an avatar with initials in the title bar. An element that another person selected is framed in this color, with a name flag at its upper left corner, which is collapsed to a chip with the initials after 3 s. While a person types, the flag reads e.g. Ana is typing, and the caret of this person is drawn in the same color. One person at a time types in a text element. While your caret is in it, you hold it, and the others cannot type in it, move it, format it, or delete it or its slide, and they are shown why in a bubble. The hold ends when your caret leaves, after 15 s without a sign of your page, or when someone enters after you have not typed for 30 s. Other edits are merged as they come, and where two edits change the same characters, the later one is kept without a question.
+
+In the navigator and the Slide Sorter, a slide is marked with a dot in the color of each person on it. In the navigator, a slide is also marked with a violet dot when someone else, or a change of `index.html` from outside, changed it since you last showed it. Click an avatar to follow its person. You then see the slide of this person at your zoom, inside a border in the color of this person, under the pill Following Ana with Stop. Following stops when you press Stop, edit, select, change the slide, or present, and it is kept through a zoom or a scroll. Right-click an avatar, or hold it, for its menu with Follow or Stop Following, and Go to Slide.
+
+In place of Autosave, the button of the save state reads Saved, or Saved to index.html for the host. Each edit is sent as it is made, and with Save or Save As…, the waiting edits are sent at once, without a file. To keep a copy of the deck, choose File > Export To > HTML…. Undo and Redo are applied to your own changes, and an entry that would write over a later change of someone else is dropped. A change of `index.html` from outside, e.g. by an agent or a git pull, is merged for everyone within a second, and the version of the file is kept where the session changed the same text. When the file is written back with an earlier text of the session, the newer edits are kept. To go back, stop the edit command first.
+
+When the connection is lost, you go on editing, and the save state reads e.g. Offline. Changes on slides 3 and 5 are kept in this browser. The waiting edits are kept in the browser for 30 days, also through a closed tab, and they are merged with those of the others at the reconnect or at the next join of the same address. When the host has started the edit command again in between and the deck has changed, you are asked first in the dialog Changes from an earlier session, with Download my version, Discard them, and Add my changes. After more than 5 s offline, the texts that someone else changed as well are listed in the dialog Others changed texts that you edited offline, with Keep mine, Keep theirs, and Download my version. When the host stops the edit command, each guest is told in the dialog Ana ended the session whether the host received the last changes, with Download a copy. With End session in the Share dialog, the host ends the session for the guests and goes on editing.
+
+| Key | Action |
+|---|---|
+| Cmd+S on a Mac, Ctrl+S elsewhere | Send the waiting edits at once |
+| Enter or Space on an avatar | Follow its person, or stop following |
+| Shift+F10 on an avatar | Open its menu |
+| Esc in the pill of following | Stop following |
+
+To run a relay for your group, start it on a machine that everyone can reach, behind a proxy that serves it over https, which a guest needs.
+
+```sh
+SLIDES_RELAY_SECRET=<a secret of 16 or more characters> npm run relay -- --port 8787
+```
+
+The secret can also be read from a file with `--secret-file PATH`, and the relay is bound to one address with `--host ADDRESS`. Everything is kept in memory, and the relay does not read or write a file apart from the secret file. The limits of a relay are 64 sessions, 256 waiting requests per session, and bodies of 16 MB each and 256 MB in all, a quarter of them for one session. A session is dropped after 90 s without its edit command.
+
+### Trust and limits
+
+- Everyone who has the link can edit the deck until the session ends, and can thus also write a script into it, which is then run in the browser of every person of the session. Give the link only to people whom you trust with the deck.
+- A name is not verified, hence anyone with the link can join under the name of someone else.
+- Every session of one relay is served from one origin. With a script in the deck of one session, a person can read what another session of the same relay left in the same browser, e.g. its key, hence a relay is for one group whose members trust one another.
+- The copy of unsent edits kept in a browser is found by the origin and the path of the page. It is lost to the session when the edit command is started on another port or the address of the relay is changed.
+- A session takes at most 64 pages, at most 48 of them through the relay, and at most 8 pages of one person. A page past these limits is not let in.
+- A picture that is added in a session, and any file that a guest adds, is limited to 16 MB, and a video that the host adds to 64 MB.
+- A browser keeps at most six connections to one address, and each page of a session holds one of them while it waits for news. With six or more pages of one session open in one browser, an edit is therefore sent only after up to 25 s. Close the pages of the session that you do not use.
+- A file of the talk folder over 16 MB is sent through the relay only in ranges, as they are requested for a video, hence a guest does not load a picture of over 16 MB.
+- The edit command is bound to 127.0.0.1, the computer of the host.
+- The tests of the synchronous editor were run in Chrome, and its behavior in Firefox and Safari is argued from their documentation.
+
 ## Text and tables
 
 Write bold as `strong`, italic as `em`, a strikethrough as `s`, a superscript as `sup`, a subscript as `sub`, and code as `code`. Inline code is drawn in the monospace of the system on a chip with rounded corners, tinted with the text color of the mode, and the code of a code box is drawn without the chip. To color words, put them in a `span` with one class out of `tone-accent`, `tone-violet`, `tone-blue`, `tone-red`, `tone-subtle`, and `tone-muted`, which are drawn in `--accent`, `--violet`, `--blue`, `--red`, `--subtle`, and `--muted` in each mode. With `tone-text`, the words are drawn in `--text`, e.g. in a small paragraph. Such a color is shown from the start of the slide, and a color that is a step is set with `data-highlight`, as described under Stepped math. In the Format menu of the editor, Strikethrough is set with Cmd+Shift+X on a Mac and Alt+Shift+5 elsewhere, Superscript and Subscript are under Baseline, and the colors are under Text Color. There, choose Text to write `tone-text` on the words of a text element drawn in another color, i.e. Small, Caption, and Footnote, or to take the span off in a text element drawn in the text color. With Clear Formatting, every format is taken off, apart from a link, a formula, and a span of a colored symbol. With Paragraph Style, a text element is written as `p` for Body, `p.small` for Small, `h3` for Subheading, `p.caption` for Caption, and `div.foot` for Footnote.

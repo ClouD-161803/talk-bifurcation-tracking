@@ -26,6 +26,10 @@ The file `references.bib` next to the deck, from which the references of its cit
 
 Avoid "library" and "references file".
 
+## Chip
+
+A small rounded tile with a short text, e.g. the initials of a person on a collapsed name flag, or the tint behind inline code.
+
 ## Citation
 
 The empty `cite` after the cited words of a slide, with the key of a paper of the bibliography in `data-key`, drawn as the number of the paper on its slide.
@@ -54,6 +58,12 @@ The box at the right of a content slide or of a split slide in which a figure is
 
 Avoid "zone", the class of a figure box in an old talk, which is `figure-box`.
 
+## Follow
+
+To keep your view of the editor on the slide and the selection of another person of a session, from a click on the avatar of this person until you stop.
+
+Avoid "spotlight" and "watch".
+
 ## Guest
 
 A person who has joined a session through its link, in any browser.
@@ -70,17 +80,23 @@ The title line at the top of a slide, i.e. its `h2`, or the `h1` of a title slid
 
 Avoid "head" for the heading of a figure slide, since a head is the moving dot at the tip of a trajectory while it is traced, or the title of a theorem as in amsthm.
 
-## Kind
+## Hold
 
-The sort of a theorem, e.g. lemma, definition, or proof, written in `data-kind`, which gives its title, its style, and its counter.
+To be the one person of a session who can type in a text element. You hold a text element from the moment your caret is put into it until the caret leaves, your page is silent for 15 s, or someone else enters it after you have not typed for 30 s.
 
-Avoid "type" and "environment".
+Avoid "lock", which is the command Lock of the Arrange menu.
 
 ## Host
 
 The person who started a session. The edit command runs on the machine of the host, and `index.html` is written in the talk folder of the host.
 
 Avoid "owner".
+
+## Kind
+
+The sort of a theorem, e.g. lemma, definition, or proof, written in `data-kind`, which gives its title, its style, and its counter.
+
+Avoid "type" and "environment".
 
 ## Label
 
@@ -103,6 +119,12 @@ Avoid "layer" for the steps of a slide that the editor shows at once, which do n
 A drawn element of an animated plot, such as a curve or a trace.
 
 Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" or "trademark" for a file in `brand/`, "surface point" for a point of a surface, and "Markdown syntax" for the signs that format a text.
+
+## Name flag
+
+The label with the name of a person at the upper left corner of the frame of an element that this person selected in a session.
+
+Avoid "cursor", "tag", and "badge".
 
 ## Part
 
@@ -142,7 +164,7 @@ Avoid "footnote" and "citation".
 
 ## Relay
 
-The program through which a guest reaches the edit command of a host whose machine cannot be reached directly. A deck is never kept on it.
+The program through which a guest reaches the edit command of a host, which can be reached only from the computer of the host. A deck is never kept on it.
 
 Avoid "server" and "hub".
 

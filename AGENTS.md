@@ -6,7 +6,7 @@ This repository is either slides or a talk made from it. slides is the Beeson gr
 
 Hard invariants are never traded away for other goals. When a change would break one, stop and ask the person you work for. Conventions may be argued with.
 
-1. Talks work without a toolchain. The compiled `theme/beeson.js`, `theme/editor.js`, and `theme/editor-tex.js` are committed.
+1. Talks work without a toolchain. The compiled `theme/beeson.js`, `theme/editor.js`, `theme/editor-tex.js`, `theme/session.js`, and `theme/edit.mjs` are committed.
 2. Decks do not fetch anything at show time. Everything they load is vendored under `theme/vendor/` with its license.
 3. Editor saves keep every byte of `index.html` outside the edited text elements.
 4. Nothing in this repository is derived from DyLAN code.
@@ -36,8 +36,9 @@ Hard invariants are never traded away for other goals. When a change would break
 ## Commands
 
 ```sh
-npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, and the bundles theme/beeson.js, theme/editor.js, and theme/editor-tex.js
+npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, and the bundles of theme/: beeson.js, editor.js, editor-tex.js, session.js, and edit.mjs
 npm run tex                                 # tex.js, from preamble.tex and references.bib next to index.html
+npm run edit                                # the editor in a session, in which several people edit the deck at once
 npm run check                               # screenshots of every slide in both modes into check/, and the problems of the page
 npm run check -- --browser firefox          # the same in Firefox, or in Safari with --browser safari
 npm run pdf                                 # slides.pdf, one page per step
@@ -45,7 +46,7 @@ npm run pptx                                # slides.pptx, one click per step, w
 npm run pptx -- --still                     # the same file without recordings, for a browser without an H.264 encoder
 ```
 
-In a talk, `npm run check`, `npm run pdf`, and `npm run pptx` need only Node.js and Chrome, not `npm ci`.
+In a talk, `npm run check`, `npm run pdf`, and `npm run pptx` need only Node.js and Chrome, not `npm ci`. `npm run edit` needs only Node.js 20 or later.
 
 ## Before you hand work over
 
@@ -80,7 +81,7 @@ In a talk, `npm run check`, `npm run pdf`, and `npm run pptx` need only Node.js 
 PR-Agent reviews PRs in the workflow `pr-agent`. A person needs effective write access to start a review. Authorized commands review any PR, one opened by a bot included.
 
 - Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding that blocks the PR, not a suggestion.
-- Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in `theme/beeson.js`, `theme/editor.js`, or `theme/editor-tex.js` either. They are compiled and committed on purpose.
+- Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in `theme/beeson.js`, `theme/editor.js`, `theme/editor-tex.js`, `theme/session.js`, or `theme/edit.mjs` either. They are compiled and committed on purpose.
 - Read the section of `REFERENCE.md` on an element before you question it. Most of what looks unusual there is the design of the theme.
 
 ## Documentation
