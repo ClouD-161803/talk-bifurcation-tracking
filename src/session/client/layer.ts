@@ -2,7 +2,9 @@
 // person around each element of the shown slide that the person selected, a name flag on its upper
 // left corner, and the caret bar of a person in a text element. the boxes are read in one animation
 // frame in fractions of the slide, and shell/canvas.ts lays .beeson-presence over the slide with the
-// custom properties of .reveal, hence a pointer move, a scroll, or a zoom does not read layout
+// custom properties of .reveal, hence a pointer move, a scroll, or a zoom does not read layout.
+// during a drag of the own selection the boxes of the last read are moved by the translates that
+// the drag writes
 
 import type { Shape } from '../../editor/session/presence.ts';
 import type { Client } from './client.ts';
@@ -18,6 +20,8 @@ const FLAGS = 2;
 const OUT = [4, 8];
 // the side of the hit area of a chip in px for a touch or a pen
 const HIT = 32;
+// the classes of html during a drag, a resize, or a turn of the own selection
+const GESTURE = ['beeson-dragging', 'beeson-sizing', 'beeson-rotating'];
 
 const CSS = `
 .beeson-presence { position: fixed; left: var(--ed-slide-x, 0px); top: var(--ed-slide-y, 0px); width: var(--ed-slide-w, 0px); height: var(--ed-slide-h, 0px); clip-path: var(--ed-clip, none); z-index: 50; pointer-events: none; --edge: #fff; }
@@ -37,6 +41,9 @@ html.beeson-previewing .beeson-presence, html.beeson-playing .beeson-presence, h
 .beeson-presence .flags:not(.hover) .flag.chip .short { display: inline; }
 .beeson-presence .caret { position: absolute; width: 2px; margin-left: -1px; background: var(--tone); box-shadow: 0 0 0 1px var(--edge); }
 `;
+
+// a shape of the last read, with the translate of its element then
+type Kept = { s: Shape; at: [number, number] };
 
 // the position of a box of fractions of the slide, grown by px on each side
 const placed = (s: Shape, px: number): Partial<CSSStyleDeclaration> => ({
@@ -71,6 +78,9 @@ export function install(client: Client): void {
   let hovered: Element | null = null;
   // the chips of the last draw, each at a fraction of the slide and px from it, for a press
   let chips: { flags: HTMLElement; id: string; x: number; y: number; dx: number; dy: number }[] = [];
+  // the shapes of the last read: of each element, and each caret by client with its element and
+  // its offset, with the size of the slide
+  let kept = { els: new Map<Element, Kept>(), carets: new Map<string, Kept & { el: Element; offset: number }>(), W: 1, H: 1 };
 
   const schedule = (): void => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -84,6 +94,42 @@ export function install(client: Client): void {
   };
   // a click after a tap on a chip does not reach the canvas
   let eat = false;
+
+  // the translate in slide px of el with its ancestors, from the inline styles that the editor
+  // writes
+  const offset = (el: Element): [number, number] => {
+    let x = 0, y = 0;
+    for (let e: Element | null = el; e && e !== app.slides(); e = e.parentElement) {
+      const [a, b] = ((e as HTMLElement).style?.translate ?? '').split(/\s+/);
+      x += parseFloat(a) || 0;
+      y += parseFloat(b) || 0;
+    }
+    return [x, y];
+  };
+  const moved = (k: Kept, el: Element): Shape => {
+    const [x, y] = offset(el);
+    return x === k.at[0] && y === k.at[1] ? k.s : { ...k.s, x: k.s.x + (x - k.at[0]) / kept.W, y: k.s.y + (y - k.at[1]) / kept.H };
+  };
+
+  // every read of layout is made here, before the writes of draw. during a drag of the own
+  // selection the last read is kept while it holds every element and caret
+  function measure(els: Element[], carets: Resolved[]): void {
+    const known = els.every((el) => kept.els.has(el)) && carets.every((r) => kept.carets.get(r.client)?.el === r.caret!.el && kept.carets.get(r.client)?.offset === r.caret!.at);
+    if (known && GESTURE.some((c) => document.documentElement.classList.contains(c))) return;
+    const shapes = els.length || carets.length ? shell.presence.shapes(els, carets.map((r) => r.caret!)) : { els: [], carets: [] };
+    const slides = app.slides() as HTMLElement;
+    kept = { els: new Map(), carets: new Map(), W: slides.offsetWidth || 1, H: slides.offsetHeight || 1 };
+    els.forEach((el, i) => {
+      const s = shapes.els[i];
+      if (s) kept.els.set(el, { s, at: offset(el) });
+    });
+    carets.forEach((r, i) => {
+      const s = shapes.carets[i];
+      const { el, at } = r.caret!;
+      if (!s) return;
+      kept.carets.set(r.client, { s, at: offset(el), el, offset: at });
+    });
+  }
 
   // a flag of r, with its width in px
   const flagOf = (r: Resolved, now: number, soon: (at: number) => void): { flag: HTMLElement; chip: boolean; width: number } => {
@@ -108,22 +154,20 @@ export function install(client: Client): void {
     const byEl = new Map<Element, Resolved[]>();
     for (const r of list) for (const el of r.selected) if (on(el)) byEl.set(el, [...(byEl.get(el) ?? []), r]);
     const carets = list.filter((r) => r.caret && on(r.caret.el));
-    const els = [...byEl.keys()];
-    // every read of layout is made here, before the writes below
-    const shapes = els.length || carets.length ? shell.presence.shapes(els, carets.map((r) => r.caret!)) : { els: [], carets: [] };
+    measure([...byEl.keys()], carets);
     const nodes: HTMLElement[] = [];
     const next = new Map<Element, HTMLElement>();
     const placedChips: typeof chips = [];
     let soonest = Infinity;
     const soon = (at: number) => (soonest = Math.min(soonest, at));
-    els.forEach((el, i) => {
-      const s = shapes.els[i];
-      if (!s) return;
-      const people = byEl.get(el)!;
+    for (const [el, people] of byEl) {
+      const k = kept.els.get(el);
+      if (!k) continue;
+      const s = moved(k, el);
       const framed = people.slice(0, FLAGS);
-      framed.forEach((r, k) => {
+      framed.forEach((r, i) => {
         const f = make('div', `frame c${r.color % 4}`);
-        Object.assign(f.style, placed(s, s.grow + OUT[k]));
+        Object.assign(f.style, placed(s, s.grow + OUT[i]));
         nodes.push(f);
       });
       const out = s.grow + OUT[framed.length - 1];
@@ -141,15 +185,16 @@ export function install(client: Client): void {
       if (el === hovered) flags.classList.add('hover');
       next.set(el, flags);
       nodes.push(flags);
-    });
-    carets.forEach((r, i) => {
-      const s = shapes.carets[i];
-      if (!s) return;
+    }
+    for (const r of carets) {
+      const k = kept.carets.get(r.client);
+      if (!k) continue;
+      const s = moved(k, k.el);
       const c = make('div', `caret c${r.color % 4}`);
       c.dataset.client = r.client;
       Object.assign(c.style, { left: `${s.x * 100}%`, top: `${s.y * 100}%`, height: `${s.h * 100}%` });
       nodes.push(c);
-    });
+    }
     layer.replaceChildren(...nodes);
     flagsOf = next;
     chips = placedChips;
