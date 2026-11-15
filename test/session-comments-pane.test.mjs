@@ -405,6 +405,26 @@ test('a mention is toasted once, also after a reload of the page and a later cha
   clean(b);
 });
 
+test('only a name picked from the list is a mention, and a name typed by hand is text', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t, ['Ann', 'Ben', 'Annabel']);
+  await show(b, 'One');
+  await click(b, '.reveal .slides > section:nth-child(1) p');
+  await press(b, COMMENT_KEY);
+  await b.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(b, '@An');
+  await sees(b, `[...document.querySelectorAll('${PANE} .draft .people li')].map((li) => li.children[1].textContent)`, ['Ann', 'Annabel']);
+  await press(b, 'Enter');
+  await typeKeys(b, 'and @Annabel');
+  await press(b, 'Escape');
+  assert.equal(await b.evaluate('document.activeElement.value'), '@Ann and @Annabel');
+  await click(b, `${PANE} .draft .actions .primary`);
+  await b.waitFor(`!document.querySelector('${PANE} .draft')`);
+  const ann = await a.evaluate(`${C}.person`);
+  assert.deepEqual((await stored(b)).map((c) => [c.text, c.mentions]), [[`@{${ann}} and @Annabel`, [ann]]]);
+  clean(a);
+  clean(b);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
