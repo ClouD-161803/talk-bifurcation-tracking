@@ -127,6 +127,7 @@ export function install(client: Client): void {
   let back: Element | null = null;
   // the time of the version last shown in the preview, which a toast names when it is merged
   let shownTime: number | null = null;
+  let midnight = 0;
   let naming = false;
   // the nodes of the list kept between renders by key, hence a new answer writes only what changed
   const rows = new Map<string, { el: HTMLButtonElement; sig: string }>();
@@ -362,6 +363,17 @@ export function install(client: Client): void {
     render();
   }
 
+  // the list drawn again at each local midnight while the pane is open, for its day headings
+  function arm(): void {
+    clearTimeout(midnight);
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+    midnight = window.setTimeout(() => {
+      render();
+      arm();
+    }, next - now.getTime() + 100);
+  }
+
   function open(aside?: string): void {
     if (client.connection === 'ended') return;
     pane ??= build();
@@ -376,6 +388,7 @@ export function install(client: Client): void {
       presenceOf(client)?.set({ mode: 'history' });
       shell.setMode(true, close);
       stale = true;
+      arm();
     }
     render();
     pane.querySelector<HTMLElement>(aside ? `[data-id="aside:${CSS.escape(aside)}"]` : '.row.current')?.focus();
@@ -385,6 +398,7 @@ export function install(client: Client): void {
   function close(): void {
     if (!on || !pane) return;
     on = false;
+    clearTimeout(midnight);
     pane.hidden = true;
     preview?.hide();
     shell.setMode(false);
