@@ -111,3 +111,23 @@ test('typing that moves an attached line is dropped when another person moves th
   assert.equal((await status(b)).undo, false, 'the typing is dropped');
   assert.deepEqual(b.errors, []);
 });
+
+test('the nudges after an apply that dropped the entry of their run are a new entry', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Figures are first class');
+  await click(b, 'section.present figure img');
+  await b.waitFor(`${E}.selection().length === 1`);
+  await press(b, 'ArrowRight');
+  await b.waitFor(`${E}.status().undo`);
+  const text = await sessionText(b);
+  const tag = text.match(/<figure class="figure-box"[^>]*>/)[0];
+  assert.equal((await applyOn(b, once(text, tag, tag.replace('<figure', '<figure data-x="1"')))).reload, false);
+  assert.equal((await status(b)).undo, false, 'the nudge is dropped');
+  await press(b, 'ArrowRight');
+  await press(b, 'ArrowRight');
+  await b.waitFor(`${E}.render().includes('translate: 3px 0px')`);
+  assert.equal((await status(b)).undo, true, 'the nudges are an entry');
+  await b.evaluate(`${E}.undo()`);
+  assert.ok((await b.evaluate(`${E}.render()`)).includes('translate: 1px 0px'), 'an undo takes the two nudges back');
+});
