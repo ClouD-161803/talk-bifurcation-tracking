@@ -288,6 +288,25 @@ test('the pane groups the threads by their slide, and two slides with one number
   clean(a);
 });
 
+test('a reply being typed when its thread is deleted by another person becomes the draft of a new comment on the same element', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'To be deleted');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  await openPane(b);
+  await sees(b, `!!document.querySelector('${ARTICLE(id)}')`, true);
+  await click(b, `${ARTICLE(id)} .reply textarea`);
+  await type(b, 'A long reply typed by Ben');
+  await act(a, id, 'delete');
+  await sees(b, `(() => { const d = document.querySelector('${DRAFT}'); return d && [d.value, document.querySelector('${PANE} .draft .anchor').textContent, document.activeElement === d]; })()`, ['A long reply typed by Ben', 'On Paragraph: First slide', true]);
+  await sees(b, TOASTS, ['Ann deleted this thread. Your reply is kept as a new comment.']);
+  await click(b, `${PANE} .draft .actions .primary`);
+  await sees(a, THREADS, [{ anchor: 'On Paragraph: First slide', texts: ['A long reply typed by Ben'] }]);
+  clean(a);
+  clean(b);
+});
+
 test('a reply being typed when its thread is resolved by another person stays, and sending it reopens the thread', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await show(a, 'One');
