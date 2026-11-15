@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { checkAnchors, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Moved } from '../session/anchor.ts';
+import { checkAnchors, checkOf, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Check, type Moved } from '../session/anchor.ts';
 import type { Authority } from '../session/authority.ts';
 import { apply, checksum, copy, type Patch } from '../session/patch.ts';
 import {
@@ -73,6 +73,11 @@ function cleanMentions(raw: unknown): string[] | Failure {
 const isAnchor = (a: unknown): a is Anchor =>
   !!a && isInt((a as Anchor).start) && isInt((a as Anchor).end) && (a as Anchor).start < (a as Anchor).end && typeof (a as Anchor).tag === 'string' && (a as Anchor).tag.length > 0;
 
+const readCheck = (t: unknown): Check | null => {
+  const c = (t as { check?: Check }).check;
+  return !!c && typeof c === 'object' && typeof c.tag === 'string' && c.tag.length > 0 && typeof c.sum === 'string' && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test(c.sum) ? { tag: c.tag, sum: c.sum } : null;
+};
+
 const isReply = (r: unknown): r is CommentReply =>
   !!r && isCommentId((r as CommentReply).id) && isPersonId((r as CommentReply).author) && isNumber((r as CommentReply).time) && typeof (r as CommentReply).text === 'string' && ((r as CommentReply).edited === undefined || isNumber((r as CommentReply).edited));
 
@@ -109,6 +114,9 @@ export class Comments {
   // is not counted again
   private bytes = 0;
   private heads = new Map<string, number>();
+  // the checks of the elements of the threads: those of the file until the anchors are placed, and
+  // then those of the current text, each kept while no patch comes near its element
+  private checks = new Map<string, Check>();
   // true when the file could not be read nor set aside, hence it is neither written nor changed
   private locked = false;
   // the text that the anchors are of, its checksum, and its slides when they are known
@@ -251,6 +259,7 @@ export class Comments {
       this.threads.delete(id);
       this.bytes -= this.heads.get(id)! + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
       this.heads.delete(id);
+      this.checks.delete(id);
       this.changed([id], true);
       return null;
     }
@@ -370,6 +379,9 @@ export class Comments {
         continue;
       }
       this.threads.set(t.id, t);
+      const check = readCheck(raw);
+      if (check) this.checks.set(t.id, check);
+      else this.checks.delete(t.id);
     }
     for (const t of this.threads.values()) {
       this.recount(t);
@@ -409,12 +421,16 @@ export class Comments {
     const threads = [...this.threads.values()];
     let items: Anchored[] = threads;
     let moved: boolean[] = threads.map(() => false);
-    if (sum !== this.sum && found && found.patches.length && checksum(found.before) === sum) {
-      const r = moveAnchors(found.before, found.patches, this.text, items);
+    const movable = sum !== this.sum && !!found && found.patches.length > 0 && checksum(found.before) === sum;
+    if (movable) {
+      const r = moveAnchors(found!.before, found!.patches, this.text, items);
       items = r.items;
       moved = r.changed;
     }
-    const checked = checkAnchors(this.text, items);
+    // the text that the anchors are of is not known, hence each is read by its check
+    const checks = sum === this.sum || movable ? [] : threads.map((t) => this.checks.get(t.id));
+    this.checks.clear();
+    const checked = checkAnchors(this.text, items, undefined, checks);
     this.slides = checked.slides;
     threads.forEach((t, k) => this.setAnchors(t, checked.items[k]));
     const ids = threads.filter((_, k) => moved[k] || checked.changed[k]).map((t) => t.id);
@@ -445,12 +461,14 @@ export class Comments {
       // the operation is applied already, hence a fault here only costs the anchors their place
       this.log(`the anchors of the comments could not be moved, hence they were checked: ${(e as Error).message}`);
       r = checkAnchors(after, threads);
+      this.checks.clear();
     }
     this.text = after;
     this.sum = op.sum;
     this.slides = r.slides;
     const ids: string[] = [];
     threads.forEach((t, k) => {
+      if (r.changed[k] || this.near(t, op.patches)) this.checks.delete(t.id);
       this.setAnchors(t, r.items[k]);
       if (r.changed[k]) ids.push(t.id);
     });
@@ -469,8 +487,29 @@ export class Comments {
     if (ids.length) for (const fn of this.listeners) fn();
   }
 
+  // true when a patch touches the element of the check of t, or ends or starts at it
+  private near(t: Comment, patches: Patch[]): boolean {
+    const c = this.checks.get(t.id);
+    if (!c || !t.anchor) return false;
+    const start = t.anchor.start;
+    let lo = 0;
+    let hi = patches.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (patches[mid].end < start) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < patches.length && patches[lo].start <= start + parseInt(c.sum, 16);
+  }
+
   private serialize(): string {
-    return JSON.stringify({ sum: this.sum, comments: [...this.threads.values()], seen: Object.fromEntries(this.seenBy) });
+    const checked = (t: Comment) => {
+      let c = this.checks.get(t.id);
+      if (!c) this.checks.set(t.id, (c = checkOf(this.text, t.anchor!)));
+      return c;
+    };
+    const comments = [...this.threads.values()].map((t) => (t.anchor ? { ...t, check: checked(t) } : t));
+    return JSON.stringify({ sum: this.sum, comments, seen: Object.fromEntries(this.seenBy) });
   }
 
   private tmpName(): string {

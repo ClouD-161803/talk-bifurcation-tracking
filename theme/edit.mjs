@@ -1554,6 +1554,7 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
 
 // src/session/anchor.ts
 var REMOVED_MAX = 4096;
+var CHECK_TAG = 256;
 var tagOf = (s) => ({ start: s.start, end: s.open, tag: "section" });
 var sameAnchor = (a, b) => a === b || !!a && !!b && a.start === b.start && a.end === b.end && a.tag === b.tag;
 var shiftTag = (a, patches) => ({ start: shiftOffset(a.start, patches, true), end: shiftOffset(a.end, patches, false), tag: a.tag });
@@ -1608,6 +1609,7 @@ function elementClose(text, at, limit) {
     if (whole) return { end: -1, close: -1 };
   }
 }
+var elementEnd = (text, at, limit) => elementClose(text, at, limit).end;
 function insertedSpans(patches) {
   const out = [];
   let delta = 0;
@@ -1885,11 +1887,46 @@ function slow(before2, patches, after, items, given) {
   const out = items.map(move);
   return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], patches)), slides: s1 };
 }
-function checkAnchors(text, items, slides = slidesOf(text)) {
+function checkOf(text, a) {
+  const limit = Math.min(text.length, a.start + REMOVED_MAX);
+  const e = elementEnd(text, a, limit);
+  return { tag: text.slice(a.start, Math.min(a.end, a.start + CHECK_TAG)), sum: checksum(text.slice(a.start, e < 0 ? limit : e)) };
+}
+function findChecked(text, a, c) {
+  const len = parseInt(c.sum, 16);
+  const at = (o) => {
+    if (checksum(text.slice(o, o + len)) !== c.sum) return null;
+    const t = startTagAt(text, o);
+    return t && t.tag === a.tag ? t : null;
+  };
+  if (text.startsWith(c.tag, a.start)) {
+    const t = at(a.start);
+    if (t) return t;
+  }
+  let l = a.start > 0 ? text.lastIndexOf(c.tag, a.start - 1) : -1;
+  let h = text.indexOf(c.tag, a.start + 1);
+  for (let n = 0; n < 256 && (l >= 0 || h >= 0); n++) {
+    if (h < 0 || l >= 0 && a.start - l <= h - a.start) {
+      const t = at(l);
+      if (t) return t;
+      l = l > 0 ? text.lastIndexOf(c.tag, l - 1) : -1;
+    } else {
+      const t = at(h);
+      if (t) return t;
+      h = text.indexOf(c.tag, h + 1);
+    }
+  }
+  return null;
+}
+function checkAnchors(text, items, slides = slidesOf(text), checks = []) {
   const starts = new Map(slides.map((s) => [s.start, s]));
-  const out = items.map((it) => {
+  const out = items.map((it, k) => {
     if (!it.anchor) return withRemoved(null, null, it.removed);
-    const t = startTagAt(text, it.anchor.start);
+    const c = checks[k];
+    const found = c ? findChecked(text, it.anchor, c) : null;
+    if (found) return withRemoved(found, slideAnchorAt(slides, found.start), it.removed);
+    const onSlide = !!it.slide && it.slide.start === it.anchor.start;
+    const t = !c || onSlide ? startTagAt(text, it.anchor.start) : null;
     if (t && t.end === it.anchor.end && t.tag === it.anchor.tag) return withRemoved(t, slideAnchorAt(slides, t.start), it.removed);
     const back = it.slide && it.slide.tag === "section" && starts.get(it.slide.start)?.open === it.slide.end ? it.slide : null;
     return { anchor: back, slide: back, removed: it.removed ?? { text: null } };
@@ -2246,6 +2283,10 @@ function cleanMentions(raw) {
   return [...new Set(raw)];
 }
 var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && a.tag.length > 0;
+var readCheck = (t) => {
+  const c = t.check;
+  return !!c && typeof c === "object" && typeof c.tag === "string" && c.tag.length > 0 && typeof c.sum === "string" && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test(c.sum) ? { tag: c.tag, sum: c.sum } : null;
+};
 var isReply = (r) => !!r && isCommentId(r.id) && isPersonId(r.author) && isNumber(r.time) && typeof r.text === "string" && (r.edited === void 0 || isNumber(r.edited));
 function readThread(t) {
   if (!t || typeof t !== "object") return null;
@@ -2275,6 +2316,9 @@ var Comments = class {
     // is not counted again
     this.bytes = 0;
     this.heads = /* @__PURE__ */ new Map();
+    // the checks of the elements of the threads: those of the file until the anchors are placed, and
+    // then those of the current text, each kept while no patch comes near its element
+    this.checks = /* @__PURE__ */ new Map();
     // true when the file could not be read nor set aside, hence it is neither written nor changed
     this.locked = false;
     this.slides = null;
@@ -2405,6 +2449,7 @@ var Comments = class {
       this.threads.delete(id);
       this.bytes -= this.heads.get(id) + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
       this.heads.delete(id);
+      this.checks.delete(id);
       this.changed([id], true);
       return null;
     }
@@ -2516,6 +2561,9 @@ var Comments = class {
         continue;
       }
       this.threads.set(t.id, t);
+      const check = readCheck(raw);
+      if (check) this.checks.set(t.id, check);
+      else this.checks.delete(t.id);
     }
     for (const t of this.threads.values()) {
       this.recount(t);
@@ -2551,12 +2599,15 @@ var Comments = class {
     const threads = [...this.threads.values()];
     let items = threads;
     let moved2 = threads.map(() => false);
-    if (sum !== this.sum && found && found.patches.length && checksum(found.before) === sum) {
+    const movable = sum !== this.sum && !!found && found.patches.length > 0 && checksum(found.before) === sum;
+    if (movable) {
       const r = moveAnchors(found.before, found.patches, this.text, items);
       items = r.items;
       moved2 = r.changed;
     }
-    const checked = checkAnchors(this.text, items);
+    const checks = sum === this.sum || movable ? [] : threads.map((t) => this.checks.get(t.id));
+    this.checks.clear();
+    const checked = checkAnchors(this.text, items, void 0, checks);
     this.slides = checked.slides;
     threads.forEach((t, k) => this.setAnchors(t, checked.items[k]));
     const ids = threads.filter((_, k) => moved2[k] || checked.changed[k]).map((t) => t.id);
@@ -2582,12 +2633,14 @@ var Comments = class {
     } catch (e) {
       this.log(`the anchors of the comments could not be moved, hence they were checked: ${e.message}`);
       r = checkAnchors(after, threads);
+      this.checks.clear();
     }
     this.text = after;
     this.sum = op.sum;
     this.slides = r.slides;
     const ids = [];
     threads.forEach((t, k) => {
+      if (r.changed[k] || this.near(t, op.patches)) this.checks.delete(t.id);
       this.setAnchors(t, r.items[k]);
       if (r.changed[k]) ids.push(t.id);
     });
@@ -2604,8 +2657,28 @@ var Comments = class {
     this.dirty();
     if (ids.length) for (const fn of this.listeners) fn();
   }
+  // true when a patch touches the element of the check of t, or ends or starts at it
+  near(t, patches) {
+    const c = this.checks.get(t.id);
+    if (!c || !t.anchor) return false;
+    const start2 = t.anchor.start;
+    let lo = 0;
+    let hi = patches.length;
+    while (lo < hi) {
+      const mid = lo + hi >> 1;
+      if (patches[mid].end < start2) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < patches.length && patches[lo].start <= start2 + parseInt(c.sum, 16);
+  }
   serialize() {
-    return JSON.stringify({ sum: this.sum, comments: [...this.threads.values()], seen: Object.fromEntries(this.seenBy) });
+    const checked = (t) => {
+      let c = this.checks.get(t.id);
+      if (!c) this.checks.set(t.id, c = checkOf(this.text, t.anchor));
+      return c;
+    };
+    const comments = [...this.threads.values()].map((t) => t.anchor ? { ...t, check: checked(t) } : t);
+    return JSON.stringify({ sum: this.sum, comments, seen: Object.fromEntries(this.seenBy) });
   }
   tmpName() {
     return join4(this.file, "..", `.comments.json.${randomBytes3(6).toString("hex")}.tmp`);

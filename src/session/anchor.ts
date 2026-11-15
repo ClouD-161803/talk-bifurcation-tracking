@@ -8,7 +8,7 @@
 // again. pure, for the edit command and the browser
 
 import { tokenize } from '../editor/tokens.ts';
-import { shiftOffset } from './patch.ts';
+import { checksum, shiftOffset } from './patch.ts';
 import type { Anchor, Patch } from './protocol.ts';
 import { pairs, shared, slidesOf, VOID, type Slide } from './slides.ts';
 
@@ -19,6 +19,11 @@ export type Anchored = { anchor: Anchor | null; slide: Anchor | null; removed?: 
 export type Moved = { items: Anchored[]; changed: boolean[]; slides: Slide[] | null };
 
 export const REMOVED_MAX = 4096;
+const CHECK_TAG = 256;
+
+// what a start reads the element of an anchor by when its offset may be stale: its start tag, cut at
+// CHECK_TAG characters, and the checksum of its text, cut at REMOVED_MAX
+export type Check = { tag: string; sum: string };
 
 type Span = { start: number; end: number };
 
@@ -439,13 +444,55 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
   return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], patches)), slides: s1 };
 }
 
-// items checked against text, e.g. at a start of the edit command when their text is not known:
-// an anchor that is not a start tag of its name falls back to its slide, or to the deck
-export function checkAnchors(text: string, items: Anchored[], slides: Slide[] = slidesOf(text)): Moved {
+// the check of the element of a in text
+export function checkOf(text: string, a: Anchor): Check {
+  const limit = Math.min(text.length, a.start + REMOVED_MAX);
+  const e = elementEnd(text, a, limit);
+  return { tag: text.slice(a.start, Math.min(a.end, a.start + CHECK_TAG)), sum: checksum(text.slice(a.start, e < 0 ? limit : e)) };
+}
+
+// the start tag of the name of a, the nearest to its offset, whose element reads as at the check, or
+// null. the checksum holds the length of the text it was taken of
+function findChecked(text: string, a: Anchor, c: Check): Anchor | null {
+  const len = parseInt(c.sum, 16);
+  const at = (o: number) => {
+    if (checksum(text.slice(o, o + len)) !== c.sum) return null;
+    const t = startTagAt(text, o);
+    return t && t.tag === a.tag ? t : null;
+  };
+  if (text.startsWith(c.tag, a.start)) {
+    const t = at(a.start);
+    if (t) return t;
+  }
+  let l = a.start > 0 ? text.lastIndexOf(c.tag, a.start - 1) : -1;
+  let h = text.indexOf(c.tag, a.start + 1);
+  for (let n = 0; n < 256 && (l >= 0 || h >= 0); n++) {
+    if (h < 0 || (l >= 0 && a.start - l <= h - a.start)) {
+      const t = at(l);
+      if (t) return t;
+      l = l > 0 ? text.lastIndexOf(c.tag, l - 1) : -1;
+    } else {
+      const t = at(h);
+      if (t) return t;
+      h = text.indexOf(c.tag, h + 1);
+    }
+  }
+  return null;
+}
+
+// items checked against text, e.g. at a start of the edit command when their text is not known. an
+// item with a check keeps the nearest element that reads as at the check, and an item without one an
+// anchor that is still a start tag of its name. an element falls back to its slide, or to the deck,
+// and a slide that is not found by its check is kept at its offset
+export function checkAnchors(text: string, items: Anchored[], slides: Slide[] = slidesOf(text), checks: (Check | null | undefined)[] = []): Moved {
   const starts = new Map(slides.map((s) => [s.start, s]));
-  const out = items.map((it): Anchored => {
+  const out = items.map((it, k): Anchored => {
     if (!it.anchor) return withRemoved(null, null, it.removed);
-    const t = startTagAt(text, it.anchor.start);
+    const c = checks[k];
+    const found = c ? findChecked(text, it.anchor, c) : null;
+    if (found) return withRemoved(found, slideAnchorAt(slides, found.start), it.removed);
+    const onSlide = !!it.slide && it.slide.start === it.anchor.start;
+    const t = !c || onSlide ? startTagAt(text, it.anchor.start) : null;
     if (t && t.end === it.anchor.end && t.tag === it.anchor.tag) return withRemoved(t, slideAnchorAt(slides, t.start), it.removed);
     const back = it.slide && it.slide.tag === 'section' && starts.get(it.slide.start)?.open === it.slide.end ? it.slide : null;
     return { anchor: back, slide: back, removed: it.removed ?? { text: null } };
