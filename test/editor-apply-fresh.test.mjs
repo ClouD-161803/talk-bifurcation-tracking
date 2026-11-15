@@ -110,6 +110,17 @@ test('a figure made a step has the classes of reveal.js before those of the edit
   ]);
 });
 
+// the theme numbers the viewers in the order of the deck at an open, see markViewers() in src/print.ts
+test('a viewer moved before another, or after another taken off, is numbered as on a fresh page', async (t) => {
+  const scenes = (s) => slideWith(s, 'Embedding TyCHO scenes');
+  const more = (s) => slideWith(s, 'More TyCHO scenes');
+  await steps(t, [
+    ['a slide with a viewer added', (s) => once(s, scenes(s), `${scenes(s)}\n\n${scenes(s).replace('<h2>Embedding TyCHO scenes', '<h2>More TyCHO scenes')}`), false],
+    ['this slide moved first', (s) => once(once(s, `\n\n${more(s)}`, ''), sectionsOf(s)[0], `${more(s)}\n\n${sectionsOf(s)[0]}`), false],
+    ['this slide taken off', (s) => once(s, `${more(s)}\n\n`, ''), false],
+  ]);
+});
+
 // a slide put before a slide that starts as it does is read as a change inside the heading of this
 // slide, whose new bytes close the slide around it
 test('a text element whose tags do not balance asks for a reload, and a slide put before a slide with the same start does not', async (t) => {
