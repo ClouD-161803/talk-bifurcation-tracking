@@ -124,6 +124,19 @@ export function apply(base: string, edits: Edit[]): string {
   return text;
 }
 
+// the changes that turn base into theirs, or else one change from the first character in which
+// they differ to the last, hence no change is dropped
+export function edits(base: string, theirs: string): Edit[] {
+  const found = changes(base, theirs);
+  if (found) return found;
+  const n = Math.min(base.length, theirs.length);
+  let s = 0;
+  while (s < n && base[s] === theirs[s]) s++;
+  let t = 0;
+  while (t < n - s && base[base.length - 1 - t] === theirs[theirs.length - 1 - t]) t++;
+  return [{ start: s, end: base.length - t, text: theirs.slice(s, theirs.length - t) }];
+}
+
 const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.text === b.text;
 
 // the edits of the page, ours, written into theirs. a change of the file equal to an edit of the
@@ -132,7 +145,11 @@ const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.
 // kept. null when theirs is not the same file as base
 export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours' | 'theirs'): Merge | null {
   const all = changes(base, theirs);
-  if (!all) return null;
+  return all && mergeEdits(base, ours, all, prefer);
+}
+
+// the same merge with the changes of the file, all, given as edits of base
+export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs'): Merge {
   const others = all.filter((h) => !ours.some((o) => equal(o, h)));
   const conflicts = ours.filter((o) => others.some((h) => overlaps(o, h)));
   const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => overlaps(o, h)));

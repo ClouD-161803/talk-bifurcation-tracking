@@ -6,7 +6,7 @@
 
 import type { App } from '../app.ts';
 import { mathLookup } from '../math.ts';
-import { changes, merge } from '../merge.ts';
+import { edits, mergeEdits } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing } from '../render.ts';
 import { parseSource } from '../source.ts';
 import { applyAt, refresh, repairText, type Done } from './apply.ts';
@@ -205,11 +205,7 @@ export function install(app: App): Port {
       const from = snap ?? lastApplied ?? base;
       let target = text;
       // an edit of the person made since the text was read is kept, and wins at a conflict
-      if (from !== base) {
-        const ours = changes(from, base);
-        const merged = ours && merge(from, ours, text, 'ours');
-        if (merged) target = merged.text;
-      }
+      if (from !== base) target = mergeEdits(from, edits(from, base), edits(from, text), 'ours').text;
       if (!clean && !rebase()) return reload();
       const source = app.source!;
       const w = windowOf(source.text, target);
