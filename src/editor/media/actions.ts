@@ -109,6 +109,10 @@ type Ready = { kind: Kind; file: MediaFile; poster: MediaFile | null; problem: s
 async function prepare(app: App, files: File[]): Promise<Ready[]> {
   const usable = files.filter((f) => kindOf(f));
   if (!usable.length && files.length) throw new Error(`${files[0].name} is not an image or a video`);
+  for (const f of usable) {
+    const refused = media.refuse?.(f);
+    if (refused) throw new Error(refused);
+  }
   const out: Ready[] = [];
   for (const blob of usable) {
     const kind = kindOf(blob)!;

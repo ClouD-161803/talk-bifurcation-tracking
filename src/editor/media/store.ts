@@ -67,6 +67,8 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
 const ofDeck = () => IDBKeyRange.bound([deck(), ''], [deck(), '￿']);
 
 export class MediaStore {
+  // the reason why a file cannot be added, e.g. the limit of a session, or null
+  refuse: ((file: File) => string | null) | null = null;
   private readonly byPath = new Map<string, MediaFile>();
   private readonly byUrl = new Map<string, MediaFile>();
   // the chain of the writes to IndexedDB, whose end a test waits for
@@ -81,6 +83,11 @@ export class MediaStore {
     let path = `${FOLDER}/${clean}`;
     for (let i = 2; this.byPath.has(path) || taken(path); i++) path = `${FOLDER}/${stem}-${i}${ext}`;
     return this.put({ path, blob, url: URL.createObjectURL(blob), saved: false }, true);
+  }
+
+  // a file of path kept elsewhere, e.g. in the copy of a session in the browser
+  adopt(path: string, blob: Blob): MediaFile {
+    return this.byPath.get(path) ?? this.put({ path, blob, url: URL.createObjectURL(blob), saved: false }, false);
   }
 
   private put(f: MediaFile, keep: boolean): MediaFile {
