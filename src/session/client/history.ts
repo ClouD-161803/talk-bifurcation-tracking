@@ -87,14 +87,14 @@ function place(parent: Element, nodes: Node[]): void {
   }
 }
 
-// the versions in groups: a named version alone, and unnamed versions closer than FOLD under the
-// newest of them, which do not cross a day
+// the versions in groups: a named version and the start of the history alone, and unnamed versions
+// closer than FOLD under the newest of them, which do not cross a day
 export function foldsOf(versions: VersionInfo[]): { head: VersionInfo; rest: VersionInfo[] }[] {
   const out: { head: VersionInfo; rest: VersionInfo[] }[] = [];
   for (const v of versions) {
     const last = out[out.length - 1];
     const prev = last ? last.rest[last.rest.length - 1] ?? last.head : null;
-    if (last && prev && !v.name && !last.head.name && prev.time - v.time < FOLD && dayKey(prev.time) === dayKey(v.time)) last.rest.push(v);
+    if (last && prev && !v.name && !v.start && !last.head.name && prev.time - v.time < FOLD && dayKey(prev.time) === dayKey(v.time)) last.rest.push(v);
     else out.push({ head: v, rest: [] });
   }
   return out;
@@ -231,12 +231,12 @@ export function install(client: Client): void {
   function versionRow(v: VersionInfo): HTMLButtonElement {
     const was = v.restored ? answer?.versions.find((x) => x.id === v.restored) : undefined;
     const restored = v.restored ? (was ? `Restored the version of ${whenOf(was.time)}` : 'Restored an earlier version') : '';
-    const sig = JSON.stringify([v.name, timeOf(v.time), restored, v.authors.map((a) => personOf(client, a)), v.slides]);
+    const sig = JSON.stringify([v.name, timeOf(v.time), restored, v.start, v.authors.map((a) => personOf(client, a)), v.slides]);
     return row('version', { kind: 'version', id: v.id }, sig, () => {
       const parts: (Node | string)[] = [make('span', 'title', v.name ?? timeOf(v.time))];
       if (v.name) parts.push(make('span', 'sub', timeOf(v.time)));
       if (restored) parts.push(make('span', 'sub', restored));
-      parts.push(authorsOf(client, v.authors));
+      parts.push(v.start ? make('span', 'who', 'Start of the history') : authorsOf(client, v.authors));
       if (v.slides.length) parts.push(make('span', 'slides', slidesText(v.slides)));
       return parts;
     });

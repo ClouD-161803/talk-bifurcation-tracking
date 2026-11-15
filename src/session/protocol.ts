@@ -122,6 +122,7 @@ export type VersionInfo = {
   slides: number[];
   removed?: { slides: number[]; elements: number };
   restored?: string;
+  start?: true;
 };
 // GET history/<id>?token=
 export type VersionDetail = VersionInfo & { marks: Mark[] };
