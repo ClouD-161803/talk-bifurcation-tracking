@@ -247,6 +247,27 @@ test('a toast stays while the pointer is over it or the focus is in it', { timeo
   clean(b);
 });
 
+test('the accessibility tree of Chrome holds the field of a mention as a combobox, the list without a role, a thread described by its text, and the toast region before its first toast', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await front(a);
+  await axIs(a, '.beeson-session-toast', { role: 'status', ignored: false, props: { live: 'polite' } }, 'the toast region before the first toast');
+  const id = await post(b, 0, 'Described by its text');
+  await openPane(a);
+  await sees(a, `!!document.querySelector('${ARTICLE(id)}')`, true);
+  await axIs(a, ARTICLE(id), { name: 'Comment by Ben, unread', description: 'Described by its text' }, 'the thread');
+  // a div without a role, which Chrome reads as generic or leaves out of the tree
+  await until(async () => ['generic', 'none'].includes((await ax(a, `${PANE} .list`))?.role), 'the list of threads to be without a role', 5000);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(a, '@Be');
+  await sees(a, `document.querySelectorAll('${PANE} .draft .people li').length`, 1);
+  await axIs(a, DRAFT, { role: 'combobox', props: { expanded: true, activedescendant: 1, autocomplete: 'list' } }, 'the field of the draft');
+  clean(a);
+  clean(b);
+});
+
 test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or more', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
