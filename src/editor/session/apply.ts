@@ -251,13 +251,18 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
       any = true;
     }
   }
+  let motion = false;
   for (const k of new Set([...Object.keys(a.attrs), ...Object.keys(b.attrs)])) {
     if (k === 'class' || k === 'style' || a.attrs[k] === b.attrs[k]) continue;
     const name = liveName(el, k);
     if (b.attrs[k] === undefined) el.removeAttribute(name);
     else el.setAttribute(name, b.attrs[k]);
     more = true;
+    motion ||= MOTION.includes(k);
   }
+  // a backdrop reads its motion once, where the editor draws it again after a change of its
+  // drawing, its window, or its labels, see watch() in commands/backdrop.ts
+  if (motion && el.matches('.backdrop')) (window as unknown as Page).Beeson?.remount?.(el);
   if (any || more) {
     ctx.touched.add(el);
     ctx.changed.push(el);
@@ -265,7 +270,8 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
   return more;
 }
 
-type Page = { Beeson?: { mount?(root: Element): void; refreshChrome?(): void } };
+type Page = { Beeson?: { mount?(root: Element): void; refreshChrome?(): void; remount?(el: Element): void } };
+const MOTION = ['data-duration', 'data-stagger', 'data-loop'];
 // the attributes of a surface that the editor sets on its drawing, see configure() in
 // src/surface.ts. a surface and a plot read every other attribute and their labels once, at mount
 const CAMERA = ['data-azimuth', 'data-elevation', 'data-zoom', 'data-turn', 'data-zscale'];
