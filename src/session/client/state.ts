@@ -7,6 +7,7 @@ import { BLOCKED, type Client } from './client.ts';
 import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
 import { failedLine, retry as retryUpload } from './media.ts';
+import { isLeaving } from './people.ts';
 
 // the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
 // of their own, see people.ts
@@ -24,6 +25,7 @@ type View = { text: string; icon: string; warn: boolean; action: Action };
 function view(client: Client): View {
   const retry: Action = client.retryAt === null ? null : 'retry';
   if (client.blocked) return { text: BLOCKED, icon: 'warning', warn: true, action: 'reload' };
+  if (isLeaving()) return { text: 'Leaving…', icon: 'cloud', warn: false, action: null };
   switch (client.connection) {
     case 'joining':
       return { text: 'Joining…', icon: 'cloud', warn: false, action: retry };

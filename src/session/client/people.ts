@@ -250,10 +250,20 @@ async function changeName(client: Client): Promise<void> {
   dialog.el.remove();
 }
 
+let leaving = false;
+
+// true from Leave Session until the page has left, for the save state
+export const isLeaving = (): boolean => leaving;
+
 // Leave Session of a guest: the edits are sent first, and the page leaves the session. the deck
 // stays open in the editor without a session
 async function leave(client: Client): Promise<void> {
+  if (leaving) return;
+  leaving = true;
+  client.emit('state');
   await Promise.race([client.flush().catch(() => {}), new Promise((done) => setTimeout(done, 2000))]);
+  // a session that the host ended meanwhile is told by end.ts
+  if (client.ended) return;
   const acked = client.acked();
   const text = client.port.text();
   client.leave();
@@ -342,7 +352,7 @@ export function install(client: Client): void {
   const ownItems = (): MenuItem[] => [
     { note: client.name },
     { label: 'Change Name…', run: () => void changeName(client).catch((e) => client.app.fail(e)) },
-    ...(client.host ? [] : [{ label: 'Leave Session', run: () => void leave(client) }]),
+    ...(client.host || leaving ? [] : [{ label: 'Leave Session', run: () => void leave(client) }]),
   ];
   const others = () => everyone(client).filter((p) => p.person !== client.person);
 
