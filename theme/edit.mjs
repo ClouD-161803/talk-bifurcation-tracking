@@ -2962,6 +2962,11 @@ async function start(options = {}) {
     const client = people.clientOf(body.token);
     const person = client === null ? null : people.personOf(client);
     if (person === null) return error(404, "say hello first");
+    if (route === "aside") {
+      if (typeof body.text !== "string") return error(400, "text is missing");
+      const aside = history.setAside(body.text, person);
+      return aside ? json(200, aside) : error(413, "the text is larger than 8 MB");
+    }
     if (parts.length !== 3 || parts[0] !== "history") return error(404, "not found");
     if (parts[2] === "name") {
       const named = history.name(parts[1], body.name);
@@ -2976,7 +2981,7 @@ async function start(options = {}) {
   }
   async function api(route, request) {
     if (route.startsWith("media/")) return media(route.slice(6), request);
-    if (route === "history" || route.startsWith("history/")) return historyApi(route, request);
+    if (route === "history" || route.startsWith("history/") || route === "aside") return historyApi(route, request);
     if (route === "share") return share(request);
     if (route === "events") {
       if (request.method !== "GET") return error(405, "GET");
