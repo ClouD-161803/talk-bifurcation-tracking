@@ -169,3 +169,110 @@ test('each edit of a person on one page is applied to a second page, which reads
   assert.deepEqual(a.errors, []);
   assert.deepEqual(b.errors, []);
 });
+
+// a generator of numbers in [0, 1) from seed, by mulberry32
+function random(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// the paragraphs, items, and headings of the slides written on one line, outside code and scripts
+// and without math, each with its line and its tag
+function oneLine(lines) {
+  const out = [];
+  let slides = false;
+  let raw = false;
+  for (const [i, l] of lines.entries()) {
+    if (l.startsWith('<section')) slides = true;
+    if (raw || (/<(pre|script)[\s>]/.test(l) && !/<\/(pre|script)>/.test(l))) {
+      raw = !/<\/(pre|script)>/.test(l);
+      continue;
+    }
+    const m = l.match(/^\s*<(p|li|h2)(\s[^>]*)?>(.*)<\/\1>$/);
+    if (slides && m && !/<\/?(p|li|h2|div|ul|ol|section)[\s>]/.test(m[3]) && !/[\\$]/.test(l)) out.push({ i, tag: m[1] });
+  }
+  return out;
+}
+
+// the ranges of the lines of the slides, from the line of the start tag to that of the end tag
+function slideRanges(lines) {
+  const out = [];
+  for (const [i, l] of lines.entries()) {
+    if (l.startsWith('<section')) out.push([i, i]);
+    else if (l.startsWith('</section>')) out.at(-1)[1] = i;
+  }
+  return out;
+}
+
+const WORDS = ['orbit', 'halo', 'family', 'Moon', 'step', 'slide'];
+// each change of the text, by its label and its function of the lines and of a pick from a list
+const MUTATIONS = [
+  ['a word', (lines, pick) => {
+    const { i } = pick(oneLine(lines));
+    const words = [...lines[i].matchAll(/(?<![&\w])[A-Za-z]{3,}\b(?![^<]*>)/g)].filter((m) => m.index > lines[i].indexOf('>'));
+    if (!words.length) return;
+    const w = pick(words);
+    lines[i] = lines[i].slice(0, w.index) + pick(WORDS) + lines[i].slice(w.index + w[0].length);
+  }],
+  ['a line taken', (lines, pick) => {
+    const all = oneLine(lines).filter((e) => e.tag !== 'h2' && (e.tag === 'p' || lines[e.i - 1].includes('<li') || lines[e.i + 1].includes('<li')));
+    lines.splice(pick(all).i, 1);
+  }],
+  ['a line twice', (lines, pick) => {
+    const { i } = pick(oneLine(lines));
+    lines.splice(i + 1, 0, lines[i]);
+  }],
+  ['a line moved', (lines, pick) => {
+    const all = oneLine(lines).filter((e) => e.tag === 'p' || lines[e.i - 1].includes('<li') || lines[e.i + 1].includes('<li'));
+    const from = pick(all);
+    const to = pick(oneLine(lines).filter((e) => e.tag === from.tag && e.i !== from.i));
+    const [line] = lines.splice(from.i, 1);
+    lines.splice(to.i > from.i ? to.i : to.i + 1, 0, line);
+  }],
+  ['slides swapped', (lines, pick) => {
+    const ranges = slideRanges(lines);
+    const a = pick(ranges);
+    const b = pick(ranges.filter((r) => r !== a));
+    const [first, second] = a[0] < b[0] ? [a, b] : [b, a];
+    const cut = (r) => lines.slice(r[0], r[1] + 1);
+    lines.splice(first[0], second[1] + 1 - first[0], ...cut(second), ...lines.slice(first[1] + 1, second[0]), ...cut(first));
+  }],
+  ['a box moved', (lines, pick) => {
+    const all = [...lines.keys()].filter((i) => /translate: -?\d+px -?\d+px/.test(lines[i]));
+    const i = pick(all);
+    const n = pick([1, 2]);
+    let k = 0;
+    lines[i] = lines[i].replace(/-?\d+(?=px)/g, (v) => (++k === n ? String(Number(v) + pick([-40, -7, -1, 1, 9, 30])) : v));
+  }],
+  ['a step', (lines, pick) => {
+    const { i } = pick(oneLine(lines).filter((e) => e.tag === 'p'));
+    lines[i] = lines[i].includes(' class="fragment">') ? lines[i].replace(' class="fragment">', '>') : lines[i].replace(/^(\s*<p)>/, '$1 class="fragment">');
+  }],
+];
+
+for (const seed of [1, 2, 3]) {
+  test(`a seeded sequence of random changes of the text is applied, with the seed ${seed}`, { timeout: 300000 }, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    const rand = random(seed);
+    const pick = (list) => list[Math.floor(rand() * list.length)];
+    let text = b.source;
+    for (let n = 1; n <= 30; n++) {
+      const [label, mutate] = pick(MUTATIONS);
+      const lines = text.split('\n');
+      mutate(lines, pick);
+      text = lines.join('\n');
+      const at = `seed ${seed}, change ${n}, ${label}`;
+      assert.equal((await applyOn(b, text)).reload, false, `${at}: the apply did not need a reload`);
+      await applied(b, text, at);
+    }
+    await looksFresh(t, b, text);
+    assert.deepEqual(b.errors, []);
+  });
+}
