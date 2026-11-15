@@ -38,6 +38,8 @@ test('a crafted name, number of arguments, body, or default is not listed', asyn
       { name: 'last', body: 'x\\', args: 0 },
       { name: 'opt', body: '#1', args: 1, default: 'a]{}\\input{secret}[' },
       { name: 'open', body: '#1', args: 1, default: '{' },
+      // ^^7d is a closing brace for TeX, and ^^7b an opening one
+      { name: 'hat', body: 'x^^7d\\input{secret}^^7b', args: 0 },
       { name: 'pct', body: '10\\%', args: 0 },
       { name: 'set', body: '\\{#1\\}', args: 1, default: '{[a]}' },
       { name: 'dash', body: '\\text{a--b}', args: 0 },
