@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sheets deck</title>
+<link rel="stylesheet" href="../../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../../theme/beeson.css">
+<script src="tex.js"></script>
+<script src="../../../theme/mathjax-config.js"></script>
+<script src="../../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+<!-- the deck of test/editor-tex-sheets.test.mjs, with the preamble.tex, the references.bib, and the
+     tex.js next to it. the formula of the last row uses a macro that the preamble does not define
+     yet, the second theorem a kind that it does not define yet, and the last paragraph of the
+     citations is not cited yet -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Macros</h2>
+      <table>
+        <tr data-case="a macro of the preamble"><td>\(\vb{x}\)</td></tr>
+        <tr data-case="a macro of an input file"><td>\(\half\)</td></tr>
+        <tr data-case="a macro of a local package"><td>\(\dist\)</td></tr>
+        <tr data-case="a macro that is not defined yet"><td>\(\Q\)</td></tr>
+      </table>
+    </section>
+    <section class="wide">
+      <h2>Theorems</h2>
+      <p class="theorem" data-kind="theorem">A theorem of the preamble.</p>
+      <p class="theorem" data-kind="conjecture">A kind that is not defined yet.</p>
+    </section>
+    <section>
+      <h2>Citations</h2>
+      <p>A heteroclinic connection joins two orbits<cite data-key="koon2000"></cite>.</p>
+      <p>The same tubes connect halo orbits<cite data-key="gomez2004"></cite>.</p>
+      <p>Invariant manifolds guide a low-energy transfer</p>
+    </section>
+  </div>
+</div>
+<script src="../../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../../theme/vendor/reveal/notes.js"></script>
+<script src="../../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>
