@@ -6,7 +6,7 @@
 import { BLOCKED, type Client } from './client.ts';
 import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
-import { failedLine, retry as retryUpload } from './media.ts';
+import { failedLine, lostLine, retry as retryUpload } from './media.ts';
 import { isLeaving } from './people.ts';
 
 // the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
@@ -43,6 +43,8 @@ function view(client: Client): View {
       if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null };
       const failed = failedLine(client);
       if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload' };
+      const lost = lostLine(client);
+      if (lost) return { text: lost, icon: 'warning', warn: true, action: null };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
       const restored = restoredLine(client);
       if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
@@ -50,7 +52,7 @@ function view(client: Client): View {
   }
 }
 
-const ACTIONS = { retry: ['Try now', 'Reconnect now'], reload: ['Load again', 'Load the page again'], upload: ['Try again', 'Send the picture again'] } as const;
+const ACTIONS = { retry: ['Try now', 'Reconnect now'], reload: ['Load again', 'Load the page again'], upload: ['Try again', 'Send the file again'] } as const;
 
 export function install(client: Client): void {
   style('state', CSS);
