@@ -185,6 +185,10 @@ export function install(client: Client): void {
       if (!st.busy && !st.failed) void upload(files);
       return false;
     }
+    if (st.failed) {
+      st.failed = false;
+      client.refresh();
+    }
     // e.g. an element of this page brought back by an undo with the first name of its file
     if (moved && scan().length) {
       later();
