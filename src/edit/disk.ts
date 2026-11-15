@@ -114,7 +114,8 @@ function removeQuietly(file: string): void {
   } catch {}
 }
 
-export type DiskOptions = { log?: (message: string) => void };
+// quiet, latest, and poll are the times of the writes and the checks in ms, shorter in the tests
+export type DiskOptions = { log?: (message: string) => void; quiet?: number; latest?: number; poll?: number };
 
 export class Disk {
   readonly file: string;
@@ -130,6 +131,7 @@ export class Disk {
   private busy: Promise<void> | null = null;
   private stopped = false;
   private log: (message: string) => void;
+  private timing: { quiet: number; latest: number; poll: number };
 
   constructor(file: string, authority: Authority, bom: boolean, options: DiskOptions = {}) {
     this.file = file;
@@ -137,6 +139,7 @@ export class Disk {
     this.bom = bom;
     this.written = authority.text;
     this.log = options.log ?? (() => {});
+    this.timing = { quiet: options.quiet ?? QUIET, latest: options.latest ?? LATEST, poll: options.poll ?? POLL };
     this.remember(authority.n, authority.text);
     try {
       this.known = signature(statSync(file));
@@ -145,7 +148,7 @@ export class Disk {
   }
 
   start(): void {
-    this.poller = setInterval(() => void this.exclusive(() => this.check(Infinity)), POLL);
+    this.poller = setInterval(() => void this.exclusive(() => this.check(Infinity)), this.timing.poll);
   }
 
   // an operation was applied: the file is written after 250 ms of quiet, and at the latest 1 s
@@ -156,7 +159,7 @@ export class Disk {
     const now = performance.now();
     this.firstUnwritten ??= now;
     if (this.timer) clearTimeout(this.timer);
-    const wait = Math.max(0, Math.min(QUIET, this.firstUnwritten + LATEST - now));
+    const wait = Math.max(0, Math.min(this.timing.quiet, this.firstUnwritten + this.timing.latest - now));
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.exclusive(() => this.write());
