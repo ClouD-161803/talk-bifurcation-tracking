@@ -93,3 +93,8 @@ test('a plot in a deck draws its labels with the macros of window.beesonTex', { 
   assert.ok(labels.labels.includes('the 𝒮 family'), JSON.stringify(labels.labels));
   assert.deepEqual(page.errors, []);
 });
+
+// a label of a plot is one line, hence the line break of math is drawn as a space, not as a backslash
+test('a line break in the math of a label is drawn as a space', () => {
+  assert.deepEqual(parseMarkup('$a\\\\b$', {}).map((run) => run.text).join(''), 'a b');
+});
