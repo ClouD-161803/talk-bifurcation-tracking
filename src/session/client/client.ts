@@ -37,6 +37,9 @@ export type ClientEvents = {
   resolved: [];
   // an apply changed the deck, with the elements that it changed
   applied: [Element[]];
+  // a drive ended, with whether the base moved on after the last applied without an apply, e.g. at
+  // the broadcast of an operation of this page
+  settled: [moved: boolean];
   // connection, saving, retryAt, blocked, or warning changed
   state: [];
   ended: [Ended];
@@ -378,6 +381,8 @@ export class Client {
     const sync = this.sync;
     if (!sync || this.driving) return;
     this.driving = true;
+    // the version of the base that the listeners of applied read last
+    let read = sync.version;
     try {
       for (;;) {
         if (this.frozen) {
@@ -417,12 +422,15 @@ export class Client {
           if (sync.resync(text, v) !== null) stale = true;
         }
         if (this.inbox.length && sync.receive(this.inbox.splice(0)) !== null) stale = true;
-        if (!stale || !(await this.applyMine())) break;
+        if (!stale) break;
+        read = sync.version;
+        if (!(await this.applyMine())) break;
       }
     } finally {
       this.driving = false;
       for (const fn of this.driveWaiters.splice(0)) fn();
     }
+    this.emit('settled', sync.version !== read);
     this.pump();
     this.check();
   }

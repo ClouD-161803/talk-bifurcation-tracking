@@ -288,6 +288,10 @@ export class Presence {
       this.reread();
       this.due(false);
     });
+    // an offset that an operation of this page put in doubt is carried once the base holds it
+    client.on('settled', (moved) => {
+      if (moved) this.due(false);
+    });
     client.on('people', () => {
       // a page that joined cannot carry a state of a version before it, hence it is sent again
       const ids = new Set(client.people.map((p) => p.client));
