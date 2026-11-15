@@ -86,7 +86,8 @@ let pages = 0;
  * those of the other pages of the browser, as if it were another browser, and with the name preset
  * unless name is empty, which leaves the join dialog open. The script of the page counts its loads
  * and the operations that it sends in sessionStorage, which a reload keeps, and with
- * window.__corrupt set it sends each operation with a patch out of bounds.
+ * window.__corrupt set it sends each operation with a patch out of bounds. The page reads as
+ * visible while it is behind another page, unless window.__visibility is set.
  */
 export async function open(browser, url, { name = 'Ann', width = 1280, height = 800, mobile = false, wait = true } = {}) {
   const page = await browser.newPage({ width, height, mobile });
@@ -103,6 +104,13 @@ export async function open(browser, url, { name = 'Ann', width = 1280, height = 
         if (${JSON.stringify(name)} && get.call(localStorage, prefix + 'beeson-session-name') === null) set.call(localStorage, prefix + 'beeson-session-name', ${JSON.stringify(name)});
         sessionStorage.setItem('__loads', String(Number(sessionStorage.getItem('__loads') || 0) + 1));
       } catch {}
+      // a page behind another of the test browser is hidden, which the page of a person on another
+      // computer is not. it reads as visible unless window.__visibility is 'hidden', or 'real'
+      const visibility = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState').get;
+      Object.defineProperty(Document.prototype, 'visibilityState', {
+        configurable: true,
+        get() { return window.__visibility === 'real' ? visibility.call(this) : window.__visibility === 'hidden' ? 'hidden' : 'visible'; },
+      });
       const fetched = window.fetch;
       window.fetch = function (input, init) {
         const url = typeof input === 'string' ? input : input.url;
