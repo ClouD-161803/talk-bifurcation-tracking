@@ -30,6 +30,10 @@ export function injectStyle(id: string, css: string): HTMLStyleElement {
   return style;
 }
 
+// a phone or a tablet without a mouse, where a key and a chooser of a folder are not likely. a
+// machine without a pointer, e.g. with a keyboard alone, is not one
+export const touchOnly = (): boolean => matchMedia('(any-pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+
 // the storage of the browser may be blocked or full, and nothing is then kept
 export function stored(key: string): string | null {
   try {

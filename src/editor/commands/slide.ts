@@ -15,7 +15,7 @@ import { setOwnTex } from '../text/elements.ts';
 import { tokenize } from '../tokens.ts';
 import { nextShown, setTransition, transitionOf } from '../review/transitions.ts';
 import { sample } from './layout.ts';
-import { injectStyle } from '../ui/dom.ts';
+import { injectStyle, touchOnly } from '../ui/dom.ts';
 import { arrive, originComment } from './origin.ts';
 import { display } from '../keymap.ts';
 
@@ -190,10 +190,10 @@ export async function readClipboard(): Promise<{ text: string; refused: boolean 
   );
 }
 
-// the note of a refused read, after which the key pastes from its own event. without a fine
-// pointer, e.g. on a phone, the browser asks for the read again at the next Paste
+// the note of a refused read, after which the key pastes from its own event. on a phone, the
+// browser asks for the read again at the next Paste
 export function refusedRead(app: App): void {
-  const how = matchMedia('(any-pointer: fine)').matches ? `Press ${display('Mod+V', app.platform)} to paste` : 'Choose Paste again and allow it when the browser asks';
+  const how = touchOnly() ? 'Choose Paste again and allow it when the browser asks' : `Press ${display('Mod+V', app.platform)} to paste`;
   app.note = { text: `The browser did not let the editor read the clipboard. ${how}`, warn: true };
   app.report();
 }

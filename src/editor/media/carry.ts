@@ -10,7 +10,7 @@ import type { App } from '../app.ts';
 import type { Arrival } from '../commands/origin.ts';
 import { tokenize } from '../tokens.ts';
 import { Dialog, host } from '../ui/dialog.ts';
-import { injectStyle, make } from '../ui/dom.ts';
+import { injectStyle, make, touchOnly } from '../ui/dom.ts';
 import { taken } from './actions.ts';
 import { FOLDER, media, safeName } from './store.ts';
 
@@ -89,7 +89,7 @@ type Folder = (path: string) => Promise<Blob | null>;
 type DirectoryPicker = (o: { id: string; mode: 'read' }) => Promise<FileSystemDirectoryHandle>;
 const picker = (): DirectoryPicker | undefined => (window as unknown as { showDirectoryPicker?: DirectoryPicker }).showDirectoryPicker;
 // an input with webkitdirectory opens a file chooser in place of a folder on a phone
-const canPick = (): boolean => !!picker() || ('webkitdirectory' in HTMLInputElement.prototype && matchMedia('(any-pointer: fine)').matches);
+const canPick = (): boolean => !!picker() || ('webkitdirectory' in HTMLInputElement.prototype && !touchOnly());
 
 const folders = new Map<string, Folder>();
 let dialog: Dialog | null = null;

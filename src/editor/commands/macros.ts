@@ -10,7 +10,7 @@ import { display } from '../keymap.ts';
 import { deckMacros } from '../math.ts';
 import { listed } from '../media/carry.ts';
 import { Dialog } from '../ui/dialog.ts';
-import { injectStyle, make } from '../ui/dom.ts';
+import { injectStyle, make, touchOnly } from '../ui/dom.ts';
 import type { Arrival, OriginMacro } from './origin.ts';
 
 const CSS = `
@@ -32,12 +32,12 @@ const shown = new Set<string>();
 let sheet: { dialog: Dialog; pre: HTMLElement; hint: HTMLElement; offs: Off[] } | null = null;
 
 // the lines are written inside the click, which grants the write in every browser. where it is
-// refused or missing, the lines are selected for a copy by hand, with the key named only where a
-// keyboard is likely
+// refused or missing, the lines are selected for a copy by hand, with the key named except on a
+// phone
 function copy(app: App): void {
   const { dialog, pre, hint } = sheet!;
   const refused = () => {
-    const key = matchMedia('(any-pointer: fine)').matches ? `, e.g. with ${display('Mod+C', app.platform)}` : '';
+    const key = touchOnly() ? '' : `, e.g. with ${display('Mod+C', app.platform)}`;
     hint.textContent = `The browser did not let the editor write the clipboard. Select the lines and copy them${key}.`;
     hint.hidden = false;
     getSelection()?.selectAllChildren(pre);
