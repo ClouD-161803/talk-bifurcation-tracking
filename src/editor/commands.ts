@@ -137,6 +137,15 @@ export class Commands {
     this.vetoes.push(check);
   }
 
+  // the checks that refuse a command at its run and tell the person why, e.g. presence.ts of the
+  // client on a text element that another person holds. the command stays enabled, so that its
+  // keys and its menu item reach the check
+  private readonly refusals: ((app: App, c: Command, arg?: unknown) => boolean)[] = [];
+
+  refuse(check: (app: App, c: Command, arg?: unknown) => boolean): void {
+    this.refusals.push(check);
+  }
+
   // whether the command applies to the selection by its own enabled, i.e. before the vetoes, as a
   // command of a locked element does, which its context menu shows dimmed
   applies(id: string): boolean {
@@ -163,7 +172,7 @@ export class Commands {
   async run(id: string, arg?: unknown): Promise<void> {
     const c = this.byId.get(id);
     if (!c) throw new Error(`there is no command ${id}`);
-    if (!this.enabled(id)) return;
+    if (!this.enabled(id) || this.refusals.some((r) => r(this.app, c, arg))) return;
     if (c.undoable) await this.app.history.transact(c.undo ?? this.label(c.runsAs?.(this.app) ?? id), () => c.run(this.app, arg));
     else await c.run(this.app, arg);
   }
