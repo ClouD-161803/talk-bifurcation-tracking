@@ -91,3 +91,10 @@ test('a changed parameter or a new label of a surface asks for a reload, and a c
   await steps(t, [['a label', (s) => once(s, '<span class="label" data-at="L5">\\(\\LL{5}\\)</span>\n  </div>\n  <aside class="notes">The mass ratio', '<span class="label" data-at="L5">\\(\\LL{5}\\)</span>\n    <span class="label" data-at="L1">Extra</span>\n  </div>\n  <aside class="notes">The mass ratio'), true]]);
   await steps(t, [['an azimuth', (s) => once(s, 'data-function="effective-potential" data-mu="0.05">', 'data-function="effective-potential" data-mu="0.05" data-azimuth="-20">'), false]]);
 });
+
+test('a changed step index and a step taken group the steps as on a fresh page', async (t) => {
+  await steps(t, [
+    ['an index', (s) => once(s, '<li class="fragment" data-fragment-index="1">Each step', '<li class="fragment" data-fragment-index="2">Each step'), false],
+    ['a step taken', (s) => once(s, '<li class="fragment" data-fragment-index="2">Two elements', '<li data-fragment-index="2">Two elements'), false],
+  ]);
+});
