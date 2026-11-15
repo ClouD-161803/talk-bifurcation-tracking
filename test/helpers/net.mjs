@@ -75,3 +75,17 @@ export const NET = `{
     });
   };
 }`;
+
+/**
+ * A script for open() that counts in window.__answers the answers of the polls of a page, each one
+ * task after its text is read, i.e. after the client took or dropped it.
+ */
+export const ANSWERS = `{
+  const text = Response.prototype.text;
+  window.__answers = 0;
+  Response.prototype.text = function () {
+    const read = text.call(this);
+    if (this.url.includes('/.session/events')) read.then(() => setTimeout(() => window.__answers++, 0));
+    return read;
+  };
+}`;

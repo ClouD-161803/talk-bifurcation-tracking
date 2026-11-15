@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
-import { NET } from './helpers/net.mjs';
+import { ANSWERS, NET } from './helpers/net.mjs';
 import { ROWS } from './helpers/offline.mjs';
 import { click, press, type } from './helpers/editor.mjs';
 import { raw, until } from './helpers/session.mjs';
@@ -709,18 +709,6 @@ test('a page that does not read as its text after an apply loads again, and send
   clean(a, REFUSED);
   clean(b, REFUSED);
 });
-
-// counts the answers of the polls of a page one task after their text is read, i.e. after the client
-// took them
-const ANSWERS = `{
-  const text = Response.prototype.text;
-  window.__answers = 0;
-  Response.prototype.text = function () {
-    const read = text.call(this);
-    if (this.url.includes('/.session/events')) read.then(() => setTimeout(() => window.__answers++, 0));
-    return read;
-  };
-}`;
 
 test('the answer of a poll that arrives after Leave Session is not taken', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
