@@ -12,6 +12,7 @@ import type { Applied, Port } from '../../editor/session/session.ts';
 import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Taken, Token, Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
+import type { Resolved } from './presence.ts';
 import { Sync, type Whole } from './sync.ts';
 import { Failure, Transport } from './transport.ts';
 
@@ -90,6 +91,8 @@ export class Client {
   // the guest left with Leave Session, after which the page is ended as at the end of the session
   left = false;
   hooks: Hooks = {};
+  // the presence of the other pages, read as elements of this page, set by presence.ts
+  resolved: () => Resolved[] = () => [];
 
   private sync: Sync | null = null;
   // the text of the authority that this page received last, and its version, which the offsets of
