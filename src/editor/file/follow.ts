@@ -34,10 +34,17 @@ export function onSlides(numbers: number[]): string {
   return ` on slides ${head}${numbers.length > 2 ? ',' : ''} and ${numbers[numbers.length - 1]}`;
 }
 
+// the sections of the last text parsed by slidesAt, since a caller may ask for one range at a time
+let last: { text: string; sections: { start: number; end: number }[] } | null = null;
+
 // the numbers of the slides, from 1, of the ranges in a text of the deck, i.e. of the sections
 // that are children of its div.slides, as the navigator counts them
 export function slidesAt(text: string, ranges: Edit[]): number[] {
-  const sections = parseSource(text).slides.children.flatMap((c) => (c.kind === 'element' && c.tag === 'section' && c.open ? [{ start: c.open.start, end: c.close?.end ?? c.open.end }] : []));
+  if (last?.text !== text) {
+    const sections = parseSource(text).slides.children.flatMap((c) => (c.kind === 'element' && c.tag === 'section' && c.open ? [{ start: c.open.start, end: c.close?.end ?? c.open.end }] : []));
+    last = { text, sections };
+  }
+  const { sections } = last;
   const out = new Set<number>();
   for (const r of ranges) {
     sections.forEach((s, i) => {
