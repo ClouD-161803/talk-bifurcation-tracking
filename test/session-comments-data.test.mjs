@@ -284,6 +284,8 @@ test('what a person read of a thread is kept over a reload', { timeout: 300_000 
   await sees(a, ARTICLES, 2);
   await click(a, `${PANE} article[data-id="${y}"] .text`);
   await sees(a, COUNT, 'Comments, 1 unread');
+  await sees(a, UNREAD, [`${x}*`, y]);
+  await sees(a, `document.querySelector('${PANE} article[data-id="${y}"]').getAttribute('aria-label')`, 'Comment by Ben');
 
   await reload(a);
   await openPane(a);
@@ -315,7 +317,9 @@ test('what a person read of a thread reaches the other pages of the person', { t
   await sees(a, ARTICLES, 2);
   await click(a, `${PANE} article[data-id="${y}"] .text`);
   await sees(a, COUNT, 'Comments, 1 unread');
+  await sees(a, UNREAD, [`${x}*`, y]);
   await sees(other, COUNT, 'Comments, 1 unread');
+  await sees(other, UNREAD, [`${x}*`, y]);
   clean(a);
   clean(other);
   clean(b);
