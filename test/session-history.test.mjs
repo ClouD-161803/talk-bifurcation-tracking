@@ -131,12 +131,26 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
 
   await t.test('the person cannot edit in the mode, and Esc goes back to the editor', async () => {
     await front(ann);
+    const before = await ann.evaluate(TEXT);
     await press(ann, 'Mod+A');
     await press(ann, 'Backspace');
     await press(ann, 'Mod+Z');
     // a command run from anywhere, e.g. a context menu, is held too
-    await ann.evaluate(`window.BeesonEditor.exec('slide.new').then(() => window.BeesonEditor.exec('slide.delete')).then(() => true)`);
-    assert.equal(await ann.evaluate(`document.querySelectorAll('.reveal .slides > section').length`), 2);
+    for (const id of ['slide.new', 'slide.delete']) {
+      await ann.evaluate(`window.BeesonEditor.exec('${id}').then(() => true)`);
+      assert.equal(await ann.evaluate(`document.querySelectorAll('.reveal .slides > section').length`), 2, id);
+      assert.equal(await ann.evaluate(TEXT), before, id);
+    }
+    // a paste of a table onto the slide, which is not a command, is held too
+    await ann.evaluate(`(() => {
+      document.activeElement?.blur();
+      const data = new DataTransfer();
+      data.setData('text/plain', 'a\\tb\\nc\\td');
+      document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    assert.equal(await ann.evaluate(`document.querySelectorAll('.reveal table').length`), 0);
+    assert.equal(await ann.evaluate(TEXT), before);
     await press(ann, 'Escape');
     await ann.waitFor(`!(${SHOWN})`);
     assert.deepEqual(await ann.evaluate(INERT), [false, false, false, false, false]);
