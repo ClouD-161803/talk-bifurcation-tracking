@@ -206,6 +206,7 @@ class Pane {
     if (!node) {
       node = make('article');
       node.dataset.id = t.id;
+      node.setAttribute('aria-describedby', `beeson-comment-text-${t.id}`);
       node.addEventListener('click', (ev) => {
         if ((ev.target as Element).closest('button, textarea, a, .people')) return;
         this.open(t.id);
@@ -267,7 +268,11 @@ class Pane {
     box.append(head);
     if (root) box.append(make('p', 'anchor', this.label(t, this.comments.places().get(t.id) ?? null)));
     if (this.editing && this.editing.id === t.id && this.editing.reply === (root ? null : i.id)) box.append(this.editing.field.box);
-    else box.append(this.text(i.text));
+    else {
+      const text = this.text(i.text);
+      if (root) text.id = `beeson-comment-text-${t.id}`;
+      box.append(text);
+    }
     return box;
   }
 
