@@ -16,6 +16,10 @@ import { graft, locate, retag, windowOf, type Spot } from './tree.ts';
 // be made to read as the text, after which the client loads the page again
 export type Applied = { reload: boolean; changed: Element[] };
 
+// the client reads text() inside a listener of onChange or after an apply has resolved, and writes
+// the text of each apply against the text last handed to it, i.e. the text it last read or passed
+// to apply. an edit of the person that the client has not read is kept through every apply, and
+// onChange is called after it
 export type Port = {
   text(): string;
   apply(text: string): Promise<Applied>;
@@ -33,13 +37,14 @@ type Page = { MathJax?: { typesetPromise?(els: Element[]): Promise<unknown> } };
 export function install(app: App): Port {
   // clean holds while the source reads as the deck, i.e. since the last open or apply without an
   // edit of the person after it. mine holds while an apply changes the page, whose events are not
-  // edits of the person
+  // edits of the person. handed is the text last handed to the client, hence an edit of the person
+  // that the client has not read is the difference of the deck from it
   let clean = false;
   let mine = false;
+  let handed: string | null = null;
   let applying = false;
   let queued = 0;
   let chain: Promise<unknown> = Promise.resolve();
-  let lastApplied: string | null = null;
   let status: string | null = null;
   let saver: () => Promise<void> | void = () => {};
   let active = false;
@@ -49,12 +54,13 @@ export function install(app: App): Port {
 
   const reload = (): Applied => ({ reload: true, changed: [] });
   const ready = () => !!app.source && !!app.pairing && !!app.pairing.root;
+  const busy = () => !app.history.settled || app.doc.busy;
   // the text of the deck now, with the edits of the person
   const current = (): string => (clean ? app.source!.text : app.files.render());
 
   app.listen('open', () => {
     clean = ready();
-    lastApplied = null;
+    handed = clean ? app.source!.text : null;
   });
 
   const changed = (): void => {
@@ -86,7 +92,7 @@ export function install(app: App): Port {
   }
 
   async function quiet(): Promise<void> {
-    while (!app.history.settled || app.doc.busy) {
+    while (busy()) {
       await app.history.settle();
       await app.doc.idle();
     }
@@ -159,7 +165,6 @@ export function install(app: App): Port {
   // entries that name a changed element, and a text element changed in place is tracked again
   function settle(target: string, done: Done): void {
     app.saved = target;
-    lastApplied = target;
     clean = true;
     mine = true;
     try {
@@ -197,55 +202,53 @@ export function install(app: App): Port {
     }
   }
 
-  async function turn(text: string, snap: string | null): Promise<Applied> {
+  async function turn(text: string): Promise<Applied> {
     for (;;) {
       await quiet();
       if (!ready()) return reload();
-      const base = current();
-      const from = snap ?? lastApplied ?? base;
+      const seen = current();
+      const from = handed ?? seen;
       let target = text;
-      // an edit of the person made since the text was read is kept, and wins at a conflict
-      if (from !== base) target = mergeEdits(from, edits(from, base), edits(from, text), 'ours').text;
+      // an edit of the person that the client has not read is kept, and wins at a conflict
+      if (from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours').text;
       if (!clean && !rebase()) return reload();
       const source = app.source!;
       const w = windowOf(source.text, target);
-      if (!w) {
-        app.saved = target;
-        lastApplied = target;
-        return { reload: false, changed: [] };
-      }
-      const spot = locate(source, app.pairing!, w.start, w.endA);
-      if (spot.kind === 'reload') return reload();
-      if (intoComposition(spot)) {
+      const spot = w && locate(source, app.pairing!, w.start, w.endA);
+      if (spot?.kind === 'reload') return reload();
+      if (spot && intoComposition(spot)) {
         await new Promise<void>((done) => composed.push(done));
         continue;
       }
-      let done: Done | null;
-      mine = true;
-      try {
-        done = applyAt(app, target, w, spot);
-      } finally {
-        mine = false;
-      }
-      if (!done) {
-        clean = false;
-        return reload();
-      }
-      settle(target, done);
-      await typeset(done);
-      return { reload: false, changed: done.changed.filter((el) => el.isConnected) };
+      handed = text;
+      let changed: Element[] = [];
+      if (w && spot) {
+        let done: Done | null;
+        mine = true;
+        try {
+          done = applyAt(app, target, w, spot);
+        } finally {
+          mine = false;
+        }
+        if (!done) {
+          clean = false;
+          return reload();
+        }
+        settle(target, done);
+        await typeset(done);
+        changed = done.changed.filter((el) => el.isConnected);
+      } else app.saved = target;
+      if (listeners.size && target !== handed) pending = true;
+      return { reload: false, changed };
     }
   }
 
   function apply(text: string): Promise<Applied> {
-    // the text of the deck when the apply is asked for, against which the client wrote text. the
-    // turn of an apply queued after another starts from the text of the one before
-    const snap = applying || queued || !ready() ? null : current();
     queued += 1;
     const run = chain.then(async () => {
       applying = true;
       try {
-        return await turn(text, snap);
+        return await turn(text);
       } finally {
         applying = false;
         queued -= 1;
@@ -279,9 +282,12 @@ export function install(app: App): Port {
   };
 
   return {
+    // during an operation or an apply, the text last handed, rather than a render of a deck
+    // changed in part
     text: () => {
       if (!ready()) throw new Error('no file is open');
-      return current();
+      if (handed !== null && (busy() || applying || queued)) return handed;
+      return (handed = current());
     },
     apply,
     onChange(fn) {
