@@ -325,8 +325,13 @@ export function install(app: App): Port {
   window.addEventListener('keydown', (ev) => {
     if (parked && types(ev)) unpark();
   }, true);
-  // the keyboard of a phone sends the key Unidentified, and its input is known at beforeinput
+  // the keyboard of a phone sends the key Unidentified, and its input is known at beforeinput. the
+  // first input after an apply reads the page against its text before it changes the deck
   window.addEventListener('beforeinput', () => {
+    if (net) {
+      clearTimeout(net);
+      check();
+    }
     if (parked) unpark();
   }, true);
   window.addEventListener('pointerdown', () => void (parked = null), true);
@@ -429,13 +434,15 @@ export function install(app: App): Port {
     });
   }
 
-  // the page read against its text once the applies are over, while the person does not change
-  // the deck: a page that does not read as its text after an apply is loaded again
+  // the page read against its text once the applies are over, or at the first input after them,
+  // while the person does not change the deck: a page that does not read as its text after an
+  // apply is loaded again
   function arm(): void {
     clearTimeout(net);
     if (reloaders.size) net = window.setTimeout(check, NET);
   }
   function check(): void {
+    net = 0;
     if (!ready() || !clean || behind || applying || queued || busy()) return;
     if (app.files.render() !== app.source!.text) for (const fn of [...reloaders]) fn();
   }
