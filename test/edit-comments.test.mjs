@@ -298,6 +298,46 @@ test('a thread sent with an old base is moved to the current text in less than h
   assert.ok(2 * added < entered, `the thread took ${(added / 1e6).toFixed(1)} ms, and the operations ${(entered / 1e6).toFixed(1)} ms`);
 });
 
+test('a thread on an element of any tag name is read again at a start, and a thread that cannot be read is left out without the others', async (t) => {
+  for (const [name, open_] of [['a custom element of a long name', `<orbit-${'x'.repeat(64)}>`], ['a no-break space after the name', '<p class="lead">']]) {
+    await t.test(name, () => {
+      const dir = sessionDir(t);
+      const deck = DECK.replace('<p>Second slide</p>', `${open_}Second slide</p>`);
+      const first = open(dir, deck);
+      const thread = first.comments.add(ANN, { base: first.authority.version, anchor: tagRange(deck, open_), slide: slideRange(deck, 'Second'), text: 'tag' });
+      assert.ok(thread.id);
+      first.comments.add(ANN, onDeck(first.authority, 'deck'));
+      first.comments.stopSync();
+      const again = open(dir, deck);
+      assert.deepEqual(again.comments.list(ANN).comments.map((c) => c.text), ['tag', 'deck']);
+      reads(deck, again.comments.list(ANN).comments[0].anchor, open_);
+      assert.deepEqual(again.logged, []);
+    });
+  }
+
+  await t.test('a malformed thread among good ones', () => {
+    const dir = sessionDir(t);
+    const first = open(dir, DECK);
+    first.comments.add(ANN, onDeck(first.authority, 'kept'));
+    first.comments.stopSync();
+    const file = join(dir, 'comments.json');
+    const saved = readJson(file);
+    saved.comments.push({ id: 'bad', text: 7 });
+    const content = JSON.stringify(saved);
+    writeFileSync(file, content);
+    const again = open(dir, DECK);
+    assert.deepEqual(again.comments.list(ANN).comments.map((c) => c.text), ['kept']);
+    assert.equal(again.logged.length, 1, again.logged.join('\n'));
+    assert.match(again.logged[0], /could not be read/);
+    const aside = readdirSync(dir).filter((n) => n.startsWith('comments-unreadable-'));
+    assert.equal(aside.length, 1);
+    assert.equal(readFileSync(join(dir, aside[0]), 'utf8'), content);
+    again.comments.add(ANN, onDeck(again.authority, 'new'));
+    again.comments.stopSync();
+    assert.deepEqual(readJson(file).comments.map((c) => c.text), ['kept', 'new']);
+  });
+});
+
 test('a shift of the anchors by typing is written to the file', async (t) => {
   const dir = sessionDir(t);
   const file = join(dir, 'comments.json');
