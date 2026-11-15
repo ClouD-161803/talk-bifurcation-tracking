@@ -5,7 +5,7 @@
 // come from this computer with the key or that reaches out of the talk folder
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
@@ -676,6 +676,25 @@ test('a second start in the same talk folder hands over the address of the first
   t.after(() => stopEdit(third));
   assert.equal((await raw(third.port, 'GET', `${third.base}index.html`)).status, 200);
   assert.equal(third.child.exitCode, null);
+});
+
+test('a lock of an edit command that died does not stop a new start on its port, when another process has taken its process id', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const env = { XDG_CONFIG_HOME: config, APPDATA: config };
+  const first = await startEdit(talk, { env });
+  const port = first.port;
+  await stopEdit(first);
+  // a live process that is not an edit command, as after a restart of the computer
+  const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore' });
+  t.after(() => other.kill());
+  mkdirSync(join(talk, '.session'), { recursive: true });
+  writeFileSync(join(talk, '.session', 'lock'), JSON.stringify({ pid: other.pid, port, root: realpathSync.native(talk) }));
+  const second = await startEdit(talk, { env, port });
+  t.after(() => stopEdit(second));
+  const answer = await raw(second.port, 'GET', `${second.base}index.html`).catch(() => null);
+  assert.equal(answer?.status, 200, `the new start serves the deck. ${second.stderr}`);
+  assert.equal(second.child.exitCode, null, 'the new edit command goes on');
 });
 
 const SECRET = 'a secret of the group, long enough';
