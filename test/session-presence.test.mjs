@@ -10,7 +10,8 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, open, sessionUrl, show, talk, TEXT } from './helpers/client.mjs';
-import { click, typeKeys } from './helpers/editor.mjs';
+import { click, type, typeKeys } from './helpers/editor.mjs';
+import { closeGate, openGate } from './helpers/gate.mjs';
 import { until } from './helpers/session.mjs';
 
 const P = 'window.BeesonSession.presence()';
@@ -471,6 +472,30 @@ test('a pointer move and a scroll over three frames read no layout for presence'
   // the reads of the editor itself are counted as well, which shows that the count is taken
   assert.ok(framed.all > 0, 'the reads of the page are counted');
   assert.equal(framed.session, 0, 'theme/session.js reads no layout in a pointer move or a scroll over three frames');
+  clean(ana);
+  clean(ben);
+});
+
+test('a page that reads its source again keeps a remote edit that waits for its history', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'One');
+  // the typeset of a slow machine keeps the transaction of Insert Formula open, and the formula is
+  // selected without an offset once it ends
+  await ana.evaluate(`(window.MathJax ??= { typesetPromise: async () => {} }, true)`);
+  await closeGate(ana);
+  await front(ana);
+  await ana.evaluate(`void ${C}.app.commands.run('insert.formula')`);
+  await until(() => ana.evaluate('window.__held > 0'), 'the typeset of the formula to wait');
+  await caretAtEnd(ben, el(0, 'h2'));
+  await type(ben, ' x');
+  await until(() => ana.evaluate(`${C}.base.text.includes('<h2>One x</h2>') && ${el(0, 'h2')}.textContent === 'One'`), 'the edit of Ben to wait for the history of Ana');
+  await openGate(ana);
+  await until(() => ana.evaluate(`${C}.app.selection.items[0]?.matches('div.math') ?? false`), 'the formula to be selected');
+  const text = await converge(server, [ana, ben]);
+  assert.ok(text.includes('<h2>One x</h2>'), 'the edit of Ben is in index.html');
+  assert.equal(await ben.evaluate(`${el(0, 'h2')}.textContent`), 'One x', 'the edit of Ben is on his page');
+  assert.equal(await ana.evaluate(`${el(0, 'h2')}.textContent`), 'One x', 'the edit of Ben is on the page of Ana');
   clean(ana);
   clean(ben);
 });
