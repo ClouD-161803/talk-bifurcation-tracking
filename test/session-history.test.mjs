@@ -580,6 +580,14 @@ test('Name this version shows the name that a save replaces, an empty name under
     assert.equal((await versionsOf(ann))[0].name, 'Draft for Ben');
   });
 
+  await t.test('Esc in Name this version closes the dialog and leaves Version History open', async () => {
+    await press$(ann, PANE, 'Name this version');
+    await ann.waitFor(`${field}?.focused`);
+    await press(ann, 'Escape');
+    await ann.waitFor(`!document.querySelector('${DIALOG}') || !(${SHOWN})`);
+    assert.deepEqual(await ann.evaluate(`[!!document.querySelector('${DIALOG}'), ${SHOWN}]`), [false, true]);
+  });
+
   await t.test('after an edit the field under Current version is empty', async () => {
     await show(ben, 'One');
     await caretAtEnd(ben, el(0, 'h2'));
