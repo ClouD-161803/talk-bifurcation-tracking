@@ -91,16 +91,31 @@ test('two viewers of one step are started together, side by side in a plate of t
   assert.deepEqual(page.errors, []);
 });
 
+// record inside.play() in the page, since host round trips on a slow runner can finish more than
+// 1 s after playback starts from 0
 async function checkRestart(page, waitBeforeRead = '') {
   await page.waitFor('inside.time > 0.2');
   // a viewer that is left would be resumed where it stopped when its slide is shown again
   await page.evaluate('Reveal.slide(1)');
   await until(page, 'inside', { playing: false, time: 0 });
+  await page.evaluate(`(() => {
+    const play = inside.play.bind(inside);
+    window.__restarts = [];
+    inside.play = () => {
+      const before = inside.time;
+      play();
+      window.__restarts.push({ before, playing: inside.playing, time: inside.time });
+    };
+    return true;
+  })()`);
   // the first step of the slide, which reveal.js numbers from 0
   await page.evaluate('Reveal.slide(2, 0, 0)');
   await until(page, 'inside', { playing: true });
+  await page.waitFor('inside.time > 0.2');
   if (waitBeforeRead) await page.waitFor(waitBeforeRead);
-  assert.ok(await page.evaluate('inside.time') < 1, 'it is played again from its start');
+  const restarts = await page.evaluate('window.__restarts');
+  assert.equal(restarts.length, 1, 'it is played again once');
+  assert.deepEqual(restarts[0], { before: 0, playing: true, time: 0 }, 'it is played again from its start');
 }
 
 test('a viewer in a fragment of the style play is not dimmed at a later step, and it is held at its first frame when its slide is left', { timeout: 120000 }, async (t) => {
