@@ -489,7 +489,7 @@ export class Presence {
       if (o === null) {
         if (el.isConnected && !this.rebased.has(el)) {
           this.rebased.add(el);
-          void Promise.resolve().then(() => port.apply(port.text())).then(() => this.due(true), () => {});
+          void port.rebase().then(() => this.due(true), () => {});
         }
         return null;
       }

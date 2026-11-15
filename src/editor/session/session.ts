@@ -22,11 +22,14 @@ export type Applied = { reload: boolean; changed: Element[] };
 // to apply. an edit of the person that the client has not read is kept through every apply, and
 // onChange is called after it. the listeners of onReload are called when the page does not read as
 // its text after the applies, after which the client loads the page again. copy() reads the deck
-// with the edits of the person at any time, and leaves the text handed to the client as it is
+// with the edits of the person at any time, and leaves the text handed to the client as it is.
+// rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
+// into the source, e.g. so that offsetOf knows an element made since the last apply
 export type Port = {
   text(): string;
   copy(): string;
   apply(text: string): Promise<Applied>;
+  rebase(): Promise<Applied>;
   onChange(fn: () => void): () => void;
   onReload(fn: () => void): () => void;
   offsetOf(el: Element): number | null;
@@ -41,6 +44,8 @@ type Page = { MathJax?: { typesetPromise?(els: Element[]): Promise<unknown> } };
 
 // the time in ms after the last apply at which the page is read against its text
 const NET = 500;
+// the text of a turn of rebase(), read in the turn
+const REREAD = Symbol('reread');
 
 // the window of b against source.text. an insertion or a removal at the end of div.slides, e.g. a
 // slide after the last slide, whose common start runs into the end tag of div.slides, is moved
@@ -351,7 +356,7 @@ export function install(app: App): Port {
   });
 
   // the turn of an apply of text, or of the changes held back when text is null
-  async function turn(text: string | null): Promise<Applied> {
+  async function turn(text: string | null | typeof REREAD): Promise<Applied> {
     await quiet();
     if (!ready()) return reload();
     if (text === null && !behind) return { reload: false, changed: [] };
@@ -359,6 +364,7 @@ export function install(app: App): Port {
     const math = clean ? null : mathLookup();
     const rendered = math && renderDeck(app.source!, app.pairing!, math, app.tagEdits);
     const seen = virtual(rendered ? rendered.text : app.source!.text);
+    if (text === REREAD) text = handed ?? seen;
     const from = handed ?? seen;
     let target = text ?? seen;
     // an edit of the person that the client has not read is kept, and wins at a conflict
@@ -426,7 +432,7 @@ export function install(app: App): Port {
   }
 
   // a turn queued after the others
-  function run(text: string | null): Promise<Applied> {
+  function run(text: string | null | typeof REREAD): Promise<Applied> {
     queued += 1;
     return new Promise<Applied>((resolve, reject) => {
       chain = chain
@@ -499,6 +505,7 @@ export function install(app: App): Port {
       return virtual(current());
     },
     apply: (text) => run(text),
+    rebase: () => run(REREAD),
     onChange(fn) {
       listeners.add(fn);
       return () => void listeners.delete(fn);
