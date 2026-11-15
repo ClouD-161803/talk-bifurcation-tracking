@@ -196,15 +196,24 @@ class Pane {
     this.groups = groups;
     this.empty.textContent = FILTERS.find((f) => f[0] === this.filter)![2];
     if (!shown.length && !this.draft) want.push(this.empty);
-    // the nodes are put in place one by one, so that a focused field that keeps its place is not
-    // taken out of the page, which would take its focus
+    const scroll = this.list.scrollTop;
     const keep = new Set(want);
     for (const child of [...this.list.children]) if (!keep.has(child as HTMLElement)) child.remove();
-    let at = this.list.firstElementChild;
-    for (const node of want) {
-      if (node === at) at = at.nextElementSibling;
-      else this.list.insertBefore(node, at);
+    // the nodes are put in place one by one around the node of the focus, which keeps its place,
+    // since a node taken out of the page loses the focus
+    const put = (nodes: HTMLElement[], at: Element | null) => {
+      for (const node of nodes) {
+        if (node === at) at = at.nextElementSibling;
+        else this.list.insertBefore(node, at);
+      }
+    };
+    const pin = want.findIndex((n) => n.parentNode === this.list && n.contains(document.activeElement));
+    if (pin < 0) put(want, this.list.firstElementChild);
+    else {
+      put(want.slice(0, pin), this.list.firstElementChild);
+      put(want.slice(pin + 1), want[pin].nextElementSibling);
     }
+    if (this.list.scrollTop !== scroll) this.list.scrollTop = scroll;
     this.order = shown.map((t) => t.id);
     for (const [id, node] of this.nodes) {
       if (!this.comments.threads.has(id)) {
