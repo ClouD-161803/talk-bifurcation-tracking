@@ -12,7 +12,7 @@ import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk,
 import { NET } from './helpers/net.mjs';
 import { ROWS } from './helpers/offline.mjs';
 import { click, press, type } from './helpers/editor.mjs';
-import { until } from './helpers/session.mjs';
+import { raw, until } from './helpers/session.mjs';
 
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const INERT = `document.querySelector('.reveal .slides').inert`;
@@ -585,4 +585,27 @@ test('Save and Saving… wait for the answer and the broadcast of every operatio
   await page.waitFor(`window.__saved`);
   assert.equal(await converge(server, [page]), saved);
   clean(page, REFUSED);
+});
+
+const LAST_POLL = `__net.log.filter((l) => l.url.includes('/.session/events')).at(-1)`;
+
+test('an idle page polls from the version of the last answer, hence the edit command holds its poll after a burst of operations', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
+  await converge(server, [a, b]);
+  await show(a, 'Two');
+  await caretAtEnd(a, el(1, 'p'));
+  for (const word of [' one', ' two', ' three']) {
+    await type(a, word);
+    await a.waitFor(`${C}.acked()`);
+  }
+  await converge(server, [a, b]);
+  const v = (await raw(server.edit.port, 'GET', `${new URL(server.edit.url).pathname}index.html?edit&session`)).headers['x-session-version'];
+  assert.match(v, /\.[1-9]\d*$/);
+  await b.waitFor(`((l) => l.url.endsWith('since=' + ${JSON.stringify(v)}) && l.status === null)(${LAST_POLL})`);
+  clean(a, REFUSED);
+  clean(b, REFUSED);
 });
