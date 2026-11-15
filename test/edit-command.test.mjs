@@ -699,3 +699,26 @@ test('add regression test: a Ctrl+C while a start with --relay waits for the rel
   assert.equal((await exited).signal, null, 'the edit command was ended by the signal without its stop');
   assert.ok(text(join(talk, 'index.html')).startsWith('<!-- kept -->\n'), 'the acknowledged operation is in index.html');
 });
+
+test('add regression test: hellos and byes of many pages do not log out a page that is present', { timeout: 120_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const host = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${host.v}`)).status, 200);
+  const person = 'G'.repeat(22);
+  // more pages than the table of tokens holds, as by a loop of a guest or a long session
+  for (let i = 0; i < 1030; i += 10) {
+    await Promise.all(
+      Array.from({ length: 10 }, async () => {
+        const page = (await post(edit.port, api('hello'), { name: 'Gus', person })).json();
+        await post(edit.port, api('bye'), { token: page.token });
+      }),
+    );
+  }
+  const op = (await post(edit.port, api('op'), { token: host.token, seq: 1, base: host.v, patches: [{ start: 0, end: 0, text: '<!-- a -->' }] })).json();
+  assert.equal(op.ok, true, `the operation of the host was answered ${JSON.stringify(op)}`);
+  assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=`)).status, 200, 'the events of the host');
+});
