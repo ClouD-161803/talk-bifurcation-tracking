@@ -18,8 +18,9 @@ export const REVEAL_CLASSES = [
 const STEP_CLASSES = ['play'];
 
 // the data attributes of AGENTS.md and REFERENCE.md, those of reveal.js that the theme gives a
-// meaning, and data-group and data-locked, which are new and named among the open decisions, and
-// the attachment of model/attach.ts, which only the editor reads
+// meaning, and data-group and data-locked, which are new and named among the open decisions, the
+// attachment of model/attach.ts, which only the editor reads, and the kind and the name of a
+// theorem and the key of a citation
 export const DATA_ATTRS = [
   'data-at', 'data-auto', 'data-auto-animate', 'data-autoplay', 'data-azimuth', 'data-cx', 'data-cy', 'data-duration',
   'data-dx', 'data-dy', 'data-elevation', 'data-final', 'data-fragment-index', 'data-function', 'data-half',
@@ -29,8 +30,8 @@ export const DATA_ATTRS = [
   'data-stagger', 'data-trajectories', 'data-trajectories-color', 'data-trajectories-colormap', 'data-trajectories-ramp',
   'data-trajectories-select', 'data-trajectories-shade', 'data-surface-accent', 'data-surface-points', 'data-surface-state',
   'data-surface-violet', 'data-tone', 'data-turn', 'data-unhighlight', 'data-zoom', 'data-zscale',
-  'data-visibility', 'data-timing', 'data-transition', 'data-group', 'data-locked', 'data-autoslide',
-  'data-guides', 'data-anchor', 'data-from', 'data-to',
+  'data-visibility', 'data-timing', 'data-figure', 'data-part', 'data-transition', 'data-group', 'data-locked', 'data-autoslide',
+  'data-guides', 'data-anchor', 'data-from', 'data-to', 'data-kind', 'data-name', 'data-key',
 ];
 
 // the standard attributes that the editor writes
@@ -90,6 +91,8 @@ export function declarationProblem(tag: string, classes: string[], name: string,
   if (name === 'width' && (tag === 'td' || tag === 'th')) return /^\d+px$/.test(value.trim()) ? null : `width ${value} on a ${tag}`;
   // a shape is placed and sized in its style, as a box of Keynote and PowerPoint
   if ((name === 'width' || name === 'height') && tag === 'div' && classes.includes('shape')) return PX.test(value.trim()) ? null : `${name} ${value} on a shape`;
+  // the box of a TikZ figure, in which its output is centered and never enlarged
+  if ((name === 'width' || name === 'height') && tag === 'div' && classes.includes('tikz')) return PX.test(value.trim()) ? null : `${name} ${value} on a TikZ figure`;
   if (name === 'width' && (SIZED_TAGS.has(tag) || classes.includes('qr'))) return null;
   // the box of a backdrop resized by its grips
   if ((name === 'width' || name === 'height') && tag === 'div' && classes.includes('backdrop')) return PX.test(value.trim()) ? null : `${name} ${value} on a backdrop`;

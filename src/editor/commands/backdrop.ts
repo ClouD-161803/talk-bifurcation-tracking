@@ -42,8 +42,8 @@ const BROUCKE_FILE = 'demo/broucke-sample.js';
 const MOTION = ['data-duration', 'data-stagger'];
 // the labels of a built-in backdrop, with the text and the offsets of the demo deck
 export const LABELS = [
-  { at: 'L1', name: 'L1', text: '\\(\\LL{1}\\)', dy: '-34' },
-  { at: 'L2', name: 'L2', text: '\\(\\LL{2}\\)', dy: '-34' },
+  { at: 'L1', name: 'L1', text: '\\(\\mathcal{L}_{1}\\)', dy: '-34' },
+  { at: 'L2', name: 'L2', text: '\\(\\mathcal{L}_{2}\\)', dy: '-34' },
   { at: 'moon', name: 'Moon', text: 'Moon', dy: '36' },
   { at: 'earth', name: 'Earth', text: 'Earth', dy: '36' },
 ];

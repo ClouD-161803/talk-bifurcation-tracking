@@ -10,10 +10,10 @@ import { gripOf, parseStroke, pointsOf, reach, type Point } from './stroke.ts';
 import { stored } from '../ui/dom.ts';
 
 // the outermost of these elements under the pointer is moved, outside the notes and the backdrop
-export const MOVABLE = 'h1, h2, h3, p, ul, ol, dl, table, pre, blockquote, div.math, .caption, .foot, img, video, figure, .figure-box, .plate, .qr, tycho-viewer, .shape';
+export const MOVABLE = 'h1, h2, h3, p, ul, ol, dl, table, pre, blockquote, div.math, .caption, .foot, img, video, figure, .figure-box, .plate, .qr, .tikz, tycho-viewer, .shape';
 // an element without text to edit, dragged by itself. a tycho-viewer is turned by a drag, hence it
 // is moved by its handle or its border only
-export const BY_ITSELF = 'img, video, figure, .figure-box, .plate, .qr, .shape';
+export const BY_ITSELF = 'img, video, figure, .figure-box, .plate, .qr, .tikz, .shape';
 export const OUTSIDE = 'aside.notes, .backdrop';
 // the elements whose width the editor writes, by the scope rule of the plan
 export const RESIZABLE = 'img, video, .qr, tycho-viewer, .shape';
@@ -404,10 +404,25 @@ export function segmentTouches(a: { x: number; y: number }, b: { x: number; y: n
   return true;
 }
 
-// the image or video of a figure under target, which a click into a selected figure selects
+// whether the figure el holds several objects, e.g. a plate of the class row with two videos, or a
+// plate of two figures, rather than one picture with its caption: its shown children are then
+// selected by a second click and moved and resized by themselves, as the members of a group
+export function holdsSeveral(el: Element): boolean {
+  if (!el.matches(CONTAINER) || sizedOf(el).length) return false;
+  const children = [...el.querySelectorAll(MOVABLE)].filter((m) => m.parentElement?.closest(MOVABLE) === el && m.getBoundingClientRect().width > 0);
+  return children.length > 1;
+}
+
+// what a click into a selected figure selects under target: the image or video of the figure, or in
+// a figure that holds several objects, the child under target, one level inside it, e.g. one of the
+// two videos of a plate of the class row
 export function mediaIn(figure: Element, target: Element | null): Element | null {
   const media = target?.closest('img, video') ?? null;
-  return media && media !== figure && figure.contains(media) && media.parentElement?.closest(MOVABLE) === figure ? media : null;
+  if (media && media !== figure && figure.contains(media) && media.parentElement?.closest(MOVABLE) === figure) return media;
+  if (!target || !figure.contains(target) || !holdsSeveral(figure)) return null;
+  let el = target.closest(MOVABLE);
+  while (el && el !== figure && el.parentElement?.closest(MOVABLE) !== figure) el = el.parentElement?.closest(MOVABLE) ?? null;
+  return el && el !== figure ? el : null;
 }
 
 // the figure around an image or video that was selected inside it, or null
@@ -419,10 +434,18 @@ export function containerOf(app: App, el: Element): Element | null {
 // the element that a move, a resize, the order, a group, a lock, and the clipboard act on for a
 // selected el: the figure of a picture selected inside it, since a picture with its caption is one
 // object, as in Keynote, where a drag of the picture moves the caption with it. a member of a group
-// is moved by itself in PowerPoint, and Keynote is followed here
+// is moved by itself in PowerPoint, and Keynote is followed here. a picture of a figure that holds
+// several, e.g. a video of a plate of the class row, is an object by itself
 export function objectOf(app: App, el: Element): Element {
   const up = el.matches(RESIZABLE) ? containerOf(app, el) : null;
-  return up && app.pairing?.elements.get(up)?.open ? up : el;
+  return up && sizedOf(up).includes(el) && app.pairing?.elements.get(up)?.open ? up : el;
+}
+
+// the figure that holds several objects around el, selected inside it by a second click, which Esc
+// selects again, or null
+export function severalOf(app: App, el: Element): Element | null {
+  const up = containerOf(app, el);
+  return up && holdsSeveral(up) ? up : null;
 }
 
 export const objectsOf = (app: App, els: readonly Element[]): Element[] => [...new Set(els.map((el) => objectOf(app, el)))];
@@ -451,6 +474,19 @@ export function bandAt(app: App, x: number, y: number): Element | null {
     if (!best || d < best.d) best = { el, d };
   }
   return best?.el ?? null;
+}
+
+// the selected element inside a figure that holds several, e.g. a scene of a plate of the class row,
+// whose band holds the point x, y in screen pixels: a drag inside a scene turns it, hence such a
+// scene is moved by its band, which comes before the figure around it
+export function innerBandAt(app: App, x: number, y: number): Element | null {
+  for (const el of app.selection.elements()) {
+    if (!severalOf(app, el)) continue;
+    const r = el.getBoundingClientRect();
+    const outside = x < r.left || x > r.right || y < r.top || y > r.bottom;
+    if (outside && x >= r.left - BAND && x <= r.right + BAND && y >= r.top - BAND && y <= r.bottom + BAND) return el;
+  }
+  return null;
 }
 
 // whether el holds a text that is edited in place

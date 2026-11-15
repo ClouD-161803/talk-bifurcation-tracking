@@ -11,7 +11,7 @@ import type { App } from '../app.ts';
 import type { TagEdit, Translate } from '../tags.ts';
 import type { Box, Handle, Targets } from './snap.ts';
 import { LAYOUT_GUIDES, anchored, fitPicture, lockedAxis, resizeBox, snapAngle, snapMove, snapResize } from './snap.ts';
-import { BOXED, BY_ITSELF, CONTAINER, RESIZABLE, STRETCHED, aspectOf, bandAt, captionsOf, constrained, containerOf, cssWidth, figureFrame, frameOf, frameRect, hasText, isTextSized, linePoints, linesOf, lineTouches, mediaIn, movableOf, movablesOf, objectOf, objectsOf, onCanvas, orientedBox, pickOf, pictureOf, pictureReach, sizedOf, snapBoxOf, toSlide, turnable, twinOf, unturnedRect, visualRect } from './hit.ts';
+import { BOXED, BY_ITSELF, CONTAINER, RESIZABLE, STRETCHED, aspectOf, bandAt, captionsOf, constrained, containerOf, cssWidth, figureFrame, frameOf, frameRect, hasText, innerBandAt, isTextSized, linePoints, linesOf, lineTouches, mediaIn, movableOf, movablesOf, objectOf, objectsOf, onCanvas, orientedBox, pickOf, pictureOf, pictureReach, sizedOf, snapBoxOf, toSlide, turnable, twinOf, unturnedRect, visualRect } from './hit.ts';
 import { groupFrame, overlay, turned, view, wh, xy } from './frames.ts';
 import { enterGroup, settleCopies, freshGroup, groupOf } from '../commands/order.ts';
 import { afterMove, relink } from '../model/attach.ts';
@@ -702,6 +702,11 @@ export function install(app: App): void {
     }
     // a press on the chrome, e.g. a button of a bar or a pane, keeps the selection
     if (!onCanvas(target, app, { x: ev.clientX, y: ev.clientY })) return;
+    const inner = innerBandAt(app, ev.clientX, ev.clientY);
+    if (inner) {
+      pressElement(ev, inner, null);
+      return;
+    }
     const el = pickOf(app, target);
     const host = app.hostOf(target);
     if (el && host) {

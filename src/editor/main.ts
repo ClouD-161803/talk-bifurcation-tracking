@@ -53,6 +53,7 @@ import { install as installClipboardCommands } from './commands/clipboard.ts';
 import { install as installInsertCommands } from './commands/insert.ts';
 import { install as installTableCommands } from './commands/table.ts';
 import { install as installMediaCommands } from './commands/media.ts';
+import { install as installTex } from './tex/install.ts';
 import { install as installFindCommands } from './commands/find.ts';
 import { install as installStepsCommands } from './commands/steps.ts';
 import { install as installCodeCommands } from './commands/code.ts';
@@ -138,6 +139,8 @@ installFollow(app);
 installOverflow(app);
 installTyping(app);
 installMathPop(app);
+// before installKeys, since the keys of the list of the citations are taken before those of the editor
+installTex(app);
 installSelection(app);
 installFileCommands(app);
 installEditCommands(app);

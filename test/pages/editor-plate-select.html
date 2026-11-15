@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <title>The figures of a plate, selected by themselves</title>
+  <link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+  <link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+  <link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+  <link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+  <!-- a plate of the class row with two videos side by side, a plate of two figures, each with its
+       caption, and a figure box of one picture with its caption, which is moved as one object -->
+  <div class="reveal"><div class="slides">
+    <section class="figure">
+      <h2>Two clips side by side</h2>
+      <div class="plate row">
+        <video id="left" src="clip-a.mp4" poster="clip-a.png" muted></video>
+        <video id="right" src="clip-b.mp4" poster="clip-b.png" muted></video>
+      </div>
+    </section>
+    <section class="figure">
+      <h2>Two figures side by side</h2>
+      <div class="plate row">
+        <figure id="first">
+          <img src="../../demo/figure-light.png" alt="The first figure">
+          <figcaption class="caption">The first figure.</figcaption>
+        </figure>
+        <figure id="second">
+          <img src="../../demo/figure-light.png" alt="The second figure">
+          <figcaption class="caption">The second figure.</figcaption>
+        </figure>
+      </div>
+    </section>
+    <section>
+      <h2>A figure of one picture</h2>
+      <figure class="figure-box" id="one">
+        <img src="../../demo/figure-light.png" alt="The one figure">
+        <figcaption class="caption">The caption of the one figure.</figcaption>
+      </figure>
+    </section>
+  </div></div>
+  <script src="../../theme/vendor/reveal/reveal.js"></script>
+  <script src="../../theme/vendor/reveal/notes.js"></script>
+  <script src="../../theme/beeson.js"></script>
+  <script>Beeson.start({});</script>
+</body>
+</html>

@@ -1239,7 +1239,7 @@ test('a step is inserted before the others as one entry of the history, and a fo
   assert.ok(formulas[0].startsWith('U_g = -(1-\\mu)/\\rho_1'), formulas[0]);
   assert.ok(formulas[2].startsWith('\\tilde U = U_g + U_c'), formulas[2]);
   const item = texts.find(([kind, text]) => kind === 'Paragraph' && text.startsWith('Libration points'));
-  assert.ok(item && item[1].startsWith('Libration points \\{\\LL{i}\\}_{i=1}^5 satisfy \\nabla'), JSON.stringify(texts));
+  assert.ok(item && item[1].startsWith('Libration points \\{\\mathcal{L}_{i}\\}_{i=1}^5 satisfy \\nabla'), JSON.stringify(texts));
   assert.deepEqual(page.errors, []);
 });
 

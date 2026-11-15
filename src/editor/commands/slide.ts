@@ -15,7 +15,9 @@ import { setOwnTex } from '../text/elements.ts';
 import { tokenize } from '../tokens.ts';
 import { nextShown, setTransition, transitionOf } from '../review/transitions.ts';
 import { sample } from './layout.ts';
-import { injectStyle } from '../ui/dom.ts';
+import { injectStyle, touchOnly } from '../ui/dom.ts';
+import { arrive, originComment } from './origin.ts';
+import { display } from '../keymap.ts';
 
 // the mark that opens the text of slides on the clipboard, so that a paste in the navigator tells
 // slides apart from other text
@@ -143,11 +145,13 @@ const canShift = (app: App, up: boolean): boolean => {
   return t.length > 0 && shifted(list, new Set(t), up).some((s, i) => s !== list[i]);
 };
 
-// the text of slides on the clipboard: the mark, then each slide as it is written into the file
+// the text of slides on the clipboard: the mark, the origin of commands/origin.ts, then each slide
+// as it is written into the file
 export function clipText(app: App, slides: Element[]): string {
   const doc = docOf(app);
   const eol = app.source?.crlf ? '\r\n' : '\n';
-  return [MARK, ...slides.map((s) => doc.elementText(s))].join(eol);
+  const texts = slides.map((s) => doc.elementText(s));
+  return [MARK, originComment(texts.join(eol)), ...texts].join(eol);
 }
 
 // the sections of a text of the clipboard, each without the white space before it, or null for a
@@ -176,6 +180,24 @@ function freshIds(app: App, text: string): string {
 // the text last copied, for a paste from a menu where the clipboard of the system cannot be read
 let copied = '';
 
+// the text of the clipboard read for a paste from a menu. a page without navigator.clipboard,
+// e.g. over http from another machine, is refused as a read that the browser denies
+export async function readClipboard(): Promise<{ text: string; refused: boolean }> {
+  if (!navigator.clipboard?.readText) return { text: '', refused: true };
+  return navigator.clipboard.readText().then(
+    (text) => ({ text, refused: false }),
+    (e) => ({ text: '', refused: e?.name === 'NotAllowedError' }),
+  );
+}
+
+// the note of a refused read, after which the key pastes from its own event. on a phone, the
+// browser asks for the read again at the next Paste
+export function refusedRead(app: App): void {
+  const how = touchOnly() ? 'Choose Paste again and allow it when the browser asks' : `Press ${display('Mod+V', app.platform)} to paste`;
+  app.note = { text: `The browser did not let the editor read the clipboard. ${how}`, warn: true };
+  app.report();
+}
+
 function copySlides(app: App, data?: DataTransfer | null): string {
   const text = clipText(app, targets(app));
   copied = text;
@@ -199,9 +221,11 @@ async function deleteSlides(app: App, slides: Element[], focusNav: boolean): Pro
 async function pasteSlides(app: App, text: string, focusNav: boolean): Promise<boolean> {
   const texts = slidesIn(text);
   if (!texts?.length) return false;
-  const { root, before } = placeAfter(app);
-  const nodes = await docOf(app).insert(texts.map((t) => freshIds(app, t)), root, before, 'paste slides');
-  land(app, nodes, nodes[0], focusNav);
+  await arrive(app, text, texts, async (from) => {
+    const { root, before } = placeAfter(app);
+    const nodes = await docOf(app).insert(from.map((t) => freshIds(app, t)), root, before, 'paste slides');
+    land(app, nodes, nodes[0], focusNav);
+  });
   return true;
 }
 
@@ -540,7 +564,10 @@ export function install(app: App): void {
       undoable: true,
       run: async (a, arg) => {
         let text = typeof arg === 'string' ? arg : '';
-        if (!text) text = (await navigator.clipboard?.readText().catch(() => '')) || copied;
+        let refused = false;
+        if (!text) ({ text, refused } = await readClipboard());
+        text ||= copied;
+        if (!text && refused) return refusedRead(a);
         await pasteSlides(a, text, inNav());
       },
     },

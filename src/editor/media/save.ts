@@ -5,7 +5,7 @@
 // an autosave or a save right after the save picker, asks for the folder with a dialog first
 
 import type { App } from '../app.ts';
-import { plural, setCompanions } from '../file/files.ts';
+import { addCompanion, plural } from '../file/files.ts';
 import { Dialog, host } from '../ui/dialog.ts';
 import { make } from '../ui/dom.ts';
 import { FOLDER, media, type MediaFile } from './store.ts';
@@ -35,6 +35,10 @@ function downloadBlob(name: string, blob: Blob): void {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+// the folder that holds deck, with leave to write into it, asked for once per page. what names
+// other files than the new media files, e.g. the sources of the preamble, for the dialog
+export let deckFolder: (deck: FileSystemFileHandle, what?: string) => Promise<FileSystemDirectoryHandle> = () => Promise.reject(new Error('the media files are not installed'));
+
 export function install(app: App): void {
   // the folder of the deck, kept for the next saves of this page
   let folder: Folder | null = null;
@@ -49,43 +53,44 @@ export function install(app: App): void {
     className: 'media-folder',
   });
 
-  const stopped = () => new Error(`the new media files were not saved, hence ${app.handle?.name ?? 'the deck'} was not saved either`);
+  const stopped = (what = '') => new Error(`${what || 'the new media files'} ${/ and /.test(what) || !what ? 'were' : 'was'} not saved, hence ${app.handle?.name ?? 'the deck'} was not saved either`);
 
-  async function pick(deck: FileSystemFileHandle): Promise<Folder> {
+  async function pick(deck: FileSystemFileHandle, what: string): Promise<Folder> {
     const show = picker();
     if (!show) throw new Error('this browser cannot write into a folder');
     try {
       return await show({ id: 'beeson-deck', mode: 'readwrite', startIn: deck });
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw stopped();
+      if (error instanceof DOMException && error.name === 'AbortError') throw stopped(what);
       // without a press of a key or a button, the picker is opened from the dialog
       if (!(error instanceof DOMException) || (error.name !== 'SecurityError' && error.name !== 'NotAllowedError')) throw error;
     }
-    ask.text.textContent = `The new images and videos are written into the folder ${FOLDER} next to ${deck.name}. A browser writes into a folder only after you choose it, hence choose the folder that holds ${deck.name}.`;
-    if ((await ask.open('choose')) !== 'choose') throw stopped();
+    ask.text.textContent = `${what ? `The files ${what} are read and written` : `The new images and videos are written into the folder ${FOLDER}`} next to ${deck.name}. A browser writes into a folder only after you choose it, hence choose the folder that holds ${deck.name}.`;
+    if ((await ask.open('choose')) !== 'choose') throw stopped(what);
     try {
       return await show({ id: 'beeson-deck', mode: 'readwrite', startIn: deck });
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw stopped();
+      if (error instanceof DOMException && error.name === 'AbortError') throw stopped(what);
       throw error;
     }
   }
 
   // the folder that holds deck, with leave to write into it
-  async function folderOf(deck: FileSystemFileHandle): Promise<Folder> {
+  async function folderOf(deck: FileSystemFileHandle, what = ''): Promise<Folder> {
     const holds = async (f: Folder) => (await f.resolve(deck))?.length === 1;
     if (!folder || !(await holds(folder))) {
-      const chosen = await pick(deck);
+      const chosen = await pick(deck, what);
       if (!(await holds(chosen))) throw new Error(`the folder ${chosen.name} does not hold ${deck.name}. Save again and choose the folder of the deck`);
       folder = chosen;
     }
     if (folder.queryPermission && (await folder.queryPermission({ mode: 'readwrite' })) !== 'granted') {
-      if ((await folder.requestPermission?.({ mode: 'readwrite' })) !== 'granted') throw stopped();
+      if ((await folder.requestPermission?.({ mode: 'readwrite' })) !== 'granted') throw stopped(what);
     }
     return folder;
   }
+  deckFolder = folderOf;
 
-  setCompanions({
+  addCompanion({
     async write(text, deck) {
       const files = media.unsaved(text);
       if (!files.length) return '';

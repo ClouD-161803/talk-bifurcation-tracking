@@ -36,7 +36,7 @@ We also have a few useful skills (found at [/.agents/skills/](/.agents/skills/))
 
 If you don't have access to a coding agent, however, do not worry: you will be able to do everything you know how to do in PowerPoint/Keynote from our editor mode, including creating new slides, modifying, moving, and resizing text boxes or titles, setting up steps to determine the order of appearance of your slide elements in the presentation, and a lot more.
 
-You will also be able to accomplish what other slide editor apps do NOT enable you to do: edit LaTeX boxes directly from the slide they appear on (which compile with one click), edit and animate code in code boxes the same way, set up custom QR codes with ease, and, again, a lot more.
+You will also be able to accomplish what other slide editor apps do NOT enable you to do: edit LaTeX boxes directly from the slide they appear on (which compile with one click), edit and animate code in code boxes the same way, set up custom QR codes with ease, show TikZ and pgfplots figures compiled by your own TeX installation in both themes and reveal them one part at a time, and, again, a lot more.
 
 ## Presenting
 

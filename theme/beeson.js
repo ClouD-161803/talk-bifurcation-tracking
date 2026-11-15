@@ -1504,12 +1504,12 @@
     if (nodes.length) window.MathJax?.typesetClear?.(nodes);
   }
   function fill() {
-    const slides = [...document.querySelectorAll(".reveal .slides section:not(:has(> section))")];
-    const sections = slides.filter((s) => s.classList.contains("section"));
+    const slides2 = [...document.querySelectorAll(".reveal .slides section:not(:has(> section))")];
+    const sections = slides2.filter((s) => s.classList.contains("section"));
     const fresh = [];
     const gone = [];
     let text = "";
-    for (const slide of slides) {
+    for (const slide of slides2) {
       if (slide.classList.contains("section")) text = heading(slide);
       if (slide.classList.contains("closing")) text = APPENDIX;
       const old = slide.querySelector(":scope > div.run[data-generated]");
@@ -1559,6 +1559,119 @@
   }
   function refreshChrome() {
     fill();
+  }
+
+  // src/accents.ts
+  var BASE = String.raw`(?:\{\s*(\\[ij]|[A-Za-z])\s*\}|(\\[ij](?![A-Za-z])|[A-Za-z]))`;
+  var SYMBOL_ACCENT = new RegExp(String.raw`\\([\`'^~"=.])\s*${BASE}`, "g");
+  var LETTER_ACCENT = new RegExp(String.raw`\\([uvHckrdb])(?:\s*\{\s*(\\[ij]|[A-Za-z])\s*\}|\s+(\\[ij](?![A-Za-z])|[A-Za-z]))`, "g");
+
+  // src/reference.ts
+  function referenceParts(reference) {
+    const italic = reference.venue ?? (reference.authors ? "" : reference.title ?? "");
+    const before = reference.authors ? italic ? `${reference.authors}, ` : reference.authors : "";
+    const after = (reference.venue && reference.volume ? ` ${reference.volume}` : "") + (reference.year ? ` (${reference.year})` : "");
+    return [before, italic, after];
+  }
+  var referenceLink = (reference) => reference.doi ? `https://doi.org/${reference.doi}` : reference.url ?? "";
+
+  // src/citations.ts
+  function citedOf(citations, known) {
+    const keys = [];
+    const labels2 = [];
+    const missing = [];
+    for (const cited2 of citations) {
+      const numbers = /* @__PURE__ */ new Set();
+      const lost = /* @__PURE__ */ new Set();
+      for (const key of cited2) {
+        if (!known(key)) {
+          lost.add(key);
+          continue;
+        }
+        if (!keys.includes(key)) keys.push(key);
+        numbers.add(keys.indexOf(key) + 1);
+      }
+      labels2.push([...[...numbers].sort((a, b) => a - b), ...lost].join(","));
+      missing.push(lost.size > 0);
+    }
+    return { labels: labels2, missing, keys };
+  }
+  var keysOf = (cite) => (cite.dataset.key ?? "").split(",").map((key) => key.trim()).filter(Boolean);
+  var citesOf = (slide) => [...slide.querySelectorAll("cite[data-key]")].filter((cite) => !cite.closest("aside.notes"));
+  var refsOf = (slide) => slide.querySelector(":scope > div.refs[data-generated]");
+  var slides = () => [...document.querySelectorAll(".reveal .slides section:not(:has(> section))")];
+  var cited = () => [...document.querySelectorAll(".reveal .slides section > div.refs[data-generated]")].map((refs) => refs.parentElement);
+  var made2 = /* @__PURE__ */ new WeakMap();
+  function referenceEl(number, key, reference) {
+    const ref = document.createElement("span");
+    ref.className = "ref";
+    ref.dataset.key = key;
+    const sup = document.createElement("sup");
+    sup.textContent = String(number);
+    ref.append(sup);
+    const [before, italic, after] = referenceParts(reference);
+    const venue = document.createElement("em");
+    venue.textContent = italic;
+    const link = referenceLink(reference);
+    let words3 = ref;
+    if (link) {
+      const a = document.createElement("a");
+      a.href = link;
+      a.target = "_blank";
+      a.rel = "noopener";
+      ref.append(a);
+      words3 = a;
+    }
+    words3.append(before, ...italic ? [venue] : [], after);
+    return ref;
+  }
+  function mount2(slide, references) {
+    const cites = citesOf(slide);
+    const { labels: labels2, missing, keys } = citedOf(cites.map(keysOf), (key) => Object.hasOwn(references, key));
+    cites.forEach((cite, k) => {
+      if (cite.dataset.n !== labels2[k]) cite.dataset.n = labels2[k];
+      cite.toggleAttribute("data-missing", missing[k]);
+    });
+    let refs = refsOf(slide);
+    if (!keys.length) {
+      refs?.remove();
+      slide.style.removeProperty("--refs");
+      return;
+    }
+    const text = JSON.stringify(keys.map((key) => [key, references[key]]));
+    if (!refs) {
+      refs = document.createElement("div");
+      refs.className = "refs";
+      refs.dataset.generated = "";
+      slide.append(refs);
+    }
+    if (made2.get(refs) !== text) {
+      refs.replaceChildren(...keys.map((key, k) => referenceEl(k + 1, key, references[key])));
+      made2.set(refs, text);
+    }
+  }
+  function sync(slides2) {
+    const listed = slides2.flatMap((slide) => {
+      const refs = refsOf(slide);
+      return refs ? [{ slide, refs }] : [];
+    });
+    const shown = listed.map(({ slide }) => new Set(citesOf(slide).filter((cite) => getComputedStyle(cite).visibility !== "hidden").flatMap(keysOf)));
+    listed.forEach(({ refs }, i) => {
+      for (const ref of refs.children) ref.classList.toggle("off", !shown[i].has(ref.dataset.key ?? ""));
+    });
+    const heights = listed.map(({ refs }) => refs.offsetHeight);
+    listed.forEach(({ slide }, i) => {
+      const height = `${heights[i]}px`;
+      if (heights[i] && slide.style.getPropertyValue("--refs") !== height) slide.style.setProperty("--refs", height);
+    });
+  }
+  function mountCitations() {
+    const references = window.beesonTex?.references ?? {};
+    for (const slide of slides()) mount2(slide, references);
+    sync(slides());
+  }
+  function syncCitations(slide) {
+    sync(slide ? [slide] : cited());
   }
 
   // src/click.ts
@@ -1723,6 +1836,91 @@
     document.addEventListener("keydown", take, true);
     document.addEventListener("pointerdown", take, true);
     check();
+  }
+
+  // src/expand.ts
+  var THEME_MACROS = { ensuremath: ["#1", 1], xspace: "", bm: ["\\boldsymbol{#1}", 1] };
+  var DEPTH = 10;
+  function deckMacros() {
+    const tex = globalThis.window?.beesonTex;
+    return tex ? { ...THEME_MACROS, ...tex.macros } : null;
+  }
+  function argument(s, i) {
+    if (s[i] === "{") {
+      let depth = 0, j = i;
+      for (; j < s.length; j++) {
+        if (s[j] === "{") depth++;
+        else if (s[j] === "}" && --depth === 0) break;
+      }
+      return [s.slice(i + 1, j), j + 1];
+    }
+    const command = /^\\(?:[A-Za-z]+|.)/.exec(s.slice(i));
+    if (command) return [command[0], i + command[0].length];
+    return [s[i] ?? "", i + 1];
+  }
+  function optional(s, i) {
+    if (s[i] !== "[") return null;
+    let depth = 0;
+    for (let j = i + 1; j < s.length; j++) {
+      if (s[j] === "{") depth++;
+      else if (s[j] === "}") depth--;
+      else if (s[j] === "]" && depth === 0) return [s.slice(i + 1, j), j + 1];
+    }
+    return null;
+  }
+  var skipSpaces = (s, i) => {
+    while (s[i] === " " || s[i] === "	" || s[i] === "\n") i++;
+    return i;
+  };
+  function expand(s, macros, depth, math) {
+    if (depth > DEPTH) return s;
+    let out = "";
+    let i = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === "$") {
+        math = !math;
+        out += c;
+        i++;
+        continue;
+      }
+      if (c !== "\\") {
+        out += c;
+        i++;
+        continue;
+      }
+      const name = /^\\([A-Za-z]+)/.exec(s.slice(i))?.[1];
+      const def = name !== void 0 && Object.hasOwn(macros, name) ? macros[name] : void 0;
+      if (name === void 0 || def === void 0) {
+        const keep = name !== void 0 ? name.length + 1 : 2;
+        out += s.slice(i, i + keep);
+        i += keep;
+        continue;
+      }
+      const [body, count = 0, preset] = typeof def === "string" ? [def] : def;
+      let j = i + 1 + name.length;
+      if (math || count) j = skipSpaces(s, j);
+      const args = [];
+      if (preset !== void 0 && count > 0) {
+        const given2 = optional(s, j);
+        args.push(given2 ? given2[0] : preset);
+        if (given2) j = given2[1];
+      }
+      while (args.length < count) {
+        j = skipSpaces(s, j);
+        const [arg, next] = argument(s, j);
+        args.push(arg);
+        j = next;
+      }
+      const filled = body.replace(/#([1-9])/g, (m, k) => args[Number(k) - 1] ?? m);
+      out += name === "ensuremath" && !math ? `$${expand(filled, macros, depth + 1, true)}$` : expand(filled, macros, depth + 1, math);
+      i = j;
+    }
+    return out;
+  }
+  function expandMacros(src, macros) {
+    const all = macros ? { ...THEME_MACROS, ...macros } : deckMacros();
+    return all && src.includes("\\") ? expand(src, all, 0, false) : src;
   }
 
   // src/plot.ts
@@ -2073,14 +2271,19 @@
   };
   var SCRIPT_GAPS = { B: "\u212C", E: "\u2130", F: "\u2131", H: "\u210B", I: "\u2110", L: "\u2112", M: "\u2133", R: "\u211B" };
   var script = (c) => SCRIPT_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(119964 + c.charCodeAt(0) - 65) : c);
-  function parseMarkup(src) {
+  var STRUCK_GAPS = { C: "\u2102", H: "\u210D", N: "\u2115", P: "\u2119", Q: "\u211A", R: "\u211D", Z: "\u2124" };
+  var struck = (c) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(120120 + c.charCodeAt(0) - 65) : c);
+  var AS_IS = /* @__PURE__ */ new Set(["boldsymbol", "bm", "mathit", "mathop", "mathfrak", "ensuremath"]);
+  var UPRIGHT = /* @__PURE__ */ new Set(["mathrm", "text", "mathbf", "mathsf", "mathtt", "operatorname", "textrm", "textbf", "textit", "mathnormal"]);
+  var SPACES = { ",": " ", ":": " ", ";": " ", " ": " ", "!": "", "\\": " " };
+  function parseMarkup(src, macros) {
     const runs = [];
     const push = (text, italic, shift) => {
       const last = runs.at(-1);
       if (last && last.italic === italic && last.shift === shift) last.text += text;
       else runs.push({ text, italic, shift });
     };
-    const parts = src.split("$");
+    const parts = expandMacros(src, macros).split("$");
     parts.forEach((part, k) => {
       if (k % 2 === 0) {
         if (part) push(part, false, null);
@@ -2110,19 +2313,19 @@
         if (c === "\\") {
           const m = /^\\([A-Za-z]+)/.exec(s.slice(i));
           if (!m) {
-            push(s[i + 1] ?? "", false, shift);
+            push(SPACES[s[i + 1]] ?? s[i + 1] ?? "", false, shift);
             i += 2;
             continue;
           }
           i += m[0].length;
-          if (m[1] === "mathrm" || m[1] === "text") {
+          if (UPRIGHT.has(m[1]) || AS_IS.has(m[1])) {
             const [g, j] = group2(s, i);
             i = j;
-            math(g, true, shift);
-          } else if (m[1] === "mathcal") {
+            math(g, upright || UPRIGHT.has(m[1]), shift);
+          } else if (m[1] === "mathcal" || m[1] === "mathbb") {
             const [g, j] = group2(s, i);
             i = j;
-            push([...g].map(script).join(""), false, shift);
+            push([...g].map(m[1] === "mathcal" ? script : struck).join(""), false, shift);
           } else {
             const sym = SYMBOLS[m[1]] ?? m[0];
             push(sym, !upright && /^[a-z]+$/.test(m[1]) && /[α-ω]/.test(sym), shift);
@@ -3333,6 +3536,87 @@
     }
   }
 
+  // src/tikz.ts
+  var loads = /* @__PURE__ */ new Map();
+  function load2(name) {
+    if (window.beesonFigures?.[name] || !/^[\w-]+$/.test(name)) return Promise.resolve();
+    let loading = loads.get(name);
+    if (!loading) {
+      loading = new Promise((done) => {
+        const script2 = document.createElement("script");
+        script2.src = `figures/${name}.js`;
+        script2.onload = script2.onerror = () => done();
+        document.head.append(script2);
+      });
+      loads.set(name, loading);
+    }
+    return loading;
+  }
+  var drawn = /* @__PURE__ */ new WeakMap();
+  var instances = 0;
+  var figuresUnder = (root2) => [
+    ...root2 instanceof HTMLElement && root2.matches(".tikz") ? [root2] : [],
+    ...root2.querySelectorAll(".tikz")
+  ];
+  function syncParts(el) {
+    const shown = /* @__PURE__ */ new Map();
+    for (const span of el.querySelectorAll(":scope > [data-part]")) {
+      const name = span.dataset.part ?? "";
+      shown.set(name, !!shown.get(name) || !span.classList.contains("fragment") || span.classList.contains("visible"));
+    }
+    for (const g of el.querySelectorAll(":scope > svg g[data-part]")) g.classList.toggle("tikz-later", shown.get(g.dataset.part ?? "") === false);
+  }
+  var watcher = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+    const figures = /* @__PURE__ */ new Set();
+    for (const r of records) {
+      const target = r.target;
+      if (r.type === "childList" && target.matches(".tikz")) figures.add(target);
+      else if (target.parentElement?.matches(".tikz") && target.matches("[data-part]")) figures.add(target.parentElement);
+    }
+    for (const el of figures) syncParts(el);
+  });
+  function draw2(el, mode2) {
+    const name = el.dataset.figure ?? "";
+    const key = `${name} ${mode2}`;
+    const state = drawn.get(el);
+    if (state?.key === key && el.querySelector(":scope > svg, :scope > .tikz-error")) return;
+    const n = state?.n ?? ++instances;
+    if (!state) watcher?.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "data-part"] });
+    drawn.set(el, { n, key });
+    for (const old of el.querySelectorAll(":scope > svg, :scope > .tikz-error")) old.remove();
+    const output = window.beesonFigures?.[name];
+    if (!output) {
+      const box2 = document.createElement("div");
+      box2.className = "tikz-error";
+      box2.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
+      el.prepend(box2);
+      return;
+    }
+    const prefix = `tikz-${name}-${mode2}-`;
+    el.insertAdjacentHTML("afterbegin", output[mode2].split(prefix).join(`${prefix}${n}-`));
+    const svg2 = el.firstElementChild;
+    svg2.style.width = `${output.width}px`;
+    svg2.style.height = `${output.height}px`;
+    svg2.setAttribute("aria-hidden", "true");
+    syncParts(el);
+  }
+  var pending = Promise.resolve();
+  var latest = "dark";
+  function mountFigures(root2, mode2) {
+    latest = mode2;
+    const done = Promise.all(figuresUnder(root2).map(async (el) => {
+      await load2(el.dataset.figure ?? "");
+      draw2(el, latest);
+    })).then(() => void 0);
+    pending = Promise.all([pending, done]).then(() => void 0);
+    return done;
+  }
+  var figuresReady = () => pending;
+  function redrawFigures(mode2) {
+    latest = mode2;
+    for (const el of figuresUnder(document)) if (drawn.has(el)) draw2(el, mode2);
+  }
+
   // src/scrub.ts
   function minutes(seconds) {
     const s = Math.max(0, Math.round(seconds));
@@ -3379,16 +3663,16 @@
     let zone = band.getBoundingClientRect();
     const build = () => {
       for (const t of ticks) t.el.remove();
-      const slides = deck.getSlides();
+      const slides2 = deck.getSlides();
       const last = Math.max(1, deck.getTotalSlides() - 1);
-      const times = starts(slides.map((s) => s.dataset.timing), deck.getConfig());
-      ticks = slides.map((slide, i) => {
+      const times = starts(slides2.map((s) => s.dataset.timing), deck.getConfig());
+      ticks = slides2.map((slide, i) => {
         const at = Math.min(deck.getSlidePastCount(slide) / last, 1);
         const el = document.createElement("div");
         el.className = "scrub-tick";
         el.style.left = `${at * 100}%`;
         if (i === 0) el.classList.add("first");
-        if (i === slides.length - 1 && slides.length > 1) el.classList.add("last");
+        if (i === slides2.length - 1 && slides2.length > 1) el.classList.add("last");
         const number = document.createElement("span");
         number.textContent = String(deck.getSlidePastCount(slide) + 1);
         el.append(number);
@@ -4062,10 +4346,10 @@ void main() {
           uSize: { value: POINT_SIZE }
         }
       });
-      const drawn = new THREE.Points(geometry, material);
-      drawn.frustumCulled = false;
-      drawn.renderOrder = 3;
-      return drawn;
+      const drawn2 = new THREE.Points(geometry, material);
+      drawn2.frustumCulled = false;
+      drawn2.renderOrder = 3;
+      return drawn2;
     }
     /** Reads the colors of the theme from the custom properties of the element, e.g. after a flip of the mode. */
     recolor() {
@@ -4571,7 +4855,7 @@ void main() {
       this.settle();
     }
   };
-  function mount2(root2) {
+  function mount3(root2) {
     const out = [];
     for (const el of root2.querySelectorAll(".surface")) {
       const known = CACHE3.get(el);
@@ -4719,20 +5003,20 @@ void main() {
       setTimeout(() => keyFrom = null, 0);
     }, true);
     window.addEventListener("keydown", () => keyFrom = null);
-    const slides = () => deck.getSlides();
+    const slides2 = () => deck.getSlides();
     const here = () => {
       const slide = deck.getCurrentSlide();
       const shown = [...slide.querySelectorAll(".fragment.visible")].map((f) => Number(f.dataset.fragmentIndex)).filter(Number.isFinite);
-      return { slide: slides().indexOf(slide), f: Math.max(-1, ...shown) };
+      return { slide: slides2().indexOf(slide), f: Math.max(-1, ...shown) };
     };
     const before = (at) => {
-      const steps = stepsOf(slides()[at.slide]);
+      const steps = stepsOf(slides2()[at.slide]);
       const k = steps.indexOf(at.f);
       if (k > 0) return { slide: at.slide, f: steps[k - 1] };
-      const prev = slides()[at.slide - 1];
+      const prev = slides2()[at.slide - 1];
       return prev ? { slide: at.slide - 1, f: stepsOf(prev).at(-1) } : null;
     };
-    const delayedAt = (at) => !!at && at.f >= 0 && fragmentsAt(slides()[at.slide], at.f).some(delayed);
+    const delayedAt = (at) => !!at && at.f >= 0 && fragmentsAt(slides2()[at.slide], at.f).some(delayed);
     const same = (a, b) => !!a && !!b && a.slide === b.slide && a.f === b.f;
     const reached2 = /* @__PURE__ */ new Map();
     const byDelay = (at) => reached2.get(`${at.slide}:${at.f}`) ?? delayedAt(before(at));
@@ -4752,7 +5036,7 @@ void main() {
       if (!back) reached2.set(`${now.slide}:${now.f}`, timer);
       if (!back || deck.isOverview()) return;
       if (delayedAt(now)) {
-        held = fragmentsAt(slides()[now.slide], now.f).filter((el) => el.hasAttribute(AUTOSLIDE));
+        held = fragmentsAt(slides2()[now.slide], now.f).filter((el) => el.hasAttribute(AUTOSLIDE));
         for (const el of held) {
           el.setAttribute(HELD, el.getAttribute(AUTOSLIDE));
           el.removeAttribute(AUTOSLIDE);
@@ -4763,6 +5047,50 @@ void main() {
       if (same(before(from), now) && byDelay(now)) setTimeout(() => deck.prev(), 0);
     };
     for (const type of ["fragmentshown", "fragmenthidden", "slidechanged"]) deck.on(type, change);
+  }
+
+  // src/kinds.ts
+  var usual = (title, style) => ({ title, style, counter: null });
+  var USUAL = {
+    theorem: usual("Theorem", "plain"),
+    lemma: usual("Lemma", "plain"),
+    proposition: usual("Proposition", "plain"),
+    corollary: usual("Corollary", "plain"),
+    definition: usual("Definition", "definition"),
+    example: usual("Example", "definition"),
+    remark: usual("Remark", "remark"),
+    proof: usual("Proof", "remark")
+  };
+  var kindsOf = (theorems) => ({ ...USUAL, ...theorems });
+
+  // src/theorems.ts
+  function theoremHeads(theorems, kinds) {
+    const count = /* @__PURE__ */ new Map();
+    return theorems.map(({ kind: name, name: note, counted = true }) => {
+      const kind = Object.hasOwn(kinds, name) ? kinds[name] : null;
+      if (!kind) return { head: `${name}.`, style: "plain", missing: true };
+      if (name === "proof" && note) return { head: `${note}.`, style: kind.style, missing: false };
+      let number = "";
+      if (kind.counter !== null && counted) {
+        count.set(kind.counter, (count.get(kind.counter) ?? 0) + 1);
+        number = ` ${count.get(kind.counter)}`;
+      }
+      return { head: `${kind.title}${number}${note ? ` (${note})` : ""}.`, style: kind.style, missing: false };
+    });
+  }
+  function numberTheorems() {
+    const tex = window.beesonTex;
+    const theorems = [...document.querySelectorAll(".reveal .slides p.theorem")];
+    const heads = theoremHeads(
+      theorems.map((p) => ({ kind: p.dataset.kind || "theorem", name: p.dataset.name, counted: !p.closest('section[data-visibility="hidden"]') })),
+      kindsOf(tex?.theorems ?? {})
+    );
+    theorems.forEach((p, k) => {
+      const { head, style, missing } = heads[k];
+      if (p.dataset.head !== head) p.dataset.head = head;
+      if (p.dataset.style !== style) p.dataset.style = style;
+      p.toggleAttribute("data-missing", missing);
+    });
   }
 
   // src/switcher.ts
@@ -4997,39 +5325,39 @@ void main() {
   }
   function initVideos(deck) {
     const speaker2 = deck.isSpeakerNotes();
-    const sync = () => {
+    const sync2 = () => {
       const slide = deck.getCurrentSlide();
       if (slide) syncVideos(slide, speaker2);
     };
     deck.on("slidechanged", (event) => {
       const previous = event.previousSlide;
       if (previous && previous !== deck.getCurrentSlide()) leave(previous);
-      sync();
+      sync2();
     });
-    deck.on("fragmentshown", sync);
-    deck.on("fragmenthidden", sync);
-    sync();
+    deck.on("fragmentshown", sync2);
+    deck.on("fragmenthidden", sync2);
+    sync2();
   }
 
   // src/viewers.ts
   var running2 = /* @__PURE__ */ new WeakSet();
   var turns2 = /* @__PURE__ */ new WeakMap();
   var turn2 = 0;
-  var loads = /* @__PURE__ */ new WeakMap();
+  var loads2 = /* @__PURE__ */ new WeakMap();
   var sleep3 = (ms) => new Promise((done) => setTimeout(done, ms));
   var loaded = (v) => (v.state ?? null) !== null;
   var failed = (v) => !!v.shadowRoot?.querySelector(".status.error");
   function whenLoaded(v) {
-    let load2 = loads.get(v);
-    if (!load2) {
+    let load3 = loads2.get(v);
+    if (!load3) {
       const until = performance.now() + 6e4;
-      load2 = new Promise((done) => {
+      load3 = new Promise((done) => {
         const poll = () => loaded(v) || failed(v) || performance.now() > until ? done() : setTimeout(poll, 50);
         poll();
       });
-      loads.set(v, load2);
+      loads2.set(v, load3);
     }
-    return load2;
+    return load3;
   }
   var plays2 = (v, slide) => {
     const step2 = v.closest(".fragment.play");
@@ -5079,18 +5407,18 @@ void main() {
         if (!running2.has(v)) hold(v);
       });
     }
-    const sync = () => {
+    const sync2 = () => {
       const slide = deck.getCurrentSlide();
       if (slide) stepViewers(slide);
     };
     deck.on("slidechanged", (event) => {
       const previous = event.previousSlide;
       if (previous && previous !== deck.getCurrentSlide()) leave2(previous);
-      sync();
+      sync2();
     });
-    deck.on("fragmentshown", sync);
-    deck.on("fragmenthidden", sync);
-    sync();
+    deck.on("fragmentshown", sync2);
+    deck.on("fragmenthidden", sync2);
+    sync2();
   }
 
   // src/main.ts
@@ -5166,7 +5494,7 @@ void main() {
   function remount() {
     for (const o of mount(document)) if (!backdrops.includes(o)) backdrops.push(o);
     if (document.querySelector(".surface")) {
-      for (const s of mount2(document)) if (!surfaces.includes(s)) surfaces.push(s);
+      for (const s of mount3(document)) if (!surfaces.includes(s)) surfaces.push(s);
     }
     for (const p of mountPlots(document)) if (!plots.includes(p)) plots.push(p);
   }
@@ -5227,6 +5555,9 @@ void main() {
     remount();
     mountQr(root2);
     mountShapes(root2);
+    void mountFigures(root2, get());
+    numberTheorems();
+    mountCitations();
     for (const o of backdrops) if (root2.contains(o.el)) {
       o.fit();
       o.complete();
@@ -5296,10 +5627,15 @@ void main() {
     if (!EDITING) markUncounted(document);
     mountQr(document);
     mountShapes(document);
+    numberTheorems();
+    mountCitations();
+    void mountFigures(document, get());
     markViewers();
     deck.on("pdf-ready", () => {
       completeAll();
       mountShapes(document);
+      void mountFigures(document, get());
+      mountCitations();
       coverAll(document);
       void typeset2().then(() => applyAll(document));
       syncViewers(get());
@@ -5314,6 +5650,8 @@ void main() {
     await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
     initChrome();
     initSteps(deck);
+    syncCitations();
+    void document.fonts.ready.then(() => syncCitations());
     const { internal } = hooks;
     if (internal) initTimedSteps(deck, forDeck, internal);
     remount();
@@ -5386,10 +5724,12 @@ void main() {
       }
       for (const p of plotsIn(ev.previousSlide)) if (!ev.currentSlide.contains(p.el)) p.leave();
       show(ev.currentSlide);
+      syncCitations();
     });
     const step2 = () => {
       for (const s of surfacesOf(deck.getCurrentSlide())) s.sync(!still2());
       stepPlots(deck.getCurrentSlide());
+      syncCitations(deck.getCurrentSlide());
     };
     deck.on("fragmentshown", step2);
     deck.on("fragmenthidden", step2);
@@ -5420,6 +5760,7 @@ void main() {
         s.recolor();
         s.draw();
       }
+      redrawFigures(get());
       syncViewers(get());
     });
   }
@@ -5443,6 +5784,10 @@ void main() {
     animated,
     surfaces,
     plots,
+    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs
+    figures: { get ready() {
+      return figuresReady();
+    } },
     // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
     trajectories: register,
     // called by the editor after a structural change of the slides
@@ -5451,7 +5796,13 @@ void main() {
     remount: remountBackdrop,
     preview,
     fitWindow,
-    refreshChrome,
+    // called by the editor after the slides were added, removed, or reordered, a tag was edited, or
+    // a text was put back, with the theorems and the citations numbered again
+    refreshChrome: () => {
+      refreshChrome();
+      numberTheorems();
+      mountCitations();
+    },
     version: "0.9.0-beta.2"
   };
   window.Beeson = Beeson;

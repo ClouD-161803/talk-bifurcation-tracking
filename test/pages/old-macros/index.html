@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Older talk</title>
+<link rel="stylesheet" href="../../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../../theme/beeson.css">
+<script src="theme/macros.js"></script>
+<script src="../../../theme/mathjax-config.js"></script>
+<script src="../../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+<!-- the deck of test/macros.test.mjs for an older talk with a newer theme, which loads theme/macros.js
+     and does not have a tex.js until npm run tex or a save in the editor writes one -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Macros</h2>
+      <table>
+        <tr data-case="a macro with an argument"><td>\(\vb{x} + \vb{y}\)</td><td>\(\boldsymbol{x} + \boldsymbol{y}\)</td></tr>
+        <tr data-case="a macro without an argument"><td>\(\R^3\)</td><td>\(\mathbb{R}^3\)</td></tr>
+      </table>
+    </section>
+  </div>
+</div>
+<script src="../../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../../theme/vendor/reveal/notes.js"></script>
+<script src="../../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

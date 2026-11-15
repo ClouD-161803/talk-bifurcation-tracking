@@ -1,6 +1,7 @@
-// bundles src/main.ts into theme/beeson.js, src/editor/main.ts into theme/editor.js,
-// src/session/client/main.ts into theme/session.js, and src/edit/main.ts into theme/edit.mjs, which
-// are committed so that a toolchain is not required for a talk
+// bundles src/main.ts into theme/beeson.js, src/editor/main.ts into theme/editor.js, the sheets of
+// the preamble and the bibliography into theme/editor-tex.js, which editor.js loads at their first
+// open, src/session/client/main.ts into theme/session.js, and src/edit/main.ts into theme/edit.mjs.
+// the bundles are committed so that a toolchain is not required for a talk
 
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -40,6 +41,14 @@ const editor = await build({
   minifyWhitespace: true,
   minifySyntax: true,
   banner: { js: `/*! editor.js ${version}, the in-place editor of the beeson theme. MIT license. */` },
+});
+
+await build({
+  ...common,
+  entryPoints: [fileURLToPath(new URL('src/editor/tex/sheets.ts', root))],
+  outfile: fileURLToPath(new URL('theme/editor-tex.js', root)),
+  minifyWhitespace: true,
+  banner: { js: `/*! editor-tex.js ${version}, the sheets of the preamble and the bibliography of the beeson editor. MIT license. */` },
 });
 
 await build({

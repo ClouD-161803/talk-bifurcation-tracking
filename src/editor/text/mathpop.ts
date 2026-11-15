@@ -2,7 +2,7 @@
 // Edit Equation popover of Keynote, flipped to the other side where the window ends: a title, a tall field of the TeX, a live preview, and Cancel with Apply, or Insert for a new
 // formula. a click on a formula, or Enter on a focused one, opens the sheet, and a TeX with an
 // error is refused before the slide is touched. an empty TeX is shown as a gray prompt and is not
-// applied. the field completes the macros of theme/macros.js and the commands of TeX after a
+// applied. the field completes the macros of the deck and the commands of TeX after a
 // backslash, and texEditor gives the same field with its preview to the Formula pane of the
 // inspector. openInsert opens the sheet for an inline formula at the caret of a text
 
@@ -173,7 +173,7 @@ export function texEditor(options: { display(): boolean; label: string; placehol
   field.setAttribute('aria-label', options.label);
   field.spellcheck = false;
   field.autocapitalize = 'off';
-  field.placeholder = options.placeholder ?? 'Type TeX, e.g. \\frac{a}{b} or \\LL{1}';
+  field.placeholder = options.placeholder ?? 'Type TeX, e.g. \\frac{a}{b} or \\sqrt{x}';
   const preview = make('div', 'preview');
   preview.setAttribute('aria-live', 'polite');
   const message = make('div', 'error');
