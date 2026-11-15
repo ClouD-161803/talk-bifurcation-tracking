@@ -91,6 +91,18 @@ test('two viewers of one step are started together, side by side in a plate of t
   assert.deepEqual(page.errors, []);
 });
 
+async function checkRestart(page, waitBeforeRead = '') {
+  await page.waitFor('inside.time > 0.2');
+  // a viewer that is left would be resumed where it stopped when its slide is shown again
+  await page.evaluate('Reveal.slide(1)');
+  await until(page, 'inside', { playing: false, time: 0 });
+  // the first step of the slide, which reveal.js numbers from 0
+  await page.evaluate('Reveal.slide(2, 0, 0)');
+  await until(page, 'inside', { playing: true });
+  if (waitBeforeRead) await page.waitFor(waitBeforeRead);
+  assert.ok(await page.evaluate('inside.time') < 1, 'it is played again from its start');
+}
+
 test('a viewer in a fragment of the style play is not dimmed at a later step, and it is held at its first frame when its slide is left', { timeout: 120000 }, async (t) => {
   const page = await open(t, '/2');
   assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelector('[data-restore]')`), null);
@@ -101,14 +113,18 @@ test('a viewer in a fragment of the style play is not dimmed at a later step, an
   await until(page, 'inside', { playing: true });
   await page.waitFor(`getComputedStyle(inside.parentElement).opacity === '1'`).catch(() => {});
   assert.equal(await page.evaluate(`getComputedStyle(inside.parentElement).opacity`), '1');
-  await page.waitFor('inside.time > 0.2');
-  // a viewer that is left would be resumed where it stopped when its slide is shown again
-  await page.evaluate('Reveal.slide(1)');
+  await checkRestart(page);
+  assert.deepEqual(page.errors, []);
+});
+
+// on a Windows runner, more than 1 s can pass between Reveal.slide(2, 0, 0) and the host read of
+// inside.time, so this test waits until inside.time > 1.2 before reading
+test('a viewer restarted in a fragment of the style play is checked from its start even when the host reads late', { timeout: 120000 }, async (t) => {
+  const page = await open(t, '/2');
   await until(page, 'inside', { playing: false, time: 0 });
-  // the first step of the slide, which reveal.js numbers from 0
-  await page.evaluate('Reveal.slide(2, 0, 0)');
+  await page.evaluate('Reveal.next()');
   await until(page, 'inside', { playing: true });
-  assert.ok(await page.evaluate('inside.time') < 1, 'it is played again from its start');
+  await checkRestart(page, 'inside.time > 1.2');
   assert.deepEqual(page.errors, []);
 });
 
