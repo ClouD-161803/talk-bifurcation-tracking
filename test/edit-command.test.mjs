@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
+import { spawnSync } from 'node:child_process';
 import { startRelay } from '../scripts/relay.mjs';
 import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
@@ -520,4 +521,17 @@ test('add regression test: the saved secret of the relay is sent only to the sav
   // the saved address goes on with the saved secret
   assert.equal((await post(edit.port, share, {})).status, 200);
   assert.equal(JSON.parse(text(join(config, 'beeson-slides', 'relay.json'))).relay, relay.url);
+});
+
+test('add regression test: .session/ is ignored by git in a talk whose .gitignore does not name it', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(talk, '.gitignore'), 'node_modules/\n*.pdf\n');
+  const git = (...args) => spawnSync('git', args, { cwd: talk, encoding: 'utf8' });
+  const hasGit = git('init', '-q').status === 0;
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  assert.equal((await post(edit.port, `${edit.base}.session/hello`, { name: 'Ana' })).status, 200);
+  assert.equal(text(join(talk, '.session', '.gitignore')), '*\n');
+  if (hasGit) assert.deepEqual(git('status', '--porcelain', '-uall').stdout.split('\n').filter((l) => l.includes('.session')), []);
 });
