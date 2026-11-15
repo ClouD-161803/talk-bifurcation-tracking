@@ -422,6 +422,7 @@ test('a version is named, and a name is taken off', { timeout: 120_000 }, async 
   assert.equal((await raw(s.edit.port, 'GET', `${s.api('history')}?token=${'n'.repeat(22)}`)).status, 404);
   assert.equal((await raw(s.edit.port, 'GET', `${s.api(`history/${v.id}`)}?token=${ann.token}`)).json().marks.length, 1);
   assert.equal((await raw(s.edit.port, 'GET', `${s.api('history/nope')}?token=${ann.token}`)).status, 404);
+  assert.equal((await raw(s.edit.port, 'PUT', `${s.api('history')}?token=${ann.token}`)).status, 405);
   assert.equal((await raw(s.edit.port, 'POST', s.api(`history/${v.id}/name`), { body: '{}', headers: { 'content-type': 'text/plain' } })).status, 415);
   assert.equal((await raw(s.edit.port, 'POST', s.api(`history/${v.id}/name`), { body: '[1]', headers: { 'content-type': 'application/json' } })).status, 400);
 });
@@ -960,4 +961,20 @@ test('a restore that changes two slides takes in an operation in flight on a sli
   assert.equal(answer.ok, true, JSON.stringify(answer));
   assert.equal(authority.text, deck.replace('Second slide', 'Zweite slide'));
   history.stopSync();
+});
+
+test('a change of the history while the edit command stops is refused', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const s = await session(t);
+  const ann = await s.hello('Ann');
+  const stopped = stopEdit(s.edit);
+  // answered until the stop refuses it, and then not at all once the server is closed
+  let status = null;
+  for (;;) {
+    const answer = await post(s.edit.port, s.api('history/current/name'), { token: ann.token, name: 'Late' }).catch(() => null);
+    if (!answer) break;
+    status = answer.status;
+    if (status === 503) break;
+  }
+  assert.equal(status, 503);
+  await stopped;
 });
