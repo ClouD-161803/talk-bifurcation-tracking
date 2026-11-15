@@ -196,3 +196,74 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
   clean(ann);
   clean(ben);
 });
+
+test('the preview outlines each changed element in the tone of its author, and a button per slide shows its slide', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'h2'));
+  await typeKeys(ann, ' by Ann');
+  await show(ben, 'Two');
+  await caretAtEnd(ben, el(1, 'li'));
+  await typeKeys(ben, ' by Ben');
+  await converge(server, [ann, ben]);
+  await openPane(ann);
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Both');
+  await ann.waitFor(`${LIST}[1]?.title === 'Both'`);
+  assert.deepEqual((await ann.evaluate(LIST))[1].who, ['Ann', 'Ben']);
+  await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
+  const doc = `${FRAME}.contentDocument`;
+  await ann.waitFor(`${doc}?.querySelectorAll('[data-beeson-changed]').length === 2`, 30_000);
+
+  await t.test('the bar shows the date, the authors, and a button per changed slide', async () => {
+    const bar = await ann.evaluate(`(() => {
+      const b = document.querySelector('${BAR}');
+      return { date: b.querySelector('.date').textContent, who: [...b.querySelectorAll('.author')].map((a) => a.textContent), slides: [...b.querySelectorAll('button.slide')].map((x) => x.textContent), buttons: [...b.querySelectorAll('.actions button')].map((x) => x.textContent), changes: b.querySelector('label.changes').textContent };
+    })()`);
+    assert.match(bar.date, /^Both, Today, \d{1,2}:\d{2}\s?[AP]M$/);
+    assert.deepEqual([bar.who, bar.slides, bar.buttons, bar.changes], [['Ann', 'Ben'], ['Slide 1', 'Slide 2'], ['Restore this version', 'Name this version', '⋯'], 'Show changes']);
+  });
+
+  await t.test('the changed heading and list are outlined in the tones of Ann and Ben', async () => {
+    const outlines = await ann.evaluate(`[...${doc}.querySelectorAll('[data-beeson-changed]')].map((e) => ({ tag: e.localName, text: e.textContent.trim().split(/\\s+/).join(' '), color: e.ownerDocument.defaultView.getComputedStyle(e).outlineColor, style: e.ownerDocument.defaultView.getComputedStyle(e).outlineStyle }))`);
+    const tones = [await ann.evaluate(toneIn(doc, await ann.evaluate(`${C}.color`))), await ann.evaluate(toneIn(doc, await ben.evaluate(`${C}.color`)))];
+    assert.notEqual(tones[0], tones[1]);
+    assert.deepEqual(outlines, [
+      { tag: 'h2', text: 'One by Ann', color: tones[0], style: 'solid' },
+      { tag: 'ul', text: 'Alpha by Ben Beta', color: tones[1], style: 'solid' },
+    ]);
+  });
+
+  await t.test('the preview opens at the first changed slide, and Slide 2 shows the second slide', async () => {
+    const current = `${FRAME}.contentWindow.Reveal.getCurrentSlide()?.querySelector('h2')?.textContent`;
+    await ann.waitFor(`${current} === 'One by Ann'`);
+    await press$(ann, BAR, 'Slide 2');
+    await ann.waitFor(`${current} === 'Two'`);
+  });
+
+  await t.test('Show changes off takes the outlines off', async () => {
+    await tapOrClick(ann, `document.querySelector('${BAR} label.changes input')`);
+    await ann.waitFor(`${FRAME}.contentWindow.getComputedStyle(${doc}.querySelector('[data-beeson-changed]')).outlineStyle === 'none'`);
+    await tapOrClick(ann, `document.querySelector('${BAR} label.changes input')`);
+    await ann.waitFor(`${FRAME}.contentWindow.getComputedStyle(${doc}.querySelector('[data-beeson-changed]')).outlineStyle === 'solid'`);
+  });
+
+  await t.test('a slide removed in index.html outside the editor is named in the bar and in the list', async () => {
+    writeFileSync(server.file, server.read().replace(/\n<section>\n {2}<h2>Two<\/h2>[\s\S]*?<\/section>\n/, '\n'));
+    await ann.waitFor(`!${TEXT}.includes('<h2>Two</h2>')`, 20_000);
+    await press$(ann, PANE, 'Name this version');
+    await nameIt(ann, 'Cut');
+    await ann.waitFor(`${LIST}[1]?.title === 'Cut'`);
+    assert.deepEqual((await ann.evaluate(LIST))[1].who, ['Changed in index.html outside the editor']);
+    await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
+    await ann.waitFor(`document.querySelector('${BAR} .removed')?.textContent === 'Slide 2 removed'`);
+    assert.equal(await ann.evaluate(`document.querySelectorAll('${BAR} button.slide').length`), 0);
+  });
+  clean(ann);
+  clean(ben);
+});
