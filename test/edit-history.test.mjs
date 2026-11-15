@@ -319,3 +319,20 @@ test('the file is written anew past its size limit, without the old versions, an
   for (const [id, text] of kept) assert.equal(third.history.textOf(id), text);
   assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.tmp')), []);
 });
+
+test('a text set aside is kept up to its size limit, and the oldest goes past the count limit', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  let clock = 1_000_000;
+  const { history } = open(dir, DECK, { asideBytes: 100, asideFiles: 3, now: () => clock++ });
+  // 60 characters of two bytes each
+  assert.equal(history.setAside('é'.repeat(60), ANN), null);
+  const ids = ['a', 'b', 'c', 'd'].map((x) => history.setAside(x.repeat(100), BO).id);
+  assert.deepEqual(history.list().aside.map((a) => a.id), ids.slice(1).reverse());
+  assert.deepEqual(history.list().aside.map((a) => a.author), [BO, BO, BO]);
+  assert.equal(history.asideText(ids[0]), null);
+  assert.equal(history.asideText(ids[3]), 'd'.repeat(100));
+  assert.equal(readdirSync(join(dir, 'aside')).length, 3);
+  const again = open(dir, DECK, { asideFiles: 3 });
+  assert.deepEqual(again.history.list().aside.map((a) => a.id), ids.slice(1).reverse());
+  assert.equal(again.history.asideText(ids[1]), 'b'.repeat(100));
+});
