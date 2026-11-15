@@ -19,6 +19,8 @@ export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
 export const MEDIA_MAX = 64 * 1024 * 1024;
 const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'mp4', 'webm', 'json']);
+// the time in ms within which the edit command of a lock must answer, shorter in the tests
+const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
 
 export type StartOptions = {
   folder?: string;
@@ -54,8 +56,9 @@ export class AlreadyRunning extends Error {
 type Lock = { pid: number; port: number; root: string };
 
 // the edit command of .session/lock, when it runs on root, its process is alive, and its port
-// answers for key. a lock left by a command that died, or copied with the talk folder, is not
-async function holderOf(file: string, root: string, key: string): Promise<Found | null> {
+// answers for key or does not answer in time. a lock left by a command that died, or copied with
+// the talk folder, is not
+async function holderOf(file: string, root: string, key: string, log: (message: string) => void): Promise<Found | null> {
   let lock: Lock;
   try {
     lock = JSON.parse(readFileSync(file, 'utf8'));
@@ -70,11 +73,14 @@ async function holderOf(file: string, root: string, key: string): Promise<Found 
   }
   const url = `http://127.0.0.1:${lock.port}/${key}/`;
   try {
-    const answer = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(2000) });
+    const answer = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(LOCK_WAIT) });
     await answer.body?.cancel();
     return answer.status === 302 ? { url, port: lock.port, key } : null;
-  } catch {
-    return null;
+  } catch (e) {
+    // a command that is stopped, e.g. by Ctrl+Z, or busy still writes index.html once it goes on
+    if ((e as Error).name !== 'TimeoutError') return null;
+    log(`the edit command of process ${lock.pid} holds this folder and does not answer. Bring it back to the front, or end it`);
+    return { url, port: lock.port, key };
   }
 }
 
@@ -126,7 +132,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const { text, bom } = readText(index);
   const key = keyOf(root);
   const lockFile = join(root, '.session', 'lock');
-  const earlier = await holderOf(lockFile, root, key);
+  const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
   const authority = new Authority(text);
   const disk = new Disk(index, authority, bom, { log });
@@ -393,7 +399,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   try {
     writeFileSync(lockFile, lock, { flag: 'wx' });
   } catch {
-    const other = await holderOf(lockFile, root, key);
+    const other = await holderOf(lockFile, root, key, log);
     if (other) {
       people.end();
       await new Promise((done) => server.close(done));
