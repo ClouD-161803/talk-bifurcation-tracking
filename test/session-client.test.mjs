@@ -36,9 +36,14 @@ test('a page joins with the name typed in the dialog, and again without it', { t
   await page.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
   const dialog = await page.evaluate(`(() => {
     const d = document.querySelector('dialog.beeson-session-join');
-    return { title: d.querySelector('h3').textContent, text: d.querySelector('p').textContent, label: d.querySelector('label').textContent, max: d.querySelector('input').maxLength, focused: document.activeElement === d.querySelector('input') };
+    return { title: d.querySelector('h3').textContent, text: d.querySelector('p').textContent, label: d.querySelector('label').textContent, focused: document.activeElement === d.querySelector('input') };
   })()`);
-  assert.deepEqual(dialog, { title: 'Start the session', text: 'Type the name that the others will see on your edits and comments.', label: 'Your name', max: 40, focused: true });
+  assert.deepEqual(dialog, { title: 'Start the session', text: 'Type the name that the others will see on your edits and comments.', label: 'Your name', focused: true });
+  // the field takes 40 characters, also of emoji, which are two UTF-16 code units each
+  const field = `document.querySelector('dialog.beeson-session-join input')`;
+  await page.send('Input.insertText', { text: '😀'.repeat(41) });
+  assert.equal(await page.evaluate(`Array.from(${field}.value).join(' ')`), Array(40).fill('😀').join(' '));
+  await page.evaluate(`(${field}.value = '', ${field}.dispatchEvent(new Event('input')), true)`);
   await typeKeys(page, 'Ada Lovelace');
   assert.equal(await page.evaluate(`document.querySelector('dialog.beeson-session-join .swatch').textContent`), 'AL');
   await press(page, 'Enter');
