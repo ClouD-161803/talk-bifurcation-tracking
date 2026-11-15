@@ -6,7 +6,7 @@
 
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
-import { CONTAINER, LINE, RESIZABLE, STRETCHED, aspectOf, captionEls, captionsOf, pictureReach, constrained, cssWidth, frameOf, frameRect, isTextSized, kindOf, movableOf, objectsOf, orientedBox, pictureOf, pictureSize, sizedOf, snapBoxOf, toSlide, unturnedRect } from '../canvas/hit.ts';
+import { BOXED, CONTAINER, LINE, RESIZABLE, STRETCHED, aspectOf, captionEls, captionsOf, pictureReach, constrained, cssWidth, frameOf, frameRect, isTextSized, kindOf, movableOf, objectsOf, orientedBox, pictureOf, pictureSize, sizedOf, snapBoxOf, toSlide, unturnedRect } from '../canvas/hit.ts';
 import type { Box } from '../canvas/snap.ts';
 import { angleOf, locked, placeOf, record, withCorners, writePlace, type Change, type Place } from '../canvas/drag.ts';
 import { groupFrame, groupReach, turned } from '../canvas/frames.ts';
@@ -96,7 +96,7 @@ function scaleGroup(app: App, els: Element[], frame: { box: Box; deg: number }, 
     };
     const was = point(), place = placeOf(el), size = placeOf(s);
     if (s.matches(RESIZABLE) || isTextSized(s)) {
-      const stretch = s.matches(STRETCHED) && (kx !== ky || (size.height ?? null) !== null);
+      const stretch = s.matches(STRETCHED) && (kx !== ky || (size.height ?? null) !== null || s.matches(BOXED));
       writePlace(app, s, { ...size, width: Math.max(1, cssWidth(s, was.b.width * kx)), height: stretch ? Math.max(1, was.b.height * ky) : size.height });
     }
     // the point of the member in the axes of the frame, scaled from the corner
@@ -427,7 +427,7 @@ export function commands(): Command[] {
             let w = now.w, h = now.h;
             if (a.w !== undefined) [w, h] = [a.w, keep ? a.w / aspect : now.h];
             else if (a.h !== undefined) [w, h] = [keep ? a.h * aspect : now.w, a.h];
-            const stretch = !keep || (from.height ?? null) !== null;
+            const stretch = !keep || (from.height ?? null) !== null || el.matches(BOXED);
             writePlace(app, el, { ...from, width: Math.max(1, w), height: stretch ? Math.max(1, h) : null });
           } else {
             const aspect = aspectOf(el) ?? now.w / Math.max(1, now.h);

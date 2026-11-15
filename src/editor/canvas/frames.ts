@@ -427,8 +427,8 @@ export class Frames {
     this.groups = this.gripSets.map((_, n) => gripped[n]?.group ?? null);
     this.gripSets.forEach((set, n) => {
       const m = gripped[n];
-      // a viewer keeps the height of its layout, and a text element the height of its wrapped text
-      const level = !!m && !m.group && (m.el.matches('tycho-viewer') || isTextSized(m.el));
+      // a text element keeps the height of its wrapped text
+      const level = !!m && !m.group && isTextSized(m.el);
       for (const h of HANDLES) {
         const g = set[h];
         if (m?.group) g.dataset.group = '1';
