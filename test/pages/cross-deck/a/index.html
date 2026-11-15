@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <title>Deck A of the cross-deck paste</title>
+  <link rel="stylesheet" href="../../../../theme/vendor/reveal/reset.css">
+  <link rel="stylesheet" href="../../../../theme/vendor/reveal/reveal.css">
+  <link rel="stylesheet" href="../../../../theme/vendor/fonts/stix-two-text.css">
+  <link rel="stylesheet" href="../../../../theme/beeson.css">
+  <script>
+    // the macros of deck A, of which the slide with the files uses orb, which uses half, and dash
+    window.beesonMacros = { orb: ['\\mathcal{O}_{\\half #1}', 1], half: '\\tfrac{1}{2}', dash: '\\text{a--b}', unused: '\\mathrm{u}' };
+  </script>
+  <script src="../../../../theme/mathjax-config.js"></script>
+  <script src="../../../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+  <div class="reveal"><div class="slides">
+    <section>
+      <h2>The first slide of deck A</h2>
+      <p>A paragraph of deck A.</p>
+    </section>
+    <section>
+      <h2>A slide with the files of deck A</h2>
+      <p id="orbit-words">An orbit \(\orb{1}\) of \(\dash\), a clip, and a shared figure.</p>
+      <figure class="figure-box" style="width: 400px; translate: -900px 100px">
+        <img src="figs/orbit.png" alt="An orbit of deck A">
+      </figure>
+      <figure class="figure-box" style="width: 400px; translate: -450px 100px">
+        <video src="figs/clip.mp4" poster="figs/clip.png" muted loop></video>
+      </figure>
+      <figure class="figure-box" style="width: 400px; translate: 0px 100px">
+        <img src="figs/shared.png" alt="A figure that both decks have">
+      </figure>
+      <aside class="notes">The notes of the slide with the files.</aside>
+    </section>
+    <section>
+      <h2>A slide with the backdrop of deck A</h2>
+      <div class="backdrop" data-trajectories="data/path.js" data-duration="4" data-cx="0" data-cy="0" data-half="1"></div>
+    </section>
+  </div></div>
+  <script src="../../../../theme/vendor/reveal/reveal.js"></script>
+  <script src="../../../../theme/vendor/reveal/notes.js"></script>
+  <script src="../../../../theme/beeson.js"></script>
+  <script>Beeson.start({});</script>
+</body>
+</html>
