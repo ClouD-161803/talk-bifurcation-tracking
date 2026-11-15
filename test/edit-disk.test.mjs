@@ -82,3 +82,14 @@ test('a stop while a write is in flight writes the newest text, and the older wr
   assert.ok(after.includes('TWO <h2>Two'), 'the file lacks the operation entered just before the stop');
   assert.deepEqual(temporary(dir), []);
 });
+
+test('a stop right after another program wrote the file keeps the change of this program and the last operation', { timeout: 60_000 }, async (t) => {
+  const { file, authority, disk } = setup(t, DECK);
+  insert(authority, '<h2>One', 'ONE ');
+  writeFileSync(file, DECK.replace('<h2>Two', 'AGENT <h2>Two'));
+  disk.stopSync();
+  const after = readFileSync(file, 'utf8');
+  assert.ok(after.includes('ONE <h2>One'), 'the file lacks the operation entered before the stop');
+  assert.ok(after.includes('AGENT <h2>Two'), 'the file lacks the change of the other program');
+  assert.equal(authority.text, after);
+});
