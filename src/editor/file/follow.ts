@@ -207,7 +207,8 @@ export function install(app: App): void {
       const read = await readText(handle);
       if (read === null || read === diskText || saves !== at || saving) return;
       const text = await readSettled(handle, read);
-      if (text === null || text === diskText || saves !== at || saving) return;
+      // a session begun while the file was read
+      if (text === null || text === diskText || saves !== at || saving || app.session) return;
       const changed = changedSlides(diskText, text);
       if (!app.dirty && !document.querySelector('dialog.beeson-edit-dialog[open], .beeson-math')) {
         reload(changed, `Loaded the changes of the file${onSlides(changed)}`);
@@ -297,8 +298,12 @@ export function install(app: App): void {
       known = app.handle;
     },
     merge: mergeInto,
-    line: () => (stale && app.dirty ? `The file was changed${onSlides(stale)}, and a save merges your edits into it` : null),
+    line: () => (stale && app.dirty && !app.session ? `The file was changed${onSlides(stale)}, and a save merges your edits into it` : null),
     status: () => ({ changed: nav().marked, stale, watching: diskText !== null }),
   };
   app.follow = follow;
+  // the changes of the file before a session are in the deck of the session
+  app.listen('session', () => {
+    if (app.session) stale = null;
+  });
 }
