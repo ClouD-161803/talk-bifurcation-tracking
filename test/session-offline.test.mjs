@@ -73,3 +73,61 @@ test('the save state names the slides of the edits that wait, and the dialog of 
   clean(host);
   clean(guest, REFUSED);
 });
+
+test('an edit made offline in a page that is closed reaches index.html at the next join, with its version in the log', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url);
+  const ben = await open(browser, url, { name: 'Ben' });
+  await converge(server, [a, ben]);
+
+  await goOffline(a);
+  await edit(a, 0, 'p', ' offline');
+  const id = await copied(a, '<p>First slide offline</p>');
+  // the log of the edit command goes on meanwhile
+  await edit(ben, 1, 'p', ' by Ben');
+  await until(() => server.read().includes('Second slide by Ben'), 'the edit of Ben to reach the file');
+  await a.close();
+  await released(ben, id);
+
+  const again = await tab(browser, url);
+  const text = await converge(server, [again, ben]);
+  assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide offline</p>').replace('<p>Second slide</p>', '<p>Second slide by Ben</p>'));
+  await again.waitFor(`${STATE} === 'Sent your changes on slide 1 from before the page was closed'`);
+  await again.waitFor(`(${ROWS}).then((r) => r.length === 0)`);
+  assert.equal(await again.evaluate(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`), false);
+  clean(again);
+  clean(ben);
+});
+
+test('an edit made offline in a page that is closed reaches index.html after a restart of the edit command, i.e. a new log', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const { port } = server.edit;
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url);
+  // a page of the same origin, which reads the locks after the page of the copy is closed
+  const probe = await browser.newPage({ width: 640, height: 480 });
+  await probe.goto(`${server.edit.url}index.html`);
+  await converge(server, [a]);
+
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await a.waitFor(`${C}.connection === 'offline'`);
+  await edit(a, 1, 'li', ' and Gamma');
+  const id = await copied(a, '<li>Alpha and Gamma</li>');
+  await a.waitFor(`${STATE} === 'Offline. Changes on slide 2 are kept in this browser'`);
+  await a.close();
+  await released(probe, id);
+  await server.start(['--port', String(port)]);
+
+  const again = await tab(browser, url);
+  const text = await converge(server, [again]);
+  assert.equal(text, TALK.replace('<li>Alpha</li>', '<li>Alpha and Gamma</li>'));
+  await again.waitFor(`${STATE} === 'Sent your changes on slide 2 from before the page was closed'`);
+  assert.deepEqual(await rows(again), []);
+  clean(again, REFUSED);
+});
