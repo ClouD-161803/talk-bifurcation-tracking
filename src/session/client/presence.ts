@@ -268,6 +268,8 @@ export class Presence {
   private refreshed: { source: string | null; v: Version | undefined } | null = null;
   private refreshing = false;
   private seen = new Set<string>();
+  // a page joined since the end of the last drive
+  private arrived = false;
 
   constructor(client: Client) {
     this.client = client;
@@ -293,16 +295,17 @@ export class Presence {
     // can carry an offset that this operation put in doubt, or reach a state of another page
     client.on('settled', (moved) => {
       if (moved) based();
+      if (!this.arrived) return;
+      this.arrived = false;
+      this.sentKey = null;
+      this.due(true);
     });
     client.on('people', () => {
       // a page that joined cannot carry a state of a version before it, hence it is sent again
+      // after the drive that takes the operations of the same answer
       const ids = new Set(client.people.map((p) => p.client));
-      const joined = [...ids].some((id) => id !== client.client && !this.seen.has(id));
+      if ([...ids].some((id) => id !== client.client && !this.seen.has(id))) this.arrived = true;
       this.seen = ids;
-      if (joined) {
-        this.sentKey = null;
-        this.due(true);
-      }
     });
     // a page that is not online sends nothing. a page back online sends its state again after the
     // next answer with its token, since an edit command started again knows neither
