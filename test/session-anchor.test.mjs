@@ -121,3 +121,55 @@ test('an element or a slide that moves is followed', async (t) => {
     reads(after, kept.slide, '<section>\n  <h2>Alpha');
   });
 });
+
+test('a removed element falls back to its slide, a removed slide to the deck, and an undo attaches them again', () => {
+  const v0 = deck(['<h2>Alpha</h2>', '<p>One</p>', '<p>Gone</p>'], ['<h2>Beta</h2>', '<p>Two</p>']);
+  const items = [onElement(v0, '<p>Gone'), onSlide(v0, 'Beta'), onElement(v0, '<p>Two')];
+  const v1 = v0.replace('  <p>Gone</p>\n', '');
+  let r = move(v0, v1, items);
+  reads(v1, r.items[0].anchor, '<section>\n  <h2>Alpha');
+  assert.deepEqual(r.items[0].slide, r.items[0].anchor);
+  assert.deepEqual(r.items[0].removed, { text: '<p>Gone</p>' });
+  assert.deepEqual(r.changed, [true, false, false]);
+  const v2 = v1.replace('<section>\n  <h2>Beta</h2>\n  <p>Two</p>\n</section>\n', '');
+  r = move(v1, v2, r.items);
+  assert.deepEqual(r.items[1], { anchor: null, slide: null, removed: { text: '<section>\n  <h2>Beta</h2>\n  <p>Two</p>\n</section>' } });
+  assert.deepEqual(r.items[2], { anchor: null, slide: null, removed: { text: '<p>Two</p>' } });
+  reads(v2, r.items[0].anchor, '<section>\n  <h2>Alpha');
+  assert.deepEqual(r.changed, [false, true, true]);
+  // the undo of the removal of the slide, and then of the paragraph
+  r = move(v2, v1, r.items);
+  reads(v1, r.items[1].anchor, '<section>\n  <h2>Beta');
+  assert.deepEqual(r.items[1].slide, r.items[1].anchor);
+  reads(v1, r.items[2].anchor, '<p>Two</p>');
+  reads(v1, r.items[2].slide, '<section>\n  <h2>Beta');
+  r = move(v1, v0, r.items);
+  reads(v0, r.items[0].anchor, '<p>Gone</p>');
+  reads(v0, r.items[0].slide, '<section>\n  <h2>Alpha');
+  assert.deepEqual(r.items, items);
+  assert.deepEqual(r.changed, [true, false, false]);
+
+  // a removed slide larger than the limit is not kept, and its re-insertion does not attach it
+  const big = deck(['<h2>Big</h2>', `<p>${'x'.repeat(REMOVED_MAX)}</p>`], ['<h2>Small</h2>']);
+  const withoutBig = big.replace(/<section>\n {2}<h2>Big[^]*?<\/section>\n/, '');
+  r = move(big, withoutBig, [onSlide(big, 'Big')]);
+  assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: null } });
+  assert.deepEqual(move(withoutBig, big, r.items).items[0], r.items[0]);
+});
+
+test('anchors checked against a text that does not hold their start tags fall back', () => {
+  const text = deck(['<h2>Alpha</h2>', '<p>One</p>']);
+  const good = onElement(text, '<p>One');
+  const slide = onSlide(text, 'Alpha');
+  const renamed = { ...good, anchor: { ...good.anchor, tag: 'div' } };
+  const off = { anchor: { start: good.anchor.start + 1, end: good.anchor.end, tag: 'p' }, slide: good.slide };
+  const lost = { anchor: off.anchor, slide: { start: 3, end: 9, tag: 'section' } };
+  const deckItem = { anchor: null, slide: null };
+  const r = checkAnchors(text, [good, slide, renamed, off, lost, deckItem]);
+  assert.deepEqual(r.changed, [false, false, true, true, true, false]);
+  assert.deepEqual(r.items.slice(0, 2), [good, slide]);
+  assert.deepEqual(r.items[2], { anchor: good.slide, slide: good.slide, removed: { text: null } });
+  assert.deepEqual(r.items[3], r.items[2]);
+  assert.deepEqual(r.items[4], { anchor: null, slide: null, removed: { text: null } });
+  assert.deepEqual(r.items[5], deckItem);
+});
