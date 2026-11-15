@@ -5,6 +5,8 @@ import type { Ended } from '../protocol.ts';
 
 export function install(client: Client): void {
   client.on('ended', (ended: Ended) => {
+    // Leave Session shows a dialog of its own, in people.ts
+    if (client.left) return;
     // read before the editor leaves the session
     const acked = client.acked();
     const text = client.port.text();

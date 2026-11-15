@@ -6,15 +6,14 @@
 import { BLOCKED, type Client } from './client.ts';
 import { make, style } from './dom.ts';
 
-// the hit area is 32 px high, around a button of 22 px. in a title bar narrower than its menus, e.g.
-// on a phone, the buttons at the right are kept in view over the last menus
+// the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
+// of their own, see people.ts
 const CSS = `
 .beeson-edit-titlebar .right button.beeson-session-state, .beeson-edit-titlebar .right button.beeson-session-action { position: relative; }
 .beeson-edit-titlebar .right button.beeson-session-state::after, .beeson-edit-titlebar .right button.beeson-session-action::after { content: ''; position: absolute; inset: -5px -2px; }
 .beeson-edit-titlebar .right button.beeson-session-state svg { flex: none; color: var(--ed-muted); }
 .beeson-edit-titlebar .right button.beeson-session-state.warn svg { color: var(--ed-guide); }
 .beeson-edit-titlebar .right button.beeson-session-action { border: 1px solid var(--ed-control-line); background: var(--ed-control); }
-.beeson-edit-titlebar.narrow .right { position: sticky; right: 0; padding-left: 6px; background: var(--ed-bg); }
 `;
 
 type Action = 'retry' | 'reload' | null;

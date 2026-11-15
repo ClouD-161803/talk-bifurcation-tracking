@@ -73,6 +73,8 @@ export class Client {
   // cannot write index.html
   warning: string | null = null;
   ended: Ended | null = null;
+  // the guest left with Leave Session, after which the page is ended as at the end of the session
+  left = false;
 
   private sync: Sync | null = null;
   // the version after the operations taken from the last answer, which the next poll asks after
@@ -182,6 +184,13 @@ export class Client {
     this.presenceState = state;
     this.presenceDue = true;
     if (!this.presenceBusy && this.token) void this.flushPresence();
+  }
+
+  leave(): void {
+    if (this.ended) return;
+    this.left = true;
+    if (this.token) this.transport.bye(this.token);
+    this.end({ by: null });
   }
 
   // the reconnect that waits is made now

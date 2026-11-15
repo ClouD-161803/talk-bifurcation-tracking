@@ -6,10 +6,11 @@ import type { Entry, Handover } from './handover.ts';
 import { Client } from './client.ts';
 import { install as end } from './end.ts';
 import { join, rename } from './join.ts';
+import { install as people } from './people.ts';
 import { install as state } from './state.ts';
 
 // each part reads the Client and its events, and later parts, e.g. the avatars, join this list
-const PARTS: ((client: Client) => void)[] = [state, end];
+const PARTS: ((client: Client) => void)[] = [state, end, people];
 
 let current: Client | null = null;
 
