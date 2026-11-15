@@ -163,8 +163,19 @@ function removeQuietly(file: string): void {
   } catch {}
 }
 
-// quiet, latest, and poll are the times of the writes and the checks in ms, shorter in the tests
-export type DiskOptions = { log?: (message: string) => void; quiet?: number; latest?: number; poll?: number };
+// a write that failed, with the number of operations that are not in the file
+export type WriteError = { message: string; unwritten: number };
+
+// onWriteError is called at each failed write, and with null at the first write that succeeds after
+// one failed. quiet, latest, and poll are the times of the writes and the checks in ms, shorter in
+// the tests
+export type DiskOptions = {
+  log?: (message: string) => void;
+  onWriteError?: (error: WriteError | null) => void;
+  quiet?: number;
+  latest?: number;
+  poll?: number;
+};
 
 export class Disk {
   readonly file: string;
@@ -172,6 +183,11 @@ export class Disk {
   private authority: Authority;
   private known = '';
   private written: string;
+  // the number of operations of the authority in the text written or read last
+  private writtenN: number;
+  // the failed writes in a row, and the time before which a failed write is not tried again
+  private failures = 0;
+  private retryAt = 0;
   // the newest text written or read, and a chain of the patches that turn each text written or read
   // before it back into the one before, newest last. these texts are the candidate bases of a change
   // of the file
@@ -184,6 +200,7 @@ export class Disk {
   private busy: Promise<void> | null = null;
   private stopped = false;
   private log: (message: string) => void;
+  private onWriteError: (error: WriteError | null) => void;
   private timing: { quiet: number; latest: number; poll: number };
 
   constructor(file: string, authority: Authority, bom: boolean, options: DiskOptions = {}) {
@@ -191,7 +208,9 @@ export class Disk {
     this.authority = authority;
     this.bom = bom;
     this.written = authority.text;
+    this.writtenN = authority.n;
     this.log = options.log ?? (() => {});
+    this.onWriteError = options.onWriteError ?? (() => {});
     this.timing = { quiet: options.quiet ?? QUIET, latest: options.latest ?? LATEST, poll: options.poll ?? POLL };
     this.head = authority.text;
     try {
@@ -212,7 +231,7 @@ export class Disk {
     const now = performance.now();
     this.firstUnwritten ??= now;
     if (this.timer) clearTimeout(this.timer);
-    const wait = Math.max(0, Math.min(this.timing.quiet, this.firstUnwritten + this.timing.latest - now));
+    const wait = Math.max(0, Math.min(this.timing.quiet, this.firstUnwritten + this.timing.latest - now), this.retryAt - now);
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.exclusive(() => this.write());
@@ -220,13 +239,18 @@ export class Disk {
   }
 
   // the text of the authority written at once, at a stop of the edit command, after a change of the
-  // file is merged. a task in flight is left at its next step, hence its write cannot land after this
-  // one
-  stopSync(): void {
-    this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    if (this.poller) clearInterval(this.poller);
-    finish(this.write(SETTLE_AT_STOP));
+  // file is merged, and the number of operations that are not in the file. a task in flight is left
+  // at its next step, hence its write cannot land after this one
+  stopSync(): number {
+    if (!this.stopped) {
+      this.stopped = true;
+      if (this.timer) clearTimeout(this.timer);
+      if (this.poller) clearInterval(this.poller);
+      finish(this.write(SETTLE_AT_STOP));
+      const unwritten = this.authority.n - this.writtenN;
+      if (unwritten) this.log(`${unwritten} operations are not written into ${this.file}`);
+    }
+    return this.authority.n - this.writtenN;
   }
 
   // resolves once a write or a check in progress is over
@@ -290,8 +314,11 @@ export class Disk {
   // the text of the authority into the file, by a temporary file and a rename, or changed when
   // another program wrote the file in the meantime
   private *put(): Task<'changed' | void> {
-    const text = this.authority.text;
-    if (text === this.written) return;
+    const text = this.authority.text, n = this.authority.n;
+    if (text === this.written) {
+      this.writtenN = n;
+      return;
+    }
     const tmp = this.tmpName();
     let renamed = false, made: Stats;
     try {
@@ -313,15 +340,27 @@ export class Disk {
         }
       }
     } catch (e) {
-      this.log(`could not write ${this.file}${this.stopped ? '' : ', trying again'}: ${(e as Error).message}`);
+      const message = (e as Error).message;
+      this.log(`could not write ${this.file}${this.stopped ? '' : ', trying again'}: ${message}`);
+      // a write that keeps failing, as on a full disk or in a read-only folder, is tried again at most
+      // every 5 s
+      this.failures++;
+      this.retryAt = performance.now() + Math.min(5000, this.timing.quiet * 2 ** this.failures);
+      this.onWriteError({ message, unwritten: this.authority.n - this.writtenN });
       this.schedule();
       return;
     } finally {
       if (!renamed) removeQuietly(tmp);
     }
     this.written = text;
+    this.writtenN = n;
     this.known = signature(made!);
     this.remember(text);
+    if (this.failures) {
+      this.failures = 0;
+      this.retryAt = 0;
+      this.onWriteError(null);
+    }
   }
 
   // a change of the file that the edit command did not write, or false when the file was still
@@ -378,7 +417,8 @@ export class Disk {
     this.known = sig;
     this.bom = read.bom;
     this.written = read.text;
-    if (this.authority.text !== read.text) this.schedule();
+    if (this.authority.text === read.text) this.writtenN = this.authority.n;
+    else this.schedule();
     return true;
   }
 
