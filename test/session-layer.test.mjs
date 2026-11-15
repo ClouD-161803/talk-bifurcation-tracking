@@ -114,3 +114,55 @@ test('a chip takes a press on itself only, and a press beside it, on an element 
   clean(ben);
 });
 
+// counts the reads of layout from now on in window.__reads, with those made by theme/session.js
+const COUNT = `(() => {
+  if (window.__reads) { window.__reads = { all: 0, session: 0 }; return; }
+  window.__reads = { all: 0, session: 0 };
+  const note = () => {
+    window.__reads.all++;
+    if (/session\\.js/.test(new Error().stack)) window.__reads.session++;
+  };
+  const wrap = (proto, name) => {
+    const f = proto[name];
+    proto[name] = function (...args) { note(); return f.apply(this, args); };
+  };
+  const getter = (proto, name) => {
+    const d = Object.getOwnPropertyDescriptor(proto, name);
+    Object.defineProperty(proto, name, { ...d, get() { note(); return d.get.call(this); } });
+  };
+  for (const n of ['getBoundingClientRect', 'getClientRects']) { wrap(Element.prototype, n); wrap(Range.prototype, n); }
+  const style = window.getComputedStyle;
+  window.getComputedStyle = function (...args) { note(); return style.apply(this, args); };
+  for (const n of ['offsetWidth', 'offsetHeight', 'offsetLeft', 'offsetTop', 'offsetParent']) getter(HTMLElement.prototype, n);
+  for (const n of ['clientWidth', 'clientHeight', 'clientLeft', 'clientTop', 'scrollWidth', 'scrollHeight', 'scrollLeft', 'scrollTop']) getter(Element.prototype, n);
+})()`;
+
+test('a drag of the own selection on a slide of 40 elements, 6 of them selected by another person, reads no layout for presence, and the frames follow it', { timeout: 120_000 }, async (t) => {
+  const shapes = Array.from({ length: 40 }, (_, i) => shape(`s${i}`, 100 + (i % 8) * 210, 160 + Math.floor(i / 8) * 170, 160, 110));
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [onOne(...shapes)] });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  await select(ana, ...[0, 1, 2, 9, 10, 11].map((i) => el(0, `#s${i}`)));
+  await select(ben, el(0, '#s0'));
+  const before = await untilDrawn(ben, (d) => d.frames.length === 6, 'the six frames of Ana on the page of Ben');
+  const moved = before.frames.reduce((a, b) => (b.x + b.y < a.x + a.y ? b : a));
+  const from = center(await boxOf(ben, el(0, '#s0')));
+  await ben.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y });
+  await mouse(ben, 'mousePressed', from.x, from.y, { buttons: 1 });
+  await ben.evaluate(COUNT);
+  for (let i = 1; i <= 20; i++) {
+    await ben.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + 3 * i, y: from.y + 2 * i, buttons: 1 });
+    await frame(ben);
+  }
+  const reads = await ben.evaluate('({ ...window.__reads })');
+  const during = await ben.evaluate(`[...document.querySelectorAll('.beeson-presence .frame')].map((f) => { const r = f.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })`);
+  await mouse(ben, 'mouseReleased', from.x + 60, from.y + 40);
+  await frame(ben);
+  assert.ok(reads.all > 0, 'the reads of the page are counted');
+  assert.equal(reads.session, 0, 'theme/session.js reads no layout in the pointer moves of a drag');
+  const box = center(await boxOf(ben, el(0, '#s0')));
+  const followed = during.find((f) => Math.abs(f.w - moved.w) < 1 && Math.abs(f.x - moved.x - (box.x - from.x)) < 2 && Math.abs(f.y - moved.y - (box.y - from.y)) < 2);
+  assert.ok(box.x - from.x > 30 && followed, `the frame of Ana on the dragged element moves with it, by ${box.x - from.x}, ${box.y - from.y}`);
+  clean(ana);
+  clean(ben);
+});
