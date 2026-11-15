@@ -473,13 +473,26 @@ function execute(ctx: Ctx, plan: Plan, placed: Set<Element>, focus: { el: HTMLEl
     }
   }
   let next = plan.after;
+  let moved = false;
   for (let j = plan.ops.length - 1; j >= 0; j--) {
     const op = plan.ops[j];
     const n = op.node;
     if (!n) continue;
     const stays = (op.kind === 'keep' && op.stable) || (n.parentNode === plan.live && nextUnit(ctx, placed, n) === next);
-    if (!stays) plan.live.insertBefore(n, next && next.parentNode === plan.live ? next : null);
+    if (!stays) {
+      moved ||= op.kind === 'keep';
+      plan.live.insertBefore(n, next && next.parentNode === plan.live ? next : null);
+    }
     next = n;
+  }
+  // the units kept among units that moved changed their order, whichever of them the longest run
+  // kept in place, hence an undo of an earlier move of any of them would undo this order
+  if (moved) {
+    for (const op of plan.ops) {
+      if (op.kind !== 'keep' || !op.node) continue;
+      ctx.touched.add(op.node);
+      ctx.changed.push(op.node);
+    }
   }
 }
 
