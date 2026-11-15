@@ -383,3 +383,19 @@ test('add regression test: one session cannot fill the memory of the relay, and 
   assert.equal(status(small), 200);
   assert.match(small.got, /\r\n\r\ndeck$/);
 });
+
+test('add regression test: a registration without the token is refused right after the pulls of the session were answered', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, answeredMs: 500 });
+  t.after(() => relay.close());
+  const key = 't'.repeat(22);
+  const host = await fakeHost(relay, key);
+  const register = () => fetch(`${relay.url}/host/${key}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } }).then((r) => r.status);
+  const guest = raw(relay.port, 'GET', `/${key}/index.html`, { host: 'relay' });
+  // the pull is answered at once with the request of the guest, and no other pull waits
+  const [item] = await host.next();
+  assert.equal(await register(), 409, 'a registration between two pulls takes the session');
+  assert.equal(await host.push(item.id, 'deck'), 204, 'the host keeps its token');
+  assert.equal((await guest).text, 'deck');
+  // an edit command that died stops pulling, and a new start gets the key once answeredMs passed
+  await until(async () => (await register()) === 200, 'a registration after the end of the pulls');
+});
