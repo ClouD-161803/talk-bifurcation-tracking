@@ -273,7 +273,7 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
         res.setTimeout(limits.guestMs, () => res.destroy());
         answer(res, status, body, headers);
       },
-      timer: setTimeout(() => entry.finish(504, 'the edit command did not answer in time'), limits.guestMs),
+      timer: null,
     };
     session.pending.set(id, entry);
     res.on('close', () => {
@@ -296,6 +296,8 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (body === 'busy') return entry.finish(503, 'the relay is busy', { Connection: 'close' });
     if (!body) return entry.finish(413, 'the body is larger than the limit of the relay', { Connection: 'close' });
     session.queue.push({ id, method: req.method, path, query: q < 0 ? '' : url.slice(q + 1), headers: forwardable(req.headers, limits.headers), body });
+    // the time of the edit command starts once the body is read, and requestTimeout bounds the upload
+    entry.timer = setTimeout(() => entry.finish(504, 'the edit command did not answer in time'), limits.guestMs);
     deliver(session);
   }
 
