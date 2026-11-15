@@ -2,18 +2,20 @@
 
 This repository is either slides or a talk made from it. slides is the Beeson group's template for talks as HTML slides on reveal.js. Talks are made from it with the GitHub button "Use this template". The deck is `index.html`: the demo deck in the template, and the talk in a talk. It is drawn by the theme in `theme/`. It is edited in the browser with the editor, which is opened with the URL parameter `edit`.
 
+<!-- shared:begin -->
 ## Hard invariants
 
 Hard invariants are never traded away for other goals. When a change would break one, stop and ask the person you work for. Conventions may be argued with.
 
-1. Talks work without a toolchain. The compiled `theme/beeson.js`, `theme/editor.js`, and `theme/editor-tex.js` are committed.
-2. Decks do not fetch anything at show time. Everything they load is vendored under `theme/vendor/` with its license.
-3. Editor saves keep every byte of `index.html` outside the edited text elements.
-4. Nothing in this repository is derived from DyLAN code.
-5. Every feature is supported in all browsers. Decks can be viewed and presented, and every control can be used, in current Chrome, Firefox, and Safari, on desktops and phones. Extras such as an export or an editor command may be missing in one browser. The user is then told so in a message.
-6. Phones are supported.
-7. Great performance on slow machines is always an objective.
-8. The best part is no part. Complexity is never favored when a simpler solution exists.
+1. Phones are supported.
+2. Great performance on slow machines is always an objective.
+3. The best part is no part. Complexity is never favored when a simpler solution exists.
+<!-- shared:end -->
+4. Talks work without a toolchain. The compiled `theme/beeson.js`, `theme/editor.js`, and `theme/editor-tex.js` are committed.
+5. Decks do not fetch anything at show time. Everything they load is vendored under `theme/vendor/` with its license.
+6. Editor saves keep every byte of `index.html` outside the edited text elements.
+7. Nothing in this repository is derived from DyLAN code.
+8. Every feature is supported in all browsers. Decks can be viewed and presented, and every control can be used, in current Chrome, Firefox, and Safari, on desktops and phones. Extras such as an export or an editor command may be missing in one browser. The user is then told so in a message.
 
 ## Writing a talk
 
