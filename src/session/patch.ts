@@ -17,11 +17,16 @@ const isLow = (c: number) => c >= 0xdc00 && c <= 0xdfff;
 const splitsPair = (text: string, i: number) => i > 0 && i < text.length && isHigh(text.charCodeAt(i - 1)) && isLow(text.charCodeAt(i));
 const LONE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
-// true when patches is an operation of a text of length n, i.e. sorted, without overlap, with
-// integer offsets in bounds, and without a lone surrogate in a text or at a cut of the text when it
-// is given. insertions at one point, which a shift may bring together, are applied in list order
+// the most patches of an operation. diff() does not give more, since changes() gives up beyond
+// 2000 changed lines
+export const MAX_PATCHES = 2000;
+
+// true when patches is an operation of a text of length n, i.e. at most MAX_PATCHES, sorted,
+// without overlap, with integer offsets in bounds, and without a lone surrogate in a text or at a
+// cut of the text when it is given. insertions at one point, which a shift may bring together, are
+// applied in list order
 export function valid(patches: unknown, n: number, text?: string): patches is Patch[] {
-  if (!Array.isArray(patches)) return false;
+  if (!Array.isArray(patches) || patches.length > MAX_PATCHES) return false;
   let last: Patch | null = null;
   for (const p of patches as Patch[]) {
     if (!p || typeof p !== 'object' || typeof p.text !== 'string') return false;
