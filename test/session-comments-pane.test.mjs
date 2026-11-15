@@ -528,6 +528,35 @@ test('the field counts the text as it is sent, with each mention as the id of it
   clean(a);
 });
 
+test('while the mode of Version History is on, the badges and the button Comments are out of reach, and a toast of a comment waits for its end', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'An open thread');
+  await openPane(a);
+  await a.evaluate(`window.BeesonEditor.exec('view.comments')`);
+  await sees(a, `[...document.querySelectorAll('.beeson-comment-badge')].filter((b) => b.getClientRects().length).length`, 1);
+  await a.evaluate(`window.BeesonEditor.exec('file.history')`);
+  await a.waitFor(`document.documentElement.classList.contains('beeson-history')`);
+  await sees(a, `[...document.querySelectorAll('.beeson-comment-badge')].filter((b) => b.getClientRects().length).length`, 0, 'the badges shown in the mode');
+  assert.equal(await a.evaluate(`!!document.querySelector('.beeson-session-comments').closest('[inert]')`), true, 'the button Comments is inert');
+  await a.evaluate(`document.querySelector('.beeson-session-comments').click()`);
+  assert.equal(await a.evaluate(`document.documentElement.classList.contains('beeson-comments')`), false, 'the tab Comments is not opened');
+  await recordToasts(a);
+  await post(b, 0, 'Look, @Ann');
+  await sees(a, COUNT, 'Comments, 1 unread');
+  assert.deepEqual(await a.evaluate(TOASTS), [], 'the toast waits for the end of the mode');
+  await front(a);
+  await press(a, 'Escape');
+  await a.waitFor(`!document.documentElement.classList.contains('beeson-history')`);
+  await sees(a, TOASTS, ['Ben mentioned you on slide 1']);
+  // the badge of the paragraph and the badge of the slide, which the comment of Ben is on
+  await sees(a, `[...document.querySelectorAll('.beeson-comment-badge')].filter((b) => b.getClientRects().length).length`, 2);
+  assert.equal(await a.evaluate(`!!document.querySelector('.beeson-session-comments').closest('[inert]')`), false);
+  clean(a);
+  clean(b);
+});
+
 test('after E on a thread, the focus is on the next thread, which alone takes Tab, and an edit returns the focus to its thread', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   for (const [k, text] of [[0, 'First'], [1, 'Second'], [1, 'Third']]) await post(a, k, text);
