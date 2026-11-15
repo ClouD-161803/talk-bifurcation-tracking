@@ -40,18 +40,19 @@ function open(dir, text, options = {}) {
 
 test('a version is closed after a quiet time, and at the latest after the longest time', { timeout: 60_000 }, async (t) => {
   await t.test('after the quiet time since the last operation', async () => {
-    const { authority, history } = open(sessionDir(t), DECK, { quiet: 400, longest: 60_000 });
+    // read on the clock of the history, and with a quiet time far above the pause on a slow runner
+    const { authority, history } = open(sessionDir(t), DECK, { quiet: 2_000, longest: 60_000 });
     let closedAt = null;
-    history.onChange(() => (closedAt ??= Date.now()));
+    history.onChange(() => (closedAt ??= performance.now()));
     replace(authority, 'One', 'Uno', ANN);
-    const first = Date.now();
+    const first = performance.now();
     // a second operation within the quiet time moves the close
-    await until(() => Date.now() - first >= 50, 'a pause shorter than the quiet time');
+    await until(() => performance.now() - first >= 50, 'a pause shorter than the quiet time');
+    const last = performance.now();
     replace(authority, 'Two', 'Deux', ANN);
-    const last = Date.now();
     assert.equal(closedAt, null);
     await until(() => history.list().versions.length === 1, 'the version to be closed');
-    assert.ok(closedAt - last >= 400, `closed ${closedAt - last} ms after the last operation`);
+    assert.ok(closedAt - last >= 2_000, `closed ${closedAt - last} ms after the last operation`);
     assert.equal(history.list().versions[0].slides.join(), '1,2');
     history.stopSync();
   });
