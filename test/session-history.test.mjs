@@ -384,3 +384,46 @@ test('the pane of a page offline reads the versions once the page is online agai
   // the first requests after the restart carry the token of the edit command before, and are answered 404
   clean(ann, [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/(events|history)\?/]);
 });
+
+test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 px', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await converge(server, [ann]);
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'h2'));
+  await type(ann, ' on a phone');
+  await converge(server, [ann]);
+  await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`);
+  await ann.waitFor(SHOWN);
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Phone');
+  await ann.waitFor(`${LIST}[1]?.title === 'Phone'`);
+  await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
+  await ann.waitFor(`${FRAME}?.contentDocument?.readyState === 'complete'`, 30_000);
+  const boxes = await ann.evaluate(`[...document.querySelectorAll('${PANE} :is(button, label), ${BAR} :is(button, label)')].filter((b) => b.getClientRects().length).map((b) => {
+    const r = b.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { text: b.textContent, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, hit: b.contains(hit), tall: r.height >= 32, wide: r.width >= 32 };
+  })`);
+  assert.ok(boxes.length >= 8, `${boxes.length} controls`);
+  for (const b of boxes) assert.deepEqual(b, { text: b.text, inside: true, hit: true, tall: true, wide: true });
+  const layout = await ann.evaluate(`(() => {
+    const pane = document.querySelector('${PANE}').getBoundingClientRect();
+    const preview = document.querySelector('.beeson-session-preview').getBoundingClientRect();
+    const info = document.querySelector('${BAR} .info').getBoundingClientRect();
+    const actions = document.querySelector('${BAR} .actions').getBoundingClientRect();
+    return { sheet: pane.left === 0 && pane.right === innerWidth && pane.top > innerHeight / 3, above: preview.bottom <= pane.top + 0.5, two: actions.top >= info.bottom };
+  })()`);
+  assert.deepEqual(layout, { sheet: true, above: true, two: true });
+  await press$(ann, BAR, 'Restore this version');
+  await ann.waitFor(`!!document.querySelector('dialog.beeson-session-history-dialog[open]')`);
+  const dialog = await ann.evaluate(`[...document.querySelectorAll('dialog.beeson-session-history-dialog[open] button')].map((b) => b.getBoundingClientRect().height >= 32)`);
+  assert.deepEqual(dialog, [true, true]);
+  await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Cancel');
+  await press$(ann, PANE, 'Back to editor');
+  await ann.waitFor(`!(${SHOWN})`);
+  clean(ann);
+});
