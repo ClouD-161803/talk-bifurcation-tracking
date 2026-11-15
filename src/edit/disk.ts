@@ -5,8 +5,8 @@
 // on the base of the text written or read lately that is nearest to it, where the file wins a
 // conflict
 
-import { readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
-import { readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { chmodSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
+import { chmod, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
@@ -46,6 +46,10 @@ const encode = (text: string, bom: boolean) => Buffer.from(bom ? `﻿${text}` : 
 // the change time is left out, since a rename changes it on some systems
 const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 
+// the mode of a file, given to the temporary file that replaces it. a file on Windows has no mode
+// but the read-only flag, and a read-only file is not replaced by a rename there anyway
+const modeOf = (s: Stats) => (process.platform === 'win32' ? null : s.mode & 0o7777);
+
 const RETRY = new Set(['EPERM', 'EBUSY', 'EACCES']);
 
 // a rename over a file that another program may hold open for a moment, as on Windows, for the
@@ -76,7 +80,7 @@ export function renameRetriedSync(from: string, to: string): void {
 // a step of a task of the disk, i.e. a stat, a read, or a write of a file, or a pause. a task is a
 // generator of its steps, hence it runs asynchronously while the edit command runs, and at once at
 // a stop
-type Step = { stat: string } | { read: string } | { write: string; bytes: Buffer } | { sleep: number };
+type Step = { stat: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { sleep: number };
 type Task<T = void> = Generator<Step, T, any>;
 
 const missing = (e: NodeJS.ErrnoException) => {
@@ -88,7 +92,7 @@ function perform(step: Step): Promise<unknown> {
   if ('sleep' in step) return new Promise((done) => setTimeout(done, step.sleep));
   if ('stat' in step) return stat(step.stat).catch(missing);
   if ('read' in step) return readFile(step.read);
-  return writeFile(step.write, step.bytes);
+  return writeFile(step.write, step.bytes).then(() => (step.mode === null ? undefined : chmod(step.write, step.mode)));
 }
 
 const PAUSE = new Int32Array(new SharedArrayBuffer(4));
@@ -97,7 +101,8 @@ function performSync(step: Step): unknown {
   if ('sleep' in step) return void Atomics.wait(PAUSE, 0, 0, step.sleep);
   if ('stat' in step) return statSync(step.stat, { throwIfNoEntry: false }) ?? null;
   if ('read' in step) return readFileSync(step.read);
-  return writeFileSync(step.write, step.bytes);
+  writeFileSync(step.write, step.bytes);
+  if (step.mode !== null) chmodSync(step.write, step.mode);
 }
 
 // a task run at once, as at a stop
@@ -180,8 +185,9 @@ export type DiskOptions = {
 export class Disk {
   readonly file: string;
   // the file that is written, i.e. the target of file when it is a symbolic link, so that the link
-  // is kept
+  // is kept, and its mode
   private target: string;
+  private mode: number | null = null;
   bom: boolean;
   private authority: Authority;
   private known = '';
@@ -222,7 +228,9 @@ export class Disk {
       this.target = file;
     }
     try {
-      this.known = signature(statSync(this.target));
+      const info = statSync(this.target);
+      this.known = signature(info);
+      this.mode = modeOf(info);
     } catch {}
     authority.observe(() => this.schedule());
   }
@@ -330,7 +338,7 @@ export class Disk {
     const tmp = this.tmpName();
     let renamed = false, made: Stats;
     try {
-      yield { write: tmp, bytes: encode(text, this.bom) };
+      yield { write: tmp, bytes: encode(text, this.bom), mode: this.mode };
       // a write after the rename changes the signature of the temporary file
       made = yield { stat: tmp };
       // the rename is done between two steps, i.e. right after the check for a stop, so that a write
@@ -381,6 +389,7 @@ export class Disk {
       return true;
     }
     // the signature is taken before the read, so that a write after the read is seen at the next check
+    this.mode = modeOf(info);
     let sig = signature(info);
     if (sig === this.known) return true;
     let bytes: Buffer = yield { read: this.target };
