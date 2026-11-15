@@ -130,3 +130,18 @@ test('Undo and Redo are refused as a whole when a part of their entry changes a 
   clean(ben);
 });
 
+test('the bubble of a refusal for a text element on another slide names the slide, at the top of the window', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'One');
+  await caretAtEnd(ana, el(1, 'p'));
+  await until(() => ben.evaluate(`${P}.locks.size === 1`), 'the paragraph that Ana holds to be locked on the page of Ben');
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('slide.moveTo', { slides: [document.querySelectorAll('.reveal .slides > section')[1]], gap: 0 })`);
+  const shown = await ben.evaluate(`(() => { const b = document.querySelector('.beeson-bubble'); if (!b) return null; const r = b.getBoundingClientRect(); return { text: b.textContent, center: r.left + r.width / 2, top: r.top, middle: innerWidth / 2 }; })()`);
+  assert.equal(shown?.text, 'Ana is typing on slide 2. You can do this once they leave the text or stop for 30 s.');
+  assert.ok(Math.abs(shown.center - shown.middle) < 2 && shown.top < 100, `the bubble is at the top of the window, at ${JSON.stringify(shown)}`);
+  clean(ana);
+  clean(ben);
+});
+
