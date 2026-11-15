@@ -95,7 +95,7 @@ function askName(client: Client, error = ''): Promise<string> {
   return new Promise((done) => {
     const dialog = client.shell.dialog({
       title: isHost() ? 'Start the session' : 'Join the session',
-      text: 'Type the name that the others will see on your edits and comments.',
+      text: 'Type the name that the others will see on your edits.',
       body,
       className: `beeson-session-join ${fitClass()}`,
       dismissable: false,
