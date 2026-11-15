@@ -71,6 +71,7 @@ import { install as installGuides } from './canvas/guides.ts';
 import { install as installGrid } from './canvas/grid.ts';
 import { install as installMaskCommands } from './commands/mask.ts';
 import { install as installFlipCommands } from './commands/flip.ts';
+import { install as installSession } from './session/session.ts';
 import { install as installObjects } from './navigator/objects.ts';
 import { Doc } from './model/doc.ts';
 
@@ -186,6 +187,7 @@ installGrid(app);
 installMaskCommands(app);
 installFlipCommands(app);
 installObjects(app);
+const session = installSession(app);
 
 const revealReady = (): Promise<void> =>
   new Promise((done) => {
@@ -286,6 +288,9 @@ const BeesonEditor = {
   // the selected elements, a line among them
   selection: () => app.selection.elements(),
   doc,
+  // the port of the synchronous editor, see session/session.ts, and its apply of a text
+  session,
+  apply: (text: string) => session.apply(text),
   // the delay of a step of Preview in ms, which a test shortens
   preview: previewTiming,
   version: __VERSION__,
