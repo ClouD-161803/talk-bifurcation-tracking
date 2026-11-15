@@ -286,3 +286,74 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
   clean(host, [/\.session\/share/]);
   clean(guest, [/502/]);
 });
+
+test('on a phone of 390 px the controls of the session are in view with a hit area of 32 px, and the dialogs fit', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const phone = await open(browser, url, { name: 'Pia Park', width: 390, height: 844, mobile: true });
+  for (const name of ['Ben Carter', 'Cleo Diaz', 'Dan Evans']) await open(browser, url, { name });
+  const list = await shown(phone, 4);
+  assert.deepEqual(list.map((a) => a.text), ['BC', 'CD', '+1', 'PP']);
+
+  const controls = await phone.evaluate(`[...document.querySelectorAll('.beeson-edit-titlebar .right button')].filter((b) => b.getClientRects().length).map((b) => ({ name: b.getAttribute('aria-label') ?? b.textContent, ...${HIT}(b) }))`);
+  assert.deepEqual(controls.map((c) => c.name), ['Ben Carter', 'Cleo Diaz', '1 more person', 'Pia Park, you', 'Saved to index.html', 'Share']);
+  for (const c of controls) {
+    assert.ok(c.inside && c.hit, `${c.name} is in view and takes a tap`);
+    assert.ok(c.width >= 32 && c.height >= 32, `${c.name} has a hit area of ${c.width} by ${c.height} px`);
+  }
+  const menus = await phone.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].map((b) => ({ name: b.textContent, ...${HIT}(b) }))`);
+  for (const m of menus) assert.ok(m.inside && m.hit, `the menu ${m.name} is in view and not covered`);
+
+  await t.test('a tap and a hold of 500 ms open the menu of an avatar', async () => {
+    await tap(phone, '.beeson-session-people .me');
+    await phone.waitFor(`!!${item('Change Name…')}`);
+    await key(phone, 'Escape');
+    await phone.waitFor(`!document.querySelector('.beeson-edit-menu')`);
+    await hold(phone, '.beeson-session-people button[aria-label="Ben Carter"]', `!!document.querySelector('.beeson-edit-menu')`);
+    assert.deepEqual(await menu(phone), ['Ben Carter']);
+    // the click after the hold leaves the menu open
+    await phone.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
+    assert.deepEqual(await menu(phone), ['Ben Carter']);
+    await key(phone, 'Escape');
+    await phone.waitFor(`!document.querySelector('.beeson-edit-menu')`);
+  });
+
+  const fits = async (page, selector) => {
+    for (const height of [664, 364]) {
+      // 364 px is the window of 664 px with the keyboard of a phone open
+      await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height, deviceScaleFactor: 1, mobile: true });
+      await page.waitFor(`innerHeight === ${height} && document.documentElement.style.getPropertyValue('--beeson-session-vh') === '${height}px'`);
+      await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
+      const fit = await page.evaluate(`${FITS}(document.querySelector(${JSON.stringify(selector)}))`);
+      assert.deepEqual(fit, { open: true, inside: true, across: true, page: true }, `${selector} at 390 by ${height} px`);
+    }
+    await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  };
+
+  await t.test('the Share dialog fits', async () => {
+    await tap(phone, '.beeson-session-share');
+    await phone.waitFor(`!!document.getElementById('beeson-session-relay')`);
+    await fits(phone, SHARE);
+    await phone.evaluate(`(${dialogButton('beeson-session-share-dialog', 'Done')}).click()`);
+    await phone.waitFor(`!document.querySelector(${JSON.stringify(SHARE)})`);
+  });
+
+  await t.test('the Change Name dialog fits', async () => {
+    await tap(phone, '.beeson-session-people .me');
+    await phone.waitFor(`!!${item('Change Name…')}`);
+    await tap(phone, item('Change Name…'));
+    await phone.waitFor(`document.querySelector('dialog.beeson-session-rename')?.open`);
+    await fits(phone, 'dialog.beeson-session-rename');
+    await phone.evaluate(`(${dialogButton('beeson-session-rename', 'Cancel')}).click()`);
+  });
+
+  await t.test('the join dialog fits', async () => {
+    const page = await open(browser, url, { name: '', width: 390, height: 664, mobile: true, wait: false });
+    await page.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
+    await fits(page, 'dialog.beeson-session-join');
+    clean(page);
+  });
+  clean(phone);
+});
