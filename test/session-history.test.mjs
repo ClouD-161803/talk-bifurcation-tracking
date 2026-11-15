@@ -14,7 +14,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
+import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
 import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
@@ -59,7 +59,7 @@ const press$ = (page, scope, text) => tapOrClick(page, button(scope, text));
 // the pane opened by the key of Version History
 async function openPane(page) {
   await front(page);
-  await press(page, 'Mod+Alt+Shift+H');
+  await press(page, HISTORY_KEY);
   await page.waitFor(SHOWN);
 }
 
@@ -225,7 +225,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
   await t.test('the focus goes back to the control that opened the mode, also to the button of the save state', async () => {
     await front(ben);
     await ben.evaluate(`(window.__before = [...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.getClientRects().length)).focus(), true`);
-    await press(ben, 'Mod+Alt+Shift+H');
+    await press(ben, HISTORY_KEY);
     await ben.waitFor(SHOWN);
     await press$(ben, PANE, 'Back to editor');
     await ben.waitFor(`!(${SHOWN})`);

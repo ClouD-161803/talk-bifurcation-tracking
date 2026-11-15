@@ -198,3 +198,6 @@ export async function show(page, heading) {
 export function clean(page, allowed = []) {
   assert.deepEqual(page.errors.filter((e) => !allowed.some((a) => a.test(e))), []);
 }
+
+/** The key of Version History, which differs with the platform as in the command file.history. */
+export const HISTORY_KEY = process.platform === 'darwin' ? 'Mod+Alt+Shift+H' : 'Alt+Shift+H';

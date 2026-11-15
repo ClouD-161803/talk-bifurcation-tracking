@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { launch } from '../scripts/chrome.mjs';
 import { front } from './helpers/apply.mjs';
-import { C, clean, ONLINE, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
+import { C, clean, HISTORY_KEY, ONLINE, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press } from './helpers/editor.mjs';
 
 // a version is closed only when the current state is named
@@ -38,7 +38,7 @@ const press$ = (page, scope, text) => tapOrClick(page, button(scope, text));
 
 async function openPane(page) {
   await front(page);
-  await press(page, 'Mod+Alt+Shift+H');
+  await press(page, HISTORY_KEY);
   await page.waitFor(SHOWN);
 }
 
