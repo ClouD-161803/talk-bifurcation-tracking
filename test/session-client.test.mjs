@@ -38,7 +38,8 @@ test('a page joins with the name typed in the dialog, and again without it', { t
     const d = document.querySelector('dialog.beeson-session-join');
     return { title: d.querySelector('h3').textContent, text: d.querySelector('p').textContent, label: d.querySelector('label').textContent, focused: document.activeElement === d.querySelector('input') };
   })()`);
-  assert.deepEqual(dialog, { title: 'Start the session', text: 'Type the name that the others will see on your edits and comments.', label: 'Your name', focused: true });
+  // the host and a guest read one title, which the button Join repeats
+  assert.deepEqual(dialog, { title: 'Join the session', text: 'Type the name that the others will see on your edits and comments.', label: 'Your name', focused: true });
   // the field takes 40 characters, also of emoji, which are two UTF-16 code units each
   const field = `document.querySelector('dialog.beeson-session-join input')`;
   await page.send('Input.insertText', { text: '😀'.repeat(41) });

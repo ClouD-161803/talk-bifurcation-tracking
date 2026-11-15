@@ -67,11 +67,16 @@ async function openPane(page) {
   await page.waitFor(SHOWN);
 }
 
-// the name of the open dialog typed and saved
-async function nameIt(page, name) {
+// the name of the open dialog typed and sent
+async function typeName(page, name) {
   await page.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] input') === document.activeElement`);
   await type(page, name);
   await press(page, 'Enter');
+}
+
+// the name of the open dialog typed and saved
+async function nameIt(page, name) {
+  await typeName(page, name);
   await page.waitFor(`!document.querySelector('dialog.beeson-session-history-dialog[open]')`);
 }
 
@@ -476,7 +481,9 @@ test('the pane of a page offline reads the versions once the page is online agai
   assert.equal(await ann.evaluate(`${LIST}[2].title`), 'Kept');
   // a name cannot be given offline, and the dialog says so
   await press$(ann, PANE, 'Name this version');
-  await nameIt(ann, 'Lost');
+  // the request is refused at once, hence the dialog of the failure may open before a wait sees
+  // the first dialog closed
+  await typeName(ann, 'Lost');
   await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'The version could not be named'`);
   await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'OK');
   await server.start(['--port', String(port)]);

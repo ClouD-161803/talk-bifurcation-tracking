@@ -57,9 +57,6 @@ export function initials(name: string): string {
   return (graphemes(words[0])[0] + graphemes(words[words.length - 1])[0]).toUpperCase();
 }
 
-// the address is of the machine of the edit command for the host, and of the relay for a guest
-const isHost = (): boolean => ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
-
 // the field Your name of the join dialog and of Change Name, with the initials of the name beside it
 export function nameField(value: string, error = ''): { body: HTMLElement; input: HTMLInputElement; swatch: HTMLElement; note: HTMLElement } {
   style('join', CSS);
@@ -94,7 +91,7 @@ function askName(client: Client, error = ''): Promise<string> {
   const { body, input, note } = nameField(stored(NAME) ?? '', error);
   return new Promise((done) => {
     const dialog = client.shell.dialog({
-      title: isHost() ? 'Start the session' : 'Join the session',
+      title: 'Join the session',
       text: 'Type the name that the others will see on your edits and comments.',
       body,
       className: `beeson-session-join ${fitClass()}`,
