@@ -374,3 +374,27 @@ test('a page whose poll is refused again right after each hello waits longer bef
   assert.ok(gaps[0] >= 900 && gaps[1] >= 1800, `the gaps between the hellos are ${gaps.join(', ')} ms`);
   clean(page);
 });
+
+test('a rejoin of a second page of a person keeps the name that another page of the person changed', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  // b is another browser, which takes over the person of Ann
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: NET, wait: false });
+  await b.waitFor(`${DIALOG}?.querySelector('h3')?.textContent.includes('has joined this deck before')`);
+  await b.evaluate(`${button('Yes, continue')}.click()`);
+  await b.waitFor(ONLINE);
+  assert.equal(await b.evaluate(`${C}.person`), await a.evaluate(`${C}.person`));
+  await converge(server, [a, b]);
+  // the next poll of b is refused, as after a sleep of its tab, and b says hello again
+  const hellos = await b.evaluate(`(__net.rule('/.session/events', 'answer', { status: 404, body: '{"error":"the page is not in the session"}', times: 1 }), __net.count('/.session/hello'))`);
+  assert.equal(await a.evaluate(`window.BeesonSession.rename(${C}, 'Ann Smith')`), 'renamed');
+  await b.waitFor(`__net.count('/.session/hello') === ${hellos + 1} && ${ONLINE} && !${C}.joining`);
+  const own = (page) => page.evaluate(`({ name: ${C}.name, known: ${C}.known.find((p) => p.person === ${C}.person).name, stored: localStorage.getItem('beeson-session-name') })`);
+  assert.deepEqual(await own(b), { name: 'Ann Smith', known: 'Ann Smith', stored: 'Ann Smith' });
+  await converge(server, [a, b]);
+  assert.deepEqual(await own(a), { name: 'Ann Smith', known: 'Ann Smith', stored: 'Ann Smith' });
+  clean(a);
+  clean(b);
+});
