@@ -236,6 +236,23 @@ test('a version that changes only the start tag of a slide outlines the slide it
   clean(ann);
 });
 
+test('the preview draws the slide as the canvas does, without the switch of the mode, the slide number, and the progress bar of the show', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await write(server, ann, TALK.replace('<h2>Two</h2>', '<h2>Two changed</h2>'), 'Two changed');
+  await nameNow(ann, 'Changed');
+  await openPane(ann);
+  await tapOrClick(ann, rowByTitle('Changed'));
+  await ann.waitFor(`${CURRENT} === 'Two changed'`, 30_000);
+  // each control of the show is in the page of the preview, and is not drawn
+  const controls = `['.theme-switch', '.reveal .slide-number', '.reveal .progress'].map((s) => { const el = ${FRAME}.contentDocument.querySelector(s); return el ? el.getClientRects().length : null; })`;
+  await ann.waitFor(`!${controls}.includes(null)`);
+  assert.deepEqual(await ann.evaluate(controls), [0, 0, 0]);
+  clean(ann);
+});
+
 test('a new list leaves the bar alone, the text of a version is read once per preview, and a hidden preview keeps nothing', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
