@@ -357,7 +357,7 @@ for (const platform of PLATFORMS) {
     const sel = '.beeson-edit-inspector .ed-sec .ed-note.running-head';
     assert.ok(await until(page, typesetIn(`${sel} mjx-container`)), 'the running head of the Slide pane is not typeset');
     const note = await page.evaluate(`(() => { const n = document.querySelector(${JSON.stringify(sel)}); return { tex: n.dataset.tex, shown: n.textContent }; })()`);
-    assert.equal(note.tex, '“Content \\(\\LL{1}\\)”, from the last section slide');
+    assert.equal(note.tex, '“Content \\(\\mathcal{L}_{1}\\)”, from the last section slide');
     assert.ok(!note.shown.includes('\\('));
     assert.deepEqual(errors(page), []);
   });

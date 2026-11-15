@@ -6,10 +6,10 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, center, click, press, saveAndReopen, type, withMacro } from './helpers/editor.mjs';
 
 const EQUATIONS = 3;
 const DISPLAY = String.raw`\[\ddot x - \class{coriolis}{2\dot y} = -\frac{\partial \class{potential}{\tilde U}}{\partial x},\qquad \ddot y + \class{coriolis}{2\dot x} = -\frac{\partial \class{potential}{\tilde U}}{\partial y},\]`;
@@ -33,12 +33,12 @@ const settle = (page) => page.evaluate('new Promise((done) => requestAnimationFr
 const render = (page) => page.evaluate('window.BeesonEditor.render()');
 const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 
-async function open(platform) {
+async function open(platform, deck = 'test-deck.html') {
   const page = await browser.newPage();
-  await page.goto(`${server.origin}/test-deck.html?edit&still&edit-platform=${platform}`);
+  await page.goto(`${server.origin}/${deck}?edit&still&edit-platform=${platform}`);
   await page.waitFor(deckSettled);
   await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
-  page.source = readFileSync('test-deck.html', 'utf8');
+  page.source = readFileSync(deck, 'utf8');
   const status = await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(page.source)})`);
   assert.deepEqual(status.problems, []);
   await page.evaluate(`Reveal.slide(${EQUATIONS})`);
@@ -135,7 +135,10 @@ for (const platform of ['mac', 'other']) {
   });
 
   test(`a macro of the deck is completed in the TeX field (${platform})`, async (t) => {
-    const page = await open(platform);
+    const deck = `.macro-${process.pid}-${platform}.html`;
+    writeFileSync(deck, withMacro(readFileSync('test-deck.html', 'utf8')));
+    t.after(() => rmSync(deck, { force: true }));
+    const page = await open(platform, deck);
     t.after(() => page.close?.());
     await caretInStep2(page);
     await inlineKey(page, platform);
