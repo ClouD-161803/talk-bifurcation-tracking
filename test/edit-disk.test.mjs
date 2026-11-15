@@ -146,3 +146,14 @@ test('an agent that writes back after more than 100 writes of people keeps every
   const after = readFileSync(file, 'utf8');
   assert.deepEqual(tokens.filter((token) => !after.includes(token)), []);
 });
+
+test('an outside write back to an earlier text keeps the newer edits of the session, and says so in a line of the log', { timeout: 60_000 }, async (t) => {
+  const { file, authority, disk, lines } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
+  disk.start();
+  writeFileSync(file, DECK.replace('</body>', '<p>typo</p>\n</body>'));
+  await until(() => authority.text.includes('<p>typo</p>'), 'the typo to be merged');
+  writeFileSync(file, DECK);
+  await until(() => lines.some((l) => l.includes('earlier text')), 'a line of the log on the earlier text');
+  await until(() => readFileSync(file, 'utf8') === authority.text, 'the session text to be written back');
+  assert.ok(authority.text.includes('<p>typo</p>'), 'the session lost its newer edit');
+});
