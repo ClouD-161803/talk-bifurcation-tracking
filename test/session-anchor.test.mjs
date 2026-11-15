@@ -342,6 +342,23 @@ test('an element wrapped in a new element of the same start tag keeps its thread
   assert.equal(item.removed, undefined);
 });
 
+test('a removed element is attached again only by a re-insertion into its slide', () => {
+  const logo = '<img class="logo" src="brand/logo.svg">';
+  const v0 = deck(['<h2>Alpha</h2>', logo, '<p>First.</p>'], ['<h2>Beta</h2>', '<p>Second.</p>'], ['<h2>Gamma</h2>', logo, '<p>Third.</p>']);
+  const v1 = v0.replace(`  ${logo}\n  <p>First.`, '  <p>First.');
+  const fell = move(v0, v1, [onElement(v0, logo)]).items;
+  fellBack(v1, fell[0], '<section>\n  <h2>Alpha', logo);
+  // the slide that holds an equal element moved to the front
+  const moved = deck(['<h2>Gamma</h2>', logo, '<p>Third.</p>'], ['<h2>Alpha</h2>', '<p>First.</p>'], ['<h2>Beta</h2>', '<p>Second.</p>']);
+  fellBack(moved, move(v1, moved, fell).items[0], '<section>\n  <h2>Alpha', logo);
+  // a copy pasted onto another slide
+  const pasted = v1.replace('  <p>Second.', `  ${logo}\n  <p>Second.`);
+  fellBack(pasted, move(v1, pasted, fell).items[0], '<section>\n  <h2>Alpha', logo);
+  // the undo
+  const [back] = move(v1, v0, fell).items;
+  assert.deepEqual(back, onElement(v0, logo));
+});
+
 test('an element edited while a copy of its old text is pasted in the same operation keeps its thread', () => {
   const before = deck(['<h2>Alpha</h2>', '<ul>', '  <li>Derive the bound</li>', '  <li>Check the limit</li>', '</ul>']);
   const after = before.replace('<li>Derive the bound</li>', '<li>Derive the upper bound</li>').replace('<li>Check the limit</li>', '<li>Check the limit</li>\n    <li>Derive the bound</li>');
