@@ -267,3 +267,84 @@ test('the preview outlines each changed element in the tone of its author, and a
   clean(ann);
   clean(ben);
 });
+
+test('Restore turns the deck of both pages and index.html back, keeps a text typed meanwhile, and tells the other page', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await openPane(ann);
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Start');
+  await ann.waitFor(`${LIST}[1]?.title === 'Start'`);
+  await show(ben, 'Two');
+  await caretAtEnd(ben, el(1, 'li'));
+  await typeKeys(ben, ' gone');
+  await converge(server, [ann, ben]);
+  await front(ann);
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Later');
+  await ann.waitFor(`${LIST}[1]?.title === 'Later'`);
+  const start = await ann.evaluate(`document.querySelectorAll('${PANE} .versions .row.version')[1].querySelector('.sub').textContent`);
+
+  await t.test('a failure shows its error', async () => {
+    await ann.evaluate(`(() => {
+      const fetched = window.fetch;
+      window.fetch = function (input, init) {
+        if (String(input).includes('/restore') && window.__fail) return Promise.resolve(new Response(JSON.stringify({ error: 'the disk is full' }), { status: 500 }));
+        return fetched.call(this, input, init);
+      };
+      window.__fail = true;
+      return true;
+    })()`);
+    await tapOrClick(ann, `document.querySelectorAll('${PANE} .versions .row.version')[1]`);
+    await press$(ann, BAR, 'Restore this version');
+    await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'Restore this version?'`);
+    assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-session-history-dialog[open] p').textContent`), `The deck goes back to how it was at ${start}. The current version stays in the history.`);
+    await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Restore');
+    await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'The version could not be restored'`);
+    assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-session-history-dialog[open] p').textContent`), 'the disk is full');
+    await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'OK');
+    await ann.evaluate('window.__fail = false, true');
+    assert.equal(await ann.evaluate(SHOWN), true);
+  });
+
+  await t.test('a restore reaches both pages and index.html, with the text that Ben typed meanwhile on top', async () => {
+    await recordToasts(ben);
+    // the operation of Ben is held until the restore is entered, hence it is of the version before
+    await ben.evaluate(`(() => {
+      const fetched = window.fetch;
+      window.__held = new Promise((done) => (window.__release = done));
+      window.fetch = function (input, init) {
+        if (String(input).includes('/.session/op') && window.__held) return window.__held.then(() => fetched.call(this, input, init));
+        return fetched.call(this, input, init);
+      };
+      return true;
+    })()`);
+    await show(ben, 'One');
+    await caretAtEnd(ben, el(0, 'p'));
+    await typeKeys(ben, ' meanwhile');
+    await ben.waitFor(`${TEXT}.includes('First slide meanwhile')`);
+    await front(ann);
+    await press$(ann, BAR, 'Restore this version');
+    await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Restore');
+    await ann.waitFor(`!(${SHOWN})`, 20_000);
+    assert.equal(await ann.evaluate(`${TEXT}.includes('Alpha gone')`), false);
+    assert.equal(await ann.evaluate(`!!document.querySelector('.beeson-session-preview:not([hidden])')`), false);
+    await ben.evaluate('window.__release(), window.__held = null, true');
+    const text = await converge(server, [ann, ben]);
+    assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide meanwhile</p>'));
+  });
+
+  await t.test('the other page gets a toast, and the restore is a version on top', async () => {
+    await ben.waitFor(`window.__toasts.length > 0`);
+    assert.deepEqual(await ben.evaluate('window.__toasts'), [`Ann restored the version of ${start}|status`]);
+    assert.equal(await ann.evaluate(`document.querySelector('.beeson-session-toast')?.textContent ?? ''`), '');
+    await openPane(ann);
+    await ann.waitFor(`document.querySelector('${PANE} .versions .row.version .sub')?.textContent === 'Restored the version of ${start}'`);
+  });
+  clean(ann, [/status of 500/]);
+  clean(ben);
+});
