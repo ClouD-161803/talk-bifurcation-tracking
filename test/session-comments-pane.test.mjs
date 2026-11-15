@@ -683,6 +683,25 @@ test('the text of a comment takes the direction of its words, and a name in runn
   clean(b);
 });
 
+test('the badge of a selected element is clear of the grips of its frame', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'On the paragraph');
+  // a press on a text element puts the caret in it, and Escape then selects the element
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await press(a, 'Escape');
+  await sees(a, `${C}.app.selection.kind === 'elements' && ${C}.app.selection.has(${el(0, 'p')})`, true);
+  await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 1);
+  // each grip of the frame is the element at its center, rather than the badge
+  await sees(a, `[...document.querySelectorAll('.beeson-grip')].filter((g) => g.getClientRects().length).map((g) => {
+    const r = g.getBoundingClientRect();
+    const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return at === g ? null : g.dataset.handle + ' ' + (at?.className ?? '');
+  }).filter(Boolean)`, []);
+  clean(a);
+});
+
 test('the key of the command Comment opens a draft while the focus is in the pane', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   await show(a, 'One');

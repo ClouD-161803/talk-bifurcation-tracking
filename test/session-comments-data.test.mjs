@@ -36,7 +36,7 @@ const badgeOf = (expression, slide = false) => `(() => {
   const r = el.getBoundingClientRect();
   const b = [...document.querySelectorAll('.beeson-comment-badge')].find((b) => {
     const q = b.getBoundingClientRect();
-    return ${slide} ? Math.abs(q.right - (r.right - 6)) < 2 && Math.abs(q.top - (r.top + 6)) < 2 : Math.abs(q.left - (r.right + 4)) < 2 && Math.abs(q.bottom - (r.top - 4)) < 2;
+    return ${slide} ? Math.abs(q.right - (r.right - 6)) < 2 && Math.abs(q.top - (r.top + 6)) < 2 : [4, 18].some((x) => Math.abs(q.left - (r.right + x)) < 2) && Math.abs(q.bottom - (r.top - 4)) < 2;
   });
   return b ? b.textContent + (b.classList.contains('unread') ? '*' : '') : null;
 })()`;

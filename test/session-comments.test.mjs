@@ -23,15 +23,15 @@ const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments are sent once you are back online';
 
 // the text of the badge of the element of expression, found at its place 4 px outside the upper
-// right corner of the element, or inside the upper right corner of a slide, with * when it is
-// filled for an unread thread, or null
+// right corner of the element, or 18 px while the element is selected, or inside the upper right
+// corner of a slide, with * when it is filled for an unread thread, or null
 const badgeOf = (expression, slide = false) => `(() => {
   const el = ${expression};
   if (!el) return null;
   const r = el.getBoundingClientRect();
   const b = [...document.querySelectorAll('.beeson-comment-badge')].find((b) => {
     const q = b.getBoundingClientRect();
-    return ${slide} ? Math.abs(q.right - (r.right - 6)) < 2 && Math.abs(q.top - (r.top + 6)) < 2 : Math.abs(q.left - (r.right + 4)) < 2 && Math.abs(q.bottom - (r.top - 4)) < 2;
+    return ${slide} ? Math.abs(q.right - (r.right - 6)) < 2 && Math.abs(q.top - (r.top + 6)) < 2 : [4, 18].some((x) => Math.abs(q.left - (r.right + x)) < 2) && Math.abs(q.bottom - (r.top - 4)) < 2;
   });
   return b ? b.textContent + (b.classList.contains('unread') ? '*' : '') : null;
 })()`;
