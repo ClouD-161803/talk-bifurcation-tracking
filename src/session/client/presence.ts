@@ -302,6 +302,7 @@ export class Presence {
     client.on('me', () => this.confirm());
     const based = () => {
       if (!this.log.seeded || (client.base && this.log.behind(client.base.v))) this.seedLog();
+      this.lost();
       this.reread();
       this.due(false);
     };
@@ -395,8 +396,17 @@ export class Presence {
     this.due(true);
   }
 
+  // a hold of an element that left the page ends, e.g. after another person deleted it
+  private lost(): void {
+    if (!this.holding || this.holding.isConnected) return;
+    this.caretHost = null;
+    this.hold(null);
+    this.due(true);
+  }
+
   // the deadlines of the floor rule taken now, e.g. by a test after it moved skew
   check(): void {
+    this.lost();
     const t = this.now();
     if (this.holding && t - this.beatAt >= BEAT) {
       this.beat++;
