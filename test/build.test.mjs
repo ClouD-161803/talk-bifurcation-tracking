@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -44,6 +44,28 @@ test('the client of a session imports a module of the editor only as a type', (t
     message = String(e.stderr);
   }
   assert.match(message, /src\/editor\/ui\/dom\.ts, imported by src\/session\/client\/dom\.ts/);
+});
+
+// a module of theme/editor.js outside src/editor/, e.g. src/shapes.ts with its observers, would be a
+// second copy as well, and so would a module of the editor imported with a path in another case on a
+// file system that ignores case
+test('the client of a session shares a module with the editor only under src/session/, or merge.ts and tokens.ts', (t) => {
+  const root = copy(t);
+  const client = join(root, 'src/session/client/dom.ts');
+  const before = readFileSync(client, 'utf8');
+  const refusal = (lines) => {
+    writeFileSync(client, before + lines);
+    try {
+      execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
+      return '';
+    } catch (e) {
+      return String(e.stderr);
+    }
+  };
+  assert.match(refusal("\nimport { mountShapes } from '../../shapes.ts';\nexport const seen = mountShapes;\n"), /src\/shapes\.ts, imported by src\/session\/client\/dom\.ts/);
+  if (existsSync(join(root, 'SRC'))) {
+    assert.match(refusal("\nimport { make as editorMake } from '../../Editor/ui/dom.ts';\nexport const seen = editorMake;\n"), /src\/Editor\/ui\/dom\.ts, imported by src\/session\/client\/dom\.ts/);
+  }
 });
 
 test('the theme bundle carries none of the editor, which is all in theme/editor.js', () => {
