@@ -17,6 +17,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
+import { BUBBLE, LOCKED, session } from './helpers/presence.mjs';
 import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -1047,6 +1048,25 @@ test('Version History stops following, and a page that follows the person reads 
   await ann.waitFor(`!(${SHOWN})`);
   await front(ben);
   await ben.waitFor(`${PILL} === 'Following Ann'`);
+  clean(ann);
+  clean(ben);
+});
+
+test('Version History takes the caret out of the text, hence another person can type there at once', { timeout: 180_000 }, async (t) => {
+  const { pages: [ann, ben] } = await session(t, ['Ann', 'Ben']);
+  await show(ben, 'One');
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'h2'));
+  await typeKeys(ann, ' typed');
+  await press(ann, 'Mod+Alt+Shift+H');
+  await ann.waitFor(SHOWN);
+  // the presence state of Ann as the page of Ben reads it
+  const of = `${C}.presence.find((p) => p.name === 'Ann')?.state`;
+  await front(ben);
+  await ben.waitFor(`${of}?.mode === 'history'`);
+  assert.deepEqual(await ben.evaluate(`[${of}.caret, ${of}.held]`), [null, null]);
+  const focused = await ben.evaluate(`(() => { const h = ${el(0, 'h2')}; h.focus(); return document.activeElement === h; })()`);
+  assert.deepEqual([focused, await ben.evaluate(LOCKED(el(0, 'h2'))), await ben.evaluate(BUBBLE)], [true, false, null]);
   clean(ann);
   clean(ben);
 });
