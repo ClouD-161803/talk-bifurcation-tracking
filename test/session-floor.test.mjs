@@ -44,3 +44,40 @@ test('a held table cell refuses Delete Column, Delete Row, and a paste of cells 
   clean(ben);
 });
 
+const caretAtStart = async (page, expression) => {
+  await front(page);
+  assert.ok(await page.evaluate(`(() => { const h = ${expression}; h.focus(); getSelection().collapse(h.firstChild ?? h, 0); return document.activeElement === h; })()`), `the caret is at the start of ${expression}`);
+};
+const listOf = (page) => page.evaluate(`${el(1, 'ul')}.outerHTML`);
+
+test('a held list item refuses Backspace and Delete from the item beside it, and Tab from the item after it', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>', '    <li>Beta</li>\n    <li>Gamma</li>']] });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const item = (n) => el(1, `li:nth-child(${n})`);
+  // each case: the item that Ana holds, where Ben puts the caret, and the key that Ben presses
+  const cases = [
+    [1, () => caretAtStart(ben, item(2)), 'Backspace'],
+    [2, () => caretAtEnd(ben, item(1)), 'Delete'],
+    [2, () => caretAtEnd(ben, item(3)), 'Tab'],
+  ];
+  for (const [held, put, key] of cases) {
+    // the item that Ben left is free on the page of Ana
+    await until(() => ana.evaluate(`${P}.locks.size === 0`), 'the items to be free on the page of Ana');
+    await front(ana);
+    await caretAtEnd(ana, item(held));
+    await until(() => ben.evaluate(`${P}.locks.size === 1 && ${LOCKED(item(held))}`), `the item ${held} that Ana holds to be locked on the page of Ben`);
+    const before = await listOf(ben);
+    await put();
+    await unbubble(ben);
+    await press(ben, key);
+    assert.equal(await listOf(ben), before, `${key} leaves the list as it was when Ana holds the item ${held}`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, key);
+    await leave(ben);
+  }
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<li>Alpha<\/li>\s*<li>Beta<\/li>\s*<li>Gamma<\/li>/);
+  clean(ana);
+  clean(ben);
+});
+
