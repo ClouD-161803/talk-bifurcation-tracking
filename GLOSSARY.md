@@ -30,11 +30,23 @@ A window of the editor that is shown over the deck to ask a question or to give 
 
 Avoid "card". The heading over the scrubber of the progress line is not a card either, and its class is `scrub-heading`.
 
+## Edit command
+
+The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` is written.
+
+Avoid "server" and "daemon".
+
 ## Figure box
 
 The box at the right of a content slide or of a split slide in which a figure is placed.
 
 Avoid "zone", the class of a figure box in an old talk, which is `figure-box`.
+
+## Guest
+
+A person who has joined a session through its link, in any browser.
+
+Avoid "collaborator" and "peer".
 
 ## Hard invariant
 
@@ -46,11 +58,21 @@ The title line at the top of a slide, i.e. its `h2`, or the `h1` of a title slid
 
 Avoid "head" for the heading of a figure slide, since a head is only the moving dot at the tip of a trajectory while it is traced.
 
+## Host
+
+The person who started a session. The edit command runs on the machine of the host, and `index.html` is written in the talk folder of the host.
+
+Avoid "owner".
+
 ## Label
 
 A short text placed at a point of a backdrop or of a surface, such as the name of L1 or of the Moon.
 
 Avoid "lab", the class of a label in an old talk, which is `label`.
+
+## Launcher
+
+A file in a talk folder with which the edit command is started by a double click: `Edit.command` on macOS, `Edit.cmd` on Windows, and `Edit.sh` on Linux.
 
 ## Layer
 
@@ -76,6 +98,24 @@ One set of axes of an animated plot, as a panel is in TyCHO.
 
 Avoid "panel" for the text column of a split slide.
 
+## Presence
+
+What a person in a session sees of the others: who is there, the slide each one is on, and what each one has selected or is typing.
+
+Avoid "awareness" and "cursors".
+
+## Relay
+
+The program through which a guest reaches the edit command of a host whose machine cannot be reached directly. A deck is never kept on it.
+
+Avoid "server" and "hub".
+
+## Session
+
+One run of the edit command on a talk folder, from its start to its stop, together with the people who have joined it.
+
+Avoid "room", and avoid "document" for the deck of a session.
+
 ## Slide Sorter
 
 The view of the editor in which every slide is shown as a thumbnail in a grid, grouped by section, to select and reorder the slides and the sections, as in PowerPoint and Keynote.
@@ -99,6 +139,12 @@ Avoid "surface mark". The attribute `data-surface-marks` of an old talk is `data
 What a surface shows at a step, set on a fragment of its slide.
 
 Avoid "stage". The attribute `data-surface-stage` of an old talk is `data-surface-state`. The states `flat`, `wells`, `bowl`, and `sum` of the function `effective-potential` in an old talk are `zero`, `gravitational`, `centrifugal`, and `effective`.
+
+## Synchronous editor
+
+The editor while several people edit one deck at the same time, each in a browser, with every change shown to the others as it is made.
+
+Avoid "co-authoring", "multiplayer", and "live share". "Collaboration" is kept for work on a talk through git.
 
 ## Tab
 
