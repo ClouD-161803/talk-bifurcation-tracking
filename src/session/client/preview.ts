@@ -100,6 +100,7 @@ function sectionsOf(doc: Document, text: string, slides: Slide[]): (Element | nu
 type RevealLike = { isReady?(): boolean; on?(type: string, fn: () => void): void; getIndices(el: Element): { h: number; v?: number }; slide(h: number, v?: number): void };
 
 export type Actions = {
+  restore(v: VersionInfo, text: string | null): Promise<void>;
   name(v: VersionInfo): void;
 };
 
@@ -114,6 +115,7 @@ export class Preview {
   // the key of what is shown, e.g. version:<id>
   private key = '';
   private texts = new Map<string, Promise<string>>();
+  private text: string | null = null;
   private slides: Slide[] = [];
   private sections: (Element | null)[] = [];
 
@@ -217,7 +219,8 @@ export class Preview {
       this.frame.contentDocument?.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
     });
     label.append(box, document.createTextNode('Show changes'));
-    actions.append(label, this.button('Name this version', () => this.actions.name(v)));
+    const text = () => this.text;
+    actions.append(label, this.button('Restore this version', () => void this.actions.restore(v, text())), this.button('Name this version', () => this.actions.name(v)));
     this.bar.replaceChildren(info, slides, actions);
     if (fresh) void this.fill(v);
   }
@@ -229,12 +232,14 @@ export class Preview {
     const info = make('div', 'info');
     info.append(make('span', 'date', `Set aside, ${dayLabel(a.time)}, ${timeOf(a.time)}`), authorsOf(this.client, [a.author]));
     this.bar.replaceChildren(info);
+    this.text = null;
     void this.load('aside', a.id);
   }
 
   // the page of the version, with the outlines of the changed elements, at the first changed slide
   private async fill(v: VersionInfo): Promise<void> {
     const key = this.key;
+    this.text = null;
     const win = this.load('version', v.id);
     let detail: VersionDetail;
     let text: string;
@@ -246,6 +251,7 @@ export class Preview {
     const w = await win;
     const doc = w?.document;
     if (key !== this.key || !doc) return;
+    this.text = text;
     this.slides = slidesOf(text);
     this.sections = sectionsOf(doc, text, this.slides);
     const css = doc.createElement('style');

@@ -5,16 +5,18 @@
 // version or on a text set aside shows it in a preview over the canvas, see preview.ts, from which
 // the person restores, names, or downloads it. the applies of the others go on under the mode
 
-import { VERSION_NAME_MAX, type AsideInfo, type HistoryAnswer, type VersionInfo } from '../protocol.ts';
+import { parseVersion, VERSION_NAME_MAX, type AsideInfo, type HistoryAnswer, type Restored, type RestoreAnswer, type Version, type VersionInfo } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { make, style } from './dom.ts';
-import { authorsOf, dayLabel, slidesText, timeOf, whenOf } from './labels.ts';
+import { authorsOf, dayLabel, personOf, slidesText, timeOf, whenOf } from './labels.ts';
 import { Preview } from './preview.ts';
 import { addStateItem } from './state.ts';
 import { toast } from './toast.ts';
 
 // unnamed versions closer than FOLD ms fold under the newest of them
 const FOLD = 30 * 60_000;
+// the longest wait in ms for the apply of a restore before the mode ends
+const RESTORE_WAIT = 5000;
 
 const STYLE = `
 html.beeson-editor.beeson-history { --ed-insp-col: 288px; }
@@ -230,7 +232,7 @@ export function install(client: Client): void {
     const id = selected.id;
     const info = selected.kind === 'version' ? answer?.versions.find((v) => v.id === id) : answer?.aside.find((a) => a.id === id);
     if (!info) return;
-    preview ??= new Preview(client, pane!, { name: (v) => void name(v.id, v.name ?? '') });
+    preview ??= new Preview(client, pane!, { restore, name: (v) => void name(v.id, v.name ?? '') });
     if (selected.kind === 'version') preview.showVersion(info as VersionInfo);
     else preview.showAside(info as AsideInfo);
   }
@@ -314,6 +316,54 @@ export function install(client: Client): void {
     }
   }
 
+  // resolves once the deck holds the operation of a restore, at version v of the answer
+  function reached(v: Version, text: string | null): Promise<void> {
+    const want = parseVersion(v);
+    return new Promise((done) => {
+      let applied = false;
+      const check = () => {
+        const have = parseVersion(client.version);
+        const past = !want || !have || have.epoch !== want.epoch || have.n >= want.n;
+        if (past && (applied || (text !== null && client.port.text() === text))) finish();
+      };
+      const off = client.on('applied', () => {
+        applied = true;
+        check();
+      });
+      const timer = window.setInterval(check, 100);
+      const limit = window.setTimeout(() => finish(), RESTORE_WAIT);
+      function finish(): void {
+        off();
+        clearInterval(timer);
+        clearTimeout(limit);
+        done();
+      }
+      check();
+    });
+  }
+
+  async function restore(v: VersionInfo, text: string | null): Promise<void> {
+    const d = client.shell.dialog({
+      title: 'Restore this version?',
+      text: `The deck goes back to how it was ${dayLabel(v.time) === 'Today' ? 'at' : 'on'} ${whenOf(v.time).replace(', ', ' at ')}. The current version stays in the history.`,
+      buttons: [
+        { label: 'Cancel', value: 'cancel' },
+        { label: 'Restore', value: 'restore', primary: true },
+      ],
+      className: 'beeson-session-history-dialog',
+    });
+    const value = await d.open('restore');
+    d.el.remove();
+    if (value !== 'restore') return;
+    try {
+      const a = await client.transport.post<RestoreAnswer>(`history/${encodeURIComponent(v.id)}/restore`, { token: client.token });
+      await reached(a.v, text);
+      close();
+    } catch (e) {
+      fail('The version could not be restored', e);
+    }
+  }
+
   shell.onCommand(() => open());
   opener = open;
   addStateItem({ label: 'Version History', run: () => open() });
@@ -332,6 +382,10 @@ export function install(client: Client): void {
       stale = true;
       void load();
     }
+  });
+  client.on('restored', (r: Restored) => {
+    if (r.by === client.person) return;
+    toast(`${personOf(client, r.by)?.name ?? 'Someone'} restored the version of ${whenOf(r.time)}`);
   });
   client.on('ended', () => close());
 }

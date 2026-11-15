@@ -12,7 +12,7 @@ import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
-import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Taken, Token, Version } from '../protocol.ts';
+import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Restored, Taken, Token, Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
@@ -45,8 +45,9 @@ export type ClientEvents = {
   ended: [Ended];
   // an answer of hello was taken, after which the history is read again
   hello: [];
-  // the rev of the version history changed
+  // the rev of the version history changed, and a restore was made
   history: [number];
+  restored: [Restored];
 };
 
 // the parts of the offline path that the core calls, set by conflicts.ts and media.ts
@@ -239,6 +240,11 @@ export class Client {
     void this.poll();
     void this.drive();
     if (this.presenceDue) void this.flushPresence();
+  }
+
+  // the version of the newest operations taken, which the deck reads once they are applied
+  get version(): Version {
+    return this.since;
   }
 
   setWarning(text: string | null): void {
@@ -691,6 +697,7 @@ export class Client {
       }
     }
     if (answer.history !== undefined) this.emit('history', answer.history);
+    if (answer.restored) this.emit('restored', answer.restored);
     if (answer.ops === null) {
       this.sync!.lose();
       this.pump();
