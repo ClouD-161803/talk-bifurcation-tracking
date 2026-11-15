@@ -133,9 +133,13 @@ export class People {
     this.clients.set(id, { person, host, token });
     this.tokens.set(token, id);
     if (this.clients.size > MAX_CLIENTS) {
-      const [oldest, { token: old }] = this.clients.entries().next().value!;
-      this.clients.delete(oldest);
-      this.tokens.delete(old);
+      // the page used least lately that is not present, since revive moves a page to the end
+      for (const [client, { token: old }] of this.clients) {
+        if (this.members.has(client)) continue;
+        this.clients.delete(client);
+        this.tokens.delete(old);
+        break;
+      }
     }
     let member = this.members.get(id);
     const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev };
@@ -274,6 +278,10 @@ export class People {
     const known = this.clients.get(client);
     const record = known && this.records.get(known.person);
     const pages = known ? [...this.members.values()].filter((m) => m.person === known.person).length : 0;
+    if (known) {
+      this.clients.delete(client);
+      this.clients.set(client, known);
+    }
     if (!member && known && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
       const { person, name, color } = record;
       const now = Date.now();
