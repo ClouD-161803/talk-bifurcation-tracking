@@ -87,6 +87,52 @@ const MEASURE = `(() => {
   };
 })()`;
 
+const STEPS = (three, step, note) => `${HEAD}
+<section>
+  <h2>One</h2>
+  <p>First slide</p>
+</section>
+
+<section data-visibility="hidden">
+  <h2>Hidden</h2>
+  <p>Hidden slide</p>
+</section>
+
+<section>
+  <h2>Three</h2>
+  <p>${three}</p>
+  <p class="fragment">${step}</p>
+  <aside class="notes">${note}</aside>
+</section>
+${TAIL}`;
+
+test('the preview of a deck with a hidden slide, a changed step, and changed notes, and the keys inside it', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  writeFileSync(server.file, STEPS('Third slide', 'Step text', 'A note'));
+  await server.edit.child.kill();
+  await server.edit.exited;
+  await server.start();
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await write(server, ann, STEPS('Third slide changed', 'Step text changed', 'A note changed'), 'A note changed');
+  await nameNow(ann, 'Changed');
+  await openPane(ann);
+  await tapOrClick(ann, rowByTitle('Changed'));
+  const doc = `${FRAME}.contentDocument`;
+  await ann.waitFor(`${doc}?.querySelectorAll('[data-beeson-changed]').length === 3 && ${FRAME}.contentWindow.Reveal?.isReady()`, 30_000);
+
+  await t.test('the preview opens at the first changed slide that is shown, and Slide 2 shows the slide after the hidden slide', async () => {
+    assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('${BAR} button.slide')].map((b) => b.textContent)`), ['Slide 2']);
+    await ann.waitFor(`${CURRENT} === 'Three'`);
+    await ann.evaluate(`${FRAME}.contentWindow.Reveal.slide(0), true`);
+    await ann.waitFor(`${CURRENT} === 'One'`);
+    await press$(ann, BAR, 'Slide 2');
+    await ann.waitFor(`${CURRENT} === 'Three'`);
+  });
+  clean(ann);
+});
+
 test('converge ends with a failure at its time limit while one page is in step with the file and another is not', { timeout: 60_000 }, async () => {
   const helpers = pathToFileURL(resolve('test/helpers/client.mjs')).href;
   // a worker, since a converge that loops without an await holds the thread that runs it
