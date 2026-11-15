@@ -153,3 +153,15 @@ test('a change of data-figure on a TikZ figure is a reload, and a change of data
   await applied(b, parted, 'data-part');
   assert.equal((await applyOn(b, once(parted, 'data-figure="missing"', 'data-figure="two"'))).reload, true);
 });
+
+test('a TikZ figure placed by an apply is drawn in a deck without MathJax', async (t) => {
+  const b = await sessionPage(browser, { deck: 'test/pages/tikz.html' });
+  t.after(() => b.close());
+  assert.equal(await b.evaluate('typeof MathJax'), 'undefined', 'the deck loads MathJax');
+  const end = '<div class="figure-box tikz" data-figure="missing"></div>\n    </section>\n';
+  const placed = once(b.source, end, `${end}    <section>\n      <h2>A figure of the apply</h2>\n      <div class="figure-box tikz" id="placed" data-figure="two"></div>\n    </section>\n`);
+  assert.equal((await applyOn(b, placed)).reload, false);
+  const drawn = await b.waitFor(`!!document.querySelector('#placed > svg')`, 5000).then(() => true, () => false);
+  assert.ok(drawn, 'the placed figure is not drawn');
+  await applied(b, placed, 'placed');
+});
