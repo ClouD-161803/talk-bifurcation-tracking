@@ -752,3 +752,25 @@ test('a caret at the start of a line after a line break is drawn at the start of
   clean(ana);
   clean(ben);
 });
+
+test('of two pages whose claims of one text element are heard 4 s late, the smaller client id keeps it', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await hold(ana);
+  await hold(ben);
+  await caretAtEnd(ana, p);
+  await caretAtEnd(ben, p);
+  // both clocks move 4 s, as for states that arrive 4 s late
+  await later(ana, 4000);
+  await later(ben, 4000);
+  await release(ana);
+  await release(ben);
+  const ids = { ana: await ana.evaluate(`${C}.client`), ben: await ben.evaluate(`${C}.client`) };
+  const [keeper, loser] = ids.ana < ids.ben ? [ana, ben] : [ben, ana];
+  await until(() => loser.evaluate(`${LOCKED(p)} && ${P}.held === null`), 'the page with the larger client id to give the paragraph up', 5000);
+  assert.equal(await keeper.evaluate(`${P}.held === ${p} && !${LOCKED(p)}`), true);
+  clean(ana);
+  clean(ben);
+});
