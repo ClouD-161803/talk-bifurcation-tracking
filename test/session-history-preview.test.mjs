@@ -219,6 +219,23 @@ test('the preview of a deck with a hidden slide, a changed step, and changed not
   clean(ann);
 });
 
+test('a version that changes only the start tag of a slide outlines the slide itself', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const second = TALK.indexOf('<section>', TALK.indexOf('<section>') + 1);
+  await write(server, ann, `${TALK.slice(0, second)}<section class="two">${TALK.slice(second + '<section>'.length)}`, 'class="two"');
+  await nameNow(ann, 'Tag');
+  await openPane(ann);
+  await tapOrClick(ann, rowByTitle('Tag'));
+  // the outlines are set before the preview moves to the first changed slide
+  await ann.waitFor(`${CURRENT} === 'Two'`, 30_000);
+  const outlined = `[...${FRAME}.contentDocument.querySelectorAll('[data-beeson-changed]')].map((e) => e.localName + (e.classList.contains('two') ? ' two' : ''))`;
+  assert.deepEqual(await ann.evaluate(outlined), ['section two']);
+  clean(ann);
+});
+
 test('a new list leaves the bar alone, the text of a version is read once per preview, and a hidden preview keeps nothing', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
