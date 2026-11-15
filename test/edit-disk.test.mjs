@@ -5,7 +5,7 @@
 // write that keeps failing, and a file that is a symbolic link
 
 import assert from 'node:assert/strict';
-import { chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -198,12 +198,16 @@ test('a write that keeps failing is reported with the number of unwritten operat
   }
 });
 
-test('a symbolic link index.html is written through to its target, and the mode of the file is kept', { timeout: 60_000 }, async (t) => {
+test('a symbolic link index.html is written through to its target, the mode of the file is kept, and a temporary file of an earlier run is removed', { timeout: 60_000 }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'slides disk-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   // a symbolic link needs a privilege on Windows, and a file there has no mode bits but read-only
   const posix = process.platform !== 'win32';
   const file = join(dir, 'index.html'), target = join(dir, 'real.html');
+  // a temporary file is named after the file that it replaces, i.e. the target of the link
+  const stale = join(dir, `.${posix ? 'real' : 'index'}.html.0123456789ab.tmp`), other = join(dir, 'notes.tmp');
+  writeFileSync(stale, 'half a deck');
+  writeFileSync(other, 'notes');
   writeFileSync(posix ? target : file, DECK);
   if (posix) {
     chmodSync(target, 0o444);
@@ -212,6 +216,8 @@ test('a symbolic link index.html is written through to its target, and the mode 
   const authority = new Authority(DECK, { epoch: 'E' });
   const disk = new Disk(file, authority, false, { quiet: 5, latest: 20 });
   t.after(() => disk.stopSync());
+  assert.equal(existsSync(stale), false, 'the temporary file of an earlier run is still there');
+  assert.equal(existsSync(other), true, 'a file that the disk did not write was removed');
   if (!posix) return;
   insert(authority, '<h2>One', 'ONE ');
   await until(() => readFileSync(target, 'utf8').includes('ONE '), 'the edit in the target of the link', 5000);
