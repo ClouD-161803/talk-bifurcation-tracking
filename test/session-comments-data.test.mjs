@@ -291,3 +291,31 @@ test('what a person read of a thread is kept over a reload', { timeout: 300_000 
   clean(a);
   clean(b);
 });
+
+test('what a person read of a thread reaches the other pages of the person', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  // tab() shares localStorage between the pages, which are thus one person
+  const a = await tab(browser, url);
+  const other = await tab(browser, url);
+  const b = await open(browser, url, { name: 'Ben' });
+  await converge(server, [a, other, b]);
+  const ann = await a.evaluate(`${C}.person`);
+  assert.equal(await other.evaluate(`${C}.person`), ann, 'the tabs are one person');
+  const x = await mention(b, 'X', ann);
+  const y = await mention(b, 'Y', ann);
+  await openPane(other);
+  await sees(other, UNREAD, [`${x}*`, `${y}*`]);
+  await sees(other, COUNT, 'Comments, 2 unread');
+
+  await openPane(a);
+  await sees(a, ARTICLES, 2);
+  await click(a, `${PANE} article[data-id="${y}"] .text`);
+  await sees(a, COUNT, 'Comments, 1 unread');
+  await sees(other, COUNT, 'Comments, 1 unread');
+  clean(a);
+  clean(other);
+  clean(b);
+});
