@@ -10,6 +10,7 @@
 import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
+import { keeps } from './copy.ts';
 import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Taken, Token, Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
@@ -124,6 +125,14 @@ export class Client {
   // the text that the deck reads as, apart from the edits that the person made since, or null once
   // this is not known, e.g. after an apply that the deck did not take
   private handed: string | null = null;
+  // the browser asks before the page unloads while an edit is not acknowledged that the copy of
+  // the page cannot keep in this browser. the listener is there only meanwhile, since Firefox keeps
+  // a page with one out of its back-forward cache
+  private readonly ask = (ev: BeforeUnloadEvent): void => {
+    ev.preventDefault();
+    ev.returnValue = true;
+  };
+  private asking = false;
   // the text of an apply that returned reload, which the deck does not read as, and which text() of
   // the port gives while a change of the person settles
   private unshown: string | null = null;
@@ -263,12 +272,25 @@ export class Client {
 
   // the page loaded again by the person, e.g. with Load again while it is blocked
   loadAgain(): void {
+    this.askBeforeUnload(false);
     location.reload();
   }
 
-  // the save state is drawn again, e.g. after a failed upload
+  private askBeforeUnload(on: boolean): void {
+    if (on === this.asking) return;
+    this.asking = on;
+    if (on) window.addEventListener('beforeunload', this.ask);
+    else window.removeEventListener('beforeunload', this.ask);
+  }
+
+  // the save state is drawn again, e.g. after a failed upload or a write of the copy of the page
   refresh(): void {
+    this.askBeforeUnload(this.unkept());
     this.emit('state');
+  }
+
+  private unkept(): boolean {
+    return !this.acked() && !this.ended && !keeps(this);
   }
 
   // resolves once every edit of this page is acknowledged, which is a save in a session
@@ -675,12 +697,15 @@ export class Client {
     this.emit('state');
     this.emit('ended', ended);
     for (const w of this.ackWaiters.splice(0)) w.fail(new Error('The session has ended'));
+    this.askBeforeUnload(false);
     this.port.setStatus(null);
     this.port.end();
   }
 
   private check(): void {
-    if (this.acked()) {
+    const acked = this.acked();
+    this.askBeforeUnload(this.unkept());
+    if (acked) {
       clearTimeout(this.savingTimer);
       this.savingTimer = 0;
       const waiting = this.ackWaiters.splice(0);

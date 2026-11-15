@@ -306,6 +306,10 @@ export function keptLine(client: Client): string | null {
   return `Offline. ${numbers.length ? `Changes${client.shell.onSlides(numbers)}` : 'Your changes'} are kept in this browser`;
 }
 
+// whether this browser keeps the edits of the page that are not acknowledged, for its next visit.
+// while it cannot, the browser asks before the page unloads
+export const keeps = (client: Client): boolean => !stateOf(client).unavailable;
+
 // the save state once the edits of a copy taken over at the join are sent, until the next edit
 export function restoredLine(client: Client): string | null {
   return states.get(client)?.note ?? null;
