@@ -14,11 +14,14 @@ import type { Client } from './client.ts';
 import { Failure } from './transport.ts';
 
 const MB = 1024 * 1024;
-// the limit of PUT media/ of the edit command, and the limit of a body through the relay
+// the limit of PUT media/ of the edit command, kept for a video of the host, which a browser asks
+// for in ranges
 const HOST_MAX = 64 * MB;
+// the limit of a body through the relay, hence of an image, which a guest asks for whole
 const GUEST_MAX = 16 * MB;
 // the extensions that PUT media/ takes, apart from json, which the editor does not add
 const TAKEN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|mp4|m4v|webm|mov|ogv)$/i;
+const VIDEO = /\.(mp4|m4v|webm|mov|ogv)$/i;
 export const FAILED = 'A picture could not be sent. Try again';
 
 type State = { busy: boolean; failed: boolean; network: boolean };
@@ -61,8 +64,9 @@ export function install(client: Client): void {
 
   store.refuse = (file) => {
     if (!TAKEN.test(file.name)) return `${file.name} cannot be sent to the others, since a session takes only PNG, JPEG, GIF, WebP, AVIF, SVG, MP4, and WebM files`;
-    // a guest reaches the edit command through the relay
-    const max = client.host ? HOST_MAX : GUEST_MAX;
+    // a guest reaches the edit command through the relay, which also limits what a guest loads
+    const video = file.type.startsWith('video/') || (!file.type && VIDEO.test(file.name));
+    const max = client.host && video ? HOST_MAX : GUEST_MAX;
     if (file.size > max) return `${file.name} is larger than ${max / MB} MB, the largest file that can be sent to the others`;
     return null;
   };
