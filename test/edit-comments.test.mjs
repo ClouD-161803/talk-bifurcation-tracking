@@ -261,3 +261,93 @@ test('a file of comments that cannot be read is moved aside', async (t) => {
     });
   }
 });
+
+// the comments of a session through its requests. the folder is removed after the edit command
+// stops, unless it is kept for a later session
+async function session(t, folder = talkFolder(t), keep = false) {
+  const edit = await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config } });
+  t.after(async () => {
+    await stopEdit(edit);
+    if (!keep) rmSync(folder.root, { recursive: true, force: true });
+  });
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = async (name) => (await post(edit.port, api('hello'), { name })).json();
+  const deck = async () => {
+    const r = await raw(edit.port, 'GET', `${edit.base}index.html`);
+    return { text: r.text, base: r.headers['x-session-version'] };
+  };
+  const get = async (page) => (await raw(edit.port, 'GET', `${api('comments')}?token=${page.token}`)).json();
+  const call = (route, page, body = {}) => post(edit.port, api(route), { token: page.token, ...body });
+  const events = async (page, since) => (await raw(edit.port, 'GET', `${api('events')}?token=${page.token}&since=${since}`)).json();
+  return { ...folder, edit, api, hello, deck, get, call, events };
+}
+
+test('the requests of the comments, and the events that tell the other pages of them', { timeout: 120_000 }, async (t) => {
+  const s = await session(t);
+  const ann = await s.hello('Ann');
+  const bo = await s.hello('Bo');
+  const empty = await s.get(ann);
+  assert.deepEqual(empty, { v: 0, at: ann.v, comments: [], seen: 0 });
+  const { text, base } = await s.deck();
+  const created = await s.call('comments', ann, { base, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'Look', mentions: [bo.person] });
+  assert.equal(created.status, 200);
+  const thread = created.json();
+  reads(text, thread.anchor, '<p>Second slide</p>');
+  const told = await s.events(bo, base);
+  assert.deepEqual(told.comments, { v: 1, changed: [thread], removed: [] });
+  // a shift of the anchor is not told
+  const at = text.indexOf('First slide');
+  const shifted = (await s.call('op', ann, { seq: 1, base, patches: [{ start: at, end: at, text: 'The ' }] })).json();
+  assert.equal(shifted.ok, true);
+  const after = await s.events(bo, told.v);
+  assert.equal(after.ops.length, 1);
+  assert.equal(after.comments, undefined);
+  reads((await s.deck()).text, (await s.get(bo)).comments[0].anchor, '<p>Second slide</p>');
+  const reply = (await s.call(`comments/${thread.id}/reply`, bo, { text: 'Seen' })).json().replies[0];
+  assert.equal((await s.call(`comments/${thread.id}/edit`, bo, { text: 'x' })).status, 403);
+  assert.equal((await s.call(`comments/${thread.id}/edit`, ann, { text: 'Look again' })).json().text, 'Look again');
+  assert.equal((await s.call(`comments/${thread.id}/delete`, ann, { reply: reply.id })).status, 403);
+  assert.equal((await s.call(`comments/${thread.id}/resolve`, bo)).json().resolved.by, bo.person);
+  assert.equal((await s.call(`comments/${thread.id}/reopen`, ann)).json().resolved, undefined);
+  assert.deepEqual((await s.call('comments/seen', bo, { time: 5 })).json(), { seen: 5 });
+  assert.equal((await s.get(bo)).seen, 5);
+  assert.equal((await s.call('comments/seen', bo, { time: 'x' })).status, 400);
+  const changed = await s.events(bo, shifted.v);
+  assert.deepEqual(changed.comments.changed.map((c) => [c.id, c.text, c.replies.length]), [[thread.id, 'Look again', 1]]);
+  assert.deepEqual((await s.call(`comments/${thread.id}/delete`, bo, { reply: reply.id })).json().replies, []);
+  assert.deepEqual((await s.call(`comments/${thread.id}/delete`, ann)).json(), {});
+  const deleted = await s.events(bo, shifted.v);
+  assert.deepEqual(deleted.comments, { v: (await s.get(bo)).v, changed: [], removed: [thread.id] });
+  // refusals
+  assert.equal((await s.call('comments/nope/reply', bo, { text: 'x' })).status, 404);
+  assert.equal((await s.call('comments/a.b/reply', bo, { text: 'x' })).status, 404);
+  assert.equal((await s.call(`comments/${thread.id}/nope`, bo)).status, 404);
+  assert.equal((await s.call('comments', { token: 'n'.repeat(22) }, { base, anchor: null, slide: null, text: 'x' })).status, 404);
+  assert.equal((await raw(s.edit.port, 'GET', `${s.api('comments')}?token=${'n'.repeat(22)}`)).status, 404);
+  assert.equal((await raw(s.edit.port, 'PUT', s.api('comments'), { body: '{}', headers: { 'content-type': 'application/json' } })).status, 405);
+  assert.equal((await raw(s.edit.port, 'POST', s.api('comments'), { body: '{}', headers: { 'content-type': 'text/plain' } })).status, 415);
+  assert.equal((await raw(s.edit.port, 'POST', s.api('comments'), { body: 'null', headers: { 'content-type': 'application/json' } })).status, 400);
+  assert.equal((await s.call('comments', ann, { base: 'x.1', anchor: null, slide: null, text: 'x' })).status, 409);
+  assert.equal((await s.call('comments', ann, { base, anchor: { start: 1, end: 2 }, slide: null, text: 'x' })).status, 400);
+  assert.equal((await s.call('comments', ann, { base, anchor: null, slide: null, text: 'x'.repeat(4001) })).status, 413);
+});
+
+test('the comments are kept over a restart, and follow a change of index.html made while the edit command was not running', { timeout: 120_000 }, async (t) => {
+  const folder = talkFolder(t);
+  const first = await session(t, folder, true);
+  const ann = await first.hello('Ann');
+  const { text, base } = await first.deck();
+  assert.equal((await first.call('comments', ann, { base, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'Look' })).status, 200);
+  await stopEdit(first.edit);
+  const file = join(folder.talk, 'index.html');
+  const changed = readFileSync(file, 'utf8').replace('<section>', '<section>\n  <h2>Zero</h2>\n</section>\n<section>').replace('<h2>Two</h2>', '<h2>Two</h2>\n  <p>Added</p>');
+  writeFileSync(file, changed);
+  const second = await session(t, folder);
+  const bo = await second.hello('Bo');
+  const { comments, at } = await second.get(bo);
+  const now = await second.deck();
+  assert.equal(at, now.base);
+  assert.deepEqual(comments.map((c) => c.text), ['Look']);
+  reads(now.text, comments[0].anchor, '<p>Second slide</p>');
+  reads(now.text, comments[0].slide, '<section>\n  <h2>Two');
+});
