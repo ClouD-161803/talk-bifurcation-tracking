@@ -27,6 +27,8 @@ export function openMenu(button: HTMLElement, items: MenuItem[]): void {
     b.tabIndex = -1;
     b.addEventListener('click', () => {
       close();
+      // the item had the focus, which goes back to the button before run() may move it on
+      button.focus();
       run();
     });
     return b;

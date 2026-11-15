@@ -390,6 +390,8 @@ export function install(client: Client): void {
     if (!on) {
       on = true;
       back = document.activeElement;
+      // a control removed by its own click, e.g. the button of a toast, leaves the focus on body
+      if (!(back instanceof HTMLElement) || back === document.body || back.closest('.beeson-session-toast')) back = document.querySelector('.beeson-session-state');
       if (!aside) selected = { kind: 'current' };
       pane.hidden = false;
       // the person stops following in this mode, and the others see the mode in the pill of following
