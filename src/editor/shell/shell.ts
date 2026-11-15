@@ -3,8 +3,8 @@
 // of the View menu hides the navigator and the inspector together, as in Keynote. the chrome
 // is painted in tokens of its own, which follow prefers-color-scheme and not the mode of the deck,
 // hence D flips only the slide. the regions are put into the order of the DOM in which Tab and F6
-// reach them, and the shell also holds the inspector with its tabs Format and Steps, the edge
-// between the navigator and the canvas, and the context menu
+// reach them, and the shell also holds the inspector with its tabs Format, Steps, and Comments, the
+// edge between the navigator and the canvas, and the context menu
 
 import type { App } from '../app.ts';
 import type { Command, Context } from '../commands.ts';
@@ -42,7 +42,7 @@ const CSS = `
 html.beeson-editor { ${TOKENS_LIGHT} --ed-nav-col: 0px; --ed-insp-col: 0px; --ed-notes-row: 0px; --ed-font: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif; }
 @media (prefers-color-scheme: dark) { html.beeson-editor { ${TOKENS_DARK} } }
 html.beeson-editor.beeson-nav { --ed-nav-col: clamp(${NAV_MIN}px, calc(50vw - var(--ed-insp-col)), var(--ed-nav-w, ${NAV_DEFAULT}px)); }
-html.beeson-editor.beeson-steps, html.beeson-editor.beeson-format { --ed-insp-col: ${INSPECTOR_W}px; }
+html.beeson-editor:is(.beeson-steps, .beeson-format, .beeson-comments) { --ed-insp-col: ${INSPECTOR_W}px; }
 html.beeson-editor.beeson-notes { --ed-notes-row: var(--beeson-pane, 200px); }
 ${CHROME} { --bg: var(--ed-panel); --text: var(--ed-text); --subtle: var(--ed-muted); --muted: var(--ed-muted); --line: var(--ed-line); --violet: var(--ed-select); --accent: var(--ed-guide); }
 html.beeson-editor body.reveal-viewport { display: grid !important; grid-template-columns: var(--ed-nav-col) minmax(0, 1fr) var(--ed-insp-col); grid-template-rows: auto minmax(0, 1fr) var(--ed-notes-row) 28px; grid-template-areas: "top top top" "nav canvas insp" "nav notes insp" "status status status"; width: 100vw; height: 100vh; height: 100dvh; margin: 0; overflow: hidden; color: var(--ed-text); font: 12px/1.35 var(--ed-font); }
@@ -58,14 +58,16 @@ html.beeson-editor body > .beeson-edit-nav-edge:hover, html.beeson-editor body >
 html.beeson-editor .beeson-edit-peek { left: calc(var(--ed-nav-col) + 8px); }
 html.beeson-editor body > .beeson-edit-pane { grid-area: notes; position: relative; inset: auto; height: auto; min-height: 0; z-index: 0; background: var(--ed-panel); border-top: 1px solid var(--ed-line); color: var(--ed-faint); font: 11px/1.4 var(--ed-font); padding: 6px 12px; }
 html.beeson-editor body > .beeson-edit-inspector { grid-area: insp; position: relative; z-index: 50; min-width: 0; min-height: 0; display: none; flex-direction: column; background: var(--ed-panel); border-left: 1px solid var(--ed-line); color: var(--ed-text); font: 12px/1.4 var(--ed-font); }
-html.beeson-editor.beeson-steps body > .beeson-edit-inspector, html.beeson-editor.beeson-format body > .beeson-edit-inspector { display: flex; }
+html.beeson-editor:is(.beeson-steps, .beeson-format, .beeson-comments) body > .beeson-edit-inspector { display: flex; }
 @media (max-width: ${SOLO_BELOW - 0.02}px) {
   html.beeson-editor.beeson-nav { --ed-nav-col: ${NAV_MIN}px; }
-  html.beeson-editor.beeson-nav:is(.beeson-steps, .beeson-format) { --ed-nav-col: 0px; }
-  html.beeson-editor.beeson-nav:is(.beeson-steps, .beeson-format) body > :is(.beeson-edit-nav, .beeson-edit-nav-edge) { display: none; }
+  html.beeson-editor.beeson-nav:is(.beeson-steps, .beeson-format, .beeson-comments) { --ed-nav-col: 0px; }
+  html.beeson-editor.beeson-nav:is(.beeson-steps, .beeson-format, .beeson-comments) body > :is(.beeson-edit-nav, .beeson-edit-nav-edge) { display: none; }
 }
 .beeson-edit-inspector .tabs { display: flex; margin: 10px 12px 6px; padding: 2px; border-radius: 7px; background: var(--ed-pressed); }
-.beeson-edit-inspector .tabs button { flex: 1; padding: 3px 0; border: 0; border-radius: 5px; background: transparent; color: var(--ed-text); font: 500 12px/1.3 var(--ed-font); cursor: default; }
+.beeson-edit-inspector .tabs button[hidden] { display: none; }
+.beeson-edit-inspector .tabs button { position: relative; flex: 1; padding: 3px 0; border: 0; border-radius: 5px; background: transparent; color: var(--ed-text); font: 500 12px/1.3 var(--ed-font); cursor: default; }
+.beeson-edit-inspector .tabs button::after { content: ''; position: absolute; inset: -6px 0; }
 .beeson-edit-inspector .tabs button[aria-selected="true"] { background: var(--ed-segment); box-shadow: 0 0.5px 2px rgba(0, 0, 0, 0.2); }
 .beeson-edit-inspector .tabs button:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 1px; }
 .beeson-edit-inspector > .panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
@@ -83,6 +85,10 @@ declare global {
   }
 }
 
+// the tab Comments, which a session enables and fills, see session/comments-shell.ts
+export type CommentsTab = { panel: HTMLElement; enable(): void; shown(): boolean; set(on: boolean): void; onShown(fn: () => void): void };
+export let commentsTab: CommentsTab | null = null;
+
 export function install(app: App): void {
   injectStyle('shell', CSS);
   const html = document.documentElement;
@@ -96,9 +102,15 @@ export function install(app: App): void {
   tabs.setAttribute('aria-label', 'Inspector');
   const formatTab = make('button', '', 'Format');
   const stepsTab = make('button', '', 'Steps');
+  const commentsButton = make('button', '', 'Comments');
   const formatPanel = make('div', 'panel format');
   const stepsPanel = make('div', 'panel steps');
-  for (const [tab, panel, id] of [[formatTab, formatPanel, 'format'], [stepsTab, stepsPanel, 'steps']] as const) {
+  const commentsPanel = make('div', 'panel comments');
+  commentsButton.hidden = true;
+  const ids = ['format', 'steps', 'comments'] as const;
+  const buttons = [formatTab, stepsTab, commentsButton];
+  const panels = [formatPanel, stepsPanel, commentsPanel];
+  for (const [tab, panel, id] of ids.map((id, i) => [buttons[i], panels[i], id] as const)) {
     tab.type = 'button';
     tab.id = `beeson-edit-tab-${id}`;
     tab.setAttribute('role', 'tab');
@@ -107,8 +119,8 @@ export function install(app: App): void {
     panel.setAttribute('role', 'tabpanel');
     panel.setAttribute('aria-labelledby', tab.id);
   }
-  tabs.append(formatTab, stepsTab);
-  inspector.append(tabs, formatPanel, stepsPanel);
+  tabs.append(...buttons);
+  inspector.append(tabs, ...panels);
 
   // the edge between the navigator and the canvas, dragged or moved with the arrow keys
   const edge = make('div', 'beeson-edit-nav-edge beeson-edit-region');
@@ -166,10 +178,12 @@ export function install(app: App): void {
   });
   edge.addEventListener('dblclick', () => setNavWidth(NAV_DEFAULT));
 
-  // the inspector shows one tab, Format or Steps, and is hidden when neither is on. Steps is the
-  // pane of steps.ts, hence its tab is on while that pane is shown. the editor opens with the
+  // the inspector shows one tab, Format, Steps, or Comments, and is hidden when none is on. Steps is
+  // the pane of steps.ts, hence its tab is on while that pane is shown. the editor opens with the
   // Format tab shown, as Keynote opens a presentation, unless the inspector was closed before
   let format = false;
+  let comments = false;
+  const onComments: (() => void)[] = [];
   let stepsBefore = false;
   let started = false;
   // the pane of the inspector closed while the navigator is on in a narrow window, i.e. to show the
@@ -190,33 +204,35 @@ export function install(app: App): void {
     }
   };
   const narrow = () => matchMedia(`(max-width: ${SOLO_BELOW - 0.02}px)`).matches;
-  const setFormat = (on: boolean) => {
-    format = on;
-    html.classList.toggle('beeson-format', on);
+  const commandOf = (tab: string | null) => (tab === 'steps' ? 'view.steps' : tab === 'comments' ? 'view.comments' : 'shell.format');
+  // format and comments are on one at a time, and either turns the pane of steps off
+  const setTab = (tab: 'format' | 'comments', on: boolean) => {
+    format = tab === 'format' ? on : on ? false : format;
+    comments = tab === 'comments' ? on : on ? false : comments;
     if (on && app.steps.shown) app.steps.toggle();
     syncInspector();
     app.relayout();
   };
+  const setFormat = (on: boolean) => setTab('format', on);
   function syncInspector(): void {
     const steps = app.steps.shown;
-    if (steps && !stepsBefore && format) {
-      format = false;
-      html.classList.remove('beeson-format');
-    }
+    if (steps && !stepsBefore) format = comments = false;
     stepsBefore = steps;
-    const tab = steps ? 'steps' : format ? 'format' : null;
-    formatTab.setAttribute('aria-selected', String(tab === 'format'));
-    stepsTab.setAttribute('aria-selected', String(tab === 'steps'));
-    formatTab.tabIndex = tab === 'format' ? 0 : -1;
-    stepsTab.tabIndex = tab === 'steps' ? 0 : -1;
-    formatPanel.hidden = tab !== 'format';
-    stepsPanel.hidden = tab !== 'steps';
+    html.classList.toggle('beeson-format', format);
+    html.classList.toggle('beeson-comments', comments);
+    const tab = steps ? 'steps' : format ? 'format' : comments ? 'comments' : null;
+    ids.forEach((id, i) => {
+      buttons[i].setAttribute('aria-selected', String(tab === id));
+      buttons[i].tabIndex = tab === id ? 0 : -1;
+      panels[i].hidden = tab !== id;
+    });
     if (tab === 'format') fillFormat();
     const was = shownTab;
     shownTab = tab;
+    if ((was === 'comments') !== (tab === 'comments')) for (const fn of onComments) fn();
     let reopen: string | null = null;
     if (tab) yielded = null;
-    else if (was && forNav && app.nav.shown && narrow()) yielded = was === 'steps' ? 'view.steps' : 'shell.format';
+    else if (was && forNav && app.nav.shown && narrow()) yielded = commandOf(was);
     else if (yielded && (!app.nav.shown || !narrow())) {
       reopen = yielded;
       yielded = null;
@@ -232,14 +248,26 @@ export function install(app: App): void {
   stepsTab.addEventListener('click', () => {
     if (!app.steps.shown) void app.commands.run('view.steps').catch(fail);
   });
+  commentsButton.addEventListener('click', () => {
+    if (!comments) setTab('comments', true);
+  });
   tabs.addEventListener('keydown', (ev) => {
     if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
     ev.preventDefault();
     ev.stopPropagation();
-    const next = document.activeElement === formatTab ? stepsTab : formatTab;
+    const shown = buttons.filter((b) => !b.hidden);
+    const at = shown.indexOf(document.activeElement as HTMLButtonElement);
+    const next = shown[(at + (ev.key === 'ArrowRight' ? 1 : shown.length - 1)) % shown.length];
     next.click();
     next.focus();
   });
+  commentsTab = {
+    panel: commentsPanel,
+    enable: () => void (commentsButton.hidden = false),
+    shown: () => shownTab === 'comments',
+    set: (on) => setTab('comments', on),
+    onShown: (fn) => void onComments.push(fn),
+  };
 
   // the Format tab: the panes of inspector/inspector.ts for the selection
   function fillFormat(): void {
@@ -274,13 +302,13 @@ export function install(app: App): void {
       if (!slideOnly() && app.commands.get('view.lightTable') && app.commands.state('view.lightTable').checked) await app.commands.run('view.lightTable');
       const back = reopen;
       reopen = null;
-      if (back && !slideOnly() && !format && !app.steps.shown) {
+      if (back && !slideOnly() && !format && !comments && !app.steps.shown) {
         await app.commands.run(back);
         if (app.nav.seen) app.nav.toggle();
         app.relayout();
         return;
       }
-      if (app.nav.shown && !app.nav.seen) reopen = app.steps.shown ? 'view.steps' : 'shell.format';
+      if (app.nav.shown && !app.nav.seen) reopen = commandOf(app.steps.shown ? 'steps' : comments ? 'comments' : null);
       app.nav.toggle();
       // a navigator turned on beside the inspector in a narrow window is shown in its place
       if (app.nav.shown && !app.nav.seen) app.nav.toggle();
