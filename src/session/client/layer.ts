@@ -18,8 +18,10 @@ const NAMED = 3000;
 // them stands outside the frame of frames.ts
 const FLAGS = 2;
 const OUT = [4, 8];
-// the side of the hit area of a chip in px for a touch or a pen
+// the side of the hit area of a chip in px for a touch or a pen, and the height of a flag with
+// the gap under it
 const HIT = 32;
+const FLAG = 21;
 // the classes of html during a drag, a resize, or a turn of the own selection
 const GESTURE = ['beeson-dragging', 'beeson-sizing', 'beeson-rotating'];
 
@@ -34,6 +36,7 @@ html.beeson-previewing .beeson-presence, html.beeson-playing .beeson-presence, h
 .beeson-presence .c3 { --tone: var(--data-7); --on: #1d1d1f; }
 .beeson-presence .frame { position: absolute; box-sizing: border-box; border: 2px solid var(--tone); box-shadow: 0 0 0 1px var(--edge); border-radius: 2px; }
 .beeson-presence .flags { position: absolute; display: flex; gap: 2px; align-items: flex-end; transform: translateY(calc(-100% - 3px)); white-space: nowrap; }
+.beeson-presence .flags.inside { transform: translateY(3px); }
 .beeson-presence .flag { box-sizing: border-box; height: 18px; max-width: 160px; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; border-radius: 4px 4px 4px 0; background: var(--tone); color: var(--on); box-shadow: 0 0 0 1px var(--edge); font: 600 11px/18px system-ui, sans-serif; }
 .beeson-presence .flag.more { background: var(--ed-panel, #2c2c2e); color: var(--ed-text, #f5f5f7); --tone: var(--ed-panel, #2c2c2e); }
 .beeson-presence .flag .short { display: none; }
@@ -83,8 +86,8 @@ export function install(client: Client): void {
   let chips: { flags: HTMLElement; id: string; x: number; y: number; dx: number; dy: number }[] = [];
   // the shapes of the last read: of each element or group by the element that heads it, the
   // members of each group, and each caret by client with its element and its offset, with the
-  // size of the slide
-  let kept = { els: new Map<Element, Kept>(), groups: new Map<Element, Element[]>(), carets: new Map<string, Kept & { el: Element; offset: number }>(), W: 1, H: 1 };
+  // size of the slide, and the top of the canvas in px of the layer
+  let kept = { els: new Map<Element, Kept>(), groups: new Map<Element, Element[]>(), carets: new Map<string, Kept & { el: Element; offset: number }>(), W: 1, H: 1, edge: -Infinity, height: 0 };
 
   const schedule = (): void => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -126,7 +129,9 @@ export function install(client: Client): void {
     const singles = els.filter((el) => !grouped.has(el));
     const shapes = singles.length || carets.length ? shell.presence.shapes(singles, carets.map((r) => r.caret!)) : { els: [], carets: [] };
     const slides = app.slides() as HTMLElement;
-    kept = { els: new Map(), groups: new Map(), carets: new Map(), W: slides.offsetWidth || 1, H: slides.offsetHeight || 1 };
+    const box = els.length ? layer.getBoundingClientRect() : null;
+    const top = box ? (app.stage?.viewport.top ?? -Infinity) - box.top : -Infinity;
+    kept = { els: new Map(), groups: new Map(), carets: new Map(), W: slides.offsetWidth || 1, H: slides.offsetHeight || 1, edge: top, height: box?.height ?? 0 };
     singles.forEach((el, i) => {
       const s = shapes.els[i];
       if (s) kept.els.set(el, { s, at: offset(el) });
@@ -196,11 +201,15 @@ export function install(client: Client): void {
       const flags = make('div', 'flags');
       flags.dataset.client = framed.map((r) => r.client).join(' ');
       Object.assign(flags.style, { left: `calc(${s.x * 100}% - ${out}px)`, top: `calc(${s.y * 100}% - ${out}px)` });
+      // the flags go inside the frame when the canvas does not leave room for them above it
+      const inside = s.y * kept.height - out - FLAG < kept.edge;
+      if (inside) flags.classList.add('inside');
       const made = framed.map((r) => flagOf(r, now, soon));
+      const row = made.every((m) => m.chip) && people.length <= FLAGS ? 16 : 18;
       let left = 0;
       for (const [i, m] of made.entries()) {
         flags.append(m.flag);
-        if (m.chip) placedChips.push({ flags, id: framed[i].client, x: s.x, y: s.y, dx: left - out, dy: -3 - out - 16 });
+        if (m.chip) placedChips.push({ flags, id: framed[i].client, x: s.x, y: s.y, dx: left - out, dy: (inside ? 3 + row : -3) - out - 16 });
         left += m.width + 2;
       }
       if (people.length > FLAGS) flags.append(make('div', 'flag more', `+${people.length - FLAGS}`));
