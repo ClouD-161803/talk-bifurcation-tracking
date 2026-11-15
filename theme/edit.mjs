@@ -1628,11 +1628,31 @@ function overlaps(spans, s, e) {
   }
   return false;
 }
-function findInserted(after, text, inserted, near) {
+function findInserted(after, text, inserted, near, within = null) {
   if (!text || !inserted.length) return -1;
+  const len = text.length;
+  const lo = within ? within.start : 0;
+  const hi = within ? within.end : after.length;
   let best = -1;
-  for (let o = after.indexOf(text), n = 0; o >= 0 && n < 256; o = after.indexOf(text, o + 1), n++) {
-    if (overlaps(inserted, o, o + text.length) && (best < 0 || Math.abs(o - near) < Math.abs(best - near))) best = o;
+  let n = 0;
+  const scan = (from, to) => {
+    const w = from === 0 && to === after.length ? after : after.slice(from, to);
+    for (let o = w.indexOf(text); o >= 0 && n < 256; o = w.indexOf(text, o + 1), n++) {
+      const at = from + o;
+      if (overlaps(inserted, at, at + len) && (best < 0 || Math.abs(at - near) < Math.abs(best - near))) best = at;
+    }
+  };
+  let total = 0;
+  for (const s of inserted) total += s.end - s.start + 2 * len;
+  if (total >= hi - lo) {
+    scan(lo, hi);
+    return best;
+  }
+  for (let k = 0; k < inserted.length; k++) {
+    const from = Math.max(lo, inserted[k].start - len + 1);
+    let to = inserted[k].end + len - 1;
+    while (k + 1 < inserted.length && inserted[k + 1].start - len + 1 < to) to = inserted[++k].end + len - 1;
+    if (from < Math.min(hi, to)) scan(from, Math.min(hi, to));
   }
   return best;
 }
