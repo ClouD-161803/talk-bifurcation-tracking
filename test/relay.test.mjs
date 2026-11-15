@@ -175,7 +175,8 @@ test('add regression test: the relay does not forward Service-Worker-Allowed or 
 });
 
 test('add regression test: the relay holds the bodies of slow uploads and slow readers within its memory cap', { timeout: 60_000 }, async (t) => {
-  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 24 * 1024 * 1024, bodyBytes: 16 * 1024 * 1024 });
+  // one session may take the whole cap here, so that the cap itself is tested
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 24 * 1024 * 1024, bodyBytes: 16 * 1024 * 1024, sessionShare: 1 });
   t.after(() => relay.close());
   const key = 'm'.repeat(22);
   const auth = { authorization: `Bearer ${SECRET}` };
