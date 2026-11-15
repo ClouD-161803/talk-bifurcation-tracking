@@ -305,7 +305,8 @@ function sheets(host: TexHost): TexSheets {
     }
     await update();
   }
-  function choose(): Promise<Reader> {
+  // quiet, for a save, the files are not asked for in the sheet, which is not open
+  function choose(quiet = false): Promise<Reader> {
     if (/^https?:$/.test(location.protocol)) return Promise.resolve(fetched);
     const chosen = new Promise<Reader>((resolve) => {
       input.onchange = () => {
@@ -316,6 +317,7 @@ function sheets(host: TexHost): TexSheets {
       };
     });
     const ask = (reason = ''): Promise<Reader> => {
+      if (quiet) return Promise.reject(new Error(`${reason}the files next to the deck are not read`));
       choosing = true;
       note.textContent = `${reason}Choose the folder of the deck, i.e. choose ${SOURCE.preamble}, ${SOURCE.bibliography}, tex.js, and the files that the preamble inputs, since a browser reads the files next to a deck opened from a file only after you choose them.`;
       pick.hidden = false;
@@ -326,8 +328,8 @@ function sheets(host: TexHost): TexSheets {
     if (!handle || !('showDirectoryPicker' in window) || !window.showDirectoryPicker) return ask();
     return host.folder(handle, `${SOURCE.preamble} and ${SOURCE.bibliography}`).then(inFolder, (error: unknown) => ask(`${error instanceof Error ? error.message : String(error)}. `));
   }
-  const ensure = (): Promise<void> =>
-    (loading ??= choose().then((r) => {
+  const ensure = (quiet = false): Promise<void> =>
+    (loading ??= choose(quiet).then((r) => {
       reader = r;
       return load();
     }));
@@ -651,6 +653,17 @@ function sheets(host: TexHost): TexSheets {
       }
       fill();
       if (dialog.open && shown === which) (which === 'preamble' ? source : search).focus({ preventScroll: true });
+    },
+    loaded: () => loaded,
+    // a save does not wait for the files that a sheet asks for, which are chosen in the sheet
+    async prepare() {
+      if (!loaded && choosing) return false;
+      try {
+        await ensure(true);
+      } catch {
+        loading = null;
+      }
+      return loaded;
     },
     async write(deck, handle) {
       if (!loaded) return '';
