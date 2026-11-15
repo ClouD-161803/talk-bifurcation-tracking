@@ -191,3 +191,87 @@ test('the flag of a person who types reads that the person is typing, and the ca
   clean(ana);
   clean(ben);
 });
+
+const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
+const REFUSED = 'Ana is typing here. You can edit this text once they leave it or stop for 30 s.';
+const LOCKED = (expression) => `${expression}.classList.contains('beeson-locked')`;
+// the bubble of page cleared, so that the next one can be told from it
+const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
+
+test('a text element that another page holds refuses a caret, a press, a selection, and the commands of its slide', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await until(() => ben.evaluate(LOCKED(p)), 'the paragraph that Ana holds to be locked on the page of Ben');
+  assert.equal(await ana.evaluate(LOCKED(p)), false, 'the page that holds the paragraph does not lock it');
+  assert.equal(await ben.evaluate(`${P}.holder(${p}).name`), 'Ana');
+
+  // a click into the text
+  await front(ben);
+  await click(ben, await (async () => { const b = await boxOf(ben, p); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; })());
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED);
+  assert.deepEqual(await ben.evaluate(`({ focused: document.activeElement === ${p} || ${p}.contains(document.activeElement), caret: ${p}.contains(getSelection().focusNode), selected: ${C}.app.selection.has(${p}) })`), { focused: false, caret: false, selected: false });
+  // a caret put by a script
+  await unbubble(ben);
+  await ben.evaluate(`${p}.focus()`);
+  assert.equal(await ben.evaluate(`document.activeElement === ${p}`), false);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED);
+  // a selection, e.g. by the marquee or Select All, drops the element
+  await unbubble(ben);
+  await ben.evaluate(`${C}.app.selection.set('elements', [${p}, ${el(1, 'h2')}])`);
+  assert.deepEqual(await ben.evaluate(`${C}.app.selection.items.map((e) => e.localName)`), ['h2']);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED);
+  // the commands that change its slide, on the shown slide or on the slide selected as in the
+  // navigator
+  const moveTo = `{ slides: [Reveal.getCurrentSlide()], gap: 0 }`;
+  for (const [id, slides, arg] of [['slide.delete', false], ['slide.hide', false], ['slide.cut', true], ['slide.moveTo', false, moveTo]]) {
+    await unbubble(ben);
+    await ben.evaluate(slides ? `${C}.app.selection.set('slides', [Reveal.getCurrentSlide()])` : `${C}.app.selection.clear()`);
+    assert.ok(await ben.evaluate(`${C}.app.commands.enabled(${JSON.stringify(id)})`), `${id} is enabled`);
+    await ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}${arg ? `, ${arg}` : ''})`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, id);
+  }
+  await ben.evaluate(`${C}.app.selection.clear()`);
+  assert.equal(await ben.evaluate(`document.querySelectorAll('.reveal .slides > section').length`), 2);
+  assert.equal(await ben.evaluate(`Reveal.getCurrentSlide().querySelector('h2').textContent`), 'Two');
+  // a command of another slide is not refused
+  await show(ben, 'One');
+  await ben.evaluate(`${C}.app.commands.run('slide.hide')`);
+  await until(() => ben.evaluate(`document.querySelectorAll('.reveal .slides > section')[0].hasAttribute('data-visibility')`), 'slide One to be hidden');
+
+  // the lock never reaches the text: not the text of the port, a render, or index.html
+  await show(ben, 'Two');
+  await caretAtEnd(ben, el(1, 'h2'));
+  await typeKeys(ben, ' too');
+  // a copy of the slide with the locked paragraph in it
+  await ben.evaluate(`${C}.app.commands.run('slide.duplicate')`);
+  const text = await converge(server, [ana, ben]);
+  assert.ok(text.includes('<h2>Two too</h2>') && text.includes('<section data-visibility="hidden">'), 'the edits of Ben reach index.html');
+  assert.equal(text.split('<p>Second slide</p>').length, 3, 'the copy of the slide is in index.html');
+  // Ana moves the caret into the copy, and of the two paragraphs only the copy is locked on the page
+  // of Ben
+  const at = 2;
+  await ana.evaluate(`Reveal.slide(${at})`);
+  await caretAtEnd(ana, el(at, 'p'));
+  const held = el(at, 'p');
+  const lockedAt = `[...document.querySelectorAll('.beeson-locked')].map((e) => [...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.contains(e)))`;
+  await until(async () => JSON.stringify(await ben.evaluate(lockedAt)) === `[${at}]`, 'only the copy that Ana is in to be locked on the page of Ben');
+  for (const read of [TEXT, 'window.BeesonEditor.render()', `${C}.app.files.render()`]) assert.ok(!(await ben.evaluate(read)).includes('beeson-locked'), read);
+  assert.ok(!server.read().includes('beeson-locked'));
+
+  // a change of index.html from outside still reaches the held element
+  let k = 0;
+  writeFileSync(server.file, server.read().replace(/<p>Second slide<\/p>/g, (m) => (++k === at ? '<p>Second slide, from outside</p>' : m)));
+  for (const page of [ana, ben]) await until(() => page.evaluate(`${held}.textContent === 'Second slide, from outside'`), 'the change from outside on each page');
+
+  // the caret that leaves takes the lock away
+  await front(ana);
+  await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
+  await until(async () => !(await ben.evaluate(LOCKED(held))), 'the lock to go when Ana leaves the paragraph');
+  await ben.evaluate(`Reveal.slide(${at})`);
+  await caretAtEnd(ben, held);
+  clean(ana);
+  clean(ben);
+});
