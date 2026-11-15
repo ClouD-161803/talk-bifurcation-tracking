@@ -955,3 +955,31 @@ test('add regression test: a page whose last poll was held is dropped 40 s after
   assert.deepEqual(gone, ['Wes'], 'Ann, whose last request arrived before the one of Bo, is dropped no later than Bo');
   assert.ok(seen.every((names) => names.includes('Wes')), 'a page that polls at each answer stays');
 });
+
+test('add regression test: End session tells a guest whose poll is on its way that the session ended', { timeout: 120_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  // a wait for the guests far longer than the test, which thus passes only when the wait ends once
+  // the guest is told
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config, SLIDES_END_WAIT_MS: '600000' } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const guest = (route, init) => fetch(`${relay.url}${api(route)}`, init);
+  const host = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  assert.equal((await post(edit.port, api('share'), { relay: relay.url, secret: SECRET })).status, 200);
+  const ben = await (await guest('hello', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Ben' }) })).json();
+  const hostFirst = (await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${host.v}`)).json();
+  // the poll of Ben is answered, and his next poll is on its way while the host ends the session
+  const benFirst = await (await guest(`events?token=${ben.token}&since=${ben.v}`)).json();
+  const hostWaiting = raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${hostFirst.v}`).then((r) => r.json());
+  const ending = raw(edit.port, 'DELETE', api('share'));
+  assert.deepEqual((await hostWaiting).people.map((p) => p.name), ['Ana'], 'the guests are ended');
+  const late = await guest(`events?token=${ben.token}&since=${benFirst.v}`);
+  const text = await late.text();
+  assert.equal(late.status, 200, text);
+  assert.deepEqual(JSON.parse(text).ended, { by: 'Ana' });
+  assert.deepEqual((await ending).json(), { link: null });
+  assert.equal((await fetch(`${relay.url}${edit.base}index.html`)).status, 502);
+});
