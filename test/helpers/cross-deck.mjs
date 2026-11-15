@@ -114,5 +114,6 @@ export const SAVE_INTO = (folder) => `(async () => {
 
 // the decks do not have a favicon, which a browser asks a server for. a paste into deck B asks it
 // for each path of a pasted file and for each path under media/ that it would take, and a path
-// that deck B does not have is answered with 404
-export const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico') && !/status of 404 .*\/cross-deck\/b\//.test(e));
+// that deck B does not have is answered with 404. from another port, its first read of deck A is
+// refused by the browser
+export const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico') && !/status of 404 .*\/cross-deck\/b\//.test(e) && !(/blocked by CORS policy|net::ERR_FAILED/.test(e) && e.includes('/cross-deck/a/')));
