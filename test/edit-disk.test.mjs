@@ -6,12 +6,14 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
+import fs, { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
+import fsp from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Authority, Disk } from '../theme/edit.mjs';
+import { Authority, Disk, start } from '../theme/edit.mjs';
 import { DECK, post, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -527,4 +529,103 @@ test('a stop on a changed file that cannot be read logs the error and does not t
   } finally {
     chmodSync(file, 0o644);
   }
+});
+
+test('the rename of .session/applied.json lets the edit command answer while it is tried again, writes the newest table, and the stop writes the table that waits behind a write in flight', { timeout: 120_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = join(talk, '.session', 'applied.json');
+  const table = () => {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+  // the renames of node:fs for the edit command of this process. a rename onto the table fails with
+  // EBUSY while busy is above 0, as while another program holds the file on Windows, and waits for
+  // gate while it is set
+  const { renameSync } = fs;
+  const { rename } = fsp;
+  const onto = (to) => to.endsWith(join('.session', 'applied.json'));
+  let busy = 0;
+  let gate = null;
+  let gated = false;
+  // whether a callback of setImmediate queued at the first failure ran before the rename that succeeded
+  let turned = null;
+  let turnedAtRename = null;
+  const fail = () => {
+    if (turned === null) {
+      turned = false;
+      setImmediate(() => (turned = true));
+    }
+    busy--;
+    return Object.assign(new Error('EBUSY: resource busy or locked, rename'), { code: 'EBUSY' });
+  };
+  fs.renameSync = (from, to) => {
+    if (onto(to) && busy > 0) throw fail();
+    if (onto(to) && turned !== null) turnedAtRename ??= turned;
+    return renameSync(from, to);
+  };
+  fsp.rename = async (from, to) => {
+    if (onto(to) && busy > 0) throw fail();
+    if (onto(to) && turned !== null) turnedAtRename ??= turned;
+    if (onto(to) && gate) {
+      gated = true;
+      await gate;
+    }
+    return rename(from, to);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.renameSync = renameSync;
+    fsp.rename = rename;
+    syncBuiltinESMExports();
+  });
+
+  const running = await start({ folder: talk, port: 0, log: () => {} });
+  t.after(() => running.close());
+  const api = (route) => `/${running.key}/.session/${route}`;
+  const ann = (await post(running.port, api('hello'), { name: 'Ann' })).json();
+  const at = DECK.indexOf('</body>');
+  let v = ann.v;
+  const op = async (seq) => {
+    const answer = (await post(running.port, api('op'), { token: ann.token, seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
+    assert.equal(answer.ok, true);
+    v = answer.v;
+  };
+  const seq = () => table()?.find(([client]) => client === ann.client)?.[1] ?? null;
+  const written = (n) => until(() => readFileSync(join(talk, 'index.html'), 'utf8').includes(`<i>${n}</i>`), `index.html to hold operation ${n}`);
+
+  busy = 3;
+  await op(1);
+  await until(() => seq() === 1, 'the table to hold operation 1');
+  assert.equal(turnedAtRename, true, 'the event loop turned between the first failed rename of the table and the rename that succeeded');
+
+  // a table given while the write of an older one is in flight is written once this write ends
+  let release;
+  gate = new Promise((done) => (release = done));
+  await op(2);
+  await written(2);
+  await until(() => gated, 'the write of the table of operation 2 to wait');
+  await op(3);
+  await written(3);
+  gate = null;
+  release();
+  await until(() => seq() === 3, 'the table to hold operation 3');
+
+  // the stop writes the table of its last write of index.html after the write in flight
+  gated = false;
+  gate = new Promise((done) => (release = done));
+  await op(4);
+  await written(4);
+  await until(() => gated, 'the write of the table of operation 4 to wait');
+  await op(5);
+  const closing = running.close();
+  // the last write of index.html is made by the stop while the table of operation 4 still waits
+  await written(5);
+  gate = null;
+  release();
+  await closing;
+  assert.equal(seq(), 5);
 });
