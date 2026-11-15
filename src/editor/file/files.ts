@@ -294,6 +294,7 @@ export function install(app: App): void {
       app.note = { text: error instanceof Error ? error.message : String(error), warn: true };
     }
     app.typing.attach();
+    app.emit('open');
     app.report();
     app.invalidate();
     if (fresh) app.drafts.offer();
