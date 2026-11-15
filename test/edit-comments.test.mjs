@@ -217,3 +217,47 @@ test('a stop while a write waits for its temporary file keeps the text of the st
   assert.deepEqual(saved.comments.map((c) => c.text), ['first', 'second']);
   assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.tmp')), []);
 });
+
+test('at a start, the anchors are moved by the patches that the history found, or fall back', (t) => {
+  const dir = sessionDir(t);
+  const first = open(dir, DECK);
+  const base = first.authority.version;
+  first.comments.add(ANN, { base, anchor: tagRange(DECK, '<p>Second'), slide: slideRange(DECK, 'Second'), text: 'p' });
+  first.comments.add(ANN, { base, anchor: tagRange(DECK, '<h2>One'), slide: slideRange(DECK, 'One'), text: 'h' });
+  first.comments.stopSync();
+  // index.html changed while the edit command was not running
+  const changed = DECK.replace('<section>', '<section>\n  <h2>Zero</h2>\n</section>\n<section>').replace('<h2>One</h2>', '<h2>One</h2>\n  <p>Added</p>');
+  const moved = open(dir, changed, {}, { before: DECK, patches: diff(DECK, changed) });
+  const [p, h] = moved.comments.list(ANN).comments;
+  reads(changed, p.anchor, '<p>Second slide</p>');
+  reads(changed, p.slide, '<section>\n  <h2>Two');
+  reads(changed, h.anchor, '<h2>One</h2>');
+  reads(changed, h.slide, '<section>\n  <h2>One');
+  assert.equal(p.removed, undefined);
+  moved.comments.stopSync();
+  // without the patches, an anchor that is not a start tag of its name falls back to its slide
+  const edited = changed.replace('<h2>Two</h2>', '<h2>Two!</h2>');
+  const third = open(dir, edited);
+  const [p3, h3] = third.comments.list(ANN).comments;
+  reads(edited, p3.anchor, '<section>\n  <h2>Two!');
+  assert.deepEqual(p3.removed, { text: null });
+  reads(edited, h3.anchor, '<h2>One</h2>');
+  assert.equal(h3.removed, undefined);
+  third.comments.stopSync();
+});
+
+test('a file of comments that cannot be read is moved aside', async (t) => {
+  for (const content of ['not json', JSON.stringify({ sum: 'x', comments: [{ id: 'bad' }], seen: {} })]) {
+    await t.test(content.slice(0, 12), () => {
+      const dir = sessionDir(t);
+      writeFileSync(join(dir, 'comments.json'), content);
+      const { comments, logged } = open(dir, DECK);
+      assert.equal(logged.length, 1, logged.join('\n'));
+      assert.match(logged[0], /could not be read/);
+      const aside = readdirSync(dir).filter((n) => n.startsWith('comments-unreadable-'));
+      assert.equal(aside.length, 1);
+      assert.equal(readFileSync(join(dir, aside[0]), 'utf8'), content);
+      assert.deepEqual(comments.list(ANN).comments, []);
+    });
+  }
+});
