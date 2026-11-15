@@ -2,17 +2,23 @@
 // test/editor-apply-fresh.test.mjs
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { editorPage } from './editor.mjs';
 import { front } from './apply.mjs';
 
-// a copy of the repository in a temporary folder, with the deck at text
+// a copy of the repository in a temporary folder, with the deck at text. the folders are linked.
+// tex.js and its sources are copied, since the fresh page of a Windows runner did not get a linked
+// tex.js
 export function freshDeck(t, text) {
   const dir = mkdtempSync(join(tmpdir(), 'beeson-fresh-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const name of readdirSync('.')) if (!name.endsWith('.html') && name !== 'node_modules' && name !== '.git') symlinkSync(resolve(name), join(dir, name));
+  for (const name of readdirSync('.')) {
+    if (name === 'node_modules' || name === '.git') continue;
+    if (statSync(name).isDirectory()) symlinkSync(resolve(name), join(dir, name));
+    else if (/\.(js|tex|bib)$/.test(name)) copyFileSync(name, join(dir, name));
+  }
   const file = join(dir, 'deck.html');
   writeFileSync(file, text);
   return file;
@@ -109,7 +115,7 @@ export async function looksFresh(t, browser, b, text, label = '') {
     const want = await c.evaluate(PICTURE);
     await front(b);
     const got = await b.evaluate(PICTURE);
-    if (got.join('\n') !== want.join('\n')) assert.fail(`${label}: the page differs from a fresh page ${difference(got, want)}`);
+    if (got.join('\n') !== want.join('\n')) assert.fail(`${label}: the page differs from a fresh page ${difference(got, want)}${c.errors.length ? `\nthe fresh page had the errors\n${c.errors.join('\n')}` : ''}`);
     assert.deepEqual(c.errors, [], `${label}: errors of a fresh page`);
   } finally {
     await c.close();
