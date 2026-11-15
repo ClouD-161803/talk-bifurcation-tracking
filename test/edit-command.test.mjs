@@ -1003,3 +1003,24 @@ test('add regression test: a start without --port takes the port of the last sta
   assert.notEqual(third.port, first.port);
   assert.equal(text(join(talk, '.session', 'port')), `${third.port}\n`);
 });
+
+test('add regression test: a page that said bye is not brought back by a poll or a presence that arrives after it', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = async (body) => (await post(edit.port, api('hello'), body)).json();
+  const poll = (who) => raw(edit.port, 'GET', `${api('events')}?token=${who.token}&since=${who.v}`);
+  const ana = await hello({ name: 'Ana' });
+  const ben = await hello({ name: 'Ben' });
+  await post(edit.port, api('bye'), { token: ben.token });
+  // two requests of Ben that were on their way when the page left
+  assert.equal((await post(edit.port, api('presence'), { token: ben.token, state: { slide: 1 } })).status, 404, 'a presence after the bye');
+  assert.equal((await poll(ben)).status, 404, 'a poll after the bye');
+  assert.deepEqual((await poll(ana)).json().people.map((p) => p.name), ['Ana'], 'the people after the bye of Ben');
+  // a hello with the token of the page brings it back, as a reload does
+  const back = await hello({ name: 'Ben', person: ben.person, token: ben.token });
+  assert.equal(back.client, ben.client);
+  assert.deepEqual(back.people.map((p) => p.name), ['Ana', 'Ben']);
+});
