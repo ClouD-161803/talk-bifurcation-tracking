@@ -2322,6 +2322,12 @@ var Comments = class {
     this.checks = /* @__PURE__ */ new Map();
     // true when the file could not be read nor set aside, hence it is neither written nor changed
     this.locked = false;
+    // the time up to which each person read each thread, kept only while it is after the seen of the
+    // person, hence at most one time per thread and person
+    this.readBy = /* @__PURE__ */ new Map();
+    // the count of changes of the times of reading, and the count at the last change of each person
+    this.reads = 0;
+    this.readsBy = /* @__PURE__ */ new Map();
     this.slides = null;
     // the changes after v = logStart, in order
     this.changes = [];
@@ -2356,7 +2362,14 @@ var Comments = class {
     return () => this.listeners.delete(fn);
   }
   list(person) {
-    return { v: this.v, at: this.authority.version, comments: [...this.threads.values()], seen: this.seenBy.get(person) ?? 0 };
+    return { v: this.v, at: this.authority.version, comments: [...this.threads.values()], ...this.times(person) };
+  }
+  // the time up to which person read the comments, and each thread read after it
+  times(person) {
+    return { seen: this.seenBy.get(person) ?? 0, read: Object.fromEntries(this.readBy.get(person) ?? []) };
+  }
+  readsOf(person) {
+    return this.readsBy.get(person) ?? 0;
   }
   // the changes after rev seen of a page, which holds -1 when it may have missed some
   since(seen) {
@@ -2457,6 +2470,7 @@ var Comments = class {
       this.bytes -= this.heads.get(id) + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
       this.heads.delete(id);
       this.checks.delete(id);
+      for (const [p, read] of this.readBy) if (read.delete(id) && !read.size) this.readBy.delete(p);
       this.changed([id], true);
       return null;
     }
@@ -2482,9 +2496,30 @@ var Comments = class {
     const seen = Math.max(this.seenBy.get(person) ?? 0, Math.min(time, this.now()));
     if (seen !== this.seenBy.get(person)) {
       this.seenBy.set(person, seen);
-      this.dirty();
+      const read = this.readBy.get(person);
+      for (const [id, at] of read ?? []) if (at <= seen) read.delete(id);
+      if (read && !read.size) this.readBy.delete(person);
+      this.readChanged(person);
     }
     return seen;
+  }
+  // the time up to which person has read the thread of id, which only grows
+  seenThread(person, id, time) {
+    if (!isNumber(time) || time < 0) return fail(400, "time must be a time in ms");
+    if (typeof id !== "string" || !this.threads.has(id)) return fail(404, "there is no such thread");
+    const read = this.readBy.get(person) ?? /* @__PURE__ */ new Map();
+    const at = Math.min(time, this.now());
+    if (at <= (this.seenBy.get(person) ?? 0) || at <= (read.get(id) ?? 0)) return read.get(id) ?? 0;
+    read.set(id, at);
+    this.readBy.set(person, read);
+    this.readChanged(person);
+    return at;
+  }
+  // the other pages of person are told the times, and the file is written
+  readChanged(person) {
+    this.readsBy.set(person, ++this.reads);
+    this.dirty();
+    for (const fn of this.listeners) fn();
   }
   stopSync() {
     if (this.stopped) return;
@@ -2577,6 +2612,13 @@ var Comments = class {
       for (const r of t.replies) this.bytes += replyBytes(r);
     }
     for (const [person, time] of Object.entries(d.seen)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
+    const read = data.read;
+    for (const [person, times] of Object.entries(read && typeof read === "object" ? read : {})) {
+      if (!isPersonId(person) || !times || typeof times !== "object") continue;
+      const seen = this.seenBy.get(person) ?? 0;
+      const kept = new Map(Object.entries(times).filter((e) => this.threads.has(e[0]) && isNumber(e[1]) && e[1] > seen));
+      if (kept.size) this.readBy.set(person, kept);
+    }
     if (bad) this.setAside(false, `${bad} of the threads could not be read, hence they were left out`);
     return { sum: d.sum };
   }
@@ -2685,7 +2727,8 @@ var Comments = class {
       return c;
     };
     const comments = [...this.threads.values()].map((t) => t.anchor ? { ...t, check: checked(t) } : t);
-    return JSON.stringify({ sum: this.sum, comments, seen: Object.fromEntries(this.seenBy) });
+    const read = Object.fromEntries([...this.readBy].map(([person, times]) => [person, Object.fromEntries(times)]));
+    return JSON.stringify({ sum: this.sum, comments, seen: Object.fromEntries(this.seenBy), read });
   }
   tmpName() {
     return join4(this.file, "..", `.comments.json.${randomBytes3(6).toString("hex")}.tmp`);
@@ -3994,8 +4037,8 @@ async function start(options = {}) {
     const answer = (x) => isFailure(x) ? error(x.status, x.error) : json(200, x);
     if (route === "comments") return answer(comments.add(person, body));
     if (route === "comments/seen") {
-      const seen = comments.seen(person, body.time);
-      return isFailure(seen) ? answer(seen) : json(200, { seen });
+      const seen = body.thread === void 0 ? comments.seen(person, body.time) : comments.seenThread(person, body.thread, body.time);
+      return isFailure(seen) ? answer(seen) : json(200, comments.times(person));
     }
     if (parts.length !== 3 || !isCommentId(parts[1])) return error(404, "not found");
     const id = parts[1];
@@ -4232,6 +4275,13 @@ async function start(options = {}) {
     rev: () => comments.v,
     write: (answer, seen) => {
       answer.comments = comments.since(seen);
+    }
+  });
+  people.feed({
+    rev: () => comments.reads,
+    of: (person) => comments.readsOf(person),
+    write: (answer, _seen, _since, person) => {
+      answer.comments = { ...answer.comments ?? { v: comments.v, changed: [], removed: [] }, ...comments.times(person) };
     }
   });
   disk.start();

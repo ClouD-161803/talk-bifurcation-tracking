@@ -175,10 +175,12 @@ export type Comment = {
 };
 // GET comments?token=. v grows with every change of a thread, at is the version of the text that
 // the anchors are of, and seen is the time up to which the person of the page has read the comments
-export type CommentsAnswer = { v: number; at: Version; comments: Comment[]; seen: number };
+// and read the time up to which the person read each thread after seen
+export type CommentsAnswer = { v: number; at: Version; comments: Comment[]; seen: number; read: Record<string, number> };
 // the threads changed and the ids of the threads deleted since the last answer to a page, or null
-// in both when the page must read GET comments again
-export type CommentsEvent = { v: number; changed: Comment[]; removed: string[] } | { v: number; changed: null; removed: null };
+// in both when the page must read GET comments again. seen and read are sent after a read on
+// another page of the person
+export type CommentsEvent = ({ v: number; changed: Comment[]; removed: string[] } | { v: number; changed: null; removed: null }) & { seen?: number; read?: Record<string, number> };
 // POST comments. anchor and slide are of the text at version base, an anchor without a slide is
 // on an element outside the slides, a slide without an anchor is a comment on the slide, and
 // neither is a comment on the deck. the answer is the thread. id is made by crypto.randomUUID(),
@@ -192,9 +194,9 @@ export type CommentEditRequest = { token: Token; text: string; mentions?: string
 export type CommentDeleteRequest = { token: Token; reply?: string };
 // POST comments/<id>/resolve and comments/<id>/reopen, by anyone
 export type ResolveRequest = { token: Token };
-// POST comments/seen
-export type SeenRequest = { token: Token; time: number };
-export type SeenAnswer = { seen: number };
+// POST comments/seen, of the thread of id thread when it is given, and of every thread otherwise
+export type SeenRequest = { token: Token; time: number; thread?: string };
+export type SeenAnswer = { seen: number; read: Record<string, number> };
 
 export const COMMENT_MAX = 4000;
 export const REPLIES_MAX = 200;

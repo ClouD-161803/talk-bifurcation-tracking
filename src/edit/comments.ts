@@ -121,6 +121,12 @@ export class Comments {
   private checks = new Map<string, Check>();
   // true when the file could not be read nor set aside, hence it is neither written nor changed
   private locked = false;
+  // the time up to which each person read each thread, kept only while it is after the seen of the
+  // person, hence at most one time per thread and person
+  private readBy = new Map<string, Map<string, number>>();
+  // the count of changes of the times of reading, and the count at the last change of each person
+  reads = 0;
+  private readsBy = new Map<string, number>();
   // the text that the anchors are of, its checksum, and its slides when they are known
   private text: string;
   private sum: string;
@@ -162,7 +168,16 @@ export class Comments {
   }
 
   list(person: string): CommentsAnswer {
-    return { v: this.v, at: this.authority.version, comments: [...this.threads.values()], seen: this.seenBy.get(person) ?? 0 };
+    return { v: this.v, at: this.authority.version, comments: [...this.threads.values()], ...this.times(person) };
+  }
+
+  // the time up to which person read the comments, and each thread read after it
+  times(person: string): { seen: number; read: Record<string, number> } {
+    return { seen: this.seenBy.get(person) ?? 0, read: Object.fromEntries(this.readBy.get(person) ?? []) };
+  }
+
+  readsOf(person: string): number {
+    return this.readsBy.get(person) ?? 0;
   }
 
   // the changes after rev seen of a page, which holds -1 when it may have missed some
@@ -268,6 +283,7 @@ export class Comments {
       this.bytes -= this.heads.get(id)! + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
       this.heads.delete(id);
       this.checks.delete(id);
+      for (const [p, read] of this.readBy) if (read.delete(id) && !read.size) this.readBy.delete(p);
       this.changed([id], true);
       return null;
     }
@@ -295,9 +311,32 @@ export class Comments {
     const seen = Math.max(this.seenBy.get(person) ?? 0, Math.min(time, this.now()));
     if (seen !== this.seenBy.get(person)) {
       this.seenBy.set(person, seen);
-      this.dirty();
+      const read = this.readBy.get(person);
+      for (const [id, at] of read ?? []) if (at <= seen) read!.delete(id);
+      if (read && !read.size) this.readBy.delete(person);
+      this.readChanged(person);
     }
     return seen;
+  }
+
+  // the time up to which person has read the thread of id, which only grows
+  seenThread(person: string, id: unknown, time: unknown): number | Failure {
+    if (!isNumber(time) || time < 0) return fail(400, 'time must be a time in ms');
+    if (typeof id !== 'string' || !this.threads.has(id)) return fail(404, 'there is no such thread');
+    const read = this.readBy.get(person) ?? new Map<string, number>();
+    const at = Math.min(time, this.now());
+    if (at <= (this.seenBy.get(person) ?? 0) || at <= (read.get(id) ?? 0)) return read.get(id) ?? 0;
+    read.set(id, at);
+    this.readBy.set(person, read);
+    this.readChanged(person);
+    return at;
+  }
+
+  // the other pages of person are told the times, and the file is written
+  private readChanged(person: string): void {
+    this.readsBy.set(person, ++this.reads);
+    this.dirty();
+    for (const fn of this.listeners) fn();
   }
 
   stopSync(): void {
@@ -396,6 +435,14 @@ export class Comments {
       for (const r of t.replies) this.bytes += replyBytes(r);
     }
     for (const [person, time] of Object.entries(d.seen as Record<string, unknown>)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
+    // a file of an earlier edit command does not hold the times of the threads
+    const read = (data as { read?: unknown }).read;
+    for (const [person, times] of Object.entries(read && typeof read === 'object' ? read : {})) {
+      if (!isPersonId(person) || !times || typeof times !== 'object') continue;
+      const seen = this.seenBy.get(person) ?? 0;
+      const kept = new Map(Object.entries(times as Record<string, unknown>).filter((e): e is [string, number] => this.threads.has(e[0]) && isNumber(e[1]) && e[1] > seen));
+      if (kept.size) this.readBy.set(person, kept);
+    }
     if (bad) this.setAside(false, `${bad} of the threads could not be read, hence they were left out`);
     return { sum: d.sum };
   }
@@ -517,7 +564,8 @@ export class Comments {
       return c;
     };
     const comments = [...this.threads.values()].map((t) => (t.anchor ? { ...t, check: checked(t) } : t));
-    return JSON.stringify({ sum: this.sum, comments, seen: Object.fromEntries(this.seenBy) });
+    const read = Object.fromEntries([...this.readBy].map(([person, times]) => [person, Object.fromEntries(times)]));
+    return JSON.stringify({ sum: this.sum, comments, seen: Object.fromEntries(this.seenBy), read });
   }
 
   private tmpName(): string {

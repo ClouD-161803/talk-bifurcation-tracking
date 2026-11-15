@@ -377,8 +377,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const answer = (x: unknown) => (isFailure(x) ? error((x as Failure).status, (x as Failure).error) : json(200, x));
     if (route === 'comments') return answer(comments.add(person, body));
     if (route === 'comments/seen') {
-      const seen = comments.seen(person, body.time);
-      return isFailure(seen) ? answer(seen) : json(200, { seen });
+      const seen = body.thread === undefined ? comments.seen(person, body.time) : comments.seenThread(person, body.thread, body.time);
+      return isFailure(seen) ? answer(seen) : json(200, comments.times(person));
     }
     if (parts.length !== 3 || !isCommentId(parts[1])) return error(404, 'not found');
     const id = parts[1];
@@ -628,6 +628,14 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     rev: () => comments.v,
     write: (answer, seen) => {
       answer.comments = comments.since(seen);
+    },
+  });
+  // the times up to which the person of a page read, after a read on another page of the person
+  people.feed({
+    rev: () => comments.reads,
+    of: (person) => comments.readsOf(person),
+    write: (answer, _seen, _since, person) => {
+      answer.comments = { ...(answer.comments ?? { v: comments.v, changed: [], removed: [] }), ...comments.times(person) };
     },
   });
   disk.start();
