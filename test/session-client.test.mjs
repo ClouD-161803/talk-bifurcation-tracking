@@ -192,3 +192,17 @@ test('a name held by another person asks whether it is this person, and Yes take
   clean(a);
   clean(b);
 });
+
+test('a lone surrogate typed into the deck is written as U+FFFD, on the page and in the file', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit));
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await page.evaluate(`document.execCommand('insertText', false, ' \\uD800')`);
+  const text = await converge(server, [page]);
+  assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide �</p>'));
+  assert.equal(await page.evaluate(`${el(0, 'p')}.textContent`), 'First slide �');
+  clean(page);
+});
