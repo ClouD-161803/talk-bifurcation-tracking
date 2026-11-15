@@ -99,6 +99,17 @@ test('a changed step index and a step taken group the steps as on a fresh page',
   ]);
 });
 
+// reveal.js marks a step at an open before the editor marks a figure as movable
+test('a figure made a step has the classes of reveal.js before those of the editor, as on a fresh page', async (t) => {
+  const box = '<div class="figure-box">\n    <video class="for-dark" src="demo/clip-dark.mp4"';
+  const step = '<div class="figure-box fragment">\n    <video class="for-dark" src="demo/clip-dark.mp4"';
+  await steps(t, [
+    ['a step made', (s) => once(s, box, step), false],
+    ['a step taken', (s) => once(s, step, box), false],
+    ['a step made with a change of a list item', (s) => once(once(s, box, step), 'it does survive PPTX exports.', 'it survives PPTX exports.'), false],
+  ]);
+});
+
 // a slide put before a slide that starts as it does is read as a change inside the heading of this
 // slide, whose new bytes close the slide around it
 test('a text element whose tags do not balance asks for a reload, and a slide put before a slide with the same start does not', async (t) => {
