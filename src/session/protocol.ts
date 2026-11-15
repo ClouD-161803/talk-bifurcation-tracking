@@ -132,8 +132,13 @@ function shown(raw: string): string {
 export const NAME_MAX = 40;
 export const cleanPersonName = (raw: unknown): string =>
   typeof raw === 'string' ? shown(Array.from(shown(raw).replace(/\s+/g, ' ').trim()).slice(0, NAME_MAX).join('')).trim() : '';
-// two names are one when their keys are equal
-export const nameKey = (name: string): string => cleanPersonName(name).normalize('NFC').toLowerCase();
+// two names are one when their keys are equal, hence names that look alike, e.g. in fullwidth forms
+// or with and without a joiner, are one
+export const nameKey = (name: string): string =>
+  cleanPersonName(name)
+    .normalize('NFKC')
+    .replace(/[\u200c\u200d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, '')
+    .toLowerCase();
 export const isPersonId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(id);
 export const isToken = (token: unknown): token is Token => typeof token === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(token);
 
