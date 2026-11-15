@@ -587,3 +587,26 @@ test('a state of a version ahead of the page is read once an acknowledgment of t
   clean(ana);
   clean(ben);
 });
+
+test('a page that joins while another person types reads the selection of a page that does not type', { timeout: 120_000 }, async (t) => {
+  const { browser, server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await gatePolls(ana);
+  await select(ana, el(1, 'h2'));
+  await until(async () => (await ben.evaluate(`(${C}.resolved()[0]?.selected ?? []).map((e) => e.localName).join()`)) === 'h2', 'the selection of Ana on the page of Ben');
+  // the next answer to Ana holds the join of Cy and the operations of Ben that came before it
+  await closePolls(ana);
+  await caretAtEnd(ben, el(1, 'li:nth-child(2)'));
+  await until(() => ana.evaluate('window.__waiting > 0'), 'a poll of Ana to wait');
+  await typeKeys(ben, 'qq');
+  await until(() => server.read().includes('<li>Betaqq</li>'), 'the typing of Ben in index.html');
+  const cy = await open(browser, sessionUrl(server.edit), { name: 'Cy' });
+  await show(cy, 'Two');
+  await openPolls(ana);
+  const of = (name) => `(${C}.resolved().find((r) => r.name === ${JSON.stringify(name)})?.selected ?? []).map((e) => e.localName).join()`;
+  await until(async () => (await cy.evaluate(of('Ana'))) === 'h2', 'the selection of Ana on the page of Cy', 5000);
+  clean(ana);
+  clean(ben);
+  clean(cy);
+});
