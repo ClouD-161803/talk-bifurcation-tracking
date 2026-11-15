@@ -53,12 +53,10 @@ const TYPING = 2000;
 // brings the page back
 const HIDING = 1000;
 // in ms, the floor rule of UI.md section 3: the heartbeat of a hold, the silence after which a hold
-// is lost, the time without typing after which another person may take the element, and the gap
-// within which two claims count as made at the same time
+// is lost, and the time without typing after which another person may take the element
 const BEAT = 5000;
 const STALE = 15000;
 const IDLE = 30000;
-const TIE = 3000;
 // the operations kept for carrying an offset, and the farthest that a change is slid
 const LOG = 256;
 const SLIDE = 4096;
@@ -206,7 +204,7 @@ class Changes {
 }
 
 // the state of another page as this page last heard it, with the times of this page at which it
-// was heard, at which the page was last seen typing or began its hold, and at which it began it
+// was heard, and at which the page was last seen typing or began its hold
 type Other = {
   raw: string;
   // the offsets and their version, whose change reads the elements again
@@ -214,7 +212,6 @@ type Other = {
   state: PresenceState;
   heardAt: number;
   activeAt: number;
-  holdAt: number;
   resolved: Resolved | null;
   // the key under which the elements of resolved were read, which an offset in doubt keeps
   resolvedKey: string;
@@ -573,7 +570,7 @@ export class Presence {
       let o = this.others.get(p.client);
       if (o && o.raw === raw && o.resolved?.name === p.name && o.resolved?.color === p.color) continue;
       if (!o) {
-        o = { raw, key: '', state, heardAt: t, activeAt: t, holdAt: t, resolved: null, resolvedKey: '', ahead: false };
+        o = { raw, key: '', state, heardAt: t, activeAt: t, resolved: null, resolvedKey: '', ahead: false };
         this.others.set(p.client, o);
       }
       if (o.raw !== raw) o.heardAt = t;
@@ -583,10 +580,7 @@ export class Presence {
       o.state = state;
       this.resolve(o, p.client, p.name, p.color);
       // a hold begins when the page holds another element, or one after none
-      if ((o.resolved?.held ?? null) !== heldBefore) {
-        o.holdAt = t;
-        o.activeAt = t;
-      }
+      if ((o.resolved?.held ?? null) !== heldBefore) o.activeAt = t;
       changed = true;
     }
     for (const id of [...this.others.keys()]) {
@@ -697,8 +691,10 @@ export class Presence {
       if (this.holding === r.held) {
         if (theirIdle) continue;
         const mine = Math.max(this.holdAt, this.typedAt);
+        // both pages hold it. this page yields it after IDLE ms without typing, and else the
+        // smaller client id keeps it, which both pages agree on however late they hear each other
         if (t - mine >= IDLE) yielded = r;
-        else if (Math.abs(this.holdAt - o.holdAt) < TIE ? id < this.client.client : o.holdAt < this.holdAt) refused = r;
+        else if (id < this.client.client) refused = r;
         else continue;
         locked.set(r.held, r);
       } else if (!theirIdle && !locked.has(r.held)) locked.set(r.held, r);
