@@ -114,12 +114,13 @@ export type ErrorAnswer = { error: string };
 // the tones of theme/beeson.css that the color index of a person stands for
 export const COLORS = ['--data-2', '--data-3', '--data-5', '--data-7'] as const;
 
-// characters that do not show, i.e. the default ignorable code points and the controls of the
-// direction of text
-const HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}]$/u;
-// hidden characters that an emoji or a word needs: the variation selectors and the tags, kept after
-// a character that shows, and the zero-width joiner and non-joiner, kept between two such characters
-const SELECTOR = /^[\ufe00-\ufe0f\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}]$/u;
+// characters that do not show, i.e. the default ignorable code points, the controls of the
+// direction of text, and the other format characters, e.g. U+0600 or U+FFF9
+const HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}\p{Cf}]$/u;
+// hidden characters that an emoji or a word needs: the variation selectors, kept after a character
+// that shows, and the zero-width joiner and non-joiner, kept between two such characters. the tags
+// are format characters, hence a flag of a region loses them
+const SELECTOR = /^[\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
 const JOINER = /^[\u200c\u200d]$/u;
 const shows = (c: string | undefined) => c !== undefined && !HIDDEN.test(c) && !/\s/.test(c);
 
@@ -146,7 +147,7 @@ export const cleanPersonName = (raw: unknown): string =>
 export const nameKey = (name: string): string =>
   cleanPersonName(name)
     .normalize('NFKC')
-    .replace(/[\u200c\u200d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, '')
+    .replace(/[\p{Cf}\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, '')
     .toLowerCase();
 export const isPersonId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(id);
 export const isToken = (token: unknown): token is Token => typeof token === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(token);
