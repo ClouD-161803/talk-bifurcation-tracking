@@ -86,6 +86,16 @@ test('an insert or a duplicate of the person, and the redo of a removal, are dro
   assert.deepEqual(b.errors, []);
 });
 
+test('a removal of the person, known by its touches alone, is dropped when another person removes its slide', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await b.evaluate(`${E}.doc.remove(${ITEM('When exporting')})`);
+  await b.waitFor(`${E}.status().undo`);
+  const text = await sessionText(b);
+  assert.equal((await applyOn(b, text.replace(`${slideWith(text, 'Show your steps')}\n`, ''))).reload, false);
+  assert.equal((await status(b)).undo, false);
+});
+
 // test/pages/editor-r29-1.html, opened from the folder of the theme, with a line on its third slide
 // from its shape to the right edge of its table, which sits in the flow under a paragraph
 const GLUED = once(once(readFileSync('test/pages/editor-r29-1.html', 'utf8').replaceAll('"../../theme/', '"theme/'),
