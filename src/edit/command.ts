@@ -386,7 +386,16 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   function indexHtml(request: Request): Response {
     let version = authority.version;
     let html = authority.text;
-    if (paramNames(request.query).has('session')) {
+    const names = paramNames(request.query);
+    // a version or a text set aside, for a preview in an iframe
+    if (names.has('version') || names.has('aside')) {
+      if (names.has('edit') || names.has('session')) return error(400, 'a version is shown without edit and session');
+      const query = new URLSearchParams(request.query);
+      const text = names.has('version') ? history.textOf(query.get('version')) : history.asideText(query.get('aside'));
+      if (text === null) return error(404, 'there is no such version');
+      return { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }, body: Buffer.from(disk.bom ? `\ufeff${text}` : text, 'utf8') };
+    }
+    if (names.has('session')) {
       const mode = request.headers['sec-fetch-mode'];
       const navigation = mode ? mode === 'navigate' : (request.headers.accept ?? '').includes('text/html');
       const v = new URLSearchParams(request.query).get('v');
