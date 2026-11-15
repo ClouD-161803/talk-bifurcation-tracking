@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Authority, Disk } from '../theme/edit.mjs';
-import { DECK, until } from './helpers/session.mjs';
+import { DECK, post, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -161,7 +161,7 @@ test('an outside write back to an earlier text keeps the newer edits of the sess
 // a folder made read-only by chmod refuses a new file neither on Windows nor to root
 const noReadOnlyFolder = process.platform === 'win32' || process.getuid?.() === 0 ? 'a read-only folder does not refuse a write on Windows or to root' : false;
 
-test('a write that keeps failing is reported with the number of unwritten operations', { timeout: 120_000, skip: noReadOnlyFolder }, async (t) => {
+test('a write that keeps failing is reported with the number of unwritten operations, and the stop of the command exits nonzero', { timeout: 120_000, skip: noReadOnlyFolder }, async (t) => {
   const reports = [];
   const { dir, file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, onWriteError: (e) => reports.push(e) });
   try {
@@ -177,5 +177,23 @@ test('a write that keeps failing is reported with the number of unwritten operat
     assert.equal(disk.stopSync(), 1);
   } finally {
     chmodSync(dir, 0o755);
+  }
+
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  const api = (route) => `${edit.base}.session/${route}`;
+  try {
+    const hello = (await post(edit.port, api('hello'), { name: 'Ann' })).json();
+    chmodSync(talk, 0o555);
+    const at = DECK.indexOf('One');
+    const answer = (await post(edit.port, api('op'), { token: hello.token, seq: 1, base: hello.v, patches: [{ start: at, end: at, text: 'X' }] })).json();
+    assert.equal(answer.ok, true);
+    await until(() => edit.stderr.includes('could not write'), 'the failed write in the log of the command');
+    await stopEdit(edit);
+    assert.equal(await edit.exited, 1);
+  } finally {
+    chmodSync(talk, 0o755);
+    await stopEdit(edit);
   }
 });
