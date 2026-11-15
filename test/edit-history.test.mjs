@@ -119,3 +119,25 @@ test('a last line cut by a crash is left out, and the file is appended to whole 
   assert.equal(third.history.textOf(v1.id), t1);
   assert.equal(third.history.textOf(v2.id), again.authority.text);
 });
+
+test('a file that cannot be read is moved aside, and a new history begins', { timeout: 60_000 }, async (t) => {
+  for (const [what, content] of [
+    ['a file of another format', 'not a history\n'],
+    ['a line in the middle that cannot be read', `${JSON.stringify({ kind: 'base', time: 1, text: DECK })}\nnot json\n${JSON.stringify({ kind: 'name', id: 'x', name: 'y' })}\n`],
+    ['a version whose patches leave the text', `${JSON.stringify({ kind: 'base', time: 1, text: 'abc' })}\n${JSON.stringify({ kind: 'version', id: 'a', time: 2, authors: [], patches: [{ start: 2, end: 9, text: '' }], marks: [], slides: [] })}\n{"kind":"name","id":"a","name":"n"}\n`],
+  ]) {
+    await t.test(what, () => {
+      const dir = sessionDir(t);
+      writeFileSync(join(dir, 'history.jsonl'), content);
+      const { history, logged } = open(dir, DECK);
+      assert.equal(logged.length, 1, logged.join('\n'));
+      assert.match(logged[0], /could not be read/);
+      const aside = readdirSync(dir).filter((n) => n.startsWith('history-unreadable-'));
+      assert.equal(aside.length, 1);
+      assert.equal(readFileSync(join(dir, aside[0]), 'utf8'), content);
+      assert.deepEqual(history.list().versions, []);
+      assert.equal(history.found, null);
+      assert.deepEqual(JSON.parse(readFileSync(join(dir, 'history.jsonl'), 'utf8').split('\n')[0]).text, DECK);
+    });
+  }
+});
