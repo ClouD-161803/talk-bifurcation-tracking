@@ -6,6 +6,7 @@
 import { BLOCKED, type Client } from './client.ts';
 import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
+import { failedLine, retry as retryUpload } from './media.ts';
 
 // the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
 // of their own, see people.ts
@@ -17,7 +18,7 @@ const CSS = `
 .beeson-edit-titlebar .right button.beeson-session-action { border: 1px solid var(--ed-control-line); background: var(--ed-control); }
 `;
 
-type Action = 'retry' | 'reload' | null;
+type Action = 'retry' | 'reload' | 'upload' | null;
 type View = { text: string; icon: string; warn: boolean; action: Action };
 
 function view(client: Client): View {
@@ -37,6 +38,8 @@ function view(client: Client): View {
     default:
       // the one place for a warning of the edit command, e.g. that it cannot write index.html
       if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null };
+      const failed = failedLine(client);
+      if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload' };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
       const restored = restoredLine(client);
       if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
@@ -44,7 +47,7 @@ function view(client: Client): View {
   }
 }
 
-const ACTIONS = { retry: ['Try now', 'Reconnect now'], reload: ['Load again', 'Load the page again'] } as const;
+const ACTIONS = { retry: ['Try now', 'Reconnect now'], reload: ['Load again', 'Load the page again'], upload: ['Try again', 'Send the picture again'] } as const;
 
 export function install(client: Client): void {
   style('state', CSS);
@@ -85,11 +88,13 @@ export function install(client: Client): void {
   };
   button.addEventListener('click', () => {
     if (client.blocked) location.reload();
+    else if (doing === 'upload') retryUpload(client);
     else if (client.retryAt !== null) client.tryNow();
     else void client.flush().catch(() => {});
   });
   action.addEventListener('click', () => {
     if (doing === 'reload') location.reload();
+    else if (doing === 'upload') retryUpload(client);
     else client.tryNow();
   });
   client.on('state', draw);
