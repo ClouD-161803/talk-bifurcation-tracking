@@ -564,7 +564,7 @@ test('the requests of the comments, and the events that tell the other pages of 
   const ann = await s.hello('Ann');
   const bo = await s.hello('Bo');
   const empty = await s.get(ann);
-  assert.deepEqual(empty, { v: 0, at: ann.v, comments: [], seen: 0 });
+  assert.deepEqual(empty, { v: 0, at: ann.v, comments: [], seen: 0, read: {} });
   const { text, base } = await s.deck();
   const created = await s.call('comments', ann, { base, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'Look', mentions: [bo.person] });
   assert.equal(created.status, 200);
@@ -586,7 +586,7 @@ test('the requests of the comments, and the events that tell the other pages of 
   assert.equal((await s.call(`comments/${thread.id}/delete`, ann, { reply: reply.id })).status, 403);
   assert.equal((await s.call(`comments/${thread.id}/resolve`, bo)).json().resolved.by, bo.person);
   assert.equal((await s.call(`comments/${thread.id}/reopen`, ann)).json().resolved, undefined);
-  assert.deepEqual((await s.call('comments/seen', bo, { time: 5 })).json(), { seen: 5 });
+  assert.deepEqual((await s.call('comments/seen', bo, { time: 5 })).json(), { seen: 5, read: {} });
   assert.equal((await s.get(bo)).seen, 5);
   assert.equal((await s.call('comments/seen', bo, { time: 'x' })).status, 400);
   const changed = await s.events(bo, shifted.v);
@@ -655,4 +655,51 @@ test('a thread or a reply sent again with the id that its page made is made once
   assert.equal((await s.call(`comments/${id}/reply`, bo, { id: 'x', text: 'Seen' })).status, 400);
   // a page that does not send an id is given one
   assert.match((await s.call('comments', ann, { ...body, id: undefined })).json().id, /^[A-Za-z0-9_-]+$/);
+});
+
+test('the time up to which a person read a thread is kept, told to the other pages of the person, and dropped with the thread', { timeout: 120_000 }, async (t) => {
+  const folder = talkFolder(t);
+  const first = await session(t, folder, true);
+  const ann = await first.hello('Ann');
+  const other = (await post(first.edit.port, first.api('hello'), { name: 'Ann', person: ann.person })).json();
+  assert.equal(other.person, ann.person);
+  const bo = await first.hello('Bo');
+  const { base } = await first.deck();
+  // each thread is made in a later ms than the one before, so that the times of the threads differ
+  let last = 0;
+  const thread = async (text) => {
+    await until(() => Date.now() > last, 'the clock to pass the time of the thread before');
+    const made = (await first.call('comments', bo, { base, anchor: null, slide: null, text, mentions: [ann.person] })).json();
+    last = made.time;
+    return made;
+  };
+  const x = await thread('X');
+  const y = await thread('Y');
+  const z = await thread('Z');
+  const told = await first.events(other, other.v);
+  assert.deepEqual(told.comments.changed.map((c) => c.id).sort(), [x.id, y.id, z.id].sort());
+
+  const read = (await first.call('comments/seen', ann, { time: y.time, thread: y.id })).json();
+  assert.deepEqual(read, { seen: 0, read: { [y.id]: y.time } });
+  const reached = await first.events(other, told.v);
+  assert.deepEqual([reached.comments?.seen, reached.comments?.read], [0, { [y.id]: y.time }], 'the read reaches the other page of the person');
+  assert.deepEqual((await first.get(other)).read, { [y.id]: y.time });
+  assert.deepEqual((await first.get(bo)).read, {});
+  // an earlier time is kept, and a thread that is not there or a time that is not one is refused
+  assert.deepEqual((await first.call('comments/seen', ann, { time: y.time - 1, thread: y.id })).json().read, { [y.id]: y.time });
+  assert.equal((await first.call('comments/seen', ann, { time: 1, thread: 'nope' })).status, 404);
+  assert.equal((await first.call('comments/seen', ann, { time: 'x', thread: y.id })).status, 400);
+  // a time of the whole person at or after the time of a thread replaces it
+  await first.call('comments/seen', ann, { time: z.time, thread: z.id });
+  assert.deepEqual((await first.call('comments/seen', ann, { time: x.time })).json(), { seen: x.time, read: { [y.id]: y.time, [z.id]: z.time } });
+  assert.deepEqual((await first.call('comments/seen', ann, { time: y.time })).json(), { seen: y.time, read: { [z.id]: z.time } });
+  await stopEdit(first.edit);
+
+  const second = await session(t, folder);
+  const again = (await post(second.edit.port, second.api('hello'), { name: 'Ann', person: ann.person })).json();
+  const bo2 = (await post(second.edit.port, second.api('hello'), { name: 'Bo', person: bo.person })).json();
+  assert.equal(again.person, ann.person);
+  assert.deepEqual([(await second.get(again)).seen, (await second.get(again)).read], [y.time, { [z.id]: z.time }], 'the times are kept over a restart');
+  assert.deepEqual((await second.call(`comments/${z.id}/delete`, bo2)).json(), {});
+  assert.deepEqual((await second.get(again)).read, {}, 'the time of a deleted thread is dropped');
 });
