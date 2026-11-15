@@ -912,3 +912,46 @@ test('add regression test: a media upload through the relay is limited to 16 MB,
   assert.deepEqual(direct.json(), { path: 'media/big.mp4' });
   assert.deepEqual(readdirSync(join(talk, 'media')), ['big.mp4']);
 });
+
+test('add regression test: a page whose last poll was held is dropped 40 s after this poll arrived, not 40 s after its answer', { timeout: 180_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // a hold of 2 s and a drop after 6 s in place of 25 s and 40 s
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config, SLIDES_POLL_HOLD_MS: '2000', SLIDES_GONE_MS: '6000' } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = async (name) => (await post(edit.port, api('hello'), { name })).json();
+  const poll = (who, since) => raw(edit.port, 'GET', `${api('events')}?token=${who.token}&since=${since}`).then((r) => r.json());
+  const wes = await hello('Wes');
+  const ann = await hello('Ann');
+  const bo = await hello('Bo');
+  // after an operation, a poll that asks after the version of a hello is answered at once
+  const at = DECK.indexOf('One');
+  assert.equal((await post(edit.port, api('op'), { token: wes.token, seq: 1, base: wes.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json().ok, true);
+  await poll(bo, bo.v);
+  const annSeen = await poll(ann, ann.v);
+
+  // Wes polls again at each answer, as a page that is present does, and keeps the people of each
+  const seen = [];
+  let watching = true;
+  void (async () => {
+    let since = wes.v;
+    while (watching) {
+      const answer = await poll(wes, since);
+      since = answer.v;
+      seen.push(answer.people.map((p) => p.name));
+    }
+  })().catch(() => {});
+  t.after(() => (watching = false));
+
+  // the last poll of Ann is held, as for a page that went offline, and a round trip of another
+  // request makes sure that it arrived before the last request of Bo
+  const held = poll(ann, annSeen.v);
+  await raw(edit.port, 'GET', `${edit.base}index.html`);
+  assert.ok((await poll(bo, bo.v)).ops.length > 0, 'the last poll of Bo is answered at once');
+  await held;
+  const gone = await until(() => seen.find((names) => !names.includes('Bo')), 'Bo to be dropped', 90_000);
+  watching = false;
+  assert.deepEqual(gone, ['Wes'], 'Ann, whose last request arrived before the one of Bo, is dropped no later than Bo');
+  assert.ok(seen.every((names) => names.includes('Wes')), 'a page that polls at each answer stays');
+});
