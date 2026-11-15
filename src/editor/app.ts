@@ -47,8 +47,9 @@ export type State = 'starting' | 'waiting' | 'loaded' | 'error';
 // the state shown in the toolbar, and its list of the texts that cannot be edited as its title
 export type Line = { text: string; warn: boolean; title: string };
 
-// open is emitted after files.open has paired a text with the page
-export type Event = 'report' | 'history' | 'dirty' | 'slide' | 'resize' | 'open';
+// open is emitted after files.open has paired a text with the page, and session at begin() and
+// end() of the session port
+export type Event = 'report' | 'history' | 'dirty' | 'slide' | 'resize' | 'open' | 'session';
 
 // a text element paired with the file is editable in place
 export const HOST = '[contenteditable="true"]';

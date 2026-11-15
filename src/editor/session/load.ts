@@ -15,8 +15,12 @@ const self = document.currentScript as HTMLScriptElement | null;
 // starts the load of session.js, and returns the start of the session, which resolves with false
 // when the page is opened without a session
 export function load(app: App, port: Port): () => Promise<boolean> {
-  if (!new URLSearchParams(location.search).has('session') || location.protocol === 'file:') return async () => false;
-  const loaded = new Promise<Entry | null>((done) => {
+  if (!new URLSearchParams(location.search).has('session')) return async () => false;
+  // a client that the page defined before editor.js ran is taken as it is, as the tests of the
+  // session mode do, which need the mode without an edit command
+  const given = (window as { BeesonSession?: Entry }).BeesonSession;
+  if (!given && location.protocol === 'file:') return async () => false;
+  const loaded = given ? Promise.resolve<Entry | null>(given) : new Promise<Entry | null>((done) => {
     const script = document.createElement('script');
     script.src = self?.src ? new URL('session.js', self.src).href : 'theme/session.js';
     script.onload = () => done((window as { BeesonSession?: Entry }).BeesonSession ?? null);

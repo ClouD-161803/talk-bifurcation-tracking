@@ -49,7 +49,7 @@ export function install(app: App): void {
 
   // a render error is shown, since the edits are then not kept anywhere but on the page
   function keepDraft(): void {
-    if (!app.dirty || !app.source || !app.pairing) return;
+    if (!app.dirty || !app.source || !app.pairing || app.session) return;
     let text: string;
     try {
       text = app.files.render();
@@ -125,4 +125,9 @@ export function install(app: App): void {
   };
   app.drafts = drafts;
   app.listen('dirty', drafts.keepSoon);
+  app.listen('session', () => {
+    if (!app.session) return;
+    window.clearTimeout(draftTimer);
+    recover.close(null);
+  });
 }

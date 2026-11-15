@@ -189,6 +189,9 @@ installMaskCommands(app);
 installFlipCommands(app);
 installObjects(app);
 const session = installSession(app);
+// a page opened with edit and session is in the session from its start, before a draft is offered
+// or the file is followed
+if (/[?&]session(=|&|$)/.test(location.search) && /[?&]edit(=|&|$)/.test(location.search)) session.begin();
 const startSession = loadSession(app, session);
 
 const revealReady = (): Promise<void> =>
@@ -228,8 +231,11 @@ async function init(): Promise<void> {
     app.relayout();
   }
   await mathReady();
-  // in a session, the client fetches the text of the version of the page
-  if (!(await startSession()) && !(await fetchSource(app))) {
+  // in a session, the client fetches the text of the version of the page. a page that could not
+  // join, e.g. on a static server, is edited as without a session
+  const joined = await startSession();
+  if (!joined) session.end();
+  if (!joined && !(await fetchSource(app))) {
     app.state = 'waiting';
     app.report();
   }

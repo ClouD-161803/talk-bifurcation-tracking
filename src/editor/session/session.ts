@@ -298,12 +298,14 @@ export function install(app: App): Port {
       if (active) return;
       active = true;
       app.session = session;
+      app.emit('session');
       app.report();
     },
     end() {
       if (!active) return;
       active = false;
       app.session = null;
+      app.emit('session');
       app.report();
     },
     setStatus(text) {
