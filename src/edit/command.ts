@@ -36,7 +36,8 @@ export type Running = {
   authority: Authority;
   // the link of the session through the relay, or null
   link: () => string | null;
-  close: () => Promise<void>;
+  // resolves with the number of operations that are not written into index.html
+  close: () => Promise<number>;
 };
 
 // the address of an edit command that already runs on the talk folder
@@ -418,7 +419,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     else await serial(() => connect(address, secret)).then(() => log(`shared at ${relay!.link}`), (e) => log(`the session is not shared: ${(e as Error).message}`));
   }
 
-  let closing: Promise<void> | null = null;
+  let closing: Promise<number> | null = null;
   return {
     url: `http://127.0.0.1:${port}/${key}/`,
     port,
@@ -432,7 +433,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         // a start during the stop begins a new edit command rather than finding this one
         unlock();
         people.end();
-        disk.stopSync();
+        const unwritten = disk.stopSync();
         // a share in progress sees closed and stops its link, hence the stop waits behind it
         await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
         // a poll that arrives in this time is answered with ended, rather than reset by the close
@@ -443,6 +444,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
             server.closeAllConnections();
           }, 300);
         });
+        return unwritten;
       })()),
   };
 }

@@ -87,7 +87,7 @@ async function main(argv: string[]): Promise<void> {
   // a write to a terminal that was closed fails, and must not end the command before its stop
   for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
   const stop = () => {
-    void running.close().finally(() => process.exit(0));
+    void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
     setTimeout(() => process.exit(0), 3000).unref();
   };
   // a fault that escapes every handler still writes index.html before the exit
