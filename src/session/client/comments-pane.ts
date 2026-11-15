@@ -73,7 +73,11 @@ const FILTERS: [Filter, string, string][] = [
   ['resolved', 'Resolved', 'No resolved comments.'],
 ];
 
-type Field = { box: HTMLElement; area: HTMLTextAreaElement; send: HTMLButtonElement; error: HTMLElement; names: Map<string, string>; reset(): void };
+// a mention picked from the list, as the range of its @name in the field and the id of its person
+type Mark = { start: number; end: number; person: string };
+// the text of a field and its mentions, as kept through a reload of the page
+type Kept = { text: string; marks: Mark[] };
+type Field = { box: HTMLElement; area: HTMLTextAreaElement; send: HTMLButtonElement; error: HTMLElement; kept(): Kept; load(kept: Kept): void; reset(): void };
 
 let ids = 0;
 
@@ -359,8 +363,10 @@ class Pane {
     return f;
   }
 
-  // a field of a comment, with the list of people at an @, Cancel, and a button that sends it
-  private field(placeholder: string, sendLabel: string, send: (text: string, mentions: string[]) => Promise<void>, cancel: () => void, initial = ''): Field {
+  // a field of a comment, with the list of people at an @, Cancel, and a button that sends it. a
+  // name picked from the list is a mention, kept as a mark on its @name until a change of the text
+  // touches it or a letter follows it, and a name typed by hand is text
+  private field(placeholder: string, sendLabel: string, send: (text: string, mentions: string[]) => Promise<void>, cancel: () => void, initial: Kept = { text: '', marks: [] }): Field {
     const box = make('div', 'field');
     const area = make('textarea');
     area.placeholder = placeholder;
@@ -387,25 +393,38 @@ class Pane {
     go.type = 'button';
     actions.append(no, go);
     box.append(area, people, error, actions);
-    const names = new Map<string, string>();
+    let marks: Mark[] = [];
+    let last = '';
     let choices: { person: string; name: string }[] = [];
     let active = 0;
     let busy = false;
+    // the text as it is sent, with each mark written as the id of its person
+    const sent = () => {
+      let text = area.value;
+      for (const m of [...marks].sort((a, b) => b.start - a.start)) text = `${text.slice(0, m.start)}@{${m.person}}${text.slice(m.end)}`;
+      return text.trim();
+    };
     const f: Field = {
       box,
       area,
       send: go,
       error,
-      names,
-      reset: () => {
-        area.value = '';
-        names.clear();
-        error.hidden = true;
+      kept: () => ({ text: area.value, marks: marks.map((m) => ({ ...m })) }),
+      load: (k) => {
+        area.value = k.text;
+        last = k.text;
+        marks = k.marks.filter((m) => m.start >= 0 && m.end <= k.text.length && m.start < m.end).map((m) => ({ ...m }));
         fit();
         sync();
       },
+      reset: () => {
+        f.load({ text: '', marks: [] });
+        error.hidden = true;
+      },
     };
     const fit = () => {
+      // a field out of the page has no height to read
+      if (!area.isConnected) return;
       area.style.height = 'auto';
       area.style.height = `${Math.min(160, area.scrollHeight + 2)}px`;
     };
@@ -415,6 +434,19 @@ class Pane {
       go.title = online ? '' : OFFLINE;
     };
     (box as HTMLElement & { sync?: () => void }).sync = sync;
+    // the marks moved by the change from last to the value of the field, and those that the change
+    // touches dropped
+    const move = () => {
+      const now = area.value;
+      let a = 0;
+      while (a < last.length && a < now.length && last[a] === now[a]) a++;
+      let b = 0;
+      while (b < last.length - a && b < now.length - a && last[last.length - 1 - b] === now[now.length - 1 - b]) b++;
+      const shift = now.length - last.length;
+      marks = marks.flatMap((m) => (m.end <= a ? [m] : m.start >= last.length - b ? [{ ...m, start: m.start + shift, end: m.end + shift }] : []));
+      marks = marks.filter((m) => !/[\p{L}\p{N}_]/u.test(now[m.end] ?? ''));
+      last = now;
+    };
     const query = () => /(?:^|\s)@([^\s@]{0,40})$/.exec(area.value.slice(0, area.selectionStart ?? 0));
     const close = () => {
       people.hidden = true;
@@ -466,7 +498,8 @@ class Pane {
       const put = `@${c.name} `;
       area.value = area.value.slice(0, start) + put + area.value.slice(end);
       area.setSelectionRange(start + put.length, start + put.length);
-      names.set(c.name, c.person);
+      move();
+      marks.push({ start, end: start + 1 + c.name.length, person: c.person });
       close();
       fit();
       sync();
@@ -475,8 +508,7 @@ class Pane {
     const submit = async () => {
       sync();
       if (go.disabled) return;
-      let text = area.value.trim();
-      for (const name of [...names.keys()].sort((a, b) => b.length - a.length)) text = text.split(`@${name}`).join(`@{${names.get(name)}}`);
+      const text = sent();
       const mentions = [...new Set([...text.matchAll(MENTION)].map((m) => m[1]))];
       busy = true;
       sync();
@@ -491,9 +523,9 @@ class Pane {
         sync();
       }
     };
-    area.value = initial;
     area.addEventListener('input', () => {
       error.hidden = true;
+      move();
       fit();
       sync();
       update();
@@ -532,7 +564,7 @@ class Pane {
     });
     no.addEventListener('click', () => cancel());
     go.addEventListener('click', () => void submit());
-    sync();
+    f.load(initial);
     return f;
   }
 
@@ -572,12 +604,14 @@ class Pane {
   private edit(t: Comment, reply: string | null): void {
     const item = reply ? t.replies.find((r) => r.id === reply) : t;
     if (!item || this.client.connection !== 'online') return;
-    let text = item.text;
-    const names = new Map<string, string>();
-    text = text.replace(MENTION, (_, id: string) => {
-      const name = this.nameOf(id);
-      names.set(name, id);
-      return `@${name}`;
+    // the mentions of the record, each a mark on the @name of its person
+    let text = '';
+    const marks: Mark[] = [];
+    item.text.split(MENTION).forEach((part, k) => {
+      if (!(k % 2)) return void (text += part);
+      const name = `@${this.nameOf(part)}`;
+      marks.push({ start: text.length, end: text.length + name.length, person: part });
+      text += name;
     });
     const done = () => {
       this.editing = null;
@@ -588,8 +622,7 @@ class Pane {
     const field = this.field('Edit the comment', 'Save', async (value, mentions) => {
       await this.comments.act(t.id, 'edit', { text: value, mentions, ...(reply ? { reply } : {}) });
       done();
-    }, done, text);
-    for (const [k, v] of names) field.names.set(k, v);
+    }, done, { text, marks });
     this.editing = { id: t.id, reply, field };
     this.thread(t, this.comments.places().get(t.id) ?? null, true);
     field.area.focus();
