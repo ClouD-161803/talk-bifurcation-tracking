@@ -97,3 +97,22 @@ export async function keepOldDraft(page, text = deckText.replace('Thank you', 'T
 }
 
 export const draftText = `JSON.parse(localStorage.getItem('beeson-draft:' + location.href.split(/[?#]/)[0]) ?? 'null')?.text ?? null`;
+
+/** The items of the File menu by command id, each with its label and whether it is dimmed. */
+export async function fileMenu(page) {
+  const items = await page.evaluate(`(() => {
+    const title = [...document.querySelectorAll('.beeson-edit-menubar [role="menuitem"]')].find((b) => b.textContent === 'File');
+    if (!title) return null;
+    title.click();
+    const out = {};
+    for (const i of document.querySelectorAll('.beeson-edit-menu .item')) {
+      const label = i.querySelector('.label');
+      out[i.dataset.command ?? label.firstChild?.textContent ?? ''] = { label: label.textContent, disabled: i.getAttribute('aria-disabled') === 'true' };
+    }
+    return out;
+  })()`);
+  assert.ok(items, 'the menu bar has a File menu');
+  await page.evaluate(`document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
+  await page.waitFor(`!document.querySelector('.beeson-edit-menu')`);
+  return items;
+}

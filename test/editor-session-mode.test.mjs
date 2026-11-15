@@ -13,10 +13,12 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { editorPage } from './helpers/editor.mjs';
 import { E } from './helpers/apply.mjs';
-import { CLIENT, HELD_SAVER, NO_TABS, TIMERS, draftText, keepOldDraft, release, typeGo } from './helpers/session-mode.mjs';
+import { CLIENT, HELD_SAVER, NO_TABS, TIMERS, draftText, fileMenu, keepOldDraft, release, typeGo } from './helpers/session-mode.mjs';
 
 const SESSION = 'edit&still&session';
+const NOTE = 'Not available in a session';
 const status = (page) => page.evaluate(`${E}.status()`);
+const enabled = (page, id) => page.evaluate(`${E}.state(${JSON.stringify(id)}).enabled`);
 const exec = (page, id) => {
   const run = page.evaluate(`${E}.exec(${JSON.stringify(id)}).then(() => true)`);
   run.catch(() => {});
@@ -214,6 +216,38 @@ test('10 and 12: Present, Export, and Print in a session wait for the saver and 
     const s = await status(page);
     assert.ok((await page.evaluate(`${E}.render()`)).includes(' Go.'), 'the edit was undone');
     assert.equal(s.undo, true, 'the history was cleared');
+    assert.deepEqual(errors(page), []);
+  } finally {
+    await page.close();
+  }
+});
+
+// 10: the commands that would replace the deck of everyone are dimmed, with a note in the menu
+test('10: Open, Open Recent, Revert to Saved, and Autosave are dimmed in a session, with a note', async () => {
+  const page = await editorPage(browser, { client: CLIENT, query: SESSION });
+  try {
+    await typeGo(page);
+    for (const id of ['file.open', 'file.revert', 'file.recent.none', 'file.autosave']) assert.equal(await enabled(page, id), false, `${id} is enabled in a session`);
+    const items = await fileMenu(page);
+    for (const id of ['file.open', 'file.revert', 'file.autosave']) {
+      assert.ok(items[id], `the File menu does not have ${id}`);
+      assert.equal(items[id].disabled, true);
+      assert.ok(items[id].label.endsWith(NOTE), `${id} reads ${items[id].label}`);
+    }
+    const recent = Object.values(items).find((i) => i.label.startsWith('Open Recent'));
+    assert.ok(recent && recent.disabled && recent.label.endsWith(NOTE), 'Open Recent is not dimmed with the note');
+    await exec(page, 'file.open');
+    assert.equal(await page.evaluate(askShown), false);
+    // the key of Open is kept from the browser, whose own Open would leave the page of the session
+    const held = await page.evaluate(`(() => {
+      const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+      const ev = new KeyboardEvent('keydown', { key: 'o', code: 'KeyO', keyCode: 79, metaKey: mac, ctrlKey: !mac, bubbles: true, cancelable: true });
+      document.querySelector('.reveal').dispatchEvent(ev);
+      return ev.defaultPrevented;
+    })()`);
+    assert.equal(held, true, 'the key of Open reaches the browser in a session');
+    assert.ok((await page.evaluate(`${E}.render()`)).includes(' Go.'));
+    assert.equal((await status(page)).undo, true);
     assert.deepEqual(errors(page), []);
   } finally {
     await page.close();
