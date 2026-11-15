@@ -253,3 +253,31 @@ test('10: Open, Open Recent, Revert to Saved, and Autosave are dimmed in a sessi
     await page.close();
   }
 });
+
+// begin() twice is one session, which one end() ends, and end() without begin() does not change
+// anything
+test('begin() is idempotent, and end() without begin() does nothing', async () => {
+  const page = await editorPage(browser, { client: CLIENT, query: SESSION });
+  try {
+    await page.evaluate(`${E}.session.begin(), true`);
+    assert.equal(await enabled(page, 'file.open'), false);
+    await page.evaluate(`${E}.session.end(), true`);
+    assert.equal(await enabled(page, 'file.open'), true, 'begin() twice needs two ends');
+  } finally {
+    await page.close();
+  }
+  const plain = await editorPage(browser);
+  try {
+    const before = await status(plain);
+    await plain.evaluate(`${E}.session.end(), true`);
+    assert.deepEqual(await status(plain), before);
+    assert.equal(await enabled(plain, 'file.open'), true);
+    await plain.evaluate(`(${E}.session.begin(), ${E}.session.begin(), true)`);
+    assert.equal(await enabled(plain, 'file.open'), false);
+    await plain.evaluate(`${E}.session.end(), true`);
+    assert.equal(await enabled(plain, 'file.open'), true);
+    assert.deepEqual(errors(plain), []);
+  } finally {
+    await plain.close();
+  }
+});
