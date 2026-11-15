@@ -2069,7 +2069,11 @@ var History = class {
       const record = this.parse(lines[i], i, text);
       if (record === null) {
         if (i < last || i === 0) throw new Unreadable();
-        truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
+        try {
+          truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
+        } catch {
+          this.broken = true;
+        }
         break;
       }
       if (record.kind === "base") {
@@ -2088,7 +2092,13 @@ var History = class {
       }
       good += lines[i].length + 1;
     }
-    if (good > content.length) appendFileSync(this.file, "\n");
+    if (good > content.length) {
+      try {
+        appendFileSync(this.file, "\n");
+      } catch {
+        this.broken = true;
+      }
+    }
     for (const v of this.versions) {
       const name = names.get(v.id);
       if (name) v.name = name;

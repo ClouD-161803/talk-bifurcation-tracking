@@ -649,8 +649,13 @@ export class History {
       const record = this.parse(lines[i], i, text);
       if (record === null) {
         if (i < last || i === 0) throw new Unreadable();
-        // the line cut by a crash is taken off, so that the next line is appended whole
-        truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
+        // the line cut by a crash is taken off, so that the next line is appended whole. a file that
+        // cannot be written is written anew at the next line
+        try {
+          truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
+        } catch {
+          this.broken = true;
+        }
         break;
       }
       if (record.kind === 'base') {
@@ -669,7 +674,13 @@ export class History {
       }
       good += lines[i].length + 1;
     }
-    if (good > content.length) appendFileSync(this.file, '\n');
+    if (good > content.length) {
+      try {
+        appendFileSync(this.file, '\n');
+      } catch {
+        this.broken = true;
+      }
+    }
     for (const v of this.versions) {
       const name = names.get(v.id);
       if (name) v.name = name;
