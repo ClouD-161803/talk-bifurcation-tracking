@@ -263,7 +263,10 @@ export class Presence {
   private beat = 0;
   private beatAt = 0;
   private ticker = 0;
-  private rebased: WeakSet<Element> = new WeakSet();
+  // the source and the version of the base after the last time that the port read the deck into
+  // its source for an offset, and whether it reads it now
+  private refreshed: { source: string | null; v: Version | undefined } | null = null;
+  private refreshing = false;
   private seen = new Set<string>();
 
   constructor(client: Client) {
@@ -475,7 +478,8 @@ export class Presence {
   }
 
   // the state of this page now, or null before the session began. an element made since the last
-  // apply has no offset yet, and the port is then made to read its source again once
+  // apply has no offset yet, and an edit of this page that is not in the source can put an offset
+  // in doubt, e.g. a deletion before it. the port then reads the deck into its source
   private build(): PresenceState | null {
     const { client } = this;
     const { app, port, shell } = client;
@@ -486,14 +490,9 @@ export class Presence {
     const offset = (el: Element | null): number | null => {
       if (!el) return null;
       const o = port.offsetOf(el);
-      if (o === null) {
-        if (el.isConnected && !this.rebased.has(el)) {
-          this.rebased.add(el);
-          void port.rebase().then(() => this.due(true), () => {});
-        }
-        return null;
-      }
-      return carry(o, changes);
+      const c = o === null ? null : carry(o, changes);
+      if (c === null && el.isConnected && (o === null || source !== base.text)) this.refresh();
+      return c;
     };
     const host = this.caretHost?.isConnected ? this.caretHost : null;
     if (host) this.at = shell.presence.caretIn(host) ?? this.at;
@@ -511,6 +510,20 @@ export class Presence {
       beat: this.beat,
       away: document.visibilityState === 'hidden',
     };
+  }
+
+  // the deck read into the source of the port, once for a source and a version of the base
+  private refresh(): void {
+    const { client } = this;
+    const now = () => ({ source: client.shell.presence.source(), v: client.base?.v });
+    const at = now();
+    if (this.refreshing || (this.refreshed?.source === at.source && this.refreshed.v === at.v)) return;
+    this.refreshing = true;
+    void client.port.rebase().catch(() => {}).then(() => {
+      this.refreshing = false;
+      this.refreshed = now();
+      this.due(true);
+    });
   }
 
   // the states of the other pages after an answer of events
