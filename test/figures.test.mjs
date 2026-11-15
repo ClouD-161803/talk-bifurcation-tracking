@@ -221,6 +221,17 @@ test('an error of TeX is given with the file and the line of the source, and wit
   assert.ok(compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{\\amp}') }).figure);
 });
 
+// MathJax knows the commands of amsmath, amssymb, and bm without a package. the demo preamble thus
+// uses \boldsymbol in \vb and \mathbb in \R without loading one
+test('a figure knows the commands of amsmath, amssymb, and bm that a macro of the preamble uses', { skip: WITHOUT_TEX }, (t) => {
+  const preamble = '\\newcommand{\\vb}[1]{\\boldsymbol{#1}}\n\\newcommand{\\R}{\\mathbb{R}}\n';
+  const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': preamble });
+  for (const label of ['$\\vb{r}$', '$\\R$', '$\\bm{v}$', '$\\text{a}$']) {
+    const { errors } = compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', `{${label}}`) });
+    assert.equal(errors, undefined, `${label}: ${JSON.stringify(errors)}`);
+  }
+});
+
 const page = (body) => `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<script src="tex.js"></script>\n</head>\n<body>\n<div class="reveal"><div class="slides">\n${body}\n</div></div>\n</body>\n</html>\n`;
 // npm run tex on the deck of a folder, with TeX only in the folder texbin when it is given
 const tex = (root, texbin) => {
