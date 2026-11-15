@@ -155,7 +155,7 @@ test('a comment on an element, on the text element of the caret, and on a slide 
   assert.equal(await comment(a, 'The first comment'), 'On Paragraph: First slide');
   await show(b, 'One');
   await b.waitFor(`${badgeOf(el(0, 'p'))} === '1*'`);
-  assert.equal(await a.evaluate(badgeOf(el(0, 'p'))), '1');
+  await sees(a, badgeOf(el(0, 'p')), '1', 'the badge on the page that made the comment');
 
   await show(a, 'Two');
   await caretAtEnd(a, el(1, 'h2'));
@@ -186,7 +186,8 @@ test('a thread stays on its element through the edits of another person and the 
     await show(b, 'Two');
     await caretAtEnd(b, on('Two', 'h2'));
     await type(b, ' typed');
-    assert.ok((await converge(server, [a, b])).includes('<h2>Two typed</h2>'));
+    await until(() => server.read().includes('<h2>Two typed</h2>'), 'the typing to reach index.html');
+    assert.ok((await converge(server, [a, b])).includes('<h2>Two typed</h2>'), 'the typing reaches both pages');
     await badge(a, 'Two', 'p', '1');
     await badge(b, 'Two', 'p', '1*');
   });
@@ -196,6 +197,7 @@ test('a thread stays on its element through the edits of another person and the 
     await click(b, '.reveal section.present > h2');
     await press(b, 'Escape');
     await b.evaluate(`window.BeesonEditor.exec('edit.duplicate')`);
+    await until(() => server.read().match(/>Two typed<\/h2>/g)?.length === 2, 'the copy to reach index.html');
     const text = await converge(server, [a, b]);
     assert.equal(text.match(/>Two typed<\/h2>/g).length, 2, text);
     await badge(a, 'Two', 'p', '1');
@@ -205,6 +207,7 @@ test('a thread stays on its element through the edits of another person and the 
   await t.test('the other person inserted a slide before it', async () => {
     await show(b, 'One');
     await b.evaluate(`window.BeesonEditor.exec('slide.new')`);
+    await until(() => server.read().match(/<section/g).length === 3, 'the new slide to reach index.html');
     assert.equal((await converge(server, [a, b])).match(/<section/g).length, 3);
     await badge(a, 'Two', 'p', '1');
     await badge(b, 'Two', 'p', '1*');
@@ -216,13 +219,15 @@ test('a thread stays on its element through the edits of another person and the 
     await click(b, '.reveal section.present > p');
     await press(b, 'Escape');
     await press(b, 'ArrowRight');
+    await until(() => /<p style="translate: 1px [^"]*">Second slide<\/p>/.test(server.read()), 'the move to reach index.html');
     assert.match(await converge(server, [a, b]), /<p style="translate: 1px [^"]*">Second slide<\/p>/);
     await badge(a, 'Two', 'p', '1');
     await front(b);
     await click(b, '.beeson-edit-nav .row:nth-of-type(3)');
     await b.evaluate(`window.BeesonEditor.exec('slide.moveUp')`);
+    await until(() => server.read().split('<section').findIndex((s) => s.includes('<h2>Two typed</h2>')) === 2, 'the slide moved up to reach index.html');
     await converge(server, [a, b]);
-    assert.equal(await a.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].indexOf(${on('Two')})`), 1);
+    await sees(a, `[...document.querySelectorAll('.reveal .slides > section')].indexOf(${on('Two')})`, 1, 'the index of the slide moved up');
     await badge(a, 'Two', 'p', '1');
     await badge(b, 'Two', 'p', '1*');
     await sees(a, GROUPS, ['Slide 2']);
@@ -239,13 +244,14 @@ test('a thread stays on its element through the edits of another person and the 
     await a.waitFor(`window.__held.length > 0 && !!document.querySelector('${PANE} .draft')`);
     await a.evaluate('window.__go()');
     assert.match(await sent, /Beta/);
-    assert.ok((await converge(server, [a, b])).includes('<h2>Two typed held</h2>'));
+    await until(() => server.read().includes('<h2>Two typed held</h2>'), 'the typing to reach index.html');
+    assert.ok((await converge(server, [a, b])).includes('<h2>Two typed held</h2>'), 'the typing reaches both pages');
     await badge(b, 'Two', 'li:last-child', '1*');
     await badge(b, 'Two', 'p', '1*');
     await badge(a, 'Two', 'li:last-child', '1');
   });
 
-  assert.equal(server.read().includes('comment'), false);
+  assert.equal(server.read().includes('comment'), false, 'a comment in index.html');
   clean(a);
   clean(b);
 });
@@ -262,13 +268,15 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   await click(b, '.reveal section.present > p');
   await press(b, 'Escape');
   await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
-  assert.equal((await converge(server, [a, b])).includes('Second slide'), false);
+  await until(() => !server.read().includes('Second slide'), 'the removal to reach index.html');
+  assert.equal((await converge(server, [a, b])).includes('Second slide'), false, 'the removed paragraph on the pages');
   await badge(a, 'Two', null, '1');
   await sees(a, THREADS, thread('On a removed element'));
   await sees(a, GROUPS, ['Slide 2']);
 
   await front(b);
   await press(b, 'Mod+Z');
+  await until(() => server.read() === before, 'the undo to reach index.html');
   assert.equal(await converge(server, [a, b]), before);
   await badge(a, 'Two', 'p', '1');
   await sees(a, THREADS, thread('On Paragraph: Second slide'));
@@ -276,13 +284,15 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   await front(b);
   await click(b, '.beeson-edit-nav .row:nth-of-type(2)');
   await b.evaluate(`window.BeesonEditor.exec('slide.delete')`);
+  await until(() => server.read().match(/<section/g).length === 1, 'the removal of the slide to reach index.html');
   assert.equal((await converge(server, [a, b])).match(/<section/g).length, 1);
   await sees(a, THREADS, thread('On a removed slide'));
   await sees(a, GROUPS, ['On the deck']);
-  assert.equal(await a.evaluate(`document.querySelectorAll('.beeson-comment-badge').length`), 0);
+  await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 0, 'the badges after the removal of the slide');
 
   await front(b);
   await press(b, 'Mod+Z');
+  await until(() => server.read() === before, 'the undo to reach index.html');
   assert.equal(await converge(server, [a, b]), before);
   await badge(a, 'Two', 'p', '1');
   await sees(a, THREADS, thread('On Paragraph: Second slide'));
@@ -302,7 +312,7 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
 
   await t.test('a reply reaches the author, who alone can edit or delete the comment', async () => {
     await sees(b, THREADS, [first(['The first comment'])]);
-    assert.equal(await b.evaluate(`!!document.querySelector('${ARTICLE} > .item:first-child .more')`), false);
+    assert.equal(await b.evaluate(`!!document.querySelector('${ARTICLE} > .item:first-child .more')`), false, 'the menu of a comment of another person');
     await click(b, `${ARTICLE} .reply textarea`);
     await type(b, 'A reply');
     await click(b, `${ARTICLE} .reply .actions .primary`);
@@ -399,7 +409,7 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
     await sees(c, THREADS, [first(['The first comment, edited']), { anchor: 'On Paragraph: Second slide', texts: ['Look, @Annabel what do you think?'] }]);
     await badge(c, 'One', 'p', '1*');
     await badge(c, 'Two', 'p', '1*');
-    assert.equal(await c.evaluate(COUNT), 'Comments');
+    await sees(c, COUNT, 'Comments');
 
     const count = await loads(a);
     await a.evaluate('location.reload()').catch(() => {});
@@ -472,7 +482,7 @@ test('the three tabs of the inspector and the keys of the pane, text that looks 
       await press(a, key);
       await sees(a, `[${TAB}, document.activeElement.textContent]`, [tab, tab], `the tab after ${key}`);
     }
-    assert.equal(await a.evaluate(`window.BeesonEditor.state('view.comments').checked`), true);
+    assert.equal(await a.evaluate(`window.BeesonEditor.state('view.comments').checked`), true, 'the command Comments checked');
   });
 
   await t.test('the text and the name of a person are shown as text', async () => {
@@ -518,7 +528,7 @@ test('the three tabs of the inspector and the keys of the pane, text that looks 
     await press(a, 'Escape');
     await press(a, 'Shift+C');
     await sees(a, `document.querySelector('.beeson-comment-badges').hidden`, true);
-    assert.equal(await a.evaluate(`window.BeesonEditor.state('view.commentBadges').checked`), false);
+    assert.equal(await a.evaluate(`window.BeesonEditor.state('view.commentBadges').checked`), false, 'the command Comment Badges checked');
     await press(a, 'Shift+C');
     await badge(a, 'One', 'p', '1');
   });
