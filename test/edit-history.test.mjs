@@ -6,7 +6,8 @@
 // as a child process for the requests
 
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -671,6 +672,59 @@ test('names given again and again to one version do not grow history.jsonl witho
   assert.ok(names.length <= 1002, `${names.length} lines of a name`);
   const again = open(dir, authority.text);
   assert.deepEqual(again.history.list().versions.map((x) => [x.id, x.name]), [[v.id, 'a'.repeat(79)]]);
+});
+
+test('an unreadable history.jsonl that another program holds open is copied aside, or else not written over', { timeout: 60_000 }, async (t) => {
+  const content = 'not a history\n';
+  // a rename to the aside file fails as on Windows while an antivirus holds the file open
+  const real = { renameSync: fs.renameSync, copyFileSync: fs.copyFileSync };
+  const busy = () => Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+  const held = (copy) => {
+    fs.renameSync = (from, to) => {
+      if (String(to).includes('unreadable')) throw busy();
+      return real.renameSync(from, to);
+    };
+    if (!copy) {
+      fs.copyFileSync = () => {
+        throw busy();
+      };
+    }
+    syncBuiltinESMExports();
+  };
+  const free = () => {
+    Object.assign(fs, real);
+    syncBuiltinESMExports();
+  };
+  t.after(free);
+
+  await t.test('a copy aside when the rename fails', () => {
+    const dir = sessionDir(t);
+    writeFileSync(join(dir, 'history.jsonl'), content);
+    held(true);
+    const { authority, history } = open(dir, DECK);
+    free();
+    const aside = readdirSync(dir).filter((n) => n.startsWith('history-unreadable-'));
+    assert.deepEqual(aside.map((n) => readFileSync(join(dir, n), 'utf8')), [content]);
+    replace(authority, 'One', 'Uno', ANN);
+    history.close();
+    history.stopSync();
+    assert.equal(open(dir, authority.text).history.list().versions.length, 1);
+  });
+
+  await t.test('the file kept as it is when the copy fails too', () => {
+    const dir = sessionDir(t);
+    writeFileSync(join(dir, 'history.jsonl'), content);
+    held(false);
+    const { authority, history, logged } = open(dir, DECK);
+    free();
+    replace(authority, 'One', 'Uno', ANN);
+    history.close();
+    history.name('current', 'Named');
+    history.stopSync();
+    assert.equal(readFileSync(join(dir, 'history.jsonl'), 'utf8'), content);
+    assert.ok(logged.some((m) => /not written/.test(m)), logged.join('\n'));
+    assert.equal(history.list().versions.length, 1, 'the history of this run is kept in memory');
+  });
 });
 
 test('a page that was dropped while two restores were made is told the later one, and a page that came after them is not told', { timeout: 180_000 }, async (t) => {
