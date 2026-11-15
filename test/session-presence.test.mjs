@@ -697,3 +697,29 @@ test('a page that the edit command drops for silence and takes back sends its st
   clean(ana);
   clean(ben);
 });
+
+test('a selected element whose start tag another change renames is not read as the new element', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // a poll is answered within a second, hence a poll of a page waits at its gate soon
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
+  const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ana, ben]);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await gatePolls(ana);
+  await select(ana, el(1, 'p'));
+  const read = `(${C}.resolved().find((r) => r.name === 'Ana')?.selected ?? []).map((e) => e.localName)`;
+  await until(async () => (await ben.evaluate(read)).join() === 'p', 'the selection of the paragraph on the page of Ben');
+  // Ana does not hear of the change, hence Ben reads her last state again after it
+  await closePolls(ana);
+  await until(() => ana.evaluate('window.__waiting > 0'), 'a poll of Ana to wait');
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<h3>Second slide</h3>'));
+  await until(() => ben.evaluate(`!!${el(1, 'h3')}`), 'the heading on the page of Ben');
+  await until(async () => (await ben.evaluate(read)).join() !== 'p', 'Ben to read the state of Ana again');
+  assert.deepEqual(await ben.evaluate(read), []);
+  await openPolls(ana);
+  clean(ana);
+  clean(ben);
+});
