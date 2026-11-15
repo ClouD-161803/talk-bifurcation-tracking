@@ -419,3 +419,37 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
   // the refused edit and delete of a comment of another person
   clean(b, [/status of 403/]);
 });
+
+test('offline, the Comment command is disabled, and a draft is kept until the page is back online', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a] } = await pair(t, ['Ann']);
+  const { port } = server.edit;
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'Before the stop');
+  await caretAtEnd(a, el(0, 'h2'));
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
+  // the edit command writes its comments at most once a second, and a kill does not wait for it
+  const file = join(server.talk, '.session', 'comments.json');
+  await until(() => existsSync(file) && readFileSync(file, 'utf8').includes('Before the stop'), 'the edit command to write the comment');
+
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await a.waitFor(`/^Offline/.test(${STATE})`);
+  await type(a, 'Written offline');
+  assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: OFFLINE });
+  await sees(a, `(() => { const b = document.querySelector('${PANE} .draft .actions .primary'); return [b.disabled, b.title, document.querySelector('${PANE} .draft textarea').value]; })()`, [true, OFFLINE, 'Written offline']);
+  await sees(a, THREADS, [{ anchor: 'On Paragraph: First slide', texts: ['Before the stop'] }]);
+
+  await server.start(['--port', String(port)]);
+  await front(a);
+  await click(a, '.beeson-session-action');
+  await a.waitFor(ONLINE);
+  await sees(a, `document.querySelector('${PANE} .draft .actions .primary').disabled`, false);
+  assert.equal(await a.evaluate(`document.querySelector('${PANE} .draft textarea').value`), 'Written offline');
+  await click(a, `${PANE} .draft .actions .primary`);
+  await a.waitFor(`!document.querySelector('${PANE} .draft')`);
+  await sees(a, THREADS, [{ anchor: 'On Heading: One', texts: ['Written offline'] }, { anchor: 'On Paragraph: First slide', texts: ['Before the stop'] }]);
+  assert.equal(await converge(server, [a]), TALK);
+  clean(a, REFUSED);
+});
