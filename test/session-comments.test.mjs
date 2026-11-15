@@ -174,3 +174,78 @@ test('a comment on an element, on the text element of the caret, and on a slide 
   clean(a);
   clean(b);
 });
+
+test('a thread stays on its element through the edits of another person and the unsent edits of its page', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t);
+  await show(a, 'Two');
+  await click(a, '.reveal .slides > section:nth-child(2) > p');
+  assert.equal(await comment(a, 'On the paragraph'), 'On Paragraph: Second slide');
+  await badge(b, 'Two', 'p', '1*');
+
+  await t.test('the other person typed before it', async () => {
+    await show(b, 'Two');
+    await caretAtEnd(b, on('Two', 'h2'));
+    await type(b, ' typed');
+    assert.ok((await converge(server, [a, b])).includes('<h2>Two typed</h2>'));
+    await badge(a, 'Two', 'p', '1');
+    await badge(b, 'Two', 'p', '1*');
+  });
+
+  await t.test('the other person inserted an element before it', async () => {
+    await show(b, 'Two');
+    await click(b, '.reveal section.present > h2');
+    await press(b, 'Escape');
+    await b.evaluate(`window.BeesonEditor.exec('edit.duplicate')`);
+    const text = await converge(server, [a, b]);
+    assert.equal(text.match(/>Two typed<\/h2>/g).length, 2, text);
+    await badge(a, 'Two', 'p', '1');
+    await badge(b, 'Two', 'p', '1*');
+  });
+
+  await t.test('the other person inserted a slide before it', async () => {
+    await show(b, 'One');
+    await b.evaluate(`window.BeesonEditor.exec('slide.new')`);
+    assert.equal((await converge(server, [a, b])).match(/<section/g).length, 3);
+    await badge(a, 'Two', 'p', '1');
+    await badge(b, 'Two', 'p', '1*');
+    await sees(a, GROUPS, ['Slide 3']);
+  });
+
+  await t.test('the other person moved it, and moved its slide', async () => {
+    await show(b, 'Two');
+    await click(b, '.reveal section.present > p');
+    await press(b, 'Escape');
+    await press(b, 'ArrowRight');
+    assert.match(await converge(server, [a, b]), /<p style="translate: 1px [^"]*">Second slide<\/p>/);
+    await badge(a, 'Two', 'p', '1');
+    await front(b);
+    await click(b, '.beeson-edit-nav .row:nth-of-type(3)');
+    await b.evaluate(`window.BeesonEditor.exec('slide.moveUp')`);
+    await converge(server, [a, b]);
+    assert.equal(await a.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].indexOf(${on('Two')})`), 1);
+    await badge(a, 'Two', 'p', '1');
+    await badge(b, 'Two', 'p', '1*');
+    await sees(a, GROUPS, ['Slide 2']);
+  });
+
+  await t.test('a comment made while the edits of its page are not sent is on the element it was made on', async () => {
+    await show(a, 'Two');
+    await a.evaluate(HOLD);
+    await caretAtEnd(a, on('Two', 'h2'));
+    await type(a, ' held');
+    await click(a, '.reveal section.present li:last-child');
+    const sent = comment(a, 'On Beta');
+    // the comment waits for the edits of the page, which are held
+    await a.waitFor(`window.__held.length > 0 && !!document.querySelector('${PANE} .draft')`);
+    await a.evaluate('window.__go()');
+    assert.match(await sent, /Beta/);
+    assert.ok((await converge(server, [a, b])).includes('<h2>Two typed held</h2>'));
+    await badge(b, 'Two', 'li:last-child', '1*');
+    await badge(b, 'Two', 'p', '1*');
+    await badge(a, 'Two', 'li:last-child', '1');
+  });
+
+  assert.equal(server.read().includes('comment'), false);
+  clean(a);
+  clean(b);
+});
