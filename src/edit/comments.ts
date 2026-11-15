@@ -10,7 +10,7 @@ import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { checkAnchors, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Moved } from '../session/anchor.ts';
 import type { Authority } from '../session/authority.ts';
-import { apply, checksum, type Patch } from '../session/patch.ts';
+import { apply, checksum, copy, type Patch } from '../session/patch.ts';
 import {
   COMMENT_MAX,
   formatVersion,
@@ -184,7 +184,7 @@ export class Comments {
     if (isFailure(at)) return at;
     const item = this.toCurrent(n, at);
     const thread: Comment = { id: newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
-    if (item.removed) thread.removed = item.removed;
+    if (item.removed) thread.removed = { text: item.removed.text && copy(item.removed.text) };
     if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
     const head = headBytes(thread);
     if (this.bytes + head > this.maxBytes) return tooLarge();
@@ -424,7 +424,9 @@ export class Comments {
   private setAnchors(t: Comment, item: Anchored): void {
     t.anchor = item.anchor;
     t.slide = item.slide;
-    if (item.removed) t.removed = item.removed;
+    if (item.removed === t.removed) return;
+    // a removed text is cut from a whole earlier text of the deck, which a copy does not keep alive
+    if (item.removed) t.removed = { text: item.removed.text && copy(item.removed.text) };
     else delete t.removed;
     this.recount(t);
     // a removed text is left out when it would pass the limit, since a deletion is never refused

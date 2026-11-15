@@ -2341,7 +2341,7 @@ var Comments = class {
     if (isFailure(at)) return at;
     const item = this.toCurrent(n, at);
     const thread = { id: newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
-    if (item.removed) thread.removed = item.removed;
+    if (item.removed) thread.removed = { text: item.removed.text && copy(item.removed.text) };
     if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
     const head = headBytes(thread);
     if (this.bytes + head > this.maxBytes) return tooLarge();
@@ -2565,7 +2565,8 @@ var Comments = class {
   setAnchors(t, item) {
     t.anchor = item.anchor;
     t.slide = item.slide;
-    if (item.removed) t.removed = item.removed;
+    if (item.removed === t.removed) return;
+    if (item.removed) t.removed = { text: item.removed.text && copy(item.removed.text) };
     else delete t.removed;
     this.recount(t);
     if (t.removed?.text && this.bytes > this.maxBytes) {
