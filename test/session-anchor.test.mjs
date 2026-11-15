@@ -63,3 +63,61 @@ test('a start tag replaced keeps the anchor on its element, with the range of th
   assert.equal(r.items[0].removed, undefined);
   assert.equal(r.items[1].removed, undefined);
 });
+
+test('an element or a slide that moves is followed', async (t) => {
+  await t.test('a paragraph moved up in its slide', () => {
+    const before = deck(['<h2>Alpha</h2>', '<p>One</p>', '<p>Two</p>', '<p>Three</p>']);
+    const after = before.replace('  <p>Three</p>\n', '').replace('  <p>One</p>', '  <p>Three</p>\n  <p>One</p>');
+    const r = move(before, after, [onElement(before, '<p>Three'), onElement(before, '<p>One')]);
+    reads(after, r.items[0].anchor, '<p>Three</p>');
+    reads(after, r.items[1].anchor, '<p>One</p>');
+    assert.equal(r.items[0].removed, undefined);
+  });
+
+  await t.test('a paragraph moved to another slide', () => {
+    const before = deck(['<h2>Alpha</h2>', '<p>One</p>', '<p>Moved</p>'], ['<h2>Beta</h2>', '<p>Two</p>']);
+    const after = before.replace('  <p>Moved</p>\n', '').replace('  <p>Two</p>', '  <p>Two</p>\n  <p>Moved</p>');
+    const [moved] = move(before, after, [onElement(before, '<p>Moved')]).items;
+    reads(after, moved.anchor, '<p>Moved</p>');
+    reads(after, moved.slide, '<section>\n  <h2>Beta');
+  });
+
+  await t.test('a slide moved after the next one, which the line diff makes a rotation', () => {
+    const before = deck(['<h2>Alpha</h2>', '<p>Uno</p>'], ['<h2>Beta</h2>', '<p>Dos</p>', '<p>Tres</p>'], ['<h2>Gamma</h2>']);
+    const after = deck(['<h2>Beta</h2>', '<p>Dos</p>', '<p>Tres</p>'], ['<h2>Alpha</h2>', '<p>Uno</p>'], ['<h2>Gamma</h2>']);
+    const patches = diff(before, after);
+    // the start tag of the first slide stays in place, and the text of Alpha is moved after it
+    const first = before.indexOf('<section>');
+    assert.ok(!patches.some((p) => p.start <= first && first < p.end), 'the first start tag is kept by the diff');
+    const items = [onSlide(before, 'Alpha'), onElement(before, '<p>Uno'), onSlide(before, 'Beta'), onElement(before, '<p>Tres')];
+    const r = moveAnchors(before, patches, after, items);
+    reads(after, r.items[0].anchor, '<section>\n  <h2>Alpha');
+    reads(after, r.items[1].anchor, '<p>Uno</p>');
+    reads(after, r.items[1].slide, '<section>\n  <h2>Alpha');
+    reads(after, r.items[2].anchor, '<section>\n  <h2>Beta');
+    reads(after, r.items[3].anchor, '<p>Tres</p>');
+    reads(after, r.items[3].slide, '<section>\n  <h2>Beta');
+    assert.deepEqual(r.changed, [true, true, true, true]);
+    assert.ok(r.items.every((it) => it.removed === undefined));
+  });
+
+  await t.test('two elements of equal start tags swapped in a slide', () => {
+    const before = deck(['<h2>Alpha</h2>', '<div>', '  <p>First</p>', '</div>', '<div>', '  <p>Second</p>', '</div>']);
+    const after = before.replace('First', '#').replace('Second', 'First').replace('#', 'Second');
+    // the diff changes only the texts, and leaves both start tags in place
+    assert.ok(diff(before, after).every((p) => !/[<>]/.test(p.text)));
+    const first = before.indexOf('<div>');
+    const second = before.indexOf('<div>', first + 1);
+    const r = move(before, after, [onElement(before, '<div>'), { anchor: startTagAt(before, second), slide: slideAround(before, second) }]);
+    reads(after, r.items[0].anchor, '<div>\n    <p>First');
+    reads(after, r.items[1].anchor, '<div>\n    <p>Second');
+  });
+
+  await t.test('typing inside an element that has an equal copy elsewhere keeps the anchor on it', () => {
+    const before = deck(['<h2>Alpha</h2>', '<p>Same</p>'], ['<h2>Beta</h2>', '<p>Same</p>']);
+    const after = before.replace('Same', 'Same <b>bold</b>');
+    const [kept] = move(before, after, [onElement(before, '<p>Same')]).items;
+    reads(after, kept.anchor, '<p>Same <b>bold</b></p>');
+    reads(after, kept.slide, '<section>\n  <h2>Alpha');
+  });
+});
