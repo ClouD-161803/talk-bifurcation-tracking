@@ -24,12 +24,19 @@ export function kindOf(file: { type: string; name: string }): Kind | null {
   return null;
 }
 
-// a name that is safe in a path and in an attribute, e.g. orbit-plot-2.png for "Orbit plot (2).PNG"
+// the longest stem of a name, as cleanName of src/edit/command.ts cuts it
+const STEM = 80;
+const fit = (stem: string, max = STEM) => stem.slice(0, max).replace(/[-_]+$/, '');
+
+// a name that is safe in a path and in an attribute, e.g. orbit-plot-2.png for "Orbit plot (2).PNG".
+// its stem is cleaned as cleanName of src/edit/command.ts cleans it, so that the edit command keeps
+// the name, e.g. fig-1.png for fig.1.png
 export function safeName(name: string, fallback: string): string {
   const base = name.split(/[\\/]/).pop() ?? '';
   const dot = base.lastIndexOf('.');
   const clean = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-.]+|[-.]+$/g, '');
-  const stem = clean(dot > 0 ? base.slice(0, dot) : base) || fallback;
+  let stem = fit(clean(dot > 0 ? base.slice(0, dot) : base).replace(/\./g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+/, '')) || fallback;
+  if (/^(con|prn|aux|nul|com\d|lpt\d)$/.test(stem)) stem = `${stem}-file`;
   const ext = dot > 0 ? clean(base.slice(dot + 1)) : '';
   return ext ? `${stem}.${ext}` : stem;
 }
