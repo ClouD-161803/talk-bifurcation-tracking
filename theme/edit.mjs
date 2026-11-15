@@ -2937,8 +2937,19 @@ async function start(options = {}) {
     }
     return error(409, "too many files of this name");
   }
+  function historyApi(route, request) {
+    const parts = route.split("/");
+    if (request.method === "GET") {
+      if (people.clientOf(new URLSearchParams(request.query).get("token")) === null) return error(404, "say hello first");
+      if (route === "history") return json(200, history.list());
+      const v = parts.length === 2 && parts[0] === "history" ? history.get(parts[1]) : null;
+      return v ? json(200, v) : error(404, "there is no such version");
+    }
+    return error(405, "GET");
+  }
   async function api(route, request) {
     if (route.startsWith("media/")) return media(route.slice(6), request);
+    if (route === "history" || route.startsWith("history/")) return historyApi(route, request);
     if (route === "share") return share(request);
     if (route === "events") {
       if (request.method !== "GET") return error(405, "GET");
@@ -3126,6 +3137,13 @@ async function start(options = {}) {
   } catch {
   }
   history = new History(join5(root, ".session"), authority, { ...options.history, log });
+  history.onChange(() => people.news());
+  people.feed({
+    rev: () => history.rev,
+    write: (answer) => {
+      answer.history = history.rev;
+    }
+  });
   disk.start();
   if (options.relay) {
     const address = relayAddress(options.relay);
