@@ -238,3 +238,56 @@ test('an element longer than every inserted text and than 4 kB is not read to it
   assert.deepEqual(r.items[0].removed, { text: null });
   reads(gone, r.items[1].anchor, '<p>After');
 });
+
+test('random operations keep the anchors on start tags of their slides, and the slides as a whole read finds them', () => {
+  // a seeded generator, so that a failure is found again
+  const random = (seed) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pieces = ['<p>', '</p>', 'text ', '\n', '<section>', '</section>', '<div class="a">', '</div>', '<!--', '-->', '"', "'", '<script>', '</script>', '>', '<', '-', '<h2>x</h2>', '<section data-visibility="hidden">', '<img src="a.png">'];
+  const start = deck(['<h2>One</h2>', '<p>First</p>', '<!-- a note -->'], ['<h2>Two</h2>', '<div class="a"><p>Inner</p></div>'], ['<h2>Three</h2>', '<script>let a = 1 > 0;</script>', '<p>Last</p>']).replace('<section>\n  <h2>Two', '<section>\n<section>\n  <h2>Two').replace('</div>\n</section>', '</div>\n</section>\n<section><p>Down</p></section>\n</section>');
+  for (const seed of [1, 2, 3]) {
+    const next = random(seed);
+    const pick = (list) => list[Math.floor(next() * list.length)];
+    let text = start;
+    let slides = slidesOf(text);
+    let items = [];
+    for (let step = 0; step < 300; step++) {
+      // new comments now and then, on start tags of the text and on its slides
+      if (step % 50 === 0) {
+        const tags = [];
+        for (let i = text.indexOf('<'); i >= 0; i = text.indexOf('<', i + 1)) if (startTagAt(text, i)) tags.push(i);
+        items = Array.from({ length: Math.min(8, tags.length) }, () => {
+          const t = startTagAt(text, pick(tags));
+          const s = slideAround(text, t.start);
+          return next() < 0.3 && s ? { anchor: s, slide: s } : { anchor: t, slide: s };
+        });
+        items.push({ anchor: null, slide: null });
+        slides = slidesOf(text);
+      }
+      const patches = [];
+      for (let k = 0, from = 0, n = 1 + Math.floor(next() * 3); k < n && from <= text.length; k++) {
+        const at = from + Math.floor(next() * Math.min(400, text.length - from + 1));
+        const end = Math.min(text.length, at + (next() < 0.5 ? 0 : Math.floor(next() * 12)));
+        const inserted = Array.from({ length: Math.floor(next() * 3) }, () => pick(pieces)).join('');
+        if (at === end && !inserted) continue;
+        patches.push({ start: at, end, text: inserted });
+        from = end + 1;
+      }
+      if (!patches.length) continue;
+      let after = text;
+      for (const p of [...patches].reverse()) after = after.slice(0, p.start) + p.text + after.slice(p.end);
+      const where = `seed ${seed}, step ${step}, patches ${JSON.stringify(patches)}`;
+      const r = moveAnchors(text, patches, after, items, slides);
+      const whole = slidesOf(after);
+      assert.deepEqual(r.slides, whole, where);
+      assert.deepEqual(checkAnchors(after, r.items, whole).changed, r.items.map(() => false), where);
+      ({ items, slides } = r);
+      text = after.length > 6000 || after.length < 200 ? start : after;
+      if (text === start && after !== start) step = 49 + 50 * Math.floor(step / 50);
+    }
+  }
+});
