@@ -373,7 +373,8 @@ class Pane {
     area.setAttribute('aria-label', placeholder);
     area.dir = 'auto';
     area.rows = 1;
-    area.maxLength = COMMENT_MAX;
+    // a mention is longer when it is sent than in the field, and the count is checked in sync()
+    area.maxLength = 2 * COMMENT_MAX;
     const people = make('ul', 'people');
     people.id = `beeson-comment-people-${++ids}`;
     people.setAttribute('role', 'listbox');
@@ -398,6 +399,7 @@ class Pane {
     let choices: { person: string; name: string }[] = [];
     let active = 0;
     let busy = false;
+    let over = false;
     // the text as it is sent, with each mark written as the id of its person
     const sent = () => {
       let text = area.value;
@@ -430,8 +432,17 @@ class Pane {
     };
     const sync = () => {
       const online = this.client.connection === 'online';
-      go.disabled = busy || !online || !area.value.trim();
+      const extra = Array.from(sent()).length - COMMENT_MAX;
+      go.disabled = busy || !online || !area.value.trim() || extra > 0;
       go.title = online ? '' : OFFLINE;
+      if (extra > 0) {
+        over = true;
+        error.textContent = `The text is ${extra} ${extra === 1 ? 'character' : 'characters'} too long.`;
+        error.hidden = false;
+      } else if (over) {
+        over = false;
+        error.hidden = true;
+      }
     };
     (box as HTMLElement & { sync?: () => void }).sync = sync;
     // the marks moved by the change from last to the value of the field, and those that the change
@@ -518,6 +529,7 @@ class Pane {
       } catch (e) {
         error.textContent = message(e);
         error.hidden = false;
+        over = false;
       } finally {
         busy = false;
         sync();
@@ -525,6 +537,7 @@ class Pane {
     };
     area.addEventListener('input', () => {
       error.hidden = true;
+      over = false;
       move();
       fit();
       sync();
