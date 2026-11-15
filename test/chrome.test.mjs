@@ -303,3 +303,106 @@ test('an earlier net::ERR_NO_BUFFER_SPACE does not reload a later goto', { timeo
     `console.error: Failed to load resource: net::ERR_NO_BUFFER_SPACE ${server.origin}/theme/macros.js`,
   ]);
 });
+
+function pipeChrome(t, mode) {
+  const root = mkdtempSync(join(tmpdir(), 'slides-pipe-chrome-'));
+  const previous = process.env.CHROME_PATH;
+  t.after(() => {
+    if (previous === undefined) delete process.env.CHROME_PATH;
+    else process.env.CHROME_PATH = previous;
+    rmSync(root, { recursive: true, force: true });
+  });
+  const exe = join(root, 'chrome');
+  writeFileSync(
+    exe,
+    `#!/usr/bin/env node
+const fs = require('node:fs');
+const mode = ${JSON.stringify(mode)};
+const input = fs.createReadStream(null, { fd: 3 });
+const output = fs.createWriteStream(null, { fd: 4 });
+const send = (msg) => output.write(JSON.stringify(msg) + '\\0');
+let buf = '';
+let creates = 0;
+let targets = 0;
+const closed = [];
+input.setEncoding('utf8');
+input.on('data', (chunk) => {
+  buf += chunk;
+  for (let end; (end = buf.indexOf('\\0')) >= 0;) {
+    const msg = JSON.parse(buf.slice(0, end));
+    buf = buf.slice(end + 1);
+    if (msg.method === 'Target.createTarget') {
+      creates++;
+      if (mode === 'hangCreateFirst' && creates === 1) continue;
+      targets++;
+      send({ id: msg.id, result: { targetId: 't' + targets } });
+    } else if (msg.method === 'Target.attachToTarget') {
+      send({ id: msg.id, result: { sessionId: 's' + msg.params.targetId } });
+    } else if (msg.method === 'Target.closeTarget') {
+      closed.push(msg.params.targetId);
+      if (mode === 'hangCloseFirst' && msg.params.targetId === 't1') continue;
+      send({ id: msg.id, result: { success: true } });
+    } else if (msg.method === 'Page.enable') {
+      if (mode === 'hangAll' || ((mode === 'hangFirst' || mode === 'hangCloseFirst') && msg.sessionId === 'st1')) continue;
+      if (mode === 'detachFirst' && msg.sessionId === 'st1') {
+        send({ method: 'Target.detachedFromTarget', params: { sessionId: 'st1', targetId: 't1' } });
+        continue;
+      }
+      send({ id: msg.id, result: {} });
+    } else if (msg.method === 'Runtime.evaluate') {
+      send({ id: msg.id, result: { result: { value: { creates, targets, closed } } } });
+    } else if (msg.method === 'Browser.close') {
+      send({ id: msg.id, result: {} });
+      process.exit(0);
+    } else {
+      send({ id: msg.id, result: {} });
+    }
+  }
+});
+`,
+    { mode: 0o755 },
+  );
+  process.env.CHROME_PATH = exe;
+}
+
+// on a Windows runner, newPage() can hang on Page.enable on a fresh about:blank tab right after
+// closing an earlier page, while later targets on the same browser succeed
+test('newPage recovers when a fresh target does not answer Page.enable', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
+  pipeChrome(t, 'hangFirst');
+  const browser = await launch({ timeout: 400 });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const state = await page.evaluate('state');
+  assert.deepEqual(state, { creates: 2, targets: 2, closed: ['t1'] });
+});
+
+test('newPage recovers when Target.createTarget hangs or Target.closeTarget hangs during cleanup', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
+  pipeChrome(t, 'hangCreateFirst');
+  const browserA = await launch({ timeout: 400 });
+  t.after(() => browserA.close());
+  const pageA = await browserA.newPage();
+  assert.deepEqual(await pageA.evaluate('state'), { creates: 2, targets: 1, closed: [] });
+
+  pipeChrome(t, 'hangCloseFirst');
+  const browserB = await launch({ timeout: 400 });
+  t.after(() => browserB.close());
+  const pageB = await browserB.newPage();
+  assert.deepEqual(await pageB.evaluate('state'), { creates: 2, targets: 2, closed: ['t1'] });
+});
+
+test('newPage recovers immediately when a fresh target detaches during setup', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
+  pipeChrome(t, 'detachFirst');
+  const browser = await launch({ timeout: 3000 });
+  t.after(() => browser.close());
+  const started = Date.now();
+  const page = await browser.newPage();
+  assert.ok(Date.now() - started < 1000, 'newPage waited for the command timeout instead of Target.detachedFromTarget');
+  assert.deepEqual(await page.evaluate('state'), { creates: 2, targets: 2, closed: ['t1'] });
+});
+
+test('newPage still fails when every target hangs on Page.enable', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
+  pipeChrome(t, 'hangAll');
+  const browser = await launch({ timeout: 500 });
+  t.after(() => browser.close());
+  await assert.rejects(browser.newPage(), /did not answer Page\.enable/);
+});
