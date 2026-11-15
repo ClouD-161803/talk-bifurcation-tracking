@@ -488,3 +488,27 @@ test('two pages resync after a restart of the edit command, one with an operatio
   clean(a, restarted);
   clean(b, restarted);
 });
+
+test('a reconnect while an operation is unanswered waits for its answer, and a hello with the whole text does not type the edit twice', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' held');
+  await page.waitFor(`__net.held.length === 1`);
+  // the hello of the reconnect gets the whole text, as when the log no longer reaches since
+  await page.evaluate(`__net.rule('/.session/hello', 'edit', { edit: ({ v, ...rest }) => rest, times: 1 }) && __net.drop('/.session/events')`);
+  await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt !== null`);
+  const hellos = await page.evaluate(`__net.count('/.session/hello')`);
+  await page.evaluate(`${C}.tryNow(), new Promise((done) => setTimeout(done))`);
+  // a hello sent before the answer of the operation is answered before the edit command applies it
+  await page.waitFor(`__net.count('/.session/hello') === ${hellos} || ${ONLINE}`);
+  await page.evaluate(`__net.release('/.session/op')`);
+  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide held</p>'));
+  assert.equal(await page.evaluate(el(0, 'p') + '.textContent'), 'First slide held');
+  clean(page, REFUSED);
+});
