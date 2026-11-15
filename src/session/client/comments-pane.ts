@@ -10,6 +10,7 @@ import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comments.ts';
 import { make, style } from './dom.ts';
 import { closeMenu, openMenu } from './menu.ts';
+import { presenceOf } from './presence.ts';
 import { mountToasts, toast, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 
@@ -596,7 +597,9 @@ class Pane {
     this.focus(id, true);
     this.render();
     const p = this.comments.places().get(id);
-    if (p) this.shell.frame(p.el, p.slide);
+    // an element that another person holds is shown on its slide without a selection, which the
+    // floor rule refuses
+    if (p) this.shell.frame(p.el && presenceOf(this.client)?.lockOf(p.el) ? null : p.el, p.slide);
     const node = this.nodes.get(id);
     node?.focus({ preventScroll: true });
     node?.scrollIntoView({ block: 'nearest' });
@@ -674,6 +677,8 @@ function message(e: unknown): string {
 
 // a name isolated from the text around it, e.g. a name written right to left, and the text after it
 const named = (name: string, after: string): Node[] => [make('bdi', '', name), document.createTextNode(after)];
+
+const SLIDES = '.reveal .slides section';
 
 const nameOf = (client: Client, person: string): string =>
   person === client.person ? client.name || 'You' : client.known.find((k) => k.person === person)?.name ?? 'Someone';
@@ -772,8 +777,18 @@ export function install(client: Client): void {
     context: ['element', 'text', 'canvas', 'slide'],
     enabled: online,
     why: () => (online() ? null : OFFLINE),
-    run: () => {
-      const { el, slide } = shell.target();
+    // a context menu names its element or slide, which may be one that another person holds and
+    // that the selection drops
+    run: (_app, arg) => {
+      const at = arg as { kind?: string; target?: Element | null } | undefined;
+      let { el, slide } = shell.target();
+      if ((at?.kind === 'text' || at?.kind === 'element') && at.target) {
+        el = at.target;
+        slide = el.closest(SLIDES);
+      } else if (at?.kind === 'canvas' || at?.kind === 'slide') {
+        el = null;
+        slide = at.target ?? slide;
+      }
       if (slide) pane.startDraft(el, slide);
     },
   });
