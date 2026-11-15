@@ -299,6 +299,77 @@ const nth = (text, open, k) => {
   assert.ok(at >= 0, `${open} is in the text ${k + 1} times`);
   return at;
 };
+const fellBack = (text, item, slide, removed) => {
+  reads(text, item.anchor, slide);
+  assert.deepEqual(item.slide, item.anchor);
+  assert.deepEqual(item.removed, { text: removed });
+};
+
+test('an element removed before a sibling that starts the same way falls back, although the diff keeps its start tag', async (t) => {
+  const cases = [
+    ['inline code', '<p>Press <code>e</code> to edit and <code>s</code> for notes.</p>', '<code>e</code> to edit and ', '<code>'],
+    ['a list on one line', '<ul><li>Draft the intro</li><li>Derive the bound</li></ul>', '<li>Draft the intro</li>', '<li>'],
+    ['items that differ in one character', '<ul><li>Step 1</li><li>Step 2</li></ul>', '<li>Step 1</li>', '<li>'],
+    ['bold text before longer bold text', '<p>Press <b>bold</b> and <b>bolder</b> now</p>', '<b>bold</b> and ', '<b>'],
+  ];
+  for (const [name, line, cut, open] of cases) {
+    await t.test(name, () => {
+      const before = deck(['<h2>Alpha</h2>', line]);
+      const after = before.replace(cut, '');
+      const at = before.indexOf(open);
+      assert.ok(!diff(before, after).some((p) => p.start <= at && at < p.end), 'the diff keeps the start tag');
+      const [item] = move(before, after, [onElement(before, open)]).items;
+      const removed = cut.slice(0, cut.indexOf('>', cut.indexOf('</')) + 1);
+      fellBack(after, item, '<section>\n  <h2>Alpha', removed);
+    });
+  }
+
+  await t.test('a slide of a deck written on one line', () => {
+    const before = '<!doctype html><body><section><h2>Alpha</h2><p>One</p></section><section><h2>Beta</h2><p>Two</p></section></body>';
+    const after = before.replace('<section><h2>Alpha</h2><p>One</p></section>', '');
+    const r = move(before, after, [onElement(before, '<h2>Alpha'), onSlide(before, 'Alpha'), onElement(before, '<h2>Beta')]);
+    assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: '<h2>Alpha</h2>' } });
+    assert.deepEqual(r.items[1], { anchor: null, slide: null, removed: { text: '<section><h2>Alpha</h2><p>One</p></section>' } });
+    reads(after, r.items[2].anchor, '<h2>Beta');
+  });
+});
+
+test('an element wrapped in a new element of the same start tag keeps its thread', () => {
+  const before = deck(['<h2>Alpha</h2>', '<div class="group">', '  <p>Inner</p>', '</div>']);
+  const after = before.replace('<div class="group">\n    <p>Inner</p>\n  </div>', '<div class="group">\n    <div class="group">\n      <p>Inner</p>\n    </div>\n  </div>');
+  const [item] = move(before, after, [onElement(before, '<div class="group">')]).items;
+  reads(after, item.anchor, '<div class="group">\n      <p>Inner');
+  assert.equal(item.removed, undefined);
+});
+
+test('an element edited while a copy of its old text is pasted in the same operation keeps its thread', () => {
+  const before = deck(['<h2>Alpha</h2>', '<ul>', '  <li>Derive the bound</li>', '  <li>Check the limit</li>', '</ul>']);
+  const after = before.replace('<li>Derive the bound</li>', '<li>Derive the upper bound</li>').replace('<li>Check the limit</li>', '<li>Check the limit</li>\n    <li>Derive the bound</li>');
+  assert.equal(diff(before, after).length, 2, 'the diff inserts the word and the copy');
+  const [item] = move(before, after, [onElement(before, '<li>Derive')]).items;
+  reads(after, item.anchor, '<li>Derive the upper bound</li>');
+  assert.equal(item.removed, undefined);
+});
+
+test('an element keeps its thread through typing inside it, a change of its start tag, and a move of it or of its slide', async (t) => {
+  const before = deck(['<h2>Alpha</h2>', '<p>Hello</p>', '<p>World</p>', '<p>Last</p>'], ['<h2>Beta</h2>', '<p>Two</p>']);
+  const cases = {
+    'its whole text replaced': [before.replace('Hello', 'G'), '<p>G</p>'],
+    'the next paragraph joined to it': [before.replace('Hello</p>\n  <p>World', 'HelloWorld'), '<p>HelloWorld</p>'],
+    'a selection from its middle into the next paragraph deleted': [before.replace('llo</p>\n  <p>Wo', ''), '<p>Herld</p>'],
+    'its start tag changed while typing inside it': [before.replace('<p>Hello', '<p class="wide">Hello there'), '<p class="wide">Hello there</p>'],
+    'a move after its next sibling': [before.replace('  <p>Hello</p>\n  <p>World</p>', '  <p>World</p>\n  <p>Hello</p>'), '<p>Hello</p>'],
+    'a move of its slide to the end': [deck(['<h2>Beta</h2>', '<p>Two</p>'], ['<h2>Alpha</h2>', '<p>Hello</p>', '<p>World</p>', '<p>Last</p>']), '<p>Hello</p>'],
+  };
+  for (const [name, [after, what]] of Object.entries(cases)) {
+    await t.test(name, () => {
+      const [item] = move(before, after, [onElement(before, '<p>Hello')]).items;
+      reads(after, item.anchor, what);
+      reads(after, item.slide, '<section>\n  <h2>Alpha');
+      assert.equal(item.removed, undefined);
+    });
+  }
+});
 
 const ALPHA = ['<h2>Alpha</h2>', '<p>The transfer leaves the halo orbit along its unstable manifold.</p>'];
 const BETA = ['<h2>Beta</h2>', '<p>Two impulses place the spacecraft on the stable manifold of the target.</p>'];
