@@ -180,3 +180,52 @@ test('a name that the edit command gives is written only into the edits of the p
     await ann.close();
   });
 });
+
+test('the names that the edit command gives to the files of one drop are written in one pass', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  leftover(server, 'plot.png', 'another file');
+  const ann = await tab(browser, sessionUrl(server.edit));
+  const which = (path) => (disk(server, path).equals(LIGHT) ? 'light' : disk(server, path).equals(DARK) ? 'dark' : 'other');
+
+  await t.test('plot.png and plot-2.png beside a file plot.png in media/', async () => {
+    await show(ann, 'One');
+    await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT), file(server, 'b', 'plot-2.png', DARK)]);
+    await ann.waitFor(`${IMAGES} === 2`);
+    const [one] = sources(await converge(server, [ann]));
+    assert.equal(new Set(one).size, 2, `each image names a file of its own: ${one}`);
+    assert.deepEqual(one.map(which).sort(), ['dark', 'light']);
+    assert.equal(readFileSync(join(server.talk, 'media/plot.png'), 'utf8'), 'another file');
+  });
+
+  await t.test('fig.1.png and fig-1.png, whose names the edit command cleans to one', async () => {
+    await show(ann, 'Two');
+    await dropFiles(ann, [file(server, 'c', 'fig.1.png', LIGHT), file(server, 'c', 'fig-1.png', DARK)]);
+    await ann.waitFor(`${IMAGES} === 4`);
+    const [, two] = sources(await converge(server, [ann]));
+    // the files are named by the page as by the edit command, hence nothing is renamed
+    assert.deepEqual(two, ['media/fig-1.png', 'media/fig-1-2.png']);
+    assert.deepEqual(two.map(which), ['light', 'dark']);
+  });
+
+  await t.test('plot.png and plot-2.png beside a file plot.png in media/, when the second upload fails', async (t) => {
+    const server = await talk(t);
+    leftover(server, 'plot.png', 'another file');
+    const p = await proxy(t, server.edit);
+    const bea = await tab(browser, p.url);
+    const which = (path) => (disk(server, path).equals(LIGHT) ? 'light' : disk(server, path).equals(DARK) ? 'dark' : 'other');
+    p.next('pass', 'refuse');
+    await show(bea, 'One');
+    await dropFiles(bea, [file(server, 'a', 'plot.png', LIGHT), file(server, 'b', 'plot-2.png', DARK)]);
+    await bea.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`);
+    await click(bea, '.beeson-session-action');
+    const [one] = sources(await converge(server, [bea]));
+    assert.equal(new Set(one).size, 2, `each image names a file of its own: ${one}`);
+    assert.deepEqual(one.map(which).sort(), ['dark', 'light']);
+    clean(bea, PROXIED);
+    await bea.close();
+  });
+
+  clean(ann);
+});
