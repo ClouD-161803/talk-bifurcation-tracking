@@ -107,9 +107,11 @@ export async function arrive<T>(app: App, text: string, texts: string[], insert:
   for (const step of BEFORE) await step(app, arrival);
   const out = await insert(arrival.texts);
   for (const step of AFTER) await step(app, arrival);
-  if (arrival.notes.length) {
-    app.note = { text: arrival.notes.join(' '), warn: true };
-    app.report();
-  }
+  // after the end of the entry of the paste, since a session clears the note at each change
+  if (arrival.notes.length)
+    void app.history.settle().then(() => {
+      app.note = { text: arrival.notes.join(' '), warn: true };
+      app.report();
+    });
   return out;
 }
