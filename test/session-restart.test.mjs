@@ -88,6 +88,10 @@ test('a page whose applied operation lost its answer, and that missed the end of
   await front(ben);
   await ben.waitFor(`${TEXT}.includes('<p>First slide brave</p>')`);
   await show(ben, 'One');
+  // Ann held the paragraph when her page was last heard, and a hold is lost after 15 s of silence
+  await ben.waitFor(`${el(0, 'p')}.classList.contains('beeson-locked')`);
+  await ben.evaluate(`(() => { const p = window.BeesonSession.presence(); p.skew += 15_000; p.check(); return true; })()`);
+  await ben.waitFor(`!${el(0, 'p')}.classList.contains('beeson-locked')`);
   await caretAtEnd(ben, el(0, 'p'));
   for (let i = 0; i < 'brave'.length; i++) await press(ben, 'Backspace');
   await type(ben, 'bold');
