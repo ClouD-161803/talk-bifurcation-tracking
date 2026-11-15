@@ -64,6 +64,13 @@ export async function stopEdit(state) {
   await state.exited;
 }
 
+// promise, or a failure named by what once ms have passed
+export function within(promise, ms, what) {
+  let timer;
+  const late = new Promise((_, fail) => (timer = setTimeout(() => fail(new Error(`timed out waiting for ${what}`)), ms)));
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
 // a raw request, so that a path is sent as written and every header can be set
 export function raw(port, method, path, { headers = {}, body, host = `127.0.0.1:${port}` } = {}) {
   return new Promise((done, fail) => {
