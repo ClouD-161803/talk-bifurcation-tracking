@@ -266,3 +266,76 @@ test('the dialog of the conflicts at a reconnect keeps either version, and every
     await ben.close();
   });
 });
+
+// an image of the page whose src is path, loaded, or null
+const SHOWN = (path) => `[...document.querySelectorAll('.reveal .slides img')].some((i) => i.getAttribute('src') === ${JSON.stringify(path)} && i.complete && i.naturalWidth > 0)`;
+
+test('a picture dropped by one page is uploaded into media/ before the operation that names it, and the other page shows it', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const ann = await tab(browser, url);
+  const ben = await open(browser, url, { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  const bytes = readFileSync(IMAGE);
+
+  await t.test('the picture is in media/ and on the page of Ben', async () => {
+    await show(ann, 'One');
+    await dropFiles(ann, [IMAGE]);
+    const text = await converge(server, [ann, ben]);
+    assert.match(text, /src="media\/figure-light\.png"/);
+    assert.ok(readFileSync(join(server.talk, 'media/figure-light.png')).equals(bytes));
+    await front(ben);
+    await show(ben, 'One');
+    await ben.waitFor(SHOWN('media/figure-light.png'));
+  });
+
+  await t.test('a name that is taken in media/ is written into the deck as the name that the edit command gives', async () => {
+    // a file of the same name put into media/ by hand, which the deck does not name
+    mkdirSync(join(server.talk, 'media'), { recursive: true });
+    writeFileSync(join(server.talk, 'media/figure-light-2.png'), 'another file');
+    await show(ann, 'Two');
+    await dropFiles(ann, [IMAGE]);
+    const text = await converge(server, [ann, ben]);
+    // the editor names the new file figure-light-2.png, since the deck names figure-light.png
+    assert.match(text, /src="media\/figure-light-2-2\.png"/);
+    assert.doesNotMatch(text, /media\/figure-light-2\.png/);
+    assert.equal(readFileSync(join(server.talk, 'media/figure-light-2.png'), 'utf8'), 'another file');
+    assert.ok(readFileSync(join(server.talk, 'media/figure-light-2-2.png')).equals(bytes));
+    await front(ben);
+    await show(ben, 'Two');
+    await ben.waitFor(SHOWN('media/figure-light-2-2.png'));
+  });
+
+  await t.test('a failed upload keeps the operation, and Try again sends it', async () => {
+    const before = server.read();
+    await front(ann);
+    await ann.evaluate('window.__failMedia = true');
+    await show(ann, 'One');
+    await dropFiles(ann, [IMAGE]);
+    await ann.waitFor(`${STATE} === 'A picture could not be sent. Try again'`);
+    assert.equal(await ann.evaluate(ACTION), 'Try again');
+    assert.equal(server.read(), before);
+    await ann.evaluate('window.__failMedia = false');
+    await click(ann, '.beeson-session-action');
+    const text = await converge(server, [ann, ben]);
+    assert.equal(text.match(/<img /g)?.length, 3);
+    assert.equal(await ann.evaluate(STATE), 'Saved to index.html');
+  });
+
+  await t.test('a picture over the limit is refused at the drop, with the limit in the message', async () => {
+    const big = join(server.root, 'big.png');
+    writeFileSync(big, '');
+    truncateSync(big, 65 * 1024 * 1024);
+    const before = await ann.evaluate(TEXT);
+    await front(ann);
+    await dropFiles(ann, [big]);
+    await ann.waitFor(`/^big\\.png is larger than 64 MB/.test(${C}.app.note?.text ?? '')`);
+    assert.equal(await ann.evaluate(TEXT), before);
+    assert.equal(await converge(server, [ann, ben]), before);
+  });
+
+  clean(ann);
+  clean(ben);
+});
