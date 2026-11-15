@@ -1,5 +1,7 @@
 // the few element helpers of the client, which may not import ui/dom.ts of the editor
 
+import type { Dialog, DialogOptions } from '../../editor/ui/dialog.ts';
+
 export function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
   if (className) el.className = className;
@@ -26,6 +28,16 @@ dialog.beeson-edit-dialog.beeson-session-sheet { max-height: calc(var(--beeson-s
   dialog.beeson-edit-dialog.beeson-session-sheet { width: calc(100vw - 24px); margin-top: 12px; padding: 16px; max-height: calc(var(--beeson-session-vh, 100vh) - 24px); }
 }
 `;
+
+// the class of every dialog of the client, whose buttons have the hit area of 32 px of a phone
+export function dialogClass(): string {
+  style('dialog', 'dialog.beeson-edit-dialog.beeson-session-dialog .row button { box-sizing: border-box; min-height: 32px; }');
+  return 'beeson-session-dialog';
+}
+
+// the dialog of the shell, which adds the class of dialogClass() to each dialog
+export const withClass = (dialog: (options: DialogOptions) => Dialog) => (options: DialogOptions): Dialog =>
+  dialog({ ...options, className: options.className ? `${dialogClass()} ${options.className}` : dialogClass() });
 
 export function sheet(): string {
   if (!document.getElementById('beeson-session-sheet')) {

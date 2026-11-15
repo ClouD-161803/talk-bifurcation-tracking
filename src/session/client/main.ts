@@ -19,6 +19,7 @@ import { install as people } from './people.ts';
 import { install as presence, presenceOf } from './presence.ts';
 import { install as share, pageLink } from './share.ts';
 import { install as state } from './state.ts';
+import { withClass } from './dom.ts';
 import { mayRetry } from './transport.ts';
 
 // each part reads the Client and its events. the avatars go before the save state, and Share
@@ -66,7 +67,9 @@ function loadAgain(handover: Handover, title: string, text: string): Promise<nev
   return new Promise(() => {});
 }
 
-async function start(handover: Handover): Promise<boolean> {
+async function start(given: Handover): Promise<boolean> {
+  // every dialog of the client, also of the Client below, gets the class of dialogClass()
+  const handover = { ...given, dialog: withClass(given.dialog) };
   const { app, port } = handover;
   const response = await fetchPage(handover);
   // the version of the page left the log of the edit command, e.g. after a restart
