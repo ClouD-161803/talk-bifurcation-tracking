@@ -157,3 +157,14 @@ test('the print view has a page for each step of a part, with the parts of the s
   assert.equal(new Set(ids).size, ids.length, 'an id is drawn twice in the print view');
   assert.deepEqual(errors(page), []);
 });
+
+test('a figure is drawn in the mode of the deck when the mode is flipped while its output loads', { timeout: 60000 }, async (t) => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.goto(deckUrl('test/pages/tikz-late.html'));
+  await page.waitFor(deckSettled);
+  assert.equal(await page.evaluate(`document.documentElement.dataset.theme`), 'light');
+  const [late] = await page.evaluate(figures);
+  assert.ok(late.ids.length > 0, 'the figure is not drawn');
+  for (const id of late.ids) assert.match(id, /^tikz-two-light-/);
+});
