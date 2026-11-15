@@ -185,6 +185,7 @@ class Pane {
   }
 
   render(): void {
+    const had = !!document.activeElement?.closest('.beeson-comments article');
     const give = this.salvage();
     for (const b of this.filters.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.filter === this.filter));
     const places = this.comments.places();
@@ -228,15 +229,29 @@ class Pane {
       put(want.slice(pin + 1), want[pin].nextElementSibling);
     }
     if (this.list.scrollTop !== scroll) this.list.scrollTop = scroll;
+    // a focused thread that leaves the list hands the focus to the thread at its place
+    const before = this.order;
     this.order = shown.map((t) => t.id);
+    if (this.focused && !this.order.includes(this.focused)) {
+      const at = before.indexOf(this.focused);
+      this.focused = at < 0 ? null : this.order[Math.min(at, this.order.length - 1)] ?? null;
+    }
     for (const [id, node] of this.nodes) {
       if (!this.comments.threads.has(id)) {
         this.nodes.delete(id);
         this.signs.delete(id);
         this.drawn.delete(id);
-      } else node.tabIndex = id === (this.focused ?? this.order[0]) ? 0 : -1;
+      } else {
+        node.tabIndex = id === (this.focused ?? this.order[0]) ? 0 : -1;
+        node.classList.toggle('focused', id === this.focused);
+      }
     }
     if (give?.isConnected) give.focus();
+    else if (had && !this.list.contains(document.activeElement)) {
+      const node = this.focused ? this.nodes.get(this.focused) : null;
+      if (node?.isConnected) node.focus({ preventScroll: true });
+      else this.filters.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
+    }
     this.updateDraft();
   }
 
