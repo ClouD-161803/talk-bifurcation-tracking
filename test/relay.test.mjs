@@ -17,7 +17,7 @@ import { DECK, raw, startEdit, stopEdit, talkFolder, until } from './helpers/ses
 const SECRET = 'the secret of the group for this test';
 
 test('a guest edits a deck through the relay', { timeout: 120_000 }, async (t) => {
-  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 600, pullMs: 1000, guestMs: 5000, bodyBytes: 1024 * 1024 });
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 5000, pullMs: 1000, guestMs: 5000, bodyBytes: 1024 * 1024 });
   t.after(() => relay.close());
   assert.equal(await (await fetch(`${relay.url}/`)).text(), 'relay');
 

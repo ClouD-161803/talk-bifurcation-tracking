@@ -50,7 +50,7 @@ test('a page goes offline when the edit command stops, and Try now sends its edi
 });
 
 test('a guest is told that the host is not running, and the end of the session by the host', { timeout: 300_000 }, async (t) => {
-  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 600, pullMs: 1000, guestMs: 5000 });
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 3000, pullMs: 1000, guestMs: 5000 });
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());

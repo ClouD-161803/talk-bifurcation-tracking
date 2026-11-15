@@ -43,7 +43,7 @@ async function select(page, expression, from, to) {
 }
 
 test('the save state names the slides of the edits that wait, and the dialog of the end names those that did not reach the host', { timeout: 120_000 }, async (t) => {
-  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 600, pullMs: 1000, guestMs: 5000 });
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 3000, pullMs: 1000, guestMs: 5000 });
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
