@@ -2,7 +2,7 @@
 // through a relay, and the static files of the talk folder
 
 import { open, realpath, stat } from 'node:fs/promises';
-import { extname, join, sep } from 'node:path';
+import { extname, join, relative, sep } from 'node:path';
 
 export type Request = {
   method: string;
@@ -55,8 +55,12 @@ export const json = (status: number, value: unknown): Response => ({
 
 export const error = (status: number, message: string): Response => json(status, { error: message });
 
-// the segments of a path below the talk folder, decoded, or null when a segment is malformed,
-// starts with a dot, is node_modules, or holds a separator, a colon, or a NUL
+// a segment that is never served: one that starts with a dot or is node_modules, also under a
+// spelling that Windows reads as such, i.e. with a trailing dot or space
+const hiddenSegment = (s: string) => s.startsWith('.') || s.endsWith('.') || s.endsWith(' ') || s.toLowerCase() === 'node_modules';
+
+// the segments of a path below the talk folder, decoded, or null when a segment is malformed or
+// hidden, or holds a separator, a colon, or a NUL
 export function segmentsOf(rest: string): string[] | null {
   const out: string[] = [];
   for (const raw of rest.split('/')) {
@@ -66,18 +70,19 @@ export function segmentsOf(rest: string): string[] | null {
     } catch {
       return null;
     }
-    if (s === '' || s.startsWith('.') || s.toLowerCase() === 'node_modules' || /[\\/:\0]/.test(s)) return null;
+    if (s === '' || hiddenSegment(s) || /[\\/:\0]/.test(s)) return null;
     out.push(s);
   }
   return out;
 }
 
 // the real path of a file of the talk folder, or null when it is not a file inside the folder, e.g.
-// through a symlink that leaves it
+// through a symlink that leaves it, or when its real path has a hidden segment, e.g. through a
+// short name of Windows such as GIT~1
 export async function fileInside(root: string, segments: string[]): Promise<string | null> {
   try {
     const real = await realpath(join(root, ...segments));
-    if (!real.startsWith(root + sep)) return null;
+    if (!real.startsWith(root + sep) || relative(root, real).split(sep).some(hiddenSegment)) return null;
     return (await stat(real)).isFile() ? real : null;
   } catch {
     return null;
