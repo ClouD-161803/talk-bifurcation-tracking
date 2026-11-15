@@ -659,6 +659,20 @@ test('the texts set aside are limited per person, and the text of another person
   assert.equal(readdirSync(join(dir, 'aside')).length, 4);
 });
 
+test('names given again and again to one version do not grow history.jsonl without a bound', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'history.jsonl');
+  const { authority, history } = open(dir, DECK);
+  replace(authority, 'One', 'Uno', ANN);
+  const v = history.close();
+  for (let i = 0; i < 2500; i++) history.name(v.id, i % 2 ? 'a'.repeat(79) : 'b'.repeat(80));
+  history.stopSync();
+  const names = readFileSync(file, 'utf8').split('\n').filter((line) => line.includes('"kind":"name"'));
+  assert.ok(names.length <= 1002, `${names.length} lines of a name`);
+  const again = open(dir, authority.text);
+  assert.deepEqual(again.history.list().versions.map((x) => [x.id, x.name]), [[v.id, 'a'.repeat(79)]]);
+});
+
 test('a page that was dropped while two restores were made is told the later one, and a page that came after them is not told', { timeout: 180_000 }, async (t) => {
   const s = await session(t);
   const ann = await s.hello('Ann');
