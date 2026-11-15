@@ -199,7 +199,7 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   }
 }
 
-// the files of paths read and kept, and arrival rewritten. a file not read when Stop is pressed is
+// the files of paths read and kept, and arrival rewritten. a file not kept when Stop is pressed is
 // not copied
 async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[]): Promise<void> {
   const read = new Map<string, Read>();

@@ -1,7 +1,7 @@
 // while the files of a paste from another deck are read, the page is inert behind a dialog with
 // Stop, hence the entry of the history of the paste does not take an edit made meanwhile. Stop
-// pastes the slides without the files not read by then. a server holds the answer for the image
-// of deck A until the test lets it go
+// pastes the slides without the files not kept by then, and it is not taken before the dialog is
+// drawn. a server holds the answer for the image of deck A until the test lets it go
 
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
