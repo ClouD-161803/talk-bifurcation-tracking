@@ -214,14 +214,18 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (action === 'push' && req.method === 'POST' && typeof id === 'string') {
       if (!session.pending.has(id)) return answer(res, 404, 'no request of this id, it may have timed out');
       let reserved = 0;
-      const body = await bodyOf(req, limits.bodyBytes, (n) => {
-        if (held + n > limits.memoryBytes) return false;
-        held += n;
-        reserved += n;
-        return true;
-      });
-      // the place of the answer passes to entry.finish, which holds it until the guest has read it
-      held -= reserved;
+      let body;
+      try {
+        body = await bodyOf(req, limits.bodyBytes, (n) => {
+          if (held + n > limits.memoryBytes) return false;
+          held += n;
+          reserved += n;
+          return true;
+        });
+      } finally {
+        // the place of the answer passes to entry.finish, which holds it until the guest has read it
+        held -= reserved;
+      }
       if (body === 'busy') return answer(res, 503, 'the relay is busy');
       if (!body) return answer(res, 413, 'the answer is larger than the limit of the relay');
       const entry = session.pending.get(id);
