@@ -583,8 +583,14 @@ export class Client {
         answer = await this.transport.events(this.token, this.since);
       } catch (e) {
         if (this.ended || this.gone || generation !== this.generation) continue;
-        if (e instanceof Failure && (e.status === 404 || e.status === 400)) await this.rejoin();
-        else await this.offline(e);
+        if (e instanceof Failure && (e.status === 404 || e.status === 400)) {
+          await this.rejoin();
+        } else {
+          await this.offline(e);
+          // the edit command holds a poll without news, hence a hello tells first that it answers.
+          // while an operation is sent again, its answer tells the same, and a hello would wait for it
+          if (!this.ended && !this.gone && !this.sending && generation === this.generation) await this.rejoin();
+        }
         continue;
       }
       if (this.gone || generation !== this.generation) continue;
