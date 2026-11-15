@@ -257,9 +257,10 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
       any = true;
     }
   }
+  const viewer = el.localName === 'tycho-viewer';
   let motion = false;
   for (const k of new Set([...Object.keys(a.attrs), ...Object.keys(b.attrs)])) {
-    if (k === 'class' || k === 'style' || a.attrs[k] === b.attrs[k]) continue;
+    if (k === 'class' || k === 'style' || a.attrs[k] === b.attrs[k] || (viewer && k === 'theme')) continue;
     const name = liveName(el, k);
     if (b.attrs[k] === undefined) el.removeAttribute(name);
     else el.setAttribute(name, b.attrs[k]);
@@ -269,6 +270,14 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
   // a backdrop reads its motion once, where the editor draws it again after a change of its
   // drawing, its window, or its labels, see watch() in commands/backdrop.ts
   if (motion && el.matches('.backdrop')) (window as unknown as Page).Beeson?.remount?.(el);
+  // the theme sets a viewer without data-keep-theme to the mode of the deck, see syncViewers() in
+  // src/main.ts
+  const theme = b.attrs['data-keep-theme'] === undefined ? (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark') : b.attrs.theme;
+  if (viewer && (theme ?? null) !== el.getAttribute('theme')) {
+    if (theme === undefined) el.removeAttribute('theme');
+    else el.setAttribute('theme', theme);
+    any = true;
+  }
   if (any || more) {
     ctx.touched.add(el);
     ctx.changed.push(el);
