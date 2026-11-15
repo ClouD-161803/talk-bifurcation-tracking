@@ -67,13 +67,20 @@ export function nameField(value: string, error = ''): { body: HTMLElement; input
   const label = make('label');
   const input = make('input');
   input.type = 'text';
-  input.maxLength = NAME_MAX;
   input.autocomplete = 'name';
   input.spellcheck = false;
   input.value = value;
   const swatch = make('span', 'swatch');
   swatch.setAttribute('aria-hidden', 'true');
   const show = () => (swatch.textContent = initials(input.value));
+  // cut to NAME_MAX code points, as cleanPersonName counts. maxLength counts UTF-16 units, i.e. an
+  // emoji twice, and a cut inside a composition would break the input method
+  const cut = (e?: Event) => {
+    const chars = Array.from(input.value);
+    if (!(e as InputEvent | undefined)?.isComposing && chars.length > NAME_MAX) input.value = chars.slice(0, NAME_MAX).join('');
+  };
+  input.addEventListener('input', cut);
+  input.addEventListener('compositionend', () => (cut(), show()));
   input.addEventListener('input', show);
   show();
   label.append(make('span', '', 'Your name'), input, swatch);
