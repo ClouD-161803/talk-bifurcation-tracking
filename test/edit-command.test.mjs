@@ -70,9 +70,10 @@ test('the edit command serves a session and writes every edit into index.html', 
     const at = DECK.indexOf('First');
     const first = (await post(port, api('op'), { token: hello.token, seq: 2, base: `${epoch}.2`, patches: [{ start: at, end: at + 5, text: 'Primo' }] })).json();
     assert.equal(first.ok, true);
-    const second = (await post(port, api('op'), { token: bo.token, seq: 2, base: `${epoch}.2`, patches: [{ start: 0, end: 0, text: '<!-- a -->' }, { start: at + 1, end: at + 2, text: 'X' }] })).json();
+    const request = { token: bo.token, seq: 2, base: `${epoch}.2`, patches: [{ start: 0, end: 0, text: '<!-- a -->' }, { start: at + 1, end: at + 2, text: 'X' }] };
+    const second = (await post(port, api('op'), request)).json();
     assert.deepEqual(second, { ok: false, reason: 'conflict', v: `${epoch}.3` });
-    const repeated = (await post(port, api('op'), { token: bo.token, seq: 2, base: `${epoch}.2`, patches: [] })).json();
+    const repeated = (await post(port, api('op'), request)).json();
     assert.deepEqual(repeated, second);
     assert.equal((await post(port, api('op'), { token: 'n'.repeat(22), seq: 1, base: `${epoch}.3`, patches: [] })).json().reason, 'unknown');
   });

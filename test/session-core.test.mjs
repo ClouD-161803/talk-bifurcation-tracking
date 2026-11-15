@@ -273,7 +273,7 @@ test('the authority refuses stale, invalid, and conflicting operations, and answ
   assert.deepEqual(ok.answer, { ok: true, v: 'E.1' });
   assert.equal(ok.op.author, 'Ann');
   assert.equal(ok.op.sum, checksum('howdy world'));
-  assert.deepEqual(a.submit({ client: 'c', seq: 1, base: 'E.0', patches: [] }, 'Ann').answer, ok.answer);
+  assert.deepEqual(a.submit({ client: 'c', seq: 1, base: 'E.0', patches: [{ start: 0, end: 5, text: 'howdy' }] }, 'Ann').answer, ok.answer);
   assert.equal(a.submit({ client: 'd', seq: 1, base: 'E.0', patches: [{ start: 1, end: 2, text: 'x' }] }, 'Bo').answer.reason, 'conflict');
   assert.equal(a.submit({ client: 'd', seq: 2, base: 'F.0', patches: [] }, 'Bo').answer.reason, 'stale');
   assert.equal(a.submit({ client: 'd', seq: 3, base: 'E.1', patches: [{ start: 5, end: 99, text: '' }] }, 'Bo').answer.reason, 'invalid');
@@ -295,6 +295,19 @@ test('the authority refuses stale, invalid, and conflicting operations, and answ
   assert.equal(a.since('E.0'), null);
   assert.deepEqual(a.since('E.1').map((op) => op.v), ['E.2', 'E.3']);
   assert.equal(a.submit({ client: 'e', seq: 2, base: 'E.0', patches: [] }, 'Cy').answer.reason, 'stale');
+});
+
+test('a repeated sequence number of a client with another base or other patches is refused as invalid', () => {
+  // a page that loaded again with its old client id starts at seq 1, and its operation must not be
+  // answered as the earlier one without being applied
+  const a = new Authority('abc\n', { epoch: 'E' });
+  const first = { client: 'reusedid', seq: 1, base: 'E.0', patches: [{ start: 3, end: 3, text: 'd' }] };
+  assert.deepEqual(a.submit(first, 'Ann').answer, { ok: true, v: 'E.1' });
+  assert.deepEqual(a.submit(structuredClone(first), 'Ann').answer, { ok: true, v: 'E.1' }, 'the same request is answered again');
+  const other = a.submit({ client: 'reusedid', seq: 1, base: 'E.1', patches: [{ start: 4, end: 4, text: 'Z' }] }, 'Ann');
+  assert.deepEqual(other.answer, { ok: false, reason: 'invalid', v: 'E.1' });
+  assert.equal(a.submit({ ...first, base: 'E.1' }, 'Ann').answer.reason, 'invalid');
+  assert.equal(a.text, 'abcd\n');
 });
 
 test('a replica reads the whole state again after a checksum mismatch, and keeps its own edits', () => {
