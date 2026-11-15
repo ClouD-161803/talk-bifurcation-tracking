@@ -141,3 +141,35 @@ test('the nudges after an apply that dropped the entry of their run are a new en
   await b.evaluate(`${E}.undo()`);
   assert.ok((await b.evaluate(`${E}.render()`)).includes('translate: 1px 0px'), 'an undo takes the two nudges back');
 });
+
+// the outlines and the running heads that the theme draws from the headings of the section slides
+const CHROME = `[...document.querySelectorAll('.reveal ul.outline, .reveal .run[data-generated]')].map((e) => e.textContent)`;
+const HEADING = `Reveal.getCurrentSlide().querySelector('h2')`;
+
+test('a Markdown substitution in the heading of a section slide, its undo, and its redo draw the outlines and the running heads again', async (t) => {
+  const a = await sessionPage(browser);
+  t.after(() => a.close());
+  await showSlide(a, 'Chapter two');
+  await caretAtEnd(a, HEADING);
+  await typeKeys(a, ' *x*');
+  await a.waitFor(`${HEADING}.querySelector('em')?.textContent === 'x' && ${E}.state('edit.undo').label === 'Undo Markdown'`);
+  const text = await a.evaluate(`${E}.render()`);
+  assert.ok(text.includes('<h2>Chapter two <em>x</em></h2>'));
+  // the chrome of a page that takes each text from an apply
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  const chromeOf = async (s) => {
+    assert.equal((await applyOn(b, s)).reload, false);
+    return b.evaluate(CHROME);
+  };
+  const substituted = await chromeOf(text);
+  assert.ok(substituted.some((c) => c.includes('Chapter two x')), 'the chrome names the heading');
+  assert.deepEqual(await a.evaluate(CHROME), substituted, 'the chrome after the substitution');
+  await a.evaluate(`${E}.undo()`);
+  await a.waitFor(`!${HEADING}.querySelector('em')`);
+  assert.deepEqual(await a.evaluate(CHROME), await chromeOf(await a.evaluate(`${E}.render()`)), 'the chrome after the undo');
+  await a.evaluate(`${E}.redo()`);
+  await a.waitFor(`${HEADING}.querySelector('em')?.textContent === 'x'`);
+  assert.deepEqual(await a.evaluate(CHROME), await chromeOf(text), 'the chrome after the redo');
+  assert.deepEqual([a.errors, b.errors], [[], []]);
+});
