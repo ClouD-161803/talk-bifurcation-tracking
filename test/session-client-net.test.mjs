@@ -697,3 +697,45 @@ test('a page that does not read as its text after an apply loads again, and send
   clean(a, REFUSED);
   clean(b, REFUSED);
 });
+
+// counts the answers of the polls of a page one task after their text is read, i.e. after the client
+// took them
+const ANSWERS = `{
+  const text = Response.prototype.text;
+  window.__answers = 0;
+  Response.prototype.text = function () {
+    const read = text.call(this);
+    if (this.url.includes('/.session/events')) read.then(() => setTimeout(() => window.__answers++, 0));
+    return read;
+  };
+}`;
+
+test('the answer of a poll that arrives after Leave Session is not taken', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: `${NET}\n${ANSWERS}` });
+  await converge(server, [ann, ben]);
+  // the poll of Ben in flight is answered by an edit of Ann, and the answer of a later one is kept in the page
+  await ben.evaluate(`__net.rule('/.session/events', 'late')`);
+  await show(ann, 'Two');
+  await caretAtEnd(ann, el(1, 'p'));
+  await type(ann, ' first');
+  await until(() => server.read().includes('<p>Second slide first</p>'), 'the edit of Ann to reach index.html');
+  await type(ann, ' second');
+  await ben.waitFor(`__net.held.length === 1`);
+  // Ben leaves, and the kept answer reaches his client afterward
+  await ben.evaluate(`(() => {
+    const client = ${C};
+    client.leave();
+    window.__events = [];
+    for (const name of ['people', 'presence', 'known', 'ops']) client.on(name, () => window.__events.push(name));
+    window.__before = window.__answers;
+    return __net.release('/.session/events');
+  })()`);
+  await ben.waitFor(`window.__answers > window.__before`);
+  assert.deepEqual(await ben.evaluate(`window.__events`), [], 'the client took an answer after Leave Session');
+  clean(ann, REFUSED);
+  clean(ben, REFUSED);
+});
