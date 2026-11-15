@@ -53,7 +53,7 @@ export function install(app: App): void {
     className: 'media-folder',
   });
 
-  const stopped = (what = '') => new Error(`the ${what || 'new media files'} were not saved, hence ${app.handle?.name ?? 'the deck'} was not saved either`);
+  const stopped = (what = '') => new Error(`${what || 'the new media files'} ${/ and /.test(what) || !what ? 'were' : 'was'} not saved, hence ${app.handle?.name ?? 'the deck'} was not saved either`);
 
   async function pick(deck: FileSystemFileHandle, what: string): Promise<Folder> {
     const show = picker();
