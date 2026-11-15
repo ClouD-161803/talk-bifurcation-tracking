@@ -814,6 +814,18 @@ test('a thread on another slide stays unread while the pane is open and one thre
   clean(b);
 });
 
+test('j and k typed in a reply are text, and the focus stays in its thread', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  const first = await post(a, 0, 'First');
+  await post(a, 1, 'Second');
+  await openPane(a);
+  await sees(a, `document.querySelectorAll('${PANE} article').length`, 2);
+  await click(a, `${ARTICLE(first)} .reply textarea`);
+  await typeKeys(a, 'jk');
+  await sees(a, `[document.activeElement.value, ${ACTIVE}]`, ['jk', first]);
+  clean(a);
+});
+
 test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or more', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
