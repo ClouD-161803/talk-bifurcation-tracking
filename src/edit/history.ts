@@ -1,10 +1,10 @@
 // the version history of a session. a version is a state of the text of index.html with its time,
 // the people who changed the deck since the version before, and an optional name. a version is
 // closed 60 s after the last operation, at the latest 5 min after the first operation since the
-// version before, at once when a person names the current state, and at a
+// version before, at once when a person names the current state or restores a version, and at a
 // stop. the versions are kept in .session/history.jsonl, appended only: a first line
 // { kind: "base", time, text }, then a line { kind: "version", id, time, authors, patches, marks,
-// slides, removed? } per version, whose patches turn the text of the version before
+// slides, removed?, restored? } per version, whose patches turn the text of the version before
 // into its own, and a line { kind: "name", id, name } per name given or taken off.
 
 import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
 import { apply, diff, shiftOffset } from '../session/patch.ts';
-import { VERSION_NAME_MAX, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
+import { VERSION_NAME_MAX, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, renameRetriedSync } from './disk.ts';
 
@@ -124,6 +124,17 @@ const validPatches = (patches: unknown, n: number): patches is Patch[] => {
   return true;
 };
 
+// the most patches that the authority takes in one operation, as valid() of patch.ts allows
+const MAX_PATCHES = 2000;
+
+// the patches that turn a into b in one operation that the authority takes: the diff, or one
+// patch from the common start to the common end when the diff has too many
+export function operationOf(a: string, b: string): Patch[] {
+  const patches = diff(a, b);
+  if (patches.length <= MAX_PATCHES) return patches;
+  return [{ start: patches[0].start, end: patches[patches.length - 1].end, text: b.slice(patches[0].start, b.length - (a.length - patches[patches.length - 1].end)) }];
+}
+
 const validMarks = (marks: unknown, n: number): marks is Mark[] =>
   Array.isArray(marks) && marks.every((m) => m && Number.isInteger(m.start) && Number.isInteger(m.end) && 0 <= m.start && m.start <= m.end && m.end <= n && typeof m.author === 'string');
 const numbers = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
@@ -140,6 +151,9 @@ class Unreadable extends Error {}
 export class History {
   // grows with every change of the list of versions or of the texts set aside
   rev = 0;
+  // the last restore, and the count of restores
+  restored: Restored | null = null;
+  restores = 0;
   // the patches from the text of the last version to index.html at the start, or null when the
   // history began at this start
   readonly found: { before: string; patches: Patch[] } | null = null;
@@ -248,9 +262,27 @@ export class History {
     return info(v);
   }
 
+  // the deck made to read as version id by one operation of person, between a version of the
+  // current state and a version of the restore. null for an unknown id. id is null in the answer
+  // when the deck already reads as the version
+  restore(id: unknown, person: string): { id: string | null } | null {
+    const i = this.indexOf(id);
+    if (i < 0) return null;
+    const target = this.textAt(i);
+    const was = this.versions[i];
+    this.close();
+    if (this.authority.text === target) return { id: null };
+    this.authority.enter(operationOf(this.authority.text, target), person);
+    const v = this.close(false, was.id);
+    this.restored = { by: person, id: was.id, time: was.time };
+    this.restores++;
+    this.changed();
+    return { id: v?.id ?? null };
+  }
+
   // the open version closed, e.g. at a stop. empty closes a version without a change when there
-  // is not any, so that it can be named
-  close(empty = false): Version | null {
+  // is not any, so that it can be named. restored is the id of the version that it restores
+  close(empty = false, restored?: string): Version | null {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     const open = this.open;
@@ -260,6 +292,7 @@ export class History {
     const patches = diff(this.lastText, text);
     const author = open?.author ?? AUTHOR;
     const v = this.version(open ? [...open.authors] : [], patches, clip(open?.marks ?? [], patches, author), text, open?.time);
+    if (restored) v.restored = restored;
     this.push(v, text);
     return v;
   }
@@ -452,6 +485,7 @@ export class History {
     const v: Version = { id: r.id, time: r.time as number, authors: r.authors as string[], slides: r.slides, patches: r.patches as Patch[], marks: validMarks(r.marks, after) ? r.marks : [] };
     const removed = r.removed as Version['removed'];
     if (removed && numbers(removed.slides) && Number.isInteger(removed.elements)) v.removed = { slides: removed.slides, elements: removed.elements };
+    if (isVersionId(r.restored)) v.restored = r.restored;
     return { kind: 'version', v };
   }
 }
@@ -460,5 +494,6 @@ function info(v: Version): VersionInfo {
   const out: VersionInfo = { id: v.id, time: v.time, authors: v.authors, slides: v.slides };
   if (v.name) out.name = v.name;
   if (v.removed) out.removed = v.removed;
+  if (v.restored) out.restored = v.restored;
   return out;
 }
