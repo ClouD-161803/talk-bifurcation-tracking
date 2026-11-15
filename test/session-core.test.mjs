@@ -71,20 +71,44 @@ function edit(r, text, spots) {
   return cut.slice(0, to) + text.slice(a, b) + cut.slice(to);
 }
 
-// a session of an authority and replicas over a network in which every message waits in a queue
-function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxOps = 1000, spot = null } = {}) {
+// a text of 40 lines t0 to t39, in which the token mode inserts lines
+const TOKEN_TEXT = Array.from({ length: 40 }, (_, i) => `t${i}\n`).join('');
+
+// an edit of text that inserts one to three lines, each a new token n<k>, at the start of a line,
+// a third of them after the line t5, where ties are frequent
+function tokenEdit(r, text, created) {
+  const starts = [0];
+  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) starts.push(i + 1);
+  const hot = text.indexOf('\nt5\n') + 4;
+  const points = Array.from({ length: 1 + r.int(3) }, () => (r.chance(0.3) ? hot : r.pick(starts))).sort((a, b) => b - a);
+  let out = text;
+  for (const at of points) {
+    const token = `n${created.size}`;
+    created.add(token);
+    out = `${out.slice(0, at)}${token}\n${out.slice(at)}`;
+  }
+  return out;
+}
+
+// a session of an authority and replicas over a network in which every message waits in a queue.
+// in the token mode every edit inserts new tokens, a replica that falls behind the log of the
+// authority reads the whole state again, as after events without ops, and so does a replica with an
+// accepted operation in flight now and then. a replica that waits for the answer to an operation
+// does not read the whole state, as the client holds it back. every token is then in the text once
+function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxOps = 1000, spot = null, tokens = false } = {}) {
   const r = generator(seed);
   const where = `seed ${seed}`;
   const authority = new Authority(text, { maxOps, epoch: `e${seed}` });
   const spots = spot === null ? Array.from({ length: 3 }, () => r.int(text.length)) : [spot, spot, spot];
   const replicas = [];
   const toAuthority = [];
-  const stats = { accepted: 0, refused: 0, ties: 0, joins: 0, resyncs: 0 };
+  const created = new Set();
+  const stats = { accepted: 0, refused: 0, ties: 0, joins: 0, resyncs: 0, flightResyncs: 0 };
 
   function join(at = authority.n) {
     const id = `client${replicas.length}x`;
     const replica = new Replica(id, authority.textAt(at), `e${seed}.${at}`);
-    const state = { replica, inbox: authority.since(`e${seed}.${at}`).slice(), answers: [], sent: null, editedSince: false };
+    const state = { replica, inbox: authority.since(`e${seed}.${at}`).slice(), answers: [], sent: null, answered: null, editedSince: false };
     replicas.push(state);
     return state;
   }
@@ -101,6 +125,7 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     assert.equal(apply(replica.base, request.patches), replica.mine, `${where}: an operation does not turn base into mine`);
     assert.ok(valid(request.patches, replica.base.length, replica.base), `${where}: an operation of a replica is not valid`);
     state.sent = request;
+    state.answered = null;
     state.editedSince = false;
     toAuthority.push({ state, request });
   }
@@ -125,7 +150,19 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     state.answers.push({ request, answer });
   }
 
+  // the whole state read again by a replica that does not wait for an answer
+  function reread(state) {
+    if (state.sent && !state.answered) return false;
+    if (state.sent && state.answered.ok) stats.flightResyncs++;
+    state.inbox.length = 0;
+    state.replica.resync(authority.text, authority.version);
+    if (!state.replica.inFlight) state.sent = null;
+    stats.resyncs++;
+    return true;
+  }
+
   function deliver(state, count) {
+    if (tokens && Number(state.replica.version.split('.')[1]) < authority.oldest && reread(state)) return send(state);
     for (const op of state.inbox.splice(0, count)) {
       const ack = op.client === state.replica.client && state.sent?.seq === op.seq;
       state.replica.receive(op);
@@ -145,9 +182,9 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     const state = r.pick(replicas);
     if (roll < 0.38) {
       const before = state.replica.mine;
-      let next = edit(r, before, spots);
+      let next = tokens ? tokenEdit(r, before, created) : edit(r, before, spots);
       // two replicas that insert at one point at once make a tie
-      if (r.chance(spot === null ? 0.1 : 0.7)) {
+      if (!tokens && r.chance(spot === null ? 0.1 : 0.7)) {
         const at = Math.min(spots[0], before.length);
         next = before.slice(0, whole(before, at)) + r.pick(['<b>t</b>', 'q', '😀']) + before.slice(whole(before, at));
         stats.ties++;
@@ -162,8 +199,12 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     } else if (roll < 0.98 && state.answers.length) {
       const { request, answer } = state.answers.shift();
       state.replica.answer(request, answer);
+      if (state.sent?.seq === request.seq) state.answered = answer;
       if (!answer.ok && state.sent?.seq === request.seq) state.sent = null;
       send(state);
+    } else if (tokens && roll < 0.995) {
+      const flying = replicas.filter((s) => s.sent && s.answered?.ok);
+      if (reread(flying.length ? r.pick(flying) : state)) send(state);
     } else if (roll >= 0.995 && replicas.length < 6) {
       // a late join, from the text of an older version that the editor read and the operations after it
       join(authority.oldest + r.int(authority.n - authority.oldest + 1));
@@ -179,10 +220,16 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
       if (busy.answers.length) {
         const { request, answer } = busy.answers.shift();
         busy.replica.answer(request, answer);
+        if (busy.sent?.seq === request.seq) busy.answered = answer;
         if (!answer.ok && busy.sent?.seq === request.seq) busy.sent = null;
         send(busy);
       } else deliver(busy, busy.inbox.length);
     }
+  }
+  if (tokens) {
+    const count = new Map();
+    for (const line of authority.text.split('\n')) count.set(line, (count.get(line) ?? 0) + 1);
+    for (const token of created) assert.equal(count.get(token) ?? 0, 1, `${where}: the token ${token} is in the text ${count.get(token) ?? 0} times`);
   }
   for (const [i, s] of replicas.entries()) {
     assert.equal(s.replica.inFlight, false, `${where}: replica ${i} still has an operation in flight`);
@@ -221,6 +268,35 @@ test('replicas converge when the log is short and operations are refused as stal
   }
   assert.ok(refused > 0, 'no operation was refused');
   assert.ok(resyncs >= 0);
+});
+
+test('no edit is duplicated or lost when a replica reads the whole state again with an accepted operation in flight', () => {
+  let flightResyncs = 0;
+  for (let seed = 401; seed <= 500; seed++) {
+    const stats = session(seed, { text: TOKEN_TEXT, tokens: true, maxOps: 3, steps: 300 });
+    flightResyncs += stats.flightResyncs;
+  }
+  assert.ok(flightResyncs > 50, `${flightResyncs} resyncs with an accepted operation in flight`);
+});
+
+test('after a restart of the edit command, a resync keeps an operation in flight that the new text lacks, and does not repeat one that it holds', () => {
+  const base = '<p>Hello world</p>\n';
+  const sent = () => {
+    const r = new Replica('me', base, 'E.0');
+    r.edit('<p>HelloX world</p>\n');
+    r.outgoing();
+    return r;
+  };
+  // the operation was written before the restart, and the new epoch reads it from the file
+  const held = sent();
+  held.resync('<p>HelloX world</p>\n<p>more</p>\n', 'F.0');
+  assert.equal(held.mine, '<p>HelloX world</p>\n<p>more</p>\n');
+  assert.equal(held.outgoing(), null);
+  // the operation was lost with the edit command, and is sent again
+  const lost = sent();
+  lost.resync('<p>Hello world</p>\n<p>more</p>\n', 'F.0');
+  assert.equal(lost.mine, '<p>HelloX world</p>\n<p>more</p>\n');
+  assert.equal(apply(lost.base, lost.outgoing().patches), lost.mine);
 });
 
 test('replicas converge on a short text that changes() gives up on', () => {
