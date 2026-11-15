@@ -16,7 +16,7 @@ const NAMED = 3000;
 // them stands outside the frame of frames.ts
 const FLAGS = 2;
 const OUT = [4, 8];
-// the side of the hit area of a chip in px
+// the side of the hit area of a chip in px for a touch or a pen
 const HIT = 32;
 
 const CSS = `
@@ -47,6 +47,15 @@ const placed = (s: Shape, px: number): Partial<CSSStyleDeclaration> => ({
   transform: s.deg ? `rotate(${s.deg}deg)` : '',
 });
 
+// the width in px of a flag that shows text, measured on a canvas, which does not read layout
+let pen: CanvasRenderingContext2D | null | undefined;
+const widthOf = (text: string): number => {
+  if (pen === undefined) pen = document.createElement('canvas').getContext('2d');
+  if (!pen) return 160;
+  pen.font = '600 11px system-ui, sans-serif';
+  return Math.min(160, Math.ceil(pen.measureText(text).width) + 12);
+};
+
 export function install(client: Client): void {
   const { app, shell } = client;
   style('presence', CSS);
@@ -60,6 +69,8 @@ export function install(client: Client): void {
   // the flags drawn on each element, for the hover
   let flagsOf = new Map<Element, HTMLElement>();
   let hovered: Element | null = null;
+  // the chips of the last draw, each at a fraction of the slide and px from it, for a press
+  let chips: { flags: HTMLElement; id: string; x: number; y: number; dx: number; dy: number }[] = [];
 
   const schedule = (): void => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -73,6 +84,20 @@ export function install(client: Client): void {
   };
   // a click after a tap on a chip does not reach the canvas
   let eat = false;
+
+  // a flag of r, with its width in px
+  const flagOf = (r: Resolved, now: number, soon: (at: number) => void): { flag: HTMLElement; chip: boolean; width: number } => {
+    const from = nameFrom(r, now);
+    const collapsed = !r.typing && now - from >= NAMED;
+    if (!collapsed && !r.typing) soon(from + NAMED);
+    const flag = make('div', `flag c${r.color % 4}${collapsed ? ' chip' : ''}`);
+    flag.dataset.client = r.client;
+    const long = make('span', 'long');
+    long.append(bdi(r.name), r.typing ? ' is typing' : '');
+    flag.append(long, make('span', 'short', badge(client, r.person).initials));
+    flag.title = r.name;
+    return { flag, chip: collapsed, width: collapsed ? 16 : widthOf(r.typing ? `${r.name} is typing` : r.name) };
+  };
 
   function draw(): void {
     frame = 0;
@@ -88,7 +113,9 @@ export function install(client: Client): void {
     const shapes = els.length || carets.length ? shell.presence.shapes(els, carets.map((r) => r.caret!)) : { els: [], carets: [] };
     const nodes: HTMLElement[] = [];
     const next = new Map<Element, HTMLElement>();
+    const placedChips: typeof chips = [];
     let soonest = Infinity;
+    const soon = (at: number) => (soonest = Math.min(soonest, at));
     els.forEach((el, i) => {
       const s = shapes.els[i];
       if (!s) return;
@@ -103,17 +130,12 @@ export function install(client: Client): void {
       const flags = make('div', 'flags');
       flags.dataset.client = framed.map((r) => r.client).join(' ');
       Object.assign(flags.style, { left: `calc(${s.x * 100}% - ${out}px)`, top: `calc(${s.y * 100}% - ${out}px)` });
-      for (const r of framed) {
-        const from = nameFrom(r, now);
-        const collapsed = !r.typing && now - from >= NAMED;
-        if (!collapsed && !r.typing) soonest = Math.min(soonest, from + NAMED);
-        const flag = make('div', `flag c${r.color % 4}${collapsed ? ' chip' : ''}`);
-        flag.dataset.client = r.client;
-        const long = make('span', 'long');
-        long.append(bdi(r.name), r.typing ? ' is typing' : '');
-        flag.append(long, make('span', 'short', badge(client, r.person).initials));
-        flag.title = r.name;
-        flags.append(flag);
+      const made = framed.map((r) => flagOf(r, now, soon));
+      let left = 0;
+      for (const [i, m] of made.entries()) {
+        flags.append(m.flag);
+        if (m.chip) placedChips.push({ flags, id: framed[i].client, x: s.x, y: s.y, dx: left - out, dy: -3 - out - 16 });
+        left += m.width + 2;
       }
       if (people.length > FLAGS) flags.append(make('div', 'flag more', `+${people.length - FLAGS}`));
       if (el === hovered) flags.classList.add('hover');
@@ -130,6 +152,7 @@ export function install(client: Client): void {
     });
     layer.replaceChildren(...nodes);
     flagsOf = next;
+    chips = placedChips;
     for (const id of [...named.keys()]) if (!list.some((r) => r.client === id)) named.delete(id);
     clearTimeout(timer);
     if (soonest < Infinity) timer = window.setTimeout(schedule, soonest - now + 20);
@@ -148,19 +171,27 @@ export function install(client: Client): void {
     flagsOf.get(h!)?.classList.add('hover');
   }, { passive: true });
 
-  // a tap on a chip shows the name, hit-tested in a square of HIT px around the chip
+  // a press on a chip shows the name, hit-tested against the stored chips: the chip itself for a
+  // mouse, and a square of HIT px around it for a touch or a pen. a press that the layer does not
+  // take reaches the editor as if the layer were not there, i.e. one out of the canvas or on the
+  // overlay of the own frame, and every press while the layer is hidden
   window.addEventListener('pointerdown', (ev) => {
-    const chips = layer.querySelectorAll<HTMLElement>('.flags:not(.hover) .flag.chip');
-    if (!chips.length) return;
-    for (const chip of chips) {
-      const r = chip.getBoundingClientRect();
-      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      if (Math.abs(ev.clientX - cx) > HIT / 2 || Math.abs(ev.clientY - cy) > HIT / 2) continue;
+    eat = false;
+    const target = ev.target instanceof Element ? ev.target : null;
+    const html = document.documentElement.classList;
+    if (!chips.length || !target || !html.contains('beeson-editor') || html.contains('beeson-previewing') || html.contains('beeson-playing')) return;
+    if (!target.closest('.reveal:not(.beeson-peek), .beeson-edit-canvas') || target.closest('aside.notes, .beeson-overlay')) return;
+    const vars = getComputedStyle(layer);
+    const [x, y, w, h] = ['x', 'y', 'w', 'h'].map((p) => parseFloat(vars.getPropertyValue(`--ed-slide-${p}`)) || 0);
+    const half = ev.pointerType === 'mouse' ? 8 : HIT / 2;
+    for (const c of chips) {
+      if (c.flags.classList.contains('hover')) continue;
+      const cx = x + c.x * w + c.dx + 8, cy = y + c.y * h + c.dy + 8;
+      if (Math.abs(ev.clientX - cx) > half || Math.abs(ev.clientY - cy) > half) continue;
       ev.preventDefault();
       ev.stopImmediatePropagation();
       eat = true;
-      const id = chip.dataset.client!;
-      const seen = named.get(id);
+      const seen = named.get(c.id);
       if (seen) seen.at = Date.now();
       schedule();
       return;
@@ -172,5 +203,4 @@ export function install(client: Client): void {
     ev.preventDefault();
     ev.stopImmediatePropagation();
   }, true);
-  window.addEventListener('pointerdown', () => void (eat = false));
 }
