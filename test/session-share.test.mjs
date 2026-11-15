@@ -550,3 +550,21 @@ test('a poll answer rebuilds the list of the Share dialog once, and the initials
   assert.ok(segmenters <= 1, `${segmenters} Intl.Segmenter built for ${answers} answers`);
   clean(ann);
 });
+
+test('the end of the session closes the Change Name dialog', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await front(ann);
+  await press(ann, '.beeson-session-people .me');
+  await ann.waitFor(`!!${item('Change Name…')}`);
+  await press(ann, item('Change Name…'));
+  await ann.waitFor(`!!document.querySelector('dialog.beeson-session-rename')?.open`);
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await ann.waitFor(`${C}.connection === 'ended' && [...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'The session has ended')`);
+  await ann.waitFor(`!document.querySelector('dialog.beeson-session-rename')`);
+  clean(ann);
+});
