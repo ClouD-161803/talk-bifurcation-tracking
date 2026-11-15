@@ -593,3 +593,17 @@ test('the dialog of the conflicts names a slide that the person removed offline 
   clean(ann);
   clean(ben);
 });
+
+test('a dialog of the conflicts that the browser closes keeps the version of the person, and later edits are sent', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const { server, ann, ben } = await conflicted(t, browser);
+  // as Chrome on Android closes a dialog at a second back gesture, with a cancel event that cannot be canceled
+  await ann.evaluate(`(document.querySelector('dialog.beeson-session-conflicts[open]').close(), true)`);
+  assert.equal(await converge(server, [ann, ben]), BOTH.replace('<p>First slide</p>', '<p>Opening slide</p>'));
+  // the text of the list, since Ben holds the paragraph that he edited last
+  await edit(ann, 1, 'li', ' later');
+  assert.equal(await converge(server, [ann, ben]), BOTH.replace('<p>First slide</p>', '<p>Opening slide</p>').replace('<li>Alpha by Ann</li>', '<li>Alpha by Ann later</li>'));
+  clean(ann);
+  clean(ben);
+});
