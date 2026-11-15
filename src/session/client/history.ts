@@ -140,7 +140,7 @@ export function install(client: Client): void {
   let release: (() => void) | null = null;
   let deferred: Promise<void> | null = null;
   // the nodes of the list kept between renders by key, hence a new answer writes only what changed
-  const rows = new Map<string, { el: HTMLButtonElement; sig: string }>();
+  const rows = new Map<string, { el: HTMLButtonElement; sig: string | null }>();
   const folds = new Map<string, { button: HTMLButtonElement; inner: HTMLElement }>();
   const heads = new Map<string, HTMLElement>();
   const notes = new Map<string, HTMLElement>();
@@ -216,7 +216,7 @@ export function install(client: Client): void {
       b.type = 'button';
       b.dataset.id = id;
       b.addEventListener('click', () => choose(select));
-      r = { el: b, sig: '' };
+      r = { el: b, sig: null };
       rows.set(id, r);
     }
     if (r.sig !== sig) {
