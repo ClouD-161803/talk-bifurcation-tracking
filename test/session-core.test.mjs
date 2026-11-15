@@ -287,16 +287,82 @@ test('after a restart of the edit command, a resync keeps an operation in flight
     r.outgoing();
     return r;
   };
-  // the operation was written before the restart, and the new epoch reads it from the file
+  // the operation was written before the restart, the new epoch reads it from the file, and hello
+  // answers its seq
   const held = sent();
-  held.resync('<p>HelloX world</p>\n<p>more</p>\n', 'F.0');
+  held.resync('<p>HelloX world</p>\n<p>more</p>\n', 'F.0', 1);
   assert.equal(held.mine, '<p>HelloX world</p>\n<p>more</p>\n');
   assert.equal(held.outgoing(), null);
-  // the operation was lost with the edit command, and is sent again
-  const lost = sent();
-  lost.resync('<p>Hello world</p>\n<p>more</p>\n', 'F.0');
-  assert.equal(lost.mine, '<p>HelloX world</p>\n<p>more</p>\n');
-  assert.equal(apply(lost.base, lost.outgoing().patches), lost.mine);
+  // the operation was lost with the edit command, and is sent again, also when hello does not know
+  // the client id
+  for (const applied of [0, undefined]) {
+    const lost = sent();
+    lost.resync('<p>Hello world</p>\n<p>more</p>\n', 'F.0', applied);
+    assert.equal(lost.mine, '<p>HelloX world</p>\n<p>more</p>\n');
+    assert.equal(apply(lost.base, lost.outgoing().patches), lost.mine);
+  }
+});
+
+test('after a restart, a resync neither repeats nor reverts an applied operation whose answer was lost or refused', () => {
+  // the hello after the restart answers applied, i.e. the seq of the last operation of the old
+  // client id in the text, which is 1 here
+  for (const reason of ['unknown', 'stale']) {
+    const base = '<p>Hello world, again</p>\n';
+    const e = new Authority(base, { epoch: 'E' });
+    const a = new Replica('aaaaaaaa', base, 'E.0');
+    a.edit('<p>Hello brave world, again</p>\n');
+    const request = a.outgoing();
+    // the answer and the broadcast of the operation are lost
+    const sent = e.submit(request, 'A');
+    assert.equal(sent.answer.ok, true);
+    const b = new Replica('bbbbbbbb', base, 'E.0');
+    b.receive(sent.op);
+    b.edit(b.mine.replace('again', 'once more'));
+    b.receive(e.submit(b.outgoing(), 'B').op);
+    const f = new Authority(e.text, { epoch: 'F' });
+    a.answer(request, reason === 'unknown' ? { ok: false, reason, v: f.version } : f.submit(request, 'A').answer);
+    a.resync(f.text, f.version, request.seq);
+    assert.equal(a.mine, '<p>Hello brave world, once more</p>\n', reason);
+    assert.equal(a.outgoing(), null, reason);
+  }
+  // the answer arrived and the broadcast did not, and the other person rewrote the line
+  const base = '<h2>Results</h2>\n<p>Hello world</p>\n';
+  const e = new Authority(base, { epoch: 'E' });
+  const a = new Replica('aaaaaaaa', base, 'E.0');
+  a.edit('<h2>Results</h2>\n<p>Hello brave world</p>\n');
+  const request = a.outgoing();
+  const { answer, op } = e.submit(request, 'A');
+  a.answer(request, answer);
+  const b = new Replica('bbbbbbbb', base, 'E.0');
+  b.receive(op);
+  b.edit('<h2>Results</h2>\n<p>Hi there</p>\n');
+  b.receive(e.submit(b.outgoing(), 'B').op);
+  const f = new Authority(e.text, { epoch: 'F' });
+  a.resync(f.text, f.version, request.seq);
+  assert.equal(a.mine, '<h2>Results</h2>\n<p>Hi there</p>\n');
+  assert.equal(a.outgoing(), null);
+});
+
+test('a resync that does not know whether the text holds an operation in flight keeps it, also when someone else inserted similar markup at the same place', () => {
+  const base = '<ul>\n    <li>Design</li>\n  </ul>\n';
+  const relay = base.replace('  </ul>', '    <li>Test the relay</li>\n  </ul>');
+  const editor = base.replace('  </ul>', '    <li>Test the editor</li>\n  </ul>');
+  for (const refused of [false, true]) {
+    const e = new Authority(base, { epoch: 'E' });
+    const a = new Replica('aaaaaaaa', base, 'E.0');
+    a.edit(relay);
+    // the request of A does not reach the edit command, which applies the bullet of B and restarts
+    const request = a.outgoing();
+    e.submit({ client: 'bbbbbbbb', seq: 1, base: 'E.0', patches: diff(base, editor) }, 'B');
+    const f = new Authority(e.text, { epoch: 'F' });
+    if (refused) a.answer(request, { ok: false, reason: 'unknown', v: f.version });
+    a.resync(f.text, f.version);
+    const next = a.outgoing();
+    assert.ok(next, `the bullet of A is sent again (${refused})`);
+    a.receive(f.submit(next, 'A').op);
+    assert.equal(f.text, '<ul>\n    <li>Design</li>\n    <li>Test the editor</li>\n    <li>Test the relay</li>\n  </ul>\n');
+    assert.equal(a.mine, f.text);
+  }
 });
 
 test('a replica keeps its base, its text, and its operation in flight through a new client id', () => {
@@ -321,6 +387,30 @@ test('a replica keeps its base, its text, and its operation in flight through a 
   const next = a.outgoing();
   assert.deepEqual([next.client, next.seq], ['cccccccc', request.seq + 1]);
   assert.equal(apply(a.base, next.patches), '<p>Hello brave world!</p>\n');
+});
+
+test('the authority keeps the seq of the last operation of each client in the text written to index.html', () => {
+  const a = new Authority('abc\n', { epoch: 'E', applied: [['old', 7]] });
+  assert.equal(a.applied('old'), 7);
+  assert.equal(a.applied('nobody'), undefined);
+  a.submit({ client: 'c', seq: 1, base: 'E.0', patches: [{ start: 3, end: 3, text: 'd' }] }, 'C');
+  a.submit({ client: 'c', seq: 2, base: 'E.1', patches: [{ start: 4, end: 4, text: 'e' }] }, 'C');
+  // the text in memory holds both operations, and the table holds only what is written
+  assert.equal(a.applied('c'), 2);
+  assert.deepEqual(a.table(), [['old', 7]]);
+  assert.equal(a.written(1), false, 'the last operation of c is not written at version 1');
+  assert.equal(a.written(2), true);
+  assert.deepEqual(a.table(), [['old', 7], ['c', 2]]);
+  assert.equal(a.written(2), false);
+  // a restart keeps the table and not the log
+  const b = new Authority(a.text, { epoch: 'F', applied: a.table() });
+  assert.equal(b.applied('c'), 2);
+  // the table keeps the last 1024 clients
+  for (let i = 0; i < 1100; i++) b.submit({ client: `k${i}`, seq: 1, base: b.version, patches: [] }, 'K');
+  b.written(b.n);
+  assert.equal(b.table().length, 1024);
+  assert.equal(b.applied('old'), undefined);
+  assert.equal(b.applied('k1099'), 1);
 });
 
 test('replicas converge on a short text that changes() gives up on', () => {
@@ -480,12 +570,12 @@ test('a resync after a restart shows the conflicts with the whole text, and the 
   const r = new Replica('me', base, 'E.4');
   r.edit(mine);
   const seen = [];
-  r.clone().resync(now, 'F.0', 'ours', seen);
+  r.clone().resync(now, 'F.0', undefined, 'ours', seen);
   assert.equal(seen.length, 1);
   assert.equal(r.base, base, 'a resync of the clone changed the replica');
   assert.equal(r.mine, mine);
   const conflicts = [];
-  assert.equal(r.resync(now, 'F.0', 'theirs', conflicts), now.replace('Three', 'Drei'));
+  assert.equal(r.resync(now, 'F.0', undefined, 'theirs', conflicts), now.replace('Three', 'Drei'));
   assert.equal(conflicts.length, 1);
   assert.equal(r.version, 'F.0');
   const ours = new Replica('me', base, 'E.4');
