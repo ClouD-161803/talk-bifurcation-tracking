@@ -6,7 +6,7 @@
 // as a child process for the requests
 
 import assert from 'node:assert/strict';
-import fs, { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { appendFileSync, chmodSync, closeSync, existsSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -847,5 +847,38 @@ test('the edits of a version that was open at a crash are listed as those of the
     // index.html was not written before the crash
     assert.deepEqual(crashed(dir, DECK).versions, [['', []]]);
     assert.deepEqual(crashed(dir, DECK.replace('Two', 'Deux')).versions[0], ['', ['file']]);
+  });
+});
+
+test('a cut last line in a read-only history.jsonl is left out, and the history read is kept', { timeout: 60_000 }, async (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'history.jsonl');
+  const { authority, history } = open(dir, DECK);
+  replace(authority, 'One', 'Uno', ANN);
+  const v1 = history.close();
+  history.name(v1.id, 'Important');
+  history.stopSync();
+  appendFileSync(file, '{"kind":"version","id":"cut","ti');
+  chmodSync(file, 0o444);
+  let writable = true;
+  try {
+    closeSync(openSync(file, 'r+'));
+  } catch {
+    writable = false;
+  }
+  const again = open(dir, authority.text);
+
+  await t.test('the versions are kept', { skip: writable && 'a mode of 0444 does not make a file read-only here' }, () => {
+    assert.deepEqual(again.logged, []);
+    assert.deepEqual(again.history.list().versions.map((v) => [v.id, v.name]).slice(0, 1), [[v1.id, 'Important']]);
+    assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('history-unreadable-')), []);
+  });
+
+  await t.test('the next version writes the file anew', { skip: (writable && 'a mode of 0444 does not make a file read-only here') || (process.platform === 'win32' && 'windows does not rename over a read-only file') }, () => {
+    replace(again.authority, 'Two', 'Deux', BO);
+    const v2 = again.history.close();
+    again.history.stopSync();
+    assert.deepEqual(again.logged, []);
+    assert.deepEqual(open(dir, again.authority.text).history.list().versions.map((v) => [v.id, v.name]).slice(0, 2), [[v2.id, undefined], [v1.id, 'Important']]);
   });
 });
