@@ -336,3 +336,20 @@ test('a text set aside is kept up to its size limit, and the oldest goes past th
   assert.deepEqual(again.history.list().aside.map((a) => a.id), ids.slice(1).reverse());
   assert.equal(again.history.asideText(ids[1]), 'b'.repeat(100));
 });
+
+test('a restore of texts that differ in more than 2000 places is entered as one operation the authority takes', { timeout: 60_000 }, (t) => {
+  const lines = Array.from({ length: 2100 }, (_, i) => `<p>line ${i} a</p>`);
+  const before = `<body>\n${lines.join('\n')}\n</body>\n`;
+  const { authority, history } = open(sessionDir(t), before);
+  replace(authority, '<body>', '<body class="x">', ANN);
+  const first = history.close();
+  const target = authority.text;
+  enterText(authority, target.replace(/ a</g, ' b<'), BO);
+  history.close();
+  const ops = [];
+  authority.observe((op) => ops.push(op));
+  history.restore(first.id, ANN);
+  assert.equal(authority.text, target);
+  assert.equal(ops.length, 1);
+  assert.ok(ops[0].patches.length <= 2000, `${ops[0].patches.length} patches`);
+});
