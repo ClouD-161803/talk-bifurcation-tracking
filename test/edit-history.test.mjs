@@ -499,3 +499,30 @@ test('a version and a text set aside are served for a preview, never cached', { 
   assert.equal((await post(s.edit.port, s.api('aside'), { token: 'n'.repeat(22), text: 'x' })).status, 404);
   assert.equal((await post(s.edit.port, s.api('aside'), { token: ann.token, text: 'x'.repeat(8 * 1024 * 1024 + 1) })).status, 413);
 });
+
+test('a change of index.html while the edit command was not running becomes a version of the author file', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const folder = talkFolder(t);
+  t.after(() => rmSync(folder.root, { recursive: true, force: true }));
+  const env = ENV(folder.config, { quiet: 3_600_000, longest: 3_600_000 });
+  const first = await startEdit(folder.talk, { env });
+  const api = (edit, route) => `${edit.base}.session/${route}`;
+  const ann = (await post(first.port, api(first, 'hello'), { name: 'Ann' })).json();
+  const at = DECK.indexOf('One');
+  assert.equal((await post(first.port, api(first, 'op'), { token: ann.token, seq: 1, base: ann.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json().ok, true);
+  // the open version is closed at the stop
+  await stopEdit(first);
+  const file = join(folder.talk, 'index.html');
+  const written = readFileSync(file, 'utf8');
+  assert.ok(written.includes('Uno'));
+  writeFileSync(file, written.replace('Second slide', 'Changed by an agent'));
+  const second = await startEdit(folder.talk, { env });
+  t.after(() => stopEdit(second));
+  const bo = (await post(second.port, api(second, 'hello'), { name: 'Bo' })).json();
+  const { versions } = (await raw(second.port, 'GET', `${api(second, 'history')}?token=${bo.token}`)).json();
+  assert.deepEqual(versions.map((v) => v.authors), [['file'], [ann.person]]);
+  assert.deepEqual(versions.map((v) => v.slides), [[2], [1]]);
+  const detail = (await raw(second.port, 'GET', `${api(second, `history/${versions[0].id}`)}?token=${bo.token}`)).json();
+  assert.ok(detail.marks.every((m) => m.author === 'file'));
+  assert.equal((await raw(second.port, 'GET', `${second.base}index.html?version=${versions[1].id}`)).text, written);
+  assert.ok(existsSync(join(folder.talk, '.session', 'history.jsonl')));
+});
