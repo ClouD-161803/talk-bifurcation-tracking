@@ -1,7 +1,7 @@
-// the origin of a copy in the editor: after the mark, a copy of slides and a copy of elements name
-// the address of the deck, the version of its theme, and the macros that the copied text uses, in a
-// comment that a dash of a macro cannot close early. a text without the origin, as an older editor
-// copies it, is pasted into another deck as before, with its paths as they were
+// the origin of a copy in the editor. after the mark, a copy of slides and a copy of elements name
+// the address of the deck, the version of its theme, and the macros that the copied text uses. they
+// are named in a comment that a dash of a macro cannot close early. a text without the origin, as
+// an older editor copies it, is pasted into another deck as before, with its paths as they were
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';

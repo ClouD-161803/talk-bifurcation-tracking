@@ -1,7 +1,7 @@
 // the files of a paste from a deck that the page of deck B cannot read, here deck A on another
-// local port. a dialog asks once for the folder of deck A, the files are read from the chosen
-// folder, through showDirectoryPicker or else an input with webkitdirectory, and the folder is
-// kept for the next paste from deck A. after a cancel, a file missing from the folder, or in a
+// local port. a dialog asks once for the folder of deck A, and the files are read from the chosen
+// folder, through showDirectoryPicker or else an input with webkitdirectory. the folder is kept
+// for the next paste from the same deck. after a cancel, a file missing from the folder, or in a
 // browser without either picker, the slides are pasted and one message lists the files not copied
 
 import assert from 'node:assert/strict';

@@ -34,10 +34,10 @@ function refsIn(text: string): Ref[] {
   return out;
 }
 
-// a fetch that a browser refuses, e.g. from file:// or from another port, rejects, and a file
-// that the server does not have is answered with an error status, or with a page of HTML by a
-// server that falls back to index.html. with size, a body of another length by Content-Length is
-// not read
+// a fetch that a browser refuses, e.g. from file:// or from another port, rejects. a file that
+// the server does not have is answered with an error status, or with a page of HTML by a server
+// that falls back to index.html. with size, a body of another length by Content-Length is not
+// read
 async function fetched(url: string, size = -1): Promise<Read> {
   try {
     const r = await fetch(url, { signal: stop.signal });

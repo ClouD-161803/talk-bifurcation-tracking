@@ -1,7 +1,7 @@
 // a paste of a text whose origin was written by another page, which any page can put on the
 // clipboard. a macro whose name, arguments, or body would not be read as such in theme/macros.js
-// is not listed, an origin whose deck is not a string with an address of http, https, or file is
-// pasted as a text without origin, and an entry of the macros that is not a macro is skipped
+// is not listed. an origin whose deck is not a string with an address of http, https, or file is
+// pasted as a text without origin. an entry of the macros that is not a macro is skipped
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';

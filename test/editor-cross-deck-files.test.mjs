@@ -1,8 +1,8 @@
 // the files of slides and elements pasted from the editor of deck A into the editor of deck B, both
 // on one local server. each file named by a relative src, poster, or data-trajectories is read from
-// deck A and kept as new media of deck B under a free name, apart from a file that deck B has at the
-// same path with the same bytes. the paste with its files is one entry of the history, and a save
-// writes the files into media/. a paste inside one deck keeps its paths
+// deck A and kept as new media of deck B under a free name. a file that deck B has at the same path
+// with the same bytes is not copied. the paste with its files is one entry of the history, and a
+// save writes the files into media/. a paste inside one deck keeps its paths
 
 import assert from 'node:assert/strict';
 import { statSync } from 'node:fs';

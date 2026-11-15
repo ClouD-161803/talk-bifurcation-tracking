@@ -1,9 +1,9 @@
-// the macros and the theme of slides pasted from the editor of deck A into the editor of deck B.
-// after the paste, a dialog names each macro of the origin that deck B lacks or defines otherwise,
-// as the line of theme/macros.js that defines it, with a button that copies the lines. the entry
-// of the history of the paste is closed while the dialog is open, and a later paste of the same
-// macros adds a sentence to the note in place of the dialog. a theme of another version adds one
-// sentence to the note of the paste
+// the macros and the theme of slides pasted from the editor of deck A into the editor of deck B,
+// both on one local server. after the paste, a dialog names each macro of the origin that deck B
+// lacks or defines otherwise, as the line of theme/macros.js that defines it, with a button that
+// copies the lines. the entry of the history of the paste is closed while the dialog is open, and
+// a later paste of the same macros adds a sentence to the note in place of the dialog. a theme of
+// another version adds one sentence to the note of the paste
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
