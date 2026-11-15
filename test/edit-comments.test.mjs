@@ -620,7 +620,7 @@ test('the requests of the comments, and the events that tell the other pages of 
   assert.equal((await s.call('comments', ann, { base, anchor: null, slide: null, text: 'x'.repeat(4001) })).status, 413);
 });
 
-test('the comments are kept over a restart, and follow a change of index.html made while the edit command was not running', { timeout: 120_000 }, async (t) => {
+test('the comments are kept over a restart, and follow a change of index.html made while the edit command was not running', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const folder = talkFolder(t);
   const first = await session(t, folder, true);
   const ann = await first.hello('Ann');
@@ -668,7 +668,7 @@ test('a thread or a reply sent again with the id that its page made is made once
   assert.match((await s.call('comments', ann, { ...body, id: undefined })).json().id, /^[A-Za-z0-9_-]+$/);
 });
 
-test('the time up to which a person read a thread is kept, told to the other pages of the person, and dropped with the thread', { timeout: 120_000 }, async (t) => {
+test('the time up to which a person read a thread is kept, told to the other pages of the person, and dropped with the thread', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const folder = talkFolder(t);
   const first = await session(t, folder, true);
   const ann = await first.hello('Ann');
