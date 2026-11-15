@@ -41,18 +41,19 @@ const REPLACE = (): string => `Replace ${fileName()} in ${folder()} with it, or 
 export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 const clock = (): string => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// the files that a text of the deck names and that are not on the disk yet, e.g. a new image under
-// media/, written next to the deck before the text, or downloaded with it. each returns a sentence
-// for the state, empty when it did not have anything to do
-export type Companions = { write(text: string, deck: FileSystemFileHandle): Promise<string>; download(text: string): string };
-let companions: Companions | null = null;
-export const setCompanions = (c: Companions): void => {
-  companions = c;
-};
+// the files written next to the deck before its text, or downloaded with it: the new images under
+// media/ that a text names, and the sources of the preamble and the bibliography with tex.js. each
+// returns a sentence for the state, empty when it did not have anything to do, and dirty tells
+// whether its files have changes that the text of the deck does not show
+export type Companions = { write(text: string, deck: FileSystemFileHandle): Promise<string>; download(text: string): string; dirty?(): boolean };
+const companions: Companions[] = [];
+export const addCompanion = (c: Companions): void => void companions.push(c);
+const notes = (list: string[]): string => list.filter(Boolean).join('. ');
+const companionsDirty = (): boolean => companions.some((c) => c.dirty?.());
 
 // a copy of the file for a browser that cannot write it in place
 export function download(name: string, text: string): string {
-  const note = companions?.download(text) ?? '';
+  const note = notes(companions.map((c) => c.download(text)));
   const url = URL.createObjectURL(new Blob([text], { type: 'text/html' }));
   const a = make('a');
   a.href = url;
@@ -65,7 +66,9 @@ export function download(name: string, text: string): string {
 }
 
 export async function write(to: FileSystemFileHandle, text: string): Promise<string> {
-  const note = (await companions?.write(text, to)) ?? '';
+  const written: string[] = [];
+  for (const c of companions) written.push(await c.write(text, to));
+  const note = notes(written);
   const writable = await to.createWritable();
   await writable.write(text);
   await writable.close();
@@ -574,7 +577,7 @@ export function install(app: App): void {
 
   function readsAsSaved(): boolean {
     try {
-      return app.saved !== null && render() === app.saved;
+      return app.saved !== null && render() === app.saved && !companionsDirty();
     } catch {
       return false;
     }
@@ -582,7 +585,7 @@ export function install(app: App): void {
 
   // a deck whose text is the file again, e.g. after its edits were undone, is clean
   function cleanIfSaved(): void {
-    if (!app.source || !app.pairing || app.saved === null) return;
+    if (!app.source || !app.pairing || app.saved === null || companionsDirty()) return;
     try {
       if (render() !== app.saved) return;
     } catch {

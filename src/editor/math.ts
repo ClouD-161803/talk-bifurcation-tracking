@@ -2,6 +2,7 @@
 // and the typesetting of a host again after a formula in it was changed
 
 import { fileIndexes, notePlaced } from './shown-steps.ts';
+import { stripRuntime } from './render.ts';
 
 export type MathInfo = { tex: string; open: string; close: string; display: boolean };
 export type MathLookup = (el: Element) => MathInfo | null;
@@ -104,6 +105,7 @@ function withTex(host: Element, replace?: ReadonlyMap<Element, string>, edit?: (
   const copy = host.cloneNode(true) as Element;
   const indexed = '[data-fragment-index]';
   fileIndexes([...host.querySelectorAll(indexed)], [...copy.querySelectorAll(indexed)]);
+  stripRuntime(copy);
   const lookup = mathLookup();
   const live = [...host.querySelectorAll('mjx-container')];
   const copies = [...copy.querySelectorAll('mjx-container')];
@@ -188,14 +190,16 @@ function keepCode(host: Element, content: string): boolean {
   return true;
 }
 
-// a macro of the deck, from theme/macros.js as MathJax was given it, with its number of arguments
-// and its replacement, and the default of its first argument where this argument is optional.
-// deck is false for a command of TeX
+// a macro of the deck, from the preamble.tex of the talk as its tex.js gives it, with its number of
+// arguments and its replacement, and the default of its first argument where this argument is
+// optional. deck is false for a command of TeX
 export type Macro = { name: string; args: number; body: string; default?: string; deck: boolean };
 
 export function deckMacros(): Macro[] {
-  const w = window as unknown as { MathJax?: { config?: { tex?: { macros?: unknown } } }; beesonMacros?: unknown };
-  const raw = (w.MathJax?.config?.tex?.macros ?? w.beesonMacros ?? {}) as Record<string, string | [string, number, string?]>;
+  // an older talk without a tex.js has the macros of its theme/macros.js, as in theme/mathjax-config.js
+  type Def = string | [string, number, string?];
+  const page = window as unknown as { beesonTex?: { macros?: Record<string, Def> }; beesonMacros?: Record<string, Def> };
+  const raw = page.beesonTex?.macros ?? page.beesonMacros ?? {};
   return Object.entries(raw).map(([name, v]) => (Array.isArray(v) ? { name, body: String(v[0]), args: Number(v[1]) || 0, ...(v.length > 2 && { default: String(v[2]) }), deck: true } : { name, body: String(v), args: 0, deck: true }));
 }
 

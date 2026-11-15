@@ -271,11 +271,3 @@ export const INK = `((el) => {
   for (let e = el; e; e = e.parentElement) a *= Number(getComputedStyle(e).opacity);
   return 'rgba(' + c.slice(0, 3).join(', ') + ', ' + a + ')';
 })`;
-
-// a deck with the macro \LL of a libration point, defined after theme/macros.js, since the
-// template does not define a macro
-export function withMacro(text) {
-  const tag = '<script src="theme/macros.js"></script>';
-  assert.equal(text.split(tag).length, 2, `${tag} does not occur once in the deck`);
-  return text.replace(tag, () => `${tag}\n<script>window.beesonMacros = { LL: ['\\\\mathcal{L}_{#1}', 1] };</script>`);
-}

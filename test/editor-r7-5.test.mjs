@@ -10,7 +10,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { click, drag, press, previewFrames, recordPreview, saveAndReopen, type, withMacro } from './helpers/editor.mjs';
+import { click, drag, press, previewFrames, recordPreview, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -248,10 +248,7 @@ const options = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-
 
 for (const platform of PLATFORMS) {
   test(`the TeX completion list draws the glyph of each command beside its name, typeset once on ${platform}`, async (t) => {
-    const deck = `.macro-${process.pid}-${platform}.html`;
-    writeFileSync(deck, withMacro(readFileSync('test-deck.html', 'utf8')));
-    t.after(() => rmSync(deck, { force: true }));
-    const page = await open(t, platform, { deck, at: 'div.math[data-keep]' });
+    const page = await open(t, platform, { at: 'div.math[data-keep]' });
     await click(page, 'div.math[data-keep] mjx-container');
     await sleep(200);
     await press(page, 'Escape');

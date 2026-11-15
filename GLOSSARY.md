@@ -20,6 +20,18 @@ The drawing of orbits behind the words of a slide, or in its figure box, chosen 
 
 Avoid "background", and avoid "scene", which means only a TyCHO scene. The attribute `data-scene` of an old talk is `data-backdrop`.
 
+## Bibliography
+
+The file `references.bib` next to the deck, from which the references of its citations are written into `tex.js`.
+
+Avoid "library" and "references file".
+
+## Citation
+
+The empty `cite` after the cited words of a slide, with the key of a paper of the bibliography in `data-key`, drawn as the number of the paper on its slide.
+
+Avoid "footnote", which is the `foot` line of a slide, and "reference", which is the short entry of the cited paper.
+
 ## Convention
 
 A rule of slides that is followed by default and may be argued with, as opposed to a hard invariant.
@@ -44,7 +56,13 @@ A rule of slides that is never traded away for another goal, and that an agent d
 
 The title line at the top of a slide, i.e. its `h2`, or the `h1` of a title slide.
 
-Avoid "head" for the heading of a figure slide, since a head is only the moving dot at the tip of a trajectory while it is traced.
+Avoid "head" for the heading of a figure slide, since a head is the moving dot at the tip of a trajectory while it is traced, or the title of a theorem as in amsthm.
+
+## Kind
+
+The sort of a theorem, e.g. lemma, definition, or proof, written in `data-kind`, which gives its title, its style, and its counter.
+
+Avoid "type" and "environment".
 
 ## Label
 
@@ -64,6 +82,12 @@ A drawn element of an animated plot, such as a curve or a trace.
 
 Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" or "trademark" for a file in `brand/`, "surface point" for a point of a surface, and "Markdown syntax" for the signs that format a text.
 
+## Part
+
+A named scope or curve of a TikZ figure that a slide shows as a step.
+
+Avoid "part" for an element of a slide or for a mark of an animated plot. A part is written with the key `part` in the source and with `data-part` on its span in the deck.
+
 ## Plate
 
 The figure box over the whole of a figure slide, behind its heading and its caption.
@@ -75,6 +99,24 @@ Avoid "plate" for a layout of a slide, such as the title, closing, or figure lay
 One set of axes of an animated plot, as a panel is in TyCHO.
 
 Avoid "panel" for the text column of a split slide.
+
+## Preamble
+
+The LaTeX definitions of a talk in `preamble.tex` next to the deck, i.e. its macros, environments, packages, and kinds of theorem.
+
+Avoid "macros file", "header", and "style file". The `theme/macros.js` of an old talk is moved into `preamble.tex` by `npm run tex`.
+
+## Reference
+
+The short entry of a cited paper in the footnote line of its slide, e.g. Koon et al., Chaos 10 (2000).
+
+Avoid "footnote" and "citation".
+
+## Sheet
+
+A panel of the editor in which a source is edited with a live preview, i.e. the Preamble sheet and the Bibliography sheet, and the sheet of a formula.
+
+Avoid "window", "dialog", and "pane".
 
 ## Slide Sorter
 
@@ -119,6 +161,18 @@ Avoid "panel", the class of the text column of a split slide in an old talk, whi
 An element whose text is edited in place in the editor, such as a heading, a paragraph, a list item, a cell of a table, a caption, the footnote, a display of math, a label, or the speaker notes.
 
 Avoid "block". The class `block` of the words of a title or closing slide in an old talk is `title-text`.
+
+## Theorem
+
+A paragraph of the class `theorem`, headed by the title of its kind, its number, and its name, as a theorem, a lemma, or a proof in amsthm. The head of a theorem is this title, number, and name, which is not the head of a trajectory.
+
+Avoid "statement", "block", "card", "box", and "environment".
+
+## TikZ figure
+
+A figure written in TikZ or pgfplots as a source `figures/name.tex`, compiled by `npm run tex` into the output `figures/name.js` with an SVG for each mode, and drawn into a `div.tikz` with the same name in `data-figure`.
+
+Avoid "TikZ" alone for the element, and avoid "plot", which means an animated plot.
 
 ## Tone
 
