@@ -10,6 +10,8 @@ import { readBody, type Request, type Response } from './http.ts';
 
 export const RELAY_BODY = 16 * 1024 * 1024;
 const PULLS = 4;
+// the files answered through the relay at once, each read into memory before it is pushed
+const FILE_ANSWERS = 8;
 
 export type RelayConfig = { relay: string; secret: string };
 
@@ -78,6 +80,8 @@ export class RelayLink {
   private controllers = new Set<AbortController>();
   // the requests of guests being answered, which a stop lets finish
   private serving = new Set<Promise<void>>();
+  private fileSlots = FILE_ANSWERS;
+  private fileQueue: (() => void)[] = [];
   private log: (message: string) => void;
 
   constructor(relay: string, secret: string, key: string, handle: (request: Request) => Promise<Response>, log: (message: string) => void) {
@@ -178,6 +182,7 @@ export class RelayLink {
     if (!item || typeof item.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(item.id)) return;
     let response: Response;
     let body: Buffer;
+    let slot = false;
     try {
       const ok = typeof item.method === 'string' && typeof item.path === 'string' && typeof item.query === 'string' && typeof item.body === 'string';
       if (!ok || !item.path.startsWith(`/${this.key}/`)) throw new Error('malformed request');
@@ -185,6 +190,11 @@ export class RelayLink {
       for (const [k, v] of Object.entries(item.headers ?? {})) if (typeof v === 'string') headers[k.toLowerCase()] = v;
       response = await this.handle({ method: item.method, path: item.path, query: item.query, headers, body: Buffer.from(item.body, 'base64'), direct: false });
       const b = response.body;
+      if (b !== undefined && typeof b === 'object' && !Buffer.isBuffer(b)) {
+        if (this.fileSlots > 0) this.fileSlots--;
+        else await new Promise<void>((done) => this.fileQueue.push(done));
+        slot = true;
+      }
       body = b === undefined ? Buffer.alloc(0) : typeof b === 'string' ? Buffer.from(b) : Buffer.isBuffer(b) ? b : await readBody(b);
     } catch (e) {
       response = { status: 502, headers: { 'Content-Type': 'text/plain' } };
@@ -204,6 +214,12 @@ export class RelayLink {
       await pushed.body?.cancel();
     } catch (e) {
       this.log(`an answer did not reach the relay: ${(e as Error).message}`);
+    } finally {
+      if (slot) {
+        const next = this.fileQueue.shift();
+        if (next) next();
+        else this.fileSlots++;
+      }
     }
   }
 }

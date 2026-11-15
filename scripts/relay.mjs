@@ -81,17 +81,30 @@ function forwardable(headers, max) {
   return out;
 }
 
-// the body of a request, or null when it is larger than max bytes
-async function bodyOf(req, max) {
-  if (Number(req.headers['content-length'] ?? 0) > max) return null;
-  const chunks = [];
-  let length = 0;
-  for await (const chunk of req) {
-    length += chunk.length;
-    if (length > max) return null;
-    chunks.push(chunk);
-  }
-  return Buffer.concat(chunks);
+// the body of a request, null when it is larger than max bytes, and busy when take refuses the
+// place of a chunk, which take is asked for before the chunk is kept. a refused body is paused
+// rather than destroyed, so that the refusal can still be sent
+function bodyOf(req, max, take = () => true) {
+  if (Number(req.headers['content-length'] ?? 0) > max) return Promise.resolve(null);
+  return new Promise((done, fail) => {
+    const chunks = [];
+    let length = 0;
+    const stop = (value) => {
+      req.off('data', onData);
+      req.pause();
+      done(value);
+    };
+    const onData = (chunk) => {
+      length += chunk.length;
+      if (length > max) return stop(null);
+      if (!take(chunk.length)) return stop('busy');
+      chunks.push(chunk);
+    };
+    req.on('data', onData);
+    req.once('end', () => done(Buffer.concat(chunks)));
+    req.once('error', fail);
+    req.once('close', () => fail(new Error('the request was aborted')));
+  });
 }
 
 function answer(res, status, body = '', headers = {}) {
@@ -191,7 +204,17 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
       return deliver(session);
     }
     if (action === 'push' && req.method === 'POST' && typeof id === 'string') {
-      const body = await bodyOf(req, limits.bodyBytes);
+      if (!session.pending.has(id)) return answer(res, 404, 'no request of this id, it may have timed out');
+      let reserved = 0;
+      const body = await bodyOf(req, limits.bodyBytes, (n) => {
+        if (held + n > limits.memoryBytes) return false;
+        held += n;
+        reserved += n;
+        return true;
+      });
+      // the place of the answer passes to entry.finish, which holds it until the guest has read it
+      held -= reserved;
+      if (body === 'busy') return answer(res, 503, 'the relay is busy');
       if (!body) return answer(res, 413, 'the answer is larger than the limit of the relay');
       const entry = session.pending.get(id);
       if (!entry) return answer(res, 404, 'no request of this id, it may have timed out');
@@ -220,7 +243,6 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     const declared = Number(req.headers['content-length'] ?? 0);
     if (held + Math.min(declared, limits.bodyBytes) > limits.memoryBytes) return answer(res, 503, 'the relay is busy', { Connection: 'close' });
     const id = randomBytes(9).toString('base64url');
-    // the place is held before the body is read, so that the cap holds for slow uploads as well
     const entry = {
       bytes: 0,
       release: () => {
@@ -232,6 +254,12 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
         entry.release();
         session.pending.delete(id);
         session.queue = session.queue.filter((item) => item.id !== id);
+        if (res.destroyed || res.writableEnded) return;
+        // an answer is held until the guest has read it, and a guest that stops reading is dropped
+        const size = Buffer.isBuffer(body) ? body.length : 0;
+        held += size;
+        res.once('close', () => (held -= size));
+        res.setTimeout(limits.guestMs, () => res.destroy());
         answer(res, status, body, headers);
       },
       timer: setTimeout(() => entry.finish(504, 'the edit command did not answer in time'), limits.guestMs),
@@ -245,12 +273,17 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
         session.queue = session.queue.filter((item) => item.id !== id);
       }
     });
-    const body = await bodyOf(req, limits.bodyBytes);
-    if (!body) return entry.finish(413, 'the body is larger than the limit of the relay', { Connection: 'close' });
+    // each chunk is counted against memoryBytes while it is read, so that the cap holds for slow
+    // uploads and for a chunked body that declares no length
+    const body = await bodyOf(req, limits.bodyBytes, (n) => {
+      if (session.pending.get(id) !== entry || held + n > limits.memoryBytes) return false;
+      held += n;
+      entry.bytes += n;
+      return true;
+    });
     if (session.pending.get(id) !== entry || sessions.get(key) !== session) return;
-    if (held + body.length > limits.memoryBytes) return entry.finish(503, 'the relay is busy');
-    entry.bytes = body.length;
-    held += body.length;
+    if (body === 'busy') return entry.finish(503, 'the relay is busy', { Connection: 'close' });
+    if (!body) return entry.finish(413, 'the body is larger than the limit of the relay', { Connection: 'close' });
     session.queue.push({ id, method: req.method, path, query: q < 0 ? '' : url.slice(q + 1), headers: forwardable(req.headers, limits.headers), body });
     deliver(session);
   }
