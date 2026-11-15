@@ -4,15 +4,18 @@
 
 import type { EventsAnswer, HelloAnswer, HelloRequest, NameAnswer, OpAnswer, OpPost, Taken, Token, Version } from '../protocol.ts';
 
+// a request with this status, or 0 for the network, may succeed when it is sent again later, e.g.
+// while the edit command restarts
+export const mayRetry = (status: number): boolean => status === 0 || status === 408 || status === 429 || status >= 500;
+
 export class Failure extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
     super(message);
     this.status = status;
   }
-  // the request may succeed when it is sent again later, e.g. while the edit command restarts
   get retried(): boolean {
-    return this.status === 0 || this.status === 408 || this.status === 429 || this.status >= 500;
+    return mayRetry(this.status);
   }
 }
 

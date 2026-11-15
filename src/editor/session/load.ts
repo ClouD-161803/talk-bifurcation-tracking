@@ -34,9 +34,10 @@ export function load(app: App, port: Port): () => Promise<boolean> {
   });
   return async () => {
     const entry = await loaded;
+    // the page does not edit the deck without the session, whose edits would not reach the others
     if (!entry) {
-      app.note = { text: 'theme/session.js could not be loaded, hence the deck is edited without a session', warn: true };
-      return false;
+      void new Dialog({ title: 'The session could not start', text: 'theme/session.js could not be loaded. Load the page again to join the session.', buttons: [{ label: 'Load again', value: 'reload', primary: true }], dismissable: false, onButton: () => location.reload() }).open('reload');
+      return new Promise(() => {});
     }
     const bar = document.querySelector<HTMLElement>('.beeson-edit-titlebar .right') ?? document.body;
     return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text), menu: (items, options) => openMenu(app, items, options), slidesAt, changedSlides, onSlides, media, presence: hooks(app), slides: slideHooks(app) });

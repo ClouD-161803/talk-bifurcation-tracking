@@ -50,7 +50,7 @@ export type Hooks = {
 };
 
 // the reconnects in s, the last one repeated
-const RETRY = [1, 2, 4, 8, 16, 30];
+export const RETRY = [1, 2, 4, 8, 16, 30];
 // an edit waits this long in ms before the state says Saving…
 const SAVING = 500;
 // the longest wait in ms for onChange after an apply that a change of the person ran into
