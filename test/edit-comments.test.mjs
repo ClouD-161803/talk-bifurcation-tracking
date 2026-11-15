@@ -58,6 +58,7 @@ const readJson = (file) => {
     return null;
   }
 };
+const bytesOf = (x) => Buffer.byteLength(JSON.stringify(x));
 
 test('a thread is anchored on the text that the page read, and moved to the current text', (t) => {
   const { authority, comments } = open(sessionDir(t), DECK);
@@ -104,7 +105,7 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
 });
 
 test('a thread takes replies, edits, deletes, a resolve, and a reopen, within its limits', (t) => {
-  const { authority, comments } = open(sessionDir(t), DECK, { maxChars: 60_000 });
+  const { authority, comments } = open(sessionDir(t), DECK, { maxBytes: 60_000 });
   const thread = comments.add(ANN, onDeck(authority, 'Question'));
   const replied = comments.reply(thread.id, BO, { text: 'Answer', mentions: [ANN] });
   const reply = replied.replies[0];
@@ -122,15 +123,16 @@ test('a thread takes replies, edits, deletes, a resolve, and a reopen, within it
   assert.equal(comments.reply('nope', BO, { text: 'x' }).status, 404);
   for (let i = 0; i < 200; i++) assert.equal(comments.reply(thread.id, BO, { text: `r${i}` }).replies.length, i + 1);
   assert.equal(comments.reply(thread.id, BO, { text: 'one too many' }).status, 409);
-  // the characters of every text of the deck together
+  // the bytes of every thread as the comments are sent, together
   let added = 0;
   while (comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).id) added++;
-  assert.equal(added, 14);
+  const size = Buffer.byteLength(JSON.stringify(comments.list(ANN).comments));
+  assert.ok(added > 0 && size <= 60_000 && size + 4000 > 60_000, `${added} threads of ${size} bytes`);
   assert.equal(comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).status, 413);
   assert.equal(comments.remove(thread.id, BO, {}).status, 403);
   assert.equal(comments.remove(thread.id, ANN, {}), null);
   assert.equal(comments.list(ANN).comments.length, added);
-  assert.ok(comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).id, 'a delete gives the characters back');
+  assert.ok(comments.add(ANN, onDeck(authority, 'x'.repeat(4000))).id, 'a delete gives the bytes back');
 });
 
 test('a deck holds at most 2000 threads', (t) => {
@@ -296,6 +298,47 @@ test('a thread sent with an old base is moved to the current text in less than h
     reads(authority.text, thread.anchor, '<p style="left: 2px">Paragraph 2 of slide 9,');
   }
   assert.ok(2 * added < entered, `the thread took ${(added / 1e6).toFixed(1)} ms, and the operations ${(entered / 1e6).toFixed(1)} ms`);
+});
+
+test('the comments stay under the body limit of the relay, counted in bytes as they are sent, and a deletion is never refused', async (t) => {
+  const odd = '\u0001'.repeat(4000);
+  await t.test('a limit given', () => {
+    const { authority, comments } = open(sessionDir(t), DECK, { maxBytes: 100_000 });
+    const ids = [];
+    for (let n = 0; n < 100; n++) {
+      const thread = comments.add(ANN, onDeck(authority, odd));
+      if (!thread.id) {
+        assert.equal(thread.status, 413);
+        break;
+      }
+      ids.push(thread.id);
+    }
+    assert.ok(ids.length >= 1 && ids.length < 100, `${ids.length} threads added`);
+    assert.ok(bytesOf(comments.list(ANN)) <= 100_000, `${bytesOf(comments.list(ANN))} bytes`);
+    assert.equal(comments.reply(ids[0], BO, { text: odd }).status, 413);
+    assert.equal(comments.edit(ids[0], ANN, { text: odd }).id, ids[0]);
+    assert.equal(comments.remove(ids[0], ANN, {}), null);
+    assert.ok(comments.add(ANN, onDeck(authority, odd)).id, 'a delete gives the bytes back');
+  });
+
+  await t.test('the limit of the edit command', () => {
+    const { authority, comments } = open(sessionDir(t), DECK);
+    let added = 0;
+    while (added < 2000 && comments.add(ANN, onDeck(authority, odd)).id) added++;
+    const size = bytesOf(comments.list(ANN));
+    assert.ok(size <= 8 * 1024 * 1024, `${added} threads of ${size} bytes`);
+  });
+
+  await t.test('the texts of removed elements past the limit', () => {
+    const deck = DECK.replace('<p>Second slide</p>', ['<p>A', '<p>B', '<p>C'].map((p) => `${p}${'\u0001'.repeat(3000)}</p>`).join('\n  '));
+    const { authority, comments } = open(sessionDir(t), deck, { maxBytes: 30_000 });
+    for (const p of ['<p>A', '<p>B', '<p>C']) assert.ok(comments.add(ANN, { base: authority.version, anchor: tagRange(deck, p), slide: slideRange(deck, p), text: p }).id);
+    replace(authority, /\n {2}<p>A[^]*C\u0001+<\/p>/, '');
+    const list = comments.list(ANN);
+    assert.ok(list.comments.every((c) => c.removed), 'every element is removed');
+    assert.ok(list.comments.some((c) => c.removed.text === null), 'a removed text is left out');
+    assert.ok(bytesOf(list) <= 30_000 + 1000, `${bytesOf(list)} bytes`);
+  });
 });
 
 test('a thread on an element of any tag name is read again at a start, and a thread that cannot be read is left out without the others', async (t) => {
