@@ -245,7 +245,8 @@ const keyOf = (s: PresenceState): string => JSON.stringify([s.v, s.slide, s.sele
 
 export class Presence {
   readonly client: Client;
-  // added to Date.now(), e.g. by a test that moves the clock of the floor rule
+  // added to performance.now(), e.g. by a test that moves the clock of the floor rule. the clock of
+  // the machine is not read, since it can be set back
   skew = 0;
   private readonly log = new Log();
   private readonly changes = new Changes();
@@ -357,7 +358,7 @@ export class Presence {
   }
 
   now(): number {
-    return Date.now() + this.skew;
+    return performance.now() + this.skew;
   }
 
   resolved(): Resolved[] {
