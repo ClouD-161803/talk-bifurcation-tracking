@@ -157,6 +157,15 @@ test('a self-closing tag of a formatting element in a text element asks for a re
   await steps(t, [['a rect of SVG', (s) => once(s, 'Direct the viewer', 'Direct <svg viewBox="0 0 1 1" width="20" height="20"><rect width="1" height="1"/></svg>the viewer'), false]]);
 });
 
+// the theme sets a TyCHO viewer to the mode of the deck at an open, see syncViewers() in src/main.ts
+test('the theme of a TyCHO viewer follows the mode of the deck, unless the viewer keeps its theme', async (t) => {
+  await steps(t, [
+    ['a light theme', (s) => once(s, '<tycho-viewer theme="dark" kiosk', '<tycho-viewer theme="light" kiosk'), false],
+    ['the theme kept', (s) => once(s, '<tycho-viewer theme="light" kiosk', '<tycho-viewer theme="light" data-keep-theme kiosk'), false],
+    ['the theme not kept', (s) => once(s, ' data-keep-theme kiosk', ' kiosk'), false],
+  ]);
+});
+
 test('two changes in two text nodes of a paragraph with a formula keep both text nodes', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
