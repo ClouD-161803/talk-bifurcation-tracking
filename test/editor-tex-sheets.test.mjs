@@ -369,6 +369,63 @@ test('a citation taken out of the deck without a sheet open is taken out of tex.
   assert.deepEqual(errors(page), []);
 });
 
+test('a source changed next to the deck after the sheets read it is read again before a save, and an edited source is not written over it', { timeout: 120000 }, async (t) => {
+  const page = await open();
+  t.after(() => page.close());
+  await sheet(page, 'file.bibliography');
+  await page.evaluate(`document.querySelector('${SHEET} button[data-key="koon2000"]').click()`);
+  await typeInto(page, '{2001}', '{2000}');
+  await press(page, 'Escape');
+  // the preamble is changed next to the deck while it is open, e.g. by an agent
+  await page.evaluate(SAVE_ONTO('tex-reread', { 'preamble.tex': PREAMBLE + EXTERNAL }));
+  const saved = await page.evaluate(SAVE_INTO('tex-reread'));
+  assert.equal(saved.files['preamble.tex'], PREAMBLE + EXTERNAL);
+  assert.equal(saved.files['tex.js'], npmRunTex({ 'preamble.tex': PREAMBLE + EXTERNAL, 'references.bib': saved.files['references.bib'] }));
+  assert.match(saved.files['tex.js'], /"Z": "\\\\mathbb\{Z\}"/);
+
+  // an edit of the preamble in its sheet is not written over a preamble changed next to the deck
+  const edited = await open();
+  t.after(() => edited.close());
+  await sheet(edited, 'file.preamble');
+  await typeInto(edited, ADDED);
+  await press(edited, 'Escape');
+  await edited.evaluate(SAVE_ONTO('tex-kept', { 'preamble.tex': PREAMBLE + EXTERNAL }));
+  const kept = await edited.evaluate(SAVE_INTO('tex-kept'));
+  assert.equal(kept.files['preamble.tex'], PREAMBLE + EXTERNAL);
+  assert.equal(kept.files['tex.js'], undefined);
+  assert.match((await status(edited)).message, /preamble\.tex was changed next to the deck/);
+  assert.deepEqual(errors(page), []);
+});
+
+test('a citation taken out without a sheet open does not write over a tex.js that npm run tex wrote since the deck was opened', { timeout: 120000 }, async (t) => {
+  const page = await open();
+  t.after(() => page.close());
+  const newer = npmRunTex({ 'preamble.tex': PREAMBLE + EXTERNAL });
+  await page.evaluate(SAVE_ONTO('tex-newer', { 'preamble.tex': PREAMBLE + EXTERNAL, 'references.bib': BIB, 'tex.js': newer }));
+  await page.evaluate(`document.querySelector('.reveal .slides cite[data-key="gomez2004"]').remove(), true`);
+  const saved = await page.evaluate(SAVE_INTO('tex-newer'));
+  assert.equal(saved.files['tex.js'], npmRunTex({ 'preamble.tex': PREAMBLE + EXTERNAL, 'index.html': saved.files['index.html'] }));
+  assert.match(saved.files['tex.js'], /"Z": /);
+  assert.deepEqual(errors(page), []);
+});
+
+test('a references.bib read again before a save keeps the chosen entry in the Bibliography sheet', { timeout: 120000 }, async (t) => {
+  const OTHER = '@misc{aaa2020,\n  title = {An entry added above the others},\n  year  = {2020},\n}\n\n';
+  const page = await open();
+  t.after(() => page.close());
+  await sheet(page, 'file.preamble');
+  await typeInto(page, ADDED);
+  await press(page, 'Escape');
+  await sheet(page, 'file.bibliography');
+  await page.evaluate(`document.querySelector('${SHEET} button[data-key="koon2000"]').click()`);
+  const chosen = await value(page);
+  assert.match(chosen, /^@article\{koon2000,/);
+  await page.evaluate(SAVE_ONTO('tex-entry', { 'references.bib': OTHER + BIB }));
+  await page.evaluate(SAVE_INTO('tex-entry'));
+  assert.equal(await value(page), chosen);
+  assert.deepEqual(errors(page), []);
+});
+
 test('on file: a save that cites a paper missing from tex.js, with the folder refused, writes the deck and says that tex.js was not written', { timeout: 120000 }, async (t) => {
   const page = await editorPage(browser, { deck: DECK, query: 'edit&still&edit-platform=other' });
   t.after(() => page.close());
