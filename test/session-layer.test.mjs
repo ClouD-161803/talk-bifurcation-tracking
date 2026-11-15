@@ -165,6 +165,41 @@ test('the flag of an element at the top edge of the slide is drawn whole in a la
   clean(ben);
 });
 
+// the caret of the page in px of the slide: its center, its length, and its angle from upright, from
+// the box of the turned caret, whose width is the length times the sine of the angle
+const REAL = `(() => {
+  const r = getSelection().getRangeAt(0).getClientRects()[0];
+  const sl = ${C}.app.slides(); const f = sl.getBoundingClientRect(); const k = f.width / sl.offsetWidth;
+  return { x: (r.left + r.width / 2 - f.left) / k, y: (r.top + r.height / 2 - f.top) / k, length: Math.hypot(r.width, r.height) / k };
+})()`;
+// the caret bar of the layer in px of the slide: its center, its length, and its angle
+const BAR = `(() => {
+  const c = document.querySelector('.beeson-presence .caret');
+  if (!c) return null;
+  const r = c.getBoundingClientRect();
+  const sl = ${C}.app.slides(); const f = sl.getBoundingClientRect(); const k = f.width / sl.offsetWidth;
+  const m = new DOMMatrix(getComputedStyle(c).transform);
+  return { x: (r.left + r.width / 2 - f.left) / k, y: (r.top + r.height / 2 - f.top) / k, length: c.offsetHeight / k, deg: (Math.atan2(m.b, m.a) * 180) / Math.PI };
+})()`;
+
+test('the caret bar in a turned text element is turned with it and as long as the line', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [onOne(`<div class="shape tone-accent" id="turned" style="width: 400px; height: 200px; translate: 1200px 300px; rotate: 40deg"><p>turned words</p></div>`)] });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  await front(ana);
+  await caretAtEnd(ana, el(0, '#turned p'));
+  // the caret at the end of the text node, which has a box, unlike a caret between elements
+  await ana.evaluate(`(() => { const t = ${el(0, '#turned p')}.lastChild; getSelection().collapse(t, t.length); })()`);
+  const real = await ana.evaluate(REAL);
+  await until(() => ben.evaluate(`${C}.resolved()[0]?.caret?.at === 'turned words'.length`), 'the caret of Ana at the end of the text on the page of Ben');
+  await untilDrawn(ben, (d) => d.carets.length === 1, 'the caret of Ana on the page of Ben');
+  const bar = await ben.evaluate(BAR);
+  assert.ok(Math.abs(bar.deg - 40) < 1, `the bar is turned by ${bar.deg} degrees`);
+  assert.ok(Math.abs(bar.length - real.length) < 2 && Math.hypot(bar.x - real.x, bar.y - real.y) < 3, `the bar ${JSON.stringify(bar)} lies on the caret ${JSON.stringify(real)}`);
+  clean(ana);
+  clean(ben);
+});
+
 // counts the reads of layout from now on in window.__reads, with those made by theme/session.js
 const COUNT = `(() => {
   if (window.__reads) { window.__reads = { all: 0, session: 0 }; return; }
