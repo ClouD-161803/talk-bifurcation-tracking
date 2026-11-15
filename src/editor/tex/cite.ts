@@ -354,9 +354,14 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     if (t.text.endsWith('}')) {
       t.node.deleteData(t.at - 1, 1);
       getSelection()!.collapse(t.node, t.at - 1);
-      const words = t.text.slice(t.text.lastIndexOf(',') + 1, -1).trim();
       fill();
-      if (open.items.some((e) => e.key === words) || open.items.length) accept();
+      // a key that matches no paper keeps its brace, as typed TeX
+      if (!open.items.length) {
+        t.node.insertData(t.at - 1, '}');
+        getSelection()!.collapse(t.node, t.at);
+        return close(false);
+      }
+      accept();
       return;
     }
     if (t.text.endsWith(',')) commaIn(t.text, (start, end, key) => {
