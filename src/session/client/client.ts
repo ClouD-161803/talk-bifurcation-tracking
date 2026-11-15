@@ -183,7 +183,15 @@ export class Client {
 
   // also by a part for an event that it owns, e.g. resolved of presence.ts
   emit<K extends keyof ClientEvents>(event: K, ...args: ClientEvents[K]): void {
-    for (const fn of [...(this.listeners.get(event) ?? [])]) (fn as (...a: ClientEvents[K]) => void)(...args);
+    for (const fn of [...(this.listeners.get(event) ?? [])]) {
+      try {
+        (fn as (...a: ClientEvents[K]) => void)(...args);
+      } catch (e) {
+        // a listener that fails is reported, and the client goes on, e.g. with its poll
+        if (typeof reportError === 'function') reportError(e);
+        else console.error(e);
+      }
+    }
   }
 
   // the address of a request under .session/, e.g. url('share')
