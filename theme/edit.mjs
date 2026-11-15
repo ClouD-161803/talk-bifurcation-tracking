@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
 import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync6, realpathSync as realpathSync2, unlinkSync as unlinkSync4, writeFileSync as writeFileSync4 } from "node:fs";
-import { mkdir, readdir, readFile as readFile3, realpath as realpath3, stat as stat3, writeFile as writeFile5 } from "node:fs/promises";
+import { mkdir, readdir, readFile as readFile3, realpath as realpath3, stat as stat4, writeFile as writeFile5 } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createHash, randomBytes as randomBytes5 } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -972,6 +972,8 @@ var Disk = class {
     });
     this.onWritten = options.onWritten ?? (() => {
     });
+    this.onPoll = options.onPoll ?? (() => {
+    });
     this.timing = {
       quiet: options.quiet ?? QUIET,
       latest: options.latest ?? LATEST,
@@ -1002,7 +1004,10 @@ var Disk = class {
     authority.observe(() => this.schedule());
   }
   start() {
-    this.poller = setInterval(() => void this.exclusive(() => this.check(Infinity)), this.timing.poll);
+    this.poller = setInterval(() => {
+      void this.exclusive(() => this.check(Infinity));
+      this.onPoll();
+    }, this.timing.poll);
   }
   // an operation was applied: the file is written after 250 ms of quiet, and at the latest 1 s
   // after the first operation that is not written
@@ -2079,7 +2084,7 @@ var RelayLink = class {
 
 // src/edit/tex.ts
 import { readFileSync as readFileSync5, statSync as statSync2 } from "node:fs";
-import { readFile as readFile2, unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
+import { readFile as readFile2, stat as stat3, unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
 import { randomBytes as randomBytes4 } from "node:crypto";
 import { join as join4 } from "node:path";
 
@@ -2704,6 +2709,7 @@ function texScript(tex) {
 }
 
 // src/edit/tex.ts
+var STABLE2 = 300;
 var signature2 = (s) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 var keysOf = (html) => citedKeys(html).sort().join(",");
 function deriveTex(dir, html) {
@@ -2739,19 +2745,27 @@ function deriveTex(dir, html) {
   return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread };
 }
 var TexWriter = class {
-  // html is the text of index.html at the start, and nothing is written
+  // html is the text of index.html at the start. the files are read for their signatures, and
+  // nothing is written
   constructor(dir, html, options = {}) {
-    // the derivations run one at a time
+    this.sourcesSeen = null;
+    this.texSeen = null;
+    // the derivations and the polls run one at a time
     this.chain = Promise.resolve();
     this.due = false;
+    this.polling = false;
+    this.stopped = false;
     this.dir = dir;
     this.file = join4(dir, "tex.js");
     this.log = options.log ?? (() => {
     });
     this.onChange = options.onChange ?? (() => {
     });
+    this.stable = options.stable ?? STABLE2;
     this.html = html;
     this.keys = keysOf(html);
+    this.watched = deriveTex(dir, html).files;
+    this.texSig = sigOf(this.file);
   }
   // index.html holds html on disk. tex.js is derived again when it cites other keys
   written(html) {
@@ -2759,11 +2773,24 @@ var TexWriter = class {
     this.html = html;
     if (keysOf(html) !== this.keys) this.derive();
   }
-  // resolves once the derivation of the last write of index.html is over
+  // a stat of the files of the last derivation and of tex.js, at each poll of index.html
+  poll() {
+    if (this.polling || this.stopped) return;
+    this.polling = true;
+    void this.run(async () => {
+      try {
+        await this.look();
+      } finally {
+        this.polling = false;
+      }
+    });
+  }
+  // no poll after a stop. resolves once the derivation of the last write of index.html is over
   async stop() {
+    this.stopped = true;
     await this.idle();
   }
-  // resolves once every derivation is over
+  // resolves once every derivation and poll is over
   async idle() {
     let chain;
     do
@@ -2781,10 +2808,31 @@ var TexWriter = class {
       return this.write();
     });
   }
+  async look() {
+    const now = performance.now();
+    const sigs = await Promise.all([...this.watched.keys()].map(async (name) => [name, await statSig(join4(this.dir, name))]));
+    const sources = sigs.map(([name, sig]) => `${name}
+${sig}`).join("\n");
+    if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
+      if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive();
+    } else this.sourcesSeen = null;
+    const tex = await statSig(this.file);
+    if (tex !== this.texSig) {
+      if (this.texSeen?.sig !== tex) this.texSeen = { sig: tex, at: now };
+      else if (now - this.texSeen.at >= this.stable) {
+        this.texSig = tex;
+        this.texSeen = null;
+        this.onChange();
+      }
+    } else this.texSeen = null;
+  }
   async write() {
     const html = this.html;
     const derived = deriveTex(this.dir, html);
     this.keys = keysOf(html);
+    this.watched = derived.files;
+    this.sourcesSeen = null;
     if (!derived.sources) return;
     if (derived.unread.length) {
       this.log(`tex.js is not written, since ${derived.unread.join(", and ")}`);
@@ -2795,7 +2843,10 @@ var TexWriter = class {
     const tmp = join4(this.dir, `.tex.js.${randomBytes4(6).toString("hex")}.tmp`);
     try {
       await writeFile4(tmp, derived.text);
+      const made = await stat3(tmp);
       await renameRetried(tmp, this.file);
+      this.texSig = signature2(made);
+      this.texSeen = null;
       this.onChange();
     } catch (e) {
       await unlink3(tmp).catch(() => {
@@ -2804,6 +2855,14 @@ var TexWriter = class {
     }
   }
 };
+function sigOf(file) {
+  try {
+    return signature2(statSync2(file));
+  } catch {
+    return "";
+  }
+}
+var statSig = (file) => stat3(file).then(signature2, () => "");
 
 // src/edit/command.ts
 var DEFAULT_PORT = 8765;
@@ -2910,7 +2969,7 @@ async function sameFile(dir, name, size2, hash) {
   for (const f of found.sort((a, b) => a.n - b.n)) {
     const file = join5(dir, f.name);
     try {
-      if ((await stat3(file)).size === size2 && sha256(await readFile3(file)) === hash) return f.name;
+      if ((await stat4(file)).size === size2 && sha256(await readFile3(file)) === hash) return f.name;
     } catch {
     }
   }
@@ -2935,7 +2994,7 @@ async function start(options = {}) {
     if (authority.written(n)) appliedTable.write(authority.table());
     tex.written(written2);
   };
-  const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
+  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join5(root, ".session", "people.json"), log);
   let port = 0;
   let relay = null;

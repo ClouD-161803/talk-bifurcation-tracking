@@ -1,17 +1,21 @@
 // tex.js of a talk folder written by the edit command from preamble.tex, references.bib, and the
 // deck, with the text that npm run tex writes. it is derived again after a write of index.html that
-// cites other papers. it is written only when its text changes, and never in a folder without
-// preamble.tex and references.bib, whose tex.js may be shared with another deck. every write of
-// tex.js is counted, and the pages draw the deck again with it
+// cites other papers, and after a change on disk of preamble.tex, of references.bib, or of a file
+// that the preamble reads, once the change is stable. it is written only when its text changes,
+// and never in a folder without preamble.tex and references.bib, whose tex.js may be shared with
+// another deck. every change of tex.js on disk, by the edit command or by another program, is
+// counted, and the pages draw the deck again with it
 
 import { readFileSync, statSync, type Stats } from 'node:fs';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { readBibtex } from '../bibtex.ts';
 import { readPreamble, type Resolve } from '../preamble.ts';
 import { citedKeys, texOf, texScript } from '../texfile.ts';
 import { renameRetried } from './disk.ts';
+
+const STABLE = 300;
 
 // the change time is left out, as in disk.ts, since a rename changes it on some systems
 const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
@@ -69,32 +73,50 @@ export function deriveTex(dir: string, html: string): DerivedTex {
   return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread };
 }
 
-// onChange is called at each write of tex.js
+// onChange is called at each change of tex.js on disk. stable is the time in ms that a changed file
+// must not change before it is taken, shorter in the tests
 export type TexOptions = {
   log?: (message: string) => void;
   onChange?: () => void;
+  stable?: number;
 };
+
+// a signature that differs from the one taken last, and the time at which it was first seen
+type Seen = { sig: string; at: number } | null;
 
 export class TexWriter {
   private dir: string;
   private file: string;
   private log: (message: string) => void;
   private onChange: () => void;
+  private stable: number;
   // the text of index.html written last, and the cited keys of the text of the last derivation
   private html: string;
   private keys: string;
-  // the derivations run one at a time
+  // the files read or looked up by the last derivation, with their signatures, and a change of them
+  private watched: Map<string, string>;
+  private sourcesSeen: Seen = null;
+  // the signature of tex.js written or counted last, and a change of it
+  private texSig: string;
+  private texSeen: Seen = null;
+  // the derivations and the polls run one at a time
   private chain: Promise<void> = Promise.resolve();
   private due = false;
+  private polling = false;
+  private stopped = false;
 
-  // html is the text of index.html at the start, and nothing is written
+  // html is the text of index.html at the start. the files are read for their signatures, and
+  // nothing is written
   constructor(dir: string, html: string, options: TexOptions = {}) {
     this.dir = dir;
     this.file = join(dir, 'tex.js');
     this.log = options.log ?? (() => {});
     this.onChange = options.onChange ?? (() => {});
+    this.stable = options.stable ?? STABLE;
     this.html = html;
     this.keys = keysOf(html);
+    this.watched = deriveTex(dir, html).files;
+    this.texSig = sigOf(this.file);
   }
 
   // index.html holds html on disk. tex.js is derived again when it cites other keys
@@ -104,12 +126,26 @@ export class TexWriter {
     if (keysOf(html) !== this.keys) this.derive();
   }
 
-  // resolves once the derivation of the last write of index.html is over
+  // a stat of the files of the last derivation and of tex.js, at each poll of index.html
+  poll(): void {
+    if (this.polling || this.stopped) return;
+    this.polling = true;
+    void this.run(async () => {
+      try {
+        await this.look();
+      } finally {
+        this.polling = false;
+      }
+    });
+  }
+
+  // no poll after a stop. resolves once the derivation of the last write of index.html is over
   async stop(): Promise<void> {
+    this.stopped = true;
     await this.idle();
   }
 
-  // resolves once every derivation is over
+  // resolves once every derivation and poll is over
   async idle(): Promise<void> {
     let chain;
     do await (chain = this.chain);
@@ -129,10 +165,31 @@ export class TexWriter {
     });
   }
 
+  private async look(): Promise<void> {
+    const now = performance.now();
+    const sigs = await Promise.all([...this.watched.keys()].map(async (name) => [name, await statSig(join(this.dir, name))] as const));
+    const sources = sigs.map(([name, sig]) => `${name}\n${sig}`).join('\n');
+    if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
+      if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive();
+    } else this.sourcesSeen = null;
+    const tex = await statSig(this.file);
+    if (tex !== this.texSig) {
+      if (this.texSeen?.sig !== tex) this.texSeen = { sig: tex, at: now };
+      else if (now - this.texSeen.at >= this.stable) {
+        this.texSig = tex;
+        this.texSeen = null;
+        this.onChange();
+      }
+    } else this.texSeen = null;
+  }
+
   private async write(): Promise<void> {
     const html = this.html;
     const derived = deriveTex(this.dir, html);
     this.keys = keysOf(html);
+    this.watched = derived.files;
+    this.sourcesSeen = null;
     if (!derived.sources) return;
     // a tex.js without the macros of a file that is not read would break every page
     if (derived.unread.length) {
@@ -144,7 +201,10 @@ export class TexWriter {
     const tmp = join(this.dir, `.tex.js.${randomBytes(6).toString('hex')}.tmp`);
     try {
       await writeFile(tmp, derived.text);
+      const made = await stat(tmp);
       await renameRetried(tmp, this.file);
+      this.texSig = signature(made);
+      this.texSeen = null;
       this.onChange();
     } catch (e) {
       await unlink(tmp).catch(() => {});
@@ -152,3 +212,13 @@ export class TexWriter {
     }
   }
 }
+
+function sigOf(file: string): string {
+  try {
+    return signature(statSync(file));
+  } catch {
+    return '';
+  }
+}
+
+const statSig = (file: string) => stat(file).then(signature, () => '');

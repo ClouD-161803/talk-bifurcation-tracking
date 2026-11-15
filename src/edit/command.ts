@@ -203,7 +203,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     tex.written(written);
   };
   // the pages are told of a write that fails, since an operation is acknowledged before it is written
-  const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
+  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
   let port = 0;
   let relay: RelayLink | null = null;
