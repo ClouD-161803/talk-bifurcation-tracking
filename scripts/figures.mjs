@@ -136,6 +136,9 @@ export function wrapperOf({ mode = 'light', preamble = false, width = null, heig
     '\\usepackage[T1]{fontenc}\\usepackage{lmodern}\\usepackage{tikz,pgfplots}\\pgfplotsset{compat=1.18}',
     `\\usepackage[${mode}]{beeson-tikz}`,
   ];
+  // a preamble defines an operator with amsopn and a kind of theorem with amsthm while it is read.
+  // neither takes an option that a paper sets, hence both are loaded before it
+  lines.push('\\usepackage{amsopn,amsthm}');
   if (preamble) lines.push(`\\input{${PREAMBLE}}`);
   // MathJax knows the commands of these packages without a package, hence a preamble may use them.
   // they are loaded after the preamble, so that one loaded there with options does not clash
