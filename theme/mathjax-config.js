@@ -13,8 +13,9 @@ window.MathJax = {
     displayMath: [['\\[', '\\]']],
     packages: { '[+]': window.beesonTex?.packages ?? [] },
     // the macros and the environments of preamble.tex, which npm run tex writes into tex.js, after
-    // three commands of LaTeX that MathJax does not have
-    macros: { ensuremath: ['#1', 1], xspace: '', bm: ['\\boldsymbol{#1}', 1], ...window.beesonTex?.macros },
+    // three commands of LaTeX that MathJax does not have. an older talk without a tex.js keeps the
+    // macros of its theme/macros.js until npm run tex moves them into preamble.tex
+    macros: { ensuremath: ['#1', 1], xspace: '', bm: ['\\boldsymbol{#1}', 1], ...(window.beesonTex?.macros ?? window.beesonMacros) },
     environments: { ...window.beesonTex?.environments },
   },
   output: {
