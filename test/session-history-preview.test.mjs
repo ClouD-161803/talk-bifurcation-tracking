@@ -275,6 +275,23 @@ test('a new list leaves the bar alone, the text of a version is read once per pr
     await press(ann, 'Escape');
     await ann.waitFor(`!document.querySelector('.beeson-session-menu') && document.activeElement === window.__more`);
   });
+
+  await t.test('the preview keeps the text of the version it shows, and of no other one', async () => {
+    await preview(second, 'Second slide changed');
+    await preview(first, 'One first');
+    await download();
+    assert.deepEqual(await ann.evaluate(`window.__reads(${JSON.stringify(first)})`), ['fetch', 'fetch']);
+  });
+
+  await t.test('once Version History is left, the preview keeps neither the document nor the text of the version', async () => {
+    await press(ann, 'Escape');
+    await ann.waitFor(`!(${SHOWN})`);
+    assert.equal(await documents(), before);
+    await openPane(ann);
+    await preview(first, 'One first');
+    await download();
+    assert.deepEqual(await ann.evaluate(`window.__reads(${JSON.stringify(first)})`), ['fetch', 'fetch', 'fetch']);
+  });
   clean(ann);
 });
 
