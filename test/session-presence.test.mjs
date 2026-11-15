@@ -373,3 +373,25 @@ test('a hold beats every 5 s, is lost after 15 s of silence, and is taken by ano
   clean(ana);
   clean(ben);
 });
+
+test('of two pages that claim one text element at the same time, the smaller client id keeps it', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await hold(ana);
+  await hold(ben);
+  await caretAtEnd(ana, p);
+  await caretAtEnd(ben, p);
+  await release(ana);
+  await release(ben);
+  const ids = { ana: await ana.evaluate(`${C}.client`), ben: await ben.evaluate(`${C}.client`) };
+  const [keeper, loser, name] = ids.ana < ids.ben ? [ana, ben, 'Ana'] : [ben, ana, 'Ben'];
+  await until(() => loser.evaluate(`${LOCKED(p)} && ${P}.held === null`), 'the page with the larger client id to give the paragraph up');
+  assert.equal(await loser.evaluate(BUBBLE), `${name} is typing here. You can edit this text once they leave it or stop for 30 s.`);
+  assert.equal(await loser.evaluate(`${p}.contains(getSelection().focusNode)`), false);
+  assert.equal(await keeper.evaluate(`${P}.held === ${p} && !${LOCKED(p)}`), true);
+  await until(() => keeper.evaluate(`${C}.resolved()[0]?.held === null`), 'the claim of the other page to end on the page that keeps the paragraph');
+  clean(ana);
+  clean(ben);
+});
