@@ -139,9 +139,32 @@ function applyLive(el: Element, edit: TagEdit): void {
 
 export class Doc {
   private readonly host: DocHost;
+  // the operations in flight, e.g. an insert that waits for MathJax, and the calls of idle() that
+  // wait for their end
+  private running = 0;
+  private readonly waiting: (() => void)[] = [];
 
   constructor(host: DocHost) {
     this.host = host;
+  }
+
+  // whether an operation of the model is in flight
+  get busy(): boolean {
+    return this.running > 0;
+  }
+
+  // resolved once no operation of the model is in flight
+  idle(): Promise<void> {
+    return this.running ? new Promise((done) => this.waiting.push(done)) : Promise.resolve();
+  }
+
+  // counts an operation in flight until the function returned is called
+  private enter(): () => void {
+    this.running += 1;
+    return () => {
+      this.running -= 1;
+      if (!this.running) for (const done of this.waiting.splice(0)) done();
+    };
   }
 
   private need(): { source: Source; pairing: Pairing } {
@@ -237,25 +260,30 @@ export class Doc {
   // inserts the units of texts into parent before the node before, as one entry of the history. a
   // text is an element without the white space before it, which is that of the units of parent
   async insert(texts: string | string[], parent: Element, before: Node | null = null, label = 'insert'): Promise<Element[]> {
-    const nodes: Element[] = [];
-    let ref = before;
-    for (const text of [...(typeof texts === 'string' ? [texts] : texts)].reverse()) {
-      ref = await this.place(text, parent, ref);
-      nodes.unshift(ref as Element);
+    const done = this.enter();
+    try {
+      const nodes: Element[] = [];
+      let ref = before;
+      for (const text of [...(typeof texts === 'string' ? [texts] : texts)].reverse()) {
+        ref = await this.place(text, parent, ref);
+        nodes.unshift(ref as Element);
+      }
+      let recs: Detached[] = [];
+      this.host.record({
+        label,
+        undo: async () => {
+          recs = nodes.map((n) => this.detach(n));
+          await this.after(parent);
+        },
+        redo: async () => {
+          for (const r of [...recs].reverse()) await this.attach(r, false);
+          await this.after(parent);
+        },
+      });
+      return nodes;
+    } finally {
+      done();
     }
-    let recs: Detached[] = [];
-    this.host.record({
-      label,
-      undo: async () => {
-        recs = nodes.map((n) => this.detach(n));
-        await this.after(parent);
-      },
-      redo: async () => {
-        for (const r of [...recs].reverse()) await this.attach(r, false);
-        await this.after(parent);
-      },
-    });
-    return nodes;
   }
 
   // a new slide of the layout before the slide before, or at the end
@@ -282,16 +310,21 @@ export class Doc {
   }
 
   async remove(el: Element, label = 'remove'): Promise<void> {
-    let rec = this.detach(el);
-    await this.after(rec.parent);
-    this.host.record({
-      label,
-      undo: () => this.attach(rec),
-      redo: async () => {
-        rec = this.detach(el);
-        await this.after(rec.parent);
-      },
-    });
+    const done = this.enter();
+    try {
+      let rec = this.detach(el);
+      await this.after(rec.parent);
+      this.host.record({
+        label,
+        undo: () => this.attach(rec),
+        redo: async () => {
+          rec = this.detach(el);
+          await this.after(rec.parent);
+        },
+      });
+    } finally {
+      done();
+    }
   }
 
   // moves el into parent before the node before, or at the end
@@ -305,7 +338,12 @@ export class Doc {
       p.insertBefore(el, n && n !== el && n.parentNode === p ? n : null);
       await this.after(el);
     };
-    await put(parent, before);
+    const done = this.enter();
+    try {
+      await put(parent, before);
+    } finally {
+      done();
+    }
     this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before) });
   }
 
@@ -331,24 +369,29 @@ export class Doc {
     const parent = el.parentElement;
     if (!parent) throw new Error('the element is not on the page');
     const u = this.unit(el);
-    const node = await this.place(edit(u.body) + u.trail, parent, el, u.lead);
-    let rec = this.detach(el);
-    await this.after(parent);
-    let back: Detached | null = null;
-    this.host.record({
-      label,
-      undo: async () => {
-        await this.attach(rec, false);
-        back = this.detach(node);
-        await this.after(parent);
-      },
-      redo: async () => {
-        if (back) await this.attach(back, false);
-        rec = this.detach(el);
-        await this.after(parent);
-      },
-    });
-    return node;
+    const done = this.enter();
+    try {
+      const node = await this.place(edit(u.body) + u.trail, parent, el, u.lead);
+      let rec = this.detach(el);
+      await this.after(parent);
+      let back: Detached | null = null;
+      this.host.record({
+        label,
+        undo: async () => {
+          await this.attach(rec, false);
+          back = this.detach(node);
+          await this.after(parent);
+        },
+        redo: async () => {
+          if (back) await this.attach(back, false);
+          rec = this.detach(el);
+          await this.after(parent);
+        },
+      });
+      return node;
+    } finally {
+      done();
+    }
   }
 
   // the content of a text element set to a text with each formula as its TeX, as one entry of the history
@@ -359,7 +402,12 @@ export class Doc {
       else await setContentWithTex(textEl, c);
       this.host.changed();
     };
-    await put(content);
+    const done = this.enter();
+    try {
+      await put(content);
+    } finally {
+      done();
+    }
     this.host.record({ label, undo: () => put(before), redo: () => put(content), els: [textEl] });
   }
 
@@ -383,7 +431,13 @@ export class Doc {
     parent.insertBefore(node, at);
     detached.delete(node);
     if (!pairing.elements.has(node)) mergePairing(pairing, pairFragment(parseFragment(rec.text, source.crlf, parent), node, this.host.math()));
-    if (refresh) await this.after(node);
+    if (!refresh) return;
+    const done = this.enter();
+    try {
+      await this.after(node);
+    } finally {
+      done();
+    }
   }
 
   // an id that is not on the page, in the file, or in taken, from base
