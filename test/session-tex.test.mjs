@@ -94,6 +94,73 @@ async function cite(page, expression, query, key) {
   await page.waitFor(`!document.querySelector('${LIST}')`);
 }
 
+test('a paper of references.bib that tex.js does not have, cited on one page, is written into tex.js, and is numbered the same on both pages', { timeout: 180_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  assert.ok(!server.read('tex.js').includes('szebehely1967'));
+  await show(ann, 'Citations');
+  await show(ben, 'Citations');
+  await cite(ann, `document.querySelector('.reveal section.present p:nth-of-type(3)')`, 'szeb', 'szebehely1967');
+  await until(() => server.read('tex.js').includes('"szebehely1967"'), 'the reference of szebehely1967 in tex.js');
+  assert.equal(server.read('tex.js'), deckTex(server.file).text, 'tex.js is the one of npm run tex');
+  await onEvery([ann, ben], `${NUMBERS} === 'koon2000=1 gomez2004=2 szebehely1967=3'`);
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('a citation deleted on one page is taken out of tex.js, and the others are numbered again on both pages', { timeout: 180_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  assert.ok(server.read('tex.js').includes('"koon2000"'));
+  await show(ann, 'Citations');
+  await show(ben, 'Citations');
+  await front(ann);
+  await ann.evaluate(`(() => {
+    const c = document.querySelector('.reveal .slides cite[data-key="koon2000"]');
+    c.closest('p').focus();
+    const r = document.createRange();
+    r.selectNode(c);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    return true;
+  })()`);
+  await press(ann, 'Backspace');
+  await until(() => !server.read().includes('koon2000'), 'the citation of koon2000 deleted from index.html');
+  await until(() => !server.read('tex.js').includes('koon2000'), 'the reference of koon2000 taken out of tex.js');
+  assert.equal(server.read('tex.js'), deckTex(server.file).text, 'tex.js is the one of npm run tex');
+  await onEvery([ann, ben], `${NUMBERS} === 'gomez2004=1'`);
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('a start of the edit command and a join of two pages do not write any file of the talk folder', { timeout: 180_000 }, async (t) => {
+  // a tex.js that the sources would not give, which a derivation at the start would write again
+  const server = await texTalk(t, { change: (name, text) => (name === 'tex.js' ? text.replace('    "half": "\\\\frac{1}{2}",\n', '') : text) });
+  assert.notEqual(server.read('tex.js'), deckTex(server.file).text);
+  const [ann, ben] = await pages(t, server);
+  await show(ann, 'Citations');
+  await show(ben, 'Citations');
+  assert.deepEqual(server.snapshot(), server.before);
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('tex.js is not written in a talk folder without preamble.tex and references.bib', { timeout: 180_000 }, async (t) => {
+  const server = await texTalk(t, { names: ['tex.js'] });
+  const [ann, ben] = await pages(t, server);
+  // an agent cites a paper that tex.js does not have
+  server.write('index.html', server.read().replace('low-energy transfer</p>', 'low-energy transfer<cite data-key="szebehely1967"></cite></p>'));
+  await converge(server, [ann, ben]);
+  await show(ann, 'Citations');
+  await caretAtEnd(ann, `document.querySelector('.reveal section.present p:nth-of-type(2)')`);
+  await typeKeys(ann, ' again');
+  await until(() => server.read().includes('halo orbits<cite data-key="gomez2004"></cite>. again'), 'the typing in index.html');
+  await converge(server, [ann, ben]);
+  assert.deepEqual(server.snapshot()['tex.js'], server.before['tex.js']);
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
 test('File > Preamble… and File > Bibliography… are off in a session with a note, and a BibTeX entry pasted into the list of Insert > Citation… is refused with its note', { timeout: 180_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
