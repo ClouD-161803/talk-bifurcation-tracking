@@ -674,6 +674,30 @@ test('names given again and again to one version do not grow history.jsonl witho
   assert.deepEqual(again.history.list().versions.map((x) => [x.id, x.name]), [[v.id, 'a'.repeat(79)]]);
 });
 
+test('the text of every version is right after the file is written anew with texts kept in memory', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const day = 24 * 3600 * 1000;
+  let clock = Date.now() - 100 * day;
+  const { authority, history } = open(dir, DECK, { now: () => clock });
+  const texts = [];
+  // more versions than are kept between two texts held in memory, the first 10 of them old
+  for (let i = 0; i < 120; i++) {
+    if (i === 10) clock = Date.now() - day;
+    replace(authority, /First slide[^<]*/, `First slide ${i}`, i % 2 ? ANN : BO);
+    texts.push([history.close().id, authority.text]);
+    clock += 1000;
+  }
+  history.stopSync();
+  const file = join(dir, 'history.jsonl');
+  const again = open(dir, authority.text, { maxBytes: statSync(file).size + 100, now: () => clock });
+  replace(again.authority, 'Second slide', 'Second slide, later', ANN);
+  texts.push([again.history.close().id, again.authority.text]);
+  const kept = texts.slice(10);
+  assert.deepEqual(again.history.list().versions.map((v) => v.id), kept.map(([id]) => id).reverse());
+  for (const [id, text] of kept) assert.equal(again.history.textOf(id), text, `the text of version ${id}`);
+  again.history.stopSync();
+});
+
 test('an unreadable history.jsonl that another program holds open is copied aside, or else not written over', { timeout: 60_000 }, async (t) => {
   const content = 'not a history\n';
   // a rename to the aside file fails as on Windows while an antivirus holds the file open
