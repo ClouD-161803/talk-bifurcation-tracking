@@ -10,9 +10,11 @@ import type { Authority } from '../session/authority.ts';
 import { cleanPersonName, COLORS, isPersonId, isToken, nameKey, type Ended, type EventsAnswer, type KnownPerson, type Person, type Presence, type WriteError } from '../session/protocol.ts';
 import { renameRetried, renameRetriedSync } from './disk.ts';
 
-const HOLD = 25_000;
+// the hold of a poll, and the time after the last request of a page at which it is dropped, both
+// in ms and shorter in the tests
+const HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25_000;
 const GAP = 100;
-const GONE = 40_000;
+const GONE = Number(process.env.SLIDES_GONE_MS) || 40_000;
 // a page that has not polled this long after its hello is dropped
 const FIRST_POLL = 5000;
 const MAX_PEOPLE = 64;
@@ -365,7 +367,6 @@ export class People {
       member.knownSeen = this.knownRev;
       member.writeSeen = this.writeRev;
       member.lastAnswer = Date.now();
-      member.lastSeen = Date.now();
       member.polls--;
     }
     const end = this.ended ?? this.ends.get(poll.client);
