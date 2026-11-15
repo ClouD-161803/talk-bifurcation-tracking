@@ -341,6 +341,17 @@ export class Presence {
       }
       joined = true;
     });
+    // after the end of the session nothing is held or locked, and no timer runs
+    client.on('ended', () => {
+      this.others.clear();
+      this.holding = null;
+      this.caretHost = null;
+      clearTimeout(this.timer);
+      clearTimeout(this.restTimer);
+      clearTimeout(this.typingTimer);
+      this.timer = this.restTimer = this.typingTimer = 0;
+      this.publish();
+    });
     app.selection.listen(() => this.moved());
     app.listen('slide', () => this.due(true));
     document.addEventListener('selectionchange', () => this.moved());
@@ -425,6 +436,7 @@ export class Presence {
   // the caret or the selection of this page moved. a new caret element, selection, or slide is sent
   // at once, and the offset of the caret alone after it rests
   private moved(): void {
+    if (this.client.ended) return;
     const { app } = this.client;
     const node = getSelection()?.focusNode ?? null;
     const host = app.hostOf(node instanceof Element ? node : (node?.parentElement ?? null));
@@ -443,6 +455,7 @@ export class Presence {
   }
 
   private typed(): void {
+    if (this.client.ended) return;
     const t = this.now();
     const was = t - this.typedAt < TYPING;
     this.typedAt = t;
@@ -465,6 +478,7 @@ export class Presence {
 
   // a state is sent now, or for a change of offsets alone at most every THROTTLE ms
   private due(now: boolean): void {
+    if (this.client.ended) return;
     if (now) {
       clearTimeout(this.timer);
       this.timer = 0;
@@ -561,9 +575,11 @@ export class Presence {
     });
   }
 
-  // the states of the other pages after an answer of events
+  // the states of the other pages after an answer of events, which an answer taken after the end of
+  // the session does not change
   private hear(): void {
     const { client } = this;
+    if (client.ended) return;
     const t = this.now();
     const present = new Set<string>();
     let changed = false;
