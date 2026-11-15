@@ -248,6 +248,46 @@ test('the item Comment of the context menu of the background of a slide anchors 
   clean(a);
 });
 
+test('the pane groups the threads by their slide, and two slides with one number in the status bar have a heading each', { timeout: 300_000 }, async (t) => {
+  const server = await talkWith(t, `<section>
+  <h2>One</h2>
+  <p>First slide</p>
+</section>
+
+<section>
+  <section>
+    <h2>Up</h2>
+    <p>Upper slide</p>
+  </section>
+  <section>
+    <h2>Down</h2>
+    <p>Lower slide</p>
+  </section>
+</section>
+
+<section>
+  <h2>Three</h2>
+  <p>Third slide</p>
+</section>
+`);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  for (const heading of ['Down', 'Three']) {
+    await a.evaluate(`(() => {
+      const s = [...document.querySelectorAll('.reveal .slides section')].find((s) => s.querySelector(':scope > h2')?.textContent === ${JSON.stringify(heading)});
+      const { h, v } = Reveal.getIndices(s);
+      Reveal.slide(h, v);
+      window.__shown = s;
+    })()`);
+    await a.waitFor('Reveal.getCurrentSlide() === window.__shown');
+    await click(a, '.reveal section.present > p');
+    await comment(a, `On ${heading}`);
+  }
+  await sees(a, `[...document.querySelectorAll('${PANE} .list > *')].map((n) => n.localName === 'h3' ? 'heading ' + n.textContent : n.querySelector('.text')?.textContent)`, ['heading Slide 3', 'On Down', 'heading Slide 3', 'On Three']);
+  clean(a);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
