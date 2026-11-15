@@ -332,3 +332,73 @@ test('a person with two pages is followed on the page that changed last, and two
   clean(ana);
   clean(ben);
 });
+
+test('the dots of the people on each slide in the navigator and the Slide Sorter, +N, the chips of a shared tone, and the changed dot', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const ann = await open(browser, url, { name: 'Ann Smith' });
+  const ben = await open(browser, url, { name: 'Ben Carter' });
+  // one Chrome holds six connections to a host, and each page holds one with its poll
+  const other = await launch({ offline: false });
+  t.after(() => other.close());
+  const cleo = await open(other, url, { name: 'Cleo Diaz' });
+  const dan = await open(other, url, { name: 'Dan Evans' });
+  const eve = await open(other, url, { name: 'Eve Fox' });
+  // the dots of the row or the tile of the slide of heading
+  const dots = (where, heading) => ann.evaluate(`(() => {
+    const slide = [...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent === ${JSON.stringify(heading)});
+    const owner = ${JSON.stringify(where)} === 'row' ? ${C}.app.nav.rowOf(slide) : ${C}.shell.slides.tiles().get(slide);
+    const box = owner?.querySelector('.beeson-session-dots');
+    if (box && owner.getAttribute('aria-describedby') !== box.id) return 'not described';
+    return [...(box?.querySelectorAll('i') ?? [])].map((i) => {
+      if (i.title !== i.getAttribute('aria-label') || i.getAttribute('role') !== 'img') return 'unnamed';
+      return (i.classList.contains('more') ? '+' : i.classList.contains('chip') ? 'chip ' : '') + i.textContent + '|' + i.getAttribute('aria-label');
+    });
+  })()`);
+  const untilDots = async (where, heading, want) => {
+    await front(ann);
+    return until(async () => JSON.stringify(await dots(where, heading)) === JSON.stringify(want), `${where} ${heading}: ${JSON.stringify(want)}, not ${JSON.stringify(await dots(where, heading))}`);
+  };
+  await show(ann, 'One');
+  for (const page of [ben, cleo, dan, eve]) await show(page, 'Two');
+  // the tones go round in the order of joining, hence Eve Fox has the tone of Ann Smith
+  await untilDots('row', 'Two', ['|Ben Carter', '|Cleo Diaz', '|Dan Evans', '++1|Eve Fox']);
+  assert.deepEqual(await dots('row', 'One'), []);
+  await show(eve, 'One');
+  await untilDots('row', 'One', ['chip EF|Eve Fox']);
+  await untilDots('row', 'Two', ['|Ben Carter', '|Cleo Diaz', '|Dan Evans']);
+  const size = await ann.evaluate(`(() => { const r = ${C}.app.nav.rowOf(Reveal.getSlides()[1]).querySelector('.beeson-session-dots i').getBoundingClientRect(); return [r.width, r.height]; })()`);
+  assert.deepEqual(size, [10, 10]);
+
+  await t.test('a tile of the Slide Sorter holds circles of 16 px with initials, and +N', async () => {
+    await front(ann);
+    await ann.evaluate(`${C}.app.commands.run('view.lightTable')`);
+    await untilDots('tile', 'Two', ['BC|Ben Carter', 'CD|Cleo Diaz', 'DE|Dan Evans']);
+    await untilDots('tile', 'One', ['EF|Eve Fox']);
+    await show(eve, 'Two');
+    await untilDots('tile', 'Two', ['BC|Ben Carter', 'CD|Cleo Diaz', 'DE|Dan Evans', '++1|Eve Fox']);
+    await untilDots('tile', 'One', []);
+    const circle = await ann.evaluate(`(() => { const r = document.querySelector('.beeson-edit-sorter .beeson-session-dots i').getBoundingClientRect(); return [r.width, r.height]; })()`);
+    assert.deepEqual(circle, [16, 16]);
+    await ann.evaluate(`${C}.app.commands.run('view.lightTable')`);
+    await ann.waitFor(`!${C}.app.nav.table?.shown`);
+  });
+
+  await t.test('a slide that Ben changed gets the changed dot with the name of Ben, until Ann has shown it', async () => {
+    const ROW = `${C}.app.nav.rowOf(Reveal.getSlides()[1])`;
+    await front(ben);
+    await caretAtEnd(ben, on('Two', 'p'));
+    await typeKeys(ben, ' more');
+    await converge(server, [ann, ben]);
+    await front(ann);
+    await ann.waitFor(`${ROW}.classList.contains('changed') && ${ROW}.querySelector('.no').title === 'Changed by Ben since you last saw it.'`);
+    assert.equal(await ann.evaluate(`document.getElementById(${ROW}.getAttribute('aria-describedby')).textContent.includes('Changed by Ben since you last saw it.')`), true);
+    await show(ann, 'Two');
+    await show(ann, 'One');
+    await front(ann);
+    await ann.waitFor(`!${ROW}.classList.contains('changed') && ${ROW}.querySelector('.no').title === ''`);
+  });
+  for (const page of [ann, ben, cleo, dan, eve]) clean(page);
+});
