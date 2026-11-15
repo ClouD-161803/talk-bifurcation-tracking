@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
 import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync5, realpathSync as realpathSync2, unlinkSync as unlinkSync4, writeFileSync as writeFileSync4 } from "node:fs";
-import { mkdir, realpath as realpath3, writeFile as writeFile3 } from "node:fs/promises";
+import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile3 } from "node:fs/promises";
 import { createServer } from "node:http";
-import { randomBytes as randomBytes4 } from "node:crypto";
+import { createHash, randomBytes as randomBytes4 } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join as join4, resolve, sep as sep2 } from "node:path";
 
@@ -2051,6 +2051,24 @@ function cleanName(raw) {
   if (/^(con|prn|aux|nul|com\d|lpt\d)$/.test(stem)) stem = `${stem}-file`;
   return `${stem}.${ext}`;
 }
+var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+async function sameFile(dir, name, size2, hash) {
+  const dot = name.lastIndexOf(".");
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const family = new RegExp(`^${escape(name.slice(0, dot))}(?:-(\\d+))?${escape(name.slice(dot))}$`);
+  const found = (await readdir(dir, { withFileTypes: true })).flatMap((d) => {
+    const m = d.isFile() ? family.exec(d.name) : null;
+    return m ? [{ name: d.name, n: Number(m[1] ?? 1) }] : [];
+  });
+  for (const f of found.sort((a, b) => a.n - b.n)) {
+    const file = join4(dir, f.name);
+    try {
+      if ((await stat3(file)).size === size2 && sha256(await readFile2(file)) === hash) return f.name;
+    } catch {
+    }
+  }
+  return null;
+}
 var isJson = (request) => (request.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase() === "application/json";
 async function start(options = {}) {
   const log = options.log ?? ((m) => process.stderr.write(`${m}
@@ -2144,6 +2162,13 @@ async function start(options = {}) {
     await mkdir(dir, { recursive: true });
     const real = await realpath3(dir);
     if (!real.startsWith(root + sep2)) return error(403, "media/ leaves the talk folder");
+    const sent = request.headers["x-content-sha256"];
+    if (sent !== void 0) {
+      const hash = sha256(request.body);
+      if (sent.toLowerCase() !== hash) return error(400, "the file does not have the SHA-256 of x-content-sha256");
+      const same = await sameFile(real, clean, request.body.length, hash);
+      if (same) return json(200, { path: `media/${same}` });
+    }
     const dot = clean.lastIndexOf(".");
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
