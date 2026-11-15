@@ -7,22 +7,13 @@ import { Client } from './client.ts';
 import { install as end } from './end.ts';
 import { join, rename } from './join.ts';
 import { install as people } from './people.ts';
-import { install as share } from './share.ts';
+import { install as share, pageLink } from './share.ts';
 import { install as state } from './state.ts';
 
 // each part reads the Client and its events. the avatars go before the save state, and Share last
 const PARTS: ((client: Client) => void)[] = [state, end, people, share];
 
 let current: Client | null = null;
-
-// the address of the page without its version, which the edit command sends to the current one.
-// the query is cut by hand, since URLSearchParams would write edit as edit=
-function withoutVersion(): string {
-  const url = new URL(location.href);
-  const kept = url.search.slice(1).split('&').filter((p) => p && decodeURIComponent(p.split('=')[0]) !== 'v');
-  url.search = kept.length ? `?${kept.join('&')}` : '';
-  return url.href;
-}
 
 async function start(handover: Handover): Promise<boolean> {
   const { app, port } = handover;
@@ -34,7 +25,8 @@ async function start(handover: Handover): Promise<boolean> {
   }
   // the version of the page left the log of the edit command, e.g. after a restart
   if (response.status === 409) {
-    location.replace(withoutVersion());
+    // the edit command sends the address without a version to the current one
+    location.replace(pageLink() + location.hash);
     return new Promise(() => {});
   }
   const v = response.headers.get('x-session-version');
