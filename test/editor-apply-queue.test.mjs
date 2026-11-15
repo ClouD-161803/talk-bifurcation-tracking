@@ -308,3 +308,23 @@ test('a page that does not read as its text after an apply is loaded again throu
   assert.equal(await b.evaluate('window.__reloads'), 1);
   assert.deepEqual(b.errors, []);
 });
+
+test('copy() reads the deck with the edits of the person while an apply runs, and leaves the text handed to the client as it is', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  const remote = once(await sessionText(b), '<h1>Thank you</h1>', '<h1>Thank you \\(x\\)</h1>');
+  const told = await changes(b);
+  await closeGate(b);
+  await start(b, 'remote', remote);
+  await b.waitFor('window.__held > 0');
+  await b.evaluate(`document.execCommand('insertText', false, ' Typed.')`);
+  const want = once(remote, 'viewer\'s attention.</p>', 'viewer\'s attention. Typed.</p>');
+  assert.deepEqual(await b.evaluate(`[${E}.session.copy(), ${E}.session.text(), ${E}.session.copy()]`), [want, remote, want]);
+  await openGate(b);
+  await b.waitFor(resolved('remote'));
+  await b.waitFor(`window.__changes > ${told}`);
+  assert.equal(await sessionText(b), want);
+  assert.deepEqual(b.errors, []);
+});
