@@ -632,3 +632,23 @@ test('a second outage starts the reconnect again at 1 s', { timeout: 120_000 }, 
   assert.equal(state, 'Offline. Reconnecting in 1 s');
   clean(page, REFUSED);
 });
+
+test('an operation answered 503 is sent again at the reconnect, and reaches index.html without blocking the page', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'answer', { status: 503, body: '{"error":"the edit command is stopping"}', times: 2 })`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' again');
+  for (const n of [1, 2]) {
+    await page.waitFor(`__net.count('/.session/op') >= ${n} && (${C}.retryAt !== null || ${C}.blocked)`);
+    assert.equal(await page.evaluate(`${C}.blocked`), false);
+    await page.evaluate(`(${C}.tryNow(), true)`);
+  }
+  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide again</p>'));
+  assert.equal(await page.evaluate(`${C}.blocked`), false);
+  clean(page, REFUSED);
+});
