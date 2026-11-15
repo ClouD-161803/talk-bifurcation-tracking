@@ -4,4 +4,3 @@ check/
 *.pptx
 .DS_Store
 __pycache__/
-.session/

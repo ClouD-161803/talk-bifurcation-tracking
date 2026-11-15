@@ -43,6 +43,10 @@ export type Running = {
 function keyOf(root: string): string {
   const dir = join(root, '.session');
   mkdirSync(dir, { recursive: true });
+  // the folder ignores itself in every talk, also in one whose .gitignore is older than it
+  try {
+    writeFileSync(join(dir, '.gitignore'), '*\n', { flag: 'wx' });
+  } catch {}
   const file = join(dir, 'key');
   try {
     const key = readFileSync(file, 'utf8').trim();
