@@ -446,7 +446,7 @@ if (process.platform !== 'win32') {
   }
 }
 
-test('add regression test: a request body aborted by the browser does not stop the edit command', { timeout: 60_000 }, async (t) => {
+test('a request body aborted by the browser does not stop the edit command', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -470,7 +470,7 @@ test('add regression test: a request body aborted by the browser does not stop t
   await until(() => text(join(talk, 'index.html')).startsWith('<!-- kept -->'), 'the operation to be written');
 });
 
-test('add regression test: share requests at the same time leave no relay link running after the end of sharing', { timeout: 60_000 }, async (t) => {
+test('share requests at the same time leave no relay link running after the end of sharing', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const secret = 'a secret of the group, long enough';
@@ -497,7 +497,7 @@ test('add regression test: share requests at the same time leave no relay link r
   await unreachable();
 });
 
-test('add regression test: the saved secret of the relay is sent only to the saved address', { timeout: 60_000 }, async (t) => {
+test('the saved secret of the relay is sent only to the saved address', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const secret = 'a secret of the group, long enough';
@@ -525,7 +525,7 @@ test('add regression test: the saved secret of the relay is sent only to the sav
   assert.equal(JSON.parse(text(join(config, 'beeson-slides', 'relay.json'))).relay, relay.url);
 });
 
-test('add regression test: .session/ is ignored by git in a talk whose .gitignore does not name it', { timeout: 60_000 }, async (t) => {
+test('.session/ is ignored by git in a talk whose .gitignore does not name it', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   writeFileSync(join(talk, '.gitignore'), 'node_modules/\n*.pdf\n');
@@ -541,7 +541,7 @@ test('add regression test: .session/ is ignored by git in a talk whose .gitignor
   if (hasGit) assert.deepEqual(git('status', '--porcelain', '-uall').stdout.split('\n').filter((l) => l.includes('.session')), []);
 });
 
-test('add regression test: a dot folder or node_modules is not served under another spelling of its path', { timeout: 60_000 }, async (t) => {
+test('a dot folder or node_modules is not served under another spelling of its path', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(talk, '.git'));
@@ -560,7 +560,7 @@ test('add regression test: a dot folder or node_modules is not served under anot
   for (const path of paths) assert.equal((await raw(edit.port, 'GET', `${edit.base}${path}`)).status, 404, path);
 });
 
-test('add regression test: a page that knows the client id of another page cannot act as this page', { timeout: 60_000 }, async (t) => {
+test('a page that knows the client id of another page cannot act as this page', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -591,7 +591,7 @@ test('add regression test: a page that knows the client id of another page canno
   assert.ok(!readFileSync(join(talk, 'index.html'), 'utf8').includes('spoofed'));
 });
 
-test('add regression test: guests cannot fill the places of a session, and a page that never polls is dropped', { timeout: 120_000 }, async (t) => {
+test('guests cannot fill the places of a session, and a page that never polls is dropped', { timeout: 120_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const secret = 'a secret of the group, long enough';
@@ -630,7 +630,7 @@ test('add regression test: guests cannot fill the places of a session, and a pag
   });
 });
 
-test('add regression test: an operation that arrives during the stop is refused rather than lost', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+test('an operation that arrives during the stop is refused rather than lost', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -650,7 +650,7 @@ test('add regression test: an operation that arrives during the stop is refused 
   assert.ok(kept || refused, `the late operation was answered ${late.status} ${late.text} and is not in index.html`);
 });
 
-test('add regression test: a second start in the same talk folder hands over the address of the first', { timeout: 60_000 }, async (t) => {
+test('a second start in the same talk folder hands over the address of the first', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const env = { XDG_CONFIG_HOME: config, APPDATA: config };
@@ -673,7 +673,7 @@ test('add regression test: a second start in the same talk folder hands over the
 
 const SECRET = 'a secret of the group, long enough';
 
-test('add regression test: a Ctrl+C while a start with --relay waits for the relay keeps the acknowledged operations', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+test('a Ctrl+C while a start with --relay waits for the relay keeps the acknowledged operations', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   // a relay that takes each connection and never answers
@@ -704,7 +704,7 @@ test('add regression test: a Ctrl+C while a start with --relay waits for the rel
   assert.ok(text(join(talk, 'index.html')).startsWith('<!-- kept -->\n'), 'the acknowledged operation is in index.html');
 });
 
-test('add regression test: hellos and byes of many pages do not log out a page that is present', { timeout: 120_000 }, async (t) => {
+test('hellos and byes of many pages do not log out a page that is present', { timeout: 120_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -727,7 +727,7 @@ test('add regression test: hellos and byes of many pages do not log out a page t
   assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=`)).status, 200, 'the events of the host');
 });
 
-test('add regression test: a second start refuses to run while the first edit command does not answer', { timeout: 60_000, skip: process.platform === 'win32' && 'SIGSTOP' }, async (t) => {
+test('a second start refuses to run while the first edit command does not answer', { timeout: 60_000, skip: process.platform === 'win32' && 'SIGSTOP' }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const env = { XDG_CONFIG_HOME: config, APPDATA: config };
@@ -747,7 +747,7 @@ test('add regression test: a second start refuses to run while the first edit co
   assert.equal((await raw(first.port, 'GET', `${first.base}index.html`)).status, 200);
 });
 
-test('add regression test: a guest who knows the person id of the host cannot rename the host or drop its pages', { timeout: 60_000 }, async (t) => {
+test('a guest who knows the person id of the host cannot rename the host or drop its pages', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
@@ -768,7 +768,7 @@ test('add regression test: a guest who knows the person id of the host cannot re
   assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=`)).status, 200, 'the page of the host is dropped for a page of a guest');
 });
 
-test('add regression test: names that look the same as a name present, or that show nothing, are refused', { timeout: 60_000 }, async (t) => {
+test('names that look the same as a name present, or that show nothing, are refused', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -789,7 +789,7 @@ test('add regression test: names that look the same as a name present, or that s
   }
 });
 
-test('add regression test: a move of the sharing to another relay tells the guests of the first relay that the session ended', { timeout: 60_000 }, async (t) => {
+test('a move of the sharing to another relay tells the guests of the first relay that the session ended', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const first = await startRelay({ host: '127.0.0.1', secret: SECRET });
@@ -811,7 +811,7 @@ test('add regression test: a move of the sharing to another relay tells the gues
   assert.deepEqual((await events(second, ben, seen.v)).ended, { by: 'Ana' }, 'a poll of the guest through the new relay');
 });
 
-test('add regression test: a write of index.html that keeps failing is told to the pages, and the text is kept at the stop', { timeout: 120_000, skip: (process.platform === 'win32' || process.getuid?.() === 0) && 'a folder without write permission' }, async (t) => {
+test('a write of index.html that keeps failing is told to the pages, and the text is kept at the stop', { timeout: 120_000, skip: (process.platform === 'win32' || process.getuid?.() === 0) && 'a folder without write permission' }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   const writable = () => chmodSync(talk, 0o755);
   t.after(() => {
@@ -856,7 +856,7 @@ test('add regression test: a write of index.html that keeps failing is told to t
   assert.ok(text(join(talk, '.session', kept[0])).startsWith('<!-- two -->\n<!-- one -->\n'));
 });
 
-test('add regression test: a media upload needs the token of a page that is present', { timeout: 60_000 }, async (t) => {
+test('a media upload needs the token of a page that is present', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -875,7 +875,7 @@ test('add regression test: a media upload needs the token of a page that is pres
   assert.deepEqual((await put(`?token=${ana.token}`)).json(), { path: 'media/plot.png' });
 });
 
-test('add regression test: a media upload takes every type of picture and video that the editor takes, and serves it with its type', { timeout: 60_000 }, async (t) => {
+test('a media upload takes every type of picture and video that the editor takes, and serves it with its type', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -892,7 +892,7 @@ test('add regression test: a media upload takes every type of picture and video 
   }
 });
 
-test('add regression test: a media upload through the relay is limited to 16 MB, and one of the host to 64 MB', { timeout: 120_000 }, async (t) => {
+test('a media upload through the relay is limited to 16 MB, and one of the host to 64 MB', { timeout: 120_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   // a relay that passes larger bodies, so that the limit of the edit command is tested
@@ -913,7 +913,7 @@ test('add regression test: a media upload through the relay is limited to 16 MB,
   assert.deepEqual(readdirSync(join(talk, 'media')), ['big.mp4']);
 });
 
-test('add regression test: a page whose last poll was held is dropped 40 s after this poll arrived, not 40 s after its answer', { timeout: 180_000 }, async (t) => {
+test('a page whose last poll was held is dropped 40 s after this poll arrived, not 40 s after its answer', { timeout: 180_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   // a hold of 2 s and a drop after 6 s in place of 25 s and 40 s
@@ -956,7 +956,7 @@ test('add regression test: a page whose last poll was held is dropped 40 s after
   assert.ok(seen.every((names) => names.includes('Wes')), 'a page that polls at each answer stays');
 });
 
-test('add regression test: End session tells a guest whose poll is on its way that the session ended', { timeout: 120_000 }, async (t) => {
+test('End session tells a guest whose poll is on its way that the session ended', { timeout: 120_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
@@ -984,7 +984,7 @@ test('add regression test: End session tells a guest whose poll is on its way th
   assert.equal((await fetch(`${relay.url}${edit.base}index.html`)).status, 502);
 });
 
-test('add regression test: a start without --port takes the port of the last start in the talk folder, then the default port, then any port', { timeout: 60_000 }, async (t) => {
+test('a start without --port takes the port of the last start in the talk folder, then the default port, then any port', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const env = { XDG_CONFIG_HOME: config, APPDATA: config };
@@ -1004,7 +1004,7 @@ test('add regression test: a start without --port takes the port of the last sta
   assert.equal(text(join(talk, '.session', 'port')), `${third.port}\n`);
 });
 
-test('add regression test: a page that said bye is not brought back by a poll or a presence that arrives after it', { timeout: 60_000 }, async (t) => {
+test('a page that said bye is not brought back by a poll or a presence that arrives after it', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });

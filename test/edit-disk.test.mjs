@@ -151,7 +151,7 @@ function assertWhole(file, authority, expected) {
   assert.ok(readFileSync(file, 'utf8') === expected, 'the file differs from the whole text');
 }
 
-test('add regression test: a save of the demo deck that pauses for 700 or 1500 ms after 60 percent ends with the whole text and the edit that a person made in the pause', { timeout: 60_000 }, async (t) => {
+test('a save of the demo deck that pauses for 700 or 1500 ms after 60 percent ends with the whole text and the edit that a person made in the pause', { timeout: 60_000 }, async (t) => {
   const { deck, edited, second } = savedDemo();
   for (const pause of [700, 1500]) {
     const { file, authority, disk } = setup(t, deck);
@@ -166,7 +166,7 @@ test('add regression test: a save of the demo deck that pauses for 700 or 1500 m
   }
 });
 
-test('add regression test: a save of the demo deck that pauses after 30 percent until this part is taken ends with the whole text, and with the edit that a person made in the pause', { timeout: 60_000 }, async (t) => {
+test('a save of the demo deck that pauses after 30 percent until this part is taken ends with the whole text, and with the edit that a person made in the pause', { timeout: 60_000 }, async (t) => {
   const { deck, edited, second } = savedDemo();
   const cut = Math.floor(edited.length * 0.3), part = edited.slice(0, cut);
   {
@@ -225,7 +225,7 @@ async function typeInto(authority, file, at, word) {
   await until(() => readFileSync(file, 'utf8') === text, `the write of ${word.trim()}`);
 }
 
-test('add regression test: an agent that changes a line in which a person typed before and after its read keeps every word once', { timeout: 120_000 }, async (t) => {
+test('an agent that changes a line in which a person typed before and after its read keeps every word once', { timeout: 120_000 }, async (t) => {
   for (const before of [8, 10, 20]) {
     const { file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
     disk.start();
@@ -239,7 +239,7 @@ test('add regression test: an agent that changes a line in which a person typed 
   }
 });
 
-test('add regression test: an agent that adds a paragraph after a person moved a slide 8 or 9 times keeps each slide once', { timeout: 120_000 }, async (t) => {
+test('an agent that adds a paragraph after a person moved a slide 8 or 9 times keeps each slide once', { timeout: 120_000 }, async (t) => {
   const slides = Array.from({ length: 12 }, (_, i) => `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text of slide ${i}</p>\n</section>\n`);
   const deck = `<!doctype html>\n<html>\n<body>\n${slides.join('')}</body>\n</html>\n`;
   for (const moves of [8, 9]) {
@@ -261,7 +261,7 @@ test('add regression test: an agent that adds a paragraph after a person moved a
   }
 });
 
-test('add regression test: an agent that changes the 193 kB line of the demo deck after 8 writes of a person in this line keeps every write once', { timeout: 120_000 }, async (t) => {
+test('an agent that changes the 193 kB line of the demo deck after 8 writes of a person in this line keeps every write once', { timeout: 120_000 }, async (t) => {
   const deck = readFileSync('index.html', 'utf8');
   const long = deck.split('\n').find((line) => line.length > 100_000);
   assert.ok(long?.endsWith('</script>') && deck.includes(`${long}\n</tycho-viewer>`), 'the demo deck lacks its long line before </tycho-viewer>');
@@ -300,7 +300,7 @@ test('an outside write back to an earlier text keeps the newer edits of the sess
   assert.ok(authority.text.includes('Very Second slide'), 'the session lost its newer edit');
 });
 
-test('add regression test: a program that changes a line that it changed before replaces its earlier change, and keeps an edit of a person that it did not read', { timeout: 60_000 }, async (t) => {
+test('a program that changes a line that it changed before replaces its earlier change, and keeps an edit of a person that it did not read', { timeout: 60_000 }, async (t) => {
   const { file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
   disk.start();
   writeFileSync(file, DECK.replace('One', 'One first'));
@@ -316,7 +316,7 @@ test('add regression test: a program that changes a line that it changed before 
   assert.equal(authority.text, DECK.replace('One', 'One third').replace('Second slide', 'Very Second slide'));
 });
 
-test('add regression test: a program that writes back the text before its own change undoes this change', { timeout: 60_000 }, async (t) => {
+test('a program that writes back the text before its own change undoes this change', { timeout: 60_000 }, async (t) => {
   const { file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
   disk.start();
   writeFileSync(file, DECK.replace('</body>', '<p>typo</p>\n</body>'));
@@ -373,7 +373,7 @@ async function stallsOnChain(t, texts) {
   return { merge, stop };
 }
 
-test('add regression test: a merge and a stop on a chain of 5000 texts of the demo deck hold the event loop no longer than on a chain of 50 texts', { timeout: 300_000 }, async (t) => {
+test('a merge and a stop on a chain of 5000 texts of the demo deck hold the event loop no longer than on a chain of 50 texts', { timeout: 300_000 }, async (t) => {
   let short, long;
   // a stall over the bound is measured again, since a pause of the garbage collector stalls too
   for (let tries = 0; tries < 3; tries++) {
@@ -426,7 +426,7 @@ test('a write that keeps failing is reported with the number of unwritten operat
   }
 });
 
-test('add regression test: a stop that a paused relay and an unfinished request hold past 3 s exits nonzero while an operation is unwritten', { timeout: 120_000, skip: noChmod }, async (t) => {
+test('a stop that a paused relay and an unfinished request hold past 3 s exits nonzero while an operation is unwritten', { timeout: 120_000, skip: noChmod }, async (t) => {
   const secret = 'the secret of the group for this test';
   const env = { ...process.env, SLIDES_RELAY_SECRET: secret };
   const relay = spawn(process.execPath, ['scripts/relay.mjs', '--port', '0', '--host', '127.0.0.1'], { env, stdio: ['ignore', 'pipe', 'ignore'] });
@@ -491,7 +491,7 @@ test('a symbolic link index.html is written through to its target, the mode of t
   assert.equal(statSync(target).mode & 0o777, 0o444);
 });
 
-test('add regression test: a symbolic link index.html replaced by a file is merged from this file, and the edits of the session are written into it', { timeout: 60_000, skip: process.platform === 'win32' && 'a symbolic link needs a privilege on Windows' }, async (t) => {
+test('a symbolic link index.html replaced by a file is merged from this file, and the edits of the session are written into it', { timeout: 60_000, skip: process.platform === 'win32' && 'a symbolic link needs a privilege on Windows' }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'slides disk-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, 'index.html'), target = join(dir, 'real.html'), saved = join(dir, 'agent.tmp');

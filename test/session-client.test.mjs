@@ -292,7 +292,7 @@ test('the save state is in view on a phone of 390 px and takes a tap, and the bu
   clean(page);
 });
 
-test('add regression test: a page that is hidden for good sends nothing after its bye, and stays out of the session', { timeout: 120_000 }, async (t) => {
+test('a page that is hidden for good sends nothing after its bye, and stays out of the session', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);

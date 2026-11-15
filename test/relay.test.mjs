@@ -104,7 +104,7 @@ test('the relay reads its secret from --secret-file, and refuses one under 16 ch
   assert.equal(registered.status, 200);
 });
 
-test('add regression test: a second registration of the key of a live session is refused', { timeout: 120_000 }, async (t) => {
+test('a second registration of the key of a live session is refused', { timeout: 120_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, guestMs: 5000 });
   t.after(() => relay.close());
   const { root, talk, config } = talkFolder(t);
@@ -140,7 +140,7 @@ const rawHeaders = (url) =>
     }).on('error', fail);
   });
 
-test('add regression test: an answer through the relay carries one Content-Type and one Cache-Control', { timeout: 60_000 }, async (t) => {
+test('an answer through the relay carries one Content-Type and one Cache-Control', { timeout: 60_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
   const { root, talk, config } = talkFolder(t);
@@ -156,7 +156,7 @@ test('add regression test: an answer through the relay carries one Content-Type 
   }
 });
 
-test('add regression test: the relay does not forward Service-Worker-Allowed or Set-Cookie', { timeout: 60_000 }, async (t) => {
+test('the relay does not forward Service-Worker-Allowed or Set-Cookie', { timeout: 60_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
   const key = 'h'.repeat(22);
@@ -174,7 +174,7 @@ test('add regression test: the relay does not forward Service-Worker-Allowed or 
   for (const name of ['service-worker-allowed', 'set-cookie', 'clear-site-data']) assert.ok(!names.includes(name), name);
 });
 
-test('add regression test: the relay holds the bodies of slow uploads and slow readers within its memory cap', { timeout: 60_000 }, async (t) => {
+test('the relay holds the bodies of slow uploads and slow readers within its memory cap', { timeout: 60_000 }, async (t) => {
   // one session may take the whole cap here, so that the cap itself is tested
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 24 * 1024 * 1024, bodyBytes: 16 * 1024 * 1024, sessionShare: 1 });
   t.after(() => relay.close());
@@ -223,7 +223,7 @@ test('add regression test: the relay holds the bodies of slow uploads and slow r
   });
 });
 
-test('add regression test: a slow upload through the relay is not cut by the timeout of the answer', { timeout: 60_000 }, async (t) => {
+test('a slow upload through the relay is not cut by the timeout of the answer', { timeout: 60_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, guestMs: 1500 });
   t.after(() => relay.close());
   const { root, talk, config } = talkFolder(t);
@@ -247,7 +247,7 @@ test('add regression test: a slow upload through the relay is not cut by the tim
   assert.match(got, /"path":"media\/slow\.png"/);
 });
 
-test('add regression test: an answer that the relay refuses is pushed again after a registration, or logged', { timeout: 60_000 }, async (t) => {
+test('an answer that the relay refuses is pushed again after a registration, or logged', { timeout: 60_000 }, async (t) => {
   // a fake relay that hands out one request per id in ids, and answers the pushes of an id in turn
   const ids = ['a1', 'b2'];
   const pushAnswers = { a1: [401, 204], b2: [500] };
@@ -338,7 +338,7 @@ function rawGuest(t, relay, head, ...chunks) {
 const hex = (n) => `${n.toString(16)}\r\n${'x'.repeat(n)}\r\n`;
 const status = (socket) => Number(/^HTTP\/1\.1 (\d+)/.exec(socket.got)?.[1] ?? 0);
 
-test('add regression test: a push that is cut off gives its place in the memory of the relay back', { timeout: 60_000 }, async (t) => {
+test('a push that is cut off gives its place in the memory of the relay back', { timeout: 60_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
   const key = 'c'.repeat(22);
@@ -352,7 +352,7 @@ test('add regression test: a push that is cut off gives its place in the memory 
   await until(() => relay.held() === 0, 'the place of the cut push to be given back', 5000);
 });
 
-test('add regression test: one session cannot fill the memory of the relay, and small answers pass when large ones fill it', { timeout: 60_000 }, async (t) => {
+test('one session cannot fill the memory of the relay, and small answers pass when large ones fill it', { timeout: 60_000 }, async (t) => {
   // a session may hold a quarter of memoryBytes, i.e. 8 MB, and 4 MB are kept for small answers
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 32 * MB });
   t.after(() => relay.close());
@@ -385,7 +385,7 @@ test('add regression test: one session cannot fill the memory of the relay, and 
   assert.match(small.got, /\r\n\r\ndeck$/);
 });
 
-test('add regression test: a push that the relay refuses is answered to the guest at once, and pushes at once do not refuse each other', { timeout: 120_000 }, async (t) => {
+test('a push that the relay refuses is answered to the guest at once, and pushes at once do not refuse each other', { timeout: 120_000 }, async (t) => {
   await t.test('a refused push answers the guest with 503 rather than a 504 after guestMs', async () => {
     const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: MB, guestMs: 20_000 });
     t.after(() => relay.close());
@@ -419,7 +419,7 @@ test('add regression test: a push that the relay refuses is answered to the gues
   });
 });
 
-test('add regression test: a registration without the token is refused right after the pulls of the session were answered', { timeout: 60_000 }, async (t) => {
+test('a registration without the token is refused right after the pulls of the session were answered', { timeout: 60_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, answeredMs: 500 });
   t.after(() => relay.close());
   const key = 't'.repeat(22);
@@ -435,7 +435,7 @@ test('add regression test: a registration without the token is refused right aft
   await until(async () => (await register()) === 200, 'a registration after the end of the pulls');
 });
 
-test('add regression test: a page of a session that is not registered says that the host is not running', { timeout: 60_000 }, async (t) => {
+test('a page of a session that is not registered says that the host is not running', { timeout: 60_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
   const key = 'k'.repeat(22);

@@ -169,7 +169,7 @@ test('Change Name is seen on the other page, also for one word and an emoji, and
   clean(ben);
 });
 
-test('add regression test: the own avatar shows the initials of a new name before the people of the session are heard again', { timeout: 120_000 }, async (t) => {
+test('the own avatar shows the initials of a new name before the people of the session are heard again', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -404,7 +404,7 @@ test('on a phone of 390 px the controls of the session are in view with a hit ar
   clean(phone);
 });
 
-test('add regression test: an avatar keeps the keyboard focus when a person before it leaves', { timeout: 120_000 }, async (t) => {
+test('an avatar keeps the keyboard focus when a person before it leaves', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -425,7 +425,7 @@ test('add regression test: an avatar keeps the keyboard focus when a person befo
   clean(ann);
 });
 
-test('add regression test: who joins is announced while a modal dialog is open, and two joins within a second are both announced', { timeout: 180_000 }, async (t) => {
+test('who joins is announced while a modal dialog is open, and two joins within a second are both announced', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -480,7 +480,7 @@ test('add regression test: who joins is announced while a modal dialog is open, 
   clean(ann);
 });
 
-test('add regression test: Leave Session reads Leaving… while it waits, is not offered twice, and tells that the last changes did not reach the host', { timeout: 180_000 }, async (t) => {
+test('Leave Session reads Leaving… while it waits, is not offered twice, and tells that the last changes did not reach the host', { timeout: 180_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
@@ -518,7 +518,7 @@ test('add regression test: Leave Session reads Leaving… while it waits, is not
   clean(host);
 });
 
-test('add regression test: a poll answer rebuilds the list of the Share dialog once, and the initials build no Intl.Segmenter each', { timeout: 120_000 }, async (t) => {
+test('a poll answer rebuilds the list of the Share dialog once, and the initials build no Intl.Segmenter each', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
