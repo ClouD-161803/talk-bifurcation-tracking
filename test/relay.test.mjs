@@ -384,6 +384,40 @@ test('add regression test: one session cannot fill the memory of the relay, and 
   assert.match(small.got, /\r\n\r\ndeck$/);
 });
 
+test('add regression test: a push that the relay refuses is answered to the guest at once, and pushes at once do not refuse each other', { timeout: 120_000 }, async (t) => {
+  await t.test('a refused push answers the guest with 503 rather than a 504 after guestMs', async () => {
+    const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: MB, guestMs: 20_000 });
+    t.after(() => relay.close());
+    const key = 'r'.repeat(22);
+    const host = await fakeHost(relay, key);
+    const guest = raw(relay.port, 'GET', `/${key}/clip.mp4`, { host: 'relay' });
+    const [item] = await host.next();
+    assert.equal(await host.push(item.id, Buffer.alloc(2 * MB)), 503);
+    const answer = await guest;
+    assert.equal(answer.status, 503);
+    assert.equal(answer.headers['retry-after'], '1');
+  });
+
+  await t.test('a push holds its whole length from its start, so that the push that started first goes through', async () => {
+    const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 64 * MB });
+    t.after(() => relay.close());
+    const key = 's'.repeat(22);
+    const host = await fakeHost(relay, key);
+    const guests = [raw(relay.port, 'GET', `/${key}/a.mp4`, { host: 'relay' }), raw(relay.port, 'GET', `/${key}/b.mp4`, { host: 'relay' })];
+    const [a, b] = await host.next(2);
+    // two answers of 9 MB, which together pass the share of 16 MB of the session
+    const first = host.partial(a.id, 9 * MB, MB);
+    t.after(() => first.destroy());
+    await until(() => relay.held() >= MB, 'the relay to hold the first push');
+    assert.equal(await host.push(b.id, Buffer.alloc(9 * MB)), 503, 'the push that started second is refused');
+    first.rest();
+    await until(() => status(first), 'the first push to be answered');
+    assert.equal(status(first), 204, first.got);
+    const answers = await Promise.all(guests);
+    assert.deepEqual(answers.map((r) => r.status).sort(), [200, 503]);
+  });
+});
+
 test('add regression test: a registration without the token is refused right after the pulls of the session were answered', { timeout: 60_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, answeredMs: 500 });
   t.after(() => relay.close());
