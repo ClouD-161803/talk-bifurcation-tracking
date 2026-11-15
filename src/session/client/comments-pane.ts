@@ -136,8 +136,15 @@ class Pane {
 
   private visible(t: Comment): boolean {
     if (this.filter === 'resolved') return !!t.resolved;
-    if (t.resolved) return false;
+    if (t.resolved) return this.busy(t);
     return this.filter === 'open' || this.comments.mine(t);
+  }
+
+  // a reply being typed or a comment in edit, which keeps its thread in Open when another person
+  // resolves it
+  private busy(t: Comment): boolean {
+    const f = this.replies.get(t.id);
+    return this.editing?.id === t.id || (!!f && (!!f.area.value.trim() || f.box.contains(document.activeElement)));
   }
 
   // the label of the place of a thread, e.g. On Heading: Low-thrust transfers
@@ -224,9 +231,11 @@ class Pane {
     const unread = this.comments.unread(t);
     node.classList.toggle('unread', unread);
     node.classList.toggle('focused', this.focused === t.id);
+    // a reply being typed stays in a thread that another person resolves
+    const answering = !t.resolved || this.busy(t);
     const names = itemsOf(t).map((i) => `${this.nameOf(i.author)}|${this.colorOf(i.author)}`).join(',');
     const known = this.client.known.map((k) => `${k.person}=${k.name}`).join(',');
-    const sign = JSON.stringify([t, names, known, this.label(t, p), this.client.connection === 'online']);
+    const sign = JSON.stringify([t, names, known, this.label(t, p), this.client.connection === 'online', answering]);
     if (this.signs.get(t.id) === sign && !force) return node;
     // a thread in edit is drawn again once the edit ends
     if (this.editing?.id === t.id && !force) return node;
@@ -240,8 +249,8 @@ class Pane {
       by.append(...named(this.nameOf(t.resolved.by), `, ${time(t.resolved.time)}`));
       parts.splice(1, 0, by);
     }
-    const keep = node.contains(document.activeElement) && reply.box.contains(document.activeElement);
-    const children = [...parts, ...(t.resolved ? [] : [reply.box])];
+    const keep = answering && node.contains(document.activeElement) && reply.box.contains(document.activeElement);
+    const children = [...parts, ...(answering ? [reply.box] : [])];
     if (keep) {
       for (const c of [...node.children]) if (c !== reply.box) c.remove();
       node.prepend(...parts);
@@ -316,6 +325,8 @@ class Pane {
     if (!f) {
       f = this.field('Reply', 'Reply', async (text, mentions) => {
         await this.comments.act(t.id, 'reply', { text, mentions });
+        // a reply to a thread that another person resolved while it was typed reopens it
+        if (this.comments.threads.get(t.id)?.resolved) await this.comments.act(t.id, 'reopen', {});
         this.comments.markRead(t.id);
       }, () => {
         f!.box.classList.remove('open');
