@@ -4,7 +4,8 @@
 // this deck has at the same path, or under media/, with the same bytes is named and not copied
 // again, and a file of this deck that the page can read is never replaced. where the browser
 // refuses the read, e.g. from file:// or from another port, a dialog asks for the folder of the
-// first deck, which is kept for its address while the page lives once a file is found in it
+// first deck, which is kept for its address while the page lives once a file is found in it. the
+// address of a copy made in a session does not name a folder, and its files are asked for at once
 
 import type { App } from '../app.ts';
 import type { Arrival } from '../commands/origin.ts';
@@ -153,9 +154,9 @@ function pick(): Promise<Folder | null> {
   });
 }
 
-// the folder of the deck at address, asked for until one with a file of the deck is chosen. the
-// picker is opened in the click on the button, which grants it in every browser
-async function folderOf(address: string, name: string): Promise<Folder | null> {
+// the folder of the deck at address, named by where, asked for until one with a file of the deck is
+// chosen. the picker is opened in the click on the button, which grants it in every browser
+async function folderOf(address: string, where: string): Promise<Folder | null> {
   const kept = folders.get(address);
   if (kept) return kept;
   picked = Promise.resolve(null);
@@ -171,7 +172,7 @@ async function folderOf(address: string, name: string): Promise<Folder | null> {
       if (v === 'choose') picked = pick();
     },
   });
-  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in the folder ${name ? `${name} ` : ''}of ${address}. The browser lets this page read them only once you choose this folder.`;
+  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in ${where}. The browser lets this page read them only once you choose this folder.`;
   // the dialog of the reads gives way to this one, and comes back at its answer
   busy?.close(null);
   const v = await dialog.open('choose');
@@ -204,11 +205,13 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
 // not copied
 async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[]): Promise<void> {
   const read = new Map<string, Read>();
+  const session = !!arrival.origin.session;
   // the files of one deck are all refused once one is
-  for (const p of paths) read.set(p, [...read.values()].includes('refused') ? 'refused' : await fetched(new URL(p, arrival.origin.deck).href));
-  const name = decoded(new URL('.', arrival.origin.deck).pathname.split('/').filter(Boolean).pop() ?? '');
+  for (const p of paths) read.set(p, session || [...read.values()].includes('refused') ? 'refused' : await fetched(new URL(p, arrival.origin.deck).href));
+  const name = session ? '' : decoded(new URL('.', arrival.origin.deck).pathname.split('/').filter(Boolean).pop() ?? '');
+  const from = session ? 'the talk folder of the session' : name ? `the folder ${name}` : arrival.origin.deck;
   const refused = paths.filter((p) => read.get(p) === 'refused');
-  const folder = refused.length && canPick() ? await folderOf(arrival.origin.deck, name) : null;
+  const folder = refused.length && canPick() ? await folderOf(arrival.origin.deck, session ? from : `the folder ${name ? `${name} ` : ''}of ${arrival.origin.deck}`) : null;
   if (folder) {
     for (const p of refused) read.set(p, stop.signal.aborted ? 'missing' : ((await folder(p)) ?? 'missing'));
     if (refused.some((p) => read.get(p) instanceof Blob)) folders.set(arrival.origin.deck, folder);
@@ -242,7 +245,7 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
     return out;
   });
   const why = refused.length && !canPick() ? ', since this browser cannot open a folder' : '';
-  if (lost.length) arrival.notes.push(`${listed(lost)} ${lost.length > 1 ? 'were' : 'was'} not copied from ${name ? `the folder ${name}` : arrival.origin.deck}${why}.`);
+  if (lost.length) arrival.notes.push(`${listed(lost)} ${lost.length > 1 ? 'were' : 'was'} not copied from ${from}${why}.`);
   // the theme reads a trajectory file from the disk only, and once per page
   const drawn = [...new Set(refs.flat().filter((r) => r.name === 'data-trajectories' && to.has(r.path)).map((r) => to.get(r.path)!))];
   if (drawn.length) arrival.notes.push(`The ${drawn.length > 1 ? 'backdrops' : 'backdrop'} of ${listed(drawn)} ${drawn.length > 1 ? 'are' : 'is'} drawn once the deck is saved and opened again.`);

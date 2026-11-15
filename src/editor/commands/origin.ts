@@ -95,7 +95,7 @@ export function originOf(text: string): Origin | null {
       (m: OriginMacro | null) => typeof m?.name === 'string' && /^[a-zA-Z]+$/.test(m.name) && typeof m.body === 'string' && contained(m.body) && Number.isInteger(m.args) && m.args >= 0 && m.args <= 9 && (m.default === undefined || (typeof m.default === 'string' && contained(m.default, true))),
     );
     const version = typeof o.version === 'string' && /^[\w.+-]{0,40}$/.test(o.version) ? o.version : '';
-    return { deck: o.deck, version, macros: macros.map(({ name, body, args, default: d }: OriginMacro) => ({ name, body, args, default: d })) };
+    return { deck: o.deck, version, macros: macros.map(({ name, body, args, default: d }: OriginMacro) => ({ name, body, args, default: d })), ...(o.session === true && { session: true }) };
   } catch {
     return null;
   }
