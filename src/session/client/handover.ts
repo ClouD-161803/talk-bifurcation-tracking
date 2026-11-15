@@ -4,6 +4,7 @@
 import type { App } from '../../editor/app.ts';
 import type { Port } from '../../editor/session/session.ts';
 import type { Dialog, DialogOptions } from '../../editor/ui/dialog.ts';
+import type { MenuItem, MenuOptions, OpenMenu } from '../../editor/ui/menu.ts';
 
 export type Handover = {
   app: App;
@@ -16,6 +17,8 @@ export type Handover = {
   bar: HTMLElement;
   // a download of a copy of the deck under the name of its file
   download(text: string): void;
+  // a menu of ui/menu.ts, e.g. of an avatar, which closes any menu open before
+  menu(items: MenuItem[], options: MenuOptions): OpenMenu;
 };
 
 // window.BeesonSession, defined by theme/session.js. start() resolves with false when the page is

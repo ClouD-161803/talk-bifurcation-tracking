@@ -7,6 +7,7 @@ import type { Entry } from '../../session/client/handover.ts';
 import { download, fileName } from '../file/files.ts';
 import { Dialog } from '../ui/dialog.ts';
 import { icon } from '../ui/icons.ts';
+import { openMenu } from '../ui/menu.ts';
 import type { Port } from './session.ts';
 
 // read while editor.js runs, since currentScript is null afterward
@@ -34,6 +35,6 @@ export function load(app: App, port: Port): () => Promise<boolean> {
       return false;
     }
     const bar = document.querySelector<HTMLElement>('.beeson-edit-titlebar .right') ?? document.body;
-    return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text) });
+    return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text), menu: (items, options) => openMenu(app, items, options) });
   };
 }
