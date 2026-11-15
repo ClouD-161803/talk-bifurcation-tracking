@@ -5,14 +5,15 @@
 // stop. the versions are kept in .session/history.jsonl, appended only: a first line
 // { kind: "base", time, text }, then a line { kind: "version", id, time, authors, patches, marks,
 // slides, removed?, restored? } per version, whose patches turn the text of the version before
-// into its own, and a line { kind: "name", id, name } per name given or taken off.
+// into its own, and a line { kind: "name", id, name } per name given or taken off. the texts that
+// a person set aside at a conflict are kept in .session/aside/, one file each
 
-import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
 import { apply, diff, shiftOffset } from '../session/patch.ts';
-import { VERSION_NAME_MAX, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
+import { VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, renameRetriedSync } from './disk.ts';
 
@@ -25,6 +26,9 @@ export type HistoryOptions = {
   // the named ones and those after them
   maxBytes?: number;
   keep?: number;
+  // the texts set aside: at most asideBytes each, and at most asideFiles, the oldest removed first
+  asideBytes?: number;
+  asideFiles?: number;
   now?: () => number;
   log?: (message: string) => void;
 };
@@ -37,6 +41,7 @@ type Range = { start: number; end: number };
 
 export const isVersionId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
 const newId = () => randomBytes(9).toString('base64url');
+const ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
 // a text is rebuilt from the nearest text kept, one every STEP versions at the start, and fewer
 // once more than CHECKPOINTS are kept
 const STEP = 50;
@@ -163,11 +168,14 @@ export class History {
   readonly found: { before: string; patches: Patch[] } | null = null;
   private readonly dir: string;
   private readonly file: string;
+  private readonly asideDir: string;
   private readonly authority: Authority;
   private readonly quiet: number;
   private readonly longest: number;
   private readonly maxBytes: number;
   private readonly keep: number;
+  private readonly asideBytes: number;
+  private readonly asideFiles: number;
   private readonly now: () => number;
   private readonly log: (message: string) => void;
   private base = { time: 0, text: '' };
@@ -183,17 +191,21 @@ export class History {
   // true when the file may not hold every line, after a write that failed
   private broken = false;
   private stopped = false;
+  private asides: AsideInfo[] = [];
   private listeners = new Set<() => void>();
 
   // dir is the .session folder of the talk
   constructor(dir: string, authority: Authority, options: HistoryOptions = {}) {
     this.dir = dir;
     this.file = join(dir, 'history.jsonl');
+    this.asideDir = join(dir, 'aside');
     this.authority = authority;
     this.quiet = options.quiet ?? 60_000;
     this.longest = options.longest ?? 300_000;
     this.maxBytes = options.maxBytes ?? 32 * 1024 * 1024;
     this.keep = options.keep ?? 30 * 24 * 3600 * 1000;
+    this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
+    this.asideFiles = options.asideFiles ?? 50;
     this.now = options.now ?? Date.now;
     this.log = options.log ?? (() => {});
     try {
@@ -226,6 +238,7 @@ export class History {
       }
       if (this.bytes > this.maxBytes) this.compact();
     }
+    this.readAsides();
     authority.observe((op) => this.operation(op));
   }
 
@@ -236,7 +249,7 @@ export class History {
   }
 
   list(): HistoryAnswer {
-    return { rev: this.rev, versions: this.versions.map(info).reverse(), aside: [] };
+    return { rev: this.rev, versions: this.versions.map(info).reverse(), aside: [...this.asides].reverse() };
   }
 
   get(id: unknown): VersionDetail | null {
@@ -287,6 +300,37 @@ export class History {
     this.restores++;
     this.changed();
     return { id: v?.id ?? null };
+  }
+
+  // a text that a person set aside, or null when it is too large
+  setAside(text: string, author: string): AsideInfo | null {
+    const bytes = Buffer.from(text, 'utf8');
+    if (bytes.length > this.asideBytes) return null;
+    const aside: AsideInfo = { id: newId(), time: this.now(), author };
+    mkdirSync(this.asideDir, { recursive: true });
+    const tmp = join(this.asideDir, `.${asideName(aside)}.tmp`);
+    writeFileSync(tmp, bytes);
+    renameRetriedSync(tmp, join(this.asideDir, asideName(aside)));
+    this.asides.push(aside);
+    while (this.asides.length > this.asideFiles) {
+      const old = this.asides.shift()!;
+      try {
+        unlinkSync(join(this.asideDir, asideName(old)));
+      } catch {}
+    }
+    this.changed();
+    return aside;
+  }
+
+  // the text set aside as id, or null
+  asideText(id: unknown): string | null {
+    const aside = this.asides.find((a) => a.id === id);
+    if (!aside) return null;
+    try {
+      return readFileSync(join(this.asideDir, asideName(aside)), 'utf8');
+    } catch {
+      return null;
+    }
   }
 
   // the open version closed, e.g. at a stop. empty closes a version without a change when there
@@ -517,7 +561,21 @@ export class History {
     if (isVersionId(r.restored)) v.restored = r.restored;
     return { kind: 'version', v };
   }
+
+  private readAsides(): void {
+    let names: string[] = [];
+    try {
+      names = readdirSync(this.asideDir);
+    } catch {}
+    for (const name of names) {
+      const m = ASIDE.exec(name);
+      if (m) this.asides.push({ id: m[2], time: Number(m[1]), author: m[3] });
+    }
+    this.asides.sort((a, b) => a.time - b.time);
+  }
 }
+
+const asideName = (a: AsideInfo) => `${a.time}.${a.id}.${a.author}.html`;
 
 function info(v: Version): VersionInfo {
   const out: VersionInfo = { id: v.id, time: v.time, authors: v.authors, slides: v.slides };
