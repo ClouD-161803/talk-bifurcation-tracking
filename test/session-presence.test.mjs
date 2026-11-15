@@ -793,3 +793,25 @@ test('a hold of an element that leaves the page ends, and its heartbeat stops', 
   clean(ana);
   clean(ben);
 });
+
+test('a hold whose holder is idle for 30 s is not locked on a page whose clock was set back', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await until(() => ben.evaluate(LOCKED(p)), 'the paragraph locked on the page of Ben');
+  const first = await ben.evaluate(`${C}.resolved()[0].beat`);
+  // the clock of Ben goes back 9 min, e.g. at a correction of the time of the machine
+  await ben.evaluate(`(() => { const real = Date.now; Date.now = () => real.call(Date) - 540_000; return true; })()`);
+  // 35 s pass without typing, and the heartbeats of Ana arrive every 5 s
+  for (let i = 1; i <= 7; i++) {
+    await later(ben, 5000);
+    await later(ana, 5000);
+    await until(async () => (await ben.evaluate(`${C}.resolved()[0]?.beat`)) === first + i, `heartbeat ${i} of Ana on the page of Ben`);
+  }
+  await later(ben, 0);
+  assert.equal(await ben.evaluate(LOCKED(p)), false);
+  clean(ana);
+  clean(ben);
+});
