@@ -589,6 +589,49 @@ function sheets(host: TexHost): TexSheets {
     if (script !== known) out.push(['tex.js', script]);
     return { out, why: '' };
   }
+  // the files of the folder of the deck read again before they are written. a source without
+  // edits in its sheet and a followed file are taken as they are now, and the sources whose edits
+  // would be written over a newer file are returned
+  async function reread(folder: FileSystemDirectoryHandle): Promise<string[]> {
+    const now = async (name: string): Promise<string | null> => {
+      try {
+        return await (await (await folder.getFileHandle(name)).getFile()).text();
+      } catch {
+        return null;
+      }
+    };
+    const kept: string[] = [];
+    let changed = false;
+    for (const which of ['preamble', 'bibliography'] as Which[]) {
+      const found = unreadSource(which) ? null : await now(SOURCE[which]);
+      if (found === null || found === saved[which]) continue;
+      if (text[which] !== saved[which]) {
+        kept.push(SOURCE[which]);
+        continue;
+      }
+      // the entry chosen in the Bibliography sheet is found again by its key
+      if (which === 'bibliography') {
+        const key = bib.entries.find((e) => e.start === range.start)?.key;
+        const entry = readBibtex(found).entries.find((e) => key !== undefined && e.key === key);
+        range = entry ? { start: entry.start, end: entry.end } : { start: -1, end: -1 };
+      }
+      text[which] = saved[which] = found;
+      files.set(SOURCE[which], found);
+      changed = true;
+    }
+    for (const [name, found] of [...files]) {
+      if (typeof found !== 'string' || name === 'tex.js' || name === SOURCE.preamble || name === SOURCE.bibliography) continue;
+      const fresh = await now(name);
+      if (fresh !== null && fresh !== found) {
+        files.set(name, fresh);
+        changed = true;
+      }
+    }
+    const script = await now('tex.js');
+    if (script !== null) known = script;
+    if (changed) await update();
+    return kept;
+  }
   function wrote(out: [string, string][]): void {
     for (const [name, value] of out) {
       files.set(name, value);
@@ -668,9 +711,16 @@ function sheets(host: TexHost): TexSheets {
     async write(deck, handle) {
       if (!loaded) return '';
       await follow();
-      const { out, why } = pending(deck);
+      let { out, why } = pending(deck);
       if (out.length) {
         const folder = await host.folder(handle, listed(out.map(([name]) => name)));
+        // the files next to the deck may have been changed since they were read, e.g. by an agent
+        const kept = await reread(folder);
+        ({ out, why } = pending(deck));
+        if (kept.length) {
+          out = out.filter(([name]) => name !== 'tex.js' && !kept.includes(name));
+          why = `${listed(kept)} ${kept.length > 1 ? 'were' : 'was'} changed next to the deck since ${kept.length > 1 ? 'they were' : 'it was'} read, hence ${kept.length > 1 ? 'they' : 'it'} and tex.js were not written: copy your edits, and open the deck again`;
+        }
         for (const [name, value] of out) {
           const writable = await (await folder.getFileHandle(name, { create: true })).createWritable();
           await writable.write(value);
