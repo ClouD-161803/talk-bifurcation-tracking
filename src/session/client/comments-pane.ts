@@ -9,6 +9,7 @@ import type { Client } from './client.ts';
 import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comments.ts';
 import { make, style } from './dom.ts';
+import { whenOf } from './labels.ts';
 import { closeMenu, openMenu } from './menu.ts';
 import { presenceOf } from './presence.ts';
 import { mountToasts, toast, type ToastKind } from './toast.ts';
@@ -370,7 +371,7 @@ class Pane {
     node.setAttribute('aria-label', `Comment by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`);
     if (t.resolved) {
       const by = make('p', 'resolved-by', 'Resolved by ');
-      by.append(...named(this.nameOf(t.resolved.by), `, ${time(t.resolved.time)}`));
+      by.append(...named(this.nameOf(t.resolved.by), `, ${whenOf(t.resolved.time)}`));
       parts.splice(1, 0, by);
     }
     const keep = answering && node.contains(document.activeElement) && reply.box.contains(document.activeElement);
@@ -391,7 +392,7 @@ class Pane {
     avatar.style.background = bg;
     avatar.style.color = fg;
     avatar.setAttribute('aria-hidden', 'true');
-    const when = make('span', 'time', time(i.time) + (i.edited ? ' (edited)' : ''));
+    const when = make('span', 'time', whenOf(i.time) + (i.edited ? ' (edited)' : ''));
     const who = make('span', 'who', this.nameOf(i.author));
     who.dir = 'auto';
     head.append(avatar, who, when);
@@ -867,12 +868,6 @@ class Pane {
     ev.preventDefault();
     ev.stopPropagation();
   }
-}
-
-function time(t: number): string {
-  const d = new Date(t);
-  const hm = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${hm}`;
 }
 
 // the message of a failed request for the person, which is not sent later
