@@ -817,7 +817,7 @@ import { randomBytes as randomBytes2 } from "node:crypto";
 import { readFileSync as readFileSync2, unlinkSync as unlinkSync2, writeFileSync } from "node:fs";
 
 // src/edit/disk.ts
-import { readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync } from "node:fs";
+import { constants, copyFileSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { chmod, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { isUtf8 } from "node:buffer";
 import { randomBytes } from "node:crypto";
@@ -867,6 +867,22 @@ function renameRetriedSync(from, to) {
       if (attempt >= 20 || !RETRY.has(e.code ?? "")) throw e;
       Atomics.wait(wait, 0, 0, 10 * (attempt + 1));
     }
+  }
+}
+function setAsideSync(file, aside, move = true) {
+  if (move) {
+    try {
+      renameRetriedSync(file, aside);
+      return true;
+    } catch (e) {
+      if (e.code === "ENOENT") return true;
+    }
+  }
+  try {
+    copyFileSync(file, aside, constants.COPYFILE_EXCL);
+    return true;
+  } catch {
+    return false;
   }
 }
 var missing = (e) => {
@@ -1361,7 +1377,7 @@ function writeApplied(file, table, log) {
 }
 
 // src/edit/history.ts
-import { appendFileSync, mkdirSync, readdirSync as readdirSync2, readFileSync as readFileSync3, renameSync as renameSync2, statSync as statSync2, truncateSync, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync as readdirSync2, readFileSync as readFileSync3, statSync as statSync2, truncateSync, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
 import { randomBytes as randomBytes3 } from "node:crypto";
 import { join as join2 } from "node:path";
 
@@ -1665,6 +1681,8 @@ var History = class {
     this.bytes = 0;
     // true when the file may not hold every line, after a write that failed
     this.broken = false;
+    // true when the file could not be read nor set aside, hence it is not written in this run
+    this.frozen = false;
     // the lines of a name in the file, which is written anew once they are many more than the versions
     this.names = 0;
     this.stopped = false;
@@ -1696,10 +1714,10 @@ var History = class {
     } catch (e) {
       if (!(e instanceof Unreadable)) this.log(`could not read ${this.file}: ${e.message}`);
       const aside = join2(dir, `history-unreadable-${Date.now()}.jsonl`);
-      try {
-        renameSync2(this.file, aside);
-        this.log(`the version history could not be read, hence it was moved to ${aside} and a new history begins`);
-      } catch {
+      if (setAsideSync(this.file, aside)) this.log(`the version history could not be read, hence it was kept in ${aside} and a new history begins`);
+      else {
+        this.frozen = true;
+        this.log(`the version history could not be read nor kept in ${aside}, hence ${this.file} is left as it is and the history of this run is not written`);
       }
       this.versions = [];
       this.checkpoints.clear();
@@ -1917,6 +1935,7 @@ var History = class {
     this.timer.unref?.();
   }
   append(line) {
+    if (this.frozen) return;
     if (this.broken) {
       this.writeAll();
       return;
@@ -1933,6 +1952,7 @@ var History = class {
   }
   // the file written anew from memory, by a temporary file and a rename
   writeAll() {
+    if (this.frozen) return;
     const lines = [JSON.stringify({ kind: "base", ...this.base })];
     for (const v of this.versions) {
       const { name, ...line } = v;

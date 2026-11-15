@@ -6,7 +6,7 @@
 // nearest text among the last one that another program wrote and the ones that the edit command
 // wrote after it. the reads and the writes are done one at a time
 
-import { readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
+import { constants, copyFileSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
 import { chmod, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
@@ -84,6 +84,26 @@ export function renameRetriedSync(from: string, to: string): void {
       if (attempt >= 20 || !RETRY.has((e as NodeJS.ErrnoException).code ?? '')) throw e;
       Atomics.wait(wait, 0, 0, 10 * (attempt + 1));
     }
+  }
+}
+
+// a file that cannot be read set aside as aside, moved or else copied, so that a write in its place
+// does not lose it. false when neither works, e.g. while another program holds it open on Windows,
+// hence the file must then not be written over. a file that is gone counts as set aside
+export function setAsideSync(file: string, aside: string, move = true): boolean {
+  if (move) {
+    try {
+      renameRetriedSync(file, aside);
+      return true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return true;
+    }
+  }
+  try {
+    copyFileSync(file, aside, constants.COPYFILE_EXCL);
+    return true;
+  } catch {
+    return false;
   }
 }
 

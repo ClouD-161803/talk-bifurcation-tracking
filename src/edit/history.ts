@@ -8,14 +8,14 @@
 // into its own, and a line { kind: "name", id, name } per name given or taken off. the texts that
 // a person set aside at a conflict are kept in .session/aside/, one file each
 
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
 import { apply, copy, diff } from '../session/patch.ts';
 import { parseVersion, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
-import { AUTHOR, renameRetriedSync } from './disk.ts';
+import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
 
 export type HistoryOptions = {
   // a version is closed quiet ms after the last operation, and at the latest longest ms after the
@@ -267,6 +267,8 @@ export class History {
   private bytes = 0;
   // true when the file may not hold every line, after a write that failed
   private broken = false;
+  // true when the file could not be read nor set aside, hence it is not written in this run
+  private frozen = false;
   // the lines of a name in the file, which is written anew once they are many more than the versions
   private names = 0;
   private stopped = false;
@@ -299,10 +301,11 @@ export class History {
     } catch (e) {
       if (!(e instanceof Unreadable)) this.log(`could not read ${this.file}: ${(e as Error).message}`);
       const aside = join(dir, `history-unreadable-${Date.now()}.jsonl`);
-      try {
-        renameSync(this.file, aside);
-        this.log(`the version history could not be read, hence it was moved to ${aside} and a new history begins`);
-      } catch {}
+      if (setAsideSync(this.file, aside)) this.log(`the version history could not be read, hence it was kept in ${aside} and a new history begins`);
+      else {
+        this.frozen = true;
+        this.log(`the version history could not be read nor kept in ${aside}, hence ${this.file} is left as it is and the history of this run is not written`);
+      }
       this.versions = [];
       this.checkpoints.clear();
       this.step = STEP;
@@ -542,6 +545,7 @@ export class History {
   }
 
   private append(line: object): void {
+    if (this.frozen) return;
     if (this.broken) {
       this.writeAll();
       return;
@@ -558,6 +562,7 @@ export class History {
 
   // the file written anew from memory, by a temporary file and a rename
   private writeAll(): void {
+    if (this.frozen) return;
     const lines = [JSON.stringify({ kind: 'base', ...this.base })];
     for (const v of this.versions) {
       const { name, ...line } = v;
