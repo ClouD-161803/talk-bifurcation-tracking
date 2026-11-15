@@ -347,6 +347,20 @@ test('a page that does not read as its text after an apply is loaded again when 
   assert.deepEqual(b.errors, []);
 });
 
+test('an edit without a key right after an apply does not load the page again through the check of onReload', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await b.evaluate(HOLD_CHECKS);
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  assert.equal((await applyOn(b, once(b.source, 'Thank you', 'Thanks'))).reload, false);
+  // dictation and an input method change the text without a key
+  await b.evaluate(`document.execCommand('insertText', false, ' Spoken')`);
+  assert.equal(await b.evaluate('window.__checks()'), 1, 'the check runs after the edit');
+  assert.equal(await b.evaluate('window.__reloads'), 0);
+  assert.deepEqual(b.errors, []);
+});
+
 test('copy() reads the deck with the edits of the person while an apply runs, and leaves the text handed to the client as it is', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
