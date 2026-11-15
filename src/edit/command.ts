@@ -118,8 +118,11 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     }
     const saved = loadConfig();
     const address = relayAddress(body.relay ?? saved.relay);
-    const secret = body.secret ?? saved.secret;
+    // the saved secret goes only to the saved address, since a script in the deck may send this
+    // request with an address of its own
+    const secret = body.secret ?? (address !== null && address === relayAddress(saved.relay) ? saved.secret : undefined);
     if (!address) return json(400, { link: null, error: ADDRESS_RULE });
+    if (secret === undefined) return json(400, { link: null, error: 'a new address of the relay needs the secret' });
     if (typeof secret !== 'string' || secret.length < 16) return json(400, { link: null, error: 'the secret has fewer than 16 characters' });
     return serial(async () => {
       try {
@@ -334,7 +337,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
 
   if (options.relay) {
     const address = relayAddress(options.relay);
-    const secret = process.env.SLIDES_RELAY_SECRET || loadConfig().secret;
+    const saved = loadConfig();
+    const secret = process.env.SLIDES_RELAY_SECRET || (address !== null && address === relayAddress(saved.relay) ? saved.secret : undefined);
     if (!address) log(`${ADDRESS_RULE}, and the session is not shared`);
     else if (!secret || secret.length < 16) log('the secret of the relay is not set, and the session is not shared');
     else await serial(() => connect(address, secret)).then(() => log(`shared at ${relay!.link}`), (e) => log(`the session is not shared: ${(e as Error).message}`));
