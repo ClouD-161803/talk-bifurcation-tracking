@@ -483,6 +483,39 @@ test('a page that closes sends no state after its bye', { timeout: 60_000 }, asy
   clean(ann);
 });
 
+test('on a phone of 390 px the pill and its buttons are in view with a hit area of 32 px', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const phone = await open(browser, url, { name: 'Pia Park', width: 390, height: 844, mobile: true });
+  const ben = await open(browser, url, { name: 'Ben Carter' });
+  const benId = await ben.evaluate(`${C}.person`);
+  await front(phone);
+  await phone.waitFor(`!!document.querySelector(${JSON.stringify(avatar('Ben Carter'))})`);
+  await phone.evaluate(`${F}.notice = 60000`);
+  await tap(phone, avatar('Ben Carter'));
+  await following(phone, benId);
+  const fits = async (label) => {
+    await untilPill(phone, label);
+    const got = await phone.evaluate(`(() => {
+      const pill = document.querySelector('.beeson-session-follow .pill').getBoundingClientRect();
+      return { pill: pill.left >= 0 && pill.right <= innerWidth && pill.top >= 0 && pill.bottom <= innerHeight, button: ${HIT}(document.querySelector('.beeson-session-follow button')), page: document.documentElement.scrollWidth <= innerWidth };
+    })()`);
+    assert.ok(got.pill && got.page, `the pill ${label.text} is in view`);
+    assert.ok(got.button.inside && got.button.hit, `${label.button} is in view and takes a tap`);
+    assert.ok(got.button.width >= 32 && got.button.height >= 32, `${label.button} has a hit area of ${got.button.width} by ${got.button.height} px`);
+  };
+  await fits({ text: 'Following Ben', button: 'Stop', on: true });
+  await tap(phone, '.beeson-session-follow button');
+  await following(phone, null);
+  await fits({ text: 'Stopped following Ben', button: 'Follow again', on: false });
+  await tap(phone, '.beeson-session-follow button');
+  await following(phone, benId);
+  clean(phone);
+  clean(ben);
+});
+
 // a deck of n slides of about bytes / n characters each, with the bulk in the speaker notes
 function bigDeck(n, bytes) {
   const words = 'the orbit of the moon is followed by a ship that sees the far side '.repeat(Math.ceil(bytes / n / 68));
