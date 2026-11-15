@@ -72,6 +72,7 @@ import { install as installGrid } from './canvas/grid.ts';
 import { install as installMaskCommands } from './commands/mask.ts';
 import { install as installFlipCommands } from './commands/flip.ts';
 import { install as installSession } from './session/session.ts';
+import { load as loadSession } from './session/load.ts';
 import { install as installObjects } from './navigator/objects.ts';
 import { Doc } from './model/doc.ts';
 
@@ -188,6 +189,7 @@ installMaskCommands(app);
 installFlipCommands(app);
 installObjects(app);
 const session = installSession(app);
+const startSession = loadSession(app, session);
 
 const revealReady = (): Promise<void> =>
   new Promise((done) => {
@@ -226,7 +228,8 @@ async function init(): Promise<void> {
     app.relayout();
   }
   await mathReady();
-  if (!(await fetchSource(app))) {
+  // in a session, the client fetches the text of the version of the page
+  if (!(await startSession()) && !(await fetchSource(app))) {
     app.state = 'waiting';
     app.report();
   }
