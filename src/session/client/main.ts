@@ -3,6 +3,7 @@
 // port, installs the parts of the client, and joins
 
 import type { Entry, Handover } from './handover.ts';
+import { install as activity } from './activity.ts';
 import { Client } from './client.ts';
 import { install as conflicts } from './conflicts.ts';
 import { install as copy, restore } from './copy.ts';
@@ -19,8 +20,8 @@ import { install as share, pageLink } from './share.ts';
 import { install as state } from './state.ts';
 
 // each part reads the Client and its events. the avatars go before the save state, and Share
-// before the parts that follow a person and draw the dots of the slides
-const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, presence, layer, floor, people, share, follow, dots];
+// before the parts that follow a person, draw the dots of the slides, and fill the lines of Share
+const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, presence, layer, floor, people, share, follow, dots, activity];
 
 let current: Client | null = null;
 

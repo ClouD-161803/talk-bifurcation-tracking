@@ -192,6 +192,14 @@ function openShare(client: Client): void {
     }
   };
 
+  // what a person does, e.g. Typing on slide 4, from the first part that has a line
+  const lineOf = (p: Someone): string => {
+    for (const fn of statuses) {
+      const text = fn(p);
+      if (text) return text;
+    }
+    return '';
+  };
   const showPeople = () => {
     const all = everyone(client);
     heading.textContent = `People in this session (${all.length})`;
@@ -199,18 +207,19 @@ function openShare(client: Client): void {
       const li = make('li');
       li.dataset.person = p.person;
       const name = make('span', 'name', p.person === client.person ? `${p.name} (you)` : p.name);
-      // filled by a later part, e.g. Typing on slide 4
-      const activity = make('span', 'activity');
-      for (const fn of statuses) {
-        const text = fn(p);
-        if (text) {
-          activity.textContent = text;
-          break;
-        }
-      }
-      li.append(disc(client, p.person), name, activity);
+      li.append(disc(client, p.person), name, make('span', 'activity', lineOf(p)));
       return li;
     }));
+  };
+  // the lines alone, at a change of what a person does, without a rebuild of the list
+  const showLines = () => {
+    const all = everyone(client);
+    for (const li of people.querySelectorAll<HTMLElement>('li[data-person]')) {
+      const p = all.find((q) => q.person === li.dataset.person);
+      const activity = li.querySelector('.activity');
+      const text = p ? lineOf(p) : '';
+      if (activity && activity.textContent !== text) activity.textContent = text;
+    }
   };
 
   const showForm = () => {
@@ -337,7 +346,7 @@ function openShare(client: Client): void {
   if (client.host) dialog.setButtons([{ label: 'Done', value: 'done', primary: true }]);
   else show();
   showPeople();
-  const off = [client.on('people', showPeople), client.on('known', showPeople), client.on('state', () => client.connection === 'ended' && dialog.close(null))];
+  const off = [client.on('people', showPeople), client.on('known', showPeople), client.on('resolved', showLines), client.on('state', () => client.connection === 'ended' && dialog.close(null))];
   void dialog.open('done').then(() => {
     clearTimeout(copiedTimer);
     for (const fn of off) fn();
