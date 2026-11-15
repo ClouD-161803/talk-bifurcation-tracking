@@ -122,3 +122,27 @@ test('a file written in two steps is taken once it is complete, and an empty fil
   const after = performance.now() - emptied;
   assert.ok(after >= 5000, `the empty file was taken ${Math.round(after)} ms after it was written`);
 });
+
+test('an agent that writes back after more than 100 writes of people keeps every edit of the people', { timeout: 120_000 }, async (t) => {
+  const deck = readFileSync('test-deck.html', 'utf8');
+  assert.ok(deck.includes('<body>\n') && deck.includes('</body>'), 'the test deck lacks a body');
+  const { file, authority, disk } = setup(t, deck, { quiet: 5, latest: 20, poll: 20 });
+  disk.start();
+  const read = authority.text;
+  const tokens = [];
+  for (let k = 0; k < 120; k++) {
+    const headings = [...authority.text.matchAll(/<h2/g)].map((m) => m.index);
+    assert.ok(headings.length >= 5, 'the test deck has fewer than five headings');
+    const at = headings[k % headings.length];
+    tokens.push(`P${k}Q `);
+    authority.enter([{ start: at, end: at, text: tokens[k] }], 'Ann');
+    await until(() => readFileSync(file, 'utf8').includes(tokens[k]), `the write of ${tokens[k]}`);
+  }
+  writeFileSync(file, read.replace('<body>\n', '<body>\n<p>AGENT FIRST</p>\n').replace('</body>', '<p>AGENT LAST</p>\n</body>'));
+  await until(() => {
+    const now = readFileSync(file, 'utf8');
+    return now === authority.text && now.includes('AGENT FIRST') && now.includes('AGENT LAST');
+  }, 'the change of the agent to be merged');
+  const after = readFileSync(file, 'utf8');
+  assert.deepEqual(tokens.filter((token) => !after.includes(token)), []);
+});
