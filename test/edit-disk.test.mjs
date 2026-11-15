@@ -327,13 +327,19 @@ test('add regression test: a program that writes back the text before its own ch
 });
 
 // the longest time between two turns of the event loop while act runs, measured by an interval of
-// 1 ms that turns once more after act, so that a stall at its end is measured
+// 1 ms that turns once more after act, so that a stall at its end is measured. a turn counts the
+// processor time of the process in it, and at most its time on the clock, since a process that
+// waits for a core on a loaded runner does not hold its event loop
 async function longestStall(act) {
-  let last = performance.now(), longest = 0, turned = null;
+  const used = () => {
+    const { user, system } = process.cpuUsage();
+    return (user + system) / 1000;
+  };
+  let last = performance.now(), worked = used(), longest = 0, turned = null;
   const timer = setInterval(() => {
-    const now = performance.now();
-    longest = Math.max(longest, now - last);
-    last = now;
+    const now = performance.now(), cpu = used();
+    longest = Math.max(longest, Math.min(now - last, cpu - worked));
+    [last, worked] = [now, cpu];
     turned?.();
   }, 1);
   try {
