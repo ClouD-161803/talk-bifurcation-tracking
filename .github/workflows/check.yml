@@ -27,7 +27,7 @@ jobs:
         # the macOS runners draw WebGL in SwiftShader, too slowly for the timings of the tests
         os: [ubuntu-latest, windows-latest]
         # the test files are split over seven runners, since the suite is over an hour long on one.
-        # With the five jobs of check, 19 jobs are run at once, under the 20 of the free plan
+        # With the five jobs of check and the job tex, 20 jobs are run at once, the limit of the free plan
         shard: [1, 2, 3, 4, 5, 6, 7]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -69,12 +69,34 @@ jobs:
   # one check for the whole round, to require on main in place of the two above: it passes only if
   # every test shard and every job of check passed
   pass:
-    needs: [test, check]
+    needs: [test, check, tex]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: test "${{ needs.test.result }}" = success && test "${{ needs.check.result }}" = success
+      - run: test "${{ needs.test.result }}" = success && test "${{ needs.check.result }}" = success && test "${{ needs.tex.result }}" = success
+
+  # the TikZ figures are compiled with TeX Live only on this runner. The test shards and the jobs of
+  # check do not have TeX, hence they skip the compile tests and compare the hash of each output
+  tex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # latex and dvisvgm, TikZ and pgfplots, and the fonts of the wrapper of a figure
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-pictures lmodern
+      - run: latex --version && dvisvgm --version
+      - run: node --test test/figures.test.mjs
+      # the demo figures are compiled again from their sources, since the bytes of an output differ
+      # between versions of TeX and cannot be compared
+      - run: rm figures/*.js && npm run tex
 
   check:
     # the checks of this job are required on main under the operating system and the browser, hence
