@@ -654,6 +654,17 @@ test('the text of a comment takes the direction of its words, and a name in runn
   clean(b);
 });
 
+test('the key of the command Comment opens a draft while the focus is in the pane', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'The first');
+  await sees(a, `!!document.activeElement?.closest('${PANE} article')`, true);
+  await press(a, COMMENT_KEY);
+  await sees(a, `document.activeElement?.matches('${DRAFT}') ? document.querySelector('${PANE} .draft .anchor').textContent : null`, 'On Paragraph: First slide');
+  clean(a);
+});
+
 test('the accessibility tree of Chrome holds the field of a mention as a combobox, the list without a role, a thread described by its text, and the toast region before its first toast', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await front(a);
