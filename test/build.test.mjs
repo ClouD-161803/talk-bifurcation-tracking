@@ -6,19 +6,22 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 test('the theme is built in a folder with a space in its name', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides build-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const path of ['build.mjs', 'package.json', 'src']) {
+  for (const path of ['build.mjs', 'package.json', 'tsconfig.json', 'src']) {
     cpSync(resolve(path), join(root, path), { recursive: true });
   }
   symlinkSync(resolve('node_modules'), join(root, 'node_modules'), 'junction');
 
-  execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe' });
+  execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
 
   assert.ok(existsSync(join(root, 'theme/beeson.js')));
   assert.ok(existsSync(join(root, 'theme/editor.js')));
+  // the edit command of a talk is the compiled file, hence it must be built from the current source
+  assert.equal(readFileSync(join(root, 'theme/edit.mjs'), 'utf8'), readFileSync(resolve('theme/edit.mjs'), 'utf8'), 'theme/edit.mjs is not built from src/edit, run npm run build');
 });
 
 test('the theme bundle carries none of the editor, which is all in theme/editor.js', () => {
@@ -33,4 +36,13 @@ test('the theme bundle carries none of the editor, which is all in theme/editor.
 test('theme/editor.js is under 1280 kB', () => {
   const size = statSync(resolve('theme/editor.js')).size;
   assert.ok(size < 1280 * 1024, `theme/editor.js is ${Math.round(size / 1024)} kB`);
+});
+
+// the edit command is copied into a talk with theme/, and it is imported by the tests of the sync
+// core without starting anything
+test('theme/edit.mjs is under 256 kB and starts nothing when it is imported', () => {
+  const size = statSync(resolve('theme/edit.mjs')).size;
+  assert.ok(size < 256 * 1024, `theme/edit.mjs is ${Math.round(size / 1024)} kB`);
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', "const m = await import(process.argv[1]); console.log(typeof m.Authority, typeof m.Replica, typeof m.diff)", pathToFileURL(resolve('theme/edit.mjs')).href], { encoding: 'utf8', timeout: 30_000 });
+  assert.equal(out.trim(), 'function function function');
 });
