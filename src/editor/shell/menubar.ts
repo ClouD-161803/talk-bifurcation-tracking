@@ -186,6 +186,8 @@ export function install(app: App): void {
   app.listen('report', () => {
     fileEl.textContent = app.handle?.name ?? fileName();
     autosave.setAttribute('aria-pressed', String(app.autosave));
+    // in a session the edits go to the edit command, and its save state takes the place of the switch
+    autosave.hidden = !!app.session;
     autosave.classList.toggle('on', app.autosave);
     which.hidden = !app.pairing?.problems.length;
     stateEl.textContent = app.line.text;
