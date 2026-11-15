@@ -102,3 +102,24 @@ test('a picture of a figure of one picture, selected by a second click, still mo
   assert.doesNotMatch(text.match(/<img src="..\/..\/demo\/figure-light.png" alt="The one figure"[^>]*>/)?.[0] ?? '', /style=/, 'the picture is moved out of its figure');
   assert.deepEqual(page.errors, []);
 });
+
+test('a scene of a plate row, selected by a second click, is turned by a drag inside and moved by its border', async (t) => {
+  const page = await editorPage(browser, { deck: 'test/pages/viewer-play.html', page: { width: 1600, height: 1000 } });
+  t.after(() => page.close().catch(() => {}));
+  const slide = await page.evaluate(`Reveal.getIndices(document.querySelector('#left').closest('section')).h`);
+  await page.evaluate(`Reveal.slide(${slide})`);
+  await page.waitFor(`Reveal.getIndices().h === ${slide}`);
+  await page.waitFor(`document.querySelector('#left').state != null`, 60000);
+  await frames(page);
+  await secondClick(page, 'section.present #left', ['div'], ['tycho-viewer#left']);
+  await drag(page, 'section.present #left', { dx: 60, dy: 30 });
+  await frames(page);
+  assert.equal(await render(page), page.source, 'a drag inside the scene moved or resized something');
+  const border = await page.evaluate(`(() => { const r = document.querySelector('section.present #left').getBoundingClientRect(); return { x: r.left - 3, y: r.top + r.height * 0.3 }; })()`);
+  await drag(page, border, { dx: 40, dy: 20 });
+  await frames(page);
+  const text = await render(page);
+  assert.match(tagOf(text, 'left'), /style="translate: \d+px \d+px"/, `the scene is not moved by its border: ${tagOf(text, 'left')}`);
+  assert.doesNotMatch(plateTag(text, slide), /style=/, `the plate is moved: ${plateTag(text, slide)}`);
+  assert.deepEqual(page.errors, []);
+});
