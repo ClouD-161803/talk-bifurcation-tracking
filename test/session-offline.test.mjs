@@ -9,7 +9,7 @@
 // the deck for this dialog, and the pictures of a copy
 
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
+import { readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -272,32 +272,32 @@ test('a picture dropped by one page is uploaded into media/ before the operation
   await converge(server, [ann, ben]);
   const bytes = readFileSync(IMAGE);
 
+  // while Ben is in the session, the page of Ann names a new file uniquely to itself
+  const UNIQUE = /src="(media\/figure-light-[0-9a-z]{4}\.png)"/g;
+  let first;
+
   await t.test('the picture is in media/ and on the page of Ben', async () => {
     await show(ann, 'One');
     await dropFiles(ann, [IMAGE]);
     const text = await converge(server, [ann, ben]);
-    assert.match(text, /src="media\/figure-light\.png"/);
-    assert.ok(readFileSync(join(server.talk, 'media/figure-light.png')).equals(bytes));
+    first = [...text.matchAll(UNIQUE)].map((m) => m[1]);
+    assert.equal(first.length, 1);
+    assert.ok(readFileSync(join(server.talk, first[0])).equals(bytes));
     await front(ben);
     await show(ben, 'One');
-    await ben.waitFor(SHOWN('media/figure-light.png'));
+    await ben.waitFor(SHOWN(first[0]));
   });
 
-  await t.test('a name that is taken in media/ is written into the deck as the name that the edit command gives', async () => {
-    // a file of the same name put into media/ by hand, which the deck does not name
-    mkdirSync(join(server.talk, 'media'), { recursive: true });
-    writeFileSync(join(server.talk, 'media/figure-light-2.png'), 'another file');
+  await t.test('a second drop of the same file is named apart from the first', async () => {
     await show(ann, 'Two');
     await dropFiles(ann, [IMAGE]);
     const text = await converge(server, [ann, ben]);
-    // the editor names the new file figure-light-2.png, since the deck names figure-light.png
-    assert.match(text, /src="media\/figure-light-2-2\.png"/);
-    assert.doesNotMatch(text, /media\/figure-light-2\.png/);
-    assert.equal(readFileSync(join(server.talk, 'media/figure-light-2.png'), 'utf8'), 'another file');
-    assert.ok(readFileSync(join(server.talk, 'media/figure-light-2-2.png')).equals(bytes));
+    const second = [...text.matchAll(UNIQUE)].map((m) => m[1]).filter((path) => path !== first[0]);
+    assert.equal(second.length, 1);
+    assert.ok(readFileSync(join(server.talk, second[0])).equals(bytes));
     await front(ben);
     await show(ben, 'Two');
-    await ben.waitFor(SHOWN('media/figure-light-2-2.png'));
+    await ben.waitFor(SHOWN(second[0]));
   });
 
   await t.test('a failed upload keeps the operation, and Try again sends it', async () => {
