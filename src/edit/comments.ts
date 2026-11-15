@@ -5,7 +5,7 @@
 // while the edit command was not running
 
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { checkAnchors, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Moved } from '../session/anchor.ts';
@@ -25,7 +25,7 @@ import {
   type CommentsEvent,
 } from '../session/protocol.ts';
 import { slidesOf, type Slide } from '../session/slides.ts';
-import { renameRetried, renameRetriedSync } from './disk.ts';
+import { renameRetried, renameRetriedSync, setAsideSync } from './disk.ts';
 
 export type CommentsOptions = {
   now?: () => number;
@@ -49,6 +49,7 @@ export const isFailure = (x: unknown): x is Failure => !!x && typeof (x as Failu
 const isNumber = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 const isInt = (x: unknown): x is number => Number.isSafeInteger(x) && (x as number) >= 0;
 const charsOf = (t: Comment) => t.text.length + t.replies.reduce((n, r) => n + r.text.length, 0);
+const readOnly = () => fail(503, 'the comments could not be read at the start, hence they are read only until the edit command is started again');
 
 // a text of a comment, or a failure
 function cleanText(raw: unknown): string | Failure {
@@ -99,6 +100,8 @@ export class Comments {
   private threads = new Map<string, Comment>();
   private seenBy = new Map<string, number>();
   private chars = 0;
+  // true when the file could not be read nor set aside, hence it is neither written nor changed
+  private locked = false;
   // the text that the anchors are of, its checksum, and its slides when they are known
   private text: string;
   private sum: string;
@@ -163,6 +166,7 @@ export class Comments {
     if (isFailure(text)) return text;
     const mentions = cleanMentions(body.mentions);
     if (isFailure(mentions)) return mentions;
+    if (this.locked) return readOnly();
     if (this.threads.size >= THREADS_MAX) return fail(409, `a deck holds at most ${THREADS_MAX} threads`);
     if (this.chars + text.length > this.maxChars) return fail(413, 'the comments of the deck are too large');
     const n = typeof body.base === 'string' ? this.authority.reach(body.base) : null;
@@ -186,6 +190,7 @@ export class Comments {
     const mentions = cleanMentions(body.mentions);
     if (isFailure(mentions)) return mentions;
     if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
+    if (this.locked) return readOnly();
     if (this.chars + text.length > this.maxChars) return fail(413, 'the comments of the deck are too large');
     thread.replies.push({ id: newId(), author: person, time: this.now(), text });
     this.chars += text.length;
@@ -205,6 +210,7 @@ export class Comments {
     if (isFailure(text)) return text;
     const mentions = cleanMentions(body.mentions);
     if (isFailure(mentions)) return mentions;
+    if (this.locked) return readOnly();
     if (this.chars + text.length - target.text.length > this.maxChars) return fail(413, 'the comments of the deck are too large');
     this.chars += text.length - target.text.length;
     target.text = text;
@@ -221,6 +227,7 @@ export class Comments {
     const target = this.target(thread, body.reply);
     if (isFailure(target)) return target;
     if (target.author !== person) return fail(403, 'only the author may delete a comment');
+    if (this.locked) return readOnly();
     if (target === thread) {
       this.threads.delete(id);
       this.chars -= charsOf(thread);
@@ -237,6 +244,7 @@ export class Comments {
     const thread = this.threads.get(id);
     if (!thread) return fail(404, 'there is no such thread');
     if (resolved === !!thread.resolved) return thread;
+    if (this.locked) return readOnly();
     if (resolved) thread.resolved = { by: person, time: this.now() };
     else delete thread.resolved;
     this.changed([id]);
@@ -259,7 +267,7 @@ export class Comments {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    if (this.saved === this.edits) return;
+    if (this.saved === this.edits || this.locked) return;
     const tmp = this.tmpName();
     try {
       writeFileSync(tmp, this.serialize());
@@ -344,12 +352,20 @@ export class Comments {
   }
 
   private unreadable(): null {
-    const aside = join(this.file, '..', `comments-unreadable-${Date.now()}.json`);
-    try {
-      renameSync(this.file, aside);
-      this.log(`the comments could not be read, hence they were moved to ${aside}`);
-    } catch {}
+    this.setAside(true, 'the comments could not be read');
     return null;
+  }
+
+  // the file set aside before it is written again, or else kept and never written in this run
+  private setAside(move: boolean, why: string): void {
+    const aside = join(this.file, '..', `comments-unreadable-${Date.now()}.json`);
+    if (setAsideSync(this.file, aside, move)) {
+      this.log(`${why}, and the file was set aside as ${aside}`);
+      this.dirty();
+    } else {
+      this.locked = true;
+      this.log(`${why}, and the file could not be set aside, hence the comments are read only until the next start`);
+    }
   }
 
   // the anchors of the file placed on the text of this start
@@ -424,7 +440,7 @@ export class Comments {
 
   // a write at most once in every ms, one at a time
   private schedule(): void {
-    if (this.stopped || this.timer || this.writing) return;
+    if (this.stopped || this.locked || this.timer || this.writing) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       this.writing = this.write().finally(() => {
