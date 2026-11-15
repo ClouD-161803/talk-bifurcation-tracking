@@ -944,13 +944,15 @@ test('the day headings of an open pane move on at midnight', { timeout: 300_000 
   clean(ann);
 });
 
-test('an apply that needs a reload is held while the mode is on, and the page is loaded again when it ends', { timeout: 300_000 }, async (t) => {
+test('an apply that needs a reload is held while the mode is on, which the row Current version says, and the page is loaded again when it ends', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   await converge(server, [ann]);
   await openPane(ann);
+  const current = `[...document.querySelector('${PANE} .row.current').children].map((c) => c.textContent)`;
+  assert.deepEqual(await ann.evaluate(current), ['Current version']);
   await press$(ann, PANE, 'Name this version');
   await nameIt(ann, 'Seen');
   await ann.waitFor(`${LIST}[1]?.title === 'Seen'`);
@@ -965,6 +967,7 @@ test('an apply that needs a reload is held while the mode is on, and the page is
   const answer = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at + 17, text: 'Beeson.start({ });' }] })).json();
   assert.equal(answer.ok, true);
   await ann.waitFor(`document.querySelector('${PANE} .row.current .sub')?.textContent === 'The deck changed. It is loaded again when Version History is closed.'`, 20_000);
+  assert.deepEqual(await ann.evaluate(current), ['Current version', 'The deck changed. It is loaded again when Version History is closed.']);
   assert.equal(await ann.evaluate('window.__before'), true);
   assert.equal(await ann.evaluate(`${SHOWN} && !!document.querySelector('.beeson-session-preview:not([hidden])')`), true);
   await press$(ann, PANE, 'Back to editor');
