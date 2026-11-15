@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { cpSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { front } from './apply.mjs';
-import { startEdit, stopEdit, talkFolder, until } from './session.mjs';
+import { startEdit, stopEdit, talkFolder, until, within } from './session.mjs';
 
 export const TALK = `<!doctype html>
 <html lang="en" data-theme="dark">
@@ -67,7 +67,8 @@ export async function talk(t, { args = [], env = {} } = {}) {
     edit: null,
     read: () => readFileSync(file, 'utf8'),
     async start(more = []) {
-      server.edit = await startEdit(folder.talk, { args: [...args, ...more], env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config, ...env } });
+      // an edit command that does not start is stopped by the hook of talkFolder
+      server.edit = await within(startEdit(folder.talk, { args: [...args, ...more], env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config, ...env } }), 60_000, 'the edit command to start');
       return server.edit;
     },
   };
