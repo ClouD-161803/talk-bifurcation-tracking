@@ -208,6 +208,18 @@ test('a drawing is fitted to its box by a scale of its coordinates, up or down, 
   assert.ok(figure.width <= 61 && figure.height <= 61, `${figure.width} by ${figure.height}`);
 });
 
+// a box is filled in a dimension in which the drawing has a size. a drawing without a size in one
+// dimension or in both, such as a new blank source, is compiled at scale 1 in its box
+test('a drawing without a width or a height is compiled in its box without an error', { skip: WITHOUT_TEX }, (t) => {
+  const sources = { empty: '\\begin{tikzpicture}\n\\end{tikzpicture}\n', flat: '\\begin{tikzpicture}\n\\draw[line width=0pt] (0,0) -- (2,0);\n\\end{tikzpicture}\n' };
+  const dir = folder(t, Object.fromEntries(Object.entries(sources).map(([name, text]) => [`figures/${name}.tex`, text])));
+  for (const name of Object.keys(sources)) {
+    const { errors, figure } = compileFigure({ dir, name, box: { width: 600, height: 400 } });
+    assert.equal(errors, undefined, `${name}: ${JSON.stringify(errors)}`);
+    assert.ok(Number.isFinite(figure.width) && Number.isFinite(figure.height), `${name}: ${figure.width} by ${figure.height}`);
+  }
+});
+
 test('an error of TeX is given with the file and the line of the source, and with the line of the preamble', { skip: WITHOUT_TEX }, (t) => {
   const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': '\\documentclass{article}\n\\newcommand{\\R}{\\mathbb{R}}\n\\begin{document}\n' });
   const broken = DECAY.replace('\\end{tikzpicture}', '\\undefinedmacro\n\\end{tikzpicture}');
