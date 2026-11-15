@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { click } from './helpers/editor.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { A, B, BUSY, BUSY_DRAWN, FILES, FIRST_B, QUERY, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { A, B, BUSY, BUSY_DRAWN, FILES, FIRST_B, POINTER, QUERY, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 
 let browser;
 let serverA;
@@ -150,12 +150,8 @@ test('Stop ends the wait for a folder that the picker does not give, and the fil
 
 test('in a browser without a folder picker, e.g. on a phone, the dialog is skipped and the files are listed', async (t) => {
   const { a, b, text } = await decks(t);
-  await b.evaluate(`(() => {
-    window.showDirectoryPicker = undefined;
-    const media = window.matchMedia;
-    window.matchMedia = (q) => (q === '(any-pointer: fine)' ? { matches: false, media: q } : media.call(window, q));
-    return true;
-  })()`);
+  await b.evaluate(`window.showDirectoryPicker = undefined; true`);
+  await b.evaluate(POINTER('touch'));
   await pasteSlides(b, FIRST_B, text);
   await pasted(b);
   assert.equal(await b.evaluate(`!!document.querySelector('${DIALOG}[open]')`), false);

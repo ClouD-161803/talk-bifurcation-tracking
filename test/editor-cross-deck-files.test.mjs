@@ -9,7 +9,7 @@ import { statSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, SAVE_INTO, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { A, B, BACKDROP, DIR, FILES, FIRST_B, POINTER, QUERY, SAVE_INTO, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 
 let browser;
 let server;
@@ -163,7 +163,8 @@ test('a deck at the root of a server is named by its address in the note', async
   const b = await deck(B);
   t.after(() => b.close());
   // the browser refuses the read from another port, and the dialog is not shown without a picker
-  await b.evaluate(`(() => { window.showDirectoryPicker = undefined; const m = window.matchMedia; window.matchMedia = (q) => (q === '(any-pointer: fine)' ? { matches: false, media: q } : m.call(window, q)); return true; })()`);
+  await b.evaluate(`window.showDirectoryPicker = undefined; true`);
+  await b.evaluate(POINTER('touch'));
   await pasteSlides(b, FIRST_B, text);
   await pasted(b);
   assert.ok((await status(b)).message.endsWith(`figs/orbit.png, figs/clip.mp4, figs/clip.png, and figs/shared.png were not copied from ${root.origin}/index.html, since this browser cannot open a folder.`), (await status(b)).message);

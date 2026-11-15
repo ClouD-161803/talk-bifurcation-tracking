@@ -2,14 +2,14 @@
 // browser refuses the read of the clipboard. in a deck where nothing was copied, e.g. the deck that
 // slides from another deck are pasted into, it says how to paste with the key, as Edit > Paste on
 // the canvas does. a slide copied in the same page is pasted from the page. a page without a
-// clipboard to read is told the same by both commands, and without a fine pointer, where a key is
-// not likely, the message asks to choose Paste again
+// clipboard to read is told the same by both commands. on a phone, where a key is not likely, the
+// message asks to choose Paste again, and a machine without a pointer is not taken for a phone
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { B, FIRST_B, QUERY, openDeck, render, selectRow, status } from './helpers/cross-deck.mjs';
+import { B, FIRST_B, POINTER, QUERY, openDeck, render, selectRow, status } from './helpers/cross-deck.mjs';
 
 let browser;
 let server;
@@ -55,12 +55,24 @@ for (const command of ['slide.paste', 'edit.paste']) {
   });
 }
 
-test('without a fine pointer, e.g. on a phone, a refused read asks to choose Paste again', async (t) => {
+test('with touch alone, e.g. on a phone, a refused read asks to choose Paste again', async (t) => {
   const page = await openDeck(browser, `${server.origin}/${B}?${QUERY}`, B);
   t.after(() => page.close());
   await page.evaluate(REFUSE);
-  await page.evaluate(`(() => { const real = window.matchMedia.bind(window); window.matchMedia = (q) => (/pointer/.test(q) ? { matches: false, media: q, addEventListener() {}, removeEventListener() {} } : real(q)); return true; })()`);
+  await page.evaluate(POINTER('touch'));
   await selectRow(page, FIRST_B);
   await page.evaluate(`window.BeesonEditor.exec('slide.paste')`);
   assert.equal((await status(page)).message, 'The browser did not let the editor read the clipboard. Choose Paste again and allow it when the browser asks');
+});
+
+// the runners of the tests on Ubuntu do not report a pointer, and a machine with a keyboard alone
+// does not either
+test('without a pointer, e.g. with a keyboard alone, a refused read says how to paste with the key', async (t) => {
+  const page = await openDeck(browser, `${server.origin}/${B}?${QUERY}`, B);
+  t.after(() => page.close());
+  await page.evaluate(REFUSE);
+  await page.evaluate(POINTER('none'));
+  await selectRow(page, FIRST_B);
+  await page.evaluate(`window.BeesonEditor.exec('slide.paste')`);
+  assert.equal((await status(page)).message, 'The browser did not let the editor read the clipboard. Press Ctrl+V to paste');
 });

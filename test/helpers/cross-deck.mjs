@@ -107,6 +107,10 @@ export function withOrigin(text, change) {
 
 // the dialog over the page while the files of a paste are read, and whether it is drawn, which it
 // is only after a delay
+// a script after which the page reports the pointers of kind: 'touch' for a phone, i.e. a coarse
+// pointer alone, and 'none' for a machine without a pointer, as a runner of the tests may be
+export const POINTER = (kind) => `(() => { const real = window.matchMedia.bind(window); const answer = { '(any-pointer: fine)': false, '(any-pointer: coarse)': ${kind === 'touch'} }; window.matchMedia = (q) => (q in answer ? { matches: answer[q], media: q, addEventListener() {}, removeEventListener() {} } : real(q)); return true; })()`;
+
 export const BUSY = 'dialog.beeson-edit-dialog.paste-busy';
 export const BUSY_DRAWN = `(() => { const d = document.querySelector('${BUSY}[open]'); return !!d && getComputedStyle(d).opacity === '1'; })()`;
 
