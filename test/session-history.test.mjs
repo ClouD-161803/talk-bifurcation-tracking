@@ -36,7 +36,6 @@ const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.versio
 // the buttons of the pane and of the bar of the preview that are shown, by their text
 const button = (scope, text) => `[...document.querySelectorAll('${scope} button')].find((b) => b.textContent === ${JSON.stringify(text)} && b.getClientRects().length)`;
 const INERT = `['.beeson-edit-menubar', '.beeson-edit-top', '.beeson-edit-nav', '.reveal', '.beeson-edit-bottom'].map((s) => document.querySelector(s)?.inert)`;
-const TIME = /^\d{1,2}:\d{2}\s?[AP]M$/;
 const MIN = 60_000;
 // the time t written in the page as the pane writes it, in the locale of the page
 const timeIn = (page, t) => page.evaluate(`new Date(${t}).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })`);
@@ -121,7 +120,8 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await ann.waitFor(`${LIST}.length === 2`);
     const [day, row] = await ann.evaluate(LIST);
     assert.deepEqual(day, { day: 'Today' });
-    assert.match(row.title, TIME);
+    const [newest] = await versionsOf(ann);
+    assert.equal(row.title, await timeIn(ann, newest.time));
     assert.deepEqual([row.who, row.slides], [['Ben'], 'Slide 2']);
     await ann.waitFor(`${TEXT}.includes('Second slide by Ben')`);
     // the dot of Ben is in the tone of Ben
@@ -183,7 +183,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     const list = await ann.evaluate(LIST);
     // a named version does not fold
     assert.deepEqual(list.map((x) => x.title ?? x.day ?? x.fold), ['Today', list[1].title, 'Draft for Ben']);
-    assert.match(list[1].title, TIME);
+    assert.equal(list[1].title, await timeIn(ann, (await versionsOf(ann))[0].time));
     await tapOrClick(ann, `document.querySelector('${PANE} label.named input')`);
     await ann.waitFor(`${LIST}.length === 2`);
     assert.deepEqual((await ann.evaluate(LIST)).map((x) => x.title ?? x.day), ['Today', 'Draft for Ben']);
@@ -270,7 +270,7 @@ test('the preview outlines each changed element in the tone of its author, and a
       const b = document.querySelector('${BAR}');
       return { date: b.querySelector('.date').textContent, who: [...b.querySelectorAll('.author')].map((a) => a.textContent), slides: [...b.querySelectorAll('button.slide')].map((x) => x.textContent), buttons: [...b.querySelectorAll('.actions button')].map((x) => x.textContent), changes: b.querySelector('label.changes').textContent };
     })()`);
-    assert.match(bar.date, /^Both, Today, \d{1,2}:\d{2}\s?[AP]M$/);
+    assert.equal(bar.date, `Both, Today, ${await timeIn(ann, (await versionsOf(ann))[0].time)}`);
     assert.deepEqual([bar.who, bar.slides, bar.buttons, bar.changes], [['Ann', 'Ben'], ['Slide 1', 'Slide 2'], ['Restore this version', 'Name this version', '⋯'], 'Show changes']);
   });
 
@@ -319,6 +319,9 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
   const server = await talk(t, { env: HELD });
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  // Ben writes times with 24 hours
+  await ben.send('Emulation.setLocaleOverride', { locale: 'en-GB' });
+  assert.doesNotMatch(await timeIn(ben, Date.now()), /M$/);
   await converge(server, [ann, ben]);
   await openPane(ann);
   await press$(ann, PANE, 'Name this version');
@@ -333,6 +336,7 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
   await nameIt(ann, 'Later');
   await ann.waitFor(`${LIST}[1]?.title === 'Later'`);
   const start = await ann.evaluate(`document.querySelectorAll('${PANE} .versions .row.version')[1].querySelector('.sub').textContent`);
+  assert.equal(start, await timeIn(ann, (await versionsOf(ann)).find((v) => v.name === 'Start').time));
 
   await t.test('a failure shows its error', async () => {
     await ann.evaluate(`(() => {
@@ -402,7 +406,8 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
 
   await t.test('the other page gets a toast, and the restore is a version on top', async () => {
     await ben.waitFor(`window.__toasts.length > 0`);
-    assert.deepEqual(await ben.evaluate('window.__toasts'), [`Ann restored the version of ${start}|status`]);
+    const time = (await versionsOf(ben)).find((v) => v.name === 'Start').time;
+    assert.deepEqual(await ben.evaluate('window.__toasts'), [`Ann restored the version of ${await timeIn(ben, time)}|status`]);
     assert.equal(await ann.evaluate(`document.querySelector('.beeson-session-toast')?.textContent ?? ''`), '');
     await openPane(ann);
     await ann.waitFor(`document.querySelector('${PANE} .versions .row.version .sub')?.textContent === 'Restored the version of ${start}'`);
