@@ -439,6 +439,34 @@ test('two valid concurrent edits merge into a text with the tag skeleton of one 
   assert.ok(conflicts > 0, 'no two edits conflicted');
 });
 
+// the shortest time of a few runs of fn, in ms
+function timeOf(fn, runs = 5) {
+  let best = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const t0 = performance.now();
+    fn();
+    best = Math.min(best, performance.now() - t0);
+  }
+  return best;
+}
+
+test('shift and mergePatches take a time linear in the number of patches', () => {
+  // n insertions at the even offsets of a text, and n at its odd offsets, which do not conflict
+  const at = (n, odd) => Array.from({ length: n }, (_, i) => ({ start: 2 * i + odd, end: 2 * i + odd, text: odd ? 'y' : 'x' }));
+  const time = (n) => {
+    const even = at(n, 0), odd = at(n, 1);
+    return timeOf(() => {
+      assert.equal(shift(odd, even).length, n);
+      assert.equal(mergePatches(even, odd).patches.length, 2 * n);
+    });
+  };
+  // ten times the patches take about ten times as long, and a hundred times when the time is quadratic
+  const ratio = () => time(20_000) / time(2000);
+  let r = ratio();
+  if (r >= 30) r = ratio();
+  assert.ok(r < 30, `ten times the patches took ${r.toFixed(1)} times as long`);
+});
+
 test('two values of one attribute set at once conflict, and the last writer wins', () => {
   const base = '<section>\n<div class="box" style="left: 10px; top: 4px">A</div>\n</section>\n';
   const a = base.replace('10px', '20px'), b = base.replace('10px', '15px');
