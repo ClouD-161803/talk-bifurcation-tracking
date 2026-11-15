@@ -1031,3 +1031,37 @@ test('a page that said bye is not brought back by a poll or a presence that arri
   assert.equal(back.client, ben.client);
   assert.deepEqual(back.people.map((p) => p.name), ['Ana', 'Ben']);
 });
+
+test('a page is answered at most once per GAP of its polls while operations come back to back', { timeout: 120_000 }, async (t) => {
+  // the GAP of src/edit/people.ts
+  const GAP = 100;
+  const ANSWERS = 4;
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const ana = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  const ben = (await post(edit.port, api('hello'), { name: 'Ben' })).json();
+  // the join of Ben is news for Ana, whose next answer then waits for GAP
+  let since = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${ana.v}`)).json().v;
+  const started = performance.now();
+  let answers = 0;
+  const polling = (async () => {
+    while (answers < ANSWERS) {
+      since = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${since}`)).json().v;
+      answers++;
+    }
+    return performance.now();
+  })();
+  // operations back to back until Ana has had every answer, so that each poll of Ana finds news
+  const at = DECK.indexOf('</body>');
+  let v = ben.v;
+  for (let seq = 1; answers < ANSWERS; seq++) {
+    const answer = (await post(edit.port, api('op'), { token: ben.token, seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
+    assert.equal(answer.ok, true);
+    v = answer.v;
+  }
+  const span = (await polling) - started;
+  assert.ok(span >= (answers - 1) * GAP, `${answers} answers in ${Math.round(span)} ms`);
+});
