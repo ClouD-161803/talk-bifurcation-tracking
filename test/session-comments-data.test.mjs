@@ -165,3 +165,29 @@ test('a thread made after a merge of the offline path is shown on the page that 
   clean(a, REFUSED);
   clean(b);
 });
+
+test('a comment on one of identical paragraphs after a removal is anchored on the paragraph picked', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkOf(t, TWINS);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) > p');
+  await press(a, 'Escape');
+  await a.evaluate(`window.BeesonEditor.exec('element.delete')`);
+  await until(() => count(server, '<p>TBD</p>') === 2, 'the removal to reach index.html');
+  const text = await converge(server, [a, b]);
+
+  await click(a, '.reveal .slides > section:nth-child(1) > p');
+  await comment(a, 'On the first');
+  const [thread] = await a.evaluate(`${C}.transport.comments(${C}.token).then((r) => r.comments)`);
+  assert.equal(thread.anchor.start, text.indexOf('<p>TBD</p>'), 'the anchor is the start tag of the first paragraph');
+  await badge(b, 'One', 'p:nth-of-type(1)', '1*');
+  await badge(b, 'One', 'p:nth-of-type(2)', null);
+  await badge(a, 'One', 'p:nth-of-type(1)', '1');
+  clean(a);
+  clean(b);
+});
