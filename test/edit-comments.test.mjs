@@ -5,7 +5,8 @@
 // aside when it cannot be read, and the requests of a session
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -317,6 +318,47 @@ test('a time of reading in the future is taken as the time now', (t) => {
   const { comments } = open(sessionDir(t), DECK, { now: () => 1_000_000 });
   assert.equal(comments.seen(BO, 5_000_000), 1_000_000);
   assert.equal(comments.list(BO).seen, 1_000_000);
+});
+
+test('a file of comments that cannot be read is copied aside when it cannot be moved, and is not written over when it cannot be copied either', async (t) => {
+  const { renameSync, copyFileSync } = fs;
+  const restore = () => {
+    Object.assign(fs, { renameSync, copyFileSync });
+    syncBuiltinESMExports();
+  };
+  t.after(restore);
+  const locked = (what) => () => {
+    throw Object.assign(new Error(`${what} is locked`), { code: 'EBUSY' });
+  };
+  // a rename onto an aside file fails, as when another program holds the file open on Windows
+  fs.renameSync = (from, to) => (String(to).includes('unreadable') ? locked('rename')() : renameSync(from, to));
+  syncBuiltinESMExports();
+
+  await t.test('copied', () => {
+    const dir = sessionDir(t);
+    const file = join(dir, 'comments.json');
+    writeFileSync(file, 'not json');
+    const { authority, comments } = open(dir, DECK);
+    const aside = readdirSync(dir).filter((n) => n.startsWith('comments-unreadable-'));
+    assert.equal(aside.length, 1);
+    assert.equal(readFileSync(join(dir, aside[0]), 'utf8'), 'not json');
+    assert.ok(comments.add(ANN, onDeck(authority, 'new')).id);
+    comments.stopSync();
+    assert.deepEqual(readJson(file).comments.map((c) => c.text), ['new']);
+  });
+
+  await t.test('neither moved nor copied', () => {
+    fs.copyFileSync = locked('copy');
+    syncBuiltinESMExports();
+    const dir = sessionDir(t);
+    const file = join(dir, 'comments.json');
+    writeFileSync(file, 'not json');
+    const { authority, comments, logged } = open(dir, DECK);
+    assert.equal(comments.add(ANN, onDeck(authority, 'new')).status, 503);
+    comments.stopSync();
+    assert.equal(readFileSync(file, 'utf8'), 'not json');
+    assert.match(logged.join('\n'), /read only/);
+  });
 });
 
 // the comments of a session through its requests. the folder is removed after the edit command
