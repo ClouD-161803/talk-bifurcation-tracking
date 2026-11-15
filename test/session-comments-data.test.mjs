@@ -237,3 +237,38 @@ test('a thread on one of identical paragraphs is shown at its place while later 
   clean(a);
   clean(b);
 });
+
+test('a thread whose answer was lost is made once when it is sent again', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t);
+  // the edit command takes the first thread that Ben posts, and the answer is lost on its way back
+  await b.evaluate(`(() => {
+    const fetched = window.fetch;
+    let lose = 1;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      if (lose && url.endsWith('/.session/comments') && init?.method === 'POST') {
+        lose--;
+        return fetched.call(this, input, init).then(() => Promise.reject(new TypeError('Failed to fetch')));
+      }
+      return fetched.call(this, input, init);
+    };
+  })()`);
+  await show(b, 'One');
+  await click(b, '.reveal .slides > section:nth-child(1) p');
+  await press(b, COMMENT_KEY);
+  await b.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
+  await type(b, 'Sent once');
+  await click(b, `${PANE} .draft .actions .primary`);
+  await sees(b, `document.querySelector('${PANE} .draft .error:not([hidden])')?.textContent ?? null`, OFFLINE);
+  await sees(b, `document.querySelector('${PANE} .draft .actions .primary').disabled`, false);
+  await click(b, `${PANE} .draft .actions .primary`);
+  await b.waitFor(`!document.querySelector('${PANE} .draft')`);
+  const kept = await b.evaluate(`${C}.transport.comments(${C}.token).then((r) => r.comments.map((c) => c.text))`);
+  assert.deepEqual(kept, ['Sent once'], 'the threads of the edit command');
+  await openPane(a);
+  await sees(a, ARTICLES, 1, 'the threads on the other page');
+  await sees(b, ARTICLES, 1, 'the threads on the page that sent them');
+  assert.equal(await converge(server, [a, b]), TALK);
+  clean(a);
+  clean(b);
+});
