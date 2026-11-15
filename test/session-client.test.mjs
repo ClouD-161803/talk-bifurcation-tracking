@@ -39,3 +39,14 @@ test('a page joins with the name typed in the dialog, and again without it', { t
   assert.equal(await page.evaluate(`document.querySelector('dialog.beeson-session-join')`), null);
   clean(page);
 });
+
+test('a page with edit and without session does not load theme/session.js', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, `${server.edit.url}index.html?edit`, { wait: false });
+  await page.waitFor('window.BeesonEditor.status().texts > 0');
+  assert.equal(await page.evaluate(`performance.getEntriesByType('resource').some((e) => e.name.includes('session.js'))`), false);
+  assert.equal(await page.evaluate(`'BeesonSession' in window || !!document.querySelector('.beeson-session-state')`), false);
+  clean(page);
+});
