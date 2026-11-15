@@ -45,6 +45,9 @@ export type Running = {
   link: () => string | null;
   // resolves with the number of operations that are not written into index.html
   close: () => Promise<number>;
+  // resolves with the same number once close() has written index.html, before the share and the
+  // server are closed
+  unwritten: Promise<number>;
 };
 
 // the address of an edit command that already runs on the talk folder
@@ -457,6 +460,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   }
 
   let closing: Promise<number> | null = null;
+  let written!: (unwritten: number) => void;
+  const unwritten = new Promise<number>((done) => (written = done));
   return {
     url: `http://127.0.0.1:${port}/${key}/`,
     port,
@@ -464,6 +469,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     root,
     authority,
     link: () => (relay?.active ? relay.link : null),
+    unwritten,
     close: () =>
       (closing ??= (async () => {
         closed = true;
@@ -475,6 +481,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');
         }
+        written(unwritten);
         // a share in progress sees closed and stops its link, hence the stop waits behind it
         await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
         // a poll that arrives in this time is answered with ended, rather than reset by the close

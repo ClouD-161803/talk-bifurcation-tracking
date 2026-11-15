@@ -86,15 +86,18 @@ async function main(argv: string[]): Promise<void> {
   if (open) openBrowser(page);
   // a write to a terminal that was closed fails, and must not end the command before its stop
   for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
+  // a close that the relay or an open connection holds ends 3 s after index.html is written, with
+  // the status of this write. a stop of the disk that hangs, as on a file system that does not
+  // answer, is not ended
   const stop = () => {
     void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
-    setTimeout(() => process.exit(0), 3000).unref();
+    void running.unwritten.then((unwritten) => setTimeout(() => process.exit(unwritten ? 1 : 0), 3000).unref());
   };
   // a fault that escapes every handler still writes index.html before the exit
   const fail = (e: unknown) => {
     process.stderr.write(`The edit command failed: ${(e as Error)?.stack ?? e}\n`);
     void running.close().finally(() => process.exit(1));
-    setTimeout(() => process.exit(1), 3000).unref();
+    void running.unwritten.then(() => setTimeout(() => process.exit(1), 3000).unref());
   };
   process.on('uncaughtException', fail);
   process.on('unhandledRejection', fail);
