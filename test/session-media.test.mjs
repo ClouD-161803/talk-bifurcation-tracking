@@ -439,5 +439,7 @@ test('an upload refused by an edit command that started again, before the hello 
   const text = await converge(server, [ann]);
   assert.deepEqual(sources(text)[0], ['media/plot.png']);
   assert.equal(await ann.evaluate(`__net.count('/.session/media/', 'PUT')`), 2);
-  clean(ann, [/status of 404/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/]);
+  // people.json is written at most once a second, hence a killed edit command may not know Ann
+  // after its start. her hello without a name is then answered 400, and sent again with her name
+  clean(ann, [/status of 404/, /status of 400 .*\/\.session\/hello$/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/]);
 });

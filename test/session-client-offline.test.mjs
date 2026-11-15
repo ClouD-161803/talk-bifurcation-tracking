@@ -46,7 +46,9 @@ test('a page goes offline when the edit command stops, and Try now sends its edi
   assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide offline</p>'));
   assert.equal(await page.evaluate(STATE), 'Saved to index.html');
   assert.equal(await page.evaluate(ACTION), null);
-  clean(page, REFUSED);
+  // the hello without a name of the rejoin, refused when the kill lost the person of the page, which
+  // the page sends again with the name
+  clean(page, [...REFUSED, /status of 400 .*\/\.session\/hello/]);
 });
 
 test('a guest is told that the host is not running, and the end of the session by the host', { timeout: 300_000 }, async (t) => {
