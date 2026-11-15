@@ -373,8 +373,25 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
     await typeKeys(ben, ' meanwhile');
     await ben.waitFor(`${TEXT}.includes('First slide meanwhile')`);
     await front(ann);
+    // the applies of Ann wait, hence the mode ends only once the restore is in the deck
+    await ann.evaluate(`(() => {
+      const port = ${C}.port;
+      const apply = port.apply.bind(port);
+      window.__gate = new Promise((done) => (window.__open = done));
+      port.apply = (text) => window.__gate.then(() => apply(text));
+      const fetched = window.fetch;
+      window.fetch = function (input, init) {
+        const answer = fetched.call(this, input, init);
+        if (String(input).includes('/restore')) answer.then(() => (window.__posted = true));
+        return answer;
+      };
+      return true;
+    })()`);
     await press$(ann, BAR, 'Restore this version');
     await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Restore');
+    await ann.waitFor('window.__posted === true');
+    assert.equal(await ann.evaluate(SHOWN), true);
+    await ann.evaluate('window.__open(), true');
     await ann.waitFor(`!(${SHOWN})`, 20_000);
     assert.equal(await ann.evaluate(`${TEXT}.includes('Alpha gone')`), false);
     assert.equal(await ann.evaluate(`!!document.querySelector('.beeson-session-preview:not([hidden])')`), false);
