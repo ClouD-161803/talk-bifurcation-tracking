@@ -195,7 +195,9 @@ function keepCode(host: Element, content: string): boolean {
 export type Macro = { name: string; args: number; body: string; deck: boolean };
 
 export function deckMacros(): Macro[] {
-  const raw = (window as unknown as { beesonTex?: { macros?: Record<string, string | [string, number]> } }).beesonTex?.macros ?? {};
+  // an older talk without a tex.js has the macros of its theme/macros.js, as in theme/mathjax-config.js
+  const page = window as unknown as { beesonTex?: { macros?: Record<string, string | [string, number]> }; beesonMacros?: Record<string, string | [string, number]> };
+  const raw = page.beesonTex?.macros ?? page.beesonMacros ?? {};
   return Object.entries(raw).map(([name, v]) => (Array.isArray(v) ? { name, body: String(v[0]), args: Number(v[1]) || 0, deck: true } : { name, body: String(v), args: 0, deck: true }));
 }
 

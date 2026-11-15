@@ -18,8 +18,8 @@ const ROWS = `[...document.querySelectorAll('.slides tr[data-case]')].map((row) 
   return { name: row.dataset.case, got: glyphs(got), want: glyphs(want), red: !!got.querySelector('[fill="red"], [data-mjx-error]') };
 })`;
 
-function typeset(rows) {
-  assert.equal(rows.length, 8);
+function typeset(rows, count = 8) {
+  assert.equal(rows.length, count);
   for (const row of rows) {
     assert.ok(row.want.length > 0, row.name);
     assert.deepEqual(row.got, row.want, row.name);
@@ -50,5 +50,15 @@ test('the definitions of the preamble are typeset in the print view', { timeout:
   const page = await browser.newPage();
   await printView(page, deckUrl(PAGE, 'print-pdf&still'));
   typeset(await page.evaluate(ROWS));
+  assert.deepEqual(page.errors, []);
+});
+
+test('an older talk that loads theme/macros.js and does not have a tex.js keeps its macros', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/old-macros/index.html', 'still'));
+  await page.waitFor(deckSettled);
+  typeset(await page.evaluate(ROWS), 2);
   assert.deepEqual(page.errors, []);
 });
