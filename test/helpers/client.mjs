@@ -87,9 +87,10 @@ let pages = 0;
  * unless name is empty, which leaves the join dialog open. The script of the page counts its loads
  * and the operations that it sends in sessionStorage, which a reload keeps, and with
  * window.__corrupt set it sends each operation with a patch out of bounds. The page reads as
- * visible while it is behind another page, unless window.__visibility is set.
+ * visible while it is behind another page, unless window.__visibility is set. script runs after
+ * this script and before the scripts of the page, e.g. NET of net.mjs.
  */
-export async function open(browser, url, { name = 'Ann', width = 1280, height = 800, mobile = false, wait = true } = {}) {
+export async function open(browser, url, { name = 'Ann', width = 1280, height = 800, mobile = false, wait = true, script = '' } = {}) {
   const page = await browser.newPage({ width, height, mobile });
   const prefix = `page${++pages}:`;
   await page.send('Page.addScriptToEvaluateOnNewDocument', {
@@ -124,7 +125,8 @@ export async function open(browser, url, { name = 'Ann', width = 1280, height = 
         }
         return fetched.call(this, input, init);
       };
-    }`,
+    }
+    ${script}`,
   });
   await page.goto(url);
   await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');

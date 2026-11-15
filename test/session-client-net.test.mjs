@@ -7,11 +7,19 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { caretAtEnd } from './helpers/apply.mjs';
-import { clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk } from './helpers/client.mjs';
+import { caretAtEnd, front } from './helpers/apply.mjs';
+import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
+import { NET } from './helpers/net.mjs';
+import { click, type } from './helpers/editor.mjs';
 import { until } from './helpers/session.mjs';
 
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
+const INERT = `document.querySelector('.reveal .slides').inert`;
+const DIALOG = `document.querySelector('dialog.beeson-edit-dialog[open]')`;
+// a request to an edit command that is not running fails in the console of the page
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+// every request of the page under .session/ fails, also a request held and the long poll in flight
+const OFFLINE = `__net.clear() && __net.rule('/.session/', 'cut') && __net.cut('/.session/') && __net.drop('/.session/')`;
 // the paragraph of slide One in index.html
 const paragraph = (text) => /<h2>One<\/h2>\n  <p>([^<]*)<\/p>/.exec(text)?.[1];
 // the records of copy.ts in IndexedDB for the address of the page
@@ -23,6 +31,24 @@ const COPIES = `new Promise((done) => {
     get.onsuccess = () => done(get.result.length);
   };
 })`;
+
+// a page whose operation is held in flight with an edit of slide One, and then a change of the head
+// of index.html, which the page must load again for
+async function waiting(t, edit = ' slow') {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, edit);
+  await page.waitFor(`__net.held.length === 1`);
+  writeFileSync(server.file, server.read().replace('<title>A session</title>', '<title>A session, renamed</title>'));
+  await page.waitFor(`${INERT} && ${STATE} === 'Saving…'`);
+  return { browser, server, page };
+}
 
 test('converge fails with the text of each page when a page agrees with the file and another does not', { timeout: 30_000 }, () => {
   // a loop that does not end blocks the event loop of node, hence the call runs in a child process
@@ -69,4 +95,65 @@ test('letters typed while a page waits to load again after a change of the head 
   assert.equal(await page.evaluate(COPIES), 0);
   assert.equal(await page.evaluate(STATE), 'Saved to index.html');
   clean(page);
+});
+
+test('a page that must load again while offline reconnects first, and loads again once its edit is acknowledged', { timeout: 120_000 }, async (t) => {
+  const { server, page } = await waiting(t);
+  await page.evaluate(OFFLINE);
+  // the reconnects after 1 and 2 s fail, and the next one waits 4 s
+  await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt - Date.now() > 3000`, 20_000);
+  assert.equal(await loads(page), 1);
+  assert.equal(await page.evaluate(INERT), true);
+  assert.equal(await page.evaluate(`${C}.acked()`), false);
+  await page.evaluate(`__net.clear()`);
+  await front(page);
+  await click(page, '.beeson-session-action').catch((e) => {
+    if (!/Inspected target navigated or closed/.test(e.message)) throw e;
+  });
+  await until(async () => (await loads(page).catch(() => 0)) > 1, 'the page to load again');
+  await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+  const text = await converge(server, [page]);
+  assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide slow</p>').replace('<title>A session</title>', '<title>A session, renamed</title>'));
+  assert.equal(await page.evaluate(COPIES), 0);
+  assert.equal(await loads(page), 2);
+  clean(page, REFUSED);
+});
+
+test('a session that ends while a page waits to load again shows its dialog, with the edit in the copy', { timeout: 120_000 }, async (t) => {
+  const { server, page } = await waiting(t);
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await page.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'The session has ended'`);
+  assert.deepEqual(await page.evaluate(`({ text: ${DIALOG}.querySelector('p').textContent, inert: ${INERT}, loads: Number(sessionStorage.getItem('__loads')) })`), {
+    text: 'Your changes up to now are in index.html. Your changes on slide 1 did not reach index.html.',
+    inert: false,
+    loads: 1,
+  });
+  await page.evaluate(`(${C}.shell.download = (text) => (window.__copy = text), true)`);
+  await page.evaluate(`[...${DIALOG}.querySelectorAll('.row button')].find((b) => b.textContent === 'Download a copy').click()`);
+  const copy = await page.evaluate('window.__copy');
+  assert.ok(copy.includes('<p>First slide slow</p>') && copy.includes('<title>A session, renamed</title>'), copy);
+  clean(page, REFUSED);
+});
+
+test('a page that is blocked while it waits to load again offers the copy and Load again', { timeout: 120_000 }, async (t) => {
+  const { server, page } = await waiting(t);
+  await page.evaluate(`window.__corrupt = true; __net.clear(); __net.release('/.session/op')`);
+  await page.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'Your changes cannot be sent'`);
+  assert.deepEqual(await page.evaluate(`[...${DIALOG}.querySelectorAll('.row button')].map((b) => b.textContent)`), ['Download a copy', 'Load again']);
+  assert.equal(await loads(page), 1);
+  await page.evaluate(`(${C}.shell.download = (text) => (window.__copy = text), true)`);
+  await page.evaluate(`[...${DIALOG}.querySelectorAll('.row button')].find((b) => b.textContent === 'Download a copy').click()`);
+  const copy = await page.evaluate('window.__copy');
+  assert.ok(copy.includes('<p>First slide slow</p>') && copy.includes('<title>A session, renamed</title>'), copy);
+  assert.equal(await page.evaluate(`!!${DIALOG}`), true);
+  await page.evaluate(`window.__corrupt = false`);
+  await page.evaluate(`[...${DIALOG}.querySelectorAll('.row button')].find((b) => b.textContent === 'Load again').click()`).catch((e) => {
+    if (!/Inspected target navigated or closed/.test(e.message)) throw e;
+  });
+  await until(async () => (await loads(page).catch(() => 0)) > 1, 'the page to load again');
+  await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+  assert.ok(server.read().includes('<title>A session, renamed</title>'));
+  clean(page, [/status of 400/]);
 });
