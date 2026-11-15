@@ -10,14 +10,15 @@ import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, ops, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type } from './helpers/editor.mjs';
-import { raw, until } from './helpers/session.mjs';
+import { post, raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const ACTION = `(() => { const b = document.querySelector('.beeson-session-action'); return b && !b.hidden ? b.textContent : null; })()`;
-// a request to an edit command that is not running fails in the console of the page, and the first
-// poll after a restart is answered 404, since the token is of the edit command before
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+// a request to an edit command that is not running fails in the console of the page, the first
+// poll after a restart is answered 404, since the token is of the edit command before, and a
+// request after End session through the relay is answered 410
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 410/, /status of 404 .*\/\.session\/events\?/];
 
 test('a page goes offline when the edit command stops, and Try now sends its edit to the edit command started again', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
@@ -49,7 +50,7 @@ test('a page goes offline when the edit command stops, and Try now sends its edi
 });
 
 test('a guest is told that the host is not running, and the end of the session by the host', { timeout: 300_000 }, async (t) => {
-  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 600, pullMs: 1000, guestMs: 5000 });
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 3000, pullMs: 1000, guestMs: 5000 });
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -114,6 +115,24 @@ test('a guest is told that the host is not running, and the end of the session b
   // the hello without a name of the rejoin, refused when the kill lost the person of the guest, which
   // the page sends again with the name
   clean(guest, [...REFUSED, /status of 400 .*\/\.session\/hello/]);
+});
+
+test('a page refused at its first hello because the session is full says so, and joins once a place is free', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // the 64 places of the session are held by people who do not poll, and who are not dropped meanwhile
+  const server = await talk(t, { env: { SLIDES_GONE_MS: '3600000' } });
+  const { port, key } = server.edit;
+  const tokens = [];
+  for (let i = 1; i <= 64; i++) tokens.push((await post(port, `/${key}/.session/hello`, { name: `Person ${i}` })).json().token);
+  const page = await open(browser, sessionUrl(server.edit), { wait: false });
+  await page.waitFor(`/^The session is full\\. Trying again in \\d+ s$/.test(${STATE})`);
+  assert.equal(await page.evaluate(ACTION), 'Try now');
+  assert.equal((await post(port, `/${key}/.session/bye`, { token: tokens[0] })).status, 200);
+  await click(page, '.beeson-session-action');
+  await page.waitFor(ONLINE);
+  assert.equal(await page.evaluate(STATE), 'Saved to index.html');
+  clean(page, [/status of 503 .*\/\.session\/hello/]);
 });
 
 test('a page whose operation is refused as invalid after a resync stops sending, and Load again loads it', { timeout: 120_000 }, async (t) => {

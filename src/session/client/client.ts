@@ -12,7 +12,7 @@ import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
-import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Restored, Taken, Token, Version } from '../protocol.ts';
+import { FULL, type AppliedOp, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
@@ -89,13 +89,13 @@ export class Client {
   people: Person[] = [];
   known: KnownPerson[] = [];
   presence: Presence[] = [];
-  // the elements that the last apply changed, e.g. for a flash
-  changed: Element[] = [];
   connection: Connection = 'joining';
   // true once an edit of this page has waited for its acknowledgment over SAVING ms
   saving = false;
   // the time of the next reconnect in ms of Date.now(), or null
   retryAt: number | null = null;
+  // the first hello was refused since the session is full, and is sent again at the next reconnect
+  full = false;
   // an operation of this page was refused as invalid after a resync, and nothing is sent any more
   blocked = false;
   // a warning of the edit command shown in the save state while the page is online, e.g. that it
@@ -106,7 +106,7 @@ export class Client {
   left = false;
   // the page is hidden for good and said bye. it sends nothing after it, since a poll would bring
   // it back into the session, and its unsent edits are kept by the copy
-  private gone = false;
+  gone = false;
   hooks: Hooks = {};
   // the presence of the other pages, read as elements of this page, set by presence.ts
   resolved: () => Resolved[] = () => [];
@@ -130,6 +130,8 @@ export class Client {
   private changeWaiters: (() => void)[] = [];
   private framed = false;
   private driving = false;
+  // a drive waits on the person in the dialog of the conflicts, which the end does not wait for
+  private deciding = false;
   private inbox: AppliedOp[] = [];
   // the whole text of an answer of hello, merged by resync
   private fresh: { text: string; v: Version } | null = null;
@@ -174,7 +176,10 @@ export class Client {
     this.app = app;
     this.port = port;
     this.shell = shell;
-    this.transport = new Transport(location.href);
+    // the end that the relay keeps after End session, e.g. for a guest that was offline then
+    this.transport = new Transport(location.href, (ended) => {
+      if (this.sync) this.end(ended);
+    });
     port.onChange(() => this.onChange());
     port.onSave(() => this.flush());
     // the port found that the page does not read as its text after an apply
@@ -211,10 +216,12 @@ export class Client {
     for (;;) {
       try {
         const answer = await this.transport.hello(request);
+        this.full = false;
         this.online();
         return answer;
       } catch (e) {
         if (e instanceof Failure && !e.retried) throw e;
+        this.full = e instanceof Failure && e.status === 503 && e.message === FULL;
         await this.offline(e);
       }
     }
@@ -433,7 +440,11 @@ export class Client {
         }
         const side = (this.fresh || this.inbox.length) && this.hooks.side?.(sync, this.fresh, this.inbox);
         if (side) {
-          const wins = await side;
+          this.deciding = true;
+          for (const fn of this.driveWaiters.splice(0)) fn();
+          const wins = await Promise.resolve(side).finally(() => (this.deciding = false));
+          // the end closed the dialog, and the deck keeps the version of the person
+          if (this.ended) break;
           if (sync.settle(this.fresh, this.inbox.splice(0), wins) !== null) stale = true;
           this.fresh = null;
         }
@@ -481,7 +492,6 @@ export class Client {
       return false;
     }
     this.handed = text;
-    this.changed = applied.changed;
     this.emit('applied', applied.changed);
     return true;
   }
@@ -579,7 +589,8 @@ export class Client {
       for (;;) {
         try {
           const answer = await this.transport.op(op);
-          this.online();
+          // an edit command that does not know the token is online after the hello of the rejoin
+          if (answer.ok || answer.reason !== 'unknown') this.online();
           this.sync!.answer(op, answer);
           break;
         } catch (e) {
@@ -686,7 +697,7 @@ export class Client {
     if (answer.ended) {
       if (answer.ops) this.receive(answer.ops);
       this.since = answer.v;
-      while (this.driving) await new Promise<void>((done) => this.driveWaiters.push(done));
+      while (this.driving && !this.deciding) await new Promise<void>((done) => this.driveWaiters.push(done));
       await this.drive();
       this.end(answer.ended);
       return;

@@ -349,9 +349,9 @@ test('a hold beats every 5 s, is lost after 15 s of silence, and is taken by ano
   await later(ana, 100);
   await until(async () => (await beat()) === 1, 'the first heartbeat of Ana');
 
-  // 15 s without a heartbeat, on the clock of Ben, end the hold of Ana there
-  await later(ben, 14_900);
-  assert.equal(await ben.evaluate(LOCKED(p)), true, 'still locked at 14.9 s');
+  // 15 s without a heartbeat, on the clock of Ben, end the hold of Ana there. the clock is moved to
+  // 14.9 s after the heartbeat was heard, and the lock is read in the same turn
+  assert.equal(await ben.evaluate(`(() => { const p = ${P}; const o = [...p.others.values()][0]; p.skew += 14_900 - (p.now() - o.heardAt); p.check(); return ${LOCKED(p)}; })()`), true, 'still locked at 14.9 s');
   await later(ben, 100);
   assert.equal(await ben.evaluate(LOCKED(p)), false, 'the hold is lost after 15 s of silence');
   // and the next heartbeat holds it again
@@ -1014,4 +1014,22 @@ test('after a restart, a state that waited while the edit command was down is se
   const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, refused);
   clean(ben, refused);
+});
+
+test('a page back online sends its state before the answer of its next poll', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { script: NET });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  await select(ana, el(0, 'h2'));
+  await until(async () => (await selectedOf(ben, 'Ana')).join() === 'One', 'the selection of Ana on the page of Ben');
+  await ana.evaluate(`(__net.rule('/.session/', 'cut'), __net.drop('/.session/'), true)`);
+  await ana.waitFor(`${C}.connection === 'offline'`);
+  // the first poll after the reconnect is held, as the edit command holds a poll without news
+  await ana.evaluate(`(__net.clear(), __net.rule('/.session/events', 'hold', { times: 1 }), ${C}.tryNow(), true)`);
+  await ana.waitFor(`${ONLINE} && __net.held.length === 1`);
+  await select(ana, el(0, 'p'));
+  await until(async () => (await selectedOf(ben, 'Ana')).join() === 'First slide', 'the new selection of Ana on the page of Ben while her poll is held');
+  await ana.evaluate(`__net.release('/.session/events')`);
+  clean(ana);
+  clean(ben);
 });

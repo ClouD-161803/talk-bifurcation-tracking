@@ -10,8 +10,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
-import { isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
-import { readApplied, writeApplied } from './applied.ts';
+import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
+import { AppliedTable, readApplied } from './applied.ts';
 import { Disk, readText, renameRetriedSync } from './disk.ts';
 import { History, type HistoryOptions } from './history.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
@@ -208,8 +208,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   if (earlier) throw new AlreadyRunning(earlier);
   const appliedFile = join(root, '.session', 'applied.json');
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
+  const appliedTable = new AppliedTable(appliedFile, log);
   const onWritten = (n: number) => {
-    if (authority.written(n)) writeApplied(appliedFile, authority.table(), log);
+    if (authority.written(n)) appliedTable.write(authority.table());
   };
   // the pages are told of a write that fails, since an operation is acknowledged before it is written
   const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
@@ -240,7 +241,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           await Promise.race([told, new Promise((done) => (timer = setTimeout(done, END_WAIT)))]);
           clearTimeout(timer);
         }
-        await relay?.stop();
+        await relay?.stop(people.endedBy());
         relay = null;
         return json(200, { link: null });
       });
@@ -382,7 +383,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ('taken' in joined) return json(200, { taken: joined.taken });
       if ('empty' in joined) return error(400, 'the name is empty');
-      if ('full' in joined) return error(503, 'the session is full');
+      if ('full' in joined) return error(503, FULL);
       const { member, token } = joined;
       const applied = typeof hello.was === 'string' ? authority.applied(hello.was) : undefined;
       const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), ...(applied === undefined ? {} : { applied }) };
@@ -609,6 +610,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         unlock();
         people.end();
         const unwritten = await disk.stop();
+        await appliedTable.stop();
         if (unwritten) {
           const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');

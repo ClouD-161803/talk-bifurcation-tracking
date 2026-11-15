@@ -104,7 +104,11 @@ export function ask(client: Client, base: string, mine: string, theirs: string):
       if (value === 'download') client.shell.download(mine);
     },
   });
+  // at the end of the session the version of the person is kept, and the dialog of the end names
+  // its slides
+  const off = client.on('ended', () => dialog.close('ours'));
   return dialog.open('ours').then((value) => {
+    off();
     dialog.el.remove();
     if (value !== 'theirs') return 'ours';
     // the version of the person is set aside before the drop, and offered as a download when the

@@ -91,15 +91,22 @@ test('the edit command serves a session and writes every edit into index.html', 
     const hi = (await post(port, api('hello'), { name: 'Cy' })).json();
     let v = hi.v;
     let seq = 0;
-    const started = Date.now();
     let writtenAt = null;
-    const at = (await current()).indexOf('</body>');
-    while (Date.now() - started < 3000) {
-      const answer = (await post(port, api('op'), { token: hi.token, seq: ++seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
-      assert.equal(answer.ok, true);
-      v = answer.v;
-      if (writtenAt === null && text(file).includes('<i>1</i>')) writtenAt = Date.now() - started;
-      await new Promise((done) => setTimeout(done, 100));
+    // a time over the bound is measured again with fresh insertions, since a stall of the machine
+    // delays the write as well
+    for (let tries = 0; tries < 3 && (writtenAt === null || writtenAt >= 2500); tries++) {
+      await until(async () => text(file) === (await current()), 'the earlier operations to be written');
+      const first = seq + 1;
+      const started = Date.now();
+      writtenAt = null;
+      const at = (await current()).indexOf('</body>');
+      while (Date.now() - started < 3000) {
+        const answer = (await post(port, api('op'), { token: hi.token, seq: ++seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
+        assert.equal(answer.ok, true);
+        v = answer.v;
+        if (writtenAt === null && text(file).includes(`<i>${first}</i>`)) writtenAt = Date.now() - started;
+        await new Promise((done) => setTimeout(done, 100));
+      }
     }
     assert.ok(writtenAt !== null && writtenAt < 2500, `the file was written ${writtenAt} ms after the first operation`);
     await until(async () => text(file) === (await current()), 'the last operations to be written');
@@ -1023,4 +1030,38 @@ test('a page that said bye is not brought back by a poll or a presence that arri
   const back = await hello({ name: 'Ben', person: ben.person, token: ben.token });
   assert.equal(back.client, ben.client);
   assert.deepEqual(back.people.map((p) => p.name), ['Ana', 'Ben']);
+});
+
+test('a page is answered at most once per GAP of its polls while operations come back to back', { timeout: 120_000 }, async (t) => {
+  // the GAP of src/edit/people.ts
+  const GAP = 100;
+  const ANSWERS = 4;
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const ana = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  const ben = (await post(edit.port, api('hello'), { name: 'Ben' })).json();
+  // the join of Ben is news for Ana, whose next answer then waits for GAP
+  let since = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${ana.v}`)).json().v;
+  const started = performance.now();
+  let answers = 0;
+  const polling = (async () => {
+    while (answers < ANSWERS) {
+      since = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${since}`)).json().v;
+      answers++;
+    }
+    return performance.now();
+  })();
+  // operations back to back until Ana has had every answer, so that each poll of Ana finds news
+  const at = DECK.indexOf('</body>');
+  let v = ben.v;
+  for (let seq = 1; answers < ANSWERS; seq++) {
+    const answer = (await post(edit.port, api('op'), { token: ben.token, seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
+    assert.equal(answer.ok, true);
+    v = answer.v;
+  }
+  const span = (await polling) - started;
+  assert.ok(span >= (answers - 1) * GAP, `${answers} answers in ${Math.round(span)} ms`);
 });

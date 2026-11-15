@@ -88,7 +88,7 @@ test('a slide that becomes a vertical stack, and back, looks as on a fresh page'
 
 test('a changed parameter or a new label of a surface asks for a reload, and a changed camera does not', async (t) => {
   await steps(t, [['a mass ratio', (s) => once(s, 'data-function="effective-potential" data-mu="0.05">', 'data-function="effective-potential" data-mu="0.3">'), true]]);
-  await steps(t, [['a label', (s) => once(s, '<span class="label" data-at="L5">\\(\\LL{5}\\)</span>\n  </div>\n  <aside class="notes">The mass ratio', '<span class="label" data-at="L5">\\(\\LL{5}\\)</span>\n    <span class="label" data-at="L1">Extra</span>\n  </div>\n  <aside class="notes">The mass ratio'), true]]);
+  await steps(t, [['a label', (s) => once(s, '<span class="label" data-at="L5">\\(\\mathcal{L}_{5}\\)</span>\n  </div>\n  <aside class="notes">The mass ratio', '<span class="label" data-at="L5">\\(\\mathcal{L}_{5}\\)</span>\n    <span class="label" data-at="L1">Extra</span>\n  </div>\n  <aside class="notes">The mass ratio'), true]]);
   await steps(t, [['an azimuth', (s) => once(s, 'data-function="effective-potential" data-mu="0.05">', 'data-function="effective-potential" data-mu="0.05" data-azimuth="-20">'), false]]);
 });
 

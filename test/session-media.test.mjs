@@ -16,6 +16,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { front } from './helpers/apply.mjs';
 import { C, clean, converge, open, sessionUrl, show, STATE, talk, TEXT } from './helpers/client.mjs';
 import { click, press as keys } from './helpers/editor.mjs';
+import { NET } from './helpers/net.mjs';
 import { ACTION, dropFiles, edit, goOffline, goOnline, SHOWN, tab } from './helpers/offline.mjs';
 import { post, raw, until } from './helpers/session.mjs';
 
@@ -385,4 +386,27 @@ test('an upload cut on the network is sent again once the page is online again, 
   assert.ok(disk(server, 'media/plot.png').equals(LIGHT));
   assert.equal(await ann.evaluate(STATE), 'Saved to index.html');
   clean(ann, PROXIED);
+});
+
+test('an upload refused by an edit command that started again, before the hello of the page, is sent again without Try again', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const port = server.edit.port;
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: NET });
+  await converge(server, [ann]);
+  // every hello of Ann is held, hence her upload reaches the new edit command before her hello
+  await ann.evaluate(`(__net.rule('/.session/hello', 'hold'), true)`);
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await ann.waitFor(`${C}.connection === 'offline'`);
+  await server.start(['--port', String(port)]);
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`__net.count('/.session/media/', 'PUT', 404) === 1`);
+  await ann.evaluate(`(__net.clear(), __net.release('/.session/hello'), ${C}.tryNow(), true)`);
+  const text = await converge(server, [ann]);
+  assert.deepEqual(sources(text)[0], ['media/plot.png']);
+  assert.equal(await ann.evaluate(`__net.count('/.session/media/', 'PUT')`), 2);
+  clean(ann, [/status of 404/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/]);
 });

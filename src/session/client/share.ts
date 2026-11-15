@@ -55,11 +55,9 @@ type Status = (someone: Someone) => string | (string | Node)[];
 const statuses: Status[] = [];
 
 // a line beside a person in the list of the Share dialog, e.g. Typing on slide 4, Following Ana,
-// or Away. the first function that returns a text is shown, and a name in it is a bdi element. the
-// function returned removes it
-export function addPersonStatus(fn: Status): () => void {
+// or Away. the first function that returns a text is shown, and a name in it is a bdi element
+export function addPersonStatus(fn: Status): void {
   statuses.push(fn);
-  return () => void statuses.splice(statuses.indexOf(fn) >>> 0, 1);
 }
 
 const SVG = 'http://www.w3.org/2000/svg';

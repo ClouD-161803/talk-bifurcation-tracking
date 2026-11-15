@@ -14,7 +14,7 @@ import { mathLookup, type MathLookup } from '../math.ts';
 export type Shape = { x: number; y: number; w: number; h: number; deg: number; grow: number };
 
 export type PresenceHooks = {
-  // the text that offsetOf and elementAt of the port refer to, i.e. of the last open or apply
+  // the text that offsetOf of the port refers to, i.e. of the last open or apply
   source(): string | null;
   // the element whose start tag is at each offset of source(), or null
   elementsAt(offsets: number[]): (Element | null)[];

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
 import { createReadStream, mkdirSync as mkdirSync3, readFileSync as readFileSync6, realpathSync as realpathSync2, unlinkSync as unlinkSync5, writeFileSync as writeFileSync5 } from "node:fs";
-import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile3 } from "node:fs/promises";
+import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createHash, randomBytes as randomBytes5 } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -31,6 +31,7 @@ function shown(raw) {
   });
   return kept.join("");
 }
+var FULL = "the session is full";
 var NAME_MAX = 40;
 var cleanPersonName = (raw) => typeof raw === "string" ? shown(Array.from(shown(raw).replace(/\s+/g, " ").trim()).slice(0, NAME_MAX).join("")).trim() : "";
 var nameKey = (name) => cleanPersonName(name).normalize("NFKC").replace(/[\p{Cf}\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, "").toLowerCase();
@@ -815,6 +816,7 @@ var Authority = class {
 // src/edit/applied.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { readFileSync as readFileSync2, unlinkSync as unlinkSync2, writeFileSync } from "node:fs";
+import { unlink, writeFile as writeFile2 } from "node:fs/promises";
 
 // src/edit/disk.ts
 import { constants, copyFileSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync } from "node:fs";
@@ -1375,6 +1377,43 @@ function writeApplied(file, table, log) {
     }
   }
 }
+var AppliedTable = class {
+  constructor(file, log) {
+    this.next = null;
+    this.saving = null;
+    this.stopped = false;
+    this.file = file;
+    this.log = log;
+  }
+  write(table) {
+    this.next = table;
+    if (!this.saving && !this.stopped) this.saving = this.flush();
+  }
+  // at the stop, after the last write of index.html. the write in flight ends first, since its
+  // older table would otherwise replace the newest one
+  async stop() {
+    this.stopped = true;
+    await this.saving;
+    if (this.next) writeApplied(this.file, this.next, this.log);
+    this.next = null;
+  }
+  async flush() {
+    while (this.next && !this.stopped) {
+      const table = this.next;
+      this.next = null;
+      const tmp = `${this.file}.${randomBytes2(6).toString("hex")}.tmp`;
+      try {
+        await writeFile2(tmp, JSON.stringify(table));
+        await renameRetried(tmp, this.file);
+      } catch (e) {
+        await unlink(tmp).catch(() => {
+        });
+        this.log(`could not write ${this.file}: ${e.message}`);
+      }
+    }
+    this.saving = null;
+  }
+};
 
 // src/edit/history.ts
 import { appendFileSync, mkdirSync, readdirSync as readdirSync2, readFileSync as readFileSync3, statSync as statSync2, truncateSync, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
@@ -2207,7 +2246,7 @@ var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeN
 // src/edit/people.ts
 import { randomBytes as randomBytes4 } from "node:crypto";
 import { readFileSync as readFileSync4, unlinkSync as unlinkSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { unlink, writeFile as writeFile2 } from "node:fs/promises";
+import { unlink as unlink2, writeFile as writeFile3 } from "node:fs/promises";
 var HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25e3;
 var GAP = 100;
 var GONE = Number(process.env.SLIDES_GONE_MS) || 4e4;
@@ -2580,10 +2619,10 @@ var People = class {
     const tmp = `${this.file}.${randomBytes4(6).toString("hex")}.tmp`;
     this.saving = (async () => {
       try {
-        await writeFile2(tmp, this.json());
+        await writeFile3(tmp, this.json());
         await renameRetried(tmp, this.file);
       } catch (e) {
-        await unlink(tmp).catch(() => {
+        await unlink2(tmp).catch(() => {
         });
         this.log(`could not write ${this.file}: ${e.message}`);
         this.dirty = true;
@@ -2687,11 +2726,13 @@ var RelayLink = class {
     this.running = true;
     for (let i = 0; i < PULLS; i++) void this.pullLoop();
   }
-  async stop() {
+  // ended is the record of End session, which the relay answers to the guests that come later
+  async stop(ended) {
     this.running = false;
     for (const c of this.controllers) c.abort();
     await Promise.race([Promise.allSettled([...this.serving]), sleep(1500)]);
-    await fetch(`${this.relay}/host/${this.key}`, { method: "DELETE", headers: this.auth(), signal: AbortSignal.timeout(3e3) }).catch(() => {
+    const body = ended && JSON.stringify({ ended });
+    await fetch(`${this.relay}/host/${this.key}`, { method: "DELETE", headers: { ...this.auth(), ...body && { "Content-Type": "application/json" } }, body, signal: AbortSignal.timeout(3e3) }).catch(() => {
     });
   }
   auth() {
@@ -2947,8 +2988,9 @@ async function start(options = {}) {
   if (earlier) throw new AlreadyRunning(earlier);
   const appliedFile = join5(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
+  const appliedTable = new AppliedTable(appliedFile, log);
   const onWritten = (n) => {
-    if (authority.written(n)) writeApplied(appliedFile, authority.table(), log);
+    if (authority.written(n)) appliedTable.write(authority.table());
   };
   const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join5(root, ".session", "people.json"), log);
@@ -2974,7 +3016,7 @@ async function start(options = {}) {
           await Promise.race([told, new Promise((done) => timer = setTimeout(done, END_WAIT))]);
           clearTimeout(timer);
         }
-        await relay?.stop();
+        await relay?.stop(people.endedBy());
         relay = null;
         return json(200, { link: null });
       });
@@ -3039,7 +3081,7 @@ async function start(options = {}) {
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
       try {
-        await writeFile3(join5(real, candidate), request.body, { flag: "wx" });
+        await writeFile4(join5(real, candidate), request.body, { flag: "wx" });
         return json(200, { path: `media/${candidate}` });
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -3105,7 +3147,7 @@ async function start(options = {}) {
       const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ("taken" in joined) return json(200, { taken: joined.taken });
       if ("empty" in joined) return error(400, "the name is empty");
-      if ("full" in joined) return error(503, "the session is full");
+      if ("full" in joined) return error(503, FULL);
       const { member, token } = joined;
       const applied = typeof hello.was === "string" ? authority.applied(hello.was) : void 0;
       const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), ...applied === void 0 ? {} : { applied } };
@@ -3316,6 +3358,7 @@ async function start(options = {}) {
       unlock();
       people.end();
       const unwritten2 = await disk.stop();
+      await appliedTable.stop();
       if (unwritten2) {
         const kept = keepUnwritten(root, disk.bom ? `\uFEFF${authority.text}` : authority.text);
         log(kept ? `the text of the session is kept in ${kept}` : "the text of the session could not be kept in any file");
