@@ -94,7 +94,9 @@ export class Badges {
     const app = this.comments.client.app;
     const current = app.current();
     // the mode of Version History shows another version of the deck, without the badges
-    if (!this.shown || !current || app.state !== 'loaded' || document.documentElement.classList.contains('beeson-history')) {
+    const here = current ? [...groups].filter(([target]) => current.contains(target)) : [];
+    // the origin of the stage is a read of layout, which a drag on a slide without threads does not make
+    if (!this.shown || !here.length || app.state !== 'loaded' || document.documentElement.classList.contains('beeson-history')) {
       this.layer.replaceChildren();
       this.boxes = [];
       return;
@@ -102,8 +104,7 @@ export class Badges {
     const { origin, scale } = app.stage;
     const old = new Map(this.boxes.map((b) => [b.target, b.badge]));
     const boxes: Box[] = [];
-    for (const [target, g] of groups) {
-      if (!current.contains(target)) continue;
+    for (const [target, g] of here) {
       const r = target.getBoundingClientRect();
       if (!r.width && !r.height) continue;
       const badge = old.get(target) ?? this.badge(target);
