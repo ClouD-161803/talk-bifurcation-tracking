@@ -554,3 +554,34 @@ test('add regression test: a dot folder or node_modules is not served under anot
   if (process.platform !== 'win32') paths.push('GIT~1/config', 'NODE_M~1/x/index.js');
   for (const path of paths) assert.equal((await raw(edit.port, 'GET', `${edit.base}${path}`)).status, 404, path);
 });
+
+test('add regression test: a page that knows the client id of another page cannot act as this page', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = async (body) => (await post(edit.port, api('hello'), body)).json();
+  const ann = await hello({ name: 'Ann' });
+  const bo = await hello({ name: 'Bo' });
+  assert.match(ann.token ?? '', /^[A-Za-z0-9_-]{22,}$/, 'hello gives the page a secret token');
+  assert.notEqual(ann.token, ann.client);
+  // the client id of Ann is public, since every page reads it in people, presence, and operations
+  const id = bo.people.find((p) => p.name === 'Ann').client;
+  const as = { client: id, token: id };
+  const poll = async () => (await raw(edit.port, 'GET', `${api('events')}?client=${bo.client}&token=${bo.token}&since=${bo.v}`)).json();
+  assert.equal((await post(edit.port, api('presence'), { ...as, state: 'spoofed' })).status === 200, false, 'presence as Ann');
+  const op = (await post(edit.port, api('op'), { ...as, seq: 1, base: bo.v, patches: [{ start: 0, end: 0, text: '<!-- spoofed -->' }] })).json();
+  assert.equal(op.ok, false, 'an operation as Ann');
+  assert.equal((await post(edit.port, api('name'), { ...as, name: 'Mallory' })).status === 200, false, 'a new name of Ann');
+  assert.equal((await raw(edit.port, 'GET', `${api('events')}?client=${id}&token=${id}&since=${bo.v}`)).status, 404, 'the events of Ann');
+  const again = await hello({ name: 'Bo', person: bo.person, ...as });
+  assert.notEqual(again.client, id, 'a hello that takes the page of Ann');
+  await post(edit.port, api('bye'), as);
+  const events = await poll();
+  const seen = events.presence.find((p) => p.client === id);
+  assert.ok(seen, 'Ann is still present after a bye in her name');
+  assert.equal(seen.name, 'Ann');
+  assert.equal(seen.state, null);
+  assert.ok(!readFileSync(join(talk, 'index.html'), 'utf8').includes('spoofed'));
+});
