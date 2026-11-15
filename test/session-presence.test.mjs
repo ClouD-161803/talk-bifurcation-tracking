@@ -961,3 +961,47 @@ test('the heartbeat is sent by the timer of the page, without check()', { timeou
   clean(ana);
   clean(ben);
 });
+
+test('after a restart, a state that waited while the edit command was down is sent with the new token', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  const { port } = server.edit;
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  // the presence requests of Ana wait while window.__hold is set, and the statuses of their answers
+  // are kept
+  await ana.evaluate(`(() => {
+    const f = window.fetch;
+    window.__hold = null;
+    window.__holding = 0;
+    window.__statuses = [];
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      if (!url.includes('/.session/presence')) return f.call(this, input, init);
+      window.__holding++;
+      return Promise.resolve(window.__hold).then(() => (window.__holding--, f.call(this, input, init))).then((r) => (window.__statuses.push(r.status), r));
+    };
+    return true;
+  })()`);
+  await select(ana, el(1, 'ul'));
+  await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben');
+  await ana.evaluate(`(window.__hold = new Promise((done) => (window.__release = done)), true)`);
+  await select(ana, el(1, 'h2'));
+  await until(() => ana.evaluate('window.__holding === 1'), 'the state of Ana to wait');
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  // the state fails against the edit command that stopped, and it waits for the next one
+  await ana.evaluate('(window.__release(), true)');
+  await until(() => ana.evaluate(`window.__holding === 0 && !${C}.presenceBusy && ${C}.connection !== 'online'`), 'the state of Ana to fail, and Ana offline');
+  await until(() => ben.evaluate(`${C}.connection !== 'online'`), 'Ben offline');
+  await server.start(['--port', String(port)]);
+  await ben.evaluate(`${C}.tryNow(); true`);
+  await ben.waitFor(ONLINE, 20_000);
+  await ana.evaluate(`${C}.tryNow(); true`);
+  await ana.waitFor(ONLINE, 20_000);
+  const h2 = `(${C}.resolved().find((r) => r.name === 'Ana')?.selected ?? []).map((e) => e.localName).join()`;
+  await until(async () => (await ben.evaluate(h2)) === 'h2', 'the selection of Ana on the page of Ben after the restart', 10_000);
+  assert.deepEqual((await ana.evaluate('window.__statuses')).filter((s) => s !== 200 && s !== 204), [], 'every state is sent with a token that the edit command knows');
+  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  clean(ana, refused);
+  clean(ben, refused);
+});
