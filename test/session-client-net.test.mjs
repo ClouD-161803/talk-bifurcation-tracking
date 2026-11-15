@@ -652,3 +652,22 @@ test('an operation answered 503 is sent again at the reconnect, and reaches inde
   assert.equal(await page.evaluate(`${C}.blocked`), false);
   clean(page, REFUSED);
 });
+
+test('a hello that the edit command refuses opens the join dialog with its message, and the name typed then joins', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const refuse = `__net.rule('/.session/hello', 'answer', { status: 400, body: '{"error":"the name is empty"}', times: 1 });`;
+  const page = await open(browser, sessionUrl(server.edit), { name: 'Ann', wait: false, script: `${NET}\n${refuse}` });
+  await page.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
+  assert.equal(await page.evaluate(`document.querySelector('dialog.beeson-session-join .error').textContent`), 'the name is empty');
+  const field = `document.querySelector('dialog.beeson-session-join input')`;
+  assert.equal(await page.evaluate(`${field}.value`), 'Ann');
+  await page.evaluate(`(${field}.value = '', ${field}.dispatchEvent(new Event('input')), ${field}.focus(), true)`);
+  await type(page, 'Ada');
+  await press(page, 'Enter');
+  await page.waitFor(ONLINE);
+  assert.deepEqual(await page.evaluate(`[${C}.name, !!document.querySelector('dialog.beeson-session-join[open]'), __net.count('/.session/hello')]`), ['Ada', false, 2]);
+  await converge(server, [page]);
+  clean(page, REFUSED);
+});
