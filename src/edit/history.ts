@@ -12,7 +12,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statS
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
-import { apply, copy, diff, shiftOffset } from '../session/patch.ts';
+import { apply, copy, diff } from '../session/patch.ts';
 import { VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, renameRetriedSync } from './disk.ts';
@@ -74,31 +74,68 @@ function tidy(marks: Mark[]): Mark[] {
   return out;
 }
 
+// the first index of a list of n for which at is true, where at is false and then true
+function first(n: number, at: (i: number) => boolean): number {
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (at(mid)) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+
+// shiftOffset of patch.ts for many offsets, by a binary search of the sorted patches
+function shifter(patches: Patch[]): (offset: number, after: boolean) => number {
+  const deltas = [0];
+  for (const p of patches) deltas.push(deltas[deltas.length - 1] + p.text.length - (p.end - p.start));
+  return (offset, after) => {
+    const i = first(patches.length, (k) => {
+      const p = patches[k];
+      return !(p.end < offset || (p.end === offset && (p.start < p.end || after)));
+    });
+    return i < patches.length && patches[i].start < offset ? patches[i].start + deltas[i] : offset + deltas[i];
+  };
+}
+
 // the marks of an open version moved over an operation, with the ranges that the operation wrote
 // marked as changed by its author. a removal leaves an empty mark at its place, and an older mark
-// keeps only what the operation did not write over
+// keeps only what the operation did not write over. the ranges are sorted and do not overlap,
+// hence the ranges that meet a mark are found by a binary search
 export function moveMarks(marks: Mark[], patches: Patch[], author: string): Mark[] {
   if (patches.length === 0) return marks;
   const ranges = rangesOf(patches);
+  const written = ranges.filter((r) => r.start < r.end);
+  const shift = shifter(patches);
   const out: Mark[] = [];
   for (const m of marks) {
-    const start = shiftOffset(m.start, patches, true);
-    const end = m.start === m.end ? start : Math.max(start, shiftOffset(m.end, patches, false));
-    let pieces: Range[] = [{ start, end }];
-    for (const r of ranges) {
-      if (r.start === r.end) continue;
-      pieces = pieces.flatMap((p) => {
-        if (p.start === p.end) return r.start <= p.start && p.start <= r.end ? [] : [p];
-        if (p.end <= r.start || r.end <= p.start) return [p];
-        return [{ start: p.start, end: r.start }, { start: r.end, end: p.end }].filter((x) => x.start < x.end);
-      });
+    const start = shift(m.start, true);
+    const end = m.start === m.end ? start : Math.max(start, shift(m.end, false));
+    if (start === end) {
+      const r = written[first(written.length, (k) => written[k].end >= start)];
+      if (!r || r.start > start) out.push({ start, end, author: m.author });
+      continue;
     }
-    for (const p of pieces) out.push({ start: p.start, end: p.end, author: m.author });
+    let at = start;
+    for (let k = first(written.length, (i) => written[i].end > start); k < written.length && written[k].start < end; k++) {
+      if (written[k].start > at) out.push({ start: at, end: written[k].start, author: m.author });
+      at = Math.max(at, written[k].end);
+    }
+    if (at < end) out.push({ start: at, end, author: m.author });
   }
+  // a removal inside a mark of the same author is already marked. reach is the furthest end of
+  // the marks of author that start at or before the removal
+  const mine = out.filter((m) => m.author === author).sort((a, b) => a.start - b.start);
+  let k = 0;
+  let reach = -1;
   for (const r of ranges) {
-    // a removal inside a mark of the same author is already marked
-    if (r.start === r.end && out.some((m) => m.author === author && m.start <= r.start && r.start <= m.end)) continue;
+    if (r.start === r.end) {
+      while (k < mine.length && mine[k].start <= r.start) reach = Math.max(reach, mine[k++].end);
+      if (reach >= r.start) continue;
+    }
     out.push({ start: r.start, end: r.end, author });
+    reach = Math.max(reach, r.end);
   }
   return tidy(out);
 }
@@ -109,7 +146,9 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
   const ranges = rangesOf(patches);
   const out: Mark[] = [];
   for (const m of marks) {
-    for (const r of ranges) {
+    // the ends of the ranges do not decrease, hence the ranges that meet m follow one another
+    for (let k = first(ranges.length, (i) => ranges[i].end >= m.start); k < ranges.length && ranges[k].start <= m.end; k++) {
+      const r = ranges[k];
       if (m.start === m.end || r.start === r.end) {
         if (m.start === m.end && r.start <= m.start && m.start <= r.end) out.push({ ...m });
         else if (r.start === r.end && m.start <= r.start && r.start <= m.end) out.push({ start: r.start, end: r.start, author: m.author });
@@ -118,11 +157,20 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
       }
     }
   }
+  const kept = tidy(out);
+  // a range is held by a mark that starts before its end, or at its place when it is empty, and
+  // reaches into it. reach is the furthest end of those marks
+  const added: Mark[] = [];
+  let k = 0;
+  let reach = -1;
   for (const r of ranges) {
-    const held = out.some((m) => (r.start === r.end ? m.start <= r.start && r.start <= m.end : m.start < r.end && r.start < m.end));
-    if (!held) out.push({ start: r.start, end: r.end, author });
+    const empty = r.start === r.end;
+    while (k < kept.length && (empty ? kept[k].start <= r.start : kept[k].start < r.end)) reach = Math.max(reach, kept[k++].end);
+    if (empty ? reach >= r.start : reach > r.start) continue;
+    added.push({ start: r.start, end: r.end, author });
+    reach = Math.max(reach, r.end);
   }
-  return tidy(out);
+  return added.length ? tidy([...kept, ...added]) : kept;
 }
 
 // patches whose texts are copied, since a slice of a text keeps the whole text in memory

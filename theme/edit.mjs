@@ -385,11 +385,11 @@ function invert(text, patches) {
     return { start: start2, end: start2 + p.text.length, text: copy(text.slice(p.start, p.end)) };
   });
 }
-function combine(first, second) {
+function combine(first2, second) {
   const out = [];
   let i = 0, j = 0;
-  while (i < first.length || j < second.length) {
-    if (j >= second.length || i < first.length && before(first[i], second[j], true)) out.push(first[i++]);
+  while (i < first2.length || j < second.length) {
+    if (j >= second.length || i < first2.length && before(first2[i], second[j], true)) out.push(first2[i++]);
     else out.push(second[j++]);
   }
   return out;
@@ -785,11 +785,11 @@ var Authority = class {
     const at = parseVersion(request.base);
     if (!at || at.epoch !== this.epoch || at.n < this.oldest) return { answer: this.refuse("stale") };
     if (at.n > this.n) return { answer: this.refuse("invalid") };
-    const first = this.log.length - (this.n - at.n);
-    const length = at.n === this.n ? this.text.length : this.log[first].lengthBefore;
+    const first2 = this.log.length - (this.n - at.n);
+    const length = at.n === this.n ? this.text.length : this.log[first2].lengthBefore;
     if (!valid(request.patches, length)) return { answer: this.refuse("invalid") };
     let patches = request.patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
-    for (let i = first; i < this.log.length && patches; i++) patches = shift(patches, this.log[i].op.patches, true);
+    for (let i = first2; i < this.log.length && patches; i++) patches = shift(patches, this.log[i].op.patches, true);
     if (!patches) return { answer: this.refuse("conflict") };
     if (!valid(patches, this.text.length, this.text)) return { answer: this.refuse("invalid") };
     patches = patches.filter((p) => p.start !== p.end || p.text !== "");
@@ -1522,27 +1522,58 @@ function tidy(marks) {
   }
   return out;
 }
+function first(n, at) {
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const mid = lo + hi >> 1;
+    if (at(mid)) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+function shifter(patches) {
+  const deltas = [0];
+  for (const p of patches) deltas.push(deltas[deltas.length - 1] + p.text.length - (p.end - p.start));
+  return (offset, after) => {
+    const i = first(patches.length, (k) => {
+      const p = patches[k];
+      return !(p.end < offset || p.end === offset && (p.start < p.end || after));
+    });
+    return i < patches.length && patches[i].start < offset ? patches[i].start + deltas[i] : offset + deltas[i];
+  };
+}
 function moveMarks(marks, patches, author) {
   if (patches.length === 0) return marks;
   const ranges = rangesOf(patches);
+  const written = ranges.filter((r) => r.start < r.end);
+  const shift2 = shifter(patches);
   const out = [];
   for (const m of marks) {
-    const start2 = shiftOffset(m.start, patches, true);
-    const end = m.start === m.end ? start2 : Math.max(start2, shiftOffset(m.end, patches, false));
-    let pieces2 = [{ start: start2, end }];
-    for (const r of ranges) {
-      if (r.start === r.end) continue;
-      pieces2 = pieces2.flatMap((p) => {
-        if (p.start === p.end) return r.start <= p.start && p.start <= r.end ? [] : [p];
-        if (p.end <= r.start || r.end <= p.start) return [p];
-        return [{ start: p.start, end: r.start }, { start: r.end, end: p.end }].filter((x) => x.start < x.end);
-      });
+    const start2 = shift2(m.start, true);
+    const end = m.start === m.end ? start2 : Math.max(start2, shift2(m.end, false));
+    if (start2 === end) {
+      const r = written[first(written.length, (k2) => written[k2].end >= start2)];
+      if (!r || r.start > start2) out.push({ start: start2, end, author: m.author });
+      continue;
     }
-    for (const p of pieces2) out.push({ start: p.start, end: p.end, author: m.author });
+    let at = start2;
+    for (let k2 = first(written.length, (i) => written[i].end > start2); k2 < written.length && written[k2].start < end; k2++) {
+      if (written[k2].start > at) out.push({ start: at, end: written[k2].start, author: m.author });
+      at = Math.max(at, written[k2].end);
+    }
+    if (at < end) out.push({ start: at, end, author: m.author });
   }
+  const mine = out.filter((m) => m.author === author).sort((a, b) => a.start - b.start);
+  let k = 0;
+  let reach = -1;
   for (const r of ranges) {
-    if (r.start === r.end && out.some((m) => m.author === author && m.start <= r.start && r.start <= m.end)) continue;
+    if (r.start === r.end) {
+      while (k < mine.length && mine[k].start <= r.start) reach = Math.max(reach, mine[k++].end);
+      if (reach >= r.start) continue;
+    }
     out.push({ start: r.start, end: r.end, author });
+    reach = Math.max(reach, r.end);
   }
   return tidy(out);
 }
@@ -1550,7 +1581,8 @@ function clip(marks, patches, author) {
   const ranges = rangesOf(patches);
   const out = [];
   for (const m of marks) {
-    for (const r of ranges) {
+    for (let k2 = first(ranges.length, (i) => ranges[i].end >= m.start); k2 < ranges.length && ranges[k2].start <= m.end; k2++) {
+      const r = ranges[k2];
       if (m.start === m.end || r.start === r.end) {
         if (m.start === m.end && r.start <= m.start && m.start <= r.end) out.push({ ...m });
         else if (r.start === r.end && m.start <= r.start && r.start <= m.end) out.push({ start: r.start, end: r.start, author: m.author });
@@ -1559,11 +1591,18 @@ function clip(marks, patches, author) {
       }
     }
   }
+  const kept = tidy(out);
+  const added = [];
+  let k = 0;
+  let reach = -1;
   for (const r of ranges) {
-    const held = out.some((m) => r.start === r.end ? m.start <= r.start && r.start <= m.end : m.start < r.end && r.start < m.end);
-    if (!held) out.push({ start: r.start, end: r.end, author });
+    const empty = r.start === r.end;
+    while (k < kept.length && (empty ? kept[k].start <= r.start : kept[k].start < r.end)) reach = Math.max(reach, kept[k++].end);
+    if (empty ? reach >= r.start : reach > r.start) continue;
+    added.push({ start: r.start, end: r.end, author });
+    reach = Math.max(reach, r.end);
   }
-  return tidy(out);
+  return added.length ? tidy([...kept, ...added]) : kept;
 }
 var copied = (patches) => patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
 var validPatches = (patches, n) => {
