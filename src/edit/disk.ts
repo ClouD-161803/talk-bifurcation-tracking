@@ -156,13 +156,14 @@ export class Disk {
     }, wait);
   }
 
-  // the text of the authority written at once, at a stop of the edit command. a task in flight is
-  // left at its next step, hence its write cannot land after this one
+  // the text of the authority written at once, at a stop of the edit command, after a change of the
+  // file is merged. a task in flight is left at its next step, hence its write cannot land after this
+  // one
   stopSync(): void {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     if (this.poller) clearInterval(this.poller);
-    finish(this.put());
+    finish(this.write());
   }
 
   // resolves once a write or a check in progress is over
