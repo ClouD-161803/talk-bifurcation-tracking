@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { Authority, Replica, apply, changes, checksum, conflict, diff, invert, mergePatches, shift, shiftOffset, tokenize, valid } from '../theme/edit.mjs';
+import { widen } from '../src/session/patch.ts';
 
 const deck = readFileSync(new URL('../test-deck.html', import.meta.url), 'utf8').replace(/^﻿/, '');
 
@@ -834,4 +835,49 @@ test('two values of one attribute set at once conflict, and the last writer wins
   // a character reference is widened whole, and so is a tag
   assert.deepEqual(diff('a &lt; b', 'a &gt; b'), [{ start: 2, end: 6, text: '&gt;' }]);
   assert.deepEqual(diff('<p id=x>t</p>', '<p id=y>t</p>'), [{ start: 0, end: 8, text: '<p id=y>' }]);
+});
+
+// the snippets of the edits of the widen test, which open and close tags, raw text, comments, and
+// references, and U+0130, whose lowercase is two code units long
+const SNIPPETS = ['a', ' ', '\n', '<', '>', '"', "'", '&', '&amp;', ';', '/', '=', '<p>', '</p>', '<b class="x y">', '<i title=\'a>b\'>', '<!--', '-->', '<script>', '</script>', '</script ', '<title>', '</title>', '<style>', '</style>', '<textarea>', '</textarea>', '<!doctype html>', '<?x', '</ ', '😀', '\ud83d'];
+
+// a seeded walk of edits of test-deck.html, each near a spot where tokens are hard, and the patches
+// of each text that widen is given, of which half are near the edit
+function* walk(seed, rounds) {
+  const r = generator(seed);
+  const spots = ['<script', '</script', '<style', '<!--', '-->', 'class="', '<title', '&', '<svg', '<math', '<pre', '<textarea'].map((m) => deck.indexOf(m)).filter((i) => i >= 0);
+  let text = deck;
+  for (let round = 0; round < rounds; round++) {
+    const spot = Math.min(text.length, r.chance(0.2) ? r.int(text.length + 1) : Math.max(0, r.pick(spots) + r.int(200) - 100));
+    const end = Math.min(text.length, spot + (r.chance(0.5) ? 0 : r.int(r.chance(0.1) ? 2000 : 12)));
+    const word = () => Array.from({ length: 1 + r.int(3) }, () => r.pick(SNIPPETS)).join('');
+    if (r.chance(0.002)) text = text.slice(0, spot) + '\u0130' + text.slice(spot);
+    else if (r.chance(0.02)) text = text.replaceAll('\u0130', '');
+    else text = text.slice(0, spot) + (r.chance(0.3) ? '' : word()) + text.slice(end);
+    const points = Array.from({ length: 2 * (1 + r.int(4)) }, (_, i) => Math.min(text.length, i % 2 ? Math.max(0, spot + r.int(80) - 40) : r.int(text.length + 1))).sort((a, b) => a - b);
+    const patches = [];
+    for (let i = 0; i < points.length; i += 2) patches.push({ start: points[i], end: points[i + 1], text: r.chance(0.5) ? '' : word() });
+    yield { text, patches, other: r.chance(0.1) };
+  }
+}
+
+test('widen gives the same patches when it tokenizes again only the part of a text that changed since the last', () => {
+  const reset = () => widen('<p>another text</p>', [{ start: 0, end: 0, text: '' }]);
+  for (const seed of [1, 2, 3]) {
+    // the tokens of each text are those of the text before, as for the base of a page at each keystroke,
+    // and now and then of a text in between, as for the text with an operation in flight
+    const step = [];
+    let before = null;
+    for (const { text, patches, other } of walk(seed, 1000)) {
+      if (other && before) widen(before.slice(0, 10) + 'x' + before.slice(10), [{ start: 0, end: 0, text: '' }]);
+      step.push(widen(text, patches));
+      before = text;
+    }
+    let round = 0;
+    for (const { text, patches } of walk(seed, 1000)) {
+      reset();
+      assert.deepEqual(step[round], widen(text, patches), `seed ${seed}, round ${round}`);
+      round++;
+    }
+  }
 });
