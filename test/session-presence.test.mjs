@@ -908,3 +908,18 @@ test('unsent edits of the sender are taken out of its offsets', { timeout: 120_0
   clean(ana);
   clean(ben);
 });
+
+test('a name with markup is shown as text in the flag', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t, ['<i>Ana</i>', 'Ben']);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await select(ana, el(1, 'ul'));
+  const text = await until(async () => {
+    await front(ben);
+    await frame(ben);
+    return ben.evaluate(`document.querySelector('.beeson-presence .flag .long')?.textContent ?? null`);
+  }, 'the flag of Ana on the page of Ben');
+  assert.equal(text, '<i>Ana</i>');
+  clean(ana);
+  clean(ben);
+});
