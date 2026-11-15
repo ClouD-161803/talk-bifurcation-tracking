@@ -249,3 +249,43 @@ test('a thread stays on its element through the edits of another person and the 
   clean(a);
   clean(b);
 });
+
+test('a thread on a removed element falls back to its slide, then to the deck, and comes back with an undo', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t);
+  await show(a, 'Two');
+  await click(a, '.reveal .slides > section:nth-child(2) > p');
+  await comment(a, 'On the paragraph');
+  const before = await converge(server, [a, b]);
+  const thread = (anchor) => [{ anchor, texts: ['On the paragraph'] }];
+
+  await show(b, 'Two');
+  await click(b, '.reveal section.present > p');
+  await press(b, 'Escape');
+  await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
+  assert.equal((await converge(server, [a, b])).includes('Second slide'), false);
+  await badge(a, 'Two', null, '1');
+  await sees(a, THREADS, thread('On a removed element'));
+  await sees(a, GROUPS, ['Slide 2']);
+
+  await front(b);
+  await press(b, 'Mod+Z');
+  assert.equal(await converge(server, [a, b]), before);
+  await badge(a, 'Two', 'p', '1');
+  await sees(a, THREADS, thread('On Paragraph: Second slide'));
+
+  await front(b);
+  await click(b, '.beeson-edit-nav .row:nth-of-type(2)');
+  await b.evaluate(`window.BeesonEditor.exec('slide.delete')`);
+  assert.equal((await converge(server, [a, b])).match(/<section/g).length, 1);
+  await sees(a, THREADS, thread('On a removed slide'));
+  await sees(a, GROUPS, ['On the deck']);
+  assert.equal(await a.evaluate(`document.querySelectorAll('.beeson-comment-badge').length`), 0);
+
+  await front(b);
+  await press(b, 'Mod+Z');
+  assert.equal(await converge(server, [a, b]), before);
+  await badge(a, 'Two', 'p', '1');
+  await sees(a, THREADS, thread('On Paragraph: Second slide'));
+  clean(a);
+  clean(b);
+});
