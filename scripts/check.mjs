@@ -22,6 +22,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { basename, dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { deckSettled, deckUrl, launch } from './chrome.mjs';
+import { figureProblems } from './figures.mjs';
 import { deckTex } from './tex.mjs';
 import { launch as launchWebDriver, serve } from './webdriver.mjs';
 
@@ -53,6 +54,7 @@ const deckProblems = `[
   ...[...document.querySelectorAll('tycho-viewer')].map((viewer) => viewer.shadowRoot?.querySelector('.status.error')?.textContent).filter(Boolean),
   ...[...document.querySelectorAll('.plot-error')].map((error) => error.textContent),
   ...[...document.querySelectorAll('.qr-error')].map((error) => error.textContent),
+  ...[...document.querySelectorAll('.tikz-error')].map((error) => error.textContent),
   ...[...Reveal.getCurrentSlide().querySelectorAll('mjx-container g[data-mml-node="mtext"][fill="red"][data-latex]')].map((name) => name.getAttribute('data-latex')).filter((name) => name.startsWith('\\\\')).map((name) => 'macro not defined: ' + name),
   ...[...Reveal.getCurrentSlide().querySelectorAll('cite[data-missing]')].flatMap((cite) => cite.dataset.n.split(',').filter((key) => !/^[0-9]+$/.test(key))).map((key) => 'citation of a key that is not in the bibliography: ' + key),
   ...[...Reveal.getCurrentSlide().querySelectorAll('p.theorem[data-missing]')].map((theorem) => 'theorem of a kind that is not defined: ' + theorem.dataset.kind),
@@ -69,6 +71,7 @@ const fresh = deckTex(options.deck);
 const written = existsSync(fresh.file) ? readFileSync(fresh.file, 'utf8') : null;
 const sources = ['preamble.tex', 'references.bib'].some((name) => existsSync(join(dirname(options.deck), name)));
 if (written === null ? sources : written !== fresh.text) failures.push('tex.js is not the one written from preamble.tex and references.bib: run npm run tex');
+failures.push(...figureProblems(options.deck));
 const browser = await (options.browser === 'chrome' ? launch() : launchWebDriver(options.browser));
 const server = options.browser === 'safari' ? await serve(dirname(options.deck)) : null;
 

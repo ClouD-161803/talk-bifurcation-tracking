@@ -1838,6 +1838,91 @@
     check();
   }
 
+  // src/expand.ts
+  var THEME_MACROS = { ensuremath: ["#1", 1], xspace: "", bm: ["\\boldsymbol{#1}", 1] };
+  var DEPTH = 10;
+  function deckMacros() {
+    const tex = globalThis.window?.beesonTex;
+    return tex ? { ...THEME_MACROS, ...tex.macros } : null;
+  }
+  function argument(s, i) {
+    if (s[i] === "{") {
+      let depth = 0, j = i;
+      for (; j < s.length; j++) {
+        if (s[j] === "{") depth++;
+        else if (s[j] === "}" && --depth === 0) break;
+      }
+      return [s.slice(i + 1, j), j + 1];
+    }
+    const command = /^\\(?:[A-Za-z]+|.)/.exec(s.slice(i));
+    if (command) return [command[0], i + command[0].length];
+    return [s[i] ?? "", i + 1];
+  }
+  function optional(s, i) {
+    if (s[i] !== "[") return null;
+    let depth = 0;
+    for (let j = i + 1; j < s.length; j++) {
+      if (s[j] === "{") depth++;
+      else if (s[j] === "}") depth--;
+      else if (s[j] === "]" && depth === 0) return [s.slice(i + 1, j), j + 1];
+    }
+    return null;
+  }
+  var skipSpaces = (s, i) => {
+    while (s[i] === " " || s[i] === "	" || s[i] === "\n") i++;
+    return i;
+  };
+  function expand(s, macros, depth, math) {
+    if (depth > DEPTH) return s;
+    let out = "";
+    let i = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === "$") {
+        math = !math;
+        out += c;
+        i++;
+        continue;
+      }
+      if (c !== "\\") {
+        out += c;
+        i++;
+        continue;
+      }
+      const name = /^\\([A-Za-z]+)/.exec(s.slice(i))?.[1];
+      const def = name !== void 0 && Object.hasOwn(macros, name) ? macros[name] : void 0;
+      if (name === void 0 || def === void 0) {
+        const keep = name !== void 0 ? name.length + 1 : 2;
+        out += s.slice(i, i + keep);
+        i += keep;
+        continue;
+      }
+      const [body, count = 0, preset] = typeof def === "string" ? [def] : def;
+      let j = i + 1 + name.length;
+      if (math || count) j = skipSpaces(s, j);
+      const args = [];
+      if (preset !== void 0 && count > 0) {
+        const given2 = optional(s, j);
+        args.push(given2 ? given2[0] : preset);
+        if (given2) j = given2[1];
+      }
+      while (args.length < count) {
+        j = skipSpaces(s, j);
+        const [arg, next] = argument(s, j);
+        args.push(arg);
+        j = next;
+      }
+      const filled = body.replace(/#([1-9])/g, (m, k) => args[Number(k) - 1] ?? m);
+      out += name === "ensuremath" && !math ? `$${expand(filled, macros, depth + 1, true)}$` : expand(filled, macros, depth + 1, math);
+      i = j;
+    }
+    return out;
+  }
+  function expandMacros(src, macros) {
+    const all = macros ? { ...THEME_MACROS, ...macros } : deckMacros();
+    return all && src.includes("\\") ? expand(src, all, 0, false) : src;
+  }
+
   // src/plot.ts
   var KINDS = ["points", "trace", "label", "events"];
   var PATCH = ["x", "y", "title", "regions", "curves", "labels"];
@@ -2186,14 +2271,19 @@
   };
   var SCRIPT_GAPS = { B: "\u212C", E: "\u2130", F: "\u2131", H: "\u210B", I: "\u2110", L: "\u2112", M: "\u2133", R: "\u211B" };
   var script = (c) => SCRIPT_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(119964 + c.charCodeAt(0) - 65) : c);
-  function parseMarkup(src) {
+  var STRUCK_GAPS = { C: "\u2102", H: "\u210D", N: "\u2115", P: "\u2119", Q: "\u211A", R: "\u211D", Z: "\u2124" };
+  var struck = (c) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(120120 + c.charCodeAt(0) - 65) : c);
+  var AS_IS = /* @__PURE__ */ new Set(["boldsymbol", "bm", "mathit", "mathop", "mathfrak", "ensuremath"]);
+  var UPRIGHT = /* @__PURE__ */ new Set(["mathrm", "text", "mathbf", "mathsf", "mathtt", "operatorname", "textrm", "textbf", "textit", "mathnormal"]);
+  var SPACES = { ",": " ", ":": " ", ";": " ", " ": " ", "!": "", "\\": " " };
+  function parseMarkup(src, macros) {
     const runs = [];
     const push = (text, italic, shift) => {
       const last = runs.at(-1);
       if (last && last.italic === italic && last.shift === shift) last.text += text;
       else runs.push({ text, italic, shift });
     };
-    const parts = src.split("$");
+    const parts = expandMacros(src, macros).split("$");
     parts.forEach((part, k) => {
       if (k % 2 === 0) {
         if (part) push(part, false, null);
@@ -2223,19 +2313,19 @@
         if (c === "\\") {
           const m = /^\\([A-Za-z]+)/.exec(s.slice(i));
           if (!m) {
-            push(s[i + 1] ?? "", false, shift);
+            push(SPACES[s[i + 1]] ?? s[i + 1] ?? "", false, shift);
             i += 2;
             continue;
           }
           i += m[0].length;
-          if (m[1] === "mathrm" || m[1] === "text") {
+          if (UPRIGHT.has(m[1]) || AS_IS.has(m[1])) {
             const [g, j] = group2(s, i);
             i = j;
-            math(g, true, shift);
-          } else if (m[1] === "mathcal") {
+            math(g, upright || UPRIGHT.has(m[1]), shift);
+          } else if (m[1] === "mathcal" || m[1] === "mathbb") {
             const [g, j] = group2(s, i);
             i = j;
-            push([...g].map(script).join(""), false, shift);
+            push([...g].map(m[1] === "mathcal" ? script : struck).join(""), false, shift);
           } else {
             const sym = SYMBOLS[m[1]] ?? m[0];
             push(sym, !upright && /^[a-z]+$/.test(m[1]) && /[α-ω]/.test(sym), shift);
@@ -3446,6 +3536,87 @@
     }
   }
 
+  // src/tikz.ts
+  var loads = /* @__PURE__ */ new Map();
+  function load2(name) {
+    if (window.beesonFigures?.[name] || !/^[\w-]+$/.test(name)) return Promise.resolve();
+    let loading = loads.get(name);
+    if (!loading) {
+      loading = new Promise((done) => {
+        const script2 = document.createElement("script");
+        script2.src = `figures/${name}.js`;
+        script2.onload = script2.onerror = () => done();
+        document.head.append(script2);
+      });
+      loads.set(name, loading);
+    }
+    return loading;
+  }
+  var drawn = /* @__PURE__ */ new WeakMap();
+  var instances = 0;
+  var figuresUnder = (root2) => [
+    ...root2 instanceof HTMLElement && root2.matches(".tikz") ? [root2] : [],
+    ...root2.querySelectorAll(".tikz")
+  ];
+  function syncParts(el) {
+    const shown = /* @__PURE__ */ new Map();
+    for (const span of el.querySelectorAll(":scope > [data-part]")) {
+      const name = span.dataset.part ?? "";
+      shown.set(name, !!shown.get(name) || !span.classList.contains("fragment") || span.classList.contains("visible"));
+    }
+    for (const g of el.querySelectorAll(":scope > svg g[data-part]")) g.classList.toggle("tikz-later", shown.get(g.dataset.part ?? "") === false);
+  }
+  var watcher = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+    const figures = /* @__PURE__ */ new Set();
+    for (const r of records) {
+      const target = r.target;
+      if (r.type === "childList" && target.matches(".tikz")) figures.add(target);
+      else if (target.parentElement?.matches(".tikz") && target.matches("[data-part]")) figures.add(target.parentElement);
+    }
+    for (const el of figures) syncParts(el);
+  });
+  function draw2(el, mode2) {
+    const name = el.dataset.figure ?? "";
+    const key = `${name} ${mode2}`;
+    const state = drawn.get(el);
+    if (state?.key === key && el.querySelector(":scope > svg, :scope > .tikz-error")) return;
+    const n = state?.n ?? ++instances;
+    if (!state) watcher?.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "data-part"] });
+    drawn.set(el, { n, key });
+    for (const old of el.querySelectorAll(":scope > svg, :scope > .tikz-error")) old.remove();
+    const output = window.beesonFigures?.[name];
+    if (!output) {
+      const box2 = document.createElement("div");
+      box2.className = "tikz-error";
+      box2.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
+      el.prepend(box2);
+      return;
+    }
+    const prefix = `tikz-${name}-${mode2}-`;
+    el.insertAdjacentHTML("afterbegin", output[mode2].split(prefix).join(`${prefix}${n}-`));
+    const svg2 = el.firstElementChild;
+    svg2.style.width = `${output.width}px`;
+    svg2.style.height = `${output.height}px`;
+    svg2.setAttribute("aria-hidden", "true");
+    syncParts(el);
+  }
+  var pending = Promise.resolve();
+  var latest = "dark";
+  function mountFigures(root2, mode2) {
+    latest = mode2;
+    const done = Promise.all(figuresUnder(root2).map(async (el) => {
+      await load2(el.dataset.figure ?? "");
+      draw2(el, latest);
+    })).then(() => void 0);
+    pending = Promise.all([pending, done]).then(() => void 0);
+    return done;
+  }
+  var figuresReady = () => pending;
+  function redrawFigures(mode2) {
+    latest = mode2;
+    for (const el of figuresUnder(document)) if (drawn.has(el)) draw2(el, mode2);
+  }
+
   // src/scrub.ts
   function minutes(seconds) {
     const s = Math.max(0, Math.round(seconds));
@@ -4175,10 +4346,10 @@ void main() {
           uSize: { value: POINT_SIZE }
         }
       });
-      const drawn = new THREE.Points(geometry, material);
-      drawn.frustumCulled = false;
-      drawn.renderOrder = 3;
-      return drawn;
+      const drawn2 = new THREE.Points(geometry, material);
+      drawn2.frustumCulled = false;
+      drawn2.renderOrder = 3;
+      return drawn2;
     }
     /** Reads the colors of the theme from the custom properties of the element, e.g. after a flip of the mode. */
     recolor() {
@@ -5172,21 +5343,21 @@ void main() {
   var running2 = /* @__PURE__ */ new WeakSet();
   var turns2 = /* @__PURE__ */ new WeakMap();
   var turn2 = 0;
-  var loads = /* @__PURE__ */ new WeakMap();
+  var loads2 = /* @__PURE__ */ new WeakMap();
   var sleep3 = (ms) => new Promise((done) => setTimeout(done, ms));
   var loaded = (v) => (v.state ?? null) !== null;
   var failed = (v) => !!v.shadowRoot?.querySelector(".status.error");
   function whenLoaded(v) {
-    let load2 = loads.get(v);
-    if (!load2) {
+    let load3 = loads2.get(v);
+    if (!load3) {
       const until = performance.now() + 6e4;
-      load2 = new Promise((done) => {
+      load3 = new Promise((done) => {
         const poll = () => loaded(v) || failed(v) || performance.now() > until ? done() : setTimeout(poll, 50);
         poll();
       });
-      loads.set(v, load2);
+      loads2.set(v, load3);
     }
-    return load2;
+    return load3;
   }
   var plays2 = (v, slide) => {
     const step2 = v.closest(".fragment.play");
@@ -5384,6 +5555,7 @@ void main() {
     remount();
     mountQr(root2);
     mountShapes(root2);
+    void mountFigures(root2, get());
     numberTheorems();
     mountCitations();
     for (const o of backdrops) if (root2.contains(o.el)) {
@@ -5453,10 +5625,12 @@ void main() {
     mountShapes(document);
     numberTheorems();
     mountCitations();
+    void mountFigures(document, get());
     markViewers();
     deck.on("pdf-ready", () => {
       completeAll();
       mountShapes(document);
+      void mountFigures(document, get());
       mountCitations();
       coverAll(document);
       void typeset2().then(() => applyAll(document));
@@ -5582,6 +5756,7 @@ void main() {
         s.recolor();
         s.draw();
       }
+      redrawFigures(get());
       syncViewers(get());
     });
   }
@@ -5605,6 +5780,10 @@ void main() {
     animated,
     surfaces,
     plots,
+    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs
+    figures: { get ready() {
+      return figuresReady();
+    } },
     // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
     trajectories: register,
     // called by the editor after a structural change of the slides

@@ -13,6 +13,7 @@ import { mountPlots, type PlotView } from './plot.ts';
 import { markViewers, stillViewers } from './print.ts';
 import { mountQr } from './qr.ts';
 import { mountShapes } from './shapes.ts';
+import { figuresReady, mountFigures, redrawFigures } from './tikz.ts';
 import { initScrub } from './scrub.ts';
 import { mount as mountSurfaces } from './surface.ts';
 import type { Surface } from './surface.ts';
@@ -197,6 +198,7 @@ function mountWithin(root: Element): void {
   remount();
   mountQr(root);
   mountShapes(root);
+  void mountFigures(root, get());
   // a theorem added to a slide changes the numbers on the slides after it
   numberTheorems();
   mountCitations();
@@ -260,12 +262,17 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   mountShapes(document);
   numberTheorems();
   mountCitations();
+  // the TikZ figures are drawn once their outputs are loaded, without a wait before reveal.js starts,
+  // since the editor is installed on a started deck. a settled deck waits for Beeson.figures.ready
+  void mountFigures(document, get());
   // in the print view, a page is cloned per fragment state after ready, and the clones are
   // mounted here. the viewers are numbered before the clones are made
   markViewers();
   deck.on('pdf-ready', () => {
     completeAll();
     mountShapes(document);
+    // a clone of a TikZ figure is drawn again with ids of its own
+    void mountFigures(document, get());
     // each page shows the references of the citations of its step
     mountCitations();
     coverAll(document);
@@ -402,6 +409,7 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
     const later = backdrops.filter((o) => !now.includes(o));
     if (later.length) setTimeout(() => { for (const o of later) o.redraw(); }, 600);
     for (const s of surfaces) { s.recolor(); s.draw(); }
+    redrawFigures(get());
     syncViewers(get());
   });
 }
@@ -435,6 +443,8 @@ const Beeson = {
   animated,
   surfaces,
   plots,
+  // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs
+  figures: { get ready(): Promise<void> { return figuresReady(); } },
   // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
   trajectories: register,
   // called by the editor after a structural change of the slides

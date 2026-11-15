@@ -82,6 +82,12 @@ A drawn element of an animated plot, such as a curve or a trace.
 
 Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" or "trademark" for a file in `brand/`, "surface point" for a point of a surface, and "Markdown syntax" for the signs that format a text.
 
+## Part
+
+A named scope or curve of a TikZ figure that a slide shows as a step.
+
+Avoid "part" for an element of a slide or for a mark of an animated plot. A part is written with the key `part` in the source and with `data-part` on its span in the deck.
+
 ## Plate
 
 The figure box over the whole of a figure slide, behind its heading and its caption.
@@ -161,6 +167,12 @@ Avoid "block". The class `block` of the words of a title or closing slide in an 
 A paragraph of the class `theorem`, headed by the title of its kind, its number, and its name, as a theorem, a lemma, or a proof in amsthm. The head of a theorem is this title, number, and name, which is not the head of a trajectory.
 
 Avoid "statement", "block", "card", "box", and "environment".
+
+## TikZ figure
+
+A figure written in TikZ or pgfplots as a source `figures/name.tex`, compiled by `npm run tex` into the output `figures/name.js` with an SVG for each mode, and drawn into a `div.tikz` with the same name in `data-figure`.
+
+Avoid "TikZ" alone for the element, and avoid "plot", which means an animated plot.
 
 ## Tone
 
