@@ -56,6 +56,9 @@ export const RETRY = [1, 2, 4, 8, 16, 30];
 const SAVING = 500;
 // the longest wait in ms for onChange after an apply that a change of the person ran into
 const LATE_CHANGE = 2000;
+// a poll refused this soon in ms after a hello, e.g. of a page that the ninth page of its person
+// evicts, waits for the reconnect before the next hello
+const BOUNCE = 5000;
 export const BLOCKED = 'Your changes cannot be sent. Load the page again.';
 
 export class Client {
@@ -142,6 +145,10 @@ export class Client {
   private idleWaiters: (() => void)[] = [];
   // called once the drive that runs is over
   private driveWaiters: (() => void)[] = [];
+  // the end of the last hello after a refused poll, and the polls refused soon after a hello since
+  // the last poll answered
+  private rejoinedAt = 0;
+  private bounces = 0;
   private joining: Promise<void> | null = null;
   private attempt = 0;
   private retry: { finish: () => void; promise: Promise<void> } | null = null;
@@ -609,7 +616,13 @@ export class Client {
       } catch (e) {
         if (this.ended || this.gone || generation !== this.generation) continue;
         if (e instanceof Failure && (e.status === 404 || e.status === 400)) {
+          // the wait grows with each refusal, as the reconnect after a failure does
+          if (Date.now() - this.rejoinedAt < BOUNCE) {
+            this.attempt = this.bounces++;
+            await this.offline(e);
+          }
           await this.rejoin();
+          this.rejoinedAt = Date.now();
         } else {
           await this.offline(e);
           // the edit command holds a poll without news, hence a hello tells first that it answers.
@@ -620,6 +633,7 @@ export class Client {
       }
       if (this.gone || generation !== this.generation) continue;
       this.online();
+      this.bounces = 0;
       await this.take(answer);
     }
   }
