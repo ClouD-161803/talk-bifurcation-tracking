@@ -451,3 +451,27 @@ test('a restore is a new version on top, which every page gets as an operation o
   assert.equal((await post(s.edit.port, s.api('history/nope/restore'), { token: ann.token })).status, 404);
   assert.equal((await post(s.edit.port, s.api(`history/${v1.id}/restore`), { token: 'n'.repeat(22) })).status, 404);
 });
+
+test('an operation in flight during a restore is applied on top, unless it conflicts with the restore', { timeout: 120_000 }, async (t) => {
+  const s = await session(t);
+  const ann = await s.hello('Ann');
+  const bo = await s.hello('Bo');
+  assert.equal((await s.op(ann, 1, 'One', 'Uno')).ok, true);
+  const v1 = await s.closed(ann, 1);
+  const t1 = await s.current();
+  const changed = await s.op(ann, 2, 'Uno', 'Eins');
+  // two operations of Bo of the version before the restore, sent after it
+  const text = await s.current();
+  const free = text.indexOf('Second slide'), held = text.indexOf('Eins');
+  assert.equal((await post(s.edit.port, s.api(`history/${v1.id}/restore`), { token: ann.token })).status, 200);
+  const onTop = (await post(s.edit.port, s.api('op'), { token: bo.token, seq: 1, base: changed.v, patches: [{ start: free, end: free + 6, text: 'Zweite' }] })).json();
+  assert.equal(onTop.ok, true);
+  const refused = (await post(s.edit.port, s.api('op'), { token: bo.token, seq: 2, base: changed.v, patches: [{ start: held, end: held + 4, text: 'Een' }] })).json();
+  assert.deepEqual([refused.ok, refused.reason], [false, 'conflict']);
+  assert.equal(await s.current(), t1.replace('Second slide', 'Zweite slide'));
+  await s.closed(ann, 4);
+  const [latest, restore] = (await s.list(ann)).versions;
+  assert.equal(restore.restored, v1.id);
+  assert.deepEqual(latest.authors, [bo.person]);
+  assert.deepEqual(latest.slides, [2]);
+});
