@@ -380,3 +380,33 @@ test('copy() reads the deck with the edits of the person while an apply runs, an
   assert.equal(await sessionText(b), want);
   assert.deepEqual(b.errors, []);
 });
+
+test('text() hands back the last text while a duplicate of a slide waits for its typeset, and the whole duplicate and an edit typed during it after it', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  const count = await b.evaluate(SECTIONS);
+  const before = await sessionText(b);
+  const told = await changes(b);
+  await closeGate(b, `${SECTIONS} === ${count + 1}`);
+  await b.evaluate(`(${E}.exec('slide.duplicate'), true)`);
+  await b.waitFor(`window.__held > 0 && ${E}.doc.busy`);
+  // an edit typed during the duplicate is not in the text until the duplicate is over
+  const typed = await b.evaluate(`(() => {
+    const p = ${P1};
+    p.focus();
+    getSelection().selectAllChildren(p);
+    getSelection().collapseToEnd();
+    return document.execCommand('insertText', false, ' Typed.');
+  })()`);
+  assert.equal(typed, true, 'the edit is typed during the duplicate');
+  assert.equal(await sessionText(b), before, 'the text read during the duplicate');
+  await openGate(b);
+  await b.waitFor(`!${E}.doc.busy && window.__changes > ${told}`);
+  const got = await sessionText(b);
+  assert.equal(got.split('<h2>Show your steps one at a time</h2>').length, 3, 'both slides are in the text');
+  assert.ok(got.includes('viewer\'s attention. Typed.</p>'), 'the edit is in the text');
+  assert.equal(got, await render(b));
+  assert.deepEqual(b.errors, []);
+});
