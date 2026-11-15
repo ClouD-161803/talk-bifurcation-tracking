@@ -11,7 +11,7 @@ import type { App } from '../app.ts';
 import type { TagEdit, Translate } from '../tags.ts';
 import type { Box, Handle, Targets } from './snap.ts';
 import { LAYOUT_GUIDES, anchored, fitPicture, lockedAxis, resizeBox, snapAngle, snapMove, snapResize } from './snap.ts';
-import { BY_ITSELF, CONTAINER, RESIZABLE, STRETCHED, aspectOf, bandAt, captionsOf, constrained, containerOf, cssWidth, figureFrame, frameOf, frameRect, hasText, innerBandAt, isTextSized, linePoints, linesOf, lineTouches, mediaIn, movableOf, movablesOf, objectOf, objectsOf, onCanvas, orientedBox, pickOf, pictureOf, pictureReach, sizedOf, snapBoxOf, toSlide, turnable, twinOf, unturnedRect, visualRect } from './hit.ts';
+import { BOXED, BY_ITSELF, CONTAINER, RESIZABLE, STRETCHED, aspectOf, bandAt, captionsOf, constrained, containerOf, cssWidth, figureFrame, frameOf, frameRect, hasText, innerBandAt, isTextSized, linePoints, linesOf, lineTouches, mediaIn, movableOf, movablesOf, objectOf, objectsOf, onCanvas, orientedBox, pickOf, pictureOf, pictureReach, sizedOf, snapBoxOf, toSlide, turnable, twinOf, unturnedRect, visualRect } from './hit.ts';
 import { groupFrame, overlay, turned, view, wh, xy } from './frames.ts';
 import { enterGroup, settleCopies, freshGroup, groupOf } from '../commands/order.ts';
 import { afterMove, relink } from '../model/attach.ts';
@@ -852,7 +852,8 @@ export function install(app: App): void {
     if (!p.stretch) return { aspect: p.aspect ?? null, free: false, height: false };
     const corner = (p.handle as Handle).length === 2;
     const keep = corner ? p.keep !== ev.shiftKey : !!p.keep;
-    const stretched = (p.from.get(p.pic ?? p.els[0])?.height ?? null) !== null;
+    // a tycho viewer has no aspect of its own, hence its height is written together with its width
+    const stretched = (p.from.get(p.pic ?? p.els[0])?.height ?? null) !== null || (p.pic ?? p.els[0]).matches(BOXED);
     return { aspect: keep ? (p.aspect ?? null) : null, free: !keep, height: !keep || stretched };
   };
 
@@ -1006,7 +1007,7 @@ export function install(app: App): void {
     for (const m of p.followers ?? []) {
       for (const s of m.sized) {
         (s as HTMLElement).style.width = `${Math.round(cssWidth(s, m.base.width * k))}px`;
-        if ((p.from.get(s)?.height ?? null) !== null) (s as HTMLElement).style.height = `${Math.round(m.base.height * k)}px`;
+        if ((p.from.get(s)?.height ?? null) !== null || s.matches(BOXED)) (s as HTMLElement).style.height = `${Math.round(m.base.height * k)}px`;
       }
       const seen = toSlide(f, orientedBox(m.pic, f.scale, m.deg));
       // a text element keeps the place of its top, under its wrapped text
@@ -1044,7 +1045,7 @@ export function install(app: App): void {
       for (const s of m.sized) {
         (s as HTMLElement).style.width = `${Math.round(cssWidth(s, m.base.width * k))}px`;
         // a stretched picture keeps the aspect that it has
-        if ((p.from.get(s)?.height ?? null) !== null) (s as HTMLElement).style.height = `${Math.round(m.base.height * k)}px`;
+        if ((p.from.get(s)?.height ?? null) !== null || s.matches(BOXED)) (s as HTMLElement).style.height = `${Math.round(m.base.height * k)}px`;
       }
       const seen = toSlide(f, orientedBox(m.pic, f.scale, m.deg));
       const now = placeOf(m.el);

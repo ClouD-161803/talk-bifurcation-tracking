@@ -22,7 +22,7 @@ A hard invariant is never traded away for another goal, and when a change would 
 - Design the complete slide first, and assign its steps afterward.
 - Take every color from a tone of the theme, and do not add a title bar, a rule under a heading, an all-caps label, or an eyebrow, since none of them is part of the theme.
 - Set a width in px in a `style` only on a heading, a paragraph, a list, a `math` div, a caption, or a cell in the top row of a table. A picture, a QR code, a TyCHO viewer, a shape, and a backdrop may take a width as well.
-- Set a height in px in a `style` only on a shape, a backdrop, a row of a table, or an image or a video that has a width.
+- Set a height in px in a `style` only on a shape, a backdrop, a row of a table, or an image, a video, or a TyCHO viewer that has a width.
 - Give a figure a version for each mode with `for-dark` and `for-light`, or the class `white-figure` or `invert`, since a figure may otherwise be visible in one mode only.
 - Write a math macro used on more than one slide into `theme/macros.js`.
 - Put the speaker notes of a slide in an `aside.notes`.
@@ -69,6 +69,14 @@ In a talk, `npm run check`, `npm run pdf`, and `npm run pptx` need only Node.js 
 - Mark a pull request as ready for review only when every check is green and the person you work for agrees. When you think that a check itself is broken, say so in the description rather than changing the check.
 - The reasons for these rules are explained for people in the [group contributing guide](https://github.com/beeson-group/.github/blob/main/CONTRIBUTING.md).
 - Merge a pull request only when you are told to by the person you work for.
+
+## Reviewing a pull request
+
+PR-Agent reviews in the workflow `pr-agent` every pull request that a branch of this repository opens, and it reads this file as its review context, this section included. It does not take an event that a bot sends. A pull request from a fork is reviewed only after a person with write access comments a command, and a command of a person with write access reviews any pull request, one that a bot authored included.
+
+- Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding to fix before the pull request is merged, not a suggestion.
+- Do not suggest a change in `theme/vendor/`, which is vendored with its license, or in `theme/beeson.js` or `theme/editor.js`, which are compiled and committed on purpose.
+- Read the section of `REFERENCE.md` on an element before you question it, since most of what looks unusual there is the design of the theme.
 
 ## Documentation
 

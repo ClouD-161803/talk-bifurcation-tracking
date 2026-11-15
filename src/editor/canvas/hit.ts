@@ -26,7 +26,10 @@ export const turnable = (el: Element): boolean => !el.hasAttribute('data-locked'
 // height set by their wrapped text
 export const TEXT_SIZED = 'h1, h2, h3, p, ul, ol, div.math, .caption';
 // the pictures and shapes whose height the editor writes as well, which a resize stretches
-export const STRETCHED = 'img, video, .shape';
+export const STRETCHED = 'img, video, tycho-viewer, .shape';
+// the pictures without an aspect of their own, whose box is their picture: a tycho viewer, whose scene is laid out
+// into its box. a resize writes its height together with its width, since no file sets its height at an aspect
+export const BOXED = 'tycho-viewer';
 // a figure whose size is set by its layout. its grips resize the image, video, or QR code that it
 // holds, and a figure that does not hold one is drawn without grips
 export const CONTAINER = 'figure, .figure-box, .plate';
@@ -215,10 +218,9 @@ export function orientedBox(el: Element, scale: number, deg: number): Box {
 }
 
 // the ratio of width to height that a resize of el keeps: the picture of an image or a video, and
-// the box of a QR code. a tycho viewer keeps its height and a text element its wrapped text, hence
-// neither has one
+// the box of a QR code or a tycho viewer. a text element keeps its wrapped text, hence it has none
 export function aspectOf(el: Element): number | null {
-  if (el.matches('tycho-viewer') || isTextSized(el)) return null;
+  if (isTextSized(el)) return null;
   const p = pictureIn(el);
   return p.width && p.height ? p.width / p.height : null;
 }
@@ -229,9 +231,9 @@ export const isTextSized = (el: Element): boolean => el.matches(TEXT_SIZED) && !
 // the kind of a picture, by which the switch Constrain Proportions is kept in the browser
 export const kindOf = (el: Element): string => (el.matches('img') ? 'image' : el.matches('video') ? 'video' : el.matches('.qr') ? 'qr' : el.matches('.shape') ? 'shape' : 'viewer');
 
-// whether a resize of the picture el keeps its aspect: the switch of its kind for an image or a
-// video, on by default, off for a shape, and else whenever it has an aspect, since its height then follows its
-// width. a QR code thus keeps its square, and a viewer keeps the height of its layout
+// whether a resize of the picture el keeps its aspect: the switch of its kind for an image, a video,
+// or a tycho viewer, on by default, off for a shape, and else whenever it has an aspect, since its height then
+// follows its width. a QR code thus keeps its square
 export function constrained(el: Element): boolean {
   if (!el.matches(STRETCHED)) return aspectOf(el) !== null;
   return (stored(`beeson-edit-constrain-${kindOf(el)}`) ?? (el.matches('.shape') ? 'off' : 'on')) === 'on';
