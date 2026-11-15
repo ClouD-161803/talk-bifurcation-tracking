@@ -94,12 +94,18 @@ const canPick = (): boolean => !!picker() || ('webkitdirectory' in HTMLInputElem
 const folders = new Map<string, Folder>();
 let dialog: Dialog | null = null;
 // the dialog over the page while the files are read, hence an edit does not join the entry of the
-// history of the paste. it is drawn only after 400 ms, so that a fast read does not flash it, and
-// its Stop aborts the reads with stop
+// history of the paste. it is drawn only DELAY ms after it is opened, so that a fast read does not
+// flash it. its Stop aborts the reads with stop, and is not taken before the dialog is drawn
 let busy: Dialog | null = null;
 let stop = new AbortController();
-const BUSY = `dialog.beeson-edit-dialog.paste-busy[open], dialog.beeson-edit-dialog.paste-busy[open]::backdrop { animation: beeson-busy 400ms step-end; }
+let opened = 0;
+const DELAY = 400;
+const BUSY = `dialog.beeson-edit-dialog.paste-busy[open], dialog.beeson-edit-dialog.paste-busy[open]::backdrop { animation: beeson-busy ${DELAY}ms step-end; }
 @keyframes beeson-busy { from { opacity: 0; } }`;
+function showBusy(): void {
+  opened = performance.now();
+  void busy?.open();
+}
 // the folder picked in the click on the button of the open dialog
 let picked: Promise<Folder | null> = Promise.resolve(null);
 
@@ -168,7 +174,7 @@ async function folderOf(address: string, name: string): Promise<Folder | null> {
   // the dialog of the reads gives way to this one, and comes back at its answer
   busy?.close(null);
   const v = await dialog.open('choose');
-  void busy?.open();
+  showBusy();
   if (v !== 'choose') return null;
   // a picker may not answer, e.g. while the browser lists a large folder, hence Stop ends the wait
   const stopped = new Promise<null>((done) => stop.signal.addEventListener('abort', () => done(null)));
@@ -184,8 +190,8 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   if (!paths.length) return;
   stop = new AbortController();
   injectStyle('paste-busy', BUSY);
-  busy ??= new Dialog({ title: 'Copying the files of the paste…', buttons: [{ label: 'Stop', value: 'stop' }], className: 'paste-busy', dismissable: false, stay: ['stop'], onButton: () => stop.abort() });
-  void busy.open();
+  busy ??= new Dialog({ title: 'Copying the files of the paste…', buttons: [{ label: 'Stop', value: 'stop' }], className: 'paste-busy', dismissable: false, stay: ['stop'], onButton: () => performance.now() - opened >= DELAY && stop.abort() });
+  showBusy();
   try {
     await carry(app, arrival, refs, paths);
   } finally {
