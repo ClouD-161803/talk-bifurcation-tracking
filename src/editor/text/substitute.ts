@@ -168,7 +168,7 @@ export function install(app: App): void {
     // the substitution is an entry of its own after the typing, which an undo takes back alone
     const record = (label: string, was: string) => {
       const now = contentWithTex(host);
-      app.history.push({ label, undo: () => app.typing.restoreHost(host, was), redo: () => app.typing.restoreHost(host, now) });
+      app.history.push({ label, undo: () => app.typing.restoreHost(host, was), redo: () => app.typing.restoreHost(host, now), touches: [host] });
       app.history.track(host);
       app.markDirty();
       app.invalidate('content');

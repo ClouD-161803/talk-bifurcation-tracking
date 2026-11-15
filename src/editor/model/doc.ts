@@ -233,6 +233,7 @@ export class Doc {
       undo: () => [...writes].reverse().forEach((w) => this.applyTag(w.el, w.back)),
       redo: () => writes.forEach((w) => this.applyTag(w.el, w.e)),
       els: [el],
+      touches: writes.map((w) => w.el),
     });
   }
 
@@ -279,6 +280,7 @@ export class Doc {
           for (const r of [...recs].reverse()) await this.attach(r, false);
           await this.after(parent);
         },
+        touches: [...nodes, parent],
       });
       return nodes;
     } finally {
@@ -321,6 +323,7 @@ export class Doc {
           rec = this.detach(el);
           await this.after(rec.parent);
         },
+        touches: [el, rec.parent],
       });
     } finally {
       done();
@@ -344,7 +347,7 @@ export class Doc {
     } finally {
       done();
     }
-    this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before) });
+    this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before), touches: [el, from.parent, parent] });
   }
 
   // el replaced by an element of the tag with the same attributes and content, and with the edit
@@ -387,6 +390,7 @@ export class Doc {
           rec = this.detach(el);
           await this.after(parent);
         },
+        touches: [el, node, parent],
       });
       return node;
     } finally {
