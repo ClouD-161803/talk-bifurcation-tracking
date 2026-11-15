@@ -5,7 +5,7 @@
 // on the base of the text written or read lately that is nearest to it, where the file wins a
 // conflict
 
-import { chmodSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
+import { chmodSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { chmod, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
@@ -231,6 +231,13 @@ export class Disk {
       const info = statSync(this.target);
       this.known = signature(info);
       this.mode = modeOf(info);
+    } catch {}
+    // a temporary file left by an edit command that was killed during a write
+    const dir = dirname(this.target), prefix = `.${basename(this.target)}.`;
+    try {
+      for (const name of readdirSync(dir)) {
+        if (name.startsWith(prefix) && /^[0-9a-f]{12}\.tmp$/.test(name.slice(prefix.length))) removeQuietly(join(dir, name));
+      }
     } catch {}
     authority.observe(() => this.schedule());
   }
