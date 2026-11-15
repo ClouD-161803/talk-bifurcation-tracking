@@ -138,6 +138,16 @@ test('a start tag of a text element that a structural apply keeps is set on the 
   await steps(t, [['a class of a heading and a new paragraph', (s) => once(s, '<h2>Show your steps one at a time</h2>\n', '<h2 class="center">Show your steps one at a time</h2>\n  <p>New</p>\n'), false]]);
 });
 
+// the theme draws a backdrop into its div once, hence a div that becomes a backdrop or stops being
+// one is not reused for the other
+test('a backdrop that becomes another div asks for a reload, and is placed anew by a structural apply', async (t) => {
+  const backdrop = '<div class="backdrop" data-backdrop="tubes" data-cx="0.97" data-cy="0" data-half="0.5">';
+  await steps(t, [['a backdrop made a shape', (s) => once(s, backdrop, '<div class="shape" style="width: 200px; height: 100px">'), true]]);
+  await steps(t, [['the class of a backdrop taken', (s) => once(s, backdrop, '<div data-backdrop="tubes" data-cx="0.97" data-cy="0" data-half="0.5">'), true]]);
+  const shapes = '<section>\n  <h2>Shapes</h2>\n  <div class="shape rounded" style="width: 241px; height: 148px; translate: 279px 463px"><p>Goal</p></div>\n</section>\n\n';
+  await steps(t, [['a slide with a shape put before a slide with a backdrop, with an item of this slide changed', (s) => once(once(s, '<!-- content, the default layout', `${shapes}<!-- content, the default layout`), 'are shown together.</li>', 'are ihown together.</li>'), false]]);
+});
+
 test('two changes in two text nodes of a paragraph with a formula keep both text nodes', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
