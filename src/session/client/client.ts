@@ -12,7 +12,7 @@ import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
-import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Restored, Taken, Token, Version } from '../protocol.ts';
+import type { AppliedOp, CommentsEvent, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Restored, Taken, Token, Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
@@ -48,6 +48,11 @@ export type ClientEvents = {
   // the rev of the version history changed, and a restore was made
   history: [number];
   restored: [Restored];
+  // the base of the replica moved from text at version v, by the operations given, or by a resync
+  // when they are null
+  base: [text: string, v: Version, ops: AppliedOp[] | null];
+  // the comments of an answer of events, whose anchors are of the text at version v
+  comments: [CommentsEvent, Version];
 };
 
 // the parts of the offline path that the core calls, set by conflicts.ts and media.ts
@@ -411,9 +416,9 @@ export class Client {
           // a change of the person that settles calls onChange, which captures it
           if (this.dirty) this.dirty = !this.capture();
           for (const fn of this.rewrites.splice(0)) sync.edit(fn(sync.mine));
-          if (this.fresh) sync.resync(this.fresh.text, this.fresh.v);
+          if (this.fresh) this.resync(this.fresh.text, this.fresh.v);
           this.fresh = null;
-          if (this.inbox.length) sync.receive(this.inbox.splice(0));
+          if (this.inbox.length) this.merge(this.inbox.splice(0));
           break;
         }
         let stale = false;
@@ -440,9 +445,9 @@ export class Client {
         if (this.fresh) {
           const { text, v } = this.fresh;
           this.fresh = null;
-          if (sync.resync(text, v) !== null) stale = true;
+          if (this.resync(text, v) !== null) stale = true;
         }
-        if (this.inbox.length && sync.receive(this.inbox.splice(0)) !== null) stale = true;
+        if (this.inbox.length && this.merge(this.inbox.splice(0)) !== null) stale = true;
         if (!stale) break;
         read = sync.version;
         if (!(await this.applyMine())) break;
@@ -454,6 +459,24 @@ export class Client {
     this.emit('settled', sync.version !== read);
     this.pump();
     this.check();
+  }
+
+  // the operations that waited are taken into the replica, and base tells the parts what moved
+  private merge(ops: AppliedOp[]): string | null {
+    const sync = this.sync!;
+    const was = { text: sync.base, v: sync.version };
+    const out = sync.receive(ops);
+    if (sync.version !== was.v) this.emit('base', was.text, was.v, ops);
+    return out;
+  }
+
+  // the whole text of the authority taken into the replica, after which base tells the parts
+  private resync(text: string, v: Version): string | null {
+    const sync = this.sync!;
+    const was = { text: sync.base, v: sync.version };
+    const out = sync.resync(text, v);
+    this.emit('base', was.text, was.v, null);
+    return out;
   }
 
   private async applyMine(): Promise<boolean> {
@@ -708,6 +731,7 @@ export class Client {
     }
     if (answer.history !== undefined) this.emit('history', answer.history);
     if (answer.restored) this.emit('restored', answer.restored);
+    if (answer.comments) this.emit('comments', answer.comments, answer.v);
     if (answer.ops === null) {
       this.sync!.lose();
       this.pump();
