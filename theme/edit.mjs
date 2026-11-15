@@ -2132,8 +2132,11 @@ var Replica = class _Replica {
   // the patches of mine that conflict with the operations missed while the browser was away, which
   // the client shows the person before it calls catchUp() with the side that wins
   conflictsOf(ops) {
-    const copy2 = Object.assign(Object.create(_Replica.prototype), this, { flight: this.flight && { ...this.flight } });
-    return copy2.catchUp(ops, "ours").conflicts;
+    return this.clone().catchUp(ops, "ours").conflicts;
+  }
+  // a replica in the same state that can be changed apart, e.g. to find the conflicts of a merge
+  clone() {
+    return Object.assign(Object.create(_Replica.prototype), this, { flight: this.flight && { ...this.flight } });
   }
   // the operations missed while the browser was away, merged with mine, where the side wins at a
   // conflict. conflicts are the patches of mine that conflicted
@@ -2144,8 +2147,9 @@ var Replica = class _Replica {
     return { text: this.mine === before2 ? null : this.mine, conflicts };
   }
   // the whole text of the authority at version v, read again after needsResync. the edits of this
-  // browser are merged into it and win at a conflict
-  resync(text, v) {
+  // browser are merged into it, where the side wins at a conflict. conflicts gets the patches of
+  // mine that conflicted
+  resync(text, v, wins = "ours", conflicts = []) {
     const parsed = parseVersion(v);
     if (!parsed) throw new Error(`${v} is not a version`);
     const before2 = this.mine;
@@ -2153,7 +2157,9 @@ var Replica = class _Replica {
     const theirs = diff2(from, text);
     const ours = diff2(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-    const merged = apply(from, mergePatches(kept, ours, "ours").patches);
+    const both = mergePatches(kept, ours, wins);
+    conflicts.push(...both.conflicts);
+    const merged = apply(from, both.patches);
     this.base = text;
     this.mine = merged;
     this.epoch = parsed.epoch;
