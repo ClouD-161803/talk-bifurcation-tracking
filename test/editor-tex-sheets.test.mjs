@@ -106,6 +106,50 @@ const SAVE_INTO = (folder) => `(async () => {
   return { files, picked: window.__picked };
 })()`;
 
+// the save of SAVE_INTO into a folder that holds the files of seed before the save, as an agent
+// leaves them next to a deck that is open in the editor
+const SAVE_ONTO = (folder, seed) => `(async () => {
+  const root = await navigator.storage.getDirectory();
+  const dir = await root.getDirectoryHandle(${js(folder)}, { create: true });
+  for (const [name, text] of Object.entries(${js(seed)})) {
+    const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+    await w.write(text);
+    await w.close();
+  }
+  return true;
+})()`;
+
+// a macro added to the preamble next to the deck while the deck is open in the editor
+const EXTERNAL = '\\newcommand{\\Z}{\\mathbb{Z}}\n';
+
+// a citation of a paper of references.bib that the tex.js of the deck does not have
+const CITE_MISSING = `{
+  const p = [...document.querySelectorAll('.reveal .slides p')].at(-1);
+  const cite = document.createElement('cite');
+  cite.setAttribute('data-key', 'szebehely1967');
+  p.append(cite);
+  true;
+}`;
+// the folder of the deck refused, as by Cancel in the folder picker
+const REFUSED = `window.showDirectoryPicker = async () => { throw new DOMException('The user aborted a request.', 'AbortError'); }, true`;
+// a save of a deck of file:, which does not have the private file system, into a handle in memory,
+// given 10 s to end
+const SAVE_IN_MEMORY = `(async () => {
+  let text = ${js(SOURCE)};
+  const deck = {
+    kind: 'file',
+    name: 'index.html',
+    getFile: async () => new File([text], 'index.html'),
+    createWritable: async () => ({ write: async (t) => void (text = t), close: async () => {} }),
+    queryPermission: async () => 'granted',
+    requestPermission: async () => 'granted',
+    isSameEntry: async (other) => other === deck,
+  };
+  window.BeesonEditor.attach(deck);
+  const done = await Promise.race([window.BeesonEditor.save().then(() => true), new Promise((r) => setTimeout(() => r(false), 10000))]);
+  return { done, text };
+})()`;
+
 // the pickers taken away, as in Firefox and Safari, and each download kept with its name and text
 const NO_PICKERS = `{
   window.showOpenFilePicker = undefined;
@@ -299,4 +343,54 @@ test('a sheet closes with Esc and gives the focus back, and it is stacked on a p
     await press(phone, 'Escape');
     await phone.waitFor(`!document.querySelector('${SHEET}')`);
   }
+});
+
+test('a citation taken out of the deck without a sheet open is taken out of tex.js at a save', { timeout: 120000 }, async (t) => {
+  const page = await open();
+  t.after(() => page.close());
+  await page.evaluate(`document.querySelector('.reveal .slides cite[data-key="gomez2004"]').remove(), true`);
+  const saved = await page.evaluate(SAVE_INTO('tex-uncited'));
+  assert.doesNotMatch(saved.files['index.html'], /gomez2004/);
+  assert.equal(saved.files['tex.js'], npmRunTex({ 'index.html': saved.files['index.html'] }));
+  assert.match((await status(page)).message, /tex\.js written/);
+  // a second save does not write it again
+  const again = await page.evaluate(SAVE_INTO('tex-uncited-again'));
+  assert.deepEqual(Object.keys(again.files), ['index.html']);
+
+  // without the pickers, tex.js is downloaded with the deck
+  const other = await open('other');
+  t.after(() => other.close());
+  await other.evaluate(NO_PICKERS);
+  await other.evaluate(`document.querySelector('.reveal .slides cite[data-key="gomez2004"]').remove(), true`);
+  await other.evaluate('window.BeesonEditor.save()');
+  const got = await downloads(other);
+  assert.deepEqual(got.map((d) => d.name), ['tex.js', 'index.html']);
+  assert.equal(got[0].text, npmRunTex({ 'index.html': got[1].text }));
+  assert.deepEqual(errors(page), []);
+});
+
+test('on file: a save that cites a paper missing from tex.js, with the folder refused, writes the deck and says that tex.js was not written', { timeout: 120000 }, async (t) => {
+  const page = await editorPage(browser, { deck: DECK, query: 'edit&still&edit-platform=other' });
+  t.after(() => page.close());
+  await page.evaluate(CITE_MISSING);
+  await page.evaluate(REFUSED);
+  const saved = await page.evaluate(SAVE_IN_MEMORY);
+  assert.equal(saved.done, true, 'the save is not finished');
+  assert.match(saved.text, /szebehely1967/);
+  assert.match((await status(page)).message, /tex\.js was not written/);
+});
+
+test('on file: a save that cites a paper missing from tex.js does not wait for the files that a closed sheet asks for', { timeout: 120000 }, async (t) => {
+  const page = await editorPage(browser, { deck: DECK, query: 'edit&still&edit-platform=other' });
+  t.after(() => page.close());
+  await page.evaluate(REFUSED);
+  await page.evaluate(`window.BeesonEditor.attach({ kind: 'file', name: 'index.html' }), true`);
+  await exec(page, 'file.preamble');
+  await page.waitFor(`!!document.querySelector('${SHEET} input[type=file]') && /Choose the folder of the deck/.test(document.querySelector('${SHEET} .note').textContent)`);
+  await press(page, 'Escape');
+  await page.evaluate(CITE_MISSING);
+  const saved = await page.evaluate(SAVE_IN_MEMORY);
+  assert.equal(saved.done, true, 'the save is not finished');
+  assert.match(saved.text, /szebehely1967/);
+  assert.match((await status(page)).message, /tex\.js was not written/);
 });
