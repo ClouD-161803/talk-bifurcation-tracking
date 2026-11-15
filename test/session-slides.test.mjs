@@ -45,3 +45,12 @@ test('a moved slide is changed at its new place and not removed', async (t) => {
     assert.ok(r.slides.includes(3), JSON.stringify(r));
   });
 });
+
+test('a slide removed while another is added is reported as removed, and a slide edited in place is not', () => {
+  const summary = slide('Summary', '<p>Manifolds lower the cost of the transfer by a third, at a longer flight.</p>');
+  const before = deck(ALPHA, BETA, GAMMA);
+  assert.deepEqual(changes(before, deck(ALPHA, summary, GAMMA)), { slides: [2], removed: { slides: [2], elements: 0 } });
+  assert.deepEqual(changes(before, deck(ALPHA, GAMMA, summary)), { slides: [3], removed: { slides: [2], elements: 0 } });
+  const edited = slide('Beta', '<p>Two impulses place the spacecraft on the stable manifold of the halo orbit.</p>');
+  assert.deepEqual(changes(before, deck(ALPHA, edited, GAMMA)), { slides: [2] });
+});

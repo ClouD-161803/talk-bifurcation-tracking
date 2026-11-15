@@ -291,3 +291,84 @@ test('random operations keep the anchors on start tags of their slides, and the 
     }
   }
 });
+
+// the start tag at the k-th place where open begins
+const nth = (text, open, k) => {
+  let at = -1;
+  for (let i = 0; i <= k; i++) at = text.indexOf(open, at + 1);
+  assert.ok(at >= 0, `${open} is in the text ${k + 1} times`);
+  return at;
+};
+
+const ALPHA = ['<h2>Alpha</h2>', '<p>The transfer leaves the halo orbit along its unstable manifold.</p>'];
+const BETA = ['<h2>Beta</h2>', '<p>Two impulses place the spacecraft on the stable manifold of the target.</p>'];
+const GAMMA = ['<h2>Gamma</h2>', '<p>The cost is compared with a direct transfer of the same duration.</p>'];
+
+test('a slide removed while another is added in one operation hands its threads to the deck', () => {
+  const before = deck(ALPHA, BETA, GAMMA);
+  const after = deck(ALPHA, GAMMA, ['<h2>Summary</h2>', '<p>Manifolds lower the cost of the transfer by a third, at a longer flight.</p>']);
+  const r = move(before, after, [onSlide(before, 'Beta'), onElement(before, '<p>Two'), onSlide(before, 'Gamma'), onElement(before, '<p>The cost')]);
+  assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: `<section>\n  ${BETA.join('\n  ')}\n</section>` } });
+  assert.deepEqual(r.items[1], { anchor: null, slide: null, removed: { text: BETA[1] } });
+  reads(after, r.items[2].anchor, '<section>\n  <h2>Gamma');
+  reads(after, r.items[3].anchor, '<p>The cost');
+  reads(after, r.items[3].slide, '<section>\n  <h2>Gamma');
+});
+
+test('of two slides of equal text, the one that the operation removes loses its threads', async (t) => {
+  const Q = ['<h2>Questions?</h2>'];
+  const before = deck(['<h2>Alpha</h2>'], Q, ['<h2>Beta</h2>'], Q);
+  const q = (k) => {
+    const s = slideAround(before, nth(before, '<h2>Questions?', k));
+    return { anchor: s, slide: s };
+  };
+  const items = [q(0), q(1), onSlide(before, 'Beta')];
+  const gone = { anchor: null, slide: null, removed: { text: '<section>\n  <h2>Questions?</h2>\n</section>' } };
+  await t.test('the first removed', () => {
+    const after = deck(['<h2>Alpha</h2>'], ['<h2>Beta</h2>'], Q);
+    const r = move(before, after, items);
+    assert.deepEqual(r.items[0], gone);
+    reads(after, r.items[1].anchor, '<section>\n  <h2>Questions?');
+    assert.equal(r.items[1].removed, undefined);
+    reads(after, r.items[2].anchor, '<section>\n  <h2>Beta');
+  });
+  await t.test('the second removed', () => {
+    const after = deck(['<h2>Alpha</h2>'], Q, ['<h2>Beta</h2>']);
+    const r = move(before, after, items);
+    reads(after, r.items[0].anchor, '<section>\n  <h2>Questions?');
+    assert.equal(r.items[0].removed, undefined);
+    assert.deepEqual(r.items[1], gone);
+    reads(after, r.items[2].anchor, '<section>\n  <h2>Beta');
+  });
+  await t.test('the first moved after the slide between them', () => {
+    const after = deck(['<h2>Alpha</h2>'], ['<h2>Beta</h2>'], Q, Q);
+    const r = move(before, after, items);
+    reads(after, r.items[0].anchor, '<section>\n  <h2>Questions?');
+    reads(after, r.items[1].anchor, '<section>\n  <h2>Questions?');
+    assert.notEqual(r.items[0].anchor.start, r.items[1].anchor.start);
+    reads(after, r.items[2].anchor, '<section>\n  <h2>Beta');
+    assert.ok(r.items.every((it) => it.removed === undefined));
+  });
+});
+
+test('a slide rewritten by typing keeps its threads, since each operation is small', () => {
+  let text = deck(ALPHA, BETA, GAMMA);
+  let items = [onSlide(text, 'Beta'), onElement(text, '<p>Two')];
+  const steps = [
+    (x) => x.replace('<h2>Beta</h2>', '<h2>Results</h2>'),
+    (x) => x.replace('Two impulses place', 'A single burn puts'),
+    (x) => x.replace('<section>\n  <h2>Results', '<section class="wide">\n  <h2>Results'),
+    (x) => x.replace('the spacecraft on the stable manifold of the target.', 'us on a ballistic capture'),
+    (x) => x.replace('ballistic capture', 'ballistic capture at the Moon, in eleven days of flight'),
+  ];
+  for (const step of steps) {
+    const after = step(text);
+    assert.notEqual(after, text);
+    ({ items } = move(text, after, items));
+    text = after;
+  }
+  reads(text, items[0].anchor, '<section class="wide">\n  <h2>Results');
+  reads(text, items[1].anchor, '<p>A single burn puts us on a ballistic capture');
+  reads(text, items[1].slide, '<section class="wide">');
+  assert.ok(items.every((it) => it.removed === undefined));
+});
