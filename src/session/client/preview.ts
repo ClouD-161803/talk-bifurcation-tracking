@@ -10,8 +10,8 @@ import type { AsideInfo, Mark, VersionDetail, VersionInfo } from '../protocol.ts
 import { slidesOf, VOID, type Slide } from '../slides.ts';
 import type { Client } from './client.ts';
 import { make, style } from './dom.ts';
+import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
 import { authorsOf, dayLabel, personOf, slidesText, timeOf } from './labels.ts';
-import { closeMenu, openMenu, type MenuItem } from './menu.ts';
 
 const CSS = `
 .beeson-session-preview { position: fixed; z-index: 55; display: flex; flex-direction: column; box-sizing: border-box; background: var(--ed-canvas); color: var(--ed-text); font: 12px/1.35 var(--ed-font); }
@@ -149,6 +149,7 @@ export class Preview {
   private text: string | null = null;
   private slides: Slide[] = [];
   private sections: (Element | null)[] = [];
+  private menu: OpenMenu | null = null;
 
   constructor(client: Client, pane: HTMLElement, actions: Actions) {
     style('preview', CSS);
@@ -234,23 +235,22 @@ export class Preview {
     return loaded;
   }
 
-  // the keys of the page in the preview, which does not reach the window of the editor: Esc leaves
-  // Version History as it does in the editor, the arrows move through the slides, and the other
-  // keys are kept from reveal.js and the theme, e.g. O of the overview and E of the editor
+  // the keys of the page in the preview, which does not reach the window of the editor: Esc is
+  // handed to the window, where it closes an open menu or else leaves Version History, the arrows
+  // move through the slides, and the other keys are kept from reveal.js and the theme, e.g. O of
+  // the overview and E of the editor
   private keys(w: Window): void {
     w.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
         ev.preventDefault();
         ev.stopImmediatePropagation();
-        if (!closeMenu()) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
       } else if (!NAVIGATION.has(ev.key) || ev.ctrlKey || ev.metaKey || ev.altKey) ev.stopImmediatePropagation();
     }, true);
     w.addEventListener('keypress', (ev) => ev.stopImmediatePropagation(), true);
-    // a press in the page does not reach the window of the editor, which closes an open menu
-    w.addEventListener('pointerdown', () => closeMenu(), true);
   }
 
-  private button(label: string, run: () => void, className = ''): HTMLButtonElement {
+  private button(label: string, run: (ev: MouseEvent) => void, className = ''): HTMLButtonElement {
     const b = make('button', className, label);
     b.type = 'button';
     b.addEventListener('click', run);
@@ -272,7 +272,7 @@ export class Preview {
       this.frame?.contentDocument?.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
     });
     label.append(box, document.createTextNode('Show changes'));
-    const more = this.button('⋯', () => this.more(more), 'more');
+    const more = this.button('⋯', (ev) => this.more(more, ev.detail === 0), 'more');
     more.setAttribute('aria-label', 'More');
     more.setAttribute('aria-haspopup', 'menu');
     const restore = () => this.version && void this.actions.restore(this.version, this.text);
@@ -281,14 +281,25 @@ export class Preview {
     return { info, date, who, slides: make('div', 'slides'), shown: '', notes: make('span', 'notes'), failed: make('span', 'removed'), actions };
   }
 
-  // the menu of More, which holds Name this version where the bar is narrow
-  private more(button: HTMLElement): void {
+  // the menu of More, which holds Name this version where the bar is narrow. a second press closes it
+  private more(button: HTMLElement, keyboard: boolean): void {
     const v = this.version;
+    if (this.menu) return this.menu.close();
     if (!v) return;
     const items: MenuItem[] = [];
     if (this.el.classList.contains('two')) items.push({ label: 'Name this version', run: () => this.actions.name(v) });
     items.push({ label: 'Download This Version', run: () => void this.download('version', v.id) });
-    openMenu(button, items);
+    const m = this.client.shell.menu(items, {
+      anchor: button.getBoundingClientRect(),
+      placement: 'below',
+      owner: button,
+      keyboard,
+      label: 'More',
+      onClose: () => {
+        if (this.menu === m) this.menu = null;
+      },
+    });
+    this.menu = m;
   }
 
   // the bar of version v, where only what differs from the bar shown is changed, so that the focus

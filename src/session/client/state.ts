@@ -8,7 +8,7 @@ import { BLOCKED, type Client } from './client.ts';
 import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
 import { failedLine, retry as retryUpload } from './media.ts';
-import { closeMenu, openMenu, type MenuItem } from './menu.ts';
+import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
 import { isLeaving } from './people.ts';
 
 // the items of the menu after Try Now, e.g. Version History
@@ -96,13 +96,25 @@ export function install(client: Client): void {
     client.port.setStatus(v.text);
   };
   button.setAttribute('aria-haspopup', 'menu');
-  button.addEventListener('click', () => {
-    if (closeMenu()) return;
+  let menu: OpenMenu | null = null;
+  button.addEventListener('click', (ev) => {
+    if (menu) return menu.close();
     const items = client.retryAt === null ? ITEMS : [{ label: 'Try Now', run: () => client.tryNow() }, ...ITEMS];
     if (client.blocked) client.loadAgain();
     else if (doing === 'upload') retryUpload(client);
-    else if (items.length) openMenu(button, items);
-    else void client.flush().catch(() => {});
+    else if (items.length) {
+      const m = client.shell.menu(items, {
+        anchor: button.getBoundingClientRect(),
+        placement: 'below',
+        owner: button,
+        keyboard: ev.detail === 0,
+        label: button.getAttribute('aria-label') ?? undefined,
+        onClose: () => {
+          if (menu === m) menu = null;
+        },
+      });
+      menu = m;
+    } else void client.flush().catch(() => {});
   });
   action.addEventListener('click', () => {
     if (doing === 'reload') client.loadAgain();

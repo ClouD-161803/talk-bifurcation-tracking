@@ -18,7 +18,7 @@ const hold = (ev: Event) => {
 };
 for (const type of ['paste', 'cut', 'drop', 'dragover']) window.addEventListener(type, hold, true);
 window.addEventListener('keydown', (ev) => {
-  if (!on || ev.key !== 'Escape' || !esc || document.querySelector('dialog[open], .beeson-session-menu')) return;
+  if (!on || ev.key !== 'Escape' || !esc || document.querySelector('dialog[open], .beeson-edit-menu')) return;
   ev.preventDefault();
   ev.stopImmediatePropagation();
   esc();
