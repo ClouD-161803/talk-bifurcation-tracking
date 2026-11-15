@@ -184,6 +184,18 @@ test('the preview of a deck with a hidden slide, a changed step, and changed not
     await press$(ann, BAR, 'Slide 2');
     await ann.waitFor(`${CURRENT} === 'Three'`);
   });
+
+  await t.test('a changed step is shown with its outline, and changed notes are named in the bar', async () => {
+    // the step fades in by the transition of the theme once it is marked, after the load
+    await ann.waitFor(`${FRAME}.contentWindow.getComputedStyle([...${doc}.querySelectorAll('p.fragment')][0]).opacity === '1'`);
+    const step = await ann.evaluate(`(() => {
+      const p = [...${doc}.querySelectorAll('p.fragment')][0];
+      const s = ${FRAME}.contentWindow.getComputedStyle(p);
+      return { changed: p.hasAttribute('data-beeson-changed'), opacity: s.opacity, visibility: s.visibility, outline: s.outlineStyle };
+    })()`);
+    assert.deepEqual(step, { changed: true, opacity: '1', visibility: 'visible', outline: 'solid' });
+    assert.equal(await ann.evaluate(`document.querySelector('${BAR} .notes')?.textContent`), 'Notes of Slide 2 changed');
+  });
   clean(ann);
 });
 
