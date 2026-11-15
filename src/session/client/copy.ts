@@ -30,12 +30,16 @@ type State = {
   unavailable: boolean;
   // a record of this page may be in IndexedDB
   stored: boolean;
+  // the last copy with edits that wait written into IndexedDB, whose slides the save state names
+  kept: Copy | null;
   last: Copy | null;
   wroteAt: number;
   // the time since which edits wait for their acknowledgment, or null
   since: number | null;
   timer: number;
-  slides: { base: string; mine: string; numbers: number[]; at: number } | null;
+  // a write waits for the client to read the deck
+  soon: boolean;
+  slides: { base: string; mine: string; numbers: number[] } | null;
   // the slides of a copy taken over at the join, named in the save state once they are sent
   restored: number[] | null;
   note: string | null;
@@ -108,7 +112,7 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[] } {
 function stateOf(client: Client): State {
   let st = states.get(client);
   if (!st) {
-    st = { id: pageId(), unavailable: false, stored: false, last: null, wroteAt: 0, since: null, timer: 0, slides: null, restored: null, note: null };
+    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null };
     states.set(client, st);
   }
   return st;
@@ -137,6 +141,7 @@ export async function restore(client: Client): Promise<Copy | null> {
       for (const r of taken) s.delete(r.id);
       s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now() } satisfies Row);
     });
+    st.kept = copy;
   } catch {
     st.unavailable = true;
   }
@@ -145,24 +150,24 @@ export async function restore(client: Client): Promise<Copy | null> {
   return copy;
 }
 
-// the numbers of the slides with edits that wait for their acknowledgment, found again at most
-// every EVERY ms while the texts change, since a parse of the deck is slow on a slow machine
-function waiting(client: Client, st: State): number[] {
-  const s = client.snapshot();
-  if (!s) return [];
+// the numbers of the slides with edits of a copy, found again only for another copy, since a parse
+// of the deck is slow on a slow machine
+function waiting(client: Client, st: State, s: Copy): number[] {
   const c = st.slides;
-  if (c && ((c.base === s.base && c.mine === s.mine) || Date.now() - c.at < EVERY)) return c.numbers;
+  if (c && c.base === s.base && c.mine === s.mine) return c.numbers;
   const numbers = client.shell.changedSlides(s.base, s.mine);
-  st.slides = { base: s.base, mine: s.mine, numbers, at: Date.now() };
+  st.slides = { base: s.base, mine: s.mine, numbers };
   return numbers;
 }
 
-// the save state while the page is offline with edits that wait, or null
+// the save state while the page is offline with edits that wait, or null. the edits are said to be
+// kept once a record with them is written, with the slides of this record
 export function keptLine(client: Client): string | null {
   const st = states.get(client);
   if (!st || client.acked()) return null;
   if (st.unavailable) return 'Offline. Keep this page open, since your changes cannot be kept in this browser';
-  const numbers = waiting(client, st);
+  if (!st.kept) return null;
+  const numbers = waiting(client, st, st.kept);
   return `Offline. ${numbers.length ? `Changes${client.shell.onSlides(numbers)}` : 'Your changes'} are kept in this browser`;
 }
 
@@ -178,7 +183,7 @@ export function install(client: Client): void {
 
   const write = (now: boolean): void => {
     const s = client.snapshot();
-    if (!s) return;
+    if (!s || (!st.stored && s.mine === s.base)) return;
     const t = Date.now();
     const l = st.last;
     if (l && l.base === s.base && l.v === s.v && l.mine === s.mine && t - st.wroteAt < BEAT) return;
@@ -189,8 +194,10 @@ export function install(client: Client): void {
     const files = client.shell.media.unsaved(s.mine).map((f) => ({ path: f.path, blob: f.blob }));
     run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t } satisfies Row)).then(
       () => {
-        if (!st.unavailable) return;
+        const kept = st.last === s && st.stored && s.mine !== s.base ? s : st.kept;
+        if (!st.unavailable && kept === st.kept) return;
         st.unavailable = false;
+        st.kept = kept;
         client.refresh();
       },
       () => {
@@ -201,8 +208,23 @@ export function install(client: Client): void {
     );
   };
 
+  // a write once the client has read the deck, after its next frame, or after its timer in a tab
+  // that is hidden
+  const soon = (): void => {
+    if (st.soon) return;
+    st.soon = true;
+    const go = (): void => {
+      if (!st.soon) return;
+      st.soon = false;
+      write(true);
+    };
+    requestAnimationFrame(() => setTimeout(go, 0));
+    setTimeout(go, 150);
+  };
+
   const drop = (): void => {
     st.stored = false;
+    st.kept = null;
     st.last = null;
     void run('readwrite', (s) => s.delete(st.id)).catch(() => {});
   };
@@ -218,6 +240,8 @@ export function install(client: Client): void {
     if (!client.acked()) {
       st.since ??= Date.now();
       if (!st.timer) st.timer = window.setInterval(tick, EVERY / 2);
+      // offline, the first record is written at once, since the save state waits for it
+      if (!st.kept && client.connection !== 'online') soon();
       return;
     }
     st.since = null;
@@ -233,7 +257,8 @@ export function install(client: Client): void {
 
   const tick = (): void => {
     if (client.acked() || client.ended) return update();
-    if (st.since !== null && Date.now() - st.since >= EVERY) write(false);
+    if (!st.kept && client.connection !== 'online') write(true);
+    else if (st.since !== null && Date.now() - st.since >= EVERY) write(false);
   };
 
   client.on('state', update);
