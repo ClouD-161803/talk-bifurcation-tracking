@@ -1,8 +1,9 @@
 // a toast: a short message above the status bar for SHOWN ms, read out by a screen reader, with an
 // optional button and a button Close. one toast is shown at a time, and the others wait in a queue.
 // the region is kept in the page between toasts, since a screen reader reads a change of a region
-// that it knows. a toast waits for the close of a modal dialog, which makes the region inert, and
-// its time starts then
+// that it knows. the time of a toast does not run while the pointer is over it or the focus is in
+// it. a toast waits for the close of a modal dialog, which makes the region inert, and its time
+// starts then
 
 import { make, style } from './dom.ts';
 
@@ -34,7 +35,17 @@ const MAX = 3;
 const queue: { text: ToastText; button?: ToastButton; kind?: ToastKind; n: number }[] = [];
 let region: HTMLElement | null = null;
 let timer = 0;
+// a toast is shown, or the first one follows a task after the region was made
+let showing = false;
+// the queue waits for the close of a modal dialog
 let waiting = false;
+// the ms left of the toast shown, from since on while its timer runs
+let left = 0;
+let since = 0;
+let over = false;
+let inside = false;
+// the element focused before the focus came into the region, given the focus back at a Close
+let before: HTMLElement | null = null;
 
 export function toast(text: ToastText, button?: ToastButton, kind?: ToastKind): void {
   const same = kind && queue.length >= MAX ? queue.filter((q) => q.kind?.key === kind.key) : [];
@@ -43,16 +54,46 @@ export function toast(text: ToastText, button?: ToastButton, kind?: ToastKind): 
     for (const q of same) queue.splice(queue.indexOf(q), 1);
     queue.push({ ...kind.many(n), kind, n });
   } else queue.push({ text, button, kind, n: 1 });
-  if (!timer && !waiting) next();
+  if (!showing && !waiting) next();
 }
 
 // the empty region put in the page, ahead of its first toast
 export function mountToasts(): void {
   if (region) return;
   style('toast', CSS);
-  region = make('div', 'beeson-session-toast');
-  region.setAttribute('role', 'status');
-  document.body.append(region);
+  const box = (region = make('div', 'beeson-session-toast'));
+  box.setAttribute('role', 'status');
+  box.addEventListener('pointerenter', () => {
+    over = true;
+    pause();
+  });
+  box.addEventListener('pointerleave', () => {
+    over = false;
+    run();
+  });
+  box.addEventListener('focusin', (ev) => {
+    if (!inside && ev.relatedTarget instanceof HTMLElement && !box.contains(ev.relatedTarget)) before = ev.relatedTarget;
+    inside = true;
+    pause();
+  });
+  box.addEventListener('focusout', (ev) => {
+    inside = ev.relatedTarget instanceof Node && box.contains(ev.relatedTarget);
+    run();
+  });
+  document.body.append(box);
+}
+
+function pause(): void {
+  if (!timer) return;
+  clearTimeout(timer);
+  timer = 0;
+  left = Math.max(0, left - (performance.now() - since));
+}
+
+function run(): void {
+  if (timer || !showing || over || inside) return;
+  since = performance.now();
+  timer = window.setTimeout(next, left);
 }
 
 const CLOSE = 'M4 4l8 8M12 4l-8 8';
@@ -63,13 +104,16 @@ function next(): void {
   if (!region) {
     // a region made with its text is not read out, hence the text follows a task later
     mountToasts();
+    showing = true;
     timer = window.setTimeout(next, 0);
     return;
   }
+  const box = region;
   const modal = queue.length ? document.querySelector('dialog:modal') : null;
   if (modal) {
+    showing = false;
     waiting = true;
-    region.replaceChildren();
+    box.replaceChildren();
     modal.addEventListener('close', () => {
       waiting = false;
       next();
@@ -77,20 +121,23 @@ function next(): void {
     return;
   }
   const shown = queue.shift();
+  showing = !!shown;
+  left = timing.shown;
   if (!shown) {
-    region.replaceChildren();
+    box.replaceChildren();
+    over = inside = false;
     return;
   }
   const text = make('span');
   text.append(...(typeof shown.text === 'string' ? [shown.text] : shown.text));
   const parts: Node[] = [text];
   if (shown.button) {
-    const { label, run } = shown.button;
+    const { label, run: act } = shown.button;
     const b = make('button', '', label);
     b.type = 'button';
     b.addEventListener('click', () => {
       next();
-      run();
+      act();
     });
     parts.push(b);
   }
@@ -110,8 +157,16 @@ function next(): void {
   path.setAttribute('stroke-linecap', 'round');
   svg.append(path);
   close.append(svg);
-  close.addEventListener('click', () => next());
+  close.addEventListener('click', () => {
+    const back = before;
+    next();
+    if (!box.contains(document.activeElement) && back?.isConnected) back.focus();
+  });
   parts.push(close);
-  region.replaceChildren(...parts);
-  timer = window.setTimeout(next, timing.shown);
+  box.replaceChildren(...parts);
+  // a removed button does not send focusout in every browser, and a pointer that stays still does
+  // not send pointerenter
+  inside = box.contains(document.activeElement);
+  over = box.matches(':hover');
+  run();
 }
