@@ -346,6 +346,7 @@ class Pane {
     const unread = this.comments.unread(t);
     node.classList.toggle('unread', unread);
     node.classList.toggle('focused', this.focused === t.id);
+    node.setAttribute('aria-label', `Comment by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`);
     // a reply being typed stays in a thread that another person resolves
     const answering = !t.resolved || this.busy(t);
     const names = itemsOf(t).map((i) => `${this.nameOf(i.author)}|${this.colorOf(i.author)}`).join(',');
@@ -358,7 +359,6 @@ class Pane {
     const reply = this.replyField(t);
     const parts: HTMLElement[] = [this.item(t, t, true)];
     for (const r of t.replies) parts.push(this.item(t, r, false));
-    node.setAttribute('aria-label', `Comment by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`);
     if (t.resolved) {
       const by = make('p', 'resolved-by', 'Resolved by ');
       by.append(...named(this.nameOf(t.resolved.by), `, ${whenOf(t.resolved.time)}`));
