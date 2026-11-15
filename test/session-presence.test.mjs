@@ -12,7 +12,7 @@ import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, open, sessionUrl, show, talk, TEXT } from './helpers/client.mjs';
 import { click, type, typeKeys } from './helpers/editor.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
-import { until } from './helpers/session.mjs';
+import { post, until } from './helpers/session.mjs';
 
 const P = 'window.BeesonSession.presence()';
 // the element of selector on the slide at index
@@ -609,4 +609,68 @@ test('a page that joins while another person types reads the selection of a page
   clean(ana);
   clean(ben);
   clean(cy);
+});
+
+// a writer that is not a page, which joins the session of server and sends operations itself
+async function writer(server) {
+  const { port, base } = server.edit;
+  const hello = (await post(port, `${base}.session/hello`, { name: 'Writer', person: 'writer-1' })).json();
+  const w = { v: hello.v, seq: 0 };
+  // count operations of one character b each, at the end of the text of Beta, which do not move the
+  // offsets of the elements of the deck
+  w.write = async (count) => {
+    for (let i = 0; i < count; i++) {
+      const at = server.read().indexOf('</li>\n  </ul>');
+      const a = (await post(port, `${base}.session/op`, { token: hello.token, client: hello.client, seq: ++w.seq, base: w.v, patches: [{ start: at, end: at, text: 'b' }] })).json();
+      assert.ok(a.ok, JSON.stringify(a));
+      w.v = a.v;
+    }
+    return w.v;
+  };
+  return w;
+}
+
+// the texts of the elements that the person of name selects on page, without the b of the writer
+const selectedOf = (page, name) => page.evaluate(`(${C}.resolved().find((r) => r.name === ${JSON.stringify(name)})?.selected ?? []).map((e) => e.textContent.trim().replace(/b+$/, ''))`);
+
+test('a state older than a resync with the whole text keeps its elements, and a state of the resync is read after later operations', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // a poll is answered within a second, hence a poll of a page waits at its gate soon
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
+  const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ana, ben]);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await gatePolls(ana);
+  await gatePolls(ben);
+  await select(ana, el(1, 'li:nth-child(2)'));
+  await until(async () => (await selectedOf(ben, 'Ana')).join() === 'Beta', 'the selection of Beta on the page of Ben');
+  await closePolls(ben);
+  await until(() => ben.evaluate('window.__waiting > 0'), 'a poll of Ben to wait');
+  // the log of the edit command keeps 1000 operations, hence it does not reach back to Ben
+  const w = await writer(server);
+  const first = await w.write(1010);
+  await until(async () => (await ana.evaluate(`${C}.base.v`)) === first, 'the operations on the page of Ana');
+  await select(ana, el(1, 'li:nth-child(1)'));
+  await select(ana, el(1, 'li:nth-child(2)'));
+  assert.equal((await posted(ana)).v, first);
+  const resync = await w.write(10);
+  await until(async () => (await ana.evaluate(`${C}.base.v`)) === resync, 'the last operations on the page of Ana');
+  assert.equal((await posted(ana)).v, first);
+  await openPolls(ben);
+  await until(() => ben.evaluate(`(() => { const o = [...${P}.others.values()].find((o) => o.state.v === ${JSON.stringify(first)}); return ${C}.base.v === ${JSON.stringify(resync)} && !!o && !o.ahead; })()`), 'the state of Ana read again after the resync of Ben');
+  assert.deepEqual(await selectedOf(ben, 'Ana'), ['Beta']);
+  // a state of Ana at the version of the resync, read by Ben after one more operation
+  await closePolls(ana);
+  await until(() => ana.evaluate('window.__waiting > 0'), 'a poll of Ana to wait');
+  const after = await w.write(1);
+  await until(async () => (await ben.evaluate(`${C}.base.v`)) === after, 'the operation on the page of Ben');
+  await select(ana, el(1, 'li:nth-child(1)'));
+  assert.equal((await posted(ana)).v, resync);
+  await until(async () => (await selectedOf(ben, 'Ana')).join() === 'Alpha', 'the selection of Alpha on the page of Ben', 5000);
+  await openPolls(ana);
+  clean(ana);
+  clean(ben);
 });
