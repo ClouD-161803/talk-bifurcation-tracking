@@ -310,6 +310,36 @@ test('a reply being typed when its thread is resolved by another person stays, a
   clean(b);
 });
 
+test('a live update that moves the thread of a reply being typed keeps its node, the focus, and the caret', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'On One');
+  await show(a, 'Two');
+  await click(a, '.reveal .slides > section:nth-child(2) > p');
+  await comment(a, 'On Two');
+  const id = await a.evaluate(`[...document.querySelectorAll('${PANE} article')].find((n) => n.querySelector('.text').textContent === 'On Two').dataset.id`);
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await type(a, 'typing a reply');
+  await a.evaluate(`document.querySelector('${ARTICLE(id)}').__mark = 1`);
+  // reveal.js blurs the focus when a page is shown again, as each flip of the page in front in this
+  // test does, whereas a person on another machine does not show the page of Ann again
+  await a.evaluate(`Object.defineProperty(document, 'hidden', { configurable: true, get: () => undefined })`);
+  await front(b);
+  await click(b, '.beeson-edit-nav .row:nth-of-type(2)');
+  await b.evaluate(`window.BeesonEditor.exec('slide.moveUp')`);
+  await converge(server, [a, b]);
+  await sees(a, `[...document.querySelectorAll('${PANE} article .item:first-child .text')].map((p) => p.textContent)`, ['On Two', 'On One']);
+  assert.deepEqual(await a.evaluate(`(() => {
+    const area = document.querySelector('${ARTICLE(id)} .reply textarea');
+    return { same: document.querySelector('${ARTICLE(id)}').__mark === 1, focused: document.activeElement === area, caret: area.selectionStart, value: area.value };
+  })()`), { same: true, focused: true, caret: 14, value: 'typing a reply' });
+  await typeKeys(a, 'xyz');
+  await sees(a, `document.querySelector('${ARTICLE(id)} .reply textarea').value`, 'typing a replyxyz');
+  clean(a);
+  clean(b);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
