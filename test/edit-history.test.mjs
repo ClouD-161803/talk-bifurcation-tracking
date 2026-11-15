@@ -280,3 +280,42 @@ test('the marks of a version hold who changed each range last, moved by later op
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the file is written anew past its size limit, without the old versions, and the ids are kept', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const day = 24 * 3600 * 1000;
+  let clock = Date.now() - 100 * day;
+  const { authority, history } = open(dir, DECK.replace('</body>', '<section>\n  <p>start</p>\n</section>\n</body>'), { now: () => clock });
+  const texts = [];
+  // each version replaces the text of a paragraph, hence the base does not grow when versions are left out
+  const step = (i) => {
+    replace(authority, /<p>[^<]*<\/p>\n<\/section>\n<\/body>/, `<p>${String.fromCharCode(97 + i).repeat(1000)}</p>\n</section>\n</body>`, ANN);
+    const v = history.close();
+    texts.push([v.id, authority.text]);
+    clock += 1000;
+  };
+  for (let i = 0; i < 6; i++) step(i);
+  history.name(texts[3][0], 'Kept');
+  // the versions after this jump are of the last 30 days
+  clock = Date.now() - 2 * day;
+  for (let i = 6; i < 9; i++) step(i);
+  history.stopSync();
+  const file = join(dir, 'history.jsonl');
+  const size = statSync(file).size;
+  const again = open(dir, authority.text, { maxBytes: size + 100, now: () => clock });
+  assert.equal(again.history.list().versions.length, 9);
+  // one more version passes the limit
+  replace(again.authority, 'First slide', 'First slide, later', BO);
+  const last = again.history.close();
+  texts.push([last.id, again.authority.text]);
+  assert.ok(statSync(file).size < size, 'the file is smaller after the rewrite');
+  const kept = texts.slice(3);
+  assert.deepEqual(again.history.list().versions.map((v) => v.id), kept.map(([id]) => id).reverse());
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8').split('\n')[0]).text, texts[2][1]);
+  again.history.stopSync();
+  const third = open(dir, again.authority.text);
+  assert.deepEqual(third.history.list().versions.map((v) => v.id), kept.map(([id]) => id).reverse());
+  assert.equal(third.history.list().versions.at(-1).name, 'Kept');
+  for (const [id, text] of kept) assert.equal(third.history.textOf(id), text);
+  assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.tmp')), []);
+});
