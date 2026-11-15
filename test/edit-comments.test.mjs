@@ -50,6 +50,13 @@ const slideRange = (text, inside) => {
 };
 const reads = (text, anchor, what) => assert.equal(anchor && text.slice(anchor.start, anchor.start + what.length), what);
 const onDeck = (authority, text) => ({ base: authority.version, anchor: null, slide: null, text });
+const readJson = (file) => {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+};
 
 test('a thread is anchored on the text that the page read, and moved to the current text', (t) => {
   const { authority, comments } = open(sessionDir(t), DECK);
@@ -260,6 +267,22 @@ test('a file of comments that cannot be read is moved aside', async (t) => {
       assert.deepEqual(comments.list(ANN).comments, []);
     });
   }
+});
+
+test('a shift of the anchors by typing is written to the file', async (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'comments.json');
+  const { authority, comments } = open(dir, DECK, { every: 0 });
+  const text = authority.text;
+  comments.add(ANN, { base: authority.version, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'x' });
+  await until(() => readJson(file)?.comments.length === 1, 'the first write');
+  await comments.idle();
+  replace(authority, 'First slide', 'First slide, longer');
+  comments.stopSync();
+  const saved = readJson(file);
+  assert.equal(saved.sum, checksum(authority.text));
+  reads(authority.text, saved.comments[0].anchor, '<p>Second slide</p>');
+  reads(authority.text, saved.comments[0].slide, '<section>\n  <h2>Two');
 });
 
 // the comments of a session through its requests. the folder is removed after the edit command
