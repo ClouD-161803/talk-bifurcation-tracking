@@ -124,6 +124,10 @@ function refused(app: App, presence: Presence, c: Command, arg: unknown): Resolv
     }
     return null;
   }
+  // a command of a table and a paste into a cell may change any cell of the table
+  const cell = (arg as { cell?: unknown } | null | undefined)?.cell;
+  const table = (cell instanceof Element ? cell : sel.kind === 'text' ? sel.items[0] : null)?.closest('table');
+  if (table && ((c.undoable && c.id.startsWith('table.')) || c.id.startsWith('edit.paste'))) return presence.lockOf(table);
   if (READ.test(c.id) || (sel.kind !== 'elements' && sel.kind !== 'text')) return null;
   for (const el of sel.items) {
     const by = presence.lockOf(el);
