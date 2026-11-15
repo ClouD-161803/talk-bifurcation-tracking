@@ -163,6 +163,18 @@ export function slideChanges(before: string, beforeSlides: Slide[], after: strin
     if (!same.has(j) && marks.some((m) => (m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end))) slides.add(s.number);
   });
   const kept = new Set(matched.map((p) => p.i));
+  // a slide moved past others is left out of the pairs in order, and kept by its equal text
+  const paired = new Set(matched.map((p) => p.j));
+  const free = new Map<string, number>();
+  b.forEach((t, j) => {
+    if (!paired.has(j)) free.set(t, (free.get(t) ?? 0) + 1);
+  });
+  a.forEach((t, i) => {
+    const n = free.get(t);
+    if (kept.has(i) || !n) return;
+    free.set(t, n - 1);
+    kept.add(i);
+  });
   const gone = beforeSlides.filter((_, i) => !kept.has(i)).map((s) => s.number);
   let elements = 0;
   for (const p of matched) {

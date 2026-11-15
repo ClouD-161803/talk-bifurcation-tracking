@@ -1505,6 +1505,17 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
     if (!same.has(j) && marks.some((m) => m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end)) slides.add(s.number);
   });
   const kept = new Set(matched.map((p) => p.i));
+  const paired = new Set(matched.map((p) => p.j));
+  const free = /* @__PURE__ */ new Map();
+  b.forEach((t, j) => {
+    if (!paired.has(j)) free.set(t, (free.get(t) ?? 0) + 1);
+  });
+  a.forEach((t, i) => {
+    const n = free.get(t);
+    if (kept.has(i) || !n) return;
+    free.set(t, n - 1);
+    kept.add(i);
+  });
   const gone = beforeSlides.filter((_, i) => !kept.has(i)).map((s) => s.number);
   let elements = 0;
   for (const p of matched) {
