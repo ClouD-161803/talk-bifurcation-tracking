@@ -298,10 +298,11 @@ function within(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   return structural(ctx, parent, up);
 }
 
-// the text element on the page reads as its bytes in the new text
+// the text element on the page reads as its bytes in the new text. an element that stopped being a
+// text element is a reload, since its new children are not paired, and typing in it would be lost
 function checkText(ctx: Ctx, live: Element): boolean {
   const textEl = ctx.pairing.byLive.get(live);
-  if (!textEl) return true;
+  if (!textEl || !isTextElement(textEl.src)) return false;
   const range = contentRange(textEl.src);
   return !!range && ctx.source.text === ctx.text && renderTextElement(ctx.source, textEl, lookupFor(live), ctx.app.tagEdits) === ctx.text.slice(range.start, range.end);
 }
