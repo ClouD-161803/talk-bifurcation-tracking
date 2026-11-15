@@ -96,6 +96,15 @@ export async function pasted(page, timeout = 30000) {
   assert.equal(await page.evaluate('window.__pasted'), true);
 }
 
+// text with its origin changed by change, which is given the parsed origin and returns the new
+// one, written with the escapes of the editor
+export function withOrigin(text, change) {
+  const m = text.match(/<!--beeson-origin (.*?)-->/s);
+  assert.ok(m, 'the text does not name its origin');
+  const json = JSON.stringify(change(JSON.parse(m[1]))).replace(/[-<>]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return text.replace(m[0], () => `<!--beeson-origin ${json}-->`);
+}
+
 // the section of text headed title
 export function sectionOf(text, title) {
   const h = text.indexOf(`<h2>${title}</h2>`);
