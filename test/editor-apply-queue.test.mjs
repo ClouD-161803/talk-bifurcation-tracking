@@ -282,29 +282,67 @@ test('a composing text on a page that is hidden without the end of its compositi
   assert.deepEqual(b.errors, []);
 });
 
+// the timers of the check of the port after an apply, held until window.__checks() runs them and
+// returns their count, and the loads of the page through onReload counted in window.__reloads
+const HOLD_CHECKS = `(() => {
+  const set = window.setTimeout.bind(window);
+  const clear = window.clearTimeout.bind(window);
+  const held = new Map();
+  let n = 0;
+  window.setTimeout = (fn, ms, ...args) => {
+    if (typeof fn !== 'function' || fn.name !== 'check') return set(fn, ms, ...args);
+    held.set(--n, () => fn(...args));
+    return n;
+  };
+  window.clearTimeout = (id) => void (held.delete(id) || clear(id));
+  window.__checks = () => {
+    const fns = [...held.values()];
+    held.clear();
+    for (const fn of fns) fn();
+    return fns.length;
+  };
+  window.__reloads = 0;
+  ${E}.session.onReload(() => window.__reloads++);
+  return true;
+})()`;
+
+// a text node changed behind the back of the editor, which stands for a defect of an apply
+const BREAK = `(() => {
+  const p = ${P2};
+  p.firstChild.data = p.firstChild.data.replace('Copy-paste', 'Broken');
+  return true;
+})()`;
+
 test('a page that does not read as its text after an apply is loaded again through onReload', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
-  await b.evaluate(`(() => {
-    window.__reloads = 0;
-    ${E}.session.onReload(() => window.__reloads++);
-    return true;
-  })()`);
+  await b.evaluate(HOLD_CHECKS);
   const one = once(b.source, 'Thank you', 'Thanks');
   assert.equal((await applyOn(b, one)).reload, false);
-  // a timer of the page set after the apply runs after the check of the port, which is set at the
-  // end of the apply with a shorter delay
-  await b.evaluate('new Promise((done) => setTimeout(done, 1000))');
+  assert.equal(await b.evaluate('window.__checks()'), 1, 'the apply sets the check');
   assert.equal(await b.evaluate('window.__reloads'), 0, 'a page that reads as its text is not loaded again');
-  // a text node changed behind the back of the editor stands for a defect of an apply
-  await b.evaluate(`(() => {
-    const p = ${P2};
-    p.firstChild.data = p.firstChild.data.replace('Copy-paste', 'Broken');
-    return true;
-  })()`);
+  await b.evaluate(BREAK);
   const two = once(one, 'Design the complete', 'Plan the complete');
   assert.equal((await applyOn(b, two)).reload, false);
-  await b.waitFor('window.__reloads > 0');
+  assert.equal(await b.evaluate('window.__checks()'), 1);
+  assert.equal(await b.evaluate('window.__reloads'), 1);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a page that does not read as its text after an apply is loaded again when the person types right after the apply', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await b.evaluate(HOLD_CHECKS);
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  const one = once(b.source, 'Thank you', 'Thanks');
+  assert.equal((await applyOn(b, one)).reload, false);
+  await b.evaluate(BREAK);
+  assert.equal((await applyOn(b, once(one, '<h2>Chapter one</h2>', '<h2>Chapter one A</h2>'))).reload, false);
+  // the key comes before the check that the applies set
+  await typeKeys(b, 'k');
+  await b.waitFor(`${P1}.textContent.endsWith('attention.k')`);
+  await b.evaluate('window.__checks()');
   assert.equal(await b.evaluate('window.__reloads'), 1);
   assert.deepEqual(b.errors, []);
 });
