@@ -105,10 +105,33 @@ export type ErrorAnswer = { error: string };
 // the tones of theme/beeson.css that the color index of a person stands for
 export const COLORS = ['--data-2', '--data-3', '--data-5', '--data-7'] as const;
 
-// a name as it is kept: trimmed, inner whitespace collapsed, and cut to NAME_MAX characters
+// characters that do not show, i.e. the default ignorable code points and the controls of the
+// direction of text
+const HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}]$/u;
+// hidden characters that an emoji or a word needs: the variation selectors and the tags, kept after
+// a character that shows, and the zero-width joiner and non-joiner, kept between two such characters
+const SELECTOR = /^[\ufe00-\ufe0f\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}]$/u;
+const JOINER = /^[\u200c\u200d]$/u;
+const shows = (c: string | undefined) => c !== undefined && !HIDDEN.test(c) && !/\s/.test(c);
+
+// the characters of raw that show, with the selectors and joiners that belong to them
+function shown(raw: string): string {
+  const chars = Array.from(raw);
+  const kept: string[] = [];
+  chars.forEach((c, i) => {
+    const before = kept[kept.length - 1];
+    if (!HIDDEN.test(c)) kept.push(c);
+    else if (SELECTOR.test(c) && (shows(before) || SELECTOR.test(before ?? ''))) kept.push(c);
+    else if (JOINER.test(c) && (shows(before) || SELECTOR.test(before ?? '')) && shows(chars[i + 1])) kept.push(c);
+  });
+  return kept.join('');
+}
+
+// a name as it is kept: without characters that do not show, trimmed, inner whitespace collapsed,
+// and cut to NAME_MAX characters. a name that is empty after this is refused
 export const NAME_MAX = 40;
 export const cleanPersonName = (raw: unknown): string =>
-  typeof raw === 'string' ? Array.from(raw.replace(/\s+/g, ' ').trim()).slice(0, NAME_MAX).join('').trim() : '';
+  typeof raw === 'string' ? shown(Array.from(shown(raw).replace(/\s+/g, ' ').trim()).slice(0, NAME_MAX).join('')).trim() : '';
 // two names are one when their keys are equal
 export const nameKey = (name: string): string => cleanPersonName(name).normalize('NFC').toLowerCase();
 export const isPersonId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(id);
