@@ -253,6 +253,7 @@ export class Preview {
   }
 
   // the page of the version, with the outlines of the changed elements, at the first changed slide
+  // that is shown
   private async fill(v: VersionInfo): Promise<void> {
     const key = this.key;
     this.text = null;
@@ -274,21 +275,32 @@ export class Preview {
     css.textContent = FRAME_CSS;
     doc.head.append(css);
     doc.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
-    for (const t of targetsOf(text, this.slides, detail.marks)) {
+    const targets = targetsOf(text, this.slides, detail.marks);
+    for (const t of targets) {
       const section = this.sections[t.slide];
       const el = !section || t.name === null ? section : [...section.children].filter((c) => c.localName === t.name)[t.nth];
       if (!el) continue;
       el.setAttribute('data-beeson-changed', t.author);
       (el as HTMLElement).style.setProperty('--beeson-changed', personOf(this.client, t.author)?.color ?? 'var(--muted)');
     }
-    if (v.slides.length) this.go(v.slides[0]);
+    // a slide with a changed element first, and of a number without one, a slide of this number
+    const marked = (k: number) => targets.some((t) => t.slide === k);
+    const first = this.slides.findIndex((s, k) => this.sections[k] && v.slides.includes(s.number) && (marked(k) || !this.slides.some((o, j) => o.number === s.number && marked(j))));
+    if (first >= 0) this.show(this.sections[first]!);
+    else if (v.slides.length) this.go(v.slides[0]);
   }
 
-  // the slide numbered n shown in the preview, once reveal.js is ready there
+  // the slide numbered n shown in the preview. a hidden slide has the number of the slide after it,
+  // and it is not in the page
   go(n: number): void {
-    const section = this.sections[this.slides.findIndex((s) => s.number === n)];
+    const k = this.slides.findIndex((s, i) => s.number === n && this.sections[i]);
+    if (k >= 0) this.show(this.sections[k]!);
+  }
+
+  // section shown in the preview, once reveal.js is ready there
+  private show(section: Element): void {
     const reveal = (this.frame.contentWindow as (Window & { Reveal?: RevealLike }) | null)?.Reveal;
-    if (!section || !reveal) return;
+    if (!reveal) return;
     const show = () => {
       const { h, v } = reveal.getIndices(section);
       reveal.slide(h, v);
