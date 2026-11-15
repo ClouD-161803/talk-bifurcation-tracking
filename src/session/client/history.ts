@@ -136,9 +136,9 @@ export function install(client: Client): void {
   let shownTime: number | null = null;
   let midnight = 0;
   let naming = false;
-  // a reload of the page held until the mode ends, see hold below
+  // a reload of the page deferred until the mode ends, see hooks.defer below
   let release: (() => void) | null = null;
-  let holding: Promise<void> | null = null;
+  let deferred: Promise<void> | null = null;
   // the nodes of the list kept between renders by key, hence a new answer writes only what changed
   const rows = new Map<string, { el: HTMLButtonElement; sig: string }>();
   const folds = new Map<string, { button: HTMLButtonElement; inner: HTMLElement }>();
@@ -312,9 +312,9 @@ export function install(client: Client): void {
     }
     used.clear();
     const nodes: Node[] = [
-      row('current', { kind: 'current' }, holding ? 'held' : '', () => {
+      row('current', { kind: 'current' }, deferred ? 'deferred' : '', () => {
         const parts: (Node | string)[] = [make('span', 'title', 'Current version')];
-        if (holding) parts.push(make('span', 'sub', 'The deck changed. It is loaded again when Version History is closed.'));
+        if (deferred) parts.push(make('span', 'sub', 'The deck changed. It is loaded again when Version History is closed.'));
         return parts;
       }),
       nameCurrent,
@@ -428,7 +428,7 @@ export function install(client: Client): void {
     if (back instanceof HTMLElement && back.isConnected && !back.closest('[inert]')) back.focus();
     back = null;
     const go = release;
-    release = holding = null;
+    release = deferred = null;
     go?.();
   }
 
@@ -575,13 +575,13 @@ export function install(client: Client): void {
   opener = open;
   addStateItem({ label: 'Version History', run: () => open() });
   // a reload that an apply needs waits for the end of the mode, which Current version says
-  client.hooks.hold = () => {
+  client.hooks.defer = () => {
     if (!on) return null;
-    if (!holding) {
-      holding = new Promise((done) => (release = done));
+    if (!deferred) {
+      deferred = new Promise((done) => (release = done));
       render();
     }
-    return holding;
+    return deferred;
   };
   client.on('history', (rev) => {
     if (answer && rev === answer.rev) return;
