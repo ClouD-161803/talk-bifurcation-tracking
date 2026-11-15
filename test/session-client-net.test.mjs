@@ -10,6 +10,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
 import { NET } from './helpers/net.mjs';
+import { ROWS } from './helpers/offline.mjs';
 import { click, type } from './helpers/editor.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -257,5 +258,61 @@ test('a page is online as soon as a request after an outage succeeds, while the 
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' back');
   assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide back</p>'));
+  clean(page, REFUSED);
+});
+
+test('a page asks before it unloads only while this browser cannot keep an edit that is not acknowledged, and keeps no listener otherwise', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // a listener of beforeunload keeps a page out of the back-forward cache of Firefox
+  const listenersOf = async (p) => (await p.send('Runtime.evaluate', { expression: `getEventListeners(window).beforeunload?.length ?? 0`, includeCommandLineAPI: true, returnByValue: true })).result.value;
+  const asksOf = (p) => p.evaluate(`(() => { const ev = new Event('beforeunload', { cancelable: true }); dispatchEvent(ev); return ev.defaultPrevented; })()`);
+
+  // with IndexedDB the copy of the page keeps the edit for the next visit, hence the page does not ask
+  const keeping = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
+  await converge(server, [keeping]);
+  const before = await listenersOf(keeping);
+  await keeping.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(keeping, 'Two');
+  await caretAtEnd(keeping, el(1, 'p'));
+  await type(keeping, ' kept');
+  await keeping.waitFor(`__net.held.length === 1`);
+  await keeping.waitFor(`(${ROWS}).then((rows) => rows.some((r) => r.mine.includes('<p>Second slide kept</p>')))`);
+  assert.deepEqual({ asks: await asksOf(keeping), listeners: await listenersOf(keeping) }, { asks: false, listeners: before });
+  await keeping.evaluate(`__net.clear() && __net.release('/.session/op')`);
+  await converge(server, [keeping]);
+  await keeping.close();
+
+  // without IndexedDB the edit is only on the page
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\nIDBFactory.prototype.open = function () { throw new DOMException('The operation is insecure.', 'SecurityError'); };` });
+  await converge(server, [page]);
+  const listeners = () => listenersOf(page);
+  const asks = () => asksOf(page);
+  const idle = await listeners();
+  assert.equal(await asks(), false);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' held');
+  await page.waitFor(`__net.held.length === 1`);
+  assert.deepEqual({ asks: await asks(), listeners: await listeners() }, { asks: true, listeners: idle + 1 });
+  await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
+  await converge(server, [page]);
+  assert.deepEqual({ asks: await asks(), listeners: await listeners() }, { asks: false, listeners: idle });
+  await page.evaluate(OFFLINE);
+  await type(page, ' offline');
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  assert.equal(await asks(), true);
+  await page.evaluate(`__net.clear() && __net.rule('/.session/op', 'hold') && (${C}.tryNow(), true)`);
+  // the page is online again only with the answer of the operation or of a poll
+  await page.waitFor(`__net.held.length === 1`);
+  assert.equal(await asks(), true);
+  // after the end, the check of files.ts asks for the changes of the deck
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await page.waitFor(`${C}.connection === 'ended'`);
+  assert.equal(await listeners(), idle);
   clean(page, REFUSED);
 });
