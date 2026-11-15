@@ -43,6 +43,10 @@ export type ClientEvents = {
   // connection, saving, retryAt, blocked, or warning changed
   state: [];
   ended: [Ended];
+  // an answer of hello was taken, after which the history is read again
+  hello: [];
+  // the rev of the version history changed
+  history: [number];
 };
 
 // the parts of the offline path that the core calls, set by conflicts.ts and media.ts
@@ -336,6 +340,7 @@ export class Client {
     this.emit('me');
     this.emit('people');
     this.emit('known');
+    this.emit('hello');
   }
 
   private setConnection(connection: Connection): void {
@@ -685,6 +690,7 @@ export class Client {
         this.setName(name);
       }
     }
+    if (answer.history !== undefined) this.emit('history', answer.history);
     if (answer.ops === null) {
       this.sync!.lose();
       this.pump();
