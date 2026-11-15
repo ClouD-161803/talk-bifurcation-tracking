@@ -667,6 +667,40 @@ test('with many versions a new version writes only its own row, and the rows in 
   clean(ben);
 });
 
+test('a compaction that drops the version in the preview closes the preview, selects Current version, and says so', { timeout: 300_000 }, async (t) => {
+  const now = Date.now();
+  const versions = [{ time: now - 200 * MIN }, { time: now - 150 * MIN }, { time: now - 100 * MIN }];
+  const built = craft(versions);
+  const server = await crafted(t, built, { SLIDES_HISTORY: JSON.stringify({ quiet: 1000, maxBytes: built.jsonl.length + 100, keep: 0 }) });
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await openPane(ann);
+  await ann.waitFor(`!!document.querySelector('${PANE} [data-id="version:v0"]')`);
+  await recordToasts(ann);
+  await tapOrClick(ann, `document.querySelector('${PANE} [data-id="version:v0"]')`);
+  await ann.waitFor(`${FRAME}?.src.includes('version=v0')`);
+  await show(ben, 'Two');
+  await caretAtEnd(ben, el(1, 'p'));
+  await typeKeys(ben, ' compact');
+  await front(ann);
+  await ann.waitFor(`!document.querySelector('${PANE} [data-id="version:v0"]')`, 20_000);
+  await ann.waitFor(`!document.querySelector('.beeson-session-preview:not([hidden])')`);
+  assert.equal(await ann.evaluate(`document.querySelector('${PANE} .row.current').getAttribute('aria-current')`), 'true');
+  assert.equal(await ann.evaluate(`document.querySelectorAll('${PANE} [aria-current="true"]').length`), 1);
+  await ann.waitFor('window.__toasts.length > 0');
+  const when = await ann.evaluate(`(() => {
+    const t = new Date(${versions[0].time});
+    const time = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    return t.toDateString() === new Date().toDateString() ? time : t.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) + ', ' + time;
+  })()`);
+  assert.deepEqual(await ann.evaluate('window.__toasts'), [`The version of ${when} was merged into a later one.|status`]);
+  clean(ann);
+  clean(ben);
+});
+
 test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
