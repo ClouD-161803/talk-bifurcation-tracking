@@ -31,7 +31,8 @@ export function decode(bytes: Buffer): { text: string; bom: boolean } {
 
 const encode = (text: string, bom: boolean) => Buffer.from(bom ? `﻿${text}` : text, 'utf8');
 
-const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ctimeMs}:${s.ino}`;
+// the change time is left out, since a rename changes it on some systems
+const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 
 const RETRY = new Set(['EPERM', 'EBUSY', 'EACCES']);
 
@@ -64,7 +65,7 @@ export function renameRetriedSync(from: string, to: string): void {
 // generator of its steps, hence it runs asynchronously while the edit command runs, and at once at
 // a stop
 type Step = { stat: string } | { read: string } | { write: string; bytes: Buffer } | { sleep: number };
-type Task = Generator<Step, void, any>;
+type Task<T = void> = Generator<Step, T, any>;
 
 const missing = (e: NodeJS.ErrnoException) => {
   if (e.code === 'ENOENT') return null;
@@ -88,7 +89,7 @@ function performSync(step: Step): unknown {
 }
 
 // a task run at once, as at a stop
-function finish(task: Task): void {
+function finish(task: Task<unknown>): void {
   let next = task.next();
   while (!next.done) {
     let value: unknown, failed = false;
@@ -171,7 +172,7 @@ export class Disk {
     while (this.busy) await this.busy;
   }
 
-  private async exclusive(task: () => Task): Promise<void> {
+  private async exclusive(task: () => Task<unknown>): Promise<void> {
     while (this.busy) await this.busy;
     if (this.stopped) return;
     const run = this.drive(task()).catch((e) => this.log(String(e?.message ?? e)));
@@ -182,7 +183,7 @@ export class Disk {
   }
 
   // a task run asynchronously, and left at the first step that ends after a stop
-  private async drive(task: Task): Promise<void> {
+  private async drive(task: Task<unknown>): Promise<void> {
     let next = task.next();
     while (!next.done) {
       let value: unknown, failed = false;
@@ -191,7 +192,7 @@ export class Disk {
       } catch (e) {
         [value, failed] = [e, true];
       }
-      if (this.stopped) return void task.return();
+      if (this.stopped) return void task.return(undefined);
       next = failed ? task.throw(value) : task.next(value);
     }
   }
@@ -209,23 +210,32 @@ export class Disk {
 
   private *write(): Task {
     this.firstUnwritten = null;
-    // a change of the file since the last write is merged first, so that it is not overwritten
-    yield* this.check();
-    yield* this.put();
+    // a change of the file since the last write is merged first, so that it is not overwritten, and
+    // so is a change made while the temporary file is written
+    for (let tries = 0; tries < 5; tries++) {
+      yield* this.check();
+      if ((yield* this.put()) !== 'changed') return;
+    }
+    this.schedule();
   }
 
-  // the text of the authority into the file, by a temporary file and a rename
-  private *put(): Task {
+  // the text of the authority into the file, by a temporary file and a rename, or changed when
+  // another program wrote the file in the meantime
+  private *put(): Task<'changed' | void> {
     const text = this.authority.text, n = this.authority.n;
     if (text === this.written) return;
     const tmp = this.tmpName();
-    let renamed = false;
+    let renamed = false, made: Stats;
     try {
       yield { write: tmp, bytes: encode(text, this.bom) };
+      // a write after the rename changes the signature of the temporary file
+      made = yield { stat: tmp };
       // the rename is done between two steps, i.e. right after the check for a stop, so that a write
       // that began before a stop does not land after it. it is tried again for a moment when another
       // program holds the file open, as on Windows
       for (let attempt = 0; !renamed; attempt++) {
+        const now = statSync(this.file, { throwIfNoEntry: false });
+        if ((now ? signature(now) : '') !== this.known) return 'changed';
         try {
           renameSync(tmp, this.file);
           renamed = true;
@@ -242,14 +252,18 @@ export class Disk {
       if (!renamed) removeQuietly(tmp);
     }
     this.written = text;
-    this.known = signature(statSync(this.file));
+    this.known = signature(made!);
     this.remember(n, text);
   }
 
   // a change of the file that the edit command did not write
   private *check(): Task {
     const info: Stats | null = yield { stat: this.file };
-    if (!info || signature(info) === this.known) return;
+    // a file that is gone is written again
+    if (!info) return void (this.known = '');
+    // the signature is taken before the read, so that a write after the read is seen at the next check
+    const sig = signature(info);
+    if (sig === this.known) return;
     // the file is read until two reads agree, since a program may be writing it
     let bytes: Buffer = yield { read: this.file };
     for (let i = 0; i < 20; i++) {
@@ -258,8 +272,6 @@ export class Disk {
       if (again.equals(bytes)) break;
       bytes = again;
     }
-    const after: Stats | null = yield { stat: this.file };
-    const sig = after ? signature(after) : '';
     let read: { text: string; bom: boolean };
     try {
       read = decode(bytes);
@@ -269,6 +281,8 @@ export class Disk {
       return;
     }
     this.known = sig;
+    // the bytes of the last write or read, as after a touch of the file
+    if (read.text === this.written && read.bom === this.bom) return;
     this.bom = read.bom;
     this.merge(read.text);
     this.written = read.text;
