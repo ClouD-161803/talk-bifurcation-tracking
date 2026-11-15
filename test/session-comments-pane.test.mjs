@@ -224,3 +224,26 @@ test('more toasts than three in a row are joined into one, and each toast has a 
   clean(a);
   clean(b);
 });
+
+test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or more', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  const c = await open(browser, sessionUrl(server.edit), { name: 'Cy', width: 390, height: 844, mobile: true });
+  await converge(server, [b, c]);
+  await toastTime(c, 60_000);
+  await post(b, 0, 'Look, @Cy');
+  await sees(c, TOASTS, ['Ben mentioned you on slide 1']);
+  await sees(c, `document.querySelectorAll('.beeson-session-toast button').length`, 2);
+  await sees(c, HITS('.beeson-session-toast button'), []);
+  await touch(c, '.beeson-session-toast button[aria-label="Close"]');
+  await sees(c, TOASTS, []);
+  await post(b, 0, 'Again, @Cy');
+  await sees(c, TOASTS, ['Ben mentioned you on slide 1']);
+  await touch(c, '.beeson-session-toast button:not([aria-label="Close"])');
+  await sees(c, `document.documentElement.classList.contains('beeson-comments')`, true);
+  await sees(c, HITS(`${PANE} :is(button, textarea)`), []);
+  clean(b);
+  clean(c);
+});
