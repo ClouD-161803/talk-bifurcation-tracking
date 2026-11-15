@@ -554,6 +554,18 @@ test('after E on a thread, the focus is on the next thread, which alone takes Ta
   clean(a);
 });
 
+test('the times of the pane follow the locale of the browser, as those of Version History do', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await a.send('Emulation.setLocaleOverride', { locale: 'de-DE' });
+  await post(a, 0, 'In German');
+  await openPane(a);
+  await sees(a, `!!document.querySelector('${PANE} article .time')`, true);
+  const [shown, want] = await a.evaluate(`[document.querySelector('${PANE} article .time').textContent, new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })]`);
+  assert.match(shown, /^\d{1,2}:\d{2}$/);
+  assert.ok(Math.abs(Number(shown.replace(':', '')) - Number(want.replace(':', ''))) <= 1, `${shown} is the time in de-DE, ${want}`);
+  clean(a);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
