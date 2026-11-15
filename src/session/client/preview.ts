@@ -10,6 +10,7 @@ import { slidesOf, VOID, type Slide } from '../slides.ts';
 import type { Client } from './client.ts';
 import { make, style } from './dom.ts';
 import { authorsOf, dayLabel, personOf, slidesText, timeOf } from './labels.ts';
+import { openMenu } from './menu.ts';
 
 const CSS = `
 .beeson-session-preview { position: fixed; z-index: 55; display: flex; flex-direction: column; box-sizing: border-box; background: var(--ed-canvas); color: var(--ed-text); font: 12px/1.35 var(--ed-font); }
@@ -25,6 +26,7 @@ const CSS = `
 .beeson-session-preview label.changes { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; white-space: nowrap; }
 .beeson-session-preview label.changes input { margin: 0; width: 16px; height: 16px; }
 .beeson-session-preview .bar button.slide { padding: 0 8px; }
+.beeson-session-preview .bar button.more { min-width: 32px; padding: 0 6px; }
 .beeson-session-preview iframe { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--ed-canvas); }
 `;
 
@@ -220,7 +222,10 @@ export class Preview {
     });
     label.append(box, document.createTextNode('Show changes'));
     const text = () => this.text;
-    actions.append(label, this.button('Restore this version', () => void this.actions.restore(v, text())), this.button('Name this version', () => this.actions.name(v)));
+    const more = this.button('⋯', () => openMenu(more, [{ label: 'Download This Version', run: () => void this.download('version', v.id) }]), 'more');
+    more.setAttribute('aria-label', 'More');
+    more.setAttribute('aria-haspopup', 'menu');
+    actions.append(label, this.button('Restore this version', () => void this.actions.restore(v, text())), this.button('Name this version', () => this.actions.name(v)), more);
     this.bar.replaceChildren(info, slides, actions);
     if (fresh) void this.fill(v);
   }
@@ -231,9 +236,20 @@ export class Preview {
     this.key = key;
     const info = make('div', 'info');
     info.append(make('span', 'date', `Set aside, ${dayLabel(a.time)}, ${timeOf(a.time)}`), authorsOf(this.client, [a.author]));
-    this.bar.replaceChildren(info);
+    const actions = make('div', 'actions');
+    actions.append(this.button('Download', () => void this.download('aside', a.id)));
+    this.bar.replaceChildren(info, actions);
     this.text = null;
     void this.load('aside', a.id);
+  }
+
+  private async download(kind: 'version' | 'aside', id: string): Promise<void> {
+    try {
+      this.client.shell.download(await this.textOf(kind, id));
+    } catch (e) {
+      const d = this.client.shell.dialog({ title: 'The deck could not be downloaded', text: (e as Error).message, buttons: [{ label: 'OK', value: 'ok', primary: true }] });
+      void d.open('ok').then(() => d.el.remove());
+    }
   }
 
   // the page of the version, with the outlines of the changed elements, at the first changed slide
