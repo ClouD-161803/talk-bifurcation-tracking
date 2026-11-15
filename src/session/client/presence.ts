@@ -547,8 +547,13 @@ export class Presence {
     const t = this.now();
     const present = new Set<string>();
     let changed = false;
+    let lost = false;
     for (const p of client.presence) {
-      if (p.client === client.client) continue;
+      if (p.client === client.client) {
+        // the edit command lost the state of this page, e.g. when it dropped the page for silence
+        lost = p.state === null && !!this.sent;
+        continue;
+      }
       const state = parseState(p.state);
       if (!state) continue;
       present.add(p.client);
@@ -578,6 +583,9 @@ export class Presence {
       changed = true;
     }
     if (changed) this.publish();
+    if (!lost) return;
+    this.sentKey = null;
+    this.due(true);
   }
 
   // the elements of every state read again after an apply: an element that left the page is read
