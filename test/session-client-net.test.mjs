@@ -671,3 +671,26 @@ test('a hello that the edit command refuses opens the join dialog with its messa
   await converge(server, [page]);
   clean(page, REFUSED);
 });
+
+test('a page that does not read as its text after an apply loads again, and sends nothing of the deck it read', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  // a text node changed behind the back of the editor stands for a defect of an apply
+  await b.evaluate(`(${el(1, 'p')}.firstChild.data = 'Broken', true)`);
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'p'));
+  await type(a, ' by Ann');
+  // a read in flight at the reload fails, and is read again
+  await until(async () => (await loads(b).catch(() => 0)) === 2, 'page b to load again');
+  await b.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+  const text = await converge(server, [a, b]);
+  assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide by Ann</p>'));
+  assert.deepEqual(await b.evaluate(`[${el(0, 'p')}.textContent, ${el(1, 'p')}.textContent]`), ['First slide by Ann', 'Second slide']);
+  assert.equal(await loads(b), 2);
+  clean(a, REFUSED);
+  clean(b, REFUSED);
+});
