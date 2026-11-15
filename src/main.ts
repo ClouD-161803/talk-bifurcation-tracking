@@ -198,6 +198,11 @@ function mountWithin(root: Element): void {
   for (const o of backdrops) if (root.contains(o.el)) { o.fit(); o.complete(); }
   for (const s of surfaces) if (root.contains(s.el)) { s.fit(); s.sync(false); s.draw(); }
   for (const p of plots) if (root.contains(p.el)) { p.fit(); p.syncSteps(); p.still(); }
+  // a viewer added by the editor is numbered and themed as at the start
+  if (root.matches('tycho-viewer') || root.querySelector('tycho-viewer')) {
+    markViewers();
+    syncViewers(get());
+  }
   const slide = root.closest('.reveal .slides section');
   if (slide) applySteps(slide);
 }
