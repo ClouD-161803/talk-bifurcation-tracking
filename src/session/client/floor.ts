@@ -70,8 +70,12 @@ export function install(client: Client): void {
 
   app.commands.refuse((a: App, c: Command, arg?: unknown) => {
     const by = refused(a, presence, c, arg);
-    if (by) bubble(by.held, refusal(by));
-    return !!by;
+    if (!by) return false;
+    // a text element on another slide is named by the number of its slide, at the top of the window
+    const n = [...app.slides().children].filter((s) => s.tagName === 'SECTION').findIndex((s) => s.contains(by.held)) + 1;
+    if (!n || app.current()?.contains(by.held)) bubble(by.held, refusal(by));
+    else bubble(null, [bdi(by.name), ` is typing${client.shell.onSlides([n])}. You can do this once they leave the text or stop for 30 s.`]);
+    return true;
   });
 
   presence.onLocks(({ yielded, refused: lost }) => {
