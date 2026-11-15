@@ -1627,6 +1627,7 @@ var History = class {
     this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
     this.asideFiles = options.asideFiles ?? 50;
     this.now = options.now ?? Date.now;
+    this.clock = options.clock ?? (() => performance.now());
     this.log = options.log ?? (() => {
     });
     try {
@@ -1661,8 +1662,9 @@ var History = class {
       }
       if (this.bytes > this.maxBytes) this.compact();
     }
+    this.held = text;
     this.readAsides();
-    authority.observe((op) => this.operation(op));
+    authority.observe((op, after) => this.operation(op, after));
   }
   // calls fn after every change of rev
   onChange(fn) {
@@ -1749,12 +1751,11 @@ var History = class {
   }
   // the open version closed, e.g. at a stop. empty closes a version without a change when there
   // is not any, so that it can be named. restored is the id of the version that it restores
-  close(empty = false, restored) {
+  close(empty = false, restored, text = this.authority.text) {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     const open2 = this.open;
     this.open = null;
-    const text = this.authority.text;
     if (text === this.lastText && !empty) return null;
     const patches = copied(diff2(this.lastText, text));
     const author = open2?.author ?? AUTHOR;
@@ -1816,29 +1817,35 @@ var History = class {
     if (this.bytes > this.maxBytes) this.compact();
     this.changed();
   }
-  operation(op) {
+  operation(op, text) {
     if (this.stopped) return;
-    const t = Date.now();
-    const open2 = this.open ??= { first: t, last: t, time: 0, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author };
+    const t = this.clock();
+    const w = this.now();
+    if (this.open && this.due(this.open, t, w)) this.close(false, void 0, this.held);
+    this.held = text;
+    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author };
     open2.last = t;
-    open2.time = this.now();
+    open2.time = w;
     open2.author = op.author;
     open2.authors.add(op.author);
     open2.marks = moveMarks(open2.marks, op.patches, op.author);
     this.arm();
   }
+  // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
+  // not hold it open, and one that jumped ahead in a sleep closes it
+  due(open2, t, w) {
+    return t - open2.last >= this.quiet || t - open2.first >= this.longest || w - open2.time >= this.quiet || w - open2.since >= this.longest;
+  }
   // one timer at a time, which looks again at the times of the open version when it fires
   arm() {
     if (this.timer || !this.open) return;
-    const due = () => Math.min(this.open.last + this.quiet, this.open.first + this.longest);
-    const wait = () => Math.max(0, due() - Date.now());
-    const fire = () => {
+    const wait = Math.max(0, Math.min(this.open.last + this.quiet, this.open.first + this.longest) - this.clock());
+    this.timer = setTimeout(() => {
       this.timer = null;
       if (!this.open) return;
-      if (wait() > 0) this.arm();
-      else this.close();
-    };
-    this.timer = setTimeout(fire, wait());
+      if (this.due(this.open, this.clock(), this.now())) this.close();
+      else this.arm();
+    }, wait);
     this.timer.unref?.();
   }
   append(line) {

@@ -36,7 +36,7 @@ export type StartOptions = {
   port?: number;
   relay?: string;
   log?: (message: string) => void;
-  history?: Omit<HistoryOptions, 'now' | 'log'>;
+  history?: Omit<HistoryOptions, 'now' | 'clock' | 'log'>;
 };
 
 export type Running = {

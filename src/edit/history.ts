@@ -30,12 +30,16 @@ export type HistoryOptions = {
   asideBytes?: number;
   asideFiles?: number;
   now?: () => number;
+  // the time in ms of a clock that does not jump, which stands while the computer sleeps, as the
+  // timers do
+  clock?: () => number;
   log?: (message: string) => void;
 };
 
 type Version = VersionInfo & { patches: Patch[]; marks: Mark[] };
 
-type Open = { first: number; last: number; time: number; authors: Set<string>; marks: Mark[]; author: string };
+// first and last are times of clock, since and time of now
+type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string };
 
 type Range = { start: number; end: number };
 
@@ -180,7 +184,10 @@ export class History {
   private readonly asideBytes: number;
   private readonly asideFiles: number;
   private readonly now: () => number;
+  private readonly clock: () => number;
   private readonly log: (message: string) => void;
+  // the text after the last operation
+  private held: string;
   private base = { time: 0, text: '' };
   private versions: Version[] = [];
   // the texts after some versions, by index, as starting points of a rebuild
@@ -210,6 +217,7 @@ export class History {
     this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
     this.asideFiles = options.asideFiles ?? 50;
     this.now = options.now ?? Date.now;
+    this.clock = options.clock ?? (() => performance.now());
     this.log = options.log ?? (() => {});
     try {
       mkdirSync(dir, { recursive: true });
@@ -241,8 +249,9 @@ export class History {
       }
       if (this.bytes > this.maxBytes) this.compact();
     }
+    this.held = text;
     this.readAsides();
-    authority.observe((op) => this.operation(op));
+    authority.observe((op, after) => this.operation(op, after));
   }
 
   // calls fn after every change of rev
@@ -338,12 +347,11 @@ export class History {
 
   // the open version closed, e.g. at a stop. empty closes a version without a change when there
   // is not any, so that it can be named. restored is the id of the version that it restores
-  close(empty = false, restored?: string): Version | null {
+  close(empty = false, restored?: string, text = this.authority.text): Version | null {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     const open = this.open;
     this.open = null;
-    const text = this.authority.text;
     if (text === this.lastText && !empty) return null;
     const patches = copied(diff(this.lastText, text));
     const author = open?.author ?? AUTHOR;
@@ -414,30 +422,38 @@ export class History {
     this.changed();
   }
 
-  private operation(op: AppliedOp): void {
+  private operation(op: AppliedOp, text: string): void {
     if (this.stopped) return;
-    const t = Date.now();
-    const open = (this.open ??= { first: t, last: t, time: 0, authors: new Set(), marks: [], author: op.author });
+    const t = this.clock();
+    const w = this.now();
+    // the timer is late after a sleep, hence a version that is due is closed on the text before op
+    if (this.open && this.due(this.open, t, w)) this.close(false, undefined, this.held);
+    this.held = text;
+    const open = (this.open ??= { first: t, last: t, since: w, time: w, authors: new Set(), marks: [], author: op.author });
     open.last = t;
-    open.time = this.now();
+    open.time = w;
     open.author = op.author;
     open.authors.add(op.author);
     open.marks = moveMarks(open.marks, op.patches, op.author);
     this.arm();
   }
 
+  // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
+  // not hold it open, and one that jumped ahead in a sleep closes it
+  private due(open: Open, t: number, w: number): boolean {
+    return t - open.last >= this.quiet || t - open.first >= this.longest || w - open.time >= this.quiet || w - open.since >= this.longest;
+  }
+
   // one timer at a time, which looks again at the times of the open version when it fires
   private arm(): void {
     if (this.timer || !this.open) return;
-    const due = () => Math.min(this.open!.last + this.quiet, this.open!.first + this.longest);
-    const wait = () => Math.max(0, due() - Date.now());
-    const fire = () => {
+    const wait = Math.max(0, Math.min(this.open.last + this.quiet, this.open.first + this.longest) - this.clock());
+    this.timer = setTimeout(() => {
       this.timer = null;
       if (!this.open) return;
-      if (wait() > 0) this.arm();
-      else this.close();
-    };
-    this.timer = setTimeout(fire, wait());
+      if (this.due(this.open, this.clock(), this.now())) this.close();
+      else this.arm();
+    }, wait);
     this.timer.unref?.();
   }
 
