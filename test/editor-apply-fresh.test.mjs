@@ -44,3 +44,32 @@ test('a text element whose content stops being text asks for a reload', async (t
   await steps(t, [['a footnote of code alone', (s) => once(s, '<div class="foot">Natural parameter continuation of a Halo family, from <code>demo/tycho-scene.py</code>.</div>', '<div class="foot"><code>demo/tycho-scene.py</code></div>'), true]]);
   await steps(t, [['a label of a space', (s) => once(s, 'data-dy="36">Moon</span>\n  </div>\n  <div class="foot">Slides can', 'data-dy="36"> </span>\n  </div>\n  <div class="foot">Slides can'), true]]);
 });
+
+test('the outlines and the running heads follow a removed section slide and a changed section heading', async (t) => {
+  await steps(t, [
+    ['a section slide taken', (s) => s.replace(`${slideWith(s, 'Chapter two')}\n`, ''), false],
+  ]);
+  await steps(t, [
+    ['a section heading changed', (s) => once(s, '<h2>Chapter two</h2>', '<h2>Capter two</h2>'), false],
+    ['a slide moved before a section slide', (s) => {
+      const moved = slideWith(s, 'Embedding videos');
+      return s.replace(`${moved}\n`, '').replace(slideWith(s, 'Chapter one'), `${moved}\n${slideWith(s, 'Chapter one')}`);
+    }, false],
+  ]);
+});
+
+// the text of the outlines and of the running heads of page
+const CHROME = `[...document.querySelectorAll('.reveal ul.outline, .reveal .run[data-generated]')].map((e) => e.textContent)`;
+
+test('the outlines and the running heads follow the typing of the person in a section heading', async (t) => {
+  const a = await sessionPage(browser);
+  t.after(() => a.close());
+  await showSlide(a, 'Chapter two');
+  await caretAtEnd(a, `Reveal.getCurrentSlide().querySelector('h2')`);
+  await typeKeys(a, ' and');
+  const text = await a.evaluate(`${E}.session.text()`);
+  assert.ok(text.includes('<h2>Chapter two and</h2>'), 'the typing is in the text');
+  const c = await editorPage(browser, { deck: freshDeck(t, text), text });
+  t.after(() => c.close());
+  assert.deepEqual(await a.evaluate(CHROME), await c.evaluate(CHROME));
+});
