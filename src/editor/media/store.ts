@@ -41,6 +41,9 @@ export function safeName(name: string, fallback: string): string {
   return ext ? `${stem}.${ext}` : stem;
 }
 
+const DIGITS = '0123456789abcdefghijklmnopqrstuvwxyz';
+const suffix = () => `-${Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => DIGITS[b % 36]).join('')}`;
+
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // whether text has path as the whole value of an attribute
@@ -76,6 +79,11 @@ const ofDeck = () => IDBKeyRange.bound([deck(), ''], [deck(), '￿']);
 export class MediaStore {
   // the reason why a file cannot be added, e.g. the limit of a session, or null
   refuse: ((file: File) => string | null) | null = null;
+  // whether a new file gets a name unique to this page, e.g. plot-k3f9.png, while another page of
+  // a session may pick the same name
+  unique: (() => boolean) | null = null;
+  // the stems given a suffix by unique, so that the poster of plot-k3f9.mp4 is plot-k3f9.png
+  private readonly suffixed = new Set<string>();
   private readonly byPath = new Map<string, MediaFile>();
   private readonly byUrl = new Map<string, MediaFile>();
   // the chain of the writes to IndexedDB, whose end a test waits for
@@ -87,9 +95,25 @@ export class MediaStore {
     const clean = safeName(name, fallback);
     const dot = clean.lastIndexOf('.');
     const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ''];
-    let path = `${FOLDER}/${clean}`;
-    for (let i = 2; this.byPath.has(path) || taken(path); i++) path = `${FOLDER}/${stem}-${i}${ext}`;
+    let path: string;
+    if (this.unique?.() && !this.suffixed.has(stem)) {
+      let named: string;
+      do {
+        named = fit(stem, STEM - 5) + suffix();
+        path = `${FOLDER}/${named}${ext}`;
+      } while (this.byPath.has(path) || taken(path));
+      this.suffixed.add(named);
+    } else path = this.free(`${FOLDER}/${clean}`, taken);
     return this.put({ path, blob, url: URL.createObjectURL(blob), saved: false }, true);
+  }
+
+  // path, or a numbered name of it, e.g. media/plot-2.png, that is not a path of the store and for
+  // which taken is false
+  private free(path: string, taken: (path: string) => boolean): string {
+    const dot = path.lastIndexOf('.');
+    const [stem, ext] = dot > path.lastIndexOf('/') ? [path.slice(FOLDER.length + 1, dot), path.slice(dot)] : [path.slice(FOLDER.length + 1), ''];
+    for (let i = 2; this.byPath.has(path) || taken(path); i++) path = `${FOLDER}/${fit(stem, STEM - 1 - String(i).length)}-${i}${ext}`;
+    return path;
   }
 
   // a file of path kept elsewhere, e.g. in the copy of a session in the browser

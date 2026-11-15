@@ -55,6 +55,7 @@ export function install(client: Client): void {
     if (file.size > max) return `${file.name} is larger than ${max / MB} MB, the largest file that can be sent to the others`;
     return null;
   };
+  store.unique = () => client.people.some((p) => p.client !== client.client);
 
   // the files are uploaded one at a time. the names given by the edit command are written into the
   // deck also after a failure, since the files uploaded before it are kept
@@ -98,7 +99,10 @@ export function install(client: Client): void {
   client.on('state', () => {
     const now = client.connection;
     if (now === 'online' && was !== 'online' && st.failed && st.network) retry(client);
-    if (now === 'ended') store.refuse = null;
+    if (now === 'ended') {
+      store.refuse = null;
+      store.unique = null;
+    }
     was = now;
   });
 }
