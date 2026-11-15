@@ -1650,24 +1650,28 @@
       made2.set(refs, text);
     }
   }
-  function sync(slide) {
-    const refs = refsOf(slide);
-    if (!refs) return;
-    const shown = /* @__PURE__ */ new Set();
-    for (const cite of citesOf(slide)) if (getComputedStyle(cite).visibility !== "hidden") for (const key of keysOf(cite)) shown.add(key);
-    for (const ref of refs.children) ref.classList.toggle("off", !shown.has(ref.dataset.key ?? ""));
-    const height = `${refs.offsetHeight}px`;
-    if (refs.offsetHeight && slide.style.getPropertyValue("--refs") !== height) slide.style.setProperty("--refs", height);
+  function sync(slides2) {
+    const listed = slides2.flatMap((slide) => {
+      const refs = refsOf(slide);
+      return refs ? [{ slide, refs }] : [];
+    });
+    const shown = listed.map(({ slide }) => new Set(citesOf(slide).filter((cite) => getComputedStyle(cite).visibility !== "hidden").flatMap(keysOf)));
+    listed.forEach(({ refs }, i) => {
+      for (const ref of refs.children) ref.classList.toggle("off", !shown[i].has(ref.dataset.key ?? ""));
+    });
+    const heights = listed.map(({ refs }) => refs.offsetHeight);
+    listed.forEach(({ slide }, i) => {
+      const height = `${heights[i]}px`;
+      if (heights[i] && slide.style.getPropertyValue("--refs") !== height) slide.style.setProperty("--refs", height);
+    });
   }
   function mountCitations() {
     const references = window.beesonTex?.references ?? {};
-    for (const slide of slides()) {
-      mount2(slide, references);
-      sync(slide);
-    }
+    for (const slide of slides()) mount2(slide, references);
+    sync(slides());
   }
   function syncCitations(slide) {
-    for (const s of slide ? [slide] : cited()) sync(s);
+    sync(slide ? [slide] : cited());
   }
 
   // src/click.ts

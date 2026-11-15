@@ -100,28 +100,33 @@ function mount(slide: HTMLElement, references: Record<string, Reference>): void 
 
 // a reference is hidden until one of its citations is shown, and it keeps its place while it is
 // hidden. reveal.js hides a fragment before its step with its visibility, which a citation inherits.
-// the footnote of the slide is lifted by the height of the references, which is 0 while the slide
-// is not drawn
-function sync(slide: HTMLElement): void {
-  const refs = refsOf(slide);
-  if (!refs) return;
-  const shown = new Set<string>();
-  for (const cite of citesOf(slide)) if (getComputedStyle(cite).visibility !== 'hidden') for (const key of keysOf(cite)) shown.add(key);
-  for (const ref of refs.children) ref.classList.toggle('off', !shown.has((ref as HTMLElement).dataset.key ?? ''));
-  const height = `${refs.offsetHeight}px`;
-  if (refs.offsetHeight && slide.style.getPropertyValue('--refs') !== height) slide.style.setProperty('--refs', height);
+// the footnote of a slide is lifted by the height of its references, which is 0 while the slide is
+// not drawn. every visibility is read before a reference is hidden or shown, and every height after,
+// hence the style and the layout are computed once for all the slides rather than once per slide
+function sync(slides: HTMLElement[]): void {
+  const listed = slides.flatMap((slide) => {
+    const refs = refsOf(slide);
+    return refs ? [{ slide, refs }] : [];
+  });
+  const shown = listed.map(({ slide }) => new Set(citesOf(slide).filter((cite) => getComputedStyle(cite).visibility !== 'hidden').flatMap(keysOf)));
+  listed.forEach(({ refs }, i) => {
+    for (const ref of refs.children) ref.classList.toggle('off', !shown[i].has((ref as HTMLElement).dataset.key ?? ''));
+  });
+  const heights = listed.map(({ refs }) => refs.offsetHeight);
+  listed.forEach(({ slide }, i) => {
+    const height = `${heights[i]}px`;
+    if (heights[i] && slide.style.getPropertyValue('--refs') !== height) slide.style.setProperty('--refs', height);
+  });
 }
 
 /** Numbers the citations of every slide and writes its references, after the start and after a change of a slide. */
 export function mountCitations(): void {
   const references = (window as unknown as { beesonTex?: { references?: Record<string, Reference> } }).beesonTex?.references ?? {};
-  for (const slide of slides()) {
-    mount(slide, references);
-    sync(slide);
-  }
+  for (const slide of slides()) mount(slide, references);
+  sync(slides());
 }
 
 /** Shows the references of slide, or of every slide, whose citations are shown, after a step or a change of slide. */
 export function syncCitations(slide?: HTMLElement | null): void {
-  for (const s of slide ? [slide] : cited()) sync(s);
+  sync(slide ? [slide] : cited());
 }
