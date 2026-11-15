@@ -247,6 +247,27 @@ test('a toast stays while the pointer is over it or the focus is in it', { timeo
   clean(b);
 });
 
+test('the text of a comment takes the direction of its words, and a name in running text is isolated', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t, ['Ann', 'Ben']);
+  const id = await post(b, 0, 'שלום, @Ann!');
+  await sees(a, `[...document.querySelectorAll('.beeson-session-toast > span bdi')].map((n) => n.textContent)`, ['Ben']);
+  await act(b, id, 'resolve');
+  await openPane(a);
+  await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="resolved"]').click()`);
+  await sees(a, `!!document.querySelector('${ARTICLE(id)} .text')`, true);
+  assert.deepEqual(await a.evaluate(`(() => {
+    const t = document.querySelector('${ARTICLE(id)}');
+    return { text: t.querySelector('.text').dir, mention: t.querySelector('.mention').localName, by: [...t.querySelectorAll('.resolved-by bdi')].map((n) => n.textContent), who: t.querySelector('.who').dir };
+  })()`), { text: 'auto', mention: 'bdi', by: ['Ben'], who: 'auto' });
+  await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="open"]').click()`);
+  await caretAtEnd(a, el(0, 'h2'));
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  assert.equal(await a.evaluate(`document.querySelector('${DRAFT}').dir`), 'auto');
+  clean(a);
+  clean(b);
+});
+
 test('the accessibility tree of Chrome holds the field of a mention as a combobox, the list without a role, a thread described by its text, and the toast region before its first toast', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await front(a);
