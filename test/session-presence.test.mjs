@@ -302,3 +302,27 @@ test('a page sends its state again at a new version when another page could not 
   clean(ana);
   clean(ben);
 });
+
+test('the speaker notes that another page holds are locked, and not framed', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  writeFileSync(server.file, server.read().replace('<p>First slide</p>', '<p>First slide</p>\n  <aside class="notes">Notes of one</aside>'));
+  await converge(server, [ana, ben]);
+  const notes = el(0, 'aside.notes');
+  for (const page of [ana, ben]) {
+    await show(page, 'One');
+    await page.evaluate(`${C}.app.commands.run('view.notes')`);
+    await page.waitFor(`document.documentElement.classList.contains('beeson-notes')`);
+  }
+  // the Notes pane opens with the caret in the notes, which Ben leaves before Ana enters them
+  await ben.evaluate(`(() => { document.activeElement?.blur(); getSelection().removeAllRanges(); })()`);
+  await until(() => ana.evaluate(`${P}.locks.size === 0 && !${P}.resolved().some((r) => r.held)`), 'the notes to be free on the page of Ana');
+  await caretAtEnd(ana, notes);
+  await until(() => ben.evaluate(LOCKED(notes)), 'the notes that Ana holds to be locked on the page of Ben');
+  await front(ben);
+  await ben.evaluate(`${notes}.focus()`);
+  assert.equal(await ben.evaluate(`document.activeElement === ${notes}`), false);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED);
+  assert.deepEqual((await drawn(ben)).frames, [], 'the notes are not framed');
+  clean(ana);
+  clean(ben);
+});
