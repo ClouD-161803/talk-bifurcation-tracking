@@ -189,6 +189,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
 
   // called through serial alone
   async function connect(address: string, secret: string): Promise<void> {
+    // the guests of another relay cannot reach this session any more
+    if (relay && relay.relay !== address) people.endGuests();
     await relay?.stop();
     relay = null;
     if (closed) throw new Error('the edit command is stopping');
