@@ -87,6 +87,60 @@ const MEASURE = `(() => {
   };
 })()`;
 
+test('on a phone in portrait and in landscape, with 1, 8, and 40 changed slides, the preview keeps the deck in view and Restore and More in reach', { timeout: 600_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  writeFileSync(server.file, many(0, ''));
+  await server.edit.child.kill();
+  await server.edit.exited;
+  await server.start();
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  const versions = [[1, 'One changed'], [8, 'Eight changed'], [40, 'Forty changed']];
+  for (const [n, title] of versions) {
+    await write(server, ann, many(n, title), `Slide ${n} ${title}`);
+    await nameNow(ann, title);
+  }
+  await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`);
+  await ann.waitFor(SHOWN);
+  await ann.waitFor(`!!(${rowByTitle('Forty changed')})`);
+  // the least height of the iframe at each size
+  const sizes = [[390, 844, 200], [390, 664, 120], [844, 390, 120], [664, 390, 120]];
+  for (const [width, height, least] of sizes) {
+    await t.test(`${width} by ${height}`, async () => {
+      await ann.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+      await ann.waitFor(`innerWidth === ${width} && innerHeight === ${height}`);
+      for (const [n, title] of versions) {
+        // the list is brought back where the sheet of a phone shows the chosen version alone
+        if (await ann.evaluate(`!!(${button(PANE, 'Versions')})`)) await press$(ann, PANE, 'Versions');
+        await tapOrClick(ann, rowByTitle(title));
+        await ann.waitFor(`document.querySelectorAll('${BAR} button.slide').length === ${n} && ${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0`, 60_000);
+        const narrow = width < 600;
+        const ok = (m) => m.frame >= least && m.rows <= 2 && m.oneRow && m.slides === n && JSON.stringify([m.restore, m.more]) === JSON.stringify([{ inside: true, hit: true, big: true }, { inside: true, hit: true, big: true }]) && (!m.sheet.phone || (m.sheet.low && m.sheet.chosen && m.sheet.versions?.inside && m.sheet.versions.hit && m.sheet.versions.big));
+        await ann.waitFor(`(${ok})(${MEASURE})`, 10_000).catch(() => {});
+        const m = await ann.evaluate(MEASURE);
+        assert.ok(ok(m), `${n} changed slides at ${width} by ${height}: ${JSON.stringify(m)}`);
+        t.diagnostic(`${n} changed slides at ${width} by ${height}: iframe ${m.frame} px, ${m.rows} rows`);
+        assert.equal(m.sheet.phone, narrow);
+        // below 600 px Name and Download are in the More menu
+        await press$(ann, BAR, '⋯');
+        await ann.waitFor(`!!document.querySelector('.beeson-session-menu')`);
+        const items = await ann.evaluate(`[...document.querySelectorAll('.beeson-session-menu button')].map((b) => b.textContent)`);
+        const wide = await ann.evaluate(`document.querySelector('${BAR}').getBoundingClientRect().width >= 600`);
+        assert.deepEqual([items, m.name], wide ? [['Download This Version'], true] : [['Name this version', 'Download This Version'], false]);
+        await press(ann, 'Escape');
+        await ann.waitFor(`!document.querySelector('.beeson-session-menu')`);
+        if (narrow) {
+          await press$(ann, PANE, 'Versions');
+          await ann.waitFor(`[...document.querySelectorAll('${PANE} .row')].filter((r) => r.getClientRects().length).length > 1`);
+        }
+      }
+    });
+  }
+  clean(ann);
+});
+
 const STEPS = (three, step, note) => `${HEAD}
 <section>
   <h2>One</h2>

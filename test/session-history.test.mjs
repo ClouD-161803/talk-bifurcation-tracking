@@ -477,7 +477,8 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
     return { text: b.textContent, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, hit: b.contains(hit), tall: r.height >= 32, wide: r.width >= 32 };
   })`);
-  assert.ok(boxes.length >= 8, `${boxes.length} controls`);
+  // the sheet shows the chosen version alone, with Versions and Back to editor
+  assert.ok(boxes.length >= 7, `${boxes.length} controls`);
   for (const b of boxes) assert.deepEqual(b, { text: b.text, inside: true, hit: true, tall: true, wide: true });
   const layout = await ann.evaluate(`(() => {
     const pane = document.querySelector('${PANE}').getBoundingClientRect();
