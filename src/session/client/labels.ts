@@ -15,10 +15,15 @@ export function dayLabel(t: number): string {
 
 export const timeOf = (t: number): string => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
+// the day of a version in a sentence, November 3, with its year when it is not this year
+export function dateOf(t: number): string {
+  const d = new Date(t);
+  return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+}
+
 // the time of a version as a sentence says it: 2:41 PM today, and November 3, 2:41 PM before
 export function whenOf(t: number): string {
-  const day = dayLabel(t);
-  return day === 'Today' ? timeOf(t) : `${new Date(t).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}, ${timeOf(t)}`;
+  return dayLabel(t) === 'Today' ? timeOf(t) : `${dateOf(t)}, ${timeOf(t)}`;
 }
 
 export const slidesText = (n: number[]): string => (n.length ? `${n.length > 1 ? 'Slides' : 'Slide'} ${n.join(', ')}` : '');

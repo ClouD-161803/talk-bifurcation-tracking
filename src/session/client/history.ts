@@ -9,7 +9,7 @@ import { parseVersion, VERSION_NAME_MAX, type AsideInfo, type HistoryAnswer, typ
 import type { Client } from './client.ts';
 import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
-import { authorsOf, dayLabel, personOf, slidesText, timeOf, whenOf } from './labels.ts';
+import { authorsOf, dateOf, dayLabel, personOf, slidesText, timeOf, whenOf } from './labels.ts';
 import { closeMenu } from './menu.ts';
 import { presenceOf } from './presence.ts';
 import { Preview } from './preview.ts';
@@ -510,9 +510,10 @@ export function install(client: Client): void {
   }
 
   async function restore(v: VersionInfo, text: string | null): Promise<void> {
+    const when = dayLabel(v.time) === 'Today' ? `at ${timeOf(v.time)}` : `on ${dateOf(v.time)} at ${timeOf(v.time)}`;
     const d = client.shell.dialog({
       title: 'Restore this version?',
-      text: `The deck goes back to how it was ${dayLabel(v.time) === 'Today' ? 'at' : 'on'} ${whenOf(v.time).replace(', ', ' at ')}. The current version stays in the history.`,
+      text: `The deck goes back to how it was ${when}. The current version stays in the history.`,
       buttons: [
         { label: 'Cancel', value: 'cancel' },
         { label: 'Restore', value: 'restore', primary: true },
