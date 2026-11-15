@@ -7,6 +7,7 @@ import { createReadStream, mkdirSync, readFileSync, realpathSync, unlinkSync, wr
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
 import { isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
@@ -82,6 +83,20 @@ async function holderOf(file: string, root: string, key: string, log: (message: 
     log(`the edit command of process ${lock.pid} holds this folder and does not answer. Bring it back to the front, or end it`);
     return { url, port: lock.port, key };
   }
+}
+
+// the text of a session that could not be written into index.html, kept in .session/ of the talk
+// folder or else in the temporary folder of the system, and the path of the file or null
+function keepUnwritten(root: string, text: string): string | null {
+  const name = `unwritten-${new Date().toISOString().replace(/[:.]/g, '-')}.html`;
+  for (const dir of [join(root, '.session'), tmpdir()]) {
+    try {
+      const file = join(dir, name);
+      writeFileSync(file, text, { flag: 'wx' });
+      return file;
+    } catch {}
+  }
+  return null;
 }
 
 // the key of the session, kept in .session/key so that a link survives a restart
@@ -444,6 +459,10 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         unlock();
         people.end();
         const unwritten = disk.stopSync();
+        if (unwritten) {
+          const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);
+          log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');
+        }
         // a share in progress sees closed and stops its link, hence the stop waits behind it
         await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
         // a poll that arrives in this time is answered with ended, rather than reset by the close
