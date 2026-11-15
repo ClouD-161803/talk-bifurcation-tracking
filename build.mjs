@@ -35,8 +35,10 @@ const editor = await build({
   entryPoints: ['src/editor/main.ts'],
   outfile: fileURLToPath(new URL('theme/editor.js', root)),
   metafile: true,
-  // the whitespace is taken out to keep the bundle under its budget, and the names are kept
+  // the whitespace is taken out and the syntax is shortened to keep the bundle under its budget, and
+  // the names are kept
   minifyWhitespace: true,
+  minifySyntax: true,
   banner: { js: `/*! editor.js ${version}, the in-place editor of the beeson theme. MIT license. */` },
 });
 
