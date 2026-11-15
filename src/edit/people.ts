@@ -123,8 +123,10 @@ export class People {
       this.trimRecords();
       this.knownRev++;
     } else {
-      // a claim keeps the name as the person wrote it first
-      if (record.name !== name && !claim) {
+      // a claim keeps the name as the person wrote it first, and so does a page that only knows the
+      // public person id, i.e. a page through the relay without a token of a page of this person
+      const own = host || (earlier !== undefined && this.clients.get(earlier)?.person === person);
+      if (record.name !== name && !claim && own) {
         record.name = name;
         this.knownRev++;
       }
