@@ -77,7 +77,11 @@ export function install(app: App): void {
     (loading ??= new Promise<TexSheets>((done, fail) => {
       const script = document.createElement('script');
       script.src = SELF ? new URL('editor-tex.js', SELF).href : 'theme/editor-tex.js';
-      script.onload = () => (window.BeesonTexSheets ? done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start }))) : fail(new Error('theme/editor-tex.js did not start')));
+      script.onload = () => {
+        if (window.BeesonTexSheets) return done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start })));
+        loading = null;
+        fail(new Error('theme/editor-tex.js did not start'));
+      };
       script.onerror = () => {
         loading = null;
         fail(new Error('theme/editor-tex.js is not found next to theme/editor.js'));
