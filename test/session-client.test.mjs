@@ -222,3 +222,56 @@ test('the save state is in view on a phone of 390 px and takes a tap', { timeout
   assert.deepEqual(box, { inside: true, hit: true, height: 32, label: 'Saved to index.html' });
   clean(page);
 });
+
+test('add regression test: a page that is hidden for good sends nothing after its bye, and stays out of the session', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const ann = await open(browser, url, { name: 'Ann Smith' });
+  const ben = await open(browser, url, { name: 'Ben Carter' });
+  await front(ann);
+  await ann.waitFor(`${C}.people.length === 2`);
+  // the route of every request of Ben, in order, and the number of answers of a poll that its
+  // client has read. an answer is read here in full first, so that the client reads it, takes it,
+  // and sends its next request within one turn of the tasks
+  await front(ben);
+  await ben.evaluate(`(() => {
+    window.__sent = [];
+    window.__read = 0;
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      const route = (typeof input === 'string' ? input : input.url).replace(/^.*[/][.]session[/]/, '').replace(/[?].*$/, '');
+      window.__sent.push(route);
+      const answer = fetched.call(this, input, init);
+      if (route !== 'events') return answer;
+      return answer.then(async (response) => {
+        const copy = new Response(await response.text(), { status: response.status, headers: response.headers });
+        const text = copy.text.bind(copy);
+        copy.text = () => text().then((value) => (window.__read++, value));
+        return copy;
+      });
+    };
+  })()`);
+  // an edit of Ann answers the poll of Ben that waits, hence the next poll of Ben is recorded
+  await front(ann);
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'p'));
+  await typeKeys(ann, 'x');
+  await front(ben);
+  await ben.waitFor(`window.__sent.includes('events') && ${el(0, 'p')}.textContent === 'First slidex'`);
+  // the page is hidden for good, as at a close, and the edit command answers its poll at the bye
+  const read = await ben.evaluate(`(() => {
+    const before = window.__read;
+    window.__sent.length = 0;
+    window.dispatchEvent(new PageTransitionEvent('pagehide'));
+    return before;
+  })()`);
+  await ben.waitFor(`window.__read > ${read}`);
+  const sent = await ben.evaluate(`new Promise((done) => setTimeout(() => done(window.__sent), 0))`);
+  assert.deepEqual(sent, ['bye'], `Ben sent ${sent.join(', ')}`);
+  await front(ann);
+  await ann.waitFor(`${C}.people.length === 1`);
+  clean(ann);
+  clean(ben);
+});
