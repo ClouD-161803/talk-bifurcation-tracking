@@ -767,6 +767,36 @@ test('the day headings of an open pane move on at midnight', { timeout: 300_000 
   clean(ann);
 });
 
+test('an apply that needs a reload is held while the mode is on, and the page is loaded again when it ends', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  await openPane(ann);
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Seen');
+  await ann.waitFor(`${LIST}[1]?.title === 'Seen'`);
+  await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
+  await ann.waitFor(`${FRAME}?.contentDocument?.readyState === 'complete'`, 30_000);
+  // the document of the page is marked, since the preview counts its own loads in loads(ann)
+  await ann.evaluate('window.__before = true');
+  // Bo changes the script of the deck, which the port cannot apply in place
+  const { port, base } = server.edit;
+  const bo = (await post(port, `${base}.session/hello`, { name: 'Bo' })).json();
+  const at = bo.text.indexOf('Beeson.start({});');
+  const answer = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at + 17, text: 'Beeson.start({ });' }] })).json();
+  assert.equal(answer.ok, true);
+  await ann.waitFor(`document.querySelector('${PANE} .row.current .sub')?.textContent === 'The deck changed. It is loaded again when Version History is closed.'`, 20_000);
+  assert.equal(await ann.evaluate('window.__before'), true);
+  assert.equal(await ann.evaluate(`${SHOWN} && !!document.querySelector('.beeson-session-preview:not([hidden])')`), true);
+  await press$(ann, PANE, 'Back to editor');
+  await ann.waitFor(`window.__before === undefined && !!window.BeesonEditor`, 20_000);
+  await ann.waitFor(ONLINE, 20_000);
+  await ann.waitFor(`${TEXT}.includes('Beeson.start({ });')`);
+  clean(ann);
+});
+
 test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
