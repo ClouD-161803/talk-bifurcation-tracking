@@ -18,8 +18,9 @@ export const AUTHOR = 'file';
 const QUIET = 250;
 const LATEST = 1000;
 const POLL = 500;
-// a file that looks partly written is taken once it has not changed for 2 s, or 5 s when it is
-// empty, and at a stop the wait ends after 7 s
+// a changed file is taken once its size and modification time have not changed for 300 ms, or for
+// 2 s when it looks partly written, or 5 s when it is empty, and at a stop the wait ends after 7 s
+const STABLE = 300;
 const SETTLE = 2000;
 const SETTLE_EMPTY = 5000;
 const SETTLE_AT_STOP = 7000;
@@ -47,6 +48,9 @@ export function decode(bytes: Buffer): { text: string; bom: boolean } {
 }
 
 const encode = (text: string, bom: boolean) => Buffer.from(bom ? `﻿${text}` : text, 'utf8');
+
+// whether a text ends with the end tag of html and white space, read in its last 256 characters
+const endsHtml = (text: string | Buffer) => /<\/html>\s*$/i.test(typeof text === 'string' ? text.slice(-256) : text.subarray(-256).toString('latin1'));
 
 // the change time is left out, since a rename changes it on some systems
 const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
@@ -261,8 +265,10 @@ export type WriteError = { message: string; unwritten: number };
 
 // onWriteError is called at each failed write, and with null at the first write that succeeds after
 // one failed. onWritten is called with n once the file holds the text of version n of the authority.
-// quiet, latest, and poll are the times of the writes and the checks in ms, and budget the time of
-// the search for the base of a change of the file, shorter in the tests
+// quiet, latest, and poll are the times of the writes and the checks in ms, stable and partial the
+// times that a changed file must not change before it is taken, when it looks complete and when it
+// looks partly written, and budget the time of the search for the base of a change of the file,
+// shorter in the tests
 export type DiskOptions = {
   log?: (message: string) => void;
   onWriteError?: (error: WriteError | null) => void;
@@ -270,6 +276,8 @@ export type DiskOptions = {
   quiet?: number;
   latest?: number;
   poll?: number;
+  stable?: number;
+  partial?: number;
   budget?: number;
 };
 
@@ -283,6 +291,8 @@ export class Disk {
   private authority: Authority;
   private known = '';
   private written: string;
+  // the text last taken from a write of another program
+  private taken: string | null = null;
   // the number of operations of the authority in the text written or read last
   private writtenN: number;
   // the failed writes in a row, and the time before which a failed write is not tried again
@@ -302,7 +312,7 @@ export class Disk {
   private log: (message: string) => void;
   private onWriteError: (error: WriteError | null) => void;
   private onWritten: (n: number) => void;
-  private timing: { quiet: number; latest: number; poll: number; budget: number };
+  private timing: { quiet: number; latest: number; poll: number; stable: number; partial: number; budget: number };
 
   constructor(file: string, authority: Authority, bom: boolean, options: DiskOptions = {}) {
     this.file = file;
@@ -317,6 +327,8 @@ export class Disk {
       quiet: options.quiet ?? QUIET,
       latest: options.latest ?? LATEST,
       poll: options.poll ?? POLL,
+      stable: options.stable ?? STABLE,
+      partial: options.partial ?? SETTLE,
       budget: options.budget ?? BUDGET,
     };
     this.head = authority.text;
@@ -503,28 +515,36 @@ export class Disk {
     let sig = signature(info);
     if (sig === this.known) return true;
     let bytes: Buffer = yield { read: this.target };
-    // the file is read until it has not changed for a while, since a program may be writing it: 20 ms
-    // for a file that looks complete, and longer for a file that is empty, shorter than half of the
-    // text before, or not valid UTF-8, since such a file is often written in steps
-    const before = Buffer.byteLength(this.written), started = performance.now();
+    // the file is taken once its size and modification time have not changed for a while, since a
+    // program may be writing it: 300 ms for a file that looks complete, whatever its size, and longer
+    // for a file that looks partly written, i.e. empty, shorter than half of the text before, not
+    // valid UTF-8, or without the end tag of html that the text before had. a write in steps whose
+    // first step looks complete, or whose pause is longer, is taken in parts, and a change of the
+    // same size within the resolution of the modification time is seen only by the read at the end
+    const { stable, partial } = this.timing;
+    const before = Buffer.byteLength(this.written), ended = endsHtml(this.written), started = performance.now();
     let since = started, told = false;
-    for (let reads = 0; ; reads++) {
-      const wait = bytes.length === 0 ? SETTLE_EMPTY : bytes.length * 2 < before || !isUtf8(bytes) ? SETTLE : 0;
-      if (!wait && reads >= 20) break;
-      if (wait && !told) {
+    for (;;) {
+      const wait = bytes.length === 0 ? SETTLE_EMPTY : bytes.length * 2 < before || !isUtf8(bytes) || (ended && !endsHtml(bytes)) ? partial : stable;
+      if (wait > stable && !told) {
         this.log(`${this.file} looks partly written, and the edit command waits until it has not changed for ${wait / 1000} s`);
         told = true;
       }
       if (performance.now() - started > limit) return false;
-      yield { sleep: wait ? 100 : 20 };
+      yield { sleep: Math.min(100, Math.ceil(wait / 3)) };
       const now: Stats | null = yield { stat: this.target };
       if (!now) {
         this.known = '';
         return true;
       }
-      const again: Buffer = yield { read: this.target };
-      if (!again.equals(bytes)) [bytes, sig, since] = [again, signature(now), performance.now()];
-      else if (performance.now() - since >= wait) break;
+      if (signature(now) !== sig) {
+        [sig, since] = [signature(now), performance.now()];
+        bytes = yield { read: this.target };
+      } else if (performance.now() - since >= wait) {
+        const again: Buffer = yield { read: this.target };
+        if (again.equals(bytes)) break;
+        [bytes, since] = [again, performance.now()];
+      }
     }
     let read: { text: string; bom: boolean };
     try {
@@ -543,7 +563,7 @@ export class Disk {
     yield* this.merge(read.text);
     this.known = sig;
     this.bom = read.bom;
-    this.written = read.text;
+    this.written = this.taken = read.text;
     if (this.authority.text === read.text) this.onWritten((this.writtenN = this.authority.n));
     else this.schedule();
     return true;
@@ -552,7 +572,10 @@ export class Disk {
   // the text now on disk, written by another program from a text that it read some time before
   private *merge(theirs: string): Task {
     if (theirs !== this.authority.text) {
-      const base = yield* this.nearest(theirs);
+      // the rest of a write in two steps whose first step was taken, i.e. a text that extends the one
+      // last taken, is merged on it, since its tail is not in any text of the chain. a rest written
+      // into a handle on a file that a write of the edit command has replaced is not in the file
+      const base = this.taken !== null && theirs.startsWith(this.taken) ? this.taken : yield* this.nearest(theirs);
       // theirs is an earlier text of the session, as from an editor that saves a copy it did not
       // reload, or from a git checkout. the newer edits of the session are kept and written back,
       // since a stale save must not revert the edits of everyone
