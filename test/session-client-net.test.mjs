@@ -429,3 +429,27 @@ test('on a phone, the menus and the controls of the session are reached while of
   assert.deepEqual(await page.evaluate(REACHED(controls)), []);
   clean(page, [...REFUSED, /status of 400/]);
 });
+
+test('on a phone, the save state shows its text, so that Saving… and Saved differ', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { width: 390, height: 844, mobile: true, script: NET });
+  await converge(server, [page]);
+  // the text of the save state, when all of it is in view
+  const shown = `(() => {
+    const n = document.querySelector('.beeson-session-state .name');
+    const r = n.getBoundingClientRect();
+    return r.width > 0 && r.right <= innerWidth && n.scrollWidth <= n.clientWidth && getComputedStyle(n).visibility === 'visible' ? n.textContent : null;
+  })()`;
+  assert.equal(await page.evaluate(shown), 'Saved to index.html');
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' slow');
+  await page.waitFor(`${STATE} === 'Saving…'`);
+  assert.equal(await page.evaluate(shown), 'Saving…');
+  await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
+  await converge(server, [page]);
+  clean(page);
+});
