@@ -948,3 +948,16 @@ test('after a restart, a page that rejoins second is read by the other page', { 
   clean(ana, refused);
   clean(ben, refused);
 });
+
+test('the heartbeat is sent by the timer of the page, without check()', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await caretAtEnd(ana, el(1, 'p'));
+  await until(() => ben.evaluate(LOCKED(el(1, 'p'))), 'the paragraph locked on the page of Ben');
+  const first = await ben.evaluate(`${C}.resolved()[0].beat`);
+  await ana.evaluate(`(${P}.skew += 5000, true)`);
+  await until(async () => (await ben.evaluate(`${C}.resolved()[0]?.beat`)) === first + 1, 'the first heartbeat by the timer of Ana', 4000);
+  clean(ana);
+  clean(ben);
+});
