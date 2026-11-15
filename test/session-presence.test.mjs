@@ -516,3 +516,30 @@ test('after a page deletes an element and selects the next one, the other page r
   clean(ana);
   clean(ben);
 });
+
+// each element of list on page by its slide, its place among its siblings, and its text
+const where = (page, list) => page.evaluate(`(${list}).map((e) => [[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.contains(e)), [...e.parentElement.children].indexOf(e), e.textContent.trim()])`);
+
+test('an element that a page makes itself is read by the other page once its operation is acknowledged', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await select(ana, el(1, 'li:nth-child(2)'));
+  await until(async () => (await theirs(ben)).join() === 'Beta', 'the selection of Beta on the page of Ben');
+  // the copy of Duplicate is selected
+  await ana.evaluate(`${C}.app.commands.run('edit.duplicate')`);
+  await converge(server, [ana, ben]);
+  const copy = await where(ana, `${C}.app.selection.items`);
+  assert.deepEqual(copy, [[1, 2, 'Beta']], 'the copy is selected on the page of Ana');
+  await until(async () => JSON.stringify(await where(ben, `${C}.resolved()[0]?.selected ?? []`)) === JSON.stringify(copy), 'the copy selected on the page of Ben', 5000);
+  // a new text box holds the caret, and it is held once it has text
+  await ana.evaluate(`${C}.app.commands.run('insert.text')`);
+  await until(() => ana.evaluate(`!!${P}.held`), 'the new text box to hold the caret of Ana');
+  await typeKeys(ana, 'Hi');
+  await converge(server, [ana, ben]);
+  const box = await where(ana, `[${P}.held]`);
+  assert.equal(box[0][2], 'Hi');
+  await until(async () => JSON.stringify(await where(ben, `[${C}.resolved()[0]?.held].filter(Boolean)`)) === JSON.stringify(box), 'the text box held on the page of Ben', 5000);
+  clean(ana);
+  clean(ben);
+});
