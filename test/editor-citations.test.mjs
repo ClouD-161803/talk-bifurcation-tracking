@@ -408,3 +408,15 @@ test('the list fits a phone', { timeout: 120000 }, async (t) => {
   const box = await page.evaluate(`(() => { const r = document.querySelector('${LIST}').getBoundingClientRect(); return { left: r.left, right: r.right }; })()`);
   assert.ok(box.left >= 0 && box.right <= 390, `the list is wider than the phone: ${js(box)}`);
 });
+
+test('a closing brace after a key that matches no paper is kept in the text, and the list is closed', { timeout: 120000 }, async (t) => {
+  const page = await open();
+  t.after(() => page.close());
+  await typeCite(page);
+  await type(page, 'nokey');
+  await page.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 0`);
+  await type(page, '}');
+  await page.waitFor(`!document.querySelector('${LIST}')`);
+  assert.match(await lastText(page), /\\cite\{nokey\}$/);
+  assert.deepEqual(errors(page), []);
+});
