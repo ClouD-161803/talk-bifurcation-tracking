@@ -796,6 +796,24 @@ test('a page that is not mentioned gets no toast for a new comment', { timeout: 
   clean(b);
 });
 
+test('a thread on another slide stays unread while the pane is open and one thread is read', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const BADGES = `[...document.querySelectorAll('.beeson-comment-badge')].map((n) => n.textContent + (n.classList.contains('unread') ? '*' : ''))`;
+  const first = await post(a, 0, 'On One');
+  await post(a, 1, 'On Two');
+  await show(b, 'Two');
+  await sees(b, BADGES, ['1*']);
+  await openPane(b);
+  await sees(b, `document.querySelectorAll('${PANE} article').length`, 2);
+  await click(b, `${ARTICLE(first)} .text`);
+  await sees(b, `[${ACTIVE}, Reveal.getIndices().h]`, [first, 0]);
+  await sees(b, BADGES, ['1']);
+  await show(b, 'Two');
+  await sees(b, BADGES, ['1*']);
+  clean(a);
+  clean(b);
+});
+
 test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or more', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
