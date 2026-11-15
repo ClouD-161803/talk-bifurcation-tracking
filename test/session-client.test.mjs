@@ -293,6 +293,23 @@ test('the save state is in view on a phone of 390 px and takes a tap, and the bu
   clean(page);
 });
 
+test('the save state is written once in the title bar, in the title while it has room and otherwise in the button', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // the texts of the save state that are drawn, in the title and in the button
+  const drawn = `[...document.querySelectorAll('.beeson-edit-titlebar .doc .state, .beeson-session-state .name')].filter((el) => el.getClientRects().length).map((el) => [el.matches('.state') ? 'title' : 'button', el.textContent])`;
+  const wide = await open(browser, sessionUrl(server.edit), { width: 1440, height: 900 });
+  assert.deepEqual(await wide.evaluate(drawn), [['title', 'Saved to index.html']]);
+  // a title without room for the state leaves it out, as fit() of menubar.ts marks it. the texts
+  // are read in the same task, before fit() runs again
+  assert.deepEqual(await wide.evaluate(`(document.querySelector('.beeson-edit-titlebar .doc').classList.add('tight'), ${drawn})`), [['button', 'Saved to index.html']]);
+  const phone = await open(browser, sessionUrl(server.edit), { width: 390, height: 844, mobile: true, name: 'Ben' });
+  assert.deepEqual(await phone.evaluate(drawn), [['button', 'Saved to index.html']]);
+  clean(wide);
+  clean(phone);
+});
+
 test('a page that is hidden for good sends nothing after its bye, and stays out of the session', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
