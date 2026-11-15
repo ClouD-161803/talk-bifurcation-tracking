@@ -3,6 +3,7 @@
 // typing, as in section 11. a person is away while every page of the person is hidden
 
 import type { Client } from './client.ts';
+import { bdi } from './dom.ts';
 import { callName, followersText, followOf, pagesOf } from './follow.ts';
 import { everyone, type Someone } from './people.ts';
 import { addPersonStatus } from './share.ts';
@@ -12,12 +13,12 @@ export function install(client: Client): void {
   const numberOf = (slide: Element | null | undefined): number => (slide?.isConnected ? client.shell.slides.numberOf(slide) : 0);
   const named = (person: string | null) => (person === client.person ? 'you' : person ? callName(client, person) : '');
 
-  // what person does, in the order of precedence of the Share dialog, with the slide of the page
-  // that changed last
-  const doing = (person: string): { what: string; slide: number } | null => {
+  // what person does, in the order of precedence of the Share dialog, with the person followed and
+  // the slide of the page that changed last
+  const doing = (person: string): { what: string; whom: string | null; slide: number } | null => {
     if (person === client.person) {
       const target = followOf()?.target ?? null;
-      return { what: target ? `following ${named(target)}` : '', slide: numberOf(app.current()) };
+      return { what: target ? `following ${named(target)}` : '', whom: target, slide: numberOf(app.current()) };
     }
     const pages = pagesOf(client, person);
     const page = pages[0];
@@ -29,13 +30,14 @@ export function install(client: Client): void {
     else if (pages.some((r) => r.mode === 'history')) what = 'viewing the version history';
     else if (typing) what = 'typing';
     else if (pages.every((r) => r.away)) what = 'away';
-    return { what, slide: numberOf(typing && what === 'typing' ? typing.slide : page.slide) };
+    return { what, whom: page.following, slide: numberOf(typing && what === 'typing' ? typing.slide : page.slide) };
   };
 
   addPersonStatus((someone: Someone) => {
     const now = doing(someone.person);
     if (!now) return '';
     if (now.what === 'typing') return now.slide ? `Typing on slide ${now.slide}` : 'Typing';
+    if (now.whom) return ['Following ', now.whom === client.person ? 'you' : bdi(callName(client, now.whom))];
     if (now.what) return now.what[0].toUpperCase() + now.what.slice(1);
     return now.slide ? `On slide ${now.slide}` : '';
   });

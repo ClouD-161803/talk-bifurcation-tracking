@@ -85,6 +85,8 @@ test('a click on an avatar follows the person to the slide, and brings the selec
   await press(ben, avatar('Ana'));
   await following(ben, anaId);
   assert.deepEqual(await ben.evaluate(PILL), { text: 'Following Ana', button: 'Stop', on: true });
+  // the name is isolated from the text around it, for a name in a right-to-left script
+  assert.equal(await ben.evaluate(`document.querySelector('.beeson-session-follow .text bdi')?.textContent`), 'Ana');
   assert.equal(await ben.evaluate(`document.querySelector(${JSON.stringify(avatar('Ana'))}).getAttribute('aria-pressed')`), 'true');
   assert.ok(await ben.evaluate(`[...document.querySelectorAll('.beeson-session-live')].some((l) => l.textContent === 'Following Ana')`));
   // the border lies over the canvas, in the tone of Ana, and only the pill takes a pointer
@@ -455,6 +457,9 @@ test('the line of each person in the Share dialog', { timeout: 120_000 }, async 
   await untilLine(benId, 'On slide 1');
   await ann.evaluate(`${F}.start(${JSON.stringify(benId)})`);
   await untilLine(annId, 'Following Ben');
+  assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} li[data-person=${JSON.stringify(annId)}] .activity bdi')?.textContent`), 'Ben');
+  await untilLine(benId, 'On slide 1');
+  assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} li[data-person=${JSON.stringify(benId)}] .activity bdi')`), null);
   clean(ann);
   clean(ben);
 });

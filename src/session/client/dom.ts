@@ -13,6 +13,9 @@ export function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = 
 // would otherwise reorder
 export const bdi = (name: string): HTMLElement => make('bdi', '', name);
 
+// the text of a line of strings and nodes, e.g. of a sentence with a name in a bdi element
+export const textOf = (line: (string | Node)[]): string => line.map((p) => (typeof p === 'string' ? p : p.textContent)).join('');
+
 // css added once to the head, as style#beeson-session-<id>
 export function style(id: string, css: string): void {
   const key = `beeson-session-${id}`;

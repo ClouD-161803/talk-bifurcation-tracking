@@ -11,7 +11,7 @@
 // followers, and this page sends its mode present while it presents
 
 import type { Client } from './client.ts';
-import { make, style } from './dom.ts';
+import { bdi, make, style, textOf } from './dom.ts';
 import { addPersonItems, badge, everyone, onPersonPress } from './people.ts';
 import { presenceOf, type Resolved } from './presence.ts';
 
@@ -154,14 +154,14 @@ export function install(client: Client): void {
     box.style.setProperty('--ink', look.ink);
     box.classList.toggle('on', !!target);
     box.classList.toggle('rulers', rulers());
-    const who = callName(client, person);
-    let label: string;
+    const who = bdi(callName(client, person));
+    let label: (string | Node)[];
     let act: string | null = 'Stop';
     if (!target) {
-      label = note!.left ? `${who} left the session` : `Stopped following ${who}`;
+      label = note!.left ? [who, ' left the session'] : ['Stopped following ', who];
       act = note!.left ? null : 'Follow again';
-    } else label = mode === 'present' ? `${who} is presenting` : mode === 'history' ? `${who} is viewing the version history` : `Following ${who}`;
-    if (text.textContent !== label) text.textContent = label;
+    } else label = mode === 'present' ? [who, ' is presenting'] : mode === 'history' ? [who, ' is viewing the version history'] : ['Following ', who];
+    if (text.textContent !== textOf(label)) text.replaceChildren(...label);
     button.textContent = act ?? '';
     button.hidden = !act;
     pill.classList.toggle('bare', !act);

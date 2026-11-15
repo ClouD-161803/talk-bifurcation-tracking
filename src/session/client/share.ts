@@ -7,7 +7,7 @@
 import type { ShareAnswer } from '../protocol.ts';
 import { qr } from '../qr.ts';
 import type { Client } from './client.ts';
-import { bdi, make, sheet, style } from './dom.ts';
+import { bdi, make, sheet, style, textOf } from './dom.ts';
 import { disc, everyone, type Someone } from './people.ts';
 
 const COPIED = 2000;
@@ -51,11 +51,13 @@ export function pageLink(): string {
   return url.href;
 }
 
-const statuses: ((someone: Someone) => string)[] = [];
+type Status = (someone: Someone) => string | (string | Node)[];
+const statuses: Status[] = [];
 
 // a line beside a person in the list of the Share dialog, e.g. Typing on slide 4, Following Ana,
-// or Away. the first function that returns a text is shown. the function returned removes it
-export function addPersonStatus(fn: (someone: Someone) => string): () => void {
+// or Away. the first function that returns a text is shown, and a name in it is a bdi element. the
+// function returned removes it
+export function addPersonStatus(fn: Status): () => void {
   statuses.push(fn);
   return () => void statuses.splice(statuses.indexOf(fn) >>> 0, 1);
 }
@@ -193,12 +195,12 @@ function openShare(client: Client): void {
   };
 
   // what a person does, e.g. Typing on slide 4, from the first part that has a line
-  const lineOf = (p: Someone): string => {
+  const lineOf = (p: Someone): (string | Node)[] => {
     for (const fn of statuses) {
-      const text = fn(p);
-      if (text) return text;
+      const line = fn(p);
+      if (line.length) return typeof line === 'string' ? [line] : line;
     }
-    return '';
+    return [];
   };
   const showPeople = () => {
     const all = everyone(client);
@@ -208,7 +210,9 @@ function openShare(client: Client): void {
       li.dataset.person = p.person;
       const name = make('span', 'name');
       name.append(bdi(p.name), p.person === client.person ? ' (you)' : '');
-      li.append(disc(client, p.person), name, make('span', 'activity', lineOf(p)));
+      const activity = make('span', 'activity');
+      activity.append(...lineOf(p));
+      li.append(disc(client, p.person), name, activity);
       return li;
     }));
   };
@@ -218,8 +222,8 @@ function openShare(client: Client): void {
     for (const li of people.querySelectorAll<HTMLElement>('li[data-person]')) {
       const p = all.find((q) => q.person === li.dataset.person);
       const activity = li.querySelector('.activity');
-      const text = p ? lineOf(p) : '';
-      if (activity && activity.textContent !== text) activity.textContent = text;
+      const line = p ? lineOf(p) : [];
+      if (activity && activity.textContent !== textOf(line)) activity.replaceChildren(...line);
     }
   };
 
