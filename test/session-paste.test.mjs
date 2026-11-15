@@ -1,17 +1,20 @@
-// slides pasted from a plain deck into a page of a session. a file that the session does not take
-// is not added by the paste, which names it with the reason, and the later edits of the page still
-// reach index.html
+// slides pasted from a plain deck into a page of a session, and slides copied in a session. a file
+// that the session does not take is not added by the paste, which names it with the reason, and the
+// later edits of the page still reach index.html. a copy in a session names its deck by a tag in
+// place of the key of the session
 
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { clean, converge, open, sessionUrl, talk } from './helpers/client.mjs';
+import { clean, converge, open, sessionUrl, talk, TEXT } from './helpers/client.mjs';
 import { A, BACKDROP, DIR, FILES, QUERY, copySlide, openDeck, pasteSlides, pasted, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 import { edit } from './helpers/offline.mjs';
 
 const MB = 1024 * 1024;
+const DIALOG = 'dialog.beeson-edit-dialog.deck-folder';
+const ORIGIN = (text) => JSON.parse(text.match(/<!--beeson-origin (.*?)-->/s)[1]);
 // a paste asks the edit command for each path of a pasted file, and for each path under media/ that
 // it would take, which are answered with 404
 const PROBED = /status of 404 .*\/(data|figs|media)\//;
@@ -69,4 +72,39 @@ test('a picture over the limit of a session is not added by a paste, and the lat
   assert.deepEqual(media(server), ['clip.mp4', 'clip.png', 'shared.png']);
   assert.ok(message.includes('figs/orbit.png was not copied: orbit.png is larger than 16 MB, the largest file that can be sent to the others.'), message);
   clean(ann, [PROBED]);
+});
+
+test('a copy in a session', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  mkdirSync(join(server.talk, 'media'));
+  writeFileSync(join(server.talk, 'media/fig.png'), readFileSync(resolve('demo/figure-light.png')));
+  writeFileSync(server.file, server.read().replace('<p>First slide</p>', '<p>First slide</p>\n  <img src="media/fig.png" alt="A figure">'));
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await ann.waitFor(`${TEXT}.includes('media/fig.png')`);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  const text = await copySlide(ann, 'One');
+
+  await t.test('names the deck by a tag in place of the key of the session', async () => {
+    assert.ok(!text.includes(server.edit.key), text.slice(0, 300));
+    const origin = ORIGIN(text);
+    assert.match(origin.deck, /^http:\/\/127\.0\.0\.1:\d+\/session-[0-9a-z]+\/index\.html$/);
+    assert.equal(origin.session, true);
+    // another page of the session derives the same tag from the key
+    assert.equal(ORIGIN(await copySlide(ben, 'Two')).deck, origin.deck);
+  });
+
+  await t.test('is pasted by another page of the session at the same origin as a copy of the same deck', async () => {
+    await pasteSlides(ben, 'Two', text);
+    await pasted(ben);
+    assert.equal(await ben.evaluate(`!!document.querySelector('${DIALOG}[open]')`), false);
+    const after = await converge(server, [ann, ben]);
+    assert.equal(after.match(/<img src="media\/fig\.png" alt="A figure">/g).length, 2);
+    assert.equal((await status(ben)).message.includes('not copied'), false);
+  });
+
+  clean(ann);
+  clean(ben);
 });
