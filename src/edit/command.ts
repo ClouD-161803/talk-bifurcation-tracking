@@ -4,9 +4,9 @@
 // false and without the check of the Host header, since the relay already matched the key
 
 import { createReadStream, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
-import { mkdir, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
@@ -157,6 +157,29 @@ export function cleanName(raw: string): string | null {
   return `${stem}.${ext}`;
 }
 
+const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+
+// the name of a file in dir of size bytes with the SHA-256 hash, under name or a numbered name of
+// it as the media route gives one, e.g. plot.png or plot-2.png, or null
+async function sameFile(dir: string, name: string, size: number, hash: string): Promise<string | null> {
+  const dot = name.lastIndexOf('.');
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const family = new RegExp(`^${escape(name.slice(0, dot))}(?:-(\\d+))?${escape(name.slice(dot))}$`);
+  const found = (await readdir(dir, { withFileTypes: true })).flatMap((d) => {
+    const m = d.isFile() ? family.exec(d.name) : null;
+    return m ? [{ name: d.name, n: Number(m[1] ?? 1) }] : [];
+  });
+  for (const f of found.sort((a, b) => a.n - b.n)) {
+    const file = join(dir, f.name);
+    try {
+      if ((await stat(file)).size === size && sha256(await readFile(file)) === hash) return f.name;
+    } catch {
+      // a file removed meanwhile is not the same file
+    }
+  }
+  return null;
+}
+
 const isJson = (request: Request) => (request.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() === 'application/json';
 
 export async function start(options: StartOptions = {}): Promise<Running> {
@@ -261,6 +284,14 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     await mkdir(dir, { recursive: true });
     const real = await realpath(dir);
     if (!real.startsWith(root + sep)) return error(403, 'media/ leaves the talk folder');
+    // with the hash of the page, a file sent again, e.g. after its answer was lost, is not copied
+    const sent = request.headers['x-content-sha256'];
+    if (sent !== undefined) {
+      const hash = sha256(request.body);
+      if (sent.toLowerCase() !== hash) return error(400, 'the file does not have the SHA-256 of x-content-sha256');
+      const same = await sameFile(real, clean, request.body.length, hash);
+      if (same) return json(200, { path: `media/${same}` });
+    }
     const dot = clean.lastIndexOf('.');
     for (let i = 1; i < 1000; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
