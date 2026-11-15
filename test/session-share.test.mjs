@@ -10,8 +10,9 @@ import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { qr } from '../src/session/qr.ts';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
+import { C, clean, converge, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
 import { press as key, type, typeKeys } from './helpers/editor.mjs';
+import { goOffline, tab } from './helpers/offline.mjs';
 import { post, until } from './helpers/session.mjs';
 import { avatars, dialogButton, FITS, HIT, hold, item, menu, press, tap } from './helpers/share.mjs';
 
@@ -433,4 +434,42 @@ test('add regression test: who joins is announced while a modal dialog is open, 
     assert.ok(checked > 0, 'two joins came within a second of each other');
   });
   clean(ann);
+});
+
+test('add regression test: Leave Session reads Leaving… while it waits, is not offered twice, and tells that the last changes did not reach the host', { timeout: 180_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const host = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
+  const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: relay.url, secret: SECRET });
+  assert.equal(shared.status, 200, shared.text);
+  const lea = await tab(browser, shared.json().link, { name: 'Lea Lane' });
+  await until(async () => (await avatars(host)).length === 2, 'Lea Lane on the page of the host');
+  await goOffline(lea);
+  await lea.waitFor(`${C}.connection === 'offline'`);
+  await show(lea, 'One');
+  await caretAtEnd(lea, `document.querySelector('.reveal .slides > section h2')`);
+  await typeKeys(lea, ' offline');
+  await lea.waitFor(`!${C}.acked()`);
+  // the menu of the own avatar is opened again right after Leave Session, in one evaluation, since
+  // leave() in people.ts waits at most 2 s for the edits
+  const during = await lea.evaluate(`(async () => {
+    const me = document.querySelector('.beeson-session-people .me');
+    const open = () => me.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const read = () => [...(document.querySelector('.beeson-edit-menu')?.querySelectorAll('.note, .item') ?? [])].map((el) => el.textContent.trim());
+    open();
+    const before = read();
+    [...document.querySelectorAll('.beeson-edit-menu .item')].find((el) => el.textContent.trim() === 'Leave Session').click();
+    await new Promise((done) => setTimeout(done, 0));
+    open();
+    return { before, after: read(), state: ${STATE} };
+  })()`);
+  assert.deepEqual(during, { before: ['Lea Lane', 'Change Name…', 'Leave Session'], after: ['Lea Lane', 'Change Name…'], state: 'Leaving…' });
+  await lea.waitFor(`document.querySelector('dialog.beeson-session-left')?.open`);
+  assert.deepEqual(await lea.evaluate(`[...document.querySelectorAll('dialog.beeson-session-left')].map((d) => d.querySelector('p').textContent)`), [
+    'The deck stays open in this page, and your changes no longer reach the others. Your last changes did not reach the host.',
+  ]);
+  clean(host);
 });
