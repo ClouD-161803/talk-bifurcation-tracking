@@ -114,6 +114,23 @@ test('a chip takes a press on itself only, and a press beside it, on an element 
   clean(ben);
 });
 
+test('a selected group is framed once, with one flag, around its members', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [onOne(shape('g1', 300, 400, 200, 120, ' data-group="g1"'), shape('g2', 700, 600, 200, 120, ' data-group="g1"'))] });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  await select(ana, el(0, '#g1'), el(0, '#g2'));
+  const d = await untilDrawn(ben, (d) => d.frames.length > 0, 'the frame of Ana on the page of Ben');
+  assert.equal(d.frames.length, 1, 'one frame');
+  assert.equal(d.flags.length, 1, 'one flag');
+  const f = d.frames[0];
+  for (const id of ['#g1', '#g2']) {
+    const b = await boxOf(ben, el(0, id));
+    assert.ok(f.x < b.x && f.y < b.y && f.x + f.w > b.x + b.w && f.y + f.h > b.y + b.h, `the frame holds ${id}`);
+  }
+  clean(ana);
+  clean(ben);
+});
+
 // counts the reads of layout from now on in window.__reads, with those made by theme/session.js
 const COUNT = `(() => {
   if (window.__reads) { window.__reads = { all: 0, session: 0 }; return; }
