@@ -126,6 +126,16 @@ function bodyOf(req, max, take = () => true) {
   });
 }
 
+// the page that a browser opens while the host's edit command is not registered, without a script
+const NOT_RUNNING = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not running</title></head>
+<body style="font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 32px 16px; max-width: 32em">
+<p>The host's edit command is not running. This link works again once the host starts it.</p>
+</body>
+</html>
+`;
+
 // the bytes of a body that are written to a socket at once
 const PIECE = 64 * 1024;
 function answer(res, status, body = '', headers = {}) {
@@ -300,7 +310,10 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     const key = path.split('/')[1] ?? '';
     if (!KEY.test(key)) return answer(res, 404, 'not found');
     const session = sessions.get(key);
-    if (!session) return answer(res, 502, 'no edit command is registered for this session');
+    if (!session) {
+      if (req.method === 'GET' && String(req.headers.accept ?? '').includes('text/html')) return answer(res, 502, NOT_RUNNING, { 'content-type': 'text/html; charset=utf-8' });
+      return answer(res, 502, 'no edit command is registered for this session');
+    }
     if (session.pending.size >= limits.waiting) return answer(res, 503, 'the session has too many waiting requests');
     const declared = Number(req.headers['content-length'] ?? 0);
     if (!fits(session, 0, Math.min(declared, limits.bodyBytes), declared)) {
