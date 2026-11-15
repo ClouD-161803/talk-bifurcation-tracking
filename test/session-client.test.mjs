@@ -50,8 +50,9 @@ test('a page joins with the name typed in the dialog, and again without it', { t
   await page.waitFor(ONLINE);
   assert.deepEqual(await page.evaluate(`({ name: ${C}.name, host: ${C}.host, shown: !!document.querySelector('dialog.beeson-session-join[open]'), state: ${STATE} })`), { name: 'Ada Lovelace', host: true, shown: false, state: 'Saved to index.html' });
 
+  // the wait is for the new document, since the one before the reload is complete and online as well
   await page.evaluate('location.reload()');
-  await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+  await reloaded([page], [1]);
   assert.equal(await loads(page), 2);
   assert.equal(await page.evaluate(`${C}.name`), 'Ada Lovelace');
   assert.equal(await page.evaluate(`document.querySelector('dialog.beeson-session-join')`), null);
