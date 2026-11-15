@@ -13,6 +13,7 @@ import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
+import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
 import { raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -35,6 +36,9 @@ const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.versio
 const button = (scope, text) => `[...document.querySelectorAll('${scope} button')].find((b) => b.textContent === ${JSON.stringify(text)} && b.getClientRects().length)`;
 const INERT = `['.beeson-edit-menubar', '.beeson-edit-top', '.beeson-edit-nav', '.reveal'].map((s) => document.querySelector(s)?.inert)`;
 const TIME = /^\d{1,2}:\d{2}\s?[AP]M$/;
+// the open dialog of the pane, its field, and its buttons
+const DIALOG = 'dialog.beeson-session-history-dialog[open]';
+const FIELD = `document.querySelector('${DIALOG} input')`;
 
 async function tapOrClick(page, expression) {
   await page.waitFor(`!!(${expression})`);
@@ -426,6 +430,86 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   await press$(ann, PANE, 'Back to editor');
   await ann.waitFor(`!(${SHOWN})`);
   clean(ann);
+});
+
+test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // the first word of the first paragraph selected
+  const first = (page) => page.evaluate(`(() => {
+    const p = ${el(0, 'p')};
+    p.focus();
+    const r = document.createRange();
+    r.setStart(p.firstChild, 0);
+    r.setEnd(p.firstChild, 5);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    return true;
+  })()`);
+  // Ann replaces a word offline that Ben replaces meanwhile, and comes back after more than 5 s
+  async function conflicted(t) {
+    const server = await talk(t);
+    const url = sessionUrl(server.edit);
+    const ann = await tab(browser, url);
+    const ben = await open(browser, url, { name: 'Ben' });
+    await converge(server, [ann, ben]);
+    await goOffline(ann);
+    await show(ann, 'One');
+    await first(ann);
+    await type(ann, 'Opening');
+    await show(ben, 'One');
+    await first(ben);
+    await type(ben, 'Initial');
+    await until(() => server.read().includes('Initial slide'), 'the edit of Ben to reach the file');
+    await ann.waitFor(`Date.now() - window.__offAt > 5500`, 15_000);
+    await goOnline(ann);
+    await front(ann);
+    await ann.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`);
+    return { server, ann, ben };
+  }
+
+  await t.test('the text is listed under Set aside, and Show opens its preview', async (t) => {
+    const { server, ann, ben } = await conflicted(t);
+    await recordToasts(ann);
+    await pressConflict(ann, 'Keep theirs');
+    await converge(server, [ann, ben]);
+    await ann.waitFor('window.__toasts.length > 0', 20_000);
+    assert.deepEqual(await ann.evaluate('window.__toasts'), ['Your version of these texts was not sent. It is kept under Set aside in Version History.|status']);
+    await press$(ann, '.beeson-session-toast', 'Show');
+    await ann.waitFor(SHOWN);
+    await ann.waitFor(`document.querySelector('${PANE} .aside-list .row')?.getAttribute('aria-current') === 'true'`);
+    await ann.waitFor(`${FRAME}?.src.includes('aside=')`);
+    await ann.waitFor(`!!${FRAME}.contentDocument?.body?.textContent.includes('Opening slide')`, 30_000);
+    clean(ann);
+    clean(ben);
+    await ann.close();
+    await ben.close();
+  });
+
+  await t.test('a text that cannot be set aside is offered as a download', async (t) => {
+    const { server, ann, ben } = await conflicted(t);
+    await ann.evaluate(`(() => {
+      const fetched = window.fetch;
+      window.fetch = function (input, init) {
+        if (String(input).includes('/.session/aside')) return Promise.resolve(new Response(JSON.stringify({ error: 'the disk is full' }), { status: 500 }));
+        return fetched.call(this, input, init);
+      };
+      return true;
+    })()`);
+    const mine = await ann.evaluate(TEXT);
+    await pressConflict(ann, 'Keep theirs');
+    await ann.waitFor(`document.querySelector('${DIALOG} h3')?.textContent === 'Your version could not be set aside'`, 20_000);
+    assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} p').textContent`), 'the disk is full');
+    await press$(ann, DIALOG, 'Download my version');
+    const [file] = await downloads(ann);
+    assert.equal(file.text, mine);
+    assert.ok(file.text.includes('Opening slide'));
+    await converge(server, [ann, ben]);
+    clean(ann, [/status of 500/]);
+    clean(ben);
+    await ann.close();
+    await ben.close();
+  });
 });
 
 // the text of the pill of following, or null while it is hidden
