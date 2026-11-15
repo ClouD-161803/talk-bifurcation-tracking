@@ -6,7 +6,7 @@
 // nearest to it, where the file wins a conflict. the reads and the writes are done one at a time
 
 import { readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
-import { chmod, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { chmod, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
@@ -86,9 +86,9 @@ export function renameRetriedSync(from: string, to: string): void {
   }
 }
 
-// a step of a task of the disk, i.e. a stat, a read, or a write of a file, or a pause. a task is a
-// generator of its steps, hence it is left at a step when the edit command stops
-type Step = { stat: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { sleep: number };
+// a step of a task of the disk, i.e. a stat, a resolve, a read, or a write of a file, or a pause. a
+// task is a generator of its steps, hence it is left at a step when the edit command stops
+type Step = { stat: string } | { resolve: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { sleep: number };
 type Task<T = void> = Generator<Step, T, any>;
 
 const missing = (e: NodeJS.ErrnoException) => {
@@ -99,6 +99,7 @@ const missing = (e: NodeJS.ErrnoException) => {
 function perform(step: Step): Promise<unknown> {
   if ('sleep' in step) return new Promise((done) => setTimeout(done, step.sleep));
   if ('stat' in step) return stat(step.stat).catch(missing);
+  if ('resolve' in step) return realpath(step.resolve).catch(() => step.resolve);
   if ('read' in step) return readFile(step.read);
   return writeFile(step.write, step.bytes).then(() => (step.mode === null ? undefined : chmod(step.write, step.mode)));
 }
@@ -481,6 +482,10 @@ export class Disk {
   // a change of the file that the edit command did not write, or false when the file was still
   // being written after limit ms
   private *check(limit: number): Task<boolean> {
+    // the file is resolved again, since a program may have replaced a symbolic link by a file, or a
+    // file by a link, and the new target is then read as a change and written from now on
+    const target: string = yield { resolve: this.file };
+    if (target !== this.target) [this.target, this.known] = [target, ''];
     const info: Stats | null = yield { stat: this.target };
     // a file that is gone is written again
     if (!info) {
