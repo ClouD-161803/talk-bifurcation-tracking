@@ -174,6 +174,21 @@ test('a new list leaves the bar alone, the text of a version is read once per pr
     await download();
     assert.deepEqual(await ann.evaluate(`window.__reads(${JSON.stringify(first)})`), ['fetch']);
   });
+
+  await t.test('a new list changes only what differs in the bar, and keeps the focus and an open More menu', async () => {
+    await ann.evaluate(`(window.__focused = ${button(BAR, 'Restore this version')}).focus(), true`);
+    await rename(ann, first, 'First again');
+    await ann.waitFor(`document.querySelector('${BAR} .date')?.textContent.startsWith('First again,')`);
+    assert.deepEqual(await ann.evaluate(`[document.activeElement === window.__focused, window.__focused.isConnected]`), [true, true]);
+    await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
+    await ann.waitFor(`document.activeElement?.closest('.beeson-session-menu') !== null`);
+    await ann.evaluate(`window.__more = document.querySelector('${BAR} button.more'), true`);
+    await rename(ann, first, 'First');
+    await ann.waitFor(`document.querySelector('${BAR} .date')?.textContent.startsWith('First,')`);
+    assert.deepEqual(await ann.evaluate(`[window.__more.isConnected, window.__more.getAttribute('aria-expanded'), !!document.activeElement?.closest('.beeson-session-menu')]`), [true, 'true', true]);
+    await press(ann, 'Escape');
+    await ann.waitFor(`!document.querySelector('.beeson-session-menu') && document.activeElement === window.__more`);
+  });
   clean(ann);
 });
 
