@@ -289,3 +289,60 @@ test('add regression test: an answer that the relay refuses is pushed again afte
   assert.equal(pushes.filter((p) => p.id === 'b2').length, 1, 'an answer refused otherwise is pushed once');
   await until(() => /500/.test(edit.stderr), 'the refused push to be logged');
 });
+
+const MB = 1024 * 1024;
+
+// a host of key that registers with the relay, pulls, and pushes by itself, in place of an edit
+// command
+async function fakeHost(relay, key) {
+  const auth = { authorization: `Bearer ${SECRET}` };
+  const { token } = await (await fetch(`${relay.url}/host/${key}`, { method: 'POST', headers: auth })).json();
+  const headers = { ...auth, 'x-relay-token': token };
+  const queue = [];
+  return {
+    token,
+    // the next n requests of guests, pulled until they have come
+    async next(n = 1) {
+      while (queue.length < n) queue.push(...(await (await fetch(`${relay.url}/host/${key}/pull`, { method: 'POST', headers })).json()));
+      return queue.splice(0, n);
+    },
+    push: async (id, body, status = 200) => (await fetch(`${relay.url}/host/${key}/push/${id}`, { method: 'POST', headers: { ...headers, 'x-relay-status': String(status), 'x-relay-headers': '{}' }, body })).status,
+    // a push of length bytes on a raw socket, which writes sent bytes at once and the others at rest()
+    partial(id, length, sent) {
+      const socket = connect(relay.port, '127.0.0.1');
+      socket.got = '';
+      socket.on('data', (d) => (socket.got += d.toString('latin1')));
+      socket.on('error', () => {});
+      socket.write(`POST /host/${key}/push/${id} HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer ${SECRET}\r\nx-relay-token: ${token}\r\nx-relay-status: 200\r\nx-relay-headers: {}\r\nContent-Length: ${length}\r\n\r\n`);
+      socket.write(Buffer.alloc(sent));
+      socket.rest = () => socket.write(Buffer.alloc(length - sent));
+      return socket;
+    },
+  };
+}
+
+// a raw socket of a guest that sends head and chunks, and keeps what comes back in got
+function rawGuest(t, relay, head, ...chunks) {
+  const socket = connect(relay.port, '127.0.0.1');
+  t.after(() => socket.destroy());
+  socket.got = '';
+  socket.on('data', (d) => (socket.got += d.toString('latin1')));
+  socket.on('error', () => {});
+  socket.write(head);
+  for (const c of chunks) socket.write(c);
+  return socket;
+}
+
+test('add regression test: a push that is cut off gives its place in the memory of the relay back', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const key = 'c'.repeat(22);
+  const host = await fakeHost(relay, key);
+  rawGuest(t, relay, `GET /${key}/clip.mp4 HTTP/1.1\r\nHost: relay\r\n\r\n`);
+  const [item] = await host.next();
+  const push = host.partial(item.id, 4 * MB, 3 * MB);
+  t.after(() => push.destroy());
+  await until(() => relay.held() >= 3 * MB, 'the relay to hold the push that it reads');
+  push.destroy();
+  await until(() => relay.held() === 0, 'the place of the cut push to be given back', 5000);
+});
