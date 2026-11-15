@@ -328,6 +328,9 @@ function openShare(client: Client): void {
     link = ended.link;
     show();
     showPeople();
+    // the button End session, which had the focus, is replaced
+    if (link) dialog.buttons.get('done')?.focus();
+    else form?.relay.input.focus();
   };
 
   // the host is shown the form or the link once the edit command answers

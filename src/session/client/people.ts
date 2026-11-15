@@ -375,11 +375,11 @@ export function install(client: Client): void {
     paint(me, client.person, client.name, `${client.name}, you`);
     me.classList.add('me');
     list.push(me);
-    // the nodes that stay keep the focus
+    // the nodes that left go first, so that the nodes that stay are not moved and keep the focus
+    for (const el of [...box.children]) if (!list.includes(el as HTMLButtonElement)) el.remove();
     list.forEach((el, i) => {
       if (box.children[i] !== el) box.insertBefore(el, box.children[i] ?? null);
     });
-    while (box.children.length > list.length) box.lastElementChild!.remove();
     for (const [person, el] of avatars) if (!el.isConnected) avatars.delete(person);
   };
 
