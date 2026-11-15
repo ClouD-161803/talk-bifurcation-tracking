@@ -114,7 +114,11 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
     networkCrashes++;
     for (const listener of onNetworkCrash) listener();
   });
-  const exited = new Promise((done) => child.once('exit', done));
+  let hasExited = false;
+  const exited = new Promise((done) => child.once('exit', (...a) => {
+    hasExited = true;
+    done(...a);
+  }));
   // rejected when Chrome exits, so that a request in flight is not left unsettled
   const crashed = new Promise((_, fail) => {
     child.once('exit', (code, signal) => fail(new Error(`Chrome exited with ${signal ?? `code ${code}`}\n${stderr}`)));
@@ -123,10 +127,10 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
   // a write after an exit of Chrome fails, and the exit is reported with crashed
   child.stdio[3].on('error', () => {});
 
-  function answered(promise, what) {
+  function answered(promise, what, limit = timeout) {
     let timer;
     const late = new Promise((_, fail) => {
-      timer = setTimeout(() => fail(new Error(`Chrome did not answer ${what} within ${timeout} ms\n${stderr}`)), timeout);
+      timer = setTimeout(() => fail(new Error(`Chrome did not answer ${what} within ${limit} ms\n${stderr}`)), limit);
     });
     return Promise.race([promise, late, crashed]).finally(() => clearTimeout(timer));
   }
@@ -153,12 +157,13 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
     }
   });
 
-  function send(method, params = {}, sessionId) {
+  function send(method, params = {}, sessionId, limit = timeout) {
     const id = nextId++;
     child.stdio[3].write(`${JSON.stringify({ id, method, params, sessionId })}\0`);
     // an expression that is not answered is named by its start, to tell which read of a test hung
     const what = typeof params.expression === 'string' ? `${method} of ${params.expression.slice(0, 300)}` : method;
-    return answered(new Promise((done, fail) => pending.set(id, { done, fail })), what);
+    return answered(new Promise((done, fail) => pending.set(id, { done, fail })), what, limit)
+      .finally(() => pending.delete(id));
   }
 
   // with mobile set, the page is laid out as on a phone, with touch and a coarse pointer, and scale
@@ -167,37 +172,83 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
   // without drafts, the unsaved edits that the editor keeps in the storage of the browser 1 s after
   // its last change are not written, since they were offered on a dialog to the next page of a test
   async function newPage({ width = 1920, height = 1080, mobile = false, scale = 1, motion = false, drafts = false } = {}) {
-    const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
-    const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
-    const call = (method, params) => send(method, params, sessionId);
-    const errors = [];
-    const onEvent = ({ method, params, sessionId: from }) => {
-      if (from !== sessionId) return;
-      if (method === 'Runtime.exceptionThrown') {
-        const details = params.exceptionDetails;
-        errors.push(details.exception?.description ?? details.text);
-      } else if (method === 'Runtime.consoleAPICalled' && ['error', 'assert'].includes(params.type)) {
-        errors.push(`console.${params.type}: ${params.args.map((a) => a.value ?? a.description).join(' ')}`);
-      } else if (method === 'Log.entryAdded' && (params.entry.level === 'error' || params.entry.text.includes('GL_INVALID'))) {
-        // failed loads of scripts, styles, fonts, and images are reported here, and an invalid call
-        // of WebGL only as a warning
-        errors.push(`${params.entry.text} ${params.entry.url ?? ''}`.trim());
-      }
-    };
-    listeners.add(onEvent);
-    await Promise.all([call('Page.enable'), call('Runtime.enable'), call('Log.enable')]);
-    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile });
-    if (mobile) await call('Emulation.setTouchEmulationEnabled', { enabled: true });
-    if (motion) await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
-    if (!drafts) {
-      await call('Page.addScriptToEvaluateOnNewDocument', {
-        source: `{
-          const set = Storage.prototype.setItem;
-          Storage.prototype.setItem = function (key, value) {
-            if (!String(key).startsWith('beeson-draft:')) set.call(this, key, value);
+    // on Windows runners, a fresh about:blank tab right after closing a page can hang or detach
+    // before answering Page.enable. close a wedged tab and try another target twice at most
+    const setupLimit = Math.min(timeout, 15000);
+    const cleanupLimit = Math.min(timeout, 2000);
+    let targetId;
+    let sessionId;
+    let call;
+    let errors;
+    let onEvent;
+    for (let n = 0; ; n++) {
+      targetId = null;
+      errors = [];
+      onEvent = null;
+      let onCrash;
+      try {
+        ({ targetId } = await send('Target.createTarget', { url: 'about:blank' }, undefined, setupLimit));
+        ({ sessionId } = await send('Target.attachToTarget', { targetId, flatten: true }, undefined, setupLimit));
+        call = (method, params, limit = timeout) => send(method, params, sessionId, limit);
+        onEvent = ({ method, params, sessionId: from }) => {
+          if (from !== sessionId) return;
+          if (method === 'Runtime.exceptionThrown') {
+            const details = params.exceptionDetails;
+            errors.push(details.exception?.description ?? details.text);
+          } else if (method === 'Runtime.consoleAPICalled' && ['error', 'assert'].includes(params.type)) {
+            errors.push(`console.${params.type}: ${params.args.map((a) => a.value ?? a.description).join(' ')}`);
+          } else if (method === 'Log.entryAdded' && (params.entry.level === 'error' || params.entry.text.includes('GL_INVALID'))) {
+            // failed loads of scripts, styles, fonts, and images are reported here, and an invalid call
+            // of WebGL only as a warning
+            errors.push(`${params.entry.text} ${params.entry.url ?? ''}`.trim());
+          }
+        };
+        listeners.add(onEvent);
+        const targetLost = new Promise((_, fail) => {
+          onCrash = ({ method, params, sessionId: from }) => {
+            if (
+              (from === sessionId && method === 'Inspector.targetCrashed') ||
+              (method === 'Target.targetCrashed' && params?.targetId === targetId) ||
+              (method === 'Target.detachedFromTarget' && params?.sessionId === sessionId)
+            ) {
+              fail(new Error(`Chrome target ${targetId} closed during setup (${method})`));
+            }
           };
-        }`,
-      });
+          listeners.add(onCrash);
+        });
+        targetLost.catch(() => {});
+        const settingUp = (async () => {
+          await Promise.all([
+            call('Page.enable', {}, setupLimit),
+            call('Runtime.enable', {}, setupLimit),
+            call('Log.enable', {}, setupLimit),
+          ]);
+          await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile }, setupLimit);
+          if (mobile) await call('Emulation.setTouchEmulationEnabled', { enabled: true }, setupLimit);
+          if (motion) await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] }, setupLimit);
+          if (!drafts) {
+            await call('Page.addScriptToEvaluateOnNewDocument', {
+              source: `{
+                const set = Storage.prototype.setItem;
+                Storage.prototype.setItem = function (key, value) {
+                  if (!String(key).startsWith('beeson-draft:')) set.call(this, key, value);
+                };
+              }`,
+            }, setupLimit);
+          }
+        })();
+        settingUp.catch(() => {});
+        await Promise.race([settingUp, targetLost]);
+        listeners.delete(onCrash);
+        break;
+      } catch (error) {
+        if (onEvent) listeners.delete(onEvent);
+        if (onCrash) listeners.delete(onCrash);
+        if (targetId && !hasExited) {
+          await send('Target.closeTarget', { targetId }, undefined, cleanupLimit).catch(() => {});
+        }
+        if (hasExited || n === 2) throw error;
+      }
     }
 
     async function evaluate(expression) {
