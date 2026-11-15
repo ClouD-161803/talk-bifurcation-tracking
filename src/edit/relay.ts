@@ -205,13 +205,26 @@ export class RelayLink {
       body = Buffer.from('the answer is too large for the relay');
     }
     try {
-      const pushed = await fetch(`${this.relay}/host/${this.key}/push/${item.id}`, {
-        method: 'POST',
-        headers: { ...this.auth(), 'Content-Type': 'application/octet-stream', 'x-relay-status': String(response.status), 'x-relay-headers': asciiJson(response.headers) },
-        body,
-        signal: AbortSignal.timeout(60_000),
-      });
-      await pushed.body?.cancel();
+      const push = async () => {
+        const token = this.token;
+        const pushed = await fetch(`${this.relay}/host/${this.key}/push/${item.id}`, {
+          method: 'POST',
+          headers: { ...this.auth(), 'Content-Type': 'application/octet-stream', 'x-relay-status': String(response.status), 'x-relay-headers': asciiJson(response.headers) },
+          body,
+          signal: AbortSignal.timeout(60_000),
+        });
+        await pushed.body?.cancel();
+        return { status: pushed.status, token };
+      };
+      let pushed = await push();
+      if (pushed.status === 401 && this.running) {
+        // the token changed under the push, or the relay forgot the session, hence the answer
+        // goes once more after a registration, which keeps the waiting requests of the session
+        if (this.registering) await this.registering.catch(() => {});
+        if (this.token === pushed.token) await this.register();
+        pushed = await push();
+      }
+      if (pushed.status < 200 || pushed.status > 299) this.log(`the relay refused an answer with ${pushed.status}`);
     } catch (e) {
       this.log(`an answer did not reach the relay: ${(e as Error).message}`);
     } finally {
