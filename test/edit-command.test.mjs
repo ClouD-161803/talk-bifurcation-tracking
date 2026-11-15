@@ -784,3 +784,25 @@ test('add regression test: names that look the same as a name present, or that s
     assert.equal(answer.json().name, name);
   }
 });
+
+test('add regression test: a move of the sharing to another relay tells the guests of the first relay that the session ended', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const first = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => first.close());
+  const second = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => second.close());
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const events = (relay, who, since) => fetch(`${relay.url}${api(`events?token=${who.token}&since=${since}`)}`).then(async (r) => (r.status === 200 ? r.json() : { status: r.status, text: await r.text() }));
+  await post(edit.port, api('hello'), { name: 'Ana' });
+  assert.equal((await post(edit.port, api('share'), { relay: first.url, secret: SECRET })).status, 200);
+  const ben = await (await fetch(`${first.url}${api('hello')}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Ben' }) })).json();
+  const seen = await events(first, ben, ben.v);
+  const waiting = events(first, ben, seen.v);
+  await until(() => first.pulled() === 1, 'the edit command to pull the poll of the guest');
+  assert.equal((await post(edit.port, api('share'), { relay: second.url, secret: SECRET })).status, 200);
+  assert.deepEqual((await waiting).ended, { by: 'Ana' }, 'the waiting poll of the guest');
+  assert.deepEqual((await events(second, ben, seen.v)).ended, { by: 'Ana' }, 'a poll of the guest through the new relay');
+});
