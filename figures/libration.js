@@ -1,6 +1,6 @@
 // written from figures/libration.tex by npm run tex. change the source, since this file is written again from it
 (window.beesonFigures ??= {})["libration"] = {
-  "hash": "f6ae0de8d6bb7957",
+  "hash": "1c1d82cc7069ca42",
   "width": 600.13,
   "height": 211.86,
   "scale": 1,

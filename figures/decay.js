@@ -1,6 +1,6 @@
 // written from figures/decay.tex by npm run tex. change the source, since this file is written again from it
 (window.beesonFigures ??= {})["decay"] = {
-  "hash": "12272a84ccc745b2",
+  "hash": "09ce11ca56e02a46",
   "width": 600.02,
   "height": 519.98,
   "scale": 1,

@@ -137,6 +137,9 @@ export function wrapperOf({ mode = 'light', preamble = false, width = null, heig
     `\\usepackage[${mode}]{beeson-tikz}`,
   ];
   if (preamble) lines.push(`\\input{${PREAMBLE}}`);
+  // MathJax knows the commands of these packages without a package, hence a preamble may use them.
+  // they are loaded after the preamble, so that one loaded there with options does not clash
+  lines.push('\\usepackage{amsmath,amssymb,bm}');
   // a source may size a part by the box, as in width=0.5\figurewidth. without a box, the two
   // lengths are the defaults of pgfplots
   lines.push(

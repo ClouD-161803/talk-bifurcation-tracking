@@ -230,6 +230,9 @@ test('a figure knows the commands of amsmath, amssymb, and bm that a macro of th
     const { errors } = compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', `{${label}}`) });
     assert.equal(errors, undefined, `${label}: ${JSON.stringify(errors)}`);
   }
+  // a package that the preamble of a paper loads with options does not clash
+  writeFileSync(join(dir, 'preamble.tex'), `\\usepackage[intlimits]{amsmath}\n${preamble}`);
+  assert.equal(compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{$\\vb{r}$}') }).errors, undefined);
 });
 
 const page = (body) => `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<script src="tex.js"></script>\n</head>\n<body>\n<div class="reveal"><div class="slides">\n${body}\n</div></div>\n</body>\n</html>\n`;
