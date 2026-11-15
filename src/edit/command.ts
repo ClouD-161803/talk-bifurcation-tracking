@@ -186,6 +186,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     }
     if (!['hello', 'name', 'op', 'presence', 'bye'].includes(route)) return error(404, 'not found');
     if (request.method !== 'POST') return error(405, 'POST');
+    // index.html is written for the last time once the stop begins, hence a later change would be lost
+    if (closed && (route === 'op' || route === 'hello')) return error(503, 'the edit command is stopping');
     if (!isJson(request)) return error(415, 'the body must be application/json');
     let body: Record<string, unknown>;
     try {
