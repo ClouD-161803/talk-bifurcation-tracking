@@ -398,7 +398,7 @@ const struck = (c: string) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.from
 const AS_IS = new Set(['boldsymbol', 'bm', 'mathit', 'mathop', 'mathfrak', 'ensuremath']);
 const UPRIGHT = new Set(['mathrm', 'text', 'mathbf', 'mathsf', 'mathtt', 'operatorname', 'textrm', 'textbf', 'textit', 'mathnormal']);
 // the spaces of TeX in math, and the negative space, which is not drawn
-const SPACES: Record<string, string> = { ',': ' ', ':': ' ', ';': ' ', ' ': ' ', '!': '' };
+const SPACES: Record<string, string> = { ',': ' ', ':': ' ', ';': ' ', ' ': ' ', '!': '', '\\': ' ' };
 
 export type Run = { text: string; italic: boolean; shift: 'sub' | 'sup' | null };
 

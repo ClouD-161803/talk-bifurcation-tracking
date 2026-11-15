@@ -2271,7 +2271,7 @@
   var struck = (c) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(120120 + c.charCodeAt(0) - 65) : c);
   var AS_IS = /* @__PURE__ */ new Set(["boldsymbol", "bm", "mathit", "mathop", "mathfrak", "ensuremath"]);
   var UPRIGHT = /* @__PURE__ */ new Set(["mathrm", "text", "mathbf", "mathsf", "mathtt", "operatorname", "textrm", "textbf", "textit", "mathnormal"]);
-  var SPACES = { ",": " ", ":": " ", ";": " ", " ": " ", "!": "" };
+  var SPACES = { ",": " ", ":": " ", ";": " ", " ": " ", "!": "", "\\": " " };
   function parseMarkup(src, macros) {
     const runs = [];
     const push = (text, italic, shift) => {
