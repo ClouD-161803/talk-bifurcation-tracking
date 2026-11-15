@@ -158,10 +158,10 @@ test('an outside write back to an earlier text keeps the newer edits of the sess
   assert.ok(authority.text.includes('<p>typo</p>'), 'the session lost its newer edit');
 });
 
-// a folder made read-only by chmod refuses a new file neither on Windows nor to root
-const noReadOnlyFolder = process.platform === 'win32' || process.getuid?.() === 0 ? 'a read-only folder does not refuse a write on Windows or to root' : false;
+// a mode set by chmod refuses neither a read nor a write on Windows or to root
+const noChmod = process.platform === 'win32' || process.getuid?.() === 0 ? 'chmod does not refuse a read or a write on Windows or to root' : false;
 
-test('a write that keeps failing is reported with the number of unwritten operations, and the stop of the command exits nonzero', { timeout: 120_000, skip: noReadOnlyFolder }, async (t) => {
+test('a write that keeps failing is reported with the number of unwritten operations, and the stop of the command exits nonzero', { timeout: 120_000, skip: noChmod }, async (t) => {
   const reports = [];
   const { dir, file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, onWriteError: (e) => reports.push(e) });
   try {
@@ -223,4 +223,17 @@ test('a symbolic link index.html is written through to its target, the mode of t
   await until(() => readFileSync(target, 'utf8').includes('ONE '), 'the edit in the target of the link', 5000);
   assert.ok(lstatSync(file).isSymbolicLink(), 'index.html is no longer a symbolic link');
   assert.equal(statSync(target).mode & 0o777, 0o444);
+});
+
+test('a stop on a changed file that cannot be read logs the error and does not throw it', { timeout: 60_000, skip: noChmod }, async (t) => {
+  const { file, authority, disk, lines } = setup(t, DECK);
+  insert(authority, '<h2>One', 'ONE ');
+  writeFileSync(file, DECK.replace('<h2>Two', 'AGENT <h2>Two'));
+  chmodSync(file, 0o000);
+  try {
+    assert.doesNotThrow(() => disk.stopSync());
+    assert.ok(lines.some((l) => l.includes('could not')), 'the error is not in the log');
+  } finally {
+    chmodSync(file, 0o644);
+  }
 });
