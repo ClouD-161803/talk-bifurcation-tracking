@@ -1397,7 +1397,7 @@ var People = class {
   }) {
     this.members = /* @__PURE__ */ new Map();
     // the person, the kind, and the token of every page that said hello, so that a browser back
-    // from a sleep keeps its person
+    // from a sleep keeps its person, and whether the page said bye since
     this.clients = /* @__PURE__ */ new Map();
     // the client id of each token
     this.tokens = /* @__PURE__ */ new Map();
@@ -1530,7 +1530,10 @@ var People = class {
     this.changed();
     return true;
   }
+  // the page left, and a request of it that arrives later does not bring it back, only a hello
   bye(client) {
+    const known = this.clients.get(client);
+    if (known) known.left = true;
     if (this.members.delete(client)) this.changed();
   }
   // a long poll of client for the news after the version since
@@ -1630,7 +1633,7 @@ var People = class {
       this.clients.delete(client);
       this.clients.set(client, known);
     }
-    if (!member && known && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
+    if (!member && known && !known.left && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
       const { person, name, color } = record;
       const now = Date.now();
       member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, writeSeen: 0, lastAnswer: 0, polls: 0 };
