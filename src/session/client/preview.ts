@@ -11,7 +11,7 @@ import { slidesOf, VOID, type Slide } from '../slides.ts';
 import type { Client } from './client.ts';
 import { make, style } from './dom.ts';
 import { authorsOf, dayLabel, personOf, slidesText, timeOf } from './labels.ts';
-import { openMenu, type MenuItem } from './menu.ts';
+import { closeMenu, openMenu, type MenuItem } from './menu.ts';
 
 const CSS = `
 .beeson-session-preview { position: fixed; z-index: 55; display: flex; flex-direction: column; box-sizing: border-box; background: var(--ed-canvas); color: var(--ed-text); font: 12px/1.35 var(--ed-font); }
@@ -49,6 +49,9 @@ html:not(.beeson-hide-changes) :is([data-beeson-changed].fragment, [data-beeson-
 
 // the bar is wrapped onto two rows, with Name this version in More, below this width in px
 const TWO_ROWS = 600;
+
+// the keys that reach reveal.js in the preview, which move through its slides
+const NAVIGATION = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
 // text with a base element at the start of its head, so that its relative addresses resolve as in
 // a page loaded from href. the address of the page is about:srcdoc, which may not be changed to one
@@ -224,6 +227,22 @@ export class Preview {
     return loaded;
   }
 
+  // the keys of the page in the preview, which does not reach the window of the editor: Esc leaves
+  // Version History as it does in the editor, the arrows move through the slides, and the other
+  // keys are kept from reveal.js and the theme, e.g. O of the overview and E of the editor
+  private keys(w: Window): void {
+    w.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        if (!closeMenu()) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+      } else if (!NAVIGATION.has(ev.key) || ev.ctrlKey || ev.metaKey || ev.altKey) ev.stopImmediatePropagation();
+    }, true);
+    w.addEventListener('keypress', (ev) => ev.stopImmediatePropagation(), true);
+    // a press in the page does not reach the window of the editor, which closes an open menu
+    w.addEventListener('pointerdown', () => closeMenu(), true);
+  }
+
   private button(label: string, run: () => void, className = ''): HTMLButtonElement {
     const b = make('button', className, label);
     b.type = 'button';
@@ -320,7 +339,8 @@ export class Preview {
     try {
       const text = await this.textOf('aside', id);
       if (key !== this.key) return;
-      await this.write(frame, text, tokenize(text), this.url('aside', id));
+      const w = await this.write(frame, text, tokenize(text), this.url('aside', id));
+      if (key === this.key && w) this.keys(w);
     } catch (e) {
       if (key === this.key) info.append(make('span', 'removed', (e as Error).message));
     }
@@ -353,7 +373,8 @@ export class Preview {
     const tokens = tokenize(text);
     const w = await this.write(frame, text, tokens, this.url('version', v.id));
     const doc = w?.document;
-    if (key !== this.key || !doc) return;
+    if (key !== this.key || !w || !doc) return;
+    this.keys(w);
     this.text = text;
     this.slides = slidesOf(text, tokens);
     this.sections = sectionsOf(doc, text, this.slides);
