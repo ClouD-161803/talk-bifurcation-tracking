@@ -10,6 +10,7 @@ import type { Client } from './client.ts';
 import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
 import { authorsOf, dayLabel, personOf, slidesText, timeOf, whenOf } from './labels.ts';
+import { closeMenu } from './menu.ts';
 import { presenceOf } from './presence.ts';
 import { Preview } from './preview.ts';
 import { addStateItem } from './state.ts';
@@ -188,6 +189,7 @@ export function install(client: Client): void {
     const nodes: Node[] = [row('current', { kind: 'current' }, [make('span', 'title', 'Current version')])];
     const nameCurrent = make('button', 'name-current', 'Name this version');
     nameCurrent.type = 'button';
+    nameCurrent.dataset.id = 'name-current';
     nameCurrent.addEventListener('click', () => void name('current', ''));
     nodes.push(nameCurrent);
     const versions = (answer?.versions ?? []).filter((v) => !named.checked || v.name);
@@ -201,10 +203,11 @@ export function install(client: Client): void {
       if (label !== day) nodes.push(make('h3', 'day', (day = label)));
       nodes.push(versionRow(fold.head));
       if (!fold.rest.length) continue;
-      const key = fold.head.id;
+      const key = fold.rest[fold.rest.length - 1]!.id;
       if (selected.kind === 'version' && fold.rest.some((v) => v.id === (selected as { id: string }).id)) opened.add(key);
       const more = make('button', 'fold');
       more.type = 'button';
+      more.dataset.id = `fold:${key}`;
       const inner = make('div', 'folded');
       const draw = () => {
         const shown = opened.has(key);
@@ -237,8 +240,23 @@ export function install(client: Client): void {
     const info = selected.kind === 'version' ? answer?.versions.find((v) => v.id === id) : answer?.aside.find((a) => a.id === id);
     if (!info) return;
     preview ??= new Preview(client, pane!, { restore, name: (v) => void name(v.id, v.name ?? '') });
-    if (selected.kind === 'version') preview.showVersion(info as VersionInfo);
-    else preview.showAside(info as AsideInfo);
+    if (selected.kind === 'aside') {
+      preview.showAside(info as AsideInfo);
+      return;
+    }
+    const v = info as VersionInfo;
+    // the bar is made again, hence its focused control is focused again after, or More when its menu
+    // was open, which is closed since its items are of the bar before
+    const el = preview.el;
+    const controls = () => [...el.querySelectorAll<HTMLElement>('.bar :is(button, input)')];
+    const before = controls();
+    const at = before.indexOf(document.activeElement as HTMLElement);
+    const text = before[at]?.textContent;
+    const menu = before.some((b) => b.getAttribute('aria-expanded') === 'true') && closeMenu();
+    preview.showVersion(v);
+    if (at < 0 && !menu) return;
+    const after = controls();
+    (at >= 0 && after[at]?.textContent === text ? after[at] : after.find((b) => b.classList.contains('more')))?.focus();
   }
 
   function choose(select: Selected): void {
