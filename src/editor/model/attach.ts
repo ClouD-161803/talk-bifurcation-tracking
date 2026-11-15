@@ -389,6 +389,8 @@ export function install(app: App): void {
         await redo.call(entry);
         patch.redo();
       };
+      // the lines that the undo or the redo writes, for prune() of the history
+      Object.defineProperty(entry, 'touches', { get: () => patch.touched, configurable: true });
       typed.set(entry, (p = patch));
     }
     follow(app, p.write);
