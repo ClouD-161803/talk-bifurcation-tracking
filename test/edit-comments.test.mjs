@@ -173,6 +173,17 @@ test('the changes of the threads are told, and a shift of an anchor is not', (t)
   assert.equal(told, 4);
 });
 
+test('the new threads since a version are listed in the order in which they were made, as the list gives them', (t) => {
+  // two threads made in one millisecond have the same time, and a page then shows them in the order
+  // in which it got them
+  const { authority, comments } = open(sessionDir(t), DECK, { now: () => 1000 });
+  const v0 = comments.v;
+  const x = comments.add(ANN, onDeck(authority, 'x'));
+  const y = comments.add(ANN, onDeck(authority, 'y'));
+  assert.deepEqual(comments.list(ANN).comments.map((c) => c.id), [x.id, y.id]);
+  assert.deepEqual(comments.since(v0).changed.map((c) => c.id), [x.id, y.id]);
+});
+
 test('the file is written at most once in the given time, and at a stop', { timeout: 60_000 }, async (t) => {
   const dir = sessionDir(t);
   const file = join(dir, 'comments.json');
