@@ -1,16 +1,18 @@
 // the version history of a session. a version is a state of the text of index.html with its time,
-// and the people who changed the deck since the version before. a version is closed 60 s after
-// the last operation, at the latest 5 min after the first operation since the version before, and
-// at a stop. the versions are kept in .session/history.jsonl, appended only: a first line
+// the people who changed the deck since the version before, and an optional name. a version is
+// closed 60 s after the last operation, at the latest 5 min after the first operation since the
+// version before, at once when a person names the current state, and at a
+// stop. the versions are kept in .session/history.jsonl, appended only: a first line
 // { kind: "base", time, text }, then a line { kind: "version", id, time, authors, patches, marks,
-// slides, removed? } per version, whose patches turn the text of the version before into its own
+// slides, removed? } per version, whose patches turn the text of the version before
+// into its own, and a line { kind: "name", id, name } per name given or taken off.
 
 import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
 import { apply, diff, shiftOffset } from '../session/patch.ts';
-import { type AppliedOp, type HistoryAnswer, type Mark, type Patch, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
+import { VERSION_NAME_MAX, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, renameRetriedSync } from './disk.ts';
 
@@ -126,6 +128,13 @@ const validMarks = (marks: unknown, n: number): marks is Mark[] =>
   Array.isArray(marks) && marks.every((m) => m && Number.isInteger(m.start) && Number.isInteger(m.end) && 0 <= m.start && m.start <= m.end && m.end <= n && typeof m.author === 'string');
 const numbers = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
 
+// a name as it is kept, trimmed with inner whitespace collapsed, or null when it is too long
+export function cleanVersionName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const name = raw.replace(/\s+/g, ' ').trim();
+  return Array.from(name).length > VERSION_NAME_MAX ? null : name;
+}
+
 class Unreadable extends Error {}
 
 export class History {
@@ -218,14 +227,36 @@ export class History {
     return i < 0 ? null : this.textAt(i);
   }
 
-  // the open version closed, e.g. at a stop
-  close(): Version | null {
+  // the version of the current state closed at once and named. name is cleaned, and an empty name
+  // takes the name off. null for an unknown id, and 'long' for a name over VERSION_NAME_MAX
+  name(id: unknown, raw: unknown): VersionInfo | null | 'long' {
+    const name = cleanVersionName(raw);
+    if (name === null) return 'long';
+    let v: Version | null;
+    if (id === 'current') {
+      this.close();
+      // a deck without a version yet gets one that holds the base
+      v = this.versions[this.versions.length - 1] ?? this.close(true);
+    } else v = this.find(id);
+    if (!v) return null;
+    if ((v.name ?? '') !== name) {
+      if (name) v.name = name;
+      else delete v.name;
+      this.append({ kind: 'name', id: v.id, name });
+      this.changed();
+    }
+    return info(v);
+  }
+
+  // the open version closed, e.g. at a stop. empty closes a version without a change when there
+  // is not any, so that it can be named
+  close(empty = false): Version | null {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     const open = this.open;
     this.open = null;
     const text = this.authority.text;
-    if (text === this.lastText) return null;
+    if (text === this.lastText && !empty) return null;
     const patches = diff(this.lastText, text);
     const author = open?.author ?? AUTHOR;
     const v = this.version(open ? [...open.authors] : [], patches, clip(open?.marks ?? [], patches, author), text, open?.time);
@@ -287,7 +318,9 @@ export class History {
     this.versions.push(v);
     this.lastText = text;
     this.checkpoint(this.versions.length - 1, text);
-    this.append({ kind: 'version', ...v });
+    const { name, ...line } = v;
+    this.append({ kind: 'version', ...line });
+    if (name) this.append({ kind: 'name', id: v.id, name });
     this.changed();
   }
 
@@ -336,7 +369,11 @@ export class History {
   // the file written anew from memory, by a temporary file and a rename
   private writeAll(): void {
     const lines = [JSON.stringify({ kind: 'base', ...this.base })];
-    for (const v of this.versions) lines.push(JSON.stringify({ kind: 'version', ...v }));
+    for (const v of this.versions) {
+      const { name, ...line } = v;
+      lines.push(JSON.stringify({ kind: 'version', ...line }));
+    }
+    for (const v of this.versions) if (v.name) lines.push(JSON.stringify({ kind: 'name', id: v.id, name: v.name }));
     const data = `${lines.join('\n')}\n`;
     const tmp = join(this.dir, `.history.jsonl.${randomBytes(6).toString('hex')}.tmp`);
     try {
@@ -370,6 +407,7 @@ export class History {
     if (lines[last] === '') last--;
     let good = 0;
     let text = '';
+    const names = new Map<string, string>();
     for (let i = 0; i <= last; i++) {
       const record = this.parse(lines[i], i, text);
       if (record === null) {
@@ -381,20 +419,24 @@ export class History {
       if (record.kind === 'base') {
         this.base = { time: record.time, text: record.text };
         text = record.text;
-      } else {
+      } else if (record.kind === 'version') {
         text = apply(text, record.v.patches);
         this.versions.push(record.v);
         this.checkpoint(this.versions.length - 1, text);
-      }
+      } else names.set(record.id, record.name);
       good += lines[i].length + 1;
     }
     if (good > content.length) appendFileSync(this.file, '\n');
+    for (const v of this.versions) {
+      const name = names.get(v.id);
+      if (name) v.name = name;
+    }
     this.lastText = text;
     this.bytes = statSync(this.file).size;
     return true;
   }
 
-  private parse(line: string, i: number, text: string): { kind: 'base'; time: number; text: string } | { kind: 'version'; v: Version } | null {
+  private parse(line: string, i: number, text: string): { kind: 'base'; time: number; text: string } | { kind: 'version'; v: Version } | { kind: 'name'; id: string; name: string } | null {
     let r: Record<string, unknown>;
     try {
       r = JSON.parse(line);
@@ -403,6 +445,7 @@ export class History {
     }
     if (!r || typeof r !== 'object') return null;
     if (i === 0) return r.kind === 'base' && Number.isFinite(r.time) && typeof r.text === 'string' ? { kind: 'base', time: r.time as number, text: r.text } : null;
+    if (r.kind === 'name') return isVersionId(r.id) && typeof r.name === 'string' ? { kind: 'name', id: r.id, name: r.name } : null;
     if (r.kind !== 'version' || !isVersionId(r.id) || !Number.isFinite(r.time) || !Array.isArray(r.authors) || !r.authors.every((a) => typeof a === 'string')) return null;
     if (!validPatches(r.patches, text.length) || !numbers(r.slides)) return null;
     const after = text.length + (r.patches as Patch[]).reduce((s, p) => s + p.text.length - (p.end - p.start), 0);
@@ -415,6 +458,7 @@ export class History {
 
 function info(v: Version): VersionInfo {
   const out: VersionInfo = { id: v.id, time: v.time, authors: v.authors, slides: v.slides };
+  if (v.name) out.name = v.name;
   if (v.removed) out.removed = v.removed;
   return out;
 }
