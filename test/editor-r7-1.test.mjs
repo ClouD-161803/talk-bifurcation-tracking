@@ -316,10 +316,12 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// loadTime returns the ms from the navigation of a new tab with the editor to its ready editor
-async function loadTime(t, platform) {
+// loadTime returns the ms from the navigation of a new tab with the editor to its ready editor.
+// with busy, the tab first computes for busy ms at the start of its document, as on a crowded machine
+async function loadTime(t, platform, busy = 0) {
   const page = await browser.newPage({ width: 1600, height: 1000 });
   t.after(() => page.close().catch(() => {}));
+  if (busy) await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `{ const until = performance.now() + ${busy}; while (performance.now() < until); }` });
   const t0 = Date.now();
   await page.goto(`${server.origin}/${LAYOUTS}?edit&still&edit-platform=${platform}`);
   await page.waitFor(deckSettled);
@@ -329,14 +331,19 @@ async function loadTime(t, platform) {
 
 // item 3 of R7.1: a second tab of the deck of layouts, opened while the first was open, took about
 // 15 s to load, since the two clips of 12 MB in demo/ held the connections of the first tab. the
-// second tab is compared with the first, which takes about 0.6 s here and several s on a slow machine
-for (const platform of PLATFORMS) {
-  test(`a second tab of a deck with videos loads as fast as the first (${platform})`, async (t) => {
-    const first = await loadTime(t, platform);
-    await first.page.evaluate(`window.BeesonEditor.open(${js(readFileSync(LAYOUTS, 'utf8'))})`);
-    const second = await loadTime(t, platform);
-    assert.ok(second.ms < 2 * first.ms, `the second tab takes ${second.ms} ms to load, and the first ${first.ms} ms`);
-    assert.deepEqual(errors(first.page), []);
-    assert.deepEqual(errors(second.page), []);
-  });
+// second tab is compared with the first, which takes about 0.6 s here and several s on a slow machine.
+// with paused, the first load of the second tab is slowed by a pause of the machine
+async function secondTab(t, platform, paused = false) {
+  const first = await loadTime(t, platform);
+  await first.page.evaluate(`window.BeesonEditor.open(${js(readFileSync(LAYOUTS, 'utf8'))})`);
+  const second = await loadTime(t, platform, paused ? 3 * first.ms : 0);
+  assert.ok(second.ms < 2 * first.ms, `the second tab takes ${second.ms} ms to load, and the first ${first.ms} ms`);
+  assert.deepEqual(errors(first.page), []);
+  assert.deepEqual(errors(second.page), []);
 }
+
+for (const platform of PLATFORMS) {
+  test(`a second tab of a deck with videos loads as fast as the first (${platform})`, (t) => secondTab(t, platform));
+}
+
+test('a second tab slowed once by a pause of the machine is measured again before the test fails', (t) => secondTab(t, 'other', true));
