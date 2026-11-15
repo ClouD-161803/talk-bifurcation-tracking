@@ -614,6 +614,25 @@ test('a toast stays while the pointer is over it or the focus is in it', { timeo
   clean(b);
 });
 
+test('Enter, Tab, and Escape do nothing in a field while an input method composes', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann', 'Ben']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(a, 'Hi @Be');
+  await sees(a, `document.querySelectorAll('${PANE} .draft .people li').length`, 1);
+  const key = (init) => a.evaluate(`document.querySelector('${DRAFT}').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...${JSON.stringify(init)} }))`);
+  await key({ key: 'Enter', isComposing: true });
+  await key({ key: 'Tab', keyCode: 229 });
+  await key({ key: 'Escape', isComposing: true });
+  assert.deepEqual(await a.evaluate(`[document.querySelector('${DRAFT}')?.value ?? null, document.querySelector('${PANE} .draft .people')?.hidden ?? null]`), ['Hi @Be', false]);
+  await press(a, 'Escape');
+  await key({ key: 'Escape', keyCode: 229 });
+  assert.equal(await a.evaluate(`document.querySelector('${DRAFT}')?.value ?? null`), 'Hi @Be');
+  clean(a);
+});
+
 test('the text of a comment takes the direction of its words, and a name in running text is isolated', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t, ['Ann', 'Ben']);
   const id = await post(b, 0, 'שלום, @Ann!');
