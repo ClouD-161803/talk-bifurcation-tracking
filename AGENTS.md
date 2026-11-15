@@ -6,7 +6,7 @@ This repository is either slides, the template of the Beeson group for talks as 
 
 A hard invariant is never traded away for another goal, and when a change would break one, you stop and ask the person you work for. A convention may be argued with.
 
-1. A talk works without a toolchain, since the compiled `theme/beeson.js` and `theme/editor.js` are committed.
+1. A talk works without a toolchain, since the compiled `theme/beeson.js`, `theme/editor.js`, and `theme/editor-tex.js` are committed.
 2. A deck does not fetch anything at show time, since everything it loads is vendored under `theme/vendor/` with its license.
 3. A save of the editor keeps every byte of `index.html` outside the edited text elements.
 4. Nothing in this repository is derived from DyLAN code.
@@ -34,7 +34,7 @@ A hard invariant is never traded away for another goal, and when a change would 
 ## Commands
 
 ```sh
-npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, theme/beeson.js, and theme/editor.js
+npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, and the bundles theme/beeson.js, theme/editor.js, and theme/editor-tex.js
 npm run check                               # screenshots of every slide in both modes into check/, and the problems of the page
 npm run check -- --browser firefox          # the same in Firefox, or in Safari with --browser safari
 npm run pdf                                 # slides.pdf, one page per step
@@ -75,7 +75,7 @@ In a talk, `npm run check`, `npm run pdf`, and `npm run pptx` need only Node.js 
 PR-Agent reviews in the workflow `pr-agent` every pull request that a branch of this repository opens, and it reads this file as its review context, this section included. It does not take an event that a bot sends. A pull request from a fork is reviewed only after a person with write access comments a command, and a command of a person with write access reviews any pull request, one that a bot authored included.
 
 - Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding to fix before the pull request is merged, not a suggestion.
-- Do not suggest a change in `theme/vendor/`, which is vendored with its license, or in `theme/beeson.js` or `theme/editor.js`, which are compiled and committed on purpose.
+- Do not suggest a change in `theme/vendor/`, which is vendored with its license, or in `theme/beeson.js`, `theme/editor.js`, or `theme/editor-tex.js`, which are compiled and committed on purpose.
 - Read the section of `REFERENCE.md` on an element before you question it, since most of what looks unusual there is the design of the theme.
 
 ## Documentation

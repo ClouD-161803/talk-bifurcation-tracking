@@ -4,7 +4,7 @@ The rules below are for work on the template itself, i.e. the theme, the editor,
 
 ## Bundles and vendored files
 
-- The theme is compiled from `src/main.ts` into `theme/beeson.js`, and the editor from `src/editor/main.ts` into `theme/editor.js`. Run `npm run build` after every change under `src/`, and commit both bundles with the change.
+- The theme is compiled from `src/main.ts` into `theme/beeson.js`, the editor from `src/editor/main.ts` into `theme/editor.js`, and the sheets of the preamble and the bibliography from `src/editor/tex/sheets.ts` into `theme/editor-tex.js`, which is loaded at the first open of a sheet or of the list of the bibliography. Run `npm run build` after every change under `src/`, and commit the bundles with the change.
 - Keep the editor out of `theme/beeson.js`, since nothing of the editor is loaded in a deck opened without `edit`.
 - Keep `theme/editor.js` under the budget in `test/build.test.mjs`, since the editor is loaded from the file at each `edit`.
 - The files in `theme/vendor/` are copied from `node_modules` by `scripts/vendor.mjs`, apart from the TyCHO runtime and the Latin Modern Roman faces, which are copied by hand. Add a library that a deck loads to `scripts/vendor.mjs`, together with its license.
