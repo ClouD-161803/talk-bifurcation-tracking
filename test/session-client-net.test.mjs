@@ -609,3 +609,26 @@ test('an idle page polls from the version of the last answer, hence the edit com
   clean(a, REFUSED);
   clean(b, REFUSED);
 });
+
+test('a second outage starts the reconnect again at 1 s', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt !== null`);
+  // each Try now that fails doubles the wait
+  for (const delay of [2, 4, 8]) {
+    await page.evaluate(`(${C}.tryNow(), true)`);
+    await page.waitFor(`${C}.retryAt !== null && ${C}.retryAt - Date.now() > ${(delay - 1) * 1000}`);
+  }
+  await page.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
+  await page.waitFor(ONLINE, 10_000);
+  await page.evaluate(`window.__first = null, ${OFFLINE}`);
+  await page.waitFor(`${C}.retryAt !== null && !!(window.__first ??= [${C}.retryAt - Date.now(), ${STATE}])`);
+  const [delay, state] = await page.evaluate(`window.__first`);
+  assert.ok(delay <= 1000, `the first wait of the second outage is ${delay} ms`);
+  assert.equal(state, 'Offline. Reconnecting in 1 s');
+  clean(page, REFUSED);
+});
