@@ -13,6 +13,7 @@ import { Authority } from '../session/authority.ts';
 import { isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { readApplied, writeApplied } from './applied.ts';
 import { Disk, readText, renameRetriedSync } from './disk.ts';
+import { History, type HistoryOptions } from './history.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
@@ -35,6 +36,7 @@ export type StartOptions = {
   port?: number;
   relay?: string;
   log?: (message: string) => void;
+  history?: Omit<HistoryOptions, 'now' | 'log'>;
 };
 
 export type Running = {
@@ -200,6 +202,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   // the pages are told of a write that fails, since an operation is acknowledged before it is written
   const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
+  // made once this command holds the lock, so that a second start does not write the history
+  let history!: History;
   let port = 0;
   let relay: RelayLink | null = null;
   let closed = false;
@@ -502,6 +506,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   try {
     writeFileSync(join(root, '.session', 'port'), `${port}\n`);
   } catch {}
+  history = new History(join(root, '.session'), authority, { ...options.history, log });
   disk.start();
 
   if (options.relay) {
@@ -536,6 +541,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');
         }
+        history.stopSync();
         written(unwritten);
         // a share in progress sees closed and stops its link, hence the stop waits behind it
         await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);

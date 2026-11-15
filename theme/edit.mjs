@@ -6,14 +6,15 @@ import { realpathSync as realpathSync3 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
-import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync5, realpathSync as realpathSync2, unlinkSync as unlinkSync4, writeFileSync as writeFileSync4 } from "node:fs";
+import { createReadStream, mkdirSync as mkdirSync3, readFileSync as readFileSync6, realpathSync as realpathSync2, unlinkSync as unlinkSync5, writeFileSync as writeFileSync5 } from "node:fs";
 import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile3 } from "node:fs/promises";
 import { createServer } from "node:http";
-import { createHash, randomBytes as randomBytes4 } from "node:crypto";
+import { createHash, randomBytes as randomBytes5 } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join as join4, resolve, sep as sep2 } from "node:path";
+import { join as join5, resolve, sep as sep2 } from "node:path";
 
 // src/session/protocol.ts
+var VERSION_NAME_MAX = 80;
 var COLORS = ["--data-2", "--data-3", "--data-5", "--data-7"];
 var HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}\p{Cf}]$/u;
 var SELECTOR = /^[\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
@@ -240,6 +241,59 @@ function tokenize(html) {
     }
   }
   return out;
+}
+function classesOf(token) {
+  if (token.type !== "start") return [];
+  const value = token.attrs.find((a) => a.name === "class")?.value ?? "";
+  return value.split(/\s+/).filter(Boolean);
+}
+var NAMED = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: "\xA0",
+  ensp: "\u2002",
+  emsp: "\u2003",
+  thinsp: "\u2009",
+  ndash: "\u2013",
+  mdash: "\u2014",
+  minus: "\u2212",
+  hellip: "\u2026",
+  lsquo: "\u2018",
+  rsquo: "\u2019",
+  ldquo: "\u201C",
+  rdquo: "\u201D",
+  laquo: "\xAB",
+  raquo: "\xBB",
+  middot: "\xB7",
+  bull: "\u2022",
+  times: "\xD7",
+  deg: "\xB0",
+  copy: "\xA9",
+  reg: "\xAE",
+  trade: "\u2122",
+  shy: "\xAD",
+  zwj: "\u200D",
+  zwnj: "\u200C"
+};
+var LEGACY = /* @__PURE__ */ new Set(["amp", "lt", "gt", "quot", "nbsp", "copy", "reg", "times", "deg", "laquo", "raquo", "middot", "shy"]);
+var REFERENCE_IN_ATTR = /&(#[xX][0-9a-fA-F]+|#[0-9]+|[A-Za-z][A-Za-z0-9]*)(;?)/g;
+function decodeAttr(raw) {
+  return raw.replace(REFERENCE_IN_ATTR, (m, body, semi, at) => {
+    if (body[0] === "#") {
+      const hex = body[1] === "x" || body[1] === "X";
+      const code = parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10);
+      const bad = !Number.isFinite(code) || code === 0 || code > 1114111 || code >= 55296 && code <= 57343;
+      return bad ? "\uFFFD" : String.fromCodePoint(code);
+    }
+    const value = NAMED[body];
+    if (value === void 0) return m;
+    if (semi) return value;
+    const next = raw[at + m.length] ?? "";
+    return LEGACY.has(body) && !/[A-Za-z0-9=]/.test(next) ? value : m;
+  });
 }
 
 // src/session/patch.ts
@@ -543,25 +597,25 @@ function anchors(a, b) {
     return at;
   };
   const inA = once(a), inB = once(b);
-  const pairs = [];
+  const pairs2 = [];
   a.forEach((p, i) => {
     const j = inB.get(p);
-    if (j !== void 0 && j >= 0 && inA.get(p) === i) pairs.push([i, j]);
+    if (j !== void 0 && j >= 0 && inA.get(p) === i) pairs2.push([i, j]);
   });
   const tails = [];
-  const prev = new Int32Array(pairs.length);
-  pairs.forEach(([, j], k) => {
+  const prev = new Int32Array(pairs2.length);
+  pairs2.forEach(([, j], k) => {
     let lo = 0, hi = tails.length;
     while (lo < hi) {
       const mid = lo + hi >> 1;
-      if (pairs[tails[mid]][1] < j) lo = mid + 1;
+      if (pairs2[tails[mid]][1] < j) lo = mid + 1;
       else hi = mid;
     }
     prev[k] = lo > 0 ? tails[lo - 1] : -1;
     tails[lo] = k;
   });
   const out = [];
-  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) out.push(pairs[k]);
+  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) out.push(pairs2[k]);
   return out.reverse();
 }
 function narrow(base, a, b, text, out) {
@@ -985,9 +1039,9 @@ var Disk = class {
       this.target = file;
     }
     try {
-      const info = statSync(this.target);
-      this.known = signature(info);
-      this.mode = modeOf(info);
+      const info2 = statSync(this.target);
+      this.known = signature(info2);
+      this.mode = modeOf(info2);
     } catch {
     }
     const dir = dirname(this.target), prefix = `.${basename(this.target)}.`;
@@ -1136,13 +1190,13 @@ var Disk = class {
   *check(limit) {
     const target = yield { resolve: this.file };
     if (target !== this.target) [this.target, this.known] = [target, ""];
-    const info = yield { stat: this.target };
-    if (!info) {
+    const info2 = yield { stat: this.target };
+    if (!info2) {
       this.known = "";
       return true;
     }
-    this.mode = modeOf(info);
-    let sig = signature(info);
+    this.mode = modeOf(info2);
+    let sig = signature(info2);
     if (sig === this.known) return true;
     let bytes = yield { read: this.target };
     const { stable, partial } = this.timing;
@@ -1307,9 +1361,631 @@ function writeApplied(file, table, log) {
   }
 }
 
+// src/edit/history.ts
+import { appendFileSync, mkdirSync, readdirSync as readdirSync2, readFileSync as readFileSync3, renameSync as renameSync2, statSync as statSync2, truncateSync, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { randomBytes as randomBytes3 } from "node:crypto";
+import { join as join2 } from "node:path";
+
+// src/session/slides.ts
+var VOID = /* @__PURE__ */ new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+var visibility = (t) => {
+  if (t.type !== "start") return "";
+  const a = t.attrs.find((x) => x.name === "data-visibility");
+  return a?.value ? decodeAttr(a.value) : "";
+};
+function slidesOf(text, tokens = tokenize(text)) {
+  const tops = [];
+  const stack = [];
+  for (const t of tokens) {
+    if (t.type === "start" && t.name === "section") {
+      const s = { start: t.start, open: t.end, end: text.length, vis: visibility(t), classes: classesOf(t), inner: [] };
+      if (stack.length) stack[0].inner.push(s);
+      else tops.push(s);
+      if (!t.selfClosing) stack.push(s);
+    } else if (t.type === "end" && t.name === "section" && stack.length) {
+      stack.pop().end = t.end;
+    }
+  }
+  const out = [];
+  let place = 0;
+  let past = 0;
+  let appendix = false;
+  for (const top of tops) {
+    if (top.vis !== "hidden") place++;
+    const shown2 = top.vis === "hidden" ? place + 1 : place;
+    const uncounted = top.vis === "uncounted" || !top.vis && (appendix || top.classes.some((c) => c === "title" || c === "section" || c === "closing"));
+    if (!appendix && top.classes.includes("closing")) appendix = true;
+    if (top.inner.length === 0) {
+      out.push({ start: top.start, end: top.end, open: top.open, number: shown2 });
+      if (!uncounted) past++;
+      continue;
+    }
+    for (let i = 0; i < top.inner.length; i++) {
+      const s = top.inner[i];
+      const leaf = !top.inner.some((o, j) => j > i && o.start < s.end);
+      if (leaf) out.push({ start: s.start, end: s.end, open: s.open, number: past + 1 });
+      if (s.vis !== "uncounted") past++;
+    }
+  }
+  return out;
+}
+function childrenOf(html) {
+  const out = [];
+  const stack = [];
+  for (const t of tokenize(html)) {
+    if (t.type === "start") {
+      if (stack.length === 1 && (VOID.has(t.name) || t.selfClosing)) out.push({ start: t.start, end: t.end });
+      if (!VOID.has(t.name) && !t.selfClosing) stack.push({ name: t.name, start: t.start });
+    } else if (t.type === "end") {
+      const at = stack.map((s) => s.name).lastIndexOf(t.name);
+      if (at < 0) continue;
+      if (at === 1) out.push({ start: stack[1].start, end: t.end });
+      stack.length = at;
+    }
+  }
+  return out;
+}
+function pairs(a, b) {
+  const out = [];
+  let pre = 0;
+  while (pre < a.length && pre < b.length && a[pre] === b[pre]) out.push({ i: pre, j: pre, same: true }), pre++;
+  let suf = 0;
+  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
+  const n = a.length - pre - suf, m = b.length - pre - suf;
+  const lcs = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) lcs[i][j] = a[pre + i] === b[pre + j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  const anchors2 = [];
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    if (a[pre + i] === b[pre + j]) anchors2.push([i++, j++]);
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) i++;
+    else j++;
+  }
+  anchors2.push([n, m]);
+  let i0 = 0, j0 = 0;
+  for (const [ai, aj] of anchors2) {
+    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj))) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
+    if (ai < n) out.push({ i: pre + ai, j: pre + aj, same: true });
+    i0 = ai + 1;
+    j0 = aj + 1;
+  }
+  for (let k = suf; k > 0; k--) out.push({ i: a.length - k, j: b.length - k, same: true });
+  return out;
+}
+var shared = (x, y) => {
+  let p = 0;
+  while (p < x.length && p < y.length && x[p] === y[p]) p++;
+  let s = 0;
+  while (s < x.length - p && s < y.length - p && x[x.length - 1 - s] === y[y.length - 1 - s]) s++;
+  return p + s;
+};
+function bestPairs(a, b) {
+  const n = a.length, m = b.length;
+  if (n === 0 || m === 0) return [];
+  if (n === m) return a.map((_, i) => [i, i]);
+  const k = Math.min(n, m);
+  const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
+  const score = Array.from({ length: k + 1 }, () => new Array(long.length + 1).fill(-Infinity));
+  for (let j = 0; j <= long.length; j++) score[0][j] = 0;
+  for (let i = 1; i <= k; i++) for (let j = i; j <= long.length; j++) score[i][j] = Math.max(score[i][j - 1], score[i - 1][j - 1] + shared(short[i - 1], long[j - 1]));
+  const out = [];
+  for (let i = k, j = long.length; i > 0; j--) {
+    if (score[i][j] !== score[i][j - 1]) {
+      out.push(flip ? [j - 1, i - 1] : [i - 1, j - 1]);
+      i--;
+    }
+  }
+  return out.reverse();
+}
+function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
+  const a = beforeSlides.map((s) => before2.slice(s.start, s.end));
+  const b = afterSlides.map((s) => after.slice(s.start, s.end));
+  const matched = pairs(a, b);
+  const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
+  const slides = /* @__PURE__ */ new Set();
+  afterSlides.forEach((s, j) => {
+    if (!same.has(j) && marks.some((m) => m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end)) slides.add(s.number);
+  });
+  const kept = new Set(matched.map((p) => p.i));
+  const gone = beforeSlides.filter((_, i) => !kept.has(i)).map((s) => s.number);
+  let elements = 0;
+  for (const p of matched) {
+    if (p.same) continue;
+    const x = childrenOf(a[p.i]).map((r) => a[p.i].slice(r.start, r.end));
+    const y = childrenOf(b[p.j]).map((r) => b[p.j].slice(r.start, r.end));
+    elements += x.length - pairs(x, y).length;
+  }
+  const out = { slides: [...slides].sort((x, y) => x - y) };
+  if (gone.length || elements) out.removed = { slides: [...new Set(gone)].sort((x, y) => x - y), elements };
+  return out;
+}
+
+// src/edit/history.ts
+var isVersionId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
+var newId = () => randomBytes3(9).toString("base64url");
+var ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
+var STEP = 50;
+var CHECKPOINTS = 64;
+function rangesOf(patches) {
+  let delta = 0;
+  return patches.map((p) => {
+    const start2 = p.start + delta;
+    delta += p.text.length - (p.end - p.start);
+    return { start: start2, end: start2 + p.text.length };
+  });
+}
+function tidy(marks) {
+  marks.sort((a, b) => a.start - b.start || a.end - b.end);
+  const out = [];
+  for (const m of marks) {
+    const last = out[out.length - 1];
+    if (last && last.author === m.author && m.start <= last.end) last.end = Math.max(last.end, m.end);
+    else out.push({ ...m });
+  }
+  return out;
+}
+function moveMarks(marks, patches, author) {
+  if (patches.length === 0) return marks;
+  const ranges = rangesOf(patches);
+  const out = [];
+  for (const m of marks) {
+    const start2 = shiftOffset(m.start, patches, true);
+    const end = m.start === m.end ? start2 : Math.max(start2, shiftOffset(m.end, patches, false));
+    let pieces2 = [{ start: start2, end }];
+    for (const r of ranges) {
+      if (r.start === r.end) continue;
+      pieces2 = pieces2.flatMap((p) => {
+        if (p.start === p.end) return r.start <= p.start && p.start <= r.end ? [] : [p];
+        if (p.end <= r.start || r.end <= p.start) return [p];
+        return [{ start: p.start, end: r.start }, { start: r.end, end: p.end }].filter((x) => x.start < x.end);
+      });
+    }
+    for (const p of pieces2) out.push({ start: p.start, end: p.end, author: m.author });
+  }
+  for (const r of ranges) {
+    if (r.start === r.end && out.some((m) => m.author === author && m.start <= r.start && r.start <= m.end)) continue;
+    out.push({ start: r.start, end: r.end, author });
+  }
+  return tidy(out);
+}
+function clip(marks, patches, author) {
+  const ranges = rangesOf(patches);
+  const out = [];
+  for (const m of marks) {
+    for (const r of ranges) {
+      if (m.start === m.end || r.start === r.end) {
+        if (m.start === m.end && r.start <= m.start && m.start <= r.end) out.push({ ...m });
+        else if (r.start === r.end && m.start <= r.start && r.start <= m.end) out.push({ start: r.start, end: r.start, author: m.author });
+      } else if (m.start < r.end && r.start < m.end) {
+        out.push({ start: Math.max(m.start, r.start), end: Math.min(m.end, r.end), author: m.author });
+      }
+    }
+  }
+  for (const r of ranges) {
+    const held = out.some((m) => r.start === r.end ? m.start <= r.start && r.start <= m.end : m.start < r.end && r.start < m.end);
+    if (!held) out.push({ start: r.start, end: r.end, author });
+  }
+  return tidy(out);
+}
+var validPatches = (patches, n) => {
+  if (!Array.isArray(patches)) return false;
+  let at = 0;
+  for (const p of patches) {
+    if (!p || typeof p.text !== "string" || !Number.isInteger(p.start) || !Number.isInteger(p.end) || p.start < at || p.end < p.start || p.end > n) return false;
+    at = p.end;
+  }
+  return true;
+};
+var MAX_PATCHES2 = 2e3;
+function operationOf(a, b) {
+  const patches = diff2(a, b);
+  if (patches.length <= MAX_PATCHES2) return patches;
+  return [{ start: patches[0].start, end: patches[patches.length - 1].end, text: b.slice(patches[0].start, b.length - (a.length - patches[patches.length - 1].end)) }];
+}
+var validMarks = (marks, n) => Array.isArray(marks) && marks.every((m) => m && Number.isInteger(m.start) && Number.isInteger(m.end) && 0 <= m.start && m.start <= m.end && m.end <= n && typeof m.author === "string");
+var numbers = (x) => Array.isArray(x) && x.every((n) => Number.isInteger(n));
+function cleanVersionName(raw) {
+  if (typeof raw !== "string") return null;
+  const name = raw.replace(/\s+/g, " ").trim();
+  return Array.from(name).length > VERSION_NAME_MAX ? null : name;
+}
+var Unreadable = class extends Error {
+};
+var History = class {
+  // dir is the .session folder of the talk
+  constructor(dir, authority, options = {}) {
+    // grows with every change of the list of versions or of the texts set aside
+    this.rev = 0;
+    // the last restore, and the count of restores
+    this.restored = null;
+    this.restores = 0;
+    // the patches from the text of the last version to index.html at the start, or null when the
+    // history began at this start
+    this.found = null;
+    this.base = { time: 0, text: "" };
+    this.versions = [];
+    // the texts after some versions, by index, as starting points of a rebuild
+    this.checkpoints = /* @__PURE__ */ new Map();
+    this.step = STEP;
+    this.lastText = "";
+    this.lastSlides = null;
+    this.open = null;
+    this.timer = null;
+    this.bytes = 0;
+    // true when the file may not hold every line, after a write that failed
+    this.broken = false;
+    this.stopped = false;
+    this.asides = [];
+    this.listeners = /* @__PURE__ */ new Set();
+    this.dir = dir;
+    this.file = join2(dir, "history.jsonl");
+    this.asideDir = join2(dir, "aside");
+    this.authority = authority;
+    this.quiet = options.quiet ?? 6e4;
+    this.longest = options.longest ?? 3e5;
+    this.maxBytes = options.maxBytes ?? 32 * 1024 * 1024;
+    this.keep = options.keep ?? 30 * 24 * 3600 * 1e3;
+    this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
+    this.asideFiles = options.asideFiles ?? 50;
+    this.now = options.now ?? Date.now;
+    this.log = options.log ?? (() => {
+    });
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+    }
+    let loaded = false;
+    try {
+      loaded = this.load();
+    } catch (e) {
+      if (!(e instanceof Unreadable)) this.log(`could not read ${this.file}: ${e.message}`);
+      const aside = join2(dir, `history-unreadable-${Date.now()}.jsonl`);
+      try {
+        renameSync2(this.file, aside);
+        this.log(`the version history could not be read, hence it was moved to ${aside} and a new history begins`);
+      } catch {
+      }
+      this.versions = [];
+      this.checkpoints.clear();
+      this.step = STEP;
+    }
+    const text = authority.text;
+    if (!loaded) {
+      this.base = { time: this.now(), text };
+      this.lastText = text;
+      this.writeAll();
+    } else {
+      this.found = { before: this.lastText, patches: diff2(this.lastText, text) };
+      if (this.found.patches.length) {
+        const patches = this.found.patches;
+        this.push(this.version([AUTHOR], patches, clip([], patches, AUTHOR), text), text);
+      }
+      if (this.bytes > this.maxBytes) this.compact();
+    }
+    this.readAsides();
+    authority.observe((op) => this.operation(op));
+  }
+  // calls fn after every change of rev
+  onChange(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  list() {
+    return { rev: this.rev, versions: this.versions.map(info).reverse(), aside: [...this.asides].reverse() };
+  }
+  get(id) {
+    const v = this.find(id);
+    return v ? { ...info(v), marks: v.marks } : null;
+  }
+  // the text of the deck at version id, or null for an unknown id
+  textOf(id) {
+    const i = this.indexOf(id);
+    return i < 0 ? null : this.textAt(i);
+  }
+  // the version of the current state closed at once and named. name is cleaned, and an empty name
+  // takes the name off. null for an unknown id, and 'long' for a name over VERSION_NAME_MAX
+  name(id, raw) {
+    const name = cleanVersionName(raw);
+    if (name === null) return "long";
+    let v;
+    if (id === "current") {
+      this.close();
+      v = this.versions[this.versions.length - 1] ?? this.close(true);
+    } else v = this.find(id);
+    if (!v) return null;
+    if ((v.name ?? "") !== name) {
+      if (name) v.name = name;
+      else delete v.name;
+      this.append({ kind: "name", id: v.id, name });
+      this.changed();
+    }
+    return info(v);
+  }
+  // the deck made to read as version id by one operation of person, between a version of the
+  // current state and a version of the restore. null for an unknown id. id is null in the answer
+  // when the deck already reads as the version
+  restore(id, person) {
+    const i = this.indexOf(id);
+    if (i < 0) return null;
+    const target = this.textAt(i);
+    const was = this.versions[i];
+    this.close();
+    if (this.authority.text === target) return { id: null };
+    this.authority.enter(operationOf(this.authority.text, target), person);
+    const v = this.close(false, was.id);
+    this.restored = { by: person, id: was.id, time: was.time };
+    this.restores++;
+    this.changed();
+    return { id: v?.id ?? null };
+  }
+  // a text that a person set aside, or null when it is too large
+  setAside(text, author) {
+    const bytes = Buffer.from(text, "utf8");
+    if (bytes.length > this.asideBytes) return null;
+    const aside = { id: newId(), time: this.now(), author };
+    mkdirSync(this.asideDir, { recursive: true });
+    const tmp = join2(this.asideDir, `.${asideName(aside)}.tmp`);
+    writeFileSync2(tmp, bytes);
+    renameRetriedSync(tmp, join2(this.asideDir, asideName(aside)));
+    this.asides.push(aside);
+    while (this.asides.length > this.asideFiles) {
+      const old = this.asides.shift();
+      try {
+        unlinkSync3(join2(this.asideDir, asideName(old)));
+      } catch {
+      }
+    }
+    this.changed();
+    return aside;
+  }
+  // the text set aside as id, or null
+  asideText(id) {
+    const aside = this.asides.find((a) => a.id === id);
+    if (!aside) return null;
+    try {
+      return readFileSync3(join2(this.asideDir, asideName(aside)), "utf8");
+    } catch {
+      return null;
+    }
+  }
+  // the open version closed, e.g. at a stop. empty closes a version without a change when there
+  // is not any, so that it can be named. restored is the id of the version that it restores
+  close(empty = false, restored) {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    const open2 = this.open;
+    this.open = null;
+    const text = this.authority.text;
+    if (text === this.lastText && !empty) return null;
+    const patches = diff2(this.lastText, text);
+    const author = open2?.author ?? AUTHOR;
+    const v = this.version(open2 ? [...open2.authors] : [], patches, clip(open2?.marks ?? [], patches, author), text, open2?.time);
+    if (restored) v.restored = restored;
+    this.push(v, text);
+    return v;
+  }
+  stopSync() {
+    if (this.stopped) return;
+    this.close();
+    this.stopped = true;
+  }
+  changed() {
+    this.rev++;
+    for (const fn of this.listeners) fn();
+  }
+  find(id) {
+    const i = this.indexOf(id);
+    return i < 0 ? null : this.versions[i];
+  }
+  indexOf(id) {
+    if (!isVersionId(id)) return -1;
+    for (let i = this.versions.length - 1; i >= 0; i--) if (this.versions[i].id === id) return i;
+    return -1;
+  }
+  textAt(i) {
+    if (i === this.versions.length - 1) return this.lastText;
+    let from = -1;
+    for (const k of this.checkpoints.keys()) if (k <= i && k > from) from = k;
+    let text = from < 0 ? this.base.text : this.checkpoints.get(from);
+    for (let k = from + 1; k <= i; k++) text = apply(text, this.versions[k].patches);
+    return text;
+  }
+  checkpoint(i, text) {
+    if ((i + 1) % this.step !== 0) return;
+    this.checkpoints.set(i, text);
+    if (this.checkpoints.size <= CHECKPOINTS) return;
+    this.step *= 2;
+    for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+  }
+  // a new version of text, which patches make from the text of the last version
+  version(authors, patches, marks, text, time = this.now()) {
+    this.lastSlides ??= slidesOf(this.lastText);
+    const slides = slidesOf(text);
+    const changes2 = slideChanges(this.lastText, this.lastSlides, text, slides, marks);
+    this.lastSlides = slides;
+    const v = { id: newId(), time, authors, slides: changes2.slides, patches, marks };
+    if (changes2.removed) v.removed = changes2.removed;
+    return v;
+  }
+  push(v, text) {
+    this.versions.push(v);
+    this.lastText = text;
+    this.checkpoint(this.versions.length - 1, text);
+    const { name, ...line } = v;
+    this.append({ kind: "version", ...line });
+    if (name) this.append({ kind: "name", id: v.id, name });
+    if (this.bytes > this.maxBytes) this.compact();
+    this.changed();
+  }
+  operation(op) {
+    if (this.stopped) return;
+    const t = Date.now();
+    const open2 = this.open ??= { first: t, last: t, time: 0, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author };
+    open2.last = t;
+    open2.time = this.now();
+    open2.author = op.author;
+    open2.authors.add(op.author);
+    open2.marks = moveMarks(open2.marks, op.patches, op.author);
+    this.arm();
+  }
+  // one timer at a time, which looks again at the times of the open version when it fires
+  arm() {
+    if (this.timer || !this.open) return;
+    const due = () => Math.min(this.open.last + this.quiet, this.open.first + this.longest);
+    const wait = () => Math.max(0, due() - Date.now());
+    const fire = () => {
+      this.timer = null;
+      if (!this.open) return;
+      if (wait() > 0) this.arm();
+      else this.close();
+    };
+    this.timer = setTimeout(fire, wait());
+    this.timer.unref?.();
+  }
+  append(line) {
+    if (this.broken) {
+      this.writeAll();
+      return;
+    }
+    const data = `${JSON.stringify(line)}
+`;
+    try {
+      appendFileSync(this.file, data);
+      this.bytes += Buffer.byteLength(data);
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      this.broken = true;
+    }
+  }
+  // the file written anew from memory, by a temporary file and a rename
+  writeAll() {
+    const lines = [JSON.stringify({ kind: "base", ...this.base })];
+    for (const v of this.versions) {
+      const { name, ...line } = v;
+      lines.push(JSON.stringify({ kind: "version", ...line }));
+    }
+    for (const v of this.versions) if (v.name) lines.push(JSON.stringify({ kind: "name", id: v.id, name: v.name }));
+    const data = `${lines.join("\n")}
+`;
+    const tmp = join2(this.dir, `.history.jsonl.${randomBytes3(6).toString("hex")}.tmp`);
+    try {
+      writeFileSync2(tmp, data);
+      renameRetriedSync(tmp, this.file);
+      this.bytes = Buffer.byteLength(data);
+      this.broken = false;
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      this.broken = true;
+      try {
+        unlinkSync3(tmp);
+      } catch {
+      }
+    }
+  }
+  // the versions before the oldest of the last keep ms and before the oldest named one left out,
+  // the version before them becoming the base
+  compact() {
+    const cutoff = this.now() - this.keep;
+    let k = this.versions.findIndex((v) => v.time >= cutoff);
+    if (k < 0) k = this.versions.length - 1;
+    const named = this.versions.findIndex((v) => v.name);
+    if (named >= 0) k = Math.min(k, named);
+    if (k <= 0) return;
+    this.base = { time: this.versions[k - 1].time, text: this.textAt(k - 1) };
+    this.versions = this.versions.slice(k);
+    const kept = /* @__PURE__ */ new Map();
+    for (const [i, text] of this.checkpoints) if (i >= k) kept.set(i - k, text);
+    this.checkpoints = kept;
+    this.step = STEP;
+    this.writeAll();
+    this.changed();
+  }
+  // true when the file was read, false when it does not exist or is empty. throws Unreadable for a
+  // file without a base, or with a line other than the last that cannot be read
+  load() {
+    let content;
+    try {
+      content = readFileSync3(this.file, "utf8");
+    } catch (e) {
+      if (e.code === "ENOENT") return false;
+      throw e;
+    }
+    if (content === "") return false;
+    const lines = content.split("\n");
+    let last = lines.length - 1;
+    if (lines[last] === "") last--;
+    let good = 0;
+    let text = "";
+    const names = /* @__PURE__ */ new Map();
+    for (let i = 0; i <= last; i++) {
+      const record = this.parse(lines[i], i, text);
+      if (record === null) {
+        if (i < last || i === 0) throw new Unreadable();
+        truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
+        break;
+      }
+      if (record.kind === "base") {
+        this.base = { time: record.time, text: record.text };
+        text = record.text;
+      } else if (record.kind === "version") {
+        text = apply(text, record.v.patches);
+        this.versions.push(record.v);
+        this.checkpoint(this.versions.length - 1, text);
+      } else names.set(record.id, record.name);
+      good += lines[i].length + 1;
+    }
+    if (good > content.length) appendFileSync(this.file, "\n");
+    for (const v of this.versions) {
+      const name = names.get(v.id);
+      if (name) v.name = name;
+    }
+    this.lastText = text;
+    this.bytes = statSync2(this.file).size;
+    return true;
+  }
+  parse(line, i, text) {
+    let r;
+    try {
+      r = JSON.parse(line);
+    } catch {
+      return null;
+    }
+    if (!r || typeof r !== "object") return null;
+    if (i === 0) return r.kind === "base" && Number.isFinite(r.time) && typeof r.text === "string" ? { kind: "base", time: r.time, text: r.text } : null;
+    if (r.kind === "name") return isVersionId(r.id) && typeof r.name === "string" ? { kind: "name", id: r.id, name: r.name } : null;
+    if (r.kind !== "version" || !isVersionId(r.id) || !Number.isFinite(r.time) || !Array.isArray(r.authors) || !r.authors.every((a) => typeof a === "string")) return null;
+    if (!validPatches(r.patches, text.length) || !numbers(r.slides)) return null;
+    const after = text.length + r.patches.reduce((s, p) => s + p.text.length - (p.end - p.start), 0);
+    const v = { id: r.id, time: r.time, authors: r.authors, slides: r.slides, patches: r.patches, marks: validMarks(r.marks, after) ? r.marks : [] };
+    const removed = r.removed;
+    if (removed && numbers(removed.slides) && Number.isInteger(removed.elements)) v.removed = { slides: removed.slides, elements: removed.elements };
+    if (isVersionId(r.restored)) v.restored = r.restored;
+    return { kind: "version", v };
+  }
+  readAsides() {
+    let names = [];
+    try {
+      names = readdirSync2(this.asideDir);
+    } catch {
+    }
+    for (const name of names) {
+      const m = ASIDE.exec(name);
+      if (m) this.asides.push({ id: m[2], time: Number(m[1]), author: m[3] });
+    }
+    this.asides.sort((a, b) => a.time - b.time);
+  }
+};
+var asideName = (a) => `${a.time}.${a.id}.${a.author}.html`;
+function info(v) {
+  const out = { id: v.id, time: v.time, authors: v.authors, slides: v.slides };
+  if (v.name) out.name = v.name;
+  if (v.removed) out.removed = v.removed;
+  if (v.restored) out.restored = v.restored;
+  return out;
+}
+
 // src/edit/http.ts
 import { open, realpath as realpath2, stat as stat2 } from "node:fs/promises";
-import { extname, join as join2, relative, sep } from "node:path";
+import { extname, join as join3, relative, sep } from "node:path";
 var MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -1362,7 +2038,7 @@ function segmentsOf(rest) {
 }
 async function fileInside(root, segments) {
   try {
-    const real = await realpath2(join2(root, ...segments));
+    const real = await realpath2(join3(root, ...segments));
     if (!real.startsWith(root + sep) || relative(root, real).split(sep).some(hiddenSegment)) return null;
     return (await stat2(real)).isFile() ? real : null;
   } catch {
@@ -1377,8 +2053,8 @@ function rangeOf(header, size2) {
   return start2 > end || start2 >= size2 ? "bad" : { start: start2, end };
 }
 async function serveFile(file, request, maxBytes = Infinity) {
-  const info = await stat2(file);
-  const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
+  const info2 = await stat2(file);
+  const etag = `W/"${info2.size.toString(16)}-${Math.floor(info2.mtimeMs).toString(16)}"`;
   const headers = {
     "Content-Type": MIME[extname(file).toLowerCase()] ?? "application/octet-stream",
     "Cache-Control": "no-cache",
@@ -1387,14 +2063,14 @@ async function serveFile(file, request, maxBytes = Infinity) {
     "X-Content-Type-Options": "nosniff"
   };
   if (request.headers["if-none-match"] === etag) return { status: 304, headers };
-  const range = rangeOf(request.headers.range, info.size);
-  if (range === "bad") return { status: 416, headers: { ...headers, "Content-Range": `bytes */${info.size}` } };
+  const range = rangeOf(request.headers.range, info2.size);
+  if (range === "bad") return { status: 416, headers: { ...headers, "Content-Range": `bytes */${info2.size}` } };
   if (range) {
     const end = Math.min(range.end, range.start + maxBytes - 1);
-    return { status: 206, headers: { ...headers, "Content-Range": `bytes ${range.start}-${end}/${info.size}` }, body: { file, start: range.start, end } };
+    return { status: 206, headers: { ...headers, "Content-Range": `bytes ${range.start}-${end}/${info2.size}` }, body: { file, start: range.start, end } };
   }
-  if (info.size > maxBytes) return error(413, "the file is too large for the relay, ask for a range");
-  return { status: 200, headers, body: { file, start: 0, end: info.size - 1 } };
+  if (info2.size > maxBytes) return error(413, "the file is too large for the relay, ask for a range");
+  return { status: 200, headers, body: { file, start: 0, end: info2.size - 1 } };
 }
 async function readBody(body) {
   const length = Math.max(0, body.end - body.start + 1);
@@ -1429,8 +2105,8 @@ var decodeName = (part) => {
 var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeName));
 
 // src/edit/people.ts
-import { randomBytes as randomBytes3 } from "node:crypto";
-import { readFileSync as readFileSync3, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { randomBytes as randomBytes4 } from "node:crypto";
+import { readFileSync as readFileSync4, unlinkSync as unlinkSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import { unlink, writeFile as writeFile2 } from "node:fs/promises";
 var HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25e3;
 var GAP = 100;
@@ -1443,10 +2119,10 @@ var MAX_CLIENTS = 1024;
 var MAX_KNOWN = 1024;
 var SAVE_GAP = 1e3;
 var MAX_STATE = 8 * 1024;
-var newId = () => randomBytes3(16).toString("base64url");
+var newId2 = () => randomBytes4(16).toString("base64url");
 function readPeople(file) {
   try {
-    const value = JSON.parse(readFileSync3(file, "utf8"));
+    const value = JSON.parse(readFileSync4(file, "utf8"));
     if (!Array.isArray(value)) return [];
     return value.filter(
       (r) => r && isPersonId(r.person) && cleanPersonName(r.name) && Number.isInteger(r.color) && r.color >= 0 && r.color < COLORS.length && Number.isFinite(r.first) && Number.isFinite(r.last)
@@ -1496,7 +2172,7 @@ var People = class {
   // refused unless claim is true, and the page then continues as this person. the token of an
   // earlier hello keeps its client id
   hello(rawName, rawPerson, rawToken, host, claim = false) {
-    let person = isPersonId(rawPerson) ? rawPerson : newId();
+    let person = isPersonId(rawPerson) ? rawPerson : newId2();
     const name = cleanPersonName(rawName) || this.records.get(person)?.name || "";
     if (!name) return { empty: true };
     const holder = this.holderOf(name);
@@ -1505,8 +2181,8 @@ var People = class {
       person = holder.person;
     }
     const earlier = isToken(rawToken) ? this.tokens.get(rawToken) : void 0;
-    const id = earlier ?? randomBytes3(12).toString("base64url");
-    const token = earlier ? rawToken : newId();
+    const id = earlier ?? randomBytes4(12).toString("base64url");
+    const token = earlier ? rawToken : newId2();
     if (!this.members.has(id)) {
       const pages = [...this.members.values()].filter((m) => m.person === person);
       const dropped = pages.length < MAX_PAGES ? void 0 : pages.find((m) => m.host === host) ?? (host ? pages[0] : void 0);
@@ -1789,7 +2465,7 @@ var People = class {
     if (!this.file || !this.dirty) return;
     this.dirty = false;
     this.savedAt = Date.now();
-    const tmp = `${this.file}.${randomBytes3(6).toString("hex")}.tmp`;
+    const tmp = `${this.file}.${randomBytes4(6).toString("hex")}.tmp`;
     this.saving = (async () => {
       try {
         await writeFile2(tmp, this.json());
@@ -1810,14 +2486,14 @@ var People = class {
     this.saveTimer = null;
     if (!this.file || !this.dirty && !this.saving) return;
     this.dirty = false;
-    const tmp = `${this.file}.${randomBytes3(6).toString("hex")}.tmp`;
+    const tmp = `${this.file}.${randomBytes4(6).toString("hex")}.tmp`;
     try {
-      writeFileSync2(tmp, this.json());
+      writeFileSync3(tmp, this.json());
       renameRetriedSync(tmp, this.file);
     } catch (e) {
       this.log(`could not write ${this.file}: ${e.message}`);
       try {
-        unlinkSync3(tmp);
+        unlinkSync4(tmp);
       } catch {
       }
     }
@@ -1825,19 +2501,19 @@ var People = class {
 };
 
 // src/edit/relay.ts
-import { mkdirSync, readFileSync as readFileSync4, writeFileSync as writeFileSync3, chmodSync } from "node:fs";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync5, writeFileSync as writeFileSync4, chmodSync } from "node:fs";
 import { homedir } from "node:os";
-import { join as join3 } from "node:path";
+import { join as join4 } from "node:path";
 var RELAY_BODY = 16 * 1024 * 1024;
 var PULLS = 4;
 var FILE_ANSWERS = 8;
 function configFile() {
-  if (process.platform === "win32") return join3(process.env.APPDATA || join3(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
-  return join3(process.env.XDG_CONFIG_HOME || join3(homedir(), ".config"), "beeson-slides", "relay.json");
+  if (process.platform === "win32") return join4(process.env.APPDATA || join4(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
+  return join4(process.env.XDG_CONFIG_HOME || join4(homedir(), ".config"), "beeson-slides", "relay.json");
 }
 function loadConfig() {
   try {
-    const value = JSON.parse(readFileSync4(configFile(), "utf8"));
+    const value = JSON.parse(readFileSync5(configFile(), "utf8"));
     return { relay: typeof value.relay === "string" ? value.relay : void 0, secret: typeof value.secret === "string" ? value.secret : void 0 };
   } catch {
     return {};
@@ -1845,8 +2521,8 @@ function loadConfig() {
 }
 function saveConfig(config) {
   const file = configFile();
-  mkdirSync(join3(file, ".."), { recursive: true, mode: 448 });
-  writeFileSync3(file, `${JSON.stringify(config, null, 2)}
+  mkdirSync2(join4(file, ".."), { recursive: true, mode: 448 });
+  writeFileSync4(file, `${JSON.stringify(config, null, 2)}
 `, { mode: 384 });
   try {
     chmodSync(file, 384);
@@ -2042,7 +2718,7 @@ var AlreadyRunning = class extends Error {
 async function holderOf(file, root, key, log) {
   let lock;
   try {
-    lock = JSON.parse(readFileSync5(file, "utf8"));
+    lock = JSON.parse(readFileSync6(file, "utf8"));
   } catch {
     return null;
   }
@@ -2065,10 +2741,10 @@ async function holderOf(file, root, key, log) {
 }
 function keepUnwritten(root, text) {
   const name = `unwritten-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.html`;
-  for (const dir of [join4(root, ".session"), tmpdir()]) {
+  for (const dir of [join5(root, ".session"), tmpdir()]) {
     try {
-      const file = join4(dir, name);
-      writeFileSync4(file, text, { flag: "wx" });
+      const file = join5(dir, name);
+      writeFileSync5(file, text, { flag: "wx" });
       return file;
     } catch {
     }
@@ -2076,26 +2752,26 @@ function keepUnwritten(root, text) {
   return null;
 }
 function keyOf(root) {
-  const dir = join4(root, ".session");
-  mkdirSync2(dir, { recursive: true });
+  const dir = join5(root, ".session");
+  mkdirSync3(dir, { recursive: true });
   try {
-    writeFileSync4(join4(dir, ".gitignore"), "*\n", { flag: "wx" });
+    writeFileSync5(join5(dir, ".gitignore"), "*\n", { flag: "wx" });
   } catch {
   }
-  const file = join4(dir, "key");
+  const file = join5(dir, "key");
   try {
-    const key2 = readFileSync5(file, "utf8").trim();
+    const key2 = readFileSync6(file, "utf8").trim();
     if (/^[A-Za-z0-9_-]{22,128}$/.test(key2)) return key2;
   } catch {
   }
-  const key = randomBytes4(16).toString("base64url");
-  writeFileSync4(file, `${key}
+  const key = randomBytes5(16).toString("base64url");
+  writeFileSync5(file, `${key}
 `, { mode: 384 });
   return key;
 }
 function savedPort(root) {
   try {
-    const port = Number(readFileSync5(join4(root, ".session", "port"), "utf8").trim());
+    const port = Number(readFileSync6(join5(root, ".session", "port"), "utf8").trim());
     return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
   } catch {
     return null;
@@ -2128,7 +2804,7 @@ async function sameFile(dir, name, size2, hash) {
     return m ? [{ name: d.name, n: Number(m[1] ?? 1) }] : [];
   });
   for (const f of found.sort((a, b) => a.n - b.n)) {
-    const file = join4(dir, f.name);
+    const file = join5(dir, f.name);
     try {
       if ((await stat3(file)).size === size2 && sha256(await readFile2(file)) === hash) return f.name;
     } catch {
@@ -2141,19 +2817,20 @@ async function start(options = {}) {
   const log = options.log ?? ((m) => process.stderr.write(`${m}
 `));
   const root = realpathSync2.native(resolve(options.folder ?? "."));
-  const index = join4(root, "index.html");
+  const index = join5(root, "index.html");
   const { text, bom } = readText(index);
   const key = keyOf(root);
-  const lockFile = join4(root, ".session", "lock");
+  const lockFile = join5(root, ".session", "lock");
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
-  const appliedFile = join4(root, ".session", "applied.json");
+  const appliedFile = join5(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const onWritten = (n) => {
     if (authority.written(n)) writeApplied(appliedFile, authority.table(), log);
   };
   const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
-  const people = new People(authority, join4(root, ".session", "people.json"), log);
+  const people = new People(authority, join5(root, ".session", "people.json"), log);
+  let history;
   let port = 0;
   let relay = null;
   let closed = false;
@@ -2225,7 +2902,7 @@ async function start(options = {}) {
     if (!clean) return error(415, "the file must be an image, a video, or json");
     if (request.body.length > MEDIA_MAX) return error(413, "the file is larger than 64 MB");
     if (!request.direct && request.body.length > GUEST_MEDIA_MAX) return error(413, "the file is larger than 16 MB, the limit of an upload through the relay");
-    const dir = join4(root, "media");
+    const dir = join5(root, "media");
     await mkdir(dir, { recursive: true });
     const real = await realpath3(dir);
     if (!real.startsWith(root + sep2)) return error(403, "media/ leaves the talk folder");
@@ -2240,7 +2917,7 @@ async function start(options = {}) {
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
       try {
-        await writeFile3(join4(real, candidate), request.body, { flag: "wx" });
+        await writeFile3(join5(real, candidate), request.body, { flag: "wx" });
         return json(200, { path: `media/${candidate}` });
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -2413,7 +3090,7 @@ async function start(options = {}) {
   port = server.address().port;
   const lock = JSON.stringify({ pid: process.pid, port, root });
   try {
-    writeFileSync4(lockFile, lock, { flag: "wx" });
+    writeFileSync5(lockFile, lock, { flag: "wx" });
   } catch {
     const other = await holderOf(lockFile, root, key, log);
     if (other) {
@@ -2421,21 +3098,22 @@ async function start(options = {}) {
       await new Promise((done) => server.close(done));
       throw new AlreadyRunning(other);
     }
-    const tmp = `${lockFile}.${randomBytes4(6).toString("hex")}.tmp`;
-    writeFileSync4(tmp, lock);
+    const tmp = `${lockFile}.${randomBytes5(6).toString("hex")}.tmp`;
+    writeFileSync5(tmp, lock);
     renameRetriedSync(tmp, lockFile);
   }
   const unlock = () => {
     try {
-      if (readFileSync5(lockFile, "utf8") === lock) unlinkSync4(lockFile);
+      if (readFileSync6(lockFile, "utf8") === lock) unlinkSync5(lockFile);
     } catch {
     }
   };
   try {
-    writeFileSync4(join4(root, ".session", "port"), `${port}
+    writeFileSync5(join5(root, ".session", "port"), `${port}
 `);
   } catch {
   }
+  history = new History(join5(root, ".session"), authority, { ...options.history, log });
   disk.start();
   if (options.relay) {
     const address = relayAddress(options.relay);
@@ -2465,6 +3143,7 @@ async function start(options = {}) {
         const kept = keepUnwritten(root, disk.bom ? `\uFEFF${authority.text}` : authority.text);
         log(kept ? `the text of the session is kept in ${kept}` : "the text of the session could not be kept in any file");
       }
+      history.stopSync();
       written(unwritten2);
       await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
       await new Promise((done) => setTimeout(done, 200));
@@ -2690,6 +3369,15 @@ function openBrowser(url) {
 `);
   }
 }
+function historyOptions() {
+  const out = {};
+  try {
+    const given = JSON.parse(process.env.SLIDES_HISTORY ?? "{}");
+    for (const k of ["quiet", "longest", "maxBytes", "keep", "asideBytes", "asideFiles"]) if (Number.isFinite(given?.[k]) && given[k] >= 0) out[k] = given[k];
+  } catch {
+  }
+  return out;
+}
 async function main(argv) {
   if (Number(process.versions.node.split(".")[0]) < 20) {
     process.stderr.write(`The edit command needs Node.js 20 or later, and this is Node.js ${process.versions.node}. Install a newer one from https://nodejs.org
@@ -2720,7 +3408,7 @@ async function main(argv) {
   }
   let running;
   try {
-    running = await start({ folder, port, relay });
+    running = await start({ folder, port, relay, history: historyOptions() });
   } catch (e) {
     if (e instanceof AlreadyRunning) {
       const { url, port: p, key } = e.found;

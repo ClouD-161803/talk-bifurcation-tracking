@@ -7,6 +7,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { AlreadyRunning, start } from './command.ts';
 import { NotUtf8 } from './disk.ts';
+import type { HistoryOptions } from './history.ts';
 
 export { Authority } from '../session/authority.ts';
 export type { AuthorityOptions, Observer, Submission } from '../session/authority.ts';
@@ -32,6 +33,17 @@ function openBrowser(url: string): void {
   } catch {
     process.stderr.write(`Open ${url} in a browser.\n`);
   }
+}
+
+// the times and limits of the version history from SLIDES_HISTORY, a JSON object such as
+// {"quiet":50,"longest":200}, with which a test makes them short
+function historyOptions(): HistoryOptions {
+  const out: Record<string, number> = {};
+  try {
+    const given = JSON.parse(process.env.SLIDES_HISTORY ?? '{}');
+    for (const k of ['quiet', 'longest', 'maxBytes', 'keep', 'asideBytes', 'asideFiles']) if (Number.isFinite(given?.[k]) && given[k] >= 0) out[k] = given[k];
+  } catch {}
+  return out;
 }
 
 async function main(argv: string[]): Promise<void> {
@@ -60,7 +72,7 @@ async function main(argv: string[]): Promise<void> {
   }
   let running;
   try {
-    running = await start({ folder, port, relay });
+    running = await start({ folder, port, relay, history: historyOptions() });
   } catch (e) {
     if (e instanceof AlreadyRunning) {
       // the page of the first edit command is opened, and its address printed as a start would
