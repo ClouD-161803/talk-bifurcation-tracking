@@ -268,6 +268,7 @@ class Pane {
   }
 
   private item(t: Comment, i: Item, root: boolean): HTMLElement {
+    const online = this.client.connection === 'online';
     const box = make('div', 'item');
     const head = make('div', 'head');
     const avatar = make('span', 'avatar', initials(this.nameOf(i.author)));
@@ -279,9 +280,15 @@ class Pane {
     const who = make('span', 'who', this.nameOf(i.author));
     who.dir = 'auto';
     head.append(avatar, who, when);
+    // offline, an action is not sent later, hence its button is disabled
+    const offline = (b: HTMLButtonElement) => {
+      b.disabled = !online;
+      if (!online) b.title = OFFLINE;
+      return b;
+    };
     if (root) {
-      if (t.resolved) head.append(this.button('Reopen', 'Reopen', () => this.act(t.id, 'reopen'), 'text-button'));
-      else head.append(this.button('', 'Resolve', () => this.act(t.id, 'resolve'), 'icon resolve', 'check'));
+      if (t.resolved) head.append(offline(this.button('Reopen', 'Reopen', () => this.act(t.id, 'reopen'), 'text-button')));
+      else head.append(offline(this.button('', 'Resolve', () => this.act(t.id, 'resolve'), 'icon resolve', 'check')));
     }
     if (i.author === this.client.person) {
       const more = this.button('', root ? 'Thread actions' : 'Reply actions', () => {
@@ -292,7 +299,7 @@ class Pane {
         ]);
       }, 'icon more', 'more');
       more.setAttribute('aria-haspopup', 'menu');
-      head.append(more);
+      head.append(offline(more));
     }
     box.append(head);
     if (root) box.append(make('p', 'anchor', this.label(t, this.comments.places().get(t.id) ?? null)));
@@ -564,7 +571,7 @@ class Pane {
 
   private edit(t: Comment, reply: string | null): void {
     const item = reply ? t.replies.find((r) => r.id === reply) : t;
-    if (!item) return;
+    if (!item || this.client.connection !== 'online') return;
     let text = item.text;
     const names = new Map<string, string>();
     text = text.replace(MENTION, (_, id: string) => {
@@ -678,7 +685,9 @@ class Pane {
       const f = this.replies.get(id);
       f?.box.classList.add('open');
       f?.area.focus();
-    } else if (key === 'e') void this.act(id, t.resolved ? 'reopen' : 'resolve');
+    } else if (key === 'e') {
+      if (this.client.connection === 'online') void this.act(id, t.resolved ? 'reopen' : 'resolve');
+    }
     else if (key === 'u') {
       (document.activeElement as HTMLElement | null)?.blur();
       this.focused = null;
@@ -695,9 +704,10 @@ function time(t: number): string {
   return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${hm}`;
 }
 
-// the message of a failed request for the person
+// the message of a failed request for the person, which is not sent later
 function message(e: unknown): string {
-  if (e instanceof Failure && (e.status === 0 || e.status >= 500)) return OFFLINE;
+  if (e instanceof Failure && e.status === 0) return 'Not sent. The connection to the host was lost.';
+  if (e instanceof Failure && e.status >= 500) return 'Not sent. The host did not answer.';
   const text = e instanceof Error ? e.message : String(e);
   return text ? `${text[0].toUpperCase()}${text.slice(1)}${/[.!?]$/.test(text) ? '' : '.'}` : 'The request failed.';
 }
