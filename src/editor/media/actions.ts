@@ -93,7 +93,7 @@ export function chooseFiles(accept: string, multiple = false): Promise<File[]> {
 }
 
 // a new path is not one that the file or the page already names
-function taken(app: App): (path: string) => boolean {
+export function taken(app: App): (path: string) => boolean {
   let text = app.source?.text ?? '';
   try {
     text += app.files.render();

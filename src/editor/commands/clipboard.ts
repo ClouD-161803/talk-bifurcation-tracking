@@ -25,9 +25,9 @@ import { VOID } from '../source.ts';
 import { tokenize } from '../tokens.ts';
 import { keepBeside } from './place.ts';
 import { keepPlaces } from '../canvas/drag.ts';
-import { MARK, docOf, slidesIn } from './slide.ts';
+import { MARK, docOf, readClipboard, refusedRead, slidesIn } from './slide.ts';
+import { arrive, originComment } from './origin.ts';
 import { cellAt, clearRange, pasteAtCell, pasteRange, pasteTable, rangeText, selectedRange } from './table.ts';
-import { display } from '../keymap.ts';
 import { removeJoining } from '../text/elements.ts';
 
 // the offset of a paste or a duplicate that would cover its source, in slide pixels
@@ -52,11 +52,13 @@ function caretElement(app: App): Element | null {
 // the thumbnails, where Duplicate duplicates the slide
 const inNavigator = (app: App): boolean => app.region() === 'navigator';
 
-// the text of els on the clipboard: the mark, then each element as it is written into the file
+// the text of els on the clipboard: the mark, the origin of commands/origin.ts, then each element
+// as it is written into the file
 export function clipText(app: App, els: Element[]): string {
   const doc = docOf(app);
   const eol = app.source?.crlf ? '\r\n' : '\n';
-  return [MARK, ...els.map((el) => doc.elementText(el))].join(eol);
+  const texts = els.map((el) => doc.elementText(el));
+  return [MARK, originComment(texts.join(eol)), ...texts].join(eol);
 }
 
 // the elements of a text of the clipboard, each without the white space before it, or null for a
@@ -484,17 +486,14 @@ export function install(app: App): void {
     let text = typeof arg === 'string' ? arg : '';
     const read = !text;
     let refused = false;
-    if (!text) text = (await navigator.clipboard?.readText().catch((e) => void (refused = e?.name === 'NotAllowedError'))) || '';
+    if (!text) ({ text, refused } = await readClipboard());
     if (!text && !inText(a)) {
       const files = await readMedia();
       if (files.length) return void (await insertFiles(a, files));
     }
     text ||= clip?.text || '';
     // the key pastes from its own event, which the browser allows where it refuses the read
-    if (!text && refused) {
-      a.note = { text: `The browser did not let the editor read the clipboard. Press ${display('Mod+V', a.platform)} to paste`, warn: true };
-      return void a.report();
-    }
+    if (!text && refused) return refusedRead(a);
     const els = elementsIn(text);
     const slides = slidesIn(text)?.length ? text : null;
     const field = fieldOf(a);
@@ -518,7 +517,7 @@ export function install(app: App): void {
         const html = cellAt(a) ? (text === clip?.text ? clip.html : '') || (read ? await readHtml() : '') : '';
         if (!(await pasteAtCell(a, text, html))) document.execCommand('insertText', false, host ? spaced(host, text) : text);
       }
-    } else if (els) await pasteElements(a, els);
+    } else if (els) await arrive(a, text, els, (from) => pasteElements(a, from));
     else if (slides) await a.commands.run('slide.paste', slides);
     else {
       // a range of cells or a table is pasted onto the selected range, or else onto the slide as a

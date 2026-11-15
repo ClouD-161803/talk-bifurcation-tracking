@@ -173,7 +173,7 @@ export function texEditor(options: { display(): boolean; label: string; placehol
   field.setAttribute('aria-label', options.label);
   field.spellcheck = false;
   field.autocapitalize = 'off';
-  field.placeholder = options.placeholder ?? 'Type TeX, e.g. \\frac{a}{b} or \\LL{1}';
+  field.placeholder = options.placeholder ?? 'Type TeX, e.g. \\frac{a}{b} or \\sqrt{x}';
   const preview = make('div', 'preview');
   preview.setAttribute('aria-live', 'polite');
   const message = make('div', 'error');

@@ -26,7 +26,7 @@ test('a query matches case, whole words, and white space as asked', () => {
   assert.deepEqual(found('Orbit, orbits, an ORBIT', 'orbit', { matchCase: true }), ['orbit']);
   assert.deepEqual(found('Orbit, orbits, an ORBIT', 'orbit', { wholeWords: true }), ['Orbit', 'ORBIT']);
   assert.deepEqual(found('the halo\n      orbit', 'halo orbit'), ['halo\n      orbit']);
-  assert.deepEqual(found('a (b) [c] \\LL{1} 1.5', '\\LL{1}'), ['\\LL{1}']);
+  assert.deepEqual(found('a (b) [c] \\mathcal{L}_{1} 1.5', '\\mathcal{L}_{1}'), ['\\mathcal{L}_{1}']);
   assert.deepEqual(found('a (b) 1.5 105', '1.5'), ['1.5']);
   assert.deepEqual(found('Erdős erdős', 'ERDŐS', { wholeWords: true }), ['Erdős', 'erdős']);
   assert.deepEqual(found('café_au lait', 'café', { wholeWords: true }), []);
@@ -223,17 +223,17 @@ for (const platform of PLATFORMS) {
 
 test('the TeX of the formulas is searched and replaced only with its switch', async (t) => {
   const page = await open(t, 'mac');
-  await page.evaluate(`window.BeesonEditor.exec('find.replace', '\\\\LL{1}')`);
+  await page.evaluate(`window.BeesonEditor.exec('find.replace', '\\\\mathcal{L}_{1}')`);
   assert.equal((await panel(page)).count, 'Not found');
   await page.evaluate(`window.BeesonEditor.exec('find.tex')`);
   const p = await panel(page);
-  assert.equal(p.count, `1 of ${page.source.split('\\LL{1}').length - 1}`);
-  assert.equal(await page.evaluate(`document.querySelectorAll('mjx-container.beeson-find-math').length`), page.source.split('\\LL{1}').length - 1);
+  assert.equal(p.count, `1 of ${page.source.split('\\mathcal{L}_{1}').length - 1}`);
+  assert.equal(await page.evaluate(`document.querySelectorAll('mjx-container.beeson-find-math').length`), page.source.split('\\mathcal{L}_{1}').length - 1);
   assert.equal(await page.evaluate(`document.querySelectorAll('mjx-container.beeson-find-math.current').length`), 1);
   await page.evaluate(`document.querySelector('.beeson-find .replace input').focus()`);
-  await type(page, '\\LL{2}');
+  await type(page, '\\mathcal{L}_{2}');
   await page.evaluate(`window.BeesonEditor.exec('find.replaceAll')`);
-  const changed = page.source.replaceAll('\\LL{1}', '\\LL{2}');
+  const changed = page.source.replaceAll('\\mathcal{L}_{1}', '\\mathcal{L}_{2}');
   assert.equal(await rendered(page), changed);
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await rendered(page), page.source);
