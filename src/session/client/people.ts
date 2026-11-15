@@ -259,7 +259,9 @@ async function changeName(client: Client): Promise<void> {
   };
   const opened = dialog.open();
   field.input.select();
+  const off = client.on('state', () => client.connection === 'ended' && dialog.close('cancel'));
   await opened;
+  off();
   dialog.el.remove();
 }
 
