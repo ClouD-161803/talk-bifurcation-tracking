@@ -1,0 +1,104 @@
+// the requests of a page to the edit command, under .session/ next to the page. a request that does
+// not get an answer of the edit command throws a Failure, whose status is 0 for the network, 502
+// when the relay does not reach an edit command, and the status of any other error
+
+import type { EventsAnswer, HelloAnswer, HelloRequest, NameAnswer, OpAnswer, OpPost, Taken, Token, Version } from '../protocol.ts';
+
+export class Failure extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+  // the request may succeed when it is sent again later, e.g. while the edit command restarts
+  get retried(): boolean {
+    return this.status === 0 || this.status === 408 || this.status === 429 || this.status >= 500;
+  }
+}
+
+// the longest wait for an answer in ms. the edit command holds a poll of events for 25 s at most
+const POST_WAIT = 30_000;
+const POLL_WAIT = 45_000;
+
+export class Transport {
+  private readonly base: URL;
+
+  constructor(page: string) {
+    this.base = new URL('.session/', page);
+  }
+
+  url(route: string, query: Record<string, string> = {}): string {
+    const url = new URL(route, this.base);
+    for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
+    return url.href;
+  }
+
+  hello(request: HelloRequest): Promise<HelloAnswer | Taken> {
+    return this.post('hello', request);
+  }
+
+  op(post: OpPost): Promise<OpAnswer> {
+    return this.post('op', post);
+  }
+
+  name(token: Token, name: string): Promise<NameAnswer> {
+    return this.post('name', { token, name });
+  }
+
+  presence(token: Token, state: unknown): Promise<unknown> {
+    return this.post('presence', { token, state });
+  }
+
+  events(token: Token, since: Version): Promise<EventsAnswer> {
+    return this.send(this.url('events', { token, since }), { method: 'GET' }, POLL_WAIT);
+  }
+
+  // sent while the page is hidden for good, hence its answer is not read
+  bye(token: Token): void {
+    const body = JSON.stringify({ token });
+    const url = this.url('bye');
+    try {
+      if ('keepalive' in Request.prototype) {
+        void fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+      } else navigator.sendBeacon?.(url, new Blob([body], { type: 'application/json' }));
+    } catch {
+      // the edit command drops the page after 40 s without a poll
+    }
+  }
+
+  private post<T>(route: string, body: unknown): Promise<T> {
+    return this.send(this.url(route), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, POST_WAIT);
+  }
+
+  private async send<T>(url: string, init: RequestInit, wait: number): Promise<T> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), wait);
+    let response: Response;
+    try {
+      response = await fetch(url, { ...init, cache: 'no-store', signal: abort.signal });
+    } catch (e) {
+      clearTimeout(timer);
+      throw new Failure(0, e instanceof Error ? e.message : String(e));
+    }
+    try {
+      const text = await response.text();
+      let value: unknown = null;
+      try {
+        value = JSON.parse(text);
+      } catch {
+        // the answer of a relay or a proxy is not JSON
+      }
+      if (!response.ok || value === null || typeof value !== 'object') {
+        const message = (value as { error?: unknown } | null)?.error;
+        // an answer that is not of the edit command, e.g. of a captive portal, is taken as the network
+        throw new Failure(response.ok ? 0 : response.status, typeof message === 'string' ? message : text.slice(0, 200));
+      }
+      return value as T;
+    } catch (e) {
+      if (e instanceof Failure) throw e;
+      throw new Failure(0, e instanceof Error ? e.message : String(e));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
