@@ -475,3 +475,27 @@ test('an operation in flight during a restore is applied on top, unless it confl
   assert.deepEqual(latest.authors, [bo.person]);
   assert.deepEqual(latest.slides, [2]);
 });
+
+test('a version and a text set aside are served for a preview, never cached', { timeout: 120_000 }, async (t) => {
+  const s = await session(t, { quiet: 3_600_000, longest: 3_600_000 });
+  const ann = await s.hello('Ann');
+  assert.equal((await s.op(ann, 1, 'One', 'Uno')).ok, true);
+  const v = (await post(s.edit.port, s.api('history/current/name'), { token: ann.token, name: 'Uno' })).json();
+  const t1 = await s.current();
+  assert.equal((await s.op(ann, 2, 'Uno', 'Eins')).ok, true);
+  const preview = await raw(s.edit.port, 'GET', `${s.edit.base}index.html?version=${v.id}`);
+  assert.equal(preview.status, 200);
+  assert.equal(preview.text, t1);
+  assert.equal(preview.headers['cache-control'], 'no-store');
+  assert.match(preview.headers['content-type'], /^text\/html/);
+  assert.equal((await raw(s.edit.port, 'GET', `${s.edit.base}index.html?version=nope`)).status, 404);
+  assert.equal((await raw(s.edit.port, 'GET', `${s.edit.base}index.html?version=${v.id}&edit`)).status, 400);
+  const aside = (await post(s.edit.port, s.api('aside'), { token: ann.token, text: 'my text' })).json();
+  assert.equal(aside.author, ann.person);
+  assert.deepEqual((await s.list(ann)).aside, [aside]);
+  assert.equal((await raw(s.edit.port, 'GET', `${s.edit.base}index.html?aside=${aside.id}`)).text, 'my text');
+  assert.equal((await raw(s.edit.port, 'GET', `${s.edit.base}index.html?aside=nope`)).status, 404);
+  assert.equal((await post(s.edit.port, s.api('aside'), { token: ann.token, text: 7 })).status, 400);
+  assert.equal((await post(s.edit.port, s.api('aside'), { token: 'n'.repeat(22), text: 'x' })).status, 404);
+  assert.equal((await post(s.edit.port, s.api('aside'), { token: ann.token, text: 'x'.repeat(8 * 1024 * 1024 + 1) })).status, 413);
+});
