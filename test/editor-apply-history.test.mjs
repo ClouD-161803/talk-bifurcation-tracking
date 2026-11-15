@@ -173,3 +173,92 @@ test('an apply into a text with an open composition resolves at once and leaves 
   await b.evaluate(`${P1}.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '' }))`);
   assert.deepEqual(b.errors, []);
 });
+
+// the slides of text, each from its start tag to its end tag, which start a line in test-deck.html
+const sectionsOf = (text) => [...text.matchAll(/^<section[\s\S]*?^<\/section>/gm)].map((m) => m[0]);
+// text with the closing slide moved before the first section slide, far from the slides of the person
+const farMove = (text) => {
+  const closing = sectionsOf(text).find((s) => s.startsWith('<section class="closing">'));
+  const first = sectionsOf(text).find((s) => s.startsWith('<section class="section">'));
+  assert.ok(closing && first, 'the closing slide and a section slide are in the text');
+  return text.replace(`${closing}\n`, '').replace(first, `${closing}\n${first}`);
+};
+const SLIDE = (heading) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h1, h2')?.textContent.startsWith(${JSON.stringify(heading)}))`;
+
+// the entries of the person by kind, each made by an operation of the document model or a command
+// on a slide far from the closing slide
+const KINDS = {
+  delete: async (b) => b.evaluate(`${E}.doc.remove(${P2})`),
+  insert: async (b) => b.evaluate(`${E}.doc.insert('<p>An inserted paragraph.</p>', ${P2}.parentElement, ${P2}.nextElementSibling).then(() => true)`),
+  'new slide': async (b) => {
+    await showSlide(b, 'Code boxes');
+    await b.evaluate(`${E}.exec('slide.new')`);
+  },
+  bigger: async (b) => {
+    await showSlide(b, 'Code boxes');
+    await caretAtEnd(b, P2);
+    await b.evaluate(`${E}.exec('text.bigger')`);
+  },
+  move: async (b) => b.evaluate(`(() => { const s = ${SLIDE('Embedding videos')}; return ${E}.doc.move(s, s.parentElement, ${SLIDE('Code boxes')}).then(() => true); })()`),
+};
+
+// the entry of kind made on a session page, and the text before and after it
+async function entry(t, kind) {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  const before = await sessionText(b);
+  await KINDS[kind](b);
+  await b.waitFor(`${E}.status().undo && !${E}.doc.busy`);
+  const made = await sessionText(b);
+  assert.notEqual(made, before, `${kind}: the entry changed the text`);
+  return { b, before, made };
+}
+
+for (const kind of ['delete', 'insert', 'bigger']) {
+  test(`the entry of ${kind} on a slide is kept through a move of a slide far away`, async (t) => {
+    const { b, made } = await entry(t, kind);
+    assert.equal((await applyOn(b, farMove(made))).reload, false);
+    assert.equal((await status(b)).undo, true, 'the entry is kept');
+    assert.deepEqual(b.errors, []);
+  });
+}
+
+test('the entry of New Slide is kept through a move of a slide far away, while its slide is in the deck', async (t) => {
+  const { b, before, made } = await entry(t, 'new slide');
+  let text = farMove(made);
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal((await status(b)).undo, true, 'the entry is kept');
+  const added = sectionsOf(text).find((s) => !sectionsOf(before).includes(s));
+  assert.ok(added, 'the new slide is in the text');
+  text = text.replace(`${added}\n`, '');
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal((await status(b)).undo, false, 'the entry is dropped with its slide');
+  assert.deepEqual(b.errors, []);
+});
+
+test('the entry of a move of a slide is dropped when the order of the slides changes, and kept through a change of text', async (t) => {
+  const { b, made } = await entry(t, 'move');
+  let text = once(made, 'Thank you', 'Thanks');
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal((await status(b)).undo, true, 'the entry is kept through a change of text');
+  text = farMove(text);
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal((await status(b)).undo, false, 'the entry is dropped');
+  assert.deepEqual(b.errors, []);
+});
+
+test('the undo of an entry kept through a move of a slide far away gives the text before the entry, with the move', async (t) => {
+  for (const kind of ['delete', 'insert', 'bigger', 'new slide']) {
+    const { b, before, made } = await entry(t, kind);
+    assert.equal((await applyOn(b, farMove(made))).reload, false, `${kind}: the reload of the apply`);
+    assert.equal((await status(b)).undo, true, `${kind}: the entry is kept`);
+    await b.evaluate(`${E}.undo()`);
+    await b.waitFor(`!${E}.status().undo && !${E}.doc.busy`);
+    const got = await b.evaluate(`${E}.render()`);
+    const want = farMove(before);
+    let i = 0;
+    while (got[i] === want[i] && i < got.length) i++;
+    assert.ok(got === want, `${kind}: after the undo the page renders as\n${JSON.stringify(got.slice(i - 80, i + 120))}\nwhere the text is\n${JSON.stringify(want.slice(i - 80, i + 120))}`);
+    assert.deepEqual(b.errors, [], kind);
+  }
+});
