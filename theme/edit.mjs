@@ -2,11 +2,11 @@
 
 // src/edit/main.ts
 import { spawn } from "node:child_process";
-import { realpathSync as realpathSync2 } from "node:fs";
+import { realpathSync as realpathSync3 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
-import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync4, realpathSync, unlinkSync as unlinkSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync4, realpathSync as realpathSync2, unlinkSync as unlinkSync3, writeFileSync as writeFileSync4 } from "node:fs";
 import { mkdir, realpath as realpath2, writeFile as writeFile3 } from "node:fs/promises";
 import { createServer } from "node:http";
 import { randomBytes as randomBytes3 } from "node:crypto";
@@ -231,8 +231,25 @@ var isHigh = (c) => c >= 55296 && c <= 56319;
 var isLow = (c) => c >= 56320 && c <= 57343;
 var splitsPair = (text, i) => i > 0 && i < text.length && isHigh(text.charCodeAt(i - 1)) && isLow(text.charCodeAt(i));
 var LONE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+function wellFormed(text) {
+  const native = text.isWellFormed;
+  if (native ? native.call(text) : !LONE.test(text)) return text;
+  const parts = [];
+  let at = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (isHigh(c) && i + 1 < text.length && isLow(text.charCodeAt(i + 1))) i++;
+    else if (isHigh(c) || isLow(c)) {
+      parts.push(text.slice(at, i), "\uFFFD");
+      at = i + 1;
+    }
+  }
+  parts.push(text.slice(at));
+  return parts.join("");
+}
+var MAX_PATCHES = 2e3;
 function valid(patches, n, text) {
-  if (!Array.isArray(patches)) return false;
+  if (!Array.isArray(patches) || patches.length > MAX_PATCHES) return false;
   let last = null;
   for (const p of patches) {
     if (!p || typeof p !== "object" || typeof p.text !== "string") return false;
@@ -268,9 +285,10 @@ function before(a, b, aFirst) {
 }
 function shift(patches, over, overFirst = true) {
   const out = [];
-  let j = 0, delta = 0;
+  let j = 0, k = 0, delta = 0;
   for (const p of patches) {
-    for (const q of over) if (conflict(p, q)) return null;
+    while (k < over.length && over[k].end <= p.start) k++;
+    for (let i = k; i < over.length && over[i].start < p.end; i++) if (conflict(p, over[i])) return null;
     while (j < over.length && before(over[j], p, overFirst)) {
       delta += over[j].text.length - (over[j].end - over[j].start);
       j++;
@@ -306,10 +324,20 @@ function combine(first, second) {
   return out;
 }
 function mergePatches(theirs, ours, wins = "ours") {
-  const conflicts = ours.filter((o) => theirs.some((t) => conflict(o, t)));
-  if (conflicts.length === 0) return { patches: combine(theirs, ours), conflicts };
-  const keptTheirs = wins === "ours" ? theirs.filter((t) => !conflicts.some((o) => conflict(o, t))) : theirs;
-  const keptOurs = wins === "ours" ? ours : ours.filter((o) => !conflicts.includes(o));
+  const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
+  let k = 0, any = false;
+  for (let i = 0; i < ours.length; i++) {
+    const o = ours[i];
+    while (k < theirs.length && theirs[k].end <= o.start) k++;
+    for (let j = k; j < theirs.length && theirs[j].start < o.end; j++) {
+      if (conflict(o, theirs[j])) hitOurs[i] = hitTheirs[j] = 1;
+    }
+    any ||= hitOurs[i] === 1;
+  }
+  const conflicts = ours.filter((_, i) => hitOurs[i]);
+  if (!any) return { patches: combine(theirs, ours), conflicts };
+  const keptTheirs = wins === "ours" ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
+  const keptOurs = wins === "ours" ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
 }
 var cached = null;
@@ -492,8 +520,9 @@ var Authority = class {
   submit(request, author) {
     const { client, seq } = request ?? {};
     if (typeof client !== "string" || !Number.isSafeInteger(seq) || seq < 1) return { answer: this.refuse("invalid") };
+    const patches = checksum(JSON.stringify(request.patches) ?? "");
     const earlier = this.answers.get(client)?.get(seq);
-    if (earlier) return { answer: earlier };
+    if (earlier) return { answer: earlier.base === request.base && earlier.patches === patches ? earlier.answer : this.refuse("invalid") };
     const known = this.answers.get(client);
     if (known && known.size >= ANSWERS_PER_CLIENT && seq < Math.min(...known.keys())) return { answer: this.refuse("stale") };
     const submission = this.order(request);
@@ -502,7 +531,7 @@ var Authority = class {
       this.answers.set(client, answers = /* @__PURE__ */ new Map());
       if (this.answers.size > CLIENTS) this.answers.delete(this.answers.keys().next().value);
     }
-    answers.set(seq, submission.answer);
+    answers.set(seq, { answer: submission.answer, base: request.base, patches });
     if (answers.size > ANSWERS_PER_CLIENT) answers.delete(Math.min(...answers.keys()));
     if (submission.op) {
       submission.op.author = author;
@@ -548,16 +577,21 @@ var Authority = class {
 };
 
 // src/edit/disk.ts
-import { readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { chmodSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmod, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { isUtf8 } from "node:buffer";
 import { randomBytes } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 var AUTHOR = "file";
 var QUIET = 250;
 var LATEST = 1e3;
 var POLL = 500;
-var RING_TEXTS = 64;
-var RING_CHARS = 8 * 1024 * 1024;
+var SETTLE = 2e3;
+var SETTLE_EMPTY = 5e3;
+var SETTLE_AT_STOP = 7e3;
+var CHAIN_TEXTS = 5e3;
+var CHAIN_BYTES = 64 * 1024 * 1024;
+var NEAREST = 8;
 var NotUtf8 = class extends Error {
 };
 function decode(bytes) {
@@ -566,16 +600,16 @@ function decode(bytes) {
   return text.charCodeAt(0) === 65279 ? { text: text.slice(1), bom: true } : { text, bom: false };
 }
 var encode = (text, bom) => Buffer.from(bom ? `\uFEFF${text}` : text, "utf8");
-var signature = (s) => `${s.size}:${s.mtimeMs}:${s.ctimeMs}:${s.ino}`;
+var signature = (s) => `${s.size}:${s.mtimeMs}:${s.ino}`;
+var modeOf = (s) => process.platform === "win32" ? null : s.mode & 4095;
 var RETRY = /* @__PURE__ */ new Set(["EPERM", "EBUSY", "EACCES"]);
-var sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 async function renameRetried(from, to) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await rename(from, to);
     } catch (e) {
       if (attempt >= 20 || !RETRY.has(e.code ?? "")) throw e;
-      await sleep(10 * (attempt + 1));
+      await new Promise((done) => setTimeout(done, 10 * (attempt + 1)));
     }
   }
 }
@@ -590,11 +624,103 @@ function renameRetriedSync(from, to) {
     }
   }
 }
+var missing = (e) => {
+  if (e.code === "ENOENT") return null;
+  throw e;
+};
+function perform(step) {
+  if ("sleep" in step) return new Promise((done) => setTimeout(done, step.sleep));
+  if ("stat" in step) return stat(step.stat).catch(missing);
+  if ("read" in step) return readFile(step.read);
+  return writeFile(step.write, step.bytes).then(() => step.mode === null ? void 0 : chmod(step.write, step.mode));
+}
+var PAUSE = new Int32Array(new SharedArrayBuffer(4));
+function performSync(step) {
+  if ("sleep" in step) return void Atomics.wait(PAUSE, 0, 0, step.sleep);
+  if ("stat" in step) return statSync(step.stat, { throwIfNoEntry: false }) ?? null;
+  if ("read" in step) return readFileSync(step.read);
+  writeFileSync(step.write, step.bytes);
+  if (step.mode !== null) chmodSync(step.write, step.mode);
+}
+function finish(task) {
+  let next = task.next();
+  while (!next.done) {
+    let value, failed = false;
+    try {
+      value = performSync(next.value);
+    } catch (e) {
+      [value, failed] = [e, true];
+    }
+    next = failed ? task.throw(value) : task.next(value);
+  }
+}
+var copy = (text) => text.length < 16 ? text : Buffer.from(text, "utf16le").toString("utf16le");
+var weight = (delta) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
+function reverse(text, before2) {
+  const max = Math.min(text.length, before2.length);
+  let pre = 0, suf = 0;
+  for (let c = 65536; c >= 1; c >>= 4) while (pre + c <= max && text.slice(pre, pre + c) === before2.slice(pre, pre + c)) pre += c;
+  for (let c = 65536; c >= 1; c >>= 4) {
+    while (suf + c <= max - pre && text.slice(text.length - suf - c, text.length - suf) === before2.slice(before2.length - suf - c, before2.length - suf)) suf += c;
+  }
+  const from = pre === 0 ? 0 : text.lastIndexOf("\n", pre - 1) + 1;
+  let to = text.indexOf("\n", text.length - suf);
+  if (to < 0) to = text.length;
+  const found = changes(text.slice(from, to), before2.slice(from, before2.length - text.length + to)) ?? [
+    { start: pre - from, end: text.length - suf - from, text: before2.slice(pre, before2.length - suf) }
+  ];
+  return found.map((p) => ({ start: p.start + from, end: p.end + from, text: copy(p.text) }));
+}
+function stepBack(lines, delta, count) {
+  const starts = new Array(lines.length);
+  for (let i = 0, at = 0; i < lines.length; i++) {
+    starts[i] = at;
+    at += lines[i].length + 1;
+  }
+  const lineOf = (at) => {
+    let lo = 0, hi = lines.length - 1;
+    while (lo < hi) {
+      const mid = lo + hi + 1 >> 1;
+      if (starts[mid] <= at) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  const out = [];
+  let next = 0;
+  for (let j = 0; j < delta.length; ) {
+    const a = lineOf(delta[j].start);
+    let k = j, b = lineOf(delta[j].end);
+    while (k + 1 < delta.length && lineOf(delta[k + 1].start) <= b) b = lineOf(delta[++k].end);
+    const old = lines.slice(a, b + 1), segment = old.join("\n"), at = starts[a];
+    let changed = segment.slice(0, delta[j].start - at);
+    for (let m = j; m <= k; m++) changed += delta[m].text + segment.slice(delta[m].end - at, m < k ? delta[m + 1].start - at : segment.length);
+    const now = changed.split("\n");
+    count?.(old, -1);
+    count?.(now, 1);
+    for (let i = next; i < a; i++) out.push(lines[i]);
+    for (const line of now) out.push(line);
+    next = b + 1;
+    j = k + 1;
+  }
+  for (let i = next; i < lines.length; i++) out.push(lines[i]);
+  return out;
+}
+function removeQuietly(file) {
+  try {
+    unlinkSync(file);
+  } catch {
+  }
+}
 var Disk = class {
   constructor(file, authority, bom, options = {}) {
+    this.mode = null;
     this.known = "";
-    // the texts written or read lately, newest last, as the candidate bases of a change of the file
-    this.ring = [];
+    // the failed writes in a row, and the time before which a failed write is not tried again
+    this.failures = 0;
+    this.retryAt = 0;
+    this.back = [];
+    this.backBytes = 0;
     this.firstUnwritten = null;
     this.timer = null;
     this.poller = null;
@@ -604,49 +730,66 @@ var Disk = class {
     this.authority = authority;
     this.bom = bom;
     this.written = authority.text;
+    this.writtenN = authority.n;
     this.log = options.log ?? (() => {
     });
-    this.remember(authority.n, authority.text);
+    this.onWriteError = options.onWriteError ?? (() => {
+    });
+    this.timing = { quiet: options.quiet ?? QUIET, latest: options.latest ?? LATEST, poll: options.poll ?? POLL };
+    this.head = authority.text;
     try {
-      this.known = signature(statSync(file));
+      this.target = realpathSync(file);
+    } catch {
+      this.target = file;
+    }
+    try {
+      const info = statSync(this.target);
+      this.known = signature(info);
+      this.mode = modeOf(info);
+    } catch {
+    }
+    const dir = dirname(this.target), prefix = `.${basename(this.target)}.`;
+    try {
+      for (const name of readdirSync(dir)) {
+        if (name.startsWith(prefix) && /^[0-9a-f]{12}\.tmp$/.test(name.slice(prefix.length))) removeQuietly(join(dir, name));
+      }
     } catch {
     }
     authority.observe(() => this.schedule());
   }
   start() {
-    this.poller = setInterval(() => void this.exclusive(() => this.check()), POLL);
+    this.poller = setInterval(() => void this.exclusive(() => this.check(Infinity)), this.timing.poll);
   }
   // an operation was applied: the file is written after 250 ms of quiet, and at the latest 1 s
   // after the first operation that is not written
   schedule() {
     if (this.stopped) return;
-    const now = Date.now();
+    const now = performance.now();
     this.firstUnwritten ??= now;
     if (this.timer) clearTimeout(this.timer);
-    const wait = Math.max(0, Math.min(QUIET, this.firstUnwritten + LATEST - now));
+    const wait = Math.max(0, Math.min(this.timing.quiet, this.firstUnwritten + this.timing.latest - now), this.retryAt - now);
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.exclusive(() => this.write());
     }, wait);
   }
-  // the text of the authority written at once, at a stop of the edit command
+  // the text of the authority written at once, at a stop of the edit command, after a change of the
+  // file is merged, and the number of operations that are not in the file. a task in flight is left
+  // at its next step, hence its write cannot land after this one
   stopSync() {
-    this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    if (this.poller) clearInterval(this.poller);
-    if (this.authority.text === this.written) return;
-    const tmp = this.tmpName();
-    try {
-      writeFileSync(tmp, encode(this.authority.text, this.bom));
-      renameRetriedSync(tmp, this.file);
-      this.written = this.authority.text;
-    } catch (e) {
-      this.log(`could not write ${this.file}: ${e.message}`);
+    if (!this.stopped) {
+      this.stopped = true;
+      if (this.timer) clearTimeout(this.timer);
+      if (this.poller) clearInterval(this.poller);
       try {
-        unlinkSync(tmp);
-      } catch {
+        finish(this.write(SETTLE_AT_STOP));
+      } catch (e) {
+        this.log(`could not write ${this.file}: ${e.message}`);
       }
+      const unwritten = this.authority.n - this.writtenN;
+      if (unwritten) this.log(`${unwritten} operations are not written into ${this.file}`);
     }
+    return this.authority.n - this.writtenN;
   }
   // resolves once a write or a check in progress is over
   async idle() {
@@ -655,96 +798,205 @@ var Disk = class {
   async exclusive(task) {
     while (this.busy) await this.busy;
     if (this.stopped) return;
-    const run = task().catch((e) => this.log(String(e?.message ?? e)));
+    const run = this.drive(task()).catch((e) => this.log(String(e?.message ?? e)));
     this.busy = run.finally(() => {
       this.busy = null;
     });
     await this.busy;
   }
+  // a task run asynchronously, and left at the first step that ends after a stop
+  async drive(task) {
+    let next = task.next();
+    while (!next.done) {
+      let value, failed = false;
+      try {
+        value = await perform(next.value);
+      } catch (e) {
+        [value, failed] = [e, true];
+      }
+      if (this.stopped) return void task.return(void 0);
+      next = failed ? task.throw(value) : task.next(value);
+    }
+  }
   tmpName() {
-    return join(dirname(this.file), `.${basename(this.file)}.${randomBytes(6).toString("hex")}.tmp`);
+    return join(dirname(this.target), `.${basename(this.target)}.${randomBytes(6).toString("hex")}.tmp`);
   }
-  remember(n, text) {
-    if (this.ring.length && this.ring[this.ring.length - 1].text === text) return;
-    this.ring.push({ n, text });
-    let chars = this.ring.reduce((s, e) => s + e.text.length, 0);
-    while (this.ring.length > 1 && (this.ring.length > RING_TEXTS || chars > RING_CHARS)) chars -= this.ring.shift().text.length;
+  remember(text) {
+    if (text === this.head) return;
+    const delta = reverse(text, this.head);
+    this.back.push(delta);
+    this.backBytes += weight(delta);
+    this.head = text;
+    while (this.back.length > CHAIN_TEXTS || this.backBytes > CHAIN_BYTES) this.backBytes -= weight(this.back.shift());
   }
-  async write() {
+  *write(limit = Infinity) {
     this.firstUnwritten = null;
-    await this.check();
+    for (let tries = 0; tries < 5; tries++) {
+      if (!(yield* this.check(limit))) {
+        this.log(`${this.file} is still being written by another program, and the edit command does not write it`);
+        return;
+      }
+      if ((yield* this.put()) !== "changed") return;
+    }
+    this.schedule();
+  }
+  // the text of the authority into the file, by a temporary file and a rename, or changed when
+  // another program wrote the file in the meantime
+  *put() {
     const text = this.authority.text, n = this.authority.n;
-    if (text === this.written) return;
+    if (text === this.written) {
+      this.writtenN = n;
+      return;
+    }
     const tmp = this.tmpName();
+    let renamed = false, made;
     try {
-      await writeFile(tmp, encode(text, this.bom));
-      await renameRetried(tmp, this.file);
+      yield { write: tmp, bytes: encode(text, this.bom), mode: this.mode };
+      made = yield { stat: tmp };
+      for (let attempt = 0; !renamed; attempt++) {
+        const now = statSync(this.target, { throwIfNoEntry: false });
+        if ((now ? signature(now) : "") !== this.known) return "changed";
+        try {
+          renameSync(tmp, this.target);
+          renamed = true;
+        } catch (e) {
+          if (attempt >= 20 || !RETRY.has(e.code ?? "")) throw e;
+          yield { sleep: 10 * (attempt + 1) };
+        }
+      }
     } catch (e) {
-      await unlink(tmp).catch(() => {
-      });
-      this.log(`could not write ${this.file}, trying again: ${e.message}`);
+      const message = e.message;
+      this.log(`could not write ${this.file}${this.stopped ? "" : ", trying again"}: ${message}`);
+      this.failures++;
+      this.retryAt = performance.now() + Math.min(5e3, this.timing.quiet * 2 ** this.failures);
+      this.onWriteError({ message, unwritten: this.authority.n - this.writtenN });
       this.schedule();
       return;
+    } finally {
+      if (!renamed) removeQuietly(tmp);
     }
     this.written = text;
-    this.known = signature(await stat(this.file));
-    this.remember(n, text);
+    this.writtenN = n;
+    this.known = signature(made);
+    this.remember(text);
+    if (this.failures) {
+      this.failures = 0;
+      this.retryAt = 0;
+      this.onWriteError(null);
+    }
   }
-  // a change of the file that the edit command did not write
-  async check() {
-    let info;
-    try {
-      info = await stat(this.file);
-    } catch {
-      return;
+  // a change of the file that the edit command did not write, or false when the file was still
+  // being written after limit ms
+  *check(limit) {
+    const info = yield { stat: this.target };
+    if (!info) {
+      this.known = "";
+      return true;
     }
-    if (signature(info) === this.known) return;
-    let bytes = await readFile(this.file);
-    for (let i = 0; i < 20; i++) {
-      await sleep(20);
-      const again = await readFile(this.file);
-      if (again.equals(bytes)) break;
-      bytes = again;
+    this.mode = modeOf(info);
+    let sig = signature(info);
+    if (sig === this.known) return true;
+    let bytes = yield { read: this.target };
+    const before2 = Buffer.byteLength(this.written), started = performance.now();
+    let since = started, told = false;
+    for (let reads = 0; ; reads++) {
+      const wait = bytes.length === 0 ? SETTLE_EMPTY : bytes.length * 2 < before2 || !isUtf8(bytes) ? SETTLE : 0;
+      if (!wait && reads >= 20) break;
+      if (wait && !told) {
+        this.log(`${this.file} looks partly written, and the edit command waits until it has not changed for ${wait / 1e3} s`);
+        told = true;
+      }
+      if (performance.now() - started > limit) return false;
+      yield { sleep: wait ? 100 : 20 };
+      const now = yield { stat: this.target };
+      if (!now) {
+        this.known = "";
+        return true;
+      }
+      const again = yield { read: this.target };
+      if (!again.equals(bytes)) [bytes, sig, since] = [again, signature(now), performance.now()];
+      else if (performance.now() - since >= wait) break;
     }
-    const sig = signature(await stat(this.file));
     let read;
     try {
       read = decode(bytes);
     } catch {
       this.log(`${this.file} was changed into a file that is not valid UTF-8, and the change is left out`);
       this.known = sig;
-      return;
+      return true;
     }
+    if (read.text === this.written && read.bom === this.bom) {
+      this.known = sig;
+      return true;
+    }
+    yield* this.merge(read.text);
     this.known = sig;
     this.bom = read.bom;
-    this.merge(read.text);
     this.written = read.text;
-    if (this.authority.text !== read.text) this.schedule();
+    if (this.authority.text === read.text) this.writtenN = this.authority.n;
+    else this.schedule();
+    return true;
   }
   // the text now on disk, written by another program from a text that it read some time before
-  merge(theirs) {
-    const current = this.authority.text;
-    if (theirs === current) return;
-    let base = null, best = Infinity;
-    for (let i = this.ring.length - 1; i >= 0; i--) {
-      const text = this.ring[i].text;
-      const found = text === theirs ? [] : changes(text, theirs);
-      if (found && size(found) < best) {
-        best = size(found);
-        base = text;
-      }
-    }
-    let merged;
-    if (base === null) {
-      merged = theirs;
-    } else {
+  *merge(theirs) {
+    if (theirs !== this.authority.text) {
+      const base = yield* this.nearest(theirs);
+      if (base === theirs) this.log(`${this.file} was written with an earlier text of the session, and the edit command keeps the newer edits and writes them back`);
+      const current = this.authority.text;
       const file = diff2(base, theirs);
       const session = diff2(base, current);
-      merged = apply(base, mergePatches(session, file, "ours").patches);
+      const merged = apply(base, mergePatches(session, file, "ours").patches);
+      const patches = diff2(current, merged);
+      if (patches.length) this.authority.enter(patches, AUTHOR);
     }
-    const patches = diff2(current, merged);
-    if (patches.length) this.authority.enter(patches, AUTHOR);
-    this.remember(this.authority.n, theirs);
+    this.remember(theirs);
+  }
+  // the text of the chain that is nearest to theirs. the texts are rebuilt as lines from the newest
+  // back, each is measured by the lines that it has more or fewer of than theirs, and the nearest few
+  // are compared by a diff. a change based on a text older than the chain is merged on the kept text
+  // nearest to it, hence the edits of the session between the two texts are reverted, since the file
+  // lacks them
+  *nearest(theirs) {
+    const counts = /* @__PURE__ */ new Map();
+    let distance = 0;
+    const count = (lines2, by) => {
+      for (const line of lines2) {
+        const was = counts.get(line) ?? 0, now = was + by;
+        distance += (Math.abs(now) - Math.abs(was)) * (line.length + 1);
+        if (now) counts.set(line, now);
+        else counts.delete(line);
+      }
+    };
+    let lines = this.head.split("\n");
+    count(lines, 1);
+    count(theirs.split("\n"), -1);
+    const best = [];
+    const keep = (steps) => {
+      let i = best.length;
+      while (i > 0 && best[i - 1].distance > distance) i--;
+      if (i < NEAREST) best.splice(i, 0, { distance, steps });
+      if (best.length > NEAREST) best.pop();
+    };
+    keep(0);
+    for (let steps = 1; steps <= this.back.length; steps++) {
+      if (distance === 0 && lines.join("\n") === theirs) return theirs;
+      lines = stepBack(lines, this.back[this.back.length - steps], count);
+      keep(steps);
+      if (steps % 256 === 0) yield { sleep: 0 };
+    }
+    if (distance === 0 && lines.join("\n") === theirs) return theirs;
+    let base = "", rank = [Infinity, Infinity];
+    lines = this.head.split("\n");
+    const farthest = Math.max(...best.map((b) => b.steps));
+    for (let steps = 0; steps <= farthest; steps++) {
+      if (steps) lines = stepBack(lines, this.back[this.back.length - steps]);
+      const candidate = best.find((b) => b.steps === steps);
+      if (!candidate) continue;
+      const text = lines.join("\n"), found = changes(text, theirs), real = found ? size(found) : Infinity;
+      if (real < rank[0] || real === rank[0] && candidate.distance < rank[1]) [base, rank] = [text, [real, candidate.distance]];
+      yield { sleep: 0 };
+    }
+    return base;
   }
 };
 function readText(file) {
@@ -870,7 +1122,7 @@ var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeN
 // src/edit/people.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { readFileSync as readFileSync2, unlinkSync as unlinkSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { unlink as unlink2, writeFile as writeFile2 } from "node:fs/promises";
+import { unlink, writeFile as writeFile2 } from "node:fs/promises";
 var HOLD = 25e3;
 var GAP = 100;
 var GONE = 4e4;
@@ -1185,7 +1437,7 @@ var People = class {
         await writeFile2(tmp, this.json());
         await renameRetried(tmp, this.file);
       } catch (e) {
-        await unlink2(tmp).catch(() => {
+        await unlink(tmp).catch(() => {
         });
         this.log(`could not write ${this.file}: ${e.message}`);
         this.dirty = true;
@@ -1215,7 +1467,7 @@ var People = class {
 };
 
 // src/edit/relay.ts
-import { mkdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync3, chmodSync } from "node:fs";
+import { mkdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync3, chmodSync as chmodSync2 } from "node:fs";
 import { homedir } from "node:os";
 import { join as join3 } from "node:path";
 var RELAY_BODY = 16 * 1024 * 1024;
@@ -1239,7 +1491,7 @@ function saveConfig(config) {
   writeFileSync3(file, `${JSON.stringify(config, null, 2)}
 `, { mode: 384 });
   try {
-    chmodSync(file, 384);
+    chmodSync2(file, 384);
   } catch {
   }
 }
@@ -1255,7 +1507,7 @@ function relayAddress(value) {
     return null;
   }
 }
-var sleep2 = (ms) => new Promise((done) => setTimeout(done, ms));
+var sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 var asciiJson = (value) => JSON.stringify(value).replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 var Taken = class extends Error {
   constructor() {
@@ -1292,7 +1544,7 @@ var RelayLink = class {
   async stop() {
     this.running = false;
     for (const c of this.controllers) c.abort();
-    await Promise.race([Promise.allSettled([...this.serving]), sleep2(1500)]);
+    await Promise.race([Promise.allSettled([...this.serving]), sleep(1500)]);
     await fetch(`${this.relay}/host/${this.key}`, { method: "DELETE", headers: this.auth(), signal: AbortSignal.timeout(3e3) }).catch(() => {
     });
   }
@@ -1349,7 +1601,7 @@ var RelayLink = class {
           break;
         }
         this.log(`the relay is not reached, trying again: ${e.message}`);
-        await sleep2(backoff);
+        await sleep(backoff);
         backoff = Math.min(backoff * 2, 1e4);
       } finally {
         clearTimeout(timer);
@@ -1487,7 +1739,7 @@ var isJson = (request) => (request.headers["content-type"] ?? "").split(";")[0].
 async function start(options = {}) {
   const log = options.log ?? ((m) => process.stderr.write(`${m}
 `));
-  const root = realpathSync.native(resolve(options.folder ?? "."));
+  const root = realpathSync2.native(resolve(options.folder ?? "."));
   const index = join4(root, "index.html");
   const { text, bom } = readText(index);
   const key = keyOf(root);
@@ -1777,7 +2029,7 @@ async function start(options = {}) {
       closed = true;
       unlock();
       people.end();
-      disk.stopSync();
+      const unwritten = disk.stopSync();
       await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
       await new Promise((done) => setTimeout(done, 200));
       await new Promise((done) => {
@@ -1786,6 +2038,7 @@ async function start(options = {}) {
           server.closeAllConnections();
         }, 300);
       });
+      return unwritten;
     })()
   };
 }
@@ -1798,6 +2051,10 @@ var Replica = class _Replica {
     // true after a checksum mismatch, a gap in the operations, or a refusal that a new operation does
     // not repair. the client then says hello without v and passes the answer to resync()
     this.needsResync = false;
+    // true when an operation was refused as invalid again after the resync that followed the first
+    // refusal. nothing is sent any more, and the client asks the person to load the page again
+    this.blocked = false;
+    this.invalids = 0;
     this.flight = null;
     // after a refusal for a conflict, nothing is sent until base reaches the version of the refusal,
     // since the operation that won may not have been received yet
@@ -1818,26 +2075,44 @@ var Replica = class _Replica {
   get inFlight() {
     return this.flight !== null;
   }
-  // the text that the deck reads as after a change of the deck in this browser
+  // true while an operation of this browser waits for its answer. the client holds a resync back
+  // until the answer arrives or the request fails, since only the answer tells whether the text of
+  // the authority holds the operation
+  get unanswered() {
+    return this.flight !== null && !this.flight.answered;
+  }
+  // the text that the deck reads as after a change of the deck in this browser. returns the text
+  // with each lone surrogate replaced by U+FFFD, which the deck must then read as, or null when
+  // text is taken as it is
   edit(text) {
-    this.mine = text;
+    this.mine = wellFormed(text);
+    return this.mine === text ? null : this.mine;
   }
   // the operation to send now, or null when one is in flight, a resync is needed, or base is mine
   outgoing() {
-    if (this.flight || this.needsResync || this.n < this.waitFor || this.mine === this.base) return null;
+    if (this.flight || this.needsResync || this.blocked || this.n < this.waitFor || this.mine === this.base) return null;
     const patches = diff2(this.base, this.mine);
     if (patches.length === 0) return null;
-    this.flight = { seq: ++this.seq, patches };
+    this.flight = { seq: ++this.seq, patches, answered: false, accepted: null };
     return { client: this.client, seq: this.seq, base: this.version, patches };
   }
   // the answer of the edit command to a request of outgoing(). an accepted operation is applied at
   // its broadcast, and a refused one is carried again by the next diff of base and mine
   answer(request, answer) {
-    if (answer.ok || this.flight?.seq !== request.seq) return;
+    if (this.flight?.seq !== request.seq) return;
+    this.flight.answered = true;
+    if (answer.ok) {
+      this.invalids = 0;
+      const at2 = parseVersion(answer.v);
+      this.flight.accepted = at2 && at2.epoch === this.epoch ? at2.n : null;
+      return;
+    }
     this.flight = null;
     const at = parseVersion(answer.v);
     if (answer.reason === "conflict" || answer.reason === "stale" && request.base !== this.version) {
       this.waitFor = at && at.epoch === this.epoch ? at.n : this.n;
+    } else if (answer.reason === "invalid" && ++this.invalids > 1) {
+      this.blocked = true;
     } else {
       this.needsResync = true;
     }
@@ -1857,8 +2132,8 @@ var Replica = class _Replica {
   // the patches of mine that conflict with the operations missed while the browser was away, which
   // the client shows the person before it calls catchUp() with the side that wins
   conflictsOf(ops) {
-    const copy = Object.assign(Object.create(_Replica.prototype), this, { flight: this.flight && { ...this.flight } });
-    return copy.catchUp(ops, "ours").conflicts;
+    const copy2 = Object.assign(Object.create(_Replica.prototype), this, { flight: this.flight && { ...this.flight } });
+    return copy2.catchUp(ops, "ours").conflicts;
   }
   // the operations missed while the browser was away, merged with mine, where the side wins at a
   // conflict. conflicts are the patches of mine that conflicted
@@ -1874,10 +2149,11 @@ var Replica = class _Replica {
     const parsed = parseVersion(v);
     if (!parsed) throw new Error(`${v} is not a version`);
     const before2 = this.mine;
-    const theirs = diff2(this.base, text);
-    const ours = diff2(this.base, this.mine);
+    const from = this.resyncBase(text, parsed);
+    const theirs = diff2(from, text);
+    const ours = diff2(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-    const merged = apply(this.base, mergePatches(kept, ours, "ours").patches);
+    const merged = apply(from, mergePatches(kept, ours, "ours").patches);
     this.base = text;
     this.mine = merged;
     this.epoch = parsed.epoch;
@@ -1886,6 +2162,17 @@ var Replica = class _Replica {
     this.waitFor = -1;
     this.needsResync = false;
     return merged === before2 ? null : merged;
+  }
+  // the text that a resync merges from: base, or base with the operation in flight when the text
+  // of the authority holds it, since its patches would otherwise be on both sides of the merge. the
+  // text holds an operation accepted at or before its version. without an answer, or after a restart
+  // of the edit command, the text holds it when it is nearer to base with it than to base without it
+  resyncBase(text, at) {
+    const f = this.flight;
+    if (!f?.patches) return this.base;
+    const mid = apply(this.base, f.patches);
+    if (f.accepted !== null && at.epoch === this.epoch && at.n >= f.accepted) return mid;
+    return size(diff2(mid, text)) < size(diff2(this.base, text)) ? mid : this.base;
   }
   take(op, wins, conflicts, check, dedupe) {
     if (this.needsResync) return;
@@ -2001,7 +2288,7 @@ Keep this window open while you edit, and close it or press Ctrl+C to stop.
   for (const stream of [process.stdout, process.stderr]) stream.on("error", () => {
   });
   const stop = () => {
-    void running.close().finally(() => process.exit(0));
+    void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
     setTimeout(() => process.exit(0), 3e3).unref();
   };
   const fail = (e) => {
@@ -2021,7 +2308,7 @@ Keep this window open while you edit, and close it or press Ctrl+C to stop.
 }
 var isMain = (() => {
   try {
-    return !!process.argv[1] && realpathSync2(process.argv[1]) === realpathSync2(fileURLToPath(import.meta.url));
+    return !!process.argv[1] && realpathSync3(process.argv[1]) === realpathSync3(fileURLToPath(import.meta.url));
   } catch {
     return false;
   }
@@ -2030,6 +2317,7 @@ if (isMain) void main(process.argv.slice(2));
 export {
   Authority,
   COLORS,
+  Disk,
   NAME_MAX,
   Replica,
   apply,
