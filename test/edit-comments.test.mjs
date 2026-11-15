@@ -285,6 +285,12 @@ test('a shift of the anchors by typing is written to the file', async (t) => {
   reads(authority.text, saved.comments[0].slide, '<section>\n  <h2>Two');
 });
 
+test('a time of reading in the future is taken as the time now', (t) => {
+  const { comments } = open(sessionDir(t), DECK, { now: () => 1_000_000 });
+  assert.equal(comments.seen(BO, 5_000_000), 1_000_000);
+  assert.equal(comments.list(BO).seen, 1_000_000);
+});
+
 // the comments of a session through its requests. the folder is removed after the edit command
 // stops, unless it is kept for a later session
 async function session(t, folder = talkFolder(t), keep = false) {
