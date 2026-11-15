@@ -288,18 +288,107 @@ function byLine(base: string, p: Patch): Patch[] {
   return out;
 }
 
+const LINES = /[^\n]*\n|[^\n]+$/g;
+const WORDS = /\w+|\s+|[^\w\s]+/g;
+// a patch over more characters of base is aligned again by words, e.g. a replace on one long line
+const LONG = 1000;
+
+// the pieces that unit matches in text from a to b, with the offset of each and b last
+function pieces(text: string, a: number, b: number, unit: RegExp): { parts: string[]; at: number[] } {
+  const parts: string[] = [], at: number[] = [];
+  for (const m of text.slice(a, b).matchAll(unit)) {
+    parts.push(m[0]);
+    at.push(a + m.index);
+  }
+  at.push(b);
+  return { parts, at };
+}
+
+// the pairs of indices of equal pieces of a and b that occur once in each, in the longest run that
+// is in the same order in both, by patience sorting
+function anchors(a: string[], b: string[]): [number, number][] {
+  const once = (parts: string[]) => {
+    const at = new Map<string, number>();
+    parts.forEach((p, i) => at.set(p, at.has(p) ? -1 : i));
+    return at;
+  };
+  const inA = once(a), inB = once(b);
+  const pairs: [number, number][] = [];
+  a.forEach((p, i) => {
+    const j = inB.get(p);
+    if (j !== undefined && j >= 0 && inA.get(p) === i) pairs.push([i, j]);
+  });
+  const tails: number[] = [];
+  const prev = new Int32Array(pairs.length);
+  pairs.forEach(([, j], k) => {
+    let lo = 0, hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (pairs[tails[mid]][1] < j) lo = mid + 1;
+      else hi = mid;
+    }
+    prev[k] = lo > 0 ? tails[lo - 1] : -1;
+    tails[lo] = k;
+  });
+  const out: [number, number][] = [];
+  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) out.push(pairs[k]);
+  return out.reverse();
+}
+
+// the patch that replaces base from a to b with text, narrowed to the characters that differ, onto
+// out unless the two are equal
+function narrow(base: string, a: number, b: number, text: string, out: Patch[]): void {
+  const n = b - a, m = text.length;
+  let pre = 0;
+  while (pre < n && pre < m && base.charCodeAt(a + pre) === text.charCodeAt(pre)) pre++;
+  let suf = 0;
+  while (suf < n - pre && suf < m - pre && base.charCodeAt(b - 1 - suf) === text.charCodeAt(m - 1 - suf)) suf++;
+  if (pre + suf < n || pre + suf < m) out.push({ start: a + pre, end: b - suf, text: text.slice(pre, m - suf) });
+}
+
+// the patches that turn base from a0 to a1 into text from b0 to b1, aligned on the anchors of unit
+// and the equal pieces next to them. a gap between anchors with as many lines on both sides gives a
+// patch per line, and any other gap one patch
+function aligned(base: string, a0: number, a1: number, text: string, b0: number, b1: number, unit: RegExp): Patch[] {
+  const a = pieces(base, a0, a1, unit), b = pieces(text, b0, b1, unit);
+  const out: Patch[] = [];
+  let i = 0, j = 0;
+  for (const [ai, bj] of [...anchors(a.parts, b.parts), [a.parts.length, b.parts.length]]) {
+    for (; i < ai && j < bj && a.parts[i] === b.parts[j]; i++, j++);
+    let ei = ai, ej = bj;
+    for (; ei > i && ej > j && a.parts[ei - 1] === b.parts[ej - 1]; ei--, ej--);
+    if (unit === LINES && ei - i === ej - j) for (; i < ei; i++, j++) narrow(base, a.at[i], a.at[i + 1], b.parts[j], out);
+    else if (i < ei || j < ej) narrow(base, a.at[i], a.at[ei], text.slice(b.at[j], b.at[ej]), out);
+    i = ai + 1;
+    j = bj + 1;
+  }
+  return out;
+}
+
+// at most MAX_PATCHES patches, since valid() refuses more, with neighbors joined in runs of one
+// length, hence a conflict covers one run
+function cap(base: string, patches: Patch[]): Patch[] {
+  if (patches.length <= MAX_PATCHES) return patches;
+  const run = Math.ceil(patches.length / MAX_PATCHES);
+  const out: Patch[] = [];
+  for (let i = 0; i < patches.length; i += run) {
+    const group = patches.slice(i, i + run);
+    const parts = group.flatMap((p, k) => (k === 0 ? [p.text] : [base.slice(group[k - 1].end, p.start), p.text]));
+    out.push({ start: group[0].start, end: group[group.length - 1].end, text: parts.join('') });
+  }
+  return out;
+}
+
 // the operation that turns base into text: the line diff of changes() narrowed to characters, or
-// one patch between the common prefix and suffix when changes() gives up, widened to tokens
+// the lines aligned on those that occur once in both texts when changes() gives up, since one patch
+// over most of the deck would conflict with any edit of someone else. a patch over a long range is
+// aligned again by words, and the patches are widened to tokens
 export function diff(base: string, text: string): Patch[] {
   if (base === text) return [];
   const found = changes(base, text);
-  if (found) return widen(base, found.flatMap((p) => byLine(base, p)));
-  let pre = 0;
-  const max = Math.min(base.length, text.length);
-  while (pre < max && base.charCodeAt(pre) === text.charCodeAt(pre)) pre++;
-  let suf = 0;
-  while (suf < max - pre && base.charCodeAt(base.length - 1 - suf) === text.charCodeAt(text.length - 1 - suf)) suf++;
-  return widen(base, [{ start: pre, end: base.length - suf, text: text.slice(pre, text.length - suf) }]);
+  const lines = found ? found.flatMap((p) => byLine(base, p)) : aligned(base, 0, base.length, text, 0, text.length, LINES);
+  const patches = lines.flatMap((p) => (p.end - p.start > LONG ? aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS) : [p]));
+  return widen(base, cap(base, patches));
 }
 
 // the size of an operation, i.e. the characters it removes and inserts
