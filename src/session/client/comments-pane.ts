@@ -95,6 +95,8 @@ class Pane {
   private replies = new Map<string, Field>();
   private groups = new Map<Element | string, HTMLElement>();
   private order: string[] = [];
+  // each thread and its place as last drawn, read when another person deletes it
+  private drawn = new Map<string, { t: Comment; p: Place | null }>();
   // the replies kept through a reload whose thread is not drawn yet
   private pending = new Map<string, Kept>();
   private saveTimer = 0;
@@ -183,6 +185,7 @@ class Pane {
   }
 
   render(): void {
+    const give = this.salvage();
     for (const b of this.filters.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.filter === this.filter));
     const places = this.comments.places();
     const shown = this.sorted(places).filter((t) => this.visible(t));
@@ -229,11 +232,45 @@ class Pane {
     for (const [id, node] of this.nodes) {
       if (!this.comments.threads.has(id)) {
         this.nodes.delete(id);
-        this.replies.delete(id);
         this.signs.delete(id);
+        this.drawn.delete(id);
       } else node.tabIndex = id === (this.focused ?? this.order[0]) ? 0 : -1;
     }
+    if (give?.isConnected) give.focus();
     this.updateDraft();
+  }
+
+  // a reply being typed in a thread that another person deleted becomes the draft of a new comment
+  // on the same element, or on its slide when the element is gone. a draft with text keeps its
+  // place, and the reply is added under its text. the field to focus is given back
+  private salvage(): HTMLElement | null {
+    let give: HTMLElement | null = null;
+    for (const [id, f] of this.replies) {
+      if (this.comments.threads.has(id)) continue;
+      this.replies.delete(id);
+      this.pending.delete(id);
+      const edit = this.editing?.id === id ? this.editing.field : null;
+      if (edit) this.editing = null;
+      const was = this.drawn.get(id);
+      const k = [f.kept(), edit?.kept()].find((x) => x && x.text.trim());
+      if (!k || !was || was.t.author === this.client.person) continue;
+      const focused = f.box.contains(document.activeElement) || !!edit?.box.contains(document.activeElement);
+      if (this.draft?.field.area.value.trim()) {
+        const d = this.draft.field.kept();
+        const at = d.text.length + 2;
+        this.draft.field.load({ text: `${d.text}\n\n${k.text}`, marks: [...d.marks, ...k.marks.map((m) => ({ ...m, start: m.start + at, end: m.end + at }))] });
+      } else {
+        const el = was.p?.el?.isConnected ? was.p.el : null;
+        const slide = el?.closest(SLIDES) ?? (was.p?.slide?.isConnected ? was.p.slide : null) ?? this.shell.target().slide;
+        if (!slide) continue;
+        this.drafted(el, slide);
+        this.draft?.field.load(k);
+      }
+      if (focused) give = this.draft?.field.area ?? null;
+      this.keep();
+      toast(named(this.nameOf(was.t.author), ' deleted this thread. Your reply is kept as a new comment.'));
+    }
+    return give;
   }
 
   // the draft and the replies being typed written to sessionStorage, at most once a second
@@ -299,6 +336,7 @@ class Pane {
       });
       this.nodes.set(t.id, node);
     }
+    this.drawn.set(t.id, { t, p });
     const unread = this.comments.unread(t);
     node.classList.toggle('unread', unread);
     node.classList.toggle('focused', this.focused === t.id);
