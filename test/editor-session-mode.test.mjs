@@ -343,3 +343,29 @@ test('the state line of a session shows why a command failed, until the next edi
     await page.close();
   }
 });
+
+// a page that is offline cannot send its edits, and the saver of the session then does not resolve
+test('Present and an export in a session give up with the reason when the edits are not sent in time', async () => {
+  const page = await editorPage(browser, { client: CLIENT, query: SESSION });
+  try {
+    await page.evaluate(TIMERS);
+    await page.evaluate(HELD_SAVER);
+    await page.evaluate(NO_TABS);
+    await page.evaluate(`(${E}.session.setStatus('Offline'), true)`);
+    await typeGo(page);
+    await press(page, 'Mod+Enter');
+    await page.waitFor('window.__saves === 1');
+    assert.equal(await page.evaluate(`!!document.querySelector('.beeson-edit-show')`), true, 'the show does not take the screen while the click still counts');
+    await page.evaluate('window.__timers.run(), true');
+    await page.waitFor(`!document.querySelector('.beeson-edit-show')`, 3000);
+    assert.match((await status(page)).message, /^Offline\. Your last changes are not sent yet\. Try again once they are saved(\.|$)/);
+    const pdf = exec(page, 'file.export.pdf');
+    await page.waitFor('window.__saves === 2');
+    await page.evaluate('window.__timers.run(), true');
+    await assert.rejects(pdf, /not sent yet/);
+    assert.equal(await page.evaluate('window.__opened.length'), 0, 'the print view is opened without the edits');
+    assert.deepEqual(errors(page), []);
+  } finally {
+    await page.close();
+  }
+});

@@ -9,7 +9,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, ops, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
-import { click, type } from './helpers/editor.mjs';
+import { click, press, type } from './helpers/editor.mjs';
 import { raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -143,4 +143,25 @@ test('a page whose operation is refused as invalid after a resync stops sending,
   assert.equal(await page.evaluate(STATE), 'Saved to index.html');
   assert.equal(await page.evaluate(TEXT), TALK);
   clean(page, [/status of 400/]);
+});
+
+// Present takes the full screen before the edits are sent, and a page that is offline cannot send them
+test('Present on a page that is offline ends its show and says that the changes are not sent', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit));
+  await converge(server, [page]);
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await page.waitFor(`/^Offline\\./.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' offline');
+  await page.waitFor(`${TEXT}.includes('<p>First slide offline</p>')`);
+  await press(page, 'Mod+Enter');
+  await page.waitFor(`!!document.querySelector('body > .beeson-edit-show')`);
+  await page.waitFor(`!document.querySelector('body > .beeson-edit-show')`, 10_000);
+  assert.match(await page.evaluate(`document.querySelector('.beeson-edit-titlebar .state').textContent`), /Your last changes are not sent yet/);
+  clean(page, REFUSED);
 });
