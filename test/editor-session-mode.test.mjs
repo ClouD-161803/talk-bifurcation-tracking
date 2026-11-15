@@ -254,6 +254,47 @@ test('10: Open, Open Recent, Revert to Saved, and Autosave are dimmed in a sessi
   }
 });
 
+// end() puts the editor back as it was before: the deck counts as changed, Present and the exports
+// ask first, Open and Revert to Saved are enabled again, a draft is kept, and Save writes the file
+test('after end(), the editor saves, keeps drafts, and asks about unsaved changes again', async () => {
+  const page = await editorPage(browser, { client: CLIENT, query: SESSION, page: { drafts: true }, clear: true });
+  try {
+    await page.evaluate(HELD_SAVER);
+    await page.evaluate(TIMERS);
+    await typeGo(page);
+    await page.evaluate('window.__timers.run(), true');
+    assert.equal(await page.evaluate(draftText), null, 'a draft was kept in the session');
+    await page.evaluate(`${E}.session.end(), true`);
+    let s = await status(page);
+    assert.equal(s.dirty, true, 'the deck does not count as changed after end()');
+    for (const id of ['file.open', 'file.revert', 'file.autosave']) assert.equal(await enabled(page, id), s.supported || id !== 'file.autosave', `${id} after end()`);
+    assert.doesNotMatch(JSON.stringify(await fileMenu(page)), new RegExp(NOTE));
+    await page.evaluate('window.__timers.run(), true');
+    assert.ok((await page.evaluate(draftText))?.includes(' Go.'), 'a draft is not kept after end()');
+    void exec(page, 'file.export.pdf');
+    await page.waitFor(askShown);
+    await page.evaluate(`document.querySelector('dialog.beeson-edit-dialog.ask [value="cancel"], dialog.beeson-edit-dialog.ask button:last-child').click(), true`);
+    await page.waitFor(`!(${askShown})`);
+    if (s.supported) {
+      // a file handle kept in memory, since a page on file: does not have the private file system
+      await page.evaluate(`window.showSaveFilePicker = async () => ({
+        name: 'mode-saved.html',
+        getFile: async () => ({ lastModified: 0, text: async () => window.__written ?? '' }),
+        createWritable: async () => ({ write: async (t) => { window.__written = t; }, close: async () => {} }),
+        isSameEntry: async () => false,
+      })`);
+      await page.evaluate(`${E}.save()`);
+      s = await status(page);
+      assert.equal(s.dirty, false, 'Save does not write the file after end()');
+      assert.equal(await page.evaluate('window.__saves'), 0, 'Save after end() calls the saver of the session');
+      assert.ok((await page.evaluate('window.__written ?? ""')).includes(' Go.'));
+    }
+    assert.deepEqual(errors(page), []);
+  } finally {
+    await page.close();
+  }
+});
+
 // begin() twice is one session, which one end() ends, and end() without begin() does not change
 // anything
 test('begin() is idempotent, and end() without begin() does nothing', async () => {
