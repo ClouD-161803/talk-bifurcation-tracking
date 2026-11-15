@@ -6,7 +6,7 @@
 
 import type { AppliedOp, OpAnswer, OpRequest, Patch, Version } from './protocol.ts';
 import { formatVersion, parseVersion } from './protocol.ts';
-import { apply, checksum, diff, mergePatches, shift, valid, wellFormed } from './patch.ts';
+import { apply, checksum, diff, mergePatches, shift, size, valid, wellFormed } from './patch.ts';
 
 export type Side = 'ours' | 'theirs';
 
@@ -15,6 +15,9 @@ type Flight = {
   // the patches of the operation moved onto base, or null once an operation of another browser
   // conflicts with them, since the authority then refuses the operation
   patches: Patch[] | null;
+  answered: boolean;
+  // the n of the version at which the authority applied the operation, once the answer says so
+  accepted: number | null;
 };
 
 export class Replica {
@@ -58,6 +61,13 @@ export class Replica {
     return this.flight !== null;
   }
 
+  // true while an operation of this browser waits for its answer. the client holds a resync back
+  // until the answer arrives or the request fails, since only the answer tells whether the text of
+  // the authority holds the operation
+  get unanswered(): boolean {
+    return this.flight !== null && !this.flight.answered;
+  }
+
   // the text that the deck reads as after a change of the deck in this browser. returns the text
   // with each lone surrogate replaced by U+FFFD, which the deck must then read as, or null when
   // text is taken as it is
@@ -71,7 +81,7 @@ export class Replica {
     if (this.flight || this.needsResync || this.blocked || this.n < this.waitFor || this.mine === this.base) return null;
     const patches = diff(this.base, this.mine);
     if (patches.length === 0) return null;
-    this.flight = { seq: ++this.seq, patches };
+    this.flight = { seq: ++this.seq, patches, answered: false, accepted: null };
     return { client: this.client, seq: this.seq, base: this.version, patches };
   }
 
@@ -79,8 +89,11 @@ export class Replica {
   // its broadcast, and a refused one is carried again by the next diff of base and mine
   answer(request: OpRequest, answer: OpAnswer): void {
     if (this.flight?.seq !== request.seq) return;
+    this.flight.answered = true;
     if (answer.ok) {
       this.invalids = 0;
+      const at = parseVersion(answer.v);
+      this.flight.accepted = at && at.epoch === this.epoch ? at.n : null;
       return;
     }
     this.flight = null;
@@ -131,10 +144,11 @@ export class Replica {
     const parsed = parseVersion(v);
     if (!parsed) throw new Error(`${v} is not a version`);
     const before = this.mine;
-    const theirs = diff(this.base, text);
-    const ours = diff(this.base, this.mine);
+    const from = this.resyncBase(text, parsed);
+    const theirs = diff(from, text);
+    const ours = diff(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-    const merged = apply(this.base, mergePatches(kept, ours, 'ours').patches);
+    const merged = apply(from, mergePatches(kept, ours, 'ours').patches);
     this.base = text;
     this.mine = merged;
     this.epoch = parsed.epoch;
@@ -143,6 +157,18 @@ export class Replica {
     this.waitFor = -1;
     this.needsResync = false;
     return merged === before ? null : merged;
+  }
+
+  // the text that a resync merges from: base, or base with the operation in flight when the text
+  // of the authority holds it, since its patches would otherwise be on both sides of the merge. the
+  // text holds an operation accepted at or before its version. without an answer, or after a restart
+  // of the edit command, the text holds it when it is nearer to base with it than to base without it
+  private resyncBase(text: string, at: { epoch: string; n: number }): string {
+    const f = this.flight;
+    if (!f?.patches) return this.base;
+    const mid = apply(this.base, f.patches);
+    if (f.accepted !== null && at.epoch === this.epoch && at.n >= f.accepted) return mid;
+    return size(diff(mid, text)) < size(diff(this.base, text)) ? mid : this.base;
   }
 
   private take(op: AppliedOp, wins: Side, conflicts: Patch[], check: boolean, dedupe: boolean): void {
