@@ -18,6 +18,7 @@ const CSS = `
 .beeson-comment-badge:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 2px; }
 .beeson-edit-nav .row .frame .beeson-comment-count { position: absolute; top: -6px; right: -6px; z-index: 1; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--ed-panel); color: var(--ed-select); box-shadow: 0 0 0 1.5px var(--ed-select); font: 600 10px/16px var(--ed-font); text-align: center; pointer-events: none; }
 .beeson-edit-nav .row .frame .beeson-comment-count.unread { background: var(--ed-select); color: var(--ed-on-select); }
+html.beeson-history .beeson-comment-badges, html.beeson-history .beeson-edit-nav .beeson-comment-count { display: none; }
 `;
 
 const KEY = 'beeson-comment-badges';
@@ -91,7 +92,8 @@ export class Badges {
     this.counts(groups);
     const app = this.comments.client.app;
     const current = app.current();
-    if (!this.shown || !current || app.state !== 'loaded') {
+    // the mode of Version History shows another version of the deck, without the badges
+    if (!this.shown || !current || app.state !== 'loaded' || document.documentElement.classList.contains('beeson-history')) {
       this.layer.replaceChildren();
       this.boxes = [];
       return;

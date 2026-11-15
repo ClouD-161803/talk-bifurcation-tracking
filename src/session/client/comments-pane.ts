@@ -13,7 +13,7 @@ import { whenOf } from './labels.ts';
 import { closeMenu, openMenu } from './menu.ts';
 import { initials, inkOf, toneOf } from './people.ts';
 import { presenceOf } from './presence.ts';
-import { mountToasts, toast, type ToastKind } from './toast.ts';
+import { mountToasts, toast, type ToastButton, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 
 const OFFLINE = 'Comments are sent once you are back online';
@@ -696,6 +696,7 @@ class Pane {
 
   // a new comment on el, or on slide when el is null, as a draft at the top of the pane
   startDraft(el: Element | null, slide: Element, focus = true): void {
+    if (inHistory()) return;
     this.shell.tab.set(true);
     if (this.filter === 'resolved') this.filter = 'open';
     this.drafted(el, slide);
@@ -791,7 +792,7 @@ class Pane {
   // the thread of id shown in the pane and framed on its slide
   open(id: string): void {
     const t = this.comments.threads.get(id);
-    if (!t) return;
+    if (!t || inHistory()) return;
     this.shell.tab.set(true);
     if (!this.visible(t)) this.filter = t.resolved ? 'resolved' : 'open';
     this.focus(id, true);
@@ -825,6 +826,7 @@ class Pane {
 
   // the first open thread on the element or slide target
   openAt(target: Element): void {
+    if (inHistory()) return;
     const places = this.comments.places();
     const t = this.sorted(places).find((x) => !x.resolved && (places.get(x.id)?.el ?? places.get(x.id)?.slide) === target);
     if (t) this.open(t.id);
@@ -863,6 +865,8 @@ class Pane {
     ev.stopPropagation();
   }
 }
+
+const inHistory = (): boolean => document.documentElement.classList.contains('beeson-history');
 
 // the message of a failed request for the person, which is not sent later
 function message(e: unknown): string {
@@ -926,7 +930,8 @@ export function install(client: Client): void {
   const count = make('span', 'count');
   button.append(client.shell.icon('comment', 14), count);
   client.shell.bar.append(button);
-  button.addEventListener('click', () => shell.tab.set(!shell.tab.shown()));
+  // the mode of Version History shows another version, hence the button is out of reach
+  button.addEventListener('click', () => !inHistory() && shell.tab.set(!shell.tab.shown()));
   mountToasts();
 
   let frame = 0;
@@ -947,6 +952,18 @@ export function install(client: Client): void {
       draw();
     });
   };
+
+  // the toasts of mentions wait while the mode of Version History is on
+  const held: (() => void)[] = [];
+  let history = inHistory();
+  new MutationObserver(() => {
+    if (history === inHistory()) return;
+    history = !history;
+    button.toggleAttribute('inert', history);
+    badges.schedule();
+    if (!history) for (const show of held.splice(0)) show();
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  button.toggleAttribute('inert', history);
 
   // a comment is a candidate for a toast once, when the page first receives it. the comments of the
   // first answer are not toasted, and the toasted ones are kept through a reload of the page
@@ -975,7 +992,10 @@ export function install(client: Client): void {
         toasted.add(i.id);
         added = true;
         const n = comments.numberOf(t);
-        toast(named(nameOf(client, i.author), ` mentioned you ${n === null ? 'on the deck' : `on slide ${n}`}`), { label: 'Show', run: () => pane.open(t.id) }, kind);
+        const go: ToastButton = { label: 'Show', run: () => pane.open(t.id) };
+        const show = () => toast(named(nameOf(client, i.author), ` mentioned you ${n === null ? 'on the deck' : `on slide ${n}`}`), go, kind);
+        if (inHistory()) held.push(show);
+        else show();
       }
     }
     if (added) {
