@@ -416,7 +416,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const secret = process.env.SLIDES_RELAY_SECRET || (address !== null && address === relayAddress(saved.relay) ? saved.secret : undefined);
     if (!address) log(`${ADDRESS_RULE}, and the session is not shared`);
     else if (!secret || secret.length < 16) log('the secret of the relay is not set, and the session is not shared');
-    else await serial(() => connect(address, secret)).then(() => log(`shared at ${relay!.link}`), (e) => log(`the session is not shared: ${(e as Error).message}`));
+    // not awaited, so that the caller can stop the command, with its last write, while the relay is asked
+    else void serial(() => connect(address, secret)).then(() => log(`shared at ${relay!.link}`), (e) => log(`the session is not shared: ${(e as Error).message}`));
   }
 
   let closing: Promise<number> | null = null;
