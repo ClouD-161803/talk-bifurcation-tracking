@@ -67,6 +67,8 @@ function adopt(el: SrcEl, source: Source): void {
   for (const c of el.children) if (c.kind === 'element') adopt(c, source);
 }
 
+const FOREIGN = new Set(['svg', 'math']);
+
 // how the elements in bytes, the bytes of el, are closed. 'closed' when each is closed by its end
 // tag inside them, apart from el when its end tag is left out. 'open' when one is left open, or is
 // closed by the end tag of an element around it, since the parser of the whole file may carry it
@@ -74,8 +76,11 @@ function adopt(el: SrcEl, source: Source): void {
 // tag closes an element around el, i.e. the change reaches past el and is read at its parent
 export function closing(bytes: string, el: SrcEl): 'closed' | 'open' | 'out' {
   const open: string[] = [];
+  // the parser closes a self-closing tag only in SVG and MathML, and ignores its slash elsewhere
+  let outer = false;
+  for (let e = el.parent; e && !outer; e = e.parent) outer = FOREIGN.has(e.tag.toLowerCase());
   for (const t of tokenize(bytes)) {
-    if (t.type === 'start' && !t.selfClosing && !VOID.has(t.name)) open.push(t.name);
+    if (t.type === 'start' && !VOID.has(t.name) && !(t.selfClosing && (outer || FOREIGN.has(t.name) || open.some((n) => FOREIGN.has(n))))) open.push(t.name);
     else if (t.type === 'end') {
       const i = open.lastIndexOf(t.name);
       if (i < 0) return open.length > (el.open ? 1 : 0) ? 'open' : 'out';
