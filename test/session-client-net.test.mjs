@@ -8,7 +8,7 @@ import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
+import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { NET } from './helpers/net.mjs';
 import { ROWS } from './helpers/offline.mjs';
 import { click, type } from './helpers/editor.mjs';
@@ -452,4 +452,39 @@ test('on a phone, the save state shows its text, so that Saving… and Saved dif
   await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
   await converge(server, [page]);
   clean(page);
+});
+
+test('two pages resync after a restart of the edit command, one with an operation in flight and one that typed during the outage', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const { port } = server.edit;
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
+  await converge(server, [a, b]);
+  // the operation of b is held in the page until the edit command is started again
+  await b.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(b, 'One');
+  await caretAtEnd(b, el(0, 'p'));
+  await type(b, ' held');
+  await b.waitFor(`__net.held.length === 1`);
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await a.waitFor(`/^Offline/.test(${STATE})`);
+  await show(a, 'Two');
+  await caretAtEnd(a, el(1, 'p'));
+  await type(a, ' by Ann');
+  await a.waitFor(`${TEXT}.includes('<p>Second slide by Ann</p>')`);
+  await server.start(['--port', String(port)]);
+  await b.evaluate(`__net.clear() && __net.release('/.session/op')`);
+  for (const page of [a, b]) await page.evaluate(`(${C}.tryNow(), true)`);
+  const text = await converge(server, [a, b], 'the pages and index.html to agree after the restart', 40_000);
+  assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide held</p>').replace('<p>Second slide</p>', '<p>Second slide by Ann</p>'));
+  // the decks themselves, and not only their texts, read as the merged text
+  for (const page of [a, b]) assert.deepEqual(await page.evaluate(`[${el(0, 'p')}.textContent, ${el(1, 'p')}.textContent]`), ['First slide held', 'Second slide by Ann']);
+  // a presence with the token of the edit command before is refused, and so is a hello without a
+  // name from a person whom the edit command lost with the kill, which the page sends again with it
+  const restarted = [...REFUSED, /status of 404 .*\/\.session\/presence/, /status of 400 .*\/\.session\/hello/];
+  clean(a, restarted);
+  clean(b, restarted);
 });
