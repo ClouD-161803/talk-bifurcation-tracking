@@ -774,3 +774,22 @@ test('of two pages whose claims of one text element are heard 4 s late, the smal
   clean(ana);
   clean(ben);
 });
+
+test('a hold of an element that leaves the page ends, and its heartbeat stops', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const beta = el(1, 'li:nth-child(2)');
+  await caretAtEnd(ana, beta);
+  await until(() => ana.evaluate(`${P}.held === ${beta}`), 'the hold of Beta on the page of Ana');
+  await until(async () => (await ben.evaluate(`${C}.resolved()[0]?.held?.textContent`)) === 'Beta', 'the hold of Ana on the page of Ben');
+  writeFileSync(server.file, server.read().replace('\n    <li>Beta</li>', ''));
+  await until(() => ana.evaluate(`!${el(1, 'li:nth-child(2)')}`), 'Beta to leave the page of Ana');
+  const beat = await ana.evaluate(`${P}.sent.beat`);
+  await later(ana, 5000);
+  assert.equal(await ana.evaluate(`${P}.held`), null);
+  assert.equal(await ana.evaluate(`${P}.sent.beat`), beat);
+  assert.equal(await ana.evaluate(`${P}.ticker`), 0, 'the ticker of the floor rule stops');
+  clean(ana);
+  clean(ben);
+});
