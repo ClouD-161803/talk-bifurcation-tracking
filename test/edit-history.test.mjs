@@ -353,3 +353,62 @@ test('a restore of texts that differ in more than 2000 places is entered as one 
   assert.equal(ops.length, 1);
   assert.ok(ops[0].patches.length <= 2000, `${ops[0].patches.length} patches`);
 });
+
+// the history of a session through its requests
+const ENV = (config, times = { quiet: 100 }) => ({ XDG_CONFIG_HOME: config, APPDATA: config, SLIDES_HISTORY: JSON.stringify(times) });
+
+async function session(t, times) {
+  const folder = talkFolder(t);
+  t.after(() => rmSync(folder.root, { recursive: true, force: true }));
+  const edit = await startEdit(folder.talk, { env: ENV(folder.config, times) });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = async (name) => (await post(edit.port, api('hello'), { name })).json();
+  const list = async (page) => (await raw(edit.port, 'GET', `${api('history')}?token=${page.token}`)).json();
+  const current = async () => (await raw(edit.port, 'GET', `${edit.base}index.html`)).text;
+  // an operation of page that replaces the first from in the current text by to
+  const op = async (page, seq, from, to) => {
+    const r = await raw(edit.port, 'GET', `${edit.base}index.html`);
+    const at = r.text.indexOf(from);
+    assert.ok(at >= 0, `${from} is in the deck`);
+    const base = r.headers['x-session-version'];
+    return (await post(edit.port, api('op'), { token: page.token, seq, base, patches: [{ start: at, end: at + from.length, text: to }] })).json();
+  };
+  const events = async (page, since) => (await raw(edit.port, 'GET', `${api('events')}?token=${page.token}&since=${since}`)).json();
+  // the newest version once n versions are closed
+  const closed = (page, n) => until(async () => { const { versions } = await list(page); return versions.length === n && versions[0]; }, `${n} versions`);
+  return { ...folder, edit, api, hello, list, current, op, events, closed, file: join(folder.talk, 'index.html') };
+}
+
+test('a version is named, and a name is taken off', { timeout: 120_000 }, async (t) => {
+  const s = await session(t, { quiet: 3_600_000, longest: 3_600_000 });
+  const ann = await s.hello('Ann');
+  const name = (id, value, token = ann.token) => post(s.edit.port, s.api(`history/${id}/name`), { token, name: value });
+  // the current state of a deck without a version yet is named as a version of the base
+  const base = (await name('current', '  First   draft ')).json();
+  assert.equal(base.name, 'First draft');
+  assert.deepEqual(base.authors, []);
+  const first = await s.op(ann, 1, 'One', 'Uno');
+  assert.equal(first.ok, true);
+  const v = (await name('current', 'Second')).json();
+  assert.deepEqual(v.authors, [ann.person]);
+  assert.deepEqual(v.slides, [1]);
+  // the answer that tells of the two names above, and then a poll that waits
+  assert.equal(typeof (await s.events(ann, first.v)).history, 'number');
+  const waiting = s.events(ann, first.v);
+  assert.equal((await name(base.id, '')).status, 200);
+  assert.equal(typeof (await waiting).history, 'number', 'a waiting poll is told that the list changed');
+  const listed = await s.list(ann);
+  assert.deepEqual(listed.versions.map((x) => [x.id, x.name]), [[v.id, 'Second'], [base.id, undefined]]);
+  assert.equal((await name(v.id, 'x'.repeat(81))).status, 400);
+  assert.equal((await name(v.id, 'é'.repeat(80))).status, 200);
+  assert.equal((await name(v.id, 42)).status, 400);
+  assert.equal((await name('nope', 'x')).status, 404);
+  assert.equal((await name('../x', 'x')).status, 404);
+  assert.equal((await name(v.id, 'x', 'n'.repeat(22))).status, 404);
+  assert.equal((await raw(s.edit.port, 'GET', `${s.api('history')}?token=${'n'.repeat(22)}`)).status, 404);
+  assert.equal((await raw(s.edit.port, 'GET', `${s.api(`history/${v.id}`)}?token=${ann.token}`)).json().marks.length, 1);
+  assert.equal((await raw(s.edit.port, 'GET', `${s.api('history/nope')}?token=${ann.token}`)).status, 404);
+  assert.equal((await raw(s.edit.port, 'POST', s.api(`history/${v.id}/name`), { body: '{}', headers: { 'content-type': 'text/plain' } })).status, 415);
+  assert.equal((await raw(s.edit.port, 'POST', s.api(`history/${v.id}/name`), { body: '[1]', headers: { 'content-type': 'application/json' } })).status, 400);
+});
