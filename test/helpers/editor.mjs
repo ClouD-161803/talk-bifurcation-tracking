@@ -155,6 +155,7 @@ export async function press(page, keys) {
 // the code, the key code, and the modifier bits of the symbols of a US layout that typeKeys() types
 const SYMBOLS = {
   ' ': ['Space', 32, 0],
+  '!': ['Digit1', 49, BITS.Shift],
   '-': ['Minus', 189, 0],
   '.': ['Period', 190, 0],
   '/': ['Slash', 191, 0],
