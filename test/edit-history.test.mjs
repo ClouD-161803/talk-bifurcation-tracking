@@ -773,3 +773,20 @@ test('a page that was dropped while two restores were made is told the later one
   await dropped(cy);
   assert.equal((await s.events(cy, cy.v)).restored, undefined);
 });
+
+test('the deck as it read when a new history began is its first version, kept through a restart', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const { authority, history } = open(dir, DECK);
+  replace(authority, 'One', 'Uno', ANN);
+  history.close();
+  const start = history.list().versions.at(-1);
+  assert.equal(start.start, true);
+  assert.deepEqual(start.authors, []);
+  assert.equal(history.textOf(start.id), DECK);
+  history.stopSync();
+  const again = open(dir, authority.text);
+  const versions = again.history.list().versions;
+  assert.deepEqual(versions.filter((v) => v.start).map((v) => v.id), [start.id]);
+  assert.equal(versions.length, 2);
+  assert.equal(again.history.textOf(start.id), DECK);
+});
