@@ -249,10 +249,16 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const chunks: Buffer[] = [];
     let length = 0;
     if (Number(headers['content-length'] ?? 0) > limit) return send(req, res, error(413, 'the body is too large'), true);
-    for await (const chunk of req) {
-      length += (chunk as Buffer).length;
-      if (length > limit) return send(req, res, error(413, 'the body is too large'), true);
-      chunks.push(chunk as Buffer);
+    try {
+      for await (const chunk of req) {
+        length += (chunk as Buffer).length;
+        if (length > limit) return send(req, res, error(413, 'the body is too large'), true);
+        chunks.push(chunk as Buffer);
+      }
+    } catch {
+      // the browser closed the connection before the end of the body
+      res.destroy();
+      return;
     }
     const request: Request = { method: req.method ?? 'GET', path: q < 0 ? url : url.slice(0, q), query: q < 0 ? '' : url.slice(q + 1), headers, body: Buffer.concat(chunks), direct: true };
     let response: Response;
@@ -284,7 +290,12 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     res.end(head ? undefined : bytes);
   }
 
-  const server = createServer((req, res) => void onRequest(req, res));
+  const server = createServer((req, res) =>
+    onRequest(req, res).catch((e) => {
+      log(`a request failed: ${(e as Error).message}`);
+      res.destroy();
+    }),
+  );
   server.headersTimeout = 20_000;
   server.requestTimeout = 120_000;
   await new Promise<void>((done, fail) => {

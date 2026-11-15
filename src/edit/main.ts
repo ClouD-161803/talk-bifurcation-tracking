@@ -82,6 +82,14 @@ async function main(argv: string[]): Promise<void> {
     void running.close().finally(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000).unref();
   };
+  // a fault that escapes every handler still writes index.html before the exit
+  const fail = (e: unknown) => {
+    process.stderr.write(`The edit command failed: ${(e as Error)?.stack ?? e}\n`);
+    void running.close().finally(() => process.exit(1));
+    setTimeout(() => process.exit(1), 3000).unref();
+  };
+  process.on('uncaughtException', fail);
+  process.on('unhandledRejection', fail);
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'] as const) {
     try {
       process.on(signal, stop);
