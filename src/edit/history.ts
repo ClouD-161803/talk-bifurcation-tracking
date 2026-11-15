@@ -21,6 +21,10 @@ export type HistoryOptions = {
   // first operation since the version before
   quiet?: number;
   longest?: number;
+  // past maxBytes the file is written anew without the versions older than keep ms, apart from
+  // the named ones and those after them
+  maxBytes?: number;
+  keep?: number;
   now?: () => number;
   log?: (message: string) => void;
 };
@@ -162,6 +166,8 @@ export class History {
   private readonly authority: Authority;
   private readonly quiet: number;
   private readonly longest: number;
+  private readonly maxBytes: number;
+  private readonly keep: number;
   private readonly now: () => number;
   private readonly log: (message: string) => void;
   private base = { time: 0, text: '' };
@@ -186,6 +192,8 @@ export class History {
     this.authority = authority;
     this.quiet = options.quiet ?? 60_000;
     this.longest = options.longest ?? 300_000;
+    this.maxBytes = options.maxBytes ?? 32 * 1024 * 1024;
+    this.keep = options.keep ?? 30 * 24 * 3600 * 1000;
     this.now = options.now ?? Date.now;
     this.log = options.log ?? (() => {});
     try {
@@ -216,6 +224,7 @@ export class History {
         const patches = this.found.patches;
         this.push(this.version([AUTHOR], patches, clip([], patches, AUTHOR), text), text);
       }
+      if (this.bytes > this.maxBytes) this.compact();
     }
     authority.observe((op) => this.operation(op));
   }
@@ -354,6 +363,7 @@ export class History {
     const { name, ...line } = v;
     this.append({ kind: 'version', ...line });
     if (name) this.append({ kind: 'name', id: v.id, name });
+    if (this.bytes > this.maxBytes) this.compact();
     this.changed();
   }
 
@@ -421,6 +431,25 @@ export class History {
         unlinkSync(tmp);
       } catch {}
     }
+  }
+
+  // the versions before the oldest of the last keep ms and before the oldest named one left out,
+  // the version before them becoming the base
+  private compact(): void {
+    const cutoff = this.now() - this.keep;
+    let k = this.versions.findIndex((v) => v.time >= cutoff);
+    if (k < 0) k = this.versions.length - 1;
+    const named = this.versions.findIndex((v) => v.name);
+    if (named >= 0) k = Math.min(k, named);
+    if (k <= 0) return;
+    this.base = { time: this.versions[k - 1].time, text: this.textAt(k - 1) };
+    this.versions = this.versions.slice(k);
+    const kept = new Map<number, string>();
+    for (const [i, text] of this.checkpoints) if (i >= k) kept.set(i - k, text);
+    this.checkpoints = kept;
+    this.step = STEP;
+    this.writeAll();
+    this.changed();
   }
 
   // true when the file was read, false when it does not exist or is empty. throws Unreadable for a
