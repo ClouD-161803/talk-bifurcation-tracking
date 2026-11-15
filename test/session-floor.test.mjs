@@ -173,3 +173,28 @@ test('a refusal is read from one hidden status region, which is in the page befo
   clean(ben);
 });
 
+test('a text element taken from a page that composes with an input method keeps its caret until the composition ends', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  // both pages claim the paragraph at the same time, and the larger client id gives it up
+  const ids = { ana: await ana.evaluate(`${C}.client`), ben: await ben.evaluate(`${C}.client`) };
+  const [keeper, loser] = ids.ana < ids.ben ? [ana, ben] : [ben, ana];
+  await hold(ana);
+  await hold(ben);
+  await caretAtEnd(keeper, p);
+  await front(loser);
+  await caretAtEnd(loser, p);
+  const compose = (type) => loser.evaluate(`${p}.dispatchEvent(new CompositionEvent(${JSON.stringify(type)}, { bubbles: true, data: '' }))`);
+  await compose('compositionstart');
+  await release(ana);
+  await release(ben);
+  await until(() => loser.evaluate(`${LOCKED(p)} && ${P}.held === null`), 'the page with the larger client id to give the paragraph up');
+  const caret = `({ focused: document.activeElement === ${p}, caret: ${p}.contains(getSelection().focusNode) })`;
+  assert.deepEqual(await loser.evaluate(caret), { focused: true, caret: true }, 'the caret stays during the composition');
+  await compose('compositionend');
+  await until(async () => JSON.stringify(await loser.evaluate(caret)) === JSON.stringify({ focused: false, caret: false }), 'the caret to leave at the end of the composition');
+  clean(ana);
+  clean(ben);
+});
