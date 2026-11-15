@@ -125,6 +125,8 @@ export function install(client: Client): void {
   let selected: Selected = { kind: 'current' };
   const opened = new Set<string>();
   let back: Element | null = null;
+  // the time of the version last shown in the preview, which a toast names when it is merged
+  let shownTime: number | null = null;
   let naming = false;
   // the nodes of the list kept between renders by key, hence a new answer writes only what changed
   const rows = new Map<string, { el: HTMLButtonElement; sig: string }>();
@@ -277,6 +279,17 @@ export function install(client: Client): void {
     if (!pane || !on) return;
     const active = document.activeElement instanceof HTMLElement && pane.contains(document.activeElement) ? document.activeElement : null;
     const anchor = anchorOf();
+    // a version or a text set aside that a new answer does not hold, e.g. after a compaction
+    let merged: number | null = null;
+    let lost = false;
+    if (answer && selected.kind !== 'current') {
+      const id = selected.id;
+      if (!(selected.kind === 'version' ? answer.versions.some((v) => v.id === id) : answer.aside.some((a) => a.id === id))) {
+        if (selected.kind === 'version') merged = shownTime;
+        lost = !!preview && (preview.el.contains(document.activeElement) || document.activeElement === document.body);
+        selected = { kind: 'current' };
+      }
+    }
     used.clear();
     const nodes: Node[] = [
       row('current', { kind: 'current' }, '', () => [make('span', 'title', 'Current version')]),
@@ -311,6 +324,8 @@ export function install(client: Client): void {
     if (active && id && document.activeElement !== active) pane.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)?.focus();
     if (anchor?.el.isConnected) pane.scrollTop += anchor.el.getBoundingClientRect().top - anchor.top;
     showSelected();
+    if (lost) pane.querySelector<HTMLElement>('.row.current')?.focus();
+    if (merged !== null) toast(`The version of ${whenOf(merged)} was merged into a later one.`);
   }
 
   function showSelected(): void {
@@ -327,6 +342,7 @@ export function install(client: Client): void {
       return;
     }
     const v = info as VersionInfo;
+    shownTime = v.time;
     // the bar is made again, hence its focused control is focused again after, or More when its menu
     // was open, which is closed since its items are of the bar before
     const el = preview.el;
