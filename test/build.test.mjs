@@ -23,11 +23,10 @@ test('the theme is built in a folder with a space in its name', (t) => {
   const root = copy(t);
   execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
 
-  assert.ok(existsSync(join(root, 'theme/beeson.js')));
-  assert.ok(existsSync(join(root, 'theme/editor.js')));
-  // the edit command of a talk is the compiled file, hence it must be built from the current source
-  assert.equal(readFileSync(join(root, 'theme/edit.mjs'), 'utf8'), readFileSync(resolve('theme/edit.mjs'), 'utf8'), 'theme/edit.mjs is not built from src/edit, run npm run build');
-  assert.equal(readFileSync(join(root, 'theme/session.js'), 'utf8'), readFileSync(resolve('theme/session.js'), 'utf8'), 'theme/session.js is not built from src/session, run npm run build');
+  // a talk runs the compiled files, hence each must be built from the current source
+  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/edit.mjs', 'theme/session.js']) {
+    assert.ok(readFileSync(join(root, file), 'utf8') === readFileSync(resolve(file), 'utf8'), `${file} is not built from the current source, run npm run build`);
+  }
 });
 
 // the client reaches the editor through its handover, hence a stateful module of the editor in
