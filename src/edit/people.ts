@@ -70,6 +70,10 @@ export class People {
   private records = new Map<string, PersonRecord>();
   // the pages whose session ended, answered with ended until they say hello again
   private ends = new Map<string, Ended>();
+  // the guests present at the last end of sharing that have not been answered with ended yet, and
+  // the callers that wait until none is left
+  private untold = new Set<string>();
+  private toldWaiters: (() => void)[] = [];
   private hostPerson: string | null = null;
   private polls = new Set<Poll>();
   private rev = 0;
@@ -218,7 +222,10 @@ export class People {
   // a long poll of client for the news after the version since
   events(client: string, since: string): Promise<EventsAnswer> | null {
     const end = this.ends.get(client);
-    if (end) return Promise.resolve({ ...this.state(since, null), ended: end });
+    if (end) {
+      this.told(client);
+      return Promise.resolve({ ...this.state(since, null), ended: end });
+    }
     const member = this.revive(client);
     if (!member) return null;
     return new Promise((done) => {
@@ -248,9 +255,12 @@ export class People {
   }
 
   // the session ended for every page that came through the relay. their waiting polls are
-  // answered with ended, while the pages of the host go on
-  endGuests(): void {
+  // answered with ended, while the pages of the host go on. resolves once every guest present has
+  // been answered with ended, by a waiting poll or by a poll that arrives later
+  endGuests(): Promise<void> {
     const end = this.endedBy();
+    this.untold = new Set([...this.members.values()].filter((m) => !m.host).map((m) => m.client));
+    const told = new Promise<void>((done) => this.toldWaiters.push(done));
     for (const [client, { host }] of this.clients) if (!host) this.ends.set(client, end);
     for (const client of this.ends.keys()) if (this.ends.size > MAX_CLIENTS) this.ends.delete(client);
     for (const poll of [...this.polls]) if (this.ends.has(poll.client)) this.answer(poll);
@@ -262,6 +272,13 @@ export class People {
       }
     }
     if (gone) this.changed();
+    this.told(null);
+    return told;
+  }
+
+  private told(client: string | null): void {
+    if (client !== null) this.untold.delete(client);
+    if (!this.untold.size) for (const done of this.toldWaiters.splice(0)) done();
   }
 
   private endedBy(): Ended {
@@ -370,7 +387,10 @@ export class People {
       member.polls--;
     }
     const end = this.ended ?? this.ends.get(poll.client);
-    if (end) answer.ended = end;
+    if (end) {
+      answer.ended = end;
+      this.told(poll.client);
+    }
     poll.done(answer);
   }
 

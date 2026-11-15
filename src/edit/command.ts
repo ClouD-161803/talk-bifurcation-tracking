@@ -26,6 +26,8 @@ export const GUEST_MEDIA_MAX = 16 * 1024 * 1024;
 const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'bmp', 'mp4', 'm4v', 'webm', 'mov', 'ogv', 'json']);
 // the time in ms within which the edit command of a lock must answer, shorter in the tests
 const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
+// the time in ms for which End session waits for the polls of the guests, shorter in the tests
+const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
 
 export type StartOptions = {
   folder?: string;
@@ -180,8 +182,14 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (request.method === 'GET') return json(200, { link: relay?.active ? relay.link : null });
     if (request.method === 'DELETE') {
       return serial(async () => {
-        // the guests are told before the relay that carries the answers is left
-        people.endGuests();
+        // the guests are told before the relay that carries the answers is left, also a guest whose
+        // next poll is on its way, which the pulls that still run bring in
+        const told = people.endGuests();
+        if (relay) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          await Promise.race([told, new Promise((done) => (timer = setTimeout(done, END_WAIT)))]);
+          clearTimeout(timer);
+        }
         await relay?.stop();
         relay = null;
         return json(200, { link: null });
@@ -217,7 +225,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   // called through serial alone
   async function connect(address: string, secret: string): Promise<void> {
     // the guests of another relay cannot reach this session any more
-    if (relay && relay.relay !== address) people.endGuests();
+    if (relay && relay.relay !== address) void people.endGuests();
     await relay?.stop();
     relay = null;
     if (closed) throw new Error('the edit command is stopping');
