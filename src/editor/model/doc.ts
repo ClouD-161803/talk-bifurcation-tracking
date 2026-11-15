@@ -349,7 +349,7 @@ export class Doc {
     } finally {
       done();
     }
-    this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before), touches: [el, from.parent, parent] });
+    this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before), touches: [el, from.parent, parent], orders: [from.parent, parent] });
   }
 
   // el replaced by an element of the tag with the same attributes and content, and with the edit

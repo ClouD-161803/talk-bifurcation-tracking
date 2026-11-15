@@ -8,7 +8,8 @@
 // els are the elements that the entry changes, and selects is the step at which a part of a
 // transaction puts a selection back. touches are further elements that its undo or redo changes,
 // which do not take the selection after it, and detaches are the elements that its undo or its redo
-// takes off the page with everything inside them
+// takes off the page with everything inside them. orders are the elements whose children its undo
+// or redo puts back in an order
 // the caret put at the end of the last text of host, before the white space of the layout
 function caretAtEnd(host: Element): void {
   const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
@@ -19,7 +20,7 @@ function caretAtEnd(host: Element): void {
   else getSelection()?.collapse(host, 0);
 }
 
-export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; detaches?: readonly Element[]; selects?: 'undo' | 'redo' };
+export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; detaches?: readonly Element[]; orders?: readonly Element[]; selects?: 'undo' | 'redo' };
 
 type Page = { Beeson?: { refreshChrome?(): void } };
 
@@ -420,9 +421,10 @@ export class History {
 
   // the entries that name an element for which touched holds are taken out, e.g. after a change of
   // the deck by another person, and the typing in progress in such an element ends. so are the
-  // entries that would detach an element inside which within holds, with the change made there
-  prune(touched: (el: Element) => boolean, within: (root: Element) => boolean = () => false): void {
-    const hits = (e: Entry) => (this.parts.get(e) ?? [e]).some((p) => p.els?.some(touched) || p.touches?.some(touched) || p.detaches?.some(within));
+  // entries that would detach an element inside which within holds, with the change made there, and
+  // the entries that would put back an order of the children of an element for which reordered holds
+  prune(touched: (el: Element) => boolean, within: (root: Element) => boolean = () => false, reordered: (el: Element) => boolean = () => false): void {
+    const hits = (e: Entry) => (this.parts.get(e) ?? [e]).some((p) => p.els?.some(touched) || p.touches?.some(touched) || p.detaches?.some(within) || p.orders?.some(reordered));
     if (this.typing && touched(this.typing.host)) this.typing = null;
     const done = this.done.filter((e) => !hits(e));
     const undone = this.undone.filter((e) => !hits(e));

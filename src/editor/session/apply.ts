@@ -42,6 +42,8 @@ type Ctx = {
   pairing: Pairing;
   text: string;
   touched: Set<Element>;
+  // the elements whose children changed their order
+  reordered: Set<Element>;
   gone: Element[];
   // the parents of the elements taken off the page
   cuts: Element[];
@@ -334,7 +336,7 @@ export function refresh(app: App): void {
 }
 
 function makeCtx(app: App, text: string): Ctx {
-  return { app, source: app.source!, pairing: app.pairing!, text, touched: new Set(), gone: [], cuts: [], changed: [], hosts: [], placed: [], typeset: [] };
+  return { app, source: app.source!, pairing: app.pairing!, text, touched: new Set(), reordered: new Set(), gone: [], cuts: [], changed: [], hosts: [], placed: [], typeset: [] };
 }
 
 // the deck made to read as text, which differs from the text of the source in w, at spot. null when
@@ -577,13 +579,11 @@ function execute(ctx: Ctx, plan: Plan, placed: Set<Element>, focus: { el: HTMLEl
     next = n;
   }
   // the units kept among units that moved changed their order, whichever of them the longest run
-  // kept in place, hence an undo of an earlier move of any of them would undo this order
+  // kept in place, hence an undo of an earlier move of any of them would undo this order. an undo
+  // that puts a unit in or takes one out of them is kept
   if (moved) {
-    for (const op of plan.ops) {
-      if (op.kind !== 'keep' || !op.node) continue;
-      ctx.touched.add(op.node);
-      ctx.changed.push(op.node);
-    }
+    ctx.reordered.add(plan.live);
+    for (const op of plan.ops) if (op.kind === 'keep' && op.node) ctx.changed.push(op.node);
   }
 }
 
@@ -661,6 +661,7 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
     putCaret(host, mapOffset(caret.offset, caret.text, textIn(host, m)), m);
   };
   put();
+  if (ctx.reordered.size) app.history.prune(() => false, () => false, (el) => ctx.reordered.has(el));
   const inputs = typed;
   return done(ctx, true, () => {
     if (typed === inputs) put();
