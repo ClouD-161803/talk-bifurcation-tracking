@@ -5,7 +5,7 @@
 // on the base of the text written or read lately that is nearest to it, where the file wins a
 // conflict
 
-import { readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
+import { readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
@@ -179,6 +179,9 @@ export type DiskOptions = {
 
 export class Disk {
   readonly file: string;
+  // the file that is written, i.e. the target of file when it is a symbolic link, so that the link
+  // is kept
+  private target: string;
   bom: boolean;
   private authority: Authority;
   private known = '';
@@ -214,7 +217,12 @@ export class Disk {
     this.timing = { quiet: options.quiet ?? QUIET, latest: options.latest ?? LATEST, poll: options.poll ?? POLL };
     this.head = authority.text;
     try {
-      this.known = signature(statSync(file));
+      this.target = realpathSync(file);
+    } catch {
+      this.target = file;
+    }
+    try {
+      this.known = signature(statSync(this.target));
     } catch {}
     authority.observe(() => this.schedule());
   }
@@ -284,7 +292,7 @@ export class Disk {
   }
 
   private tmpName(): string {
-    return join(dirname(this.file), `.${basename(this.file)}.${randomBytes(6).toString('hex')}.tmp`);
+    return join(dirname(this.target), `.${basename(this.target)}.${randomBytes(6).toString('hex')}.tmp`);
   }
 
   private remember(text: string): void {
@@ -329,10 +337,10 @@ export class Disk {
       // that began before a stop does not land after it. it is tried again for a moment when another
       // program holds the file open, as on Windows
       for (let attempt = 0; !renamed; attempt++) {
-        const now = statSync(this.file, { throwIfNoEntry: false });
+        const now = statSync(this.target, { throwIfNoEntry: false });
         if ((now ? signature(now) : '') !== this.known) return 'changed';
         try {
-          renameSync(tmp, this.file);
+          renameSync(tmp, this.target);
           renamed = true;
         } catch (e) {
           if (attempt >= 20 || !RETRY.has((e as NodeJS.ErrnoException).code ?? '')) throw e;
@@ -366,7 +374,7 @@ export class Disk {
   // a change of the file that the edit command did not write, or false when the file was still
   // being written after limit ms
   private *check(limit: number): Task<boolean> {
-    const info: Stats | null = yield { stat: this.file };
+    const info: Stats | null = yield { stat: this.target };
     // a file that is gone is written again
     if (!info) {
       this.known = '';
@@ -375,7 +383,7 @@ export class Disk {
     // the signature is taken before the read, so that a write after the read is seen at the next check
     let sig = signature(info);
     if (sig === this.known) return true;
-    let bytes: Buffer = yield { read: this.file };
+    let bytes: Buffer = yield { read: this.target };
     // the file is read until it has not changed for a while, since a program may be writing it: 20 ms
     // for a file that looks complete, and longer for a file that is empty, shorter than half of the
     // text before, or not valid UTF-8, since such a file is often written in steps
@@ -390,12 +398,12 @@ export class Disk {
       }
       if (performance.now() - started > limit) return false;
       yield { sleep: wait ? 100 : 20 };
-      const now: Stats | null = yield { stat: this.file };
+      const now: Stats | null = yield { stat: this.target };
       if (!now) {
         this.known = '';
         return true;
       }
-      const again: Buffer = yield { read: this.file };
+      const again: Buffer = yield { read: this.target };
       if (!again.equals(bytes)) [bytes, sig, since] = [again, signature(now), performance.now()];
       else if (performance.now() - since >= wait) break;
     }
