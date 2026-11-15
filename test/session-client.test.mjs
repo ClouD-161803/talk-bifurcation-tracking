@@ -206,3 +206,19 @@ test('a lone surrogate typed into the deck is written as U+FFFD, on the page and
   assert.equal(await page.evaluate(`${el(0, 'p')}.textContent`), 'First slide �');
   clean(page);
 });
+
+test('the save state is in view on a phone of 390 px and takes a tap', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { width: 390, height: 844, mobile: true });
+  const box = await page.evaluate(`(() => {
+    const b = document.querySelector('.beeson-session-state');
+    const r = b.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const after = getComputedStyle(b, '::after');
+    return { inside: r.left >= 0 && r.right <= innerWidth, hit: b.contains(hit), height: r.height - parseFloat(after.top) - parseFloat(after.bottom), label: b.getAttribute('aria-label') };
+  })()`);
+  assert.deepEqual(box, { inside: true, hit: true, height: 32, label: 'Saved to index.html' });
+  clean(page);
+});
