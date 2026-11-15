@@ -191,3 +191,49 @@ test('a comment on one of identical paragraphs after a removal is anchored on th
   clean(a);
   clean(b);
 });
+
+test('a thread on one of identical paragraphs is shown at its place while later edits of the page wait', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkOf(t, TWINS);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  await show(b, 'One');
+  await click(b, '.reveal .slides > section:nth-child(1) > p:nth-of-type(2)');
+  await comment(b, 'On the second');
+  await show(a, 'One');
+  await sees(a, TWIN_BADGES, [false, true, false]);
+
+  // the removal of the first paragraph is acknowledged while the typing after it waits
+  await a.evaluate(HOLD);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) > p');
+  await press(a, 'Escape');
+  await a.evaluate(`window.BeesonEditor.exec('element.delete')`);
+  await a.waitFor('window.__held.length === 1');
+  await caretAtEnd(a, el(0, 'h2'));
+  await type(a, ' held');
+  await a.evaluate('window.__goOne()');
+  await a.waitFor(`window.__held.length === 1 && ${C}.base.text.split('<p>TBD</p>').length === 3`);
+  // the patches of the removal do not tell which twin went, hence the place is the one that the
+  // other page shows, which reads as the edit command
+  await show(b, 'One');
+  const want = await until(async () => {
+    const got = await b.evaluate(TWIN_BADGES);
+    return got.filter(Boolean).length === 1 && got;
+  }, 'the badge on one paragraph of the other page');
+  await show(a, 'One');
+  await sees(a, TWIN_BADGES, want, 'the badges of the paragraphs while the typing waits');
+  await badge(a, 'One', null, null);
+
+  await a.evaluate('window.__go()');
+  await until(() => server.read().includes('<h2>One held</h2>'), 'the typing to reach index.html');
+  await converge(server, [a, b]);
+  await show(a, 'One');
+  await sees(a, TWIN_BADGES, want);
+  await show(b, 'One');
+  await sees(b, TWIN_BADGES, want);
+  clean(a);
+  clean(b);
+});
