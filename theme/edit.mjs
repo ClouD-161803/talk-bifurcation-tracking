@@ -1790,8 +1790,9 @@ var History = class {
     writeFileSync2(tmp, bytes);
     renameRetriedSync(tmp, join2(this.asideDir, asideName(aside)));
     this.asides.push(aside);
-    while (this.asides.length > this.asideFiles) {
-      const old = this.asides.shift();
+    const theirs = this.asides.filter((a) => a.author === author);
+    for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) {
+      this.asides.splice(this.asides.indexOf(old), 1);
       try {
         unlinkSync3(join2(this.asideDir, asideName(old)));
       } catch {

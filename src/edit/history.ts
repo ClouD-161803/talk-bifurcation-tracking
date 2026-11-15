@@ -26,7 +26,8 @@ export type HistoryOptions = {
   // the named ones and those after them
   maxBytes?: number;
   keep?: number;
-  // the texts set aside: at most asideBytes each, and at most asideFiles, the oldest removed first
+  // the texts set aside: at most asideBytes each, and at most asideFiles per person, the oldest of
+  // the person removed first
   asideBytes?: number;
   asideFiles?: number;
   now?: () => number;
@@ -400,8 +401,9 @@ export class History {
     writeFileSync(tmp, bytes);
     renameRetriedSync(tmp, join(this.asideDir, asideName(aside)));
     this.asides.push(aside);
-    while (this.asides.length > this.asideFiles) {
-      const old = this.asides.shift()!;
+    const theirs = this.asides.filter((a) => a.author === author);
+    for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) {
+      this.asides.splice(this.asides.indexOf(old), 1);
       try {
         unlinkSync(join(this.asideDir, asideName(old)));
       } catch {}
