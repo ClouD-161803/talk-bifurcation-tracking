@@ -1,10 +1,11 @@
 // the preview of a version or of a text set aside: the deck as the edit command serves it with
 // version=<id> or aside=<id>, in an iframe over the canvas, under a bar with the date, the authors,
-// a button per changed slide, what was removed, Show changes, and the actions. the page in the
-// iframe is a deck without the editor, of the same origin, hence the outlines of the changed
+// a button per changed slide, what was removed, Show changes, and the actions. the text is read
+// once and given to the iframe as srcdoc, with a base of the address that serves it. the page in
+// the iframe is a deck without the editor, of the same origin, hence the outlines of the changed
 // elements are drawn into it from here, from the marks of the version
 
-import { tokenize } from '../../editor/tokens.ts';
+import { tokenize, type Token } from '../../editor/tokens.ts';
 import type { AsideInfo, Mark, VersionDetail, VersionInfo } from '../protocol.ts';
 import { slidesOf, VOID, type Slide } from '../slides.ts';
 import type { Client } from './client.ts';
@@ -39,6 +40,16 @@ html.beeson-hide-changes [data-beeson-changed] { outline: none !important; }
 
 // the bar is wrapped onto two rows below this width in px
 const TWO_ROWS = 600;
+
+// text with a base element at the start of its head, so that its relative addresses resolve as in
+// a page loaded from href. the address of the page is about:srcdoc, which may not be changed to one
+// of http, hence the history of the page is not written, e.g. the hash of the slide by reveal.js
+function withBase(text: string, tokens: Token[], href: string): string {
+  const head = tokens.find((t) => t.type === 'start' && t.name === 'head');
+  const at = head ? head.end : (tokens.find((t) => t.type === 'start')?.start ?? 0);
+  const base = `<base href="${href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"><script>history.pushState = history.replaceState = () => {};</script>`;
+  return text.slice(0, at) + base + text.slice(at);
+}
 
 type Child = { start: number; end: number; name: string };
 
@@ -165,6 +176,7 @@ export class Preview {
     return url.href;
   }
 
+  // the text of what is shown, read once for its page and its download
   private textOf(kind: 'version' | 'aside', id: string): Promise<string> {
     const key = `${kind}:${id}`;
     let p = this.texts.get(key);
@@ -179,16 +191,22 @@ export class Preview {
     return p;
   }
 
-  // a new iframe for each page, since a change of src would add an entry to the history of the tab
-  private load(kind: 'version' | 'aside', id: string): Promise<Window | null> {
+  // a new iframe for each page, since a second page in one iframe would add an entry to the history
+  // of the tab
+  private frameFor(kind: 'version' | 'aside'): HTMLIFrameElement {
     const frame = make('iframe');
     frame.title = kind === 'version' ? 'The deck at this version' : 'The text set aside';
-    const loaded = new Promise<Window | null>((done) => frame.addEventListener('load', () => done(frame.contentWindow), { once: true }));
-    frame.src = this.url(kind, id);
     this.frame.replaceWith(frame);
     this.frame = frame;
     this.el.hidden = false;
     this.layout();
+    return frame;
+  }
+
+  // the page of text in frame, resolved with its window once it is loaded
+  private write(frame: HTMLIFrameElement, text: string, tokens: Token[], href: string): Promise<Window | null> {
+    const loaded = new Promise<Window | null>((done) => frame.addEventListener('load', () => done(frame.contentWindow), { once: true }));
+    frame.srcdoc = withBase(text, tokens, href);
     return loaded;
   }
 
@@ -240,7 +258,19 @@ export class Preview {
     actions.append(this.button('Download', () => void this.download('aside', a.id)));
     this.bar.replaceChildren(info, actions);
     this.text = null;
-    void this.load('aside', a.id);
+    void this.fillAside(a.id, info);
+  }
+
+  private async fillAside(id: string, info: HTMLElement): Promise<void> {
+    const key = this.key;
+    const frame = this.frameFor('aside');
+    try {
+      const text = await this.textOf('aside', id);
+      if (key !== this.key) return;
+      await this.write(frame, text, tokenize(text), this.url('aside', id));
+    } catch (e) {
+      if (key === this.key) info.append(make('span', 'removed', (e as Error).message));
+    }
   }
 
   private async download(kind: 'version' | 'aside', id: string): Promise<void> {
@@ -257,7 +287,7 @@ export class Preview {
   private async fill(v: VersionInfo): Promise<void> {
     const key = this.key;
     this.text = null;
-    const win = this.load('version', v.id);
+    const frame = this.frameFor('version');
     let detail: VersionDetail;
     let text: string;
     try {
@@ -265,11 +295,13 @@ export class Preview {
     } catch {
       return;
     }
-    const w = await win;
+    if (key !== this.key) return;
+    const tokens = tokenize(text);
+    const w = await this.write(frame, text, tokens, this.url('version', v.id));
     const doc = w?.document;
     if (key !== this.key || !doc) return;
     this.text = text;
-    this.slides = slidesOf(text);
+    this.slides = slidesOf(text, tokens);
     this.sections = sectionsOf(doc, text, this.slides);
     const css = doc.createElement('style');
     css.textContent = FRAME_CSS;
