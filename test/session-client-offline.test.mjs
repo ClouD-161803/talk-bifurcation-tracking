@@ -47,3 +47,69 @@ test('a page goes offline when the edit command stops, and Try now sends its edi
   assert.equal(await page.evaluate(ACTION), null);
   clean(page, REFUSED);
 });
+
+test('a guest is told that the host is not running, and the end of the session by the host', { timeout: 300_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 600, pullMs: 1000, guestMs: 5000 });
+  t.after(() => relay.close());
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const relayed = ['--relay', relay.url];
+  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET } });
+  const { port, key } = server.edit;
+  const guestUrl = `${relay.url}/${key}/index.html?edit&session`;
+  await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
+  const host = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const guest = await open(browser, guestUrl, { name: 'Ben' });
+  assert.deepEqual(await guest.evaluate(`({ host: ${C}.host, state: ${STATE} })`), { host: false, state: 'Saved' });
+  await converge(server, [host, guest]);
+
+  await t.test('the guest says that the host is not running while the edit command is stopped', async () => {
+    server.edit.child.kill('SIGKILL');
+    await server.edit.exited;
+    await front(guest);
+    await guest.waitFor(`${STATE} === "The host's edit command is not running"`, 20_000);
+    assert.equal(await guest.evaluate(`document.querySelector('.beeson-session-state').classList.contains('warn')`), true);
+    await server.start(['--port', String(port)]);
+    await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay again');
+    await click(guest, '.beeson-session-action');
+    await guest.waitFor(ONLINE, 20_000);
+    await host.evaluate(`${C}.tryNow()`);
+    await host.waitFor(ONLINE, 20_000);
+    await show(guest, 'Two');
+    await caretAtEnd(guest, el(1, 'p'));
+    await type(guest, ' by Ben');
+    assert.equal(await converge(server, [host, guest]), TALK.replace('<p>Second slide</p>', '<p>Second slide by Ben</p>'));
+  });
+
+  await t.test('the guest is told that Ann ended the session, and the host goes on', async () => {
+    const answer = await raw(port, 'DELETE', `/${key}/.session/share`);
+    assert.equal(answer.status, 200);
+    await front(guest);
+    await guest.waitFor(`document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent === 'Ann ended the session'`);
+    const dialog = await guest.evaluate(`(() => {
+      const d = document.querySelector('dialog.beeson-edit-dialog[open]');
+      return { text: d.querySelector('p').textContent, buttons: [...d.querySelectorAll('.row button')].map((b) => b.textContent), state: !!document.querySelector('.beeson-session-state'), autosave: !document.querySelector('.beeson-edit-titlebar button.autosave').hidden };
+    })()`);
+    assert.deepEqual(dialog, { text: "Your changes up to now are in Ann's deck.", buttons: ['Download a copy', 'Close'], state: false, autosave: true });
+    await guest.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].find((b) => b.textContent === 'Close').click()`);
+    assert.equal(await guest.evaluate(`!!document.querySelector('dialog.beeson-edit-dialog[open]')`), false);
+    await front(host);
+    await show(host, 'One');
+    await caretAtEnd(host, el(0, 'p'));
+    await type(host, ', still');
+    await until(() => server.read().includes('<p>First slide, still</p>'), 'the edit of the host to reach the file');
+    assert.equal(await host.evaluate(STATE), 'Saved to index.html');
+  });
+
+  await t.test('the host is told that the session has ended when the edit command stops', async () => {
+    server.edit.child.kill('SIGTERM');
+    await server.edit.exited;
+    server.edit = null;
+    await host.waitFor(`document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent === 'The session has ended'`);
+    assert.equal(await host.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), 'Your changes up to now are in index.html.');
+    assert.equal(await host.evaluate(`${C}.connection`), 'ended');
+  });
+
+  clean(host, REFUSED);
+  clean(guest, REFUSED);
+});
