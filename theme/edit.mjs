@@ -3532,6 +3532,272 @@ var Replica = class _Replica {
   }
 };
 
+// src/session/anchor.ts
+var REMOVED_MAX = 4096;
+var tagOf = (s) => ({ start: s.start, end: s.open, tag: "section" });
+var sameAnchor = (a, b) => a === b || !!a && !!b && a.start === b.start && a.end === b.end && a.tag === b.tag;
+var shiftTag = (a, patches) => ({ start: shiftOffset(a.start, patches, true), end: shiftOffset(a.end, patches, false), tag: a.tag });
+var touches = (p, s, e) => p.start < p.end ? p.start < e && s < p.end : s < p.start && p.start < e;
+var withRemoved = (anchor, slide, removed) => removed ? { anchor, slide, removed } : { anchor, slide };
+function startTagAt(text, i) {
+  if (!Number.isInteger(i) || i < 0 || text.charCodeAt(i) !== 60 || !/[A-Za-z]/.test(text.charAt(i + 1))) return null;
+  for (let size2 = 256; ; size2 *= 4) {
+    const whole = i + size2 >= text.length;
+    const t = tokenize(text.slice(i, i + size2))[0];
+    if (t?.type === "start" && (whole || t.end < size2)) return text.charCodeAt(i + t.end - 1) === 62 ? { start: i, end: i + t.end, tag: t.name } : null;
+    if (whole || t && t.type !== "start" && t.type !== "text") return null;
+  }
+}
+function slideAt(slides, i) {
+  let lo = 0;
+  let hi = slides.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = lo + hi >> 1;
+    if (slides[mid].start <= i) {
+      found = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return found >= 0 && i < slides[found].end ? slides[found] : null;
+}
+function slideAnchorAt(slides, i) {
+  const s = slideAt(slides, i);
+  return s ? tagOf(s) : null;
+}
+function elementEnd(text, at, limit) {
+  if (VOID.has(at.tag)) return at.end;
+  for (let size2 = Math.max(1024, 2 * (at.end - at.start)); ; size2 *= 4) {
+    const whole = at.start + size2 >= limit;
+    const tokens = tokenize(text.slice(at.start, whole ? limit : at.start + size2));
+    const first2 = tokens[0];
+    if (!first2 || first2.type !== "start" || first2.selfClosing) return at.end;
+    const n = whole ? tokens.length : tokens.length - 1;
+    const open2 = [];
+    for (let k = 0; k < n; k++) {
+      const t = tokens[k];
+      if (t.type === "start") {
+        if (!t.selfClosing && !VOID.has(t.name)) open2.push(t.name);
+      } else if (t.type === "end") {
+        const i = open2.lastIndexOf(t.name);
+        if (i < 0) return at.start + t.start;
+        open2.length = i;
+        if (i === 0) return at.start + t.end;
+      }
+    }
+    if (whole) return -1;
+  }
+}
+function insertedSpans(patches) {
+  const out = [];
+  let delta = 0;
+  for (const p of patches) {
+    if (p.text) out.push({ start: p.start + delta, end: p.start + delta + p.text.length });
+    delta += p.text.length - (p.end - p.start);
+  }
+  return out;
+}
+function overlaps(spans, s, e) {
+  let lo = 0;
+  let hi = spans.length - 1;
+  while (lo <= hi) {
+    const mid = lo + hi >> 1;
+    if (spans[mid].end <= s) lo = mid + 1;
+    else if (spans[mid].start >= e) hi = mid - 1;
+    else return true;
+  }
+  return false;
+}
+function findInserted(after, text, inserted, near) {
+  if (!text || !inserted.length) return -1;
+  let best = -1;
+  for (let o = after.indexOf(text), n = 0; o >= 0 && n < 256; o = after.indexOf(text, o + 1), n++) {
+    if (overlaps(inserted, o, o + text.length) && (best < 0 || Math.abs(o - near) < Math.abs(best - near))) best = o;
+  }
+  return best;
+}
+function matchSlides(a, b) {
+  const to = new Int32Array(a.length).fill(-1);
+  const kept = new Uint8Array(a.length);
+  const used = new Uint8Array(b.length);
+  const byText = /* @__PURE__ */ new Map();
+  b.forEach((t, j) => {
+    const list = byText.get(t);
+    if (list) list.push(j);
+    else byText.set(t, [j]);
+  });
+  a.forEach((t, i) => {
+    let best = -1;
+    for (const j of byText.get(t) ?? []) if (!used[j] && (best < 0 || Math.abs(j - i) < Math.abs(best - i))) best = j;
+    if (best < 0) return;
+    to[i] = best;
+    kept[i] = 1;
+    used[best] = 1;
+  });
+  const restA = [...a.keys()].filter((i) => to[i] < 0);
+  const restB = [...b.keys()].filter((j) => !used[j]);
+  for (const p of pairs(restA.map((i) => a[i]), restB.map((j) => b[j]))) to[restA[p.i]] = restB[p.j];
+  return { to, kept };
+}
+function wholeTag(text, start2, end) {
+  const t = startTagAt(text, start2);
+  return t && t.end === end ? t : null;
+}
+function byPatches(a, before2, patches, after, regions) {
+  let first2 = -1;
+  let last = -1;
+  for (let k = 0; k < patches.length && patches[k].start <= a.end; k++) {
+    if (!touches(patches[k], a.start, a.end)) continue;
+    if (first2 < 0) first2 = k;
+    last = k;
+  }
+  if (first2 < 0) return shiftTag(a, patches);
+  let inside = true;
+  for (let k = first2; k <= last; k++) if (!(patches[k].start > a.start && patches[k].end < a.end)) inside = false;
+  if (inside) return startTagAt(after, shiftOffset(a.start, patches, true));
+  const a0 = Math.min(a.start, patches[first2].start);
+  const b0 = Math.max(a.end, patches[last].end);
+  let delta = 0;
+  for (let k = 0; k < first2; k++) delta += patches[k].text.length - (patches[k].end - patches[k].start);
+  let grow = 0;
+  for (let k = first2; k <= last; k++) grow += patches[k].text.length - (patches[k].end - patches[k].start);
+  const a1 = a0 + delta;
+  const b1 = b0 + delta + grow;
+  const key = `${a0}:${b0}`;
+  let region = regions.get(key);
+  if (!region) regions.set(key, region = { tokens: tokenize(before2.slice(a0, b0)), fresh: tokenize(after.slice(a1, b1)) });
+  const fresh = region.fresh;
+  const t0 = fresh[0];
+  if (a0 === a.start && b0 === a.end && fresh.length === 1 && t0.type === "start" && t0.end === b1 - a1) return wholeTag(after, a1, b1);
+  for (const named of [true, false]) {
+    const old = region.tokens.filter((t2) => t2.type === "start" && (!named || t2.name === a.tag));
+    const now = fresh.filter((t2) => t2.type === "start" && (!named || t2.name === a.tag));
+    const k = old.findIndex((t2) => t2.start === a.start - a0);
+    const t = now[k];
+    if (k >= 0 && old.length === now.length && t.type === "start") return wholeTag(after, a1 + t.start, a1 + t.end);
+  }
+  return null;
+}
+function keepsTag(after, a, patches) {
+  const t = startTagAt(after, shiftOffset(a.start, patches, true));
+  return !!t && t.tag === a.tag && t.end === shiftOffset(a.end, patches, false);
+}
+var changedFrom = (it, next, patches) => !sameAnchor(next.anchor, it.anchor && shiftTag(it.anchor, patches)) || !sameAnchor(next.slide, it.slide && shiftTag(it.slide, patches)) || !!next.removed !== !!it.removed || next.removed?.text !== it.removed?.text;
+function betweenTags(text, p) {
+  if (p.start > 0 && text.lastIndexOf("<", p.start - 1) > text.lastIndexOf(">", p.start - 1)) return false;
+  const gt = text.indexOf(">", p.end);
+  if (gt < 0) return true;
+  const lt = text.indexOf("<", p.end);
+  return lt >= 0 && lt < gt;
+}
+function moveAnchors(before2, patches, after, items, slides = null) {
+  if (!patches.length) return { items, changed: items.map(() => false), slides };
+  if (!items.length) return { items, changed: [], slides: null };
+  const p = patches[0];
+  if (patches.length === 1 && !/[<>]/.test(p.text) && !/[<>]/.test(before2.slice(p.start, p.end)) && betweenTags(before2, p)) {
+    const out = new Array(items.length);
+    for (let k = 0; k < items.length; k++) {
+      const it = items[k];
+      if (it.anchor && touches(p, it.anchor.start, it.anchor.end) && !keepsTag(after, it.anchor, patches) || it.slide && touches(p, it.slide.start, it.slide.end) && !keepsTag(after, it.slide, patches)) {
+        return slow(before2, patches, after, items, slides);
+      }
+      out[k] = withRemoved(it.anchor && shiftTag(it.anchor, patches), it.slide && shiftTag(it.slide, patches), it.removed);
+    }
+    const shifted = slides && slides.map((s) => ({ start: shiftOffset(s.start, patches, true), end: shiftOffset(s.end, patches, false), open: shiftOffset(s.open, patches, false), number: s.number }));
+    return { items: out, changed: items.map(() => false), slides: shifted };
+  }
+  return slow(before2, patches, after, items, slides);
+}
+function shiftedSlides(before2, patches, after, s0) {
+  const s = slideAt(s0, patches[0].start);
+  if (!s || patches[0].start < s.open) return null;
+  const close = before2.lastIndexOf("</", s.end - 1);
+  if (close < s.open || patches[patches.length - 1].end > close) return null;
+  const growth = patches.reduce((n, q) => n + q.text.length - (q.end - q.start), 0);
+  const end = s.end + growth;
+  const tokens = tokenize(after.slice(s.open, end));
+  const last = tokens[tokens.length - 1];
+  if (!last || last.type !== "end" || last.name !== "section" || last.start !== close + growth - s.open || last.end !== end - s.open) return null;
+  for (let k = 0; k < tokens.length - 1; k++) {
+    const t = tokens[k];
+    if ((t.type === "start" || t.type === "end") && t.name === "section") return null;
+  }
+  const i = s0.indexOf(s);
+  const s1 = s0.map((x, k) => k < i ? x : k === i ? { ...x, end } : { start: x.start + growth, end: x.end + growth, open: x.open + growth, number: x.number });
+  const kept = new Uint8Array(s0.length).fill(1);
+  kept[i] = before2.slice(s.start, s.end) === after.slice(s.start, end) ? 1 : 0;
+  return { s1, to: Int32Array.from(s0.keys()), kept };
+}
+function matchedSlides(before2, s0, after) {
+  const s1 = slidesOf(after);
+  return { s1, ...matchSlides(s0.map((s) => before2.slice(s.start, s.end)), s1.map((s) => after.slice(s.start, s.end))) };
+}
+function slow(before2, patches, after, items, given) {
+  const s0 = given ?? slidesOf(before2);
+  const { s1, to, kept } = shiftedSlides(before2, patches, after, s0) ?? matchedSlides(before2, s0, after);
+  const index = new Map(s0.map((s, i) => [s.start, i]));
+  const inserted = insertedSpans(patches);
+  const cap2 = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
+  const regions = /* @__PURE__ */ new Map();
+  const locate = (a, limit) => {
+    const found = byPatches(a, before2, patches, after, regions);
+    if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
+    const bound = Math.max(a.end, Math.min(limit, a.start + cap2));
+    const e = elementEnd(before2, a, bound);
+    if (e < 0 && bound < limit) return { anchor: found, text: null };
+    const end = e < 0 ? bound : e;
+    const text = before2.slice(a.start, end);
+    if (patches.some((q) => touches(q, a.start, end)) && !(found && after.startsWith(text, found.start))) {
+      const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
+      if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
+    }
+    return { anchor: found, text };
+  };
+  const move = (it) => {
+    if (it.removed?.text) {
+      const o = findInserted(after, it.removed.text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : 0);
+      const t = o >= 0 ? startTagAt(after, o) : null;
+      if (t) {
+        const slide = slideAt(s1, o);
+        return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
+      }
+    }
+    const a = it.anchor;
+    if (!a) return withRemoved(null, null, it.removed);
+    let i = it.slide ? index.get(it.slide.start) ?? -1 : -1;
+    if (i < 0) {
+      const s = slideAt(s0, a.start);
+      i = s ? index.get(s.start) : -1;
+    }
+    const j = i >= 0 ? to[i] : -1;
+    if (it.slide && a.start === it.slide.start) {
+      if (j >= 0) return withRemoved(tagOf(s1[j]), tagOf(s1[j]), it.removed);
+      return { anchor: null, slide: null, removed: it.removed ?? { text: i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null } };
+    }
+    if (j >= 0 && kept[i]) {
+      const d = s1[j].start - s0[i].start;
+      return { anchor: { start: a.start + d, end: a.end + d, tag: a.tag }, slide: tagOf(s1[j]) };
+    }
+    const found = locate(a, i >= 0 ? s0[i].end : before2.length);
+    if (found.anchor) return { anchor: found.anchor, slide: slideAnchorAt(s1, found.anchor.start) };
+    const back = j >= 0 ? tagOf(s1[j]) : null;
+    return { anchor: back, slide: back, removed: { text: found.text !== null && found.text.length <= REMOVED_MAX ? found.text : null } };
+  };
+  const out = items.map(move);
+  return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], patches)), slides: s1 };
+}
+function checkAnchors(text, items, slides = slidesOf(text)) {
+  const starts = new Map(slides.map((s) => [s.start, s]));
+  const out = items.map((it) => {
+    if (!it.anchor) return withRemoved(null, null, it.removed);
+    const t = startTagAt(text, it.anchor.start);
+    if (t && t.end === it.anchor.end && t.tag === it.anchor.tag) return withRemoved(t, slideAnchorAt(slides, t.start), it.removed);
+    const back = it.slide && it.slide.tag === "section" && starts.get(it.slide.start)?.open === it.slide.end ? it.slide : null;
+    return { anchor: back, slide: back, removed: it.removed ?? { text: null } };
+  });
+  return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], [])), slides };
+}
+
 // src/edit/main.ts
 var USAGE = "usage: node theme/edit.mjs [folder] [--port N] [--no-open] [--relay URL]";
 function openBrowser(url) {
@@ -3645,9 +3911,11 @@ export {
   Disk,
   History,
   NAME_MAX,
+  REMOVED_MAX,
   Replica,
   apply,
   changes,
+  checkAnchors,
   checksum,
   cleanName,
   cleanPersonName,
@@ -3659,6 +3927,7 @@ export {
   invert,
   isPersonId,
   mergePatches,
+  moveAnchors,
   moveMarks,
   nameKey,
   operationOf,
@@ -3666,9 +3935,12 @@ export {
   shift,
   shiftOffset,
   size,
+  slideAnchorAt,
+  slideAt,
   slideChanges,
   slidesOf,
   start,
+  startTagAt,
   tokenize,
   valid,
   widen

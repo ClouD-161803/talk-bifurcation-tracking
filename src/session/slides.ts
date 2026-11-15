@@ -93,7 +93,7 @@ function childrenOf(html: string): Range[] {
 
 // the pairs of an item of a and an item of b that are one item, matched first by equal text in
 // order, and then, between two equal ones, by the most characters shared at the start and the end
-function pairs(a: string[], b: string[]): { i: number; j: number; same: boolean }[] {
+export function pairs(a: string[], b: string[]): { i: number; j: number; same: boolean }[] {
   const out: { i: number; j: number; same: boolean }[] = [];
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) out.push({ i: pre, j: pre, same: true }), pre++;
