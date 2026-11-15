@@ -1,9 +1,10 @@
 // the join of a page: the name of the person, asked once per browser, and the person id, kept
 // in localStorage, which may be blocked or full in a private window
 
+import { changes, merge } from '../../editor/merge.ts';
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
-import type { Copy } from './copy.ts';
+import { beforeJoin, type Copy } from './copy.ts';
 import { make, sheet, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
@@ -131,6 +132,29 @@ export async function askTaken(client: Client, name: string): Promise<boolean> {
 // person. text is the text of the page at version v. a copy of copy.ts is joined from its version,
 // as a reconnect of a page with its edits
 export async function join(client: Client, text: string, v: string, copy: Copy | null = null): Promise<void> {
+  // the deck with the edits of the copy and the edits typed since the load, made from text. deck is
+  // the base of the copy when the deck was not read since the begin of the session
+  const onto = (deck: string): string => {
+    if (!copy || deck === copy.base) return copy?.mine ?? deck;
+    const own = changes(text, deck);
+    if (own === null) return deck;
+    if (!own.length) return copy.mine;
+    return merge(text, own, copy.mine, 'ours')?.text ?? deck;
+  };
+  // until hello is answered, copy.ts keeps the edits typed since the load, read again after a change
+  let early: Copy | null | undefined;
+  client.port.onChange(() => (early = undefined));
+  beforeJoin(client, () => {
+    if (early !== undefined) return early;
+    let deck: string;
+    try {
+      deck = client.port.text();
+    } catch {
+      return null;
+    }
+    early = copy ? { base: copy.base, v: copy.v, mine: onto(deck) } : deck === text ? null : { base: text, v, mine: deck };
+    return early;
+  });
   let name = cleanPersonName(stored(NAME) ?? '');
   let error = '';
   let claim = false;
@@ -164,8 +188,9 @@ export async function join(client: Client, text: string, v: string, copy: Copy |
     }
     store(NAME, answer.name);
     store(PERSON, answer.person);
-    if (copy) client.rewrite(() => copy.mine);
+    if (copy) client.rewrite(onto);
     client.begin(answer, copy?.base ?? text, copy?.v ?? v);
+    beforeJoin(client, null);
     return;
   }
 }

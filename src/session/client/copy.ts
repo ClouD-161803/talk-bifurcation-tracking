@@ -43,6 +43,8 @@ type State = {
   // the slides of a copy taken over at the join, named in the save state once they are sent
   restored: number[] | null;
   note: string | null;
+  // the copy of the page before its join, which the join sets until the first answer of hello
+  early: (() => Copy | null) | null;
 };
 
 const states = new WeakMap<Client, State>();
@@ -112,11 +114,19 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[] } {
 function stateOf(client: Client): State {
   let st = states.get(client);
   if (!st) {
-    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null };
+    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null };
     states.set(client, st);
   }
   return st;
 }
+
+// the copy of the page before the first answer of hello, or null once the session has begun
+export function beforeJoin(client: Client, fn: (() => Copy | null) | null): void {
+  stateOf(client).early = fn;
+}
+
+// the copy for a record: the state of the replica, or before the join the copy of early
+const current = (client: Client, st: State): Copy | null => client.snapshot() ?? st.early?.() ?? null;
 
 // the copies of the pages of this address that are gone, merged into one and taken over by this
 // page, whose own record holds them from now on. their files are given back to the store of media
@@ -164,7 +174,7 @@ function waiting(client: Client, st: State, s: Copy): number[] {
 // kept once a record with them is written, with the slides of this record
 export function keptLine(client: Client): string | null {
   const st = states.get(client);
-  if (!st || client.acked()) return null;
+  if (!st || client.acked() || !current(client, st)) return null;
   if (st.unavailable) return 'Offline. Keep this page open, since your changes cannot be kept in this browser';
   if (!st.kept) return null;
   const numbers = waiting(client, st, st.kept);
@@ -182,7 +192,7 @@ export function install(client: Client): void {
   void locks()?.request(lockOf(st.id), () => new Promise<void>(() => {})).catch(() => {});
 
   const write = (now: boolean): void => {
-    const s = client.snapshot();
+    const s = current(client, st);
     if (!s || (!st.stored && s.mine === s.base)) return;
     const t = Date.now();
     const l = st.last;
@@ -270,7 +280,7 @@ export function install(client: Client): void {
     update();
   });
   const hide = (): void => {
-    if (!client.ended && client.snapshot() && !client.acked()) write(true);
+    if (!client.ended && !client.acked() && current(client, st)) write(true);
   };
   window.addEventListener('pagehide', hide);
   document.addEventListener('visibilitychange', () => {
