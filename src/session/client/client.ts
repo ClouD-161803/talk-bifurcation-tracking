@@ -448,7 +448,7 @@ export class Client {
         const sync = this.sync!;
         while (!this.ended) {
           const whole = sync.needsResync;
-          const request: HelloRequest = { name: this.name, person: this.person, token: this.token, ...(whole ? {} : { v: this.since }) };
+          const request: HelloRequest = { name: this.name, person: this.person, token: this.token, was: sync.sender, ...(whole ? {} : { v: this.since }) };
           let answer: HelloAnswer | Taken;
           try {
             answer = await this.transport.hello(request);
@@ -463,7 +463,7 @@ export class Client {
           this.generation++;
           const moved = answer.client !== sync.client;
           this.accept(answer);
-          sync.move(answer.client);
+          sync.move(answer.client, answer.applied);
           if (answer.text !== undefined) {
             this.fresh = { text: answer.text, v: answer.v };
             this.inbox = [];

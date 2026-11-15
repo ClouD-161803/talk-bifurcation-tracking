@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
 import { isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
+import { readApplied, writeApplied } from './applied.ts';
 import { Disk, readText, renameRetriedSync } from './disk.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
@@ -152,9 +153,13 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const lockFile = join(root, '.session', 'lock');
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
-  const authority = new Authority(text);
+  const appliedFile = join(root, '.session', 'applied.json');
+  const authority = new Authority(text, { applied: readApplied(appliedFile) });
+  const onWritten = (n: number) => {
+    if (authority.written(n)) writeApplied(appliedFile, authority.table(), log);
+  };
   // the pages are told of a write that fails, since an operation is acknowledged before it is written
-  const disk = new Disk(index, authority, bom, { log, onWriteError: (e) => people.writeFailed(e) });
+  const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
   let port = 0;
   let relay: RelayLink | null = null;
@@ -275,7 +280,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if ('empty' in joined) return error(400, 'the name is empty');
       if ('full' in joined) return error(503, 'the session is full');
       const { member, token } = joined;
-      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known() };
+      const applied = typeof hello.was === 'string' ? authority.applied(hello.was) : undefined;
+      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), ...(applied === undefined ? {} : { applied }) };
       const ops = typeof hello.v === 'string' ? authority.since(hello.v) : null;
       return json(200, ops ? { ...answer, ops } : { ...answer, text: authority.text });
     }

@@ -6,7 +6,7 @@
 
 import type { AppliedOp, OpAnswer, OpRequest, Patch, Version } from './protocol.ts';
 import { formatVersion, parseVersion } from './protocol.ts';
-import { apply, checksum, diff, mergePatches, shift, size, valid, wellFormed } from './patch.ts';
+import { apply, checksum, diff, mergePatches, shift, valid, wellFormed } from './patch.ts';
 
 export type Side = 'ours' | 'theirs';
 
@@ -114,8 +114,15 @@ export class Replica {
       this.flight.accepted = at && at.epoch === this.epoch ? at.n : null;
       return;
     }
-    this.flight = null;
     const at = parseVersion(answer.v);
+    // the edit command does not know the page, or it restarted since the base, and the text may hold
+    // the operation all the same, applied before an answer that was lost. the operation is kept
+    // for the resync, which decides by the applied of hello
+    if (answer.reason === 'unknown' || (answer.reason === 'stale' && at && at.epoch !== parseVersion(request.base)?.epoch)) {
+      this.needsResync = true;
+      return;
+    }
+    this.flight = null;
     if (answer.reason === 'conflict' || (answer.reason === 'stale' && request.base !== this.version)) {
       this.waitFor = at && at.epoch === this.epoch ? at.n : this.n;
     } else if (answer.reason === 'invalid' && ++this.invalids > 1) {
@@ -160,14 +167,15 @@ export class Replica {
     return { text: this.mine === before ? null : this.mine, conflicts };
   }
 
-  // the whole text of the authority at version v, read again after needsResync. the edits of this
+  // the whole text of the authority at version v, read again after needsResync. applied is the seq
+  // of the last operation of sender that the text holds, as hello answers it. the edits of this
   // browser are merged into it, where the side wins at a conflict. conflicts gets the patches of
   // mine that conflicted
-  resync(text: string, v: Version, wins: Side = 'ours', conflicts: Patch[] = []): string | null {
+  resync(text: string, v: Version, applied?: number, wins: Side = 'ours', conflicts: Patch[] = []): string | null {
     const parsed = parseVersion(v);
     if (!parsed) throw new Error(`${v} is not a version`);
     const before = this.mine;
-    const from = this.resyncBase(text, parsed);
+    const from = this.resyncBase(parsed, applied);
     const theirs = diff(from, text);
     const ours = diff(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
@@ -186,14 +194,14 @@ export class Replica {
 
   // the text that a resync merges from: base, or base with the operation in flight when the text
   // of the authority holds it, since its patches would otherwise be on both sides of the merge. the
-  // text holds an operation accepted at or before its version. without an answer, or after a restart
-  // of the edit command, the text holds it when it is nearer to base with it than to base without it
-  private resyncBase(text: string, at: { epoch: string; n: number }): string {
+  // text holds an operation accepted at or before its version of the same epoch, or one whose seq is
+  // at most applied. when this is not known, the merge is from base, since a duplicate can be seen
+  // and repaired while a lost edit cannot
+  private resyncBase(at: { epoch: string; n: number }, applied?: number): string {
     const f = this.flight;
     if (!f?.patches) return this.base;
-    const mid = apply(this.base, f.patches);
-    if (f.accepted !== null && at.epoch === this.epoch && at.n >= f.accepted) return mid;
-    return size(diff(mid, text)) < size(diff(this.base, text)) ? mid : this.base;
+    const accepted = f.accepted !== null && at.epoch === this.epoch && at.n >= f.accepted;
+    return accepted || (applied !== undefined && f.seq <= applied) ? apply(this.base, f.patches) : this.base;
   }
 
   private take(op: AppliedOp, wins: Side, conflicts: Patch[], check: boolean, dedupe: boolean): void {

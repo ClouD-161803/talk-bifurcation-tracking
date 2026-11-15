@@ -27,6 +27,8 @@ export type AuthorityOptions = {
   maxOps?: number;
   maxBytes?: number;
   now?: () => number;
+  // the table of the text that the authority starts from, as read from .session/applied.json
+  applied?: [string, number][];
 };
 
 // the answers kept per client, against which a repeated (client, seq) is answered again, for the
@@ -52,6 +54,11 @@ export class Authority {
   private answers = new Map<string, Map<number, Kept>>();
   private observers = new Set<Observer>();
   private seqOf = new Map<string, number>();
+  // the table: the seq of the last operation of each client in the text written last, oldest
+  // first, which survives a restart. the last operation of a client applied since is kept apart
+  // with the n of its version until a write reaches it
+  private kept: Map<string, number>;
+  private unwritten = new Map<string, { seq: number; n: number }>();
 
   constructor(text: string, options: AuthorityOptions = {}) {
     this.text = text;
@@ -59,6 +66,8 @@ export class Authority {
     this.maxOps = options.maxOps ?? 1000;
     this.maxBytes = options.maxBytes ?? 32 * 1024 * 1024;
     this.now = options.now ?? Date.now;
+    this.kept = new Map(options.applied ?? []);
+    while (this.kept.size > CLIENTS) this.kept.delete(this.kept.keys().next().value!);
   }
 
   get version(): Version {
@@ -89,6 +98,34 @@ export class Authority {
     let text = this.text;
     for (let i = this.log.length - 1; i >= this.log.length - (this.n - n); i--) text = apply(text, this.log[i].inverse);
     return text;
+  }
+
+  // the seq of the last operation of client that the text holds, or undefined when the client is not
+  // known. a page asks for it after a restart, since its operation in flight may have been applied
+  // although its answer was lost
+  applied(client: string): number | undefined {
+    return this.unwritten.get(client)?.seq ?? this.kept.get(client);
+  }
+
+  // the text of version n of this epoch is in index.html. returns true when the table changed. the
+  // last operation of a client after n leaves the seq of the client in the table older than the
+  // file, hence a page repeats an operation rather than losing it
+  written(n: number): boolean {
+    let changed = false;
+    for (const [client, last] of this.unwritten) {
+      if (last.n > n) continue;
+      this.unwritten.delete(client);
+      this.kept.delete(client);
+      this.kept.set(client, last.seq);
+      changed = true;
+    }
+    while (this.kept.size > CLIENTS) this.kept.delete(this.kept.keys().next().value!);
+    return changed;
+  }
+
+  // the table as [client, seq] pairs, oldest first
+  table(): [string, number][] {
+    return [...this.kept];
   }
 
   // calls fn with each applied operation and the text after it, until the returned function is called
@@ -154,6 +191,9 @@ export class Authority {
     const op: AppliedOp = { v: this.version, client: request.client, seq: request.seq, author: '', time: this.now(), patches, sum: checksum(this.text) };
     const bytes = 64 + patches.reduce((s, p) => s + p.text.length, 0) + inverse.reduce((s, p) => s + p.text.length, 0);
     this.log.push({ op, inverse, lengthBefore, bytes });
+    this.unwritten.delete(request.client);
+    this.unwritten.set(request.client, { seq: request.seq, n: this.n });
+    if (this.unwritten.size > CLIENTS) this.unwritten.delete(this.unwritten.keys().next().value!);
     this.logBytes += bytes;
     while (this.log.length > 1 && (this.log.length > this.maxOps || this.logBytes > this.maxBytes)) this.logBytes -= this.log.shift()!.bytes;
     return { answer: { ok: true, v: this.version }, op };

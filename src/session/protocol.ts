@@ -41,11 +41,14 @@ export type AppliedOp = {
 // carries the identity of a person, and one that is missing or malformed is replaced by a new one.
 // claim takes over the person who holds the name, i.e. one person on a second device. a page passes
 // the token of its earlier hello only when the same page reconnects with its Replica in memory,
-// and it keeps its client id. a reloaded page is a new client, and it says hello without a token
-export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean };
+// and it keeps its client id. a reloaded page is a new client, and it says hello without a token.
+// was is the client id under which the page sent its operation in flight, passed with the token
+export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string };
 // the answer of hello and of name when another person holds the name, and nothing is changed
 export type Taken = { taken: { name: string } };
-// the operations after the v of the request when they are in the log, and the whole text otherwise
+// the operations after the v of the request when they are in the log, and the whole text otherwise.
+// applied is the seq of the last operation of the client id was that the text holds, left out when
+// this client id is not known, e.g. after its operations left the table of the edit command
 export type HelloAnswer = {
   client: string;
   token: Token;
@@ -56,6 +59,7 @@ export type HelloAnswer = {
   v: Version;
   people: Person[];
   known: KnownPerson[];
+  applied?: number;
 } & ({ ops: AppliedOp[]; text?: undefined } | { text: string; ops?: undefined });
 
 // POST name: a new name of the person of the page of token

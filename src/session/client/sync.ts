@@ -11,6 +11,8 @@ export class Sync {
   private replica: Replica;
   // a whole text is needed, e.g. after a poll whose since left the log or a new client id
   private lost = false;
+  // the applied of the last answer of hello, for the next resync
+  private applied: number | undefined;
 
   constructor(client: string, text: string, v: Version) {
     this.replica = new Replica(client, text, v);
@@ -18,6 +20,11 @@ export class Sync {
 
   get client(): string {
     return this.replica.client;
+  }
+
+  // the was of a hello
+  get sender(): string {
+    return this.replica.sender;
   }
 
   get version(): Version {
@@ -76,7 +83,9 @@ export class Sync {
   // the whole text of the authority at v, into which the edits of this page are merged
   resync(text: string, v: Version, wins: Side = 'ours'): string | null {
     this.lost = false;
-    return this.replica.resync(text, v, wins);
+    const applied = this.applied;
+    this.applied = undefined;
+    return this.replica.resync(text, v, applied, wins);
   }
 
   // the patches of mine that conflict with the whole text and the operations, and the text of the
@@ -84,7 +93,7 @@ export class Sync {
   conflicts(whole: Whole | null, ops: AppliedOp[]): { conflicts: Patch[]; theirs: string } {
     const r = this.replica.clone();
     const conflicts: Patch[] = [];
-    if (whole) r.resync(whole.text, whole.v, 'ours', conflicts);
+    if (whole) r.resync(whole.text, whole.v, this.applied, 'ours', conflicts);
     if (ops.length) conflicts.push(...r.catchUp(ops, 'ours').conflicts);
     return { conflicts, theirs: r.base };
   }
@@ -103,10 +112,11 @@ export class Sync {
     this.lost = true;
   }
 
-  // the page goes on under a new client id, e.g. after a restart of the edit command. its edits
-  // and the operation in flight are kept, and they are merged into the whole text of the next
-  // resync
-  move(client: string): void {
+  // the client id and applied of an answer of hello. a new client id, e.g. after a restart of the
+  // edit command, keeps the edits and the operation in flight, which the whole text of the next
+  // resync is merged with
+  move(client: string, applied?: number): void {
+    this.applied = applied;
     if (client === this.replica.client) return;
     this.replica.rebind(client);
     this.lost = true;
