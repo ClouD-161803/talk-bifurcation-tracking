@@ -13,8 +13,8 @@ export type Patch = { start: number; end: number; text: string };
 // the secret of a page, 22 characters of base64url
 export type Token = string;
 
-// a page of a session. client is the public id of the page. person is the id that the browser keeps in localStorage, hence one person
-// on two devices has two pages
+// a page of a session. client is the public id of the page. person is the id that the browser
+// keeps in localStorage, hence one person on two devices has two pages
 export type Person = { client: string; person: string; name: string; color: number; host: boolean };
 
 // a person who joined the session at some time, as kept in .session/people.json
@@ -37,9 +37,11 @@ export type AppliedOp = {
   sum: string;
 };
 
-// POST hello. v is the version of the text that the editor read, when it read one. a person id
-// that is missing or malformed is replaced by a new one. claim takes over the person who holds the
-// name, i.e. one person on a second device. token keeps the client id of an earlier hello
+// POST hello. v is the version of the text that the editor read, when it read one. the person id
+// carries the identity of a person, and one that is missing or malformed is replaced by a new one.
+// claim takes over the person who holds the name, i.e. one person on a second device. a page passes
+// the token of its earlier hello only when the same page reconnects with its Replica in memory,
+// and it keeps its client id. a reloaded page is a new client, and it says hello without a token
 export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean };
 // the answer of hello and of name when another person holds the name, and nothing is changed
 export type Taken = { taken: { name: string } };
