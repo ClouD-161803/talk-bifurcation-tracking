@@ -495,7 +495,7 @@ export function install(client: Client): void {
       count.textContent = over ? `${n} of at most ${VERSION_NAME_MAX} characters` : '';
       if (over) input.setAttribute('aria-describedby', count.id);
       else input.removeAttribute('aria-describedby');
-      const label = !n && id !== 'current' && was ? 'Remove Name' : 'Save';
+      const label = !n && id !== 'current' && was ? 'Remove name' : 'Save';
       if (save.textContent !== label) save.textContent = label;
       save.disabled = over || (!n && id !== 'current' && !was);
     };
