@@ -585,3 +585,42 @@ test('add regression test: a page that knows the client id of another page canno
   assert.equal(seen.state, null);
   assert.ok(!readFileSync(join(talk, 'index.html'), 'utf8').includes('spoofed'));
 });
+
+test('add regression test: guests cannot fill the places of a session, and a page that never polls is dropped', { timeout: 120_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const secret = 'a secret of the group, long enough';
+  const relay = await startRelay({ host: '127.0.0.1', secret });
+  t.after(() => relay.close());
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = async (body) => (await post(edit.port, api('hello'), body)).json();
+  const guest = async (body) => {
+    const answer = await fetch(`${relay.url}${api('hello')}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: answer.status, body: await answer.json() };
+  };
+  assert.equal((await post(edit.port, api('share'), { relay: relay.url, secret })).status, 200);
+
+  await t.test('a page that never polls is dropped after a few seconds', async () => {
+    const quiet = await hello({ name: 'Quinn' });
+    const watcher = await hello({ name: 'Wes' });
+    assert.ok(watcher.people.some((p) => p.client === quiet.client));
+    await until(async () => !(await hello({ name: 'Wes', person: watcher.person, token: watcher.token })).people.some((p) => p.client === quiet.client), 'the page that never polls to be dropped', 15_000);
+  });
+
+  await t.test('one person through the relay holds a few pages at most', async () => {
+    const person = 'P'.repeat(22);
+    let last;
+    for (let i = 0; i < 20; i++) last = await guest({ name: 'Pat', person });
+    assert.equal(last.status, 200);
+    const pages = last.body.people.filter((p) => p.person === person).length;
+    assert.ok(pages <= 8, `Pat holds ${pages} pages`);
+  });
+
+  await t.test('the host joins after guests took every place that they may take', async () => {
+    for (let i = 0; i < 64; i++) await guest({ name: `Guest ${i}`, person: `${String(i).padStart(2, '0')}${'g'.repeat(20)}` });
+    const host = await post(edit.port, api('hello'), { name: 'Ana' });
+    assert.equal(host.status, 200, host.text);
+  });
+});
