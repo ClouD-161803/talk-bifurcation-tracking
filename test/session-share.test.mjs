@@ -164,6 +164,42 @@ test('Change Name is seen on the other page, also for one word and an emoji, and
   clean(ben);
 });
 
+test('add regression test: the own avatar shows the initials of a new name before the people of the session are heard again', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
+  await shown(ann, 1);
+  // the answers of the polls of Ann are held back, so that the people of the session are not heard
+  await ann.evaluate(`(() => {
+    const fetched = window.fetch;
+    window.__held = new Promise((go) => (window.__go = go));
+    window.__polls = 0;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      const sent = fetched.call(this, input, init);
+      if (!url.includes('/.session/events')) return sent;
+      window.__polls++;
+      return sent.then((answer) => window.__held.then(() => answer));
+    };
+    return true;
+  })()`);
+  // the poll that was held before is answered at the next news, here a second person who joins
+  await post(server.edit.port, `${server.edit.base}.session/hello`, { name: 'Cy' });
+  await ann.waitFor('window.__polls > 0');
+  await press(ann, '.beeson-session-people .me');
+  await ann.waitFor(`!!${item('Change Name…')}`);
+  await press(ann, item('Change Name…'));
+  await ann.waitFor(`document.querySelector('dialog.beeson-session-rename')?.open && document.activeElement === document.querySelector('dialog.beeson-session-rename input')`);
+  await ann.evaluate(`document.querySelector('dialog.beeson-session-rename input').select()`);
+  await type(ann, 'Cher');
+  await key(ann, 'Enter');
+  await ann.waitFor(`!document.querySelector('dialog.beeson-session-rename') && ${C}.name === 'Cher'`);
+  assert.deepEqual((await avatars(ann)).find((avatar) => avatar.me), { text: 'CH', label: 'Cher, you', me: true });
+  await ann.evaluate(`window.__go(); true`);
+  clean(ann);
+});
+
 test('the Share dialog connects a host to the relay, and a guest joins through the link, edits, and leaves', { timeout: 300_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, guestMs: 10_000 });
   t.after(() => relay.close());
