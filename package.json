@@ -5,7 +5,7 @@
   "scripts": {
     "test": "node --test --test-force-exit --test-timeout=1200000 \"test/*.test.mjs\"",
     "build": "node build.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/edit",
     "vendor": "node scripts/vendor.mjs",
     "check": "node scripts/check.mjs",
     "pdf": "node scripts/export-pdf.mjs",
