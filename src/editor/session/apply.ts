@@ -236,11 +236,17 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
   const b = stateOf(to);
   let any = false;
   let more = false;
-  for (const c of a.classes) if (!b.classes.includes(c)) (el.classList.remove(c), (more = true));
-  for (const c of b.classes) if (!a.classes.includes(c)) (el.classList.add(c), (more = true));
-  // every step is shown while the deck is edited, as Doc.place marks the steps of a new slide
-  if (b.classes.includes('fragment') && !a.classes.includes('fragment')) el.classList.add('visible');
-  if (a.classes.includes('fragment') && !b.classes.includes('fragment') && !b.classes.includes('visible')) el.classList.remove('visible');
+  if (a.classes.join(' ') !== b.classes.join(' ')) {
+    // the classes of the file in its order, then those that the theme, reveal.js, and the editor
+    // put. every step is shown while the deck is edited, as Doc.place marks the steps of a new slide
+    const step = b.classes.includes('fragment') && !a.classes.includes('fragment');
+    const unstep = a.classes.includes('fragment') && !b.classes.includes('fragment');
+    const runtime = [...el.classList].filter((c) => !a.classes.includes(c) && !b.classes.includes(c) && !(unstep && c === 'visible'));
+    const list = [...new Set([...b.classes, ...runtime, ...(step ? ['visible'] : [])])];
+    if (list.length) el.setAttribute('class', list.join(' '));
+    else el.removeAttribute('class');
+    more = a.classes.some((c) => !b.classes.includes(c)) || b.classes.some((c) => !a.classes.includes(c));
+  }
   const style = (el as HTMLElement).style;
   if (style) {
     for (const k of Object.keys(a.style)) if (!(k in b.style)) (style.removeProperty(k), (any = true));
@@ -381,7 +387,7 @@ function checkText(ctx: Ctx, live: Element): boolean {
 type Op =
   | { kind: 'keep'; node: Element | null; stable: boolean }
   | { kind: 'place'; src: SrcEl; bytes: string; node: Element | null }
-  | { kind: 'text'; node: Element; to: SrcEl }
+  | { kind: 'text'; node: Element; from: SrcEl; to: SrcEl }
   | { kind: 'inner'; node: Element; from: SrcEl; to: SrcEl; plan: Plan | null };
 // the ops of the units between the units that kept their place at the start and at the end, and
 // after, the node of the first unit kept at the end
@@ -487,7 +493,7 @@ function change(ctx: Ctx, pl: Planner, a: SrcEl, b: SrcEl, node: Element | null)
   if (aText) {
     if (ctx.pairing.byLive.get(node)?.src !== a) return null;
     if (redrawn(node, a.attrs, b.attrs)) pl.reload = true;
-    return { kind: 'text', node, to: b };
+    return { kind: 'text', node, from: a, to: b };
   }
   if (redrawn(node, a.attrs, b.attrs)) pl.reload = true;
   if (VOID.has(a.tag)) return { kind: 'inner', node, from: a, to: b, plan: null };
@@ -524,8 +530,11 @@ function make(ctx: Ctx, src: SrcEl): Element {
 function execute(ctx: Ctx, plan: Plan, placed: Set<Element>, focus: { el: HTMLElement | null }): void {
   for (const op of plan.ops) {
     if (op.kind === 'text') {
+      setTag(ctx, op.node, op.from.attrs, op.to.attrs);
+      const was = contentRange(op.from)!;
       const range = contentRange(op.to)!;
-      setContent(ctx, op.node, ctx.text.slice(range.start, range.end));
+      const content = ctx.text.slice(range.start, range.end);
+      if (content !== ctx.source.text.slice(was.start, was.end)) setContent(ctx, op.node, content);
     } else if (op.kind === 'inner') {
       setTag(ctx, op.node, op.from.attrs, op.to.attrs);
       if (op.plan) execute(ctx, op.plan, placed, focus);
