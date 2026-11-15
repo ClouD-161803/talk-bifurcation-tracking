@@ -546,7 +546,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     writeFileSync(lockFile, lock, { flag: 'wx' });
   } catch {
     const other = await holderOf(lockFile, root, key, log);
-    if (other) {
+    // a lock that names the port of this process was left by an edit command that died, since a
+    // live one would still hold the port. the answer came from this process
+    if (other && other.port !== port) {
       people.end();
       await new Promise((done) => server.close(done));
       throw new AlreadyRunning(other);

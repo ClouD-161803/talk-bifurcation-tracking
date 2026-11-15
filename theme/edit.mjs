@@ -3298,7 +3298,7 @@ async function start(options = {}) {
     writeFileSync5(lockFile, lock, { flag: "wx" });
   } catch {
     const other = await holderOf(lockFile, root, key, log);
-    if (other) {
+    if (other && other.port !== port) {
       people.end();
       await new Promise((done) => server.close(done));
       throw new AlreadyRunning(other);
