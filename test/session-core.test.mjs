@@ -310,7 +310,7 @@ test('a repeated sequence number of a client with another base or other patches 
   assert.equal(a.text, 'abcd\n');
 });
 
-test('a replica repairs a lone surrogate in mine', () => {
+test('a replica repairs a lone surrogate in mine, and stops sending when a resync does not end the refusals as invalid', () => {
   const base = '<p>hi 😀</p>\n';
   const a = new Authority(base, { epoch: 'E' });
   const r = new Replica('me', base, 'E.0');
@@ -322,6 +322,19 @@ test('a replica repairs a lone surrogate in mine', () => {
   assert.equal(answer.ok, true);
   r.receive(op);
   assert.equal(r.mine, a.text);
+  // the first refusal as invalid is followed by a resync, and the second stops the sending
+  r.edit(`${a.text}x`);
+  const first = r.outgoing();
+  r.answer(first, { ok: false, reason: 'invalid', v: a.version });
+  assert.equal(r.needsResync, true);
+  assert.equal(r.blocked, false);
+  r.resync(a.text, a.version);
+  const second = r.outgoing();
+  assert.ok(second, 'the operation is sent once more after the resync');
+  r.answer(second, { ok: false, reason: 'invalid', v: a.version });
+  assert.equal(r.blocked, true);
+  r.edit(`${a.text}xy`);
+  assert.equal(r.outgoing(), null);
 });
 
 test('a replica reads the whole state again after a checksum mismatch, and keeps its own edits', () => {
