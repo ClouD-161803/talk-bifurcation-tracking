@@ -316,3 +316,41 @@ test('a page asks before it unloads only while this browser cannot keep an edit 
   assert.equal(await listeners(), idle);
   clean(page, REFUSED);
 });
+
+test('the operations of the answer that ends the session are taken before its dialog, which then holds every acknowledged edit', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
+  await converge(server, [ann, ben]);
+  // the poll of Ben in flight is answered by an edit of Ann, and his next one is held in the page
+  await ben.evaluate(`__net.rule('/.session/events', 'hold')`);
+  await show(ann, 'Two');
+  await caretAtEnd(ann, el(1, 'p'));
+  await type(ann, ' first');
+  await ben.waitFor(`__net.held.length === 1`);
+  await show(ben, 'One');
+  await caretAtEnd(ben, el(0, 'p'));
+  await type(ben, ' last');
+  await until(() => server.read().includes('<p>First slide last</p>'), 'the edit of Ben to reach index.html');
+  await ben.waitFor(`!${C}.sending`);
+  await front(ann);
+  await type(ann, ' by Ann');
+  await until(() => server.read().includes('<p>Second slide first by Ann</p>'), 'the edit of Ann to reach index.html');
+  // the edit command answers every poll with ended for at least 200 ms after it answered the poll of Ann
+  server.edit.child.kill('SIGTERM');
+  await ann.waitFor(`${C}.connection === 'ended'`);
+  await ben.evaluate(`__net.clear() && __net.release('/.session/events')`);
+  await server.edit.exited;
+  server.edit = null;
+  await front(ben);
+  await ben.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'The session has ended'`);
+  assert.equal(await ben.evaluate(`${DIALOG}.querySelector('p').textContent`), 'Your changes up to now are in index.html.');
+  await ben.evaluate(`(${C}.shell.download = (text) => (window.__copy = text), true)`);
+  await ben.evaluate(`${button('Download a copy')}.click()`);
+  const copy = await ben.evaluate('window.__copy');
+  assert.ok(copy.includes('<p>First slide last</p>') && copy.includes('<p>Second slide first by Ann</p>'), copy);
+  clean(ann, REFUSED);
+  clean(ben, REFUSED);
+});
