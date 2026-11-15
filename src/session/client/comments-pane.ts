@@ -10,7 +10,7 @@ import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comments.ts';
 import { make, style } from './dom.ts';
 import { closeMenu, openMenu } from './menu.ts';
-import { toast, type ToastKind } from './toast.ts';
+import { mountToasts, toast, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 
 // the tone and the initials of a person, until people.ts of the avatars gives them
@@ -693,6 +693,7 @@ export function install(client: Client): void {
   button.append(client.shell.icon('comment', 14), count);
   client.shell.bar.append(button);
   button.addEventListener('click', () => shell.tab.set(!shell.tab.shown()));
+  mountToasts();
 
   let frame = 0;
   const draw = () => {

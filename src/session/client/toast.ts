@@ -1,15 +1,15 @@
 // a toast: a short message above the status bar for SHOWN ms, read out by a screen reader, with an
 // optional button and a button Close. one toast is shown at a time, and the others wait in a queue.
 // the region is kept in the page between toasts, since a screen reader reads a change of a region
-// that it knows. the time of a toast does not run while the pointer is over it or the focus is in
-// it. a toast waits for the close of a modal dialog, which makes the region inert, and its time
-// starts then
+// that it knows, and mountToasts() puts it in the page before the first toast for the same reason.
+// the time of a toast does not run while the pointer is over it or the focus is in it. a toast
+// waits for the close of a modal dialog, which makes the region inert, and its time starts then
 
 import { make, style } from './dom.ts';
 
 const CSS = `
 .beeson-session-toast { position: fixed; left: 50%; bottom: 40px; z-index: 2147483000; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; box-sizing: border-box; max-width: calc(100vw - 32px); padding: 8px 8px 8px 14px; border: 1px solid var(--ed-menu-line); border-radius: 8px; background: var(--ed-menu); color: var(--ed-text); font: 13px/1.35 var(--ed-font, system-ui, sans-serif); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
-.beeson-session-toast:empty { display: none; }
+.beeson-session-toast:empty { width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); box-shadow: none; pointer-events: none; }
 .beeson-session-toast > span { min-width: 0; overflow-wrap: anywhere; }
 .beeson-session-toast button { flex: none; min-height: 32px; padding: 0 12px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); color: var(--ed-text); font: inherit; }
 .beeson-session-toast button.close { display: inline-flex; align-items: center; justify-content: center; width: 32px; margin-left: -8px; padding: 0; border-color: transparent; background: transparent; color: var(--ed-muted); }
@@ -57,9 +57,9 @@ export function toast(text: ToastText, button?: ToastButton, kind?: ToastKind): 
   if (!showing && !waiting) next();
 }
 
-// the empty region put in the page, ahead of its first toast
-export function mountToasts(): void {
-  if (region) return;
+// the empty region in the page, ahead of its first toast
+export function mountToasts(): HTMLElement {
+  if (region) return region;
   style('toast', CSS);
   const box = (region = make('div', 'beeson-session-toast'));
   box.setAttribute('role', 'status');
@@ -81,6 +81,7 @@ export function mountToasts(): void {
     run();
   });
   document.body.append(box);
+  return box;
 }
 
 function pause(): void {
