@@ -459,11 +459,12 @@ export class Client {
             await this.offline(e);
             continue;
           }
-          this.online();
           this.generation++;
           const moved = answer.client !== sync.client;
           this.accept(answer);
           sync.move(answer.client, answer.applied);
+          // after the new token, which a presence state that waits is then sent with
+          this.online();
           if (answer.text !== undefined) {
             this.fresh = { text: answer.text, v: answer.v };
             this.inbox = [];
