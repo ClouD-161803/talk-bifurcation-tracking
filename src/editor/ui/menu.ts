@@ -495,6 +495,8 @@ class Menu {
     const name = make('span', 'label', label);
     if ('path' in item && item.path?.length) name.append(make('span', 'path', item.path.join(' ▸ ')));
     if ('icon' in item && item.icon) name.prepend(icon(item.icon, 16));
+    const note = 'command' in item && this.app.commands.get(item.command)?.note?.(this.app);
+    if (note) name.append(make('span', 'path', note));
     el.append(check, name, make('span', 'keys', keys), arrow);
     return { el, item, enabled, submenu, text: label.toLowerCase() };
   }

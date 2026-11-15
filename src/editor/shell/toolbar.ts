@@ -392,7 +392,7 @@ export function install(app: App): void {
       const s = app.commands.state(c.id);
       el.disabled = !s.enabled && !customizing;
       const keys = commandKeys(c, app.platform);
-      el.title = keys ? `${s.label} (${keys})` : s.label;
+      el.title = c.note?.(app) ?? (keys ? `${s.label} (${keys})` : s.label);
       // a split button is pressed while one of its variants is on, e.g. Arrow while an arrow is drawn
       const on = variants.map((v) => app.commands.state(v.id).checked);
       if (on.some((x) => x !== null) && !customizing) el.setAttribute('aria-pressed', String(on.some((x) => x === true)));

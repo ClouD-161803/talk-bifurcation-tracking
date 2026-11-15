@@ -44,6 +44,9 @@ export type Command = {
   undo?: string;
   // why the command is disabled, for the tooltip of its control, e.g. Bigger on a heading
   why?(app: App): string | null;
+  // a gray note after the label of its menu item and in the tooltip of its button, e.g. why Open is
+  // dimmed in a session
+  note?(app: App): string | null;
 };
 
 export type CommandState = { id: string; label: string; enabled: boolean; checked: boolean | null; why?: string };
