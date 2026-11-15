@@ -31,7 +31,7 @@ const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
 
 export type StartOptions = {
   folder?: string;
-  // 0 for a free port. without a port, DEFAULT_PORT is tried first
+  // 0 for a free port. without a port, the port of the last start and DEFAULT_PORT are tried first
   port?: number;
   relay?: string;
   log?: (message: string) => void;
@@ -124,6 +124,17 @@ function keyOf(root: string): string {
   const key = randomBytes(16).toString('base64url');
   writeFileSync(file, `${key}\n`, { mode: 0o600 });
   return key;
+}
+
+// the port of the last start, kept in .session/port so that the address of a page, and with it the
+// storage of the browser for this address, survives a restart
+function savedPort(root: string): number | null {
+  try {
+    const port = Number(readFileSync(join(root, '.session', 'port'), 'utf8').trim());
+    return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+  } catch {
+    return null;
+  }
 }
 
 // a name of an upload made safe for every system, or null when its type is not an image, a video,
@@ -421,18 +432,20 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   );
   server.headersTimeout = 20_000;
   server.requestTimeout = 120_000;
+  // the next port is tried when one is taken, or reserved by Windows, which answers EACCES
+  const ports = options.port !== undefined ? [options.port] : [...new Set([savedPort(root) ?? DEFAULT_PORT, DEFAULT_PORT, 0])];
   await new Promise<void>((done, fail) => {
-    const tryListen = (p: number) => {
+    const tryListen = (i: number) => {
       server.once('error', (e: NodeJS.ErrnoException) => {
-        if (e.code === 'EADDRINUSE' && options.port === undefined && p !== 0) tryListen(0);
+        if ((e.code === 'EADDRINUSE' || e.code === 'EACCES') && i + 1 < ports.length) tryListen(i + 1);
         else fail(e);
       });
-      server.listen(p, '127.0.0.1', () => {
+      server.listen(ports[i], '127.0.0.1', () => {
         server.removeAllListeners('error');
         done();
       });
     };
-    tryListen(options.port ?? DEFAULT_PORT);
+    tryListen(0);
   });
   port = (server.address() as { port: number }).port;
   // a second start at the same time is found by the lock that the first one created
@@ -455,6 +468,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if (readFileSync(lockFile, 'utf8') === lock) unlinkSync(lockFile);
     } catch {}
   };
+  try {
+    writeFileSync(join(root, '.session', 'port'), `${port}\n`);
+  } catch {}
   disk.start();
 
   if (options.relay) {
