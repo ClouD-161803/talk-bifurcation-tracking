@@ -205,6 +205,25 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await press$(ben, PANE, 'Back to editor');
     await ben.waitFor(`!(${SHOWN})`);
   });
+
+  await t.test('the focus goes back to the control that opened the mode, also to the button of the save state', async () => {
+    await front(ben);
+    await ben.evaluate(`(window.__before = [...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.getClientRects().length)).focus(), true`);
+    await press(ben, 'Mod+Alt+Shift+H');
+    await ben.waitFor(SHOWN);
+    await press$(ben, PANE, 'Back to editor');
+    await ben.waitFor(`!(${SHOWN})`);
+    assert.equal(await ben.evaluate('document.activeElement === window.__before'), true);
+    // an item of the menu run by the keyboard, i.e. a click on the focused item
+    await ben.evaluate(`(() => { const b = document.querySelector('.beeson-session-state'); b.focus(); b.click(); return true; })()`);
+    const item = `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`;
+    await ben.waitFor(`!!(${item})`);
+    await ben.evaluate(`(() => { const b = ${item}; b.focus(); b.click(); return true; })()`);
+    await ben.waitFor(SHOWN);
+    await press(ben, 'Escape');
+    await ben.waitFor(`!(${SHOWN})`);
+    assert.equal(await ben.evaluate(`document.activeElement === document.querySelector('.beeson-session-state')`), true);
+  });
   clean(ann);
   clean(ben);
 });
@@ -891,6 +910,10 @@ test('Keep theirs at a conflict sets the text of the page aside, which Show open
     await ann.waitFor(`document.querySelector('${PANE} .aside-list .row')?.getAttribute('aria-current') === 'true'`);
     await ann.waitFor(`${FRAME}?.src.includes('aside=')`);
     await ann.waitFor(`!!${FRAME}.contentDocument?.body?.textContent.includes('Opening slide')`, 30_000);
+    // the button of the toast is gone, hence the focus goes back to the button of the save state
+    await press(ann, 'Escape');
+    await ann.waitFor(`!(${SHOWN})`);
+    assert.equal(await ann.evaluate(`document.activeElement === document.querySelector('.beeson-session-state')`), true);
     clean(ann);
     clean(ben);
     await ann.close();
