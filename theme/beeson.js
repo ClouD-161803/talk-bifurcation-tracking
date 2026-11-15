@@ -5241,6 +5241,10 @@ void main() {
       p.syncSteps();
       p.still();
     }
+    if (root2.matches("tycho-viewer") || root2.querySelector("tycho-viewer")) {
+      markViewers();
+      syncViewers(get());
+    }
     const slide = root2.closest(".reveal .slides section");
     if (slide) applySteps(slide);
   }
