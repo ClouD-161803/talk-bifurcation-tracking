@@ -882,3 +882,14 @@ test('a cut last line in a read-only history.jsonl is left out, and the history 
     assert.deepEqual(open(dir, again.authority.text).history.list().versions.map((v) => [v.id, v.name]).slice(0, 2), [[v2.id, undefined], [v1.id, 'Important']]);
   });
 });
+
+test('a version name is kept without the characters that do not show', { timeout: 60_000 }, (t) => {
+  const { authority, history } = open(sessionDir(t), DECK);
+  replace(authority, 'One', 'Uno', ANN);
+  const v = history.close();
+  assert.equal(history.name(v.id, 'a\u0000b\u0007c\u001b[31mred').name, 'abc[31mred');
+  assert.equal(history.name(v.id, '‮evil').name, 'evil');
+  assert.equal(history.name(v.id, ' tab\tand\nline ').name, 'tab and line');
+  assert.equal(history.name(v.id, '​'.repeat(80)).name, undefined, 'a name of hidden characters takes the name off');
+  history.stopSync();
+});
