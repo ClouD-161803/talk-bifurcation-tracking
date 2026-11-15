@@ -14,7 +14,7 @@ import { injectStyle, make } from '../ui/dom.ts';
 import type { Arrival, OriginMacro } from './origin.ts';
 
 const CSS = `
-dialog.paste-macros pre { margin: 0 0 12px; padding: 8px 10px; max-height: 40vh; overflow: auto; border: 1px solid var(--sheet-line); border-radius: 6px; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--ed-text); user-select: text; -webkit-user-select: text; }
+dialog.paste-macros pre { margin: 0 0 12px; padding: 8px 10px; max-height: 40vh; overflow: auto; border: 1px solid var(--sheet-line); border-radius: 6px; font: 12px/1.45 ui-monospace, Menlo, monospace; user-select: text; -webkit-user-select: text; }
 dialog.paste-macros p.hint { margin: 0 0 12px; color: var(--ed-text); }
 `;
 
@@ -24,15 +24,19 @@ const line = (m: OriginMacro): string => {
   return `${m.name}: ${m.args ? `[${body}, ${m.args}]` : body},`;
 };
 
+// a macro off this deck: its line, its name, and whether this deck lacks it
+type Off = { line: string; name: string; lacking: boolean };
 const shown = new Set<string>();
-let sheet: { dialog: Dialog; pre: HTMLElement; hint: HTMLElement } | null = null;
+let sheet: { dialog: Dialog; pre: HTMLElement; hint: HTMLElement; offs: Off[] } | null = null;
 
 // the lines are written inside the click, which grants the write in every browser. where it is
-// refused or missing, the lines are selected for a copy by hand
+// refused or missing, the lines are selected for a copy by hand, with the key named only where a
+// keyboard is likely
 function copy(app: App): void {
   const { dialog, pre, hint } = sheet!;
   const refused = () => {
-    hint.textContent = `The browser did not let the editor write the clipboard. Select the lines and press ${display('Mod+C', app.platform)}.`;
+    const key = matchMedia('(any-pointer: fine)').matches ? `, e.g. with ${display('Mod+C', app.platform)}` : '';
+    hint.textContent = `The browser did not let the editor write the clipboard. Select the lines and copy them${key}.`;
     hint.hidden = false;
     getSelection()?.selectAllChildren(pre);
   };
@@ -40,7 +44,8 @@ function copy(app: App): void {
   navigator.clipboard.writeText(pre.textContent ?? '').then(() => void (dialog.buttons.get('copy')!.textContent = 'Copied'), refused);
 }
 
-function show(app: App, lacking: string[], other: string[], lines: string[]): void {
+// the dialog with offs, added to those of a dialog still open from an earlier paste
+function show(app: App, offs: Off[]): void {
   if (!sheet) {
     injectStyle('paste-macros', CSS);
     const pre = make('pre');
@@ -59,28 +64,34 @@ function show(app: App, lacking: string[], other: string[], lines: string[]): vo
       stay: ['copy'],
       onButton: (v) => v === 'copy' && copy(app),
     });
-    sheet = { dialog, pre, hint };
+    sheet = { dialog, pre, hint, offs: [] };
   }
   const { dialog, pre, hint } = sheet;
-  const red = lacking.length ? `the formulas that use ${listed(lacking)} are drawn in red` : '';
-  const own = other.length ? `the formulas that use ${listed(other)} are drawn with the definition of this deck` : '';
-  dialog.text.textContent = `Paste the lines below into theme/macros.js of this deck, inside the braces of window.beesonMacros, and open the deck again to define the macros of the formulas that you pasted as the deck they were copied from does. Until then, ${[red, own].filter(Boolean).join(', and ')}.`;
-  pre.textContent = lines.join('\n');
+  const all = new Map([...(dialog.shown ? sheet.offs : []), ...offs].map((o) => [o.line, o]));
+  sheet.offs = [...all.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const names = (lacking: boolean) => sheet!.offs.filter((o) => o.lacking === lacking).map((o) => o.name);
+  const red = names(true).length ? `the formulas that use ${listed(names(true))} are drawn in red` : '';
+  const own = names(false).length ? `the formulas that use ${listed(names(false))} are drawn with the definition of this deck` : '';
+  dialog.text.textContent = `Paste the lines below into theme/macros.js of this deck, inside the braces of window.beesonMacros, and open the deck again. Until then, ${[red, own].filter(Boolean).join(', and ')}.`;
+  pre.textContent = sheet.offs.map((o) => o.line).join('\n');
   hint.hidden = true;
   dialog.buttons.get('copy')!.textContent = 'Copy';
   void dialog.open('copy');
 }
 
+// the third item of a macro with an optional argument is not read by deckMacros(), hence it is
+// neither compared nor written
 export function nameMacros(app: App, arrival: Arrival): void {
   const own = new Map(deckMacros().map((m) => [m.name, m]));
-  const off = arrival.origin.macros.filter((m) => own.get(m.name)?.body !== m.body || own.get(m.name)?.args !== m.args).sort((a, b) => a.name.localeCompare(b.name));
-  if (!off.length) return;
-  const lines = off.map(line);
-  const names = off.map((m) => `\\${m.name}`);
-  if (lines.every((l) => shown.has(l))) {
-    arrival.notes.push(`${listed(names)} ${off.length > 1 ? 'are' : 'is'} still not defined in this deck as in the deck they were copied from.`);
+  const offs = arrival.origin.macros
+    .filter((m) => own.get(m.name)?.body !== m.body || own.get(m.name)?.args !== m.args)
+    .map((m) => ({ line: line(m), name: `\\${m.name}`, lacking: !own.has(m.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (!offs.length) return;
+  if (offs.every((o) => shown.has(o.line))) {
+    arrival.notes.push(`${listed(offs.map((o) => o.name))} ${offs.length > 1 ? 'are' : 'is'} still not defined in this deck as in the deck they were copied from.`);
     return;
   }
-  for (const l of lines) shown.add(l);
-  show(app, off.filter((m) => !own.has(m.name)).map((m) => `\\${m.name}`), off.filter((m) => own.has(m.name)).map((m) => `\\${m.name}`), lines);
+  for (const o of offs) shown.add(o.line);
+  show(app, offs);
 }

@@ -33,10 +33,10 @@ function usedMacros(text: string): OriginMacro[] {
   return [...out.values()];
 }
 
-// the comment of the origin of the copied text. a dash and an angle bracket are written as escapes
-// of JSON, hence a URL or a macro does not close the comment early
 const themeVersion = (): string => (window as unknown as { Beeson?: { version?: string } }).Beeson?.version ?? '';
 
+// the comment of the origin of the copied text. a dash and an angle bracket are written as escapes
+// of JSON, hence a URL or a macro does not close the comment early
 export function originComment(text: string): string {
   const json = JSON.stringify({ deck: deckAddress(), version: themeVersion(), macros: usedMacros(text) } satisfies Origin);
   return `${OPEN}${json.replace(/[-<>]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}-->`;

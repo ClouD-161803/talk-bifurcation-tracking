@@ -85,7 +85,7 @@ test('a refused write of the clipboard tells how to copy the lines by hand', asy
   assert.equal((await read(b)).hint, '');
   await click(b, await center(b, `${DIALOG} button.primary`));
   await b.waitFor(`document.querySelector('${DIALOG} .hint')?.hidden === false`, 5000);
-  assert.match((await read(b)).hint, /did not let the editor write the clipboard\. Select the lines and press Ctrl\+C/);
+  assert.match((await read(b)).hint, /did not let the editor write the clipboard\. Select the lines and copy them, e\.g\. with Ctrl\+C\./);
   // deck B lacks all three macros
   assert.equal((await read(b)).lines.split('\n').length, 3);
 });
