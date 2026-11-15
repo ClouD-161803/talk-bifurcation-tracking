@@ -22,7 +22,7 @@ export function talkFolder(t, bytes = DECK) {
   // the hooks of a test run in the order in which they were added, and the ones after a failed hook
   // are skipped. an edit command in this folder is therefore stopped here, before the caller removes
   // the folder, since a write into .session/ during the removal makes it fail
-  t.after(() => Promise.all([...running].filter((state) => state.folder.startsWith(root)).map(stopEdit)));
+  t.after(() => Promise.all([...running].filter((state) => state.folder.startsWith(root)).map(stopBounded)));
   const talk = join(root, 'talk');
   mkdirSync(talk);
   writeFileSync(join(talk, 'index.html'), bytes);
@@ -69,6 +69,18 @@ export function within(promise, ms, what) {
   let timer;
   const late = new Promise((_, fail) => (timer = setTimeout(() => fail(new Error(`timed out waiting for ${what}`)), ms)));
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
+// stopEdit, which fails after 30 s with the edit command killed, e.g. while it is held by SIGSTOP,
+// since a hook is not bounded by the limit of its test
+async function stopBounded(state) {
+  try {
+    await within(stopEdit(state), 30_000, 'the edit command to stop');
+  } catch (e) {
+    state.child.kill('SIGKILL');
+    await state.exited;
+    throw e;
+  }
 }
 
 // a raw request, so that a path is sent as written and every header can be set
