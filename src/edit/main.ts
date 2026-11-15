@@ -19,6 +19,7 @@ export { changes } from '../editor/merge.ts';
 export { tokenize } from '../editor/tokens.ts';
 export { cleanName, start } from './command.ts';
 export { decode, Disk } from './disk.ts';
+export { deriveTex, TexWriter } from './tex.ts';
 
 const USAGE = 'usage: node theme/edit.mjs [folder] [--port N] [--no-open] [--relay URL]';
 

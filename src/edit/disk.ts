@@ -241,15 +241,15 @@ function removeQuietly(file: string): void {
 export type WriteError = { message: string; unwritten: number };
 
 // onWriteError is called at each failed write, and with null at the first write that succeeds after
-// one failed. onWritten is called with n once the file holds the text of version n of the authority.
-// quiet, latest, and poll are the times of the writes and the checks in ms, stable and partial the
-// times that a changed file must not change before it is taken, when it looks complete and when it
-// looks partly written, and budget the time of the search for the base of a change of the file,
-// shorter in the tests
+// one failed. onWritten is called with n and the text once the file holds the text of version n of
+// the authority. quiet, latest, and poll are the times of the writes and the checks in ms, stable
+// and partial the times that a changed file must not change before it is taken, when it looks
+// complete and when it looks partly written, and budget the time of the search for the base of a
+// change of the file, shorter in the tests
 export type DiskOptions = {
   log?: (message: string) => void;
   onWriteError?: (error: WriteError | null) => void;
-  onWritten?: (n: number) => void;
+  onWritten?: (n: number, text: string) => void;
   quiet?: number;
   latest?: number;
   poll?: number;
@@ -294,7 +294,7 @@ export class Disk {
   private stopping: Promise<number> | null = null;
   private log: (message: string) => void;
   private onWriteError: (error: WriteError | null) => void;
-  private onWritten: (n: number) => void;
+  private onWritten: (n: number, text: string) => void;
   private timing: { quiet: number; latest: number; poll: number; stable: number; partial: number; budget: number };
 
   constructor(file: string, authority: Authority, bom: boolean, options: DiskOptions = {}) {
@@ -438,7 +438,7 @@ export class Disk {
     const text = this.authority.text, n = this.authority.n;
     if (text === this.written) {
       this.writtenN = n;
-      this.onWritten(n);
+      this.onWritten(n, text);
       return;
     }
     const tmp = this.tmpName();
@@ -476,7 +476,7 @@ export class Disk {
     }
     this.written = text;
     this.writtenN = n;
-    this.onWritten(n);
+    this.onWritten(n, text);
     this.known = signature(made!);
     this.remember(text);
     if (this.failures) {
@@ -553,7 +553,7 @@ export class Disk {
     this.known = sig;
     this.bom = read.bom;
     this.written = this.taken = read.text;
-    if (this.authority.text === read.text) this.onWritten((this.writtenN = this.authority.n));
+    if (this.authority.text === read.text) this.onWritten((this.writtenN = this.authority.n), read.text);
     else this.schedule();
     return true;
   }
