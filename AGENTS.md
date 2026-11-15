@@ -86,7 +86,7 @@ In a talk, `npm run check`, `npm run pdf`, and `npm run pptx` need only Node.js 
 
 PR-Agent reviews PRs in the workflow `pr-agent`. A person needs effective write access to start a review. Authorized commands review any PR, one opened by a bot included.
 
-- Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding that blocks the PR, not a suggestion.
+- Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding to fix before the PR is merged, not a suggestion.
 <!-- shared:end -->
 - Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in `theme/beeson.js`, `theme/editor.js`, or `theme/editor-tex.js` either. They are compiled and committed on purpose.
 - Read the section of `REFERENCE.md` on an element before you question it. Most of what looks unusual there is the design of the theme.
