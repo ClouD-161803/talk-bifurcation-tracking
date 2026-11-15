@@ -13,10 +13,16 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { editorPage } from './helpers/editor.mjs';
 import { E } from './helpers/apply.mjs';
-import { CLIENT, TIMERS, draftText, keepOldDraft, typeGo } from './helpers/session-mode.mjs';
+import { CLIENT, HELD_SAVER, NO_TABS, TIMERS, draftText, keepOldDraft, release, typeGo } from './helpers/session-mode.mjs';
 
 const SESSION = 'edit&still&session';
 const status = (page) => page.evaluate(`${E}.status()`);
+const exec = (page, id) => {
+  const run = page.evaluate(`${E}.exec(${JSON.stringify(id)}).then(() => true)`);
+  run.catch(() => {});
+  return run;
+};
+const askShown = `!!document.querySelector('dialog.beeson-edit-dialog.ask[open]')`;
 const errors = (page) => page.errors.filter((e) => !e.includes('favicon.ico'));
 
 let browser;
@@ -165,6 +171,50 @@ test('24: a session hides the Autosave switch and its sentence until end()', asy
     await page.evaluate(`${E}.session.end(), true`);
     assert.equal(await shown(), true, 'the Autosave switch is hidden after end()');
     assert.match((await status(page)).message, /autosave starts after the first save/);
+  } finally {
+    await page.close();
+  }
+});
+
+// 10 and 12: Present, the exports, and Print wait for the saver of the session and go on without a
+// question, and they keep the edit and its history
+test('10 and 12: Present, Export, and Print in a session wait for the saver and keep the edits', async () => {
+  const page = await editorPage(browser, { client: CLIENT, query: `${SESSION}&v=abc.1` });
+  try {
+    await page.evaluate(HELD_SAVER);
+    await page.evaluate(NO_TABS);
+    await typeGo(page);
+    for (const [id, saves] of [['file.export.pdf', 1], ['file.print', 2]]) {
+      const done = exec(page, id);
+      await page.waitFor(`window.__saves === ${saves}`);
+      assert.equal(await page.evaluate(askShown), false, `${id} asks about unsaved changes`);
+      assert.equal(await page.evaluate('window.__opened.length'), saves - 1, `${id} goes on before the save`);
+      await release(page);
+      await done;
+      const opened = await page.evaluate('window.__opened.at(-1)');
+      assert.match(opened, /print-pdf/, `${id} does not open the print view`);
+      assert.doesNotMatch(opened, /[?&](v|session|edit)(=|&|$)/, `${id} opens the print view of an old version`);
+    }
+    const pptx = exec(page, 'file.export.pptx');
+    await page.waitFor('window.__saves === 3');
+    assert.equal(await page.evaluate(`!!document.querySelector('dialog.beeson-edit-dialog.pptx[open]')`), false);
+    await release(page);
+    await page.waitFor(`!!document.querySelector('dialog.beeson-edit-dialog.pptx[open]')`);
+    await page.evaluate(`document.querySelector('dialog.beeson-edit-dialog.pptx [value="close"], dialog.beeson-edit-dialog.pptx button:last-child').click(), true`);
+    await pptx;
+    const present = exec(page, 'file.present');
+    await page.waitFor('window.__saves === 4');
+    assert.equal(await page.evaluate(askShown), false, 'Present asks about unsaved changes');
+    await release(page);
+    await present;
+    const src = await page.evaluate(`document.querySelector('.beeson-edit-show iframe')?.src ?? null`);
+    assert.ok(src, 'the show is not played');
+    assert.doesNotMatch(src, /[?&](v|session|edit)(=|&|$)/, 'the show plays an old version');
+    await page.evaluate(`document.querySelector('.beeson-edit-show').remove(), true`);
+    const s = await status(page);
+    assert.ok((await page.evaluate(`${E}.render()`)).includes(' Go.'), 'the edit was undone');
+    assert.equal(s.undo, true, 'the history was cleared');
+    assert.deepEqual(errors(page), []);
   } finally {
     await page.close();
   }

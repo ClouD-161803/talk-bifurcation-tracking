@@ -69,6 +69,26 @@ export async function typeGo(page) {
   await page.waitFor(`${E}.render().includes(' Go.')`);
 }
 
+// a saver for onSave of the port, which counts its calls in window.__saves and resolves once the
+// test calls release()
+export const HELD_SAVER = `(() => {
+  window.__saves = 0;
+  window.__release = [];
+  ${E}.session.onSave(() => {
+    window.__saves++;
+    return new Promise((done) => window.__release.push(done));
+  });
+  return true;
+})()`;
+export const release = (page) => page.evaluate('(window.__release.splice(0).forEach((done) => done()), true)');
+
+// window.open recorded in window.__opened. it returns null, as for a tab that the browser blocked
+export const NO_TABS = `(() => {
+  window.__opened = [];
+  window.open = (url) => (window.__opened.push(String(url)), null);
+  return true;
+})()`;
+
 /** Keeps a draft of test-deck.html in the storage of the file origin, as an earlier visit leaves it. */
 export async function keepOldDraft(page, text = deckText.replace('Thank you', 'Thanks from a draft')) {
   assert.notEqual(text, deckText);
