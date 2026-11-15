@@ -140,6 +140,8 @@ export class Client {
 
   private sending: OpPost | null = null;
   private idleWaiters: (() => void)[] = [];
+  // called once the drive that runs is over
+  private driveWaiters: (() => void)[] = [];
   private joining: Promise<void> | null = null;
   private attempt = 0;
   private retry: { finish: () => void; promise: Promise<void> } | null = null;
@@ -410,6 +412,7 @@ export class Client {
       }
     } finally {
       this.driving = false;
+      for (const fn of this.driveWaiters.splice(0)) fn();
     }
     this.pump();
     this.check();
@@ -617,12 +620,17 @@ export class Client {
       }
       if (this.gone || generation !== this.generation) continue;
       this.online();
-      this.take(answer);
+      await this.take(answer);
     }
   }
 
-  private take(answer: EventsAnswer): void {
+  private async take(answer: EventsAnswer): Promise<void> {
+    // the operations of the answer are taken first, e.g. the broadcast of the last edit of this page
     if (answer.ended) {
+      if (answer.ops) this.receive(answer.ops);
+      this.since = answer.v;
+      while (this.driving) await new Promise<void>((done) => this.driveWaiters.push(done));
+      await this.drive();
       this.end(answer.ended);
       return;
     }
