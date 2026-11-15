@@ -1,8 +1,10 @@
 // the time of an apply of a change of one character, see src/editor/session/apply.ts. the apply
 // changes only the text element of the character, hence on test-deck.html, with 13 slides, it
 // costs at most three times the same apply on a deck of three slides, and at most half of an open
-// of the same text, which parses the file and pairs it with the page. each time is the median of
-// 21 applies, with the CPU of Chrome at full speed and throttled six times
+// of the same text, which parses the file and pairs it with the page. the same holds when the
+// person types a key into a heading before each apply, after which the apply reads the deck once
+// to keep the key. each time is the median of 21 applies, with the CPU of Chrome at full speed and
+// throttled six times
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -16,19 +18,31 @@ before(async () => {
 });
 after(() => browser?.close());
 
-// the medians in ms of an apply that changes the first character of word, and of an open
-const measure = (page, word) => page.evaluate(`(async () => {
+// the medians in ms of an apply that changes the first character of word, each after a key typed
+// at the end of the heading that starts with typed when typed is given, and of an open
+const measure = (page, word, typed) => page.evaluate(`(async () => {
   const base = ${JSON.stringify(page.source)};
   const at = base.indexOf(${JSON.stringify(word)});
   const median = (a) => [...a].sort((x, y) => x - y)[a.length >> 1];
+  const host = ${typed ? `[...document.querySelectorAll('.reveal h1, .reveal h2')].find((h) => h.textContent.startsWith(${JSON.stringify(typed)}))` : 'null'};
+  if (${!!typed} && !host) return null;
   const apply = [];
   for (let i = 0; i < 21; i++) {
+    if (host) {
+      host.focus();
+      getSelection().selectAllChildren(host);
+      getSelection().collapseToEnd();
+      document.execCommand('insertText', false, 'x');
+      // the page draws the key before the apply is timed, as between two keys of the person
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    }
     const text = base.slice(0, at) + 'abcdefghijk'[i % 11] + base.slice(at + 1);
     const t0 = performance.now();
     const r = await ${E}.apply(text);
     apply.push(performance.now() - t0);
     if (r.reload) return null;
   }
+  if (host && !${E}.render().includes('x'.repeat(21))) return null;
   const open = [];
   for (let i = 0; i < 5; i++) {
     const text = ${E}.render();
@@ -40,34 +54,37 @@ const measure = (page, word) => page.evaluate(`(async () => {
 })()`);
 
 const DECKS = [
-  ['test-deck.html', undefined, 'Direct the viewer'],
-  ['a deck of three slides', 'test/pages/editor-hidden.html', 'The first slide'],
+  ['test-deck.html', undefined, 'Direct the viewer', 'Presenting in HTML'],
+  ['a deck of three slides', 'test/pages/editor-hidden.html', 'The first slide', 'Shown'],
 ];
 
-for (const rate of [1, 6]) {
-  test(`an apply of one character costs a small part of an open, and grows little with the deck, with the CPU throttled ${rate} times`, { timeout: 300000 }, async (t) => {
-    // the pages are opened one after the other, since a page behind does not draw frames
-    const pages = [];
-    t.after(() => Promise.all(pages.map((p) => p.close())));
-    for (const [, deck] of DECKS) pages.push(await editorPage(browser, deck ? { deck } : {}));
-    let found = '';
-    for (let round = 1; round <= 3; round++) {
-      const times = [];
-      for (const [i, page] of pages.entries()) {
-        await front(page);
-        await page.send('Emulation.setCPUThrottlingRate', { rate });
-        try {
-          times.push(await measure(page, DECKS[i][2]));
-        } finally {
-          await page.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+for (const typed of [false, true]) {
+  for (const rate of [1, 6]) {
+    const typing = typed ? ', after a key typed by the person' : '';
+    test(`an apply of one character costs a small part of an open, and grows little with the deck${typing}, with the CPU throttled ${rate} times`, { timeout: 300000 }, async (t) => {
+      // the pages are opened one after the other, since a page behind does not draw frames
+      const pages = [];
+      t.after(() => Promise.all(pages.map((p) => p.close())));
+      for (const [, deck] of DECKS) pages.push(await editorPage(browser, deck ? { deck } : {}));
+      let found = '';
+      for (let round = 1; round <= 3; round++) {
+        const times = [];
+        for (const [i, page] of pages.entries()) {
+          await front(page);
+          await page.send('Emulation.setCPUThrottlingRate', { rate });
+          try {
+            times.push(await measure(page, DECKS[i][2], typed && DECKS[i][3]));
+          } finally {
+            await page.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+          }
+          assert.ok(times[i], `${DECKS[i][0]}: the apply did not need a reload, and kept the keys typed`);
         }
-        assert.ok(times[i], `${DECKS[i][0]}: the apply did not need a reload`);
+        const [deck, small] = times;
+        found = `${deck.apply.toFixed(1)} ms on test-deck.html against ${small.apply.toFixed(1)} ms on a deck of three slides, and an open of test-deck.html in ${deck.open.toFixed(1)} ms`;
+        t.diagnostic(`round ${round}: an apply in ${found}`);
+        if (deck.apply <= 3 * Math.max(small.apply, 0.1) && deck.apply <= deck.open / 2) return;
       }
-      const [deck, small] = times;
-      found = `${deck.apply.toFixed(1)} ms on test-deck.html against ${small.apply.toFixed(1)} ms on a deck of three slides, and an open of test-deck.html in ${deck.open.toFixed(1)} ms`;
-      t.diagnostic(`round ${round}: an apply in ${found}`);
-      if (deck.apply <= 3 * Math.max(small.apply, 0.1) && deck.apply <= deck.open / 2) return;
-    }
-    assert.fail(`an apply in ${found}, in each of three rounds`);
-  });
+      assert.fail(`an apply in ${found}, in each of three rounds`);
+    });
+  }
 }
