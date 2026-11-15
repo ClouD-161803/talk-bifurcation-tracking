@@ -122,7 +122,8 @@ export function pairs(a: string[], b: string[], half = false): { i: number; j: n
   return out;
 }
 
-const shared = (x: string, y: string) => {
+// the characters that x and y share at the start and the end
+export const shared = (x: string, y: string) => {
   let p = 0;
   while (p < x.length && p < y.length && x[p] === y[p]) p++;
   let s = 0;

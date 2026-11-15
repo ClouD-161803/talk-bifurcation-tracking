@@ -1585,13 +1585,13 @@ function slideAnchorAt(slides, i) {
   const s = slideAt(slides, i);
   return s ? tagOf(s) : null;
 }
-function elementEnd(text, at, limit) {
-  if (VOID.has(at.tag)) return at.end;
+function elementClose(text, at, limit) {
+  if (VOID.has(at.tag)) return { end: at.end, close: at.end };
   for (let size2 = Math.max(1024, 2 * (at.end - at.start)); ; size2 *= 4) {
     const whole = at.start + size2 >= limit;
     const tokens = tokenize(text.slice(at.start, whole ? limit : at.start + size2));
     const first2 = tokens[0];
-    if (!first2 || first2.type !== "start" || first2.selfClosing) return at.end;
+    if (!first2 || first2.type !== "start" || first2.selfClosing) return { end: at.end, close: at.end };
     const n = whole ? tokens.length : tokens.length - 1;
     const open2 = [];
     for (let k = 0; k < n; k++) {
@@ -1600,12 +1600,12 @@ function elementEnd(text, at, limit) {
         if (!t.selfClosing && !VOID.has(t.name)) open2.push(t.name);
       } else if (t.type === "end") {
         const i = open2.lastIndexOf(t.name);
-        if (i < 0) return at.start + t.start;
+        if (i < 0) return { end: at.start + t.start, close: at.start + t.start };
         open2.length = i;
-        if (i === 0) return at.start + t.end;
+        if (i === 0) return { end: at.start + t.end, close: at.start + t.start };
       }
     }
-    if (whole) return -1;
+    if (whole) return { end: -1, close: -1 };
   }
 }
 function insertedSpans(patches) {
@@ -1774,6 +1774,7 @@ function matchedSlides(before2, s0, after, patches) {
   const s1 = slidesOf(after);
   return { s1, ...matchSlides(before2, s0, after, s1, patches) };
 }
+var squeeze = (text) => text.replace(/\n[ \t]*/g, "\n");
 function slow(before2, patches, after, items, given) {
   const s0 = given ?? slidesOf(before2);
   const { s1, to, kept } = shiftedSlides(before2, patches, after, s0) ?? matchedSlides(before2, s0, after, patches);
@@ -1781,18 +1782,47 @@ function slow(before2, patches, after, items, given) {
   const inserted = insertedSpans(patches);
   const cap2 = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
   const regions = /* @__PURE__ */ new Map();
+  const stays = (a, close, end) => {
+    const q = patches.find((p) => touches(p, close, end));
+    if (!q || q.text) return true;
+    if (q.start <= a.start) return q.end < end;
+    const k = q.start - a.start;
+    if (patches.some((p) => p !== q && touches(p, a.start, q.start))) return true;
+    return !(q.end - k >= end && before2.startsWith(before2.slice(a.start, q.start), q.end - k));
+  };
+  const wrapped = (a, text, found) => {
+    const s = slideAt(s1, found.start);
+    const { close } = elementClose(after, found, s ? s.end : after.length);
+    if (close <= found.end) return null;
+    const inner = after.slice(found.end, close);
+    const o = found.end + inner.length - inner.trimStart().length;
+    const t = startTagAt(after, o);
+    return t && t.tag === a.tag && overlaps(inserted, o, close) && squeeze(inner.trim()) === squeeze(text) ? t : null;
+  };
+  const swapped = (a, close, text, found) => {
+    const o = findInserted(after, text, inserted, found.start);
+    if (o < 0) return null;
+    const s = slideAt(s1, found.start);
+    const c = elementClose(after, found, s ? s.end : after.length).close;
+    const old = before2.slice(a.end, close);
+    return shared(old, c > found.end ? after.slice(found.end, c) : "") < old.length ? { start: o, end: o + a.end - a.start, tag: a.tag } : null;
+  };
   const locate = (a, limit) => {
     const found = byPatches(a, before2, patches, after, regions);
     if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
     const bound = Math.max(a.end, Math.min(limit, a.start + cap2));
-    const e = elementEnd(before2, a, bound);
+    const { end: e, close } = elementClose(before2, a, bound);
     if (e < 0 && bound < limit) return { anchor: found, text: null };
     const end = e < 0 ? bound : e;
     const text = before2.slice(a.start, end);
-    if (patches.some((q) => touches(q, a.start, end)) && !(found && after.startsWith(text, found.start))) {
-      const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
-      if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
+    if (!patches.some((q) => touches(q, a.start, end)) || found && after.startsWith(text, found.start)) return { anchor: found, text };
+    if (found && e > a.end) {
+      if (stays(a, close, end)) return { anchor: wrapped(a, text, found) ?? swapped(a, close, text, found) ?? found, text };
+      const o2 = findInserted(after, text, inserted, found.start);
+      return { anchor: o2 >= 0 ? { start: o2, end: o2 + a.end - a.start, tag: a.tag } : null, text };
     }
+    const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
+    if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
     return { anchor: found, text };
   };
   const move = (it) => {

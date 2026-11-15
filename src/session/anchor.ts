@@ -10,7 +10,7 @@
 import { tokenize } from '../editor/tokens.ts';
 import { shiftOffset } from './patch.ts';
 import type { Anchor, Patch } from './protocol.ts';
-import { pairs, slidesOf, VOID, type Slide } from './slides.ts';
+import { pairs, shared, slidesOf, VOID, type Slide } from './slides.ts';
 
 export type Anchored = { anchor: Anchor | null; slide: Anchor | null; removed?: { text: string | null } };
 // the items in the order given, true in changed for an item moved otherwise than by a shift, and
@@ -62,15 +62,15 @@ export function slideAnchorAt(slides: Slide[], i: number): Anchor | null {
 }
 
 // the end of the element whose start tag is at: the end of its end tag, or the start of the end
-// tag of an ancestor that closes it, read from a slice that grows up to limit. -1 when it does not
-// end before limit
-function elementEnd(text: string, at: Anchor, limit: number): number {
-  if (VOID.has(at.tag)) return at.end;
+// tag of an ancestor that closes it, read from a slice that grows up to limit, and close, the start
+// of its end tag or end when it has none. -1 for both when it does not end before limit
+function elementClose(text: string, at: Anchor, limit: number): { end: number; close: number } {
+  if (VOID.has(at.tag)) return { end: at.end, close: at.end };
   for (let size = Math.max(1024, 2 * (at.end - at.start)); ; size *= 4) {
     const whole = at.start + size >= limit;
     const tokens = tokenize(text.slice(at.start, whole ? limit : at.start + size));
     const first = tokens[0];
-    if (!first || first.type !== 'start' || first.selfClosing) return at.end;
+    if (!first || first.type !== 'start' || first.selfClosing) return { end: at.end, close: at.end };
     // the last token of a slice may be cut
     const n = whole ? tokens.length : tokens.length - 1;
     const open: string[] = [];
@@ -80,14 +80,16 @@ function elementEnd(text: string, at: Anchor, limit: number): number {
         if (!t.selfClosing && !VOID.has(t.name)) open.push(t.name);
       } else if (t.type === 'end') {
         const i = open.lastIndexOf(t.name);
-        if (i < 0) return at.start + t.start;
+        if (i < 0) return { end: at.start + t.start, close: at.start + t.start };
         open.length = i;
-        if (i === 0) return at.start + t.end;
+        if (i === 0) return { end: at.start + t.end, close: at.start + t.start };
       }
     }
-    if (whole) return -1;
+    if (whole) return { end: -1, close: -1 };
   }
 }
+
+const elementEnd = (text: string, at: Anchor, limit: number) => elementClose(text, at, limit).end;
 
 // the ranges of the text after the patches that they inserted, sorted
 function insertedSpans(patches: Patch[]): Span[] {
@@ -299,6 +301,8 @@ function matchedSlides(before: string, s0: Slide[], after: string, patches: Patc
   return { s1, ...matchSlides(before, s0, after, s1, patches) };
 }
 
+const squeeze = (text: string) => text.replace(/\n[ \t]*/g, '\n');
+
 function slow(before: string, patches: Patch[], after: string, items: Anchored[], given: Slide[] | null): Moved {
   const s0 = given ?? slidesOf(before);
   const { s1, to, kept } = shiftedSlides(before, patches, after, s0) ?? matchedSlides(before, s0, after, patches);
@@ -309,20 +313,61 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
   const cap = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
   const regions = new Map<string, Region>();
 
+  // false when the patches removed the element of a, whose text in before ends at end and whose end
+  // tag starts at close: a removal of its end tag that may as well start at a.start, where it then
+  // covers the element, as when a line diff keeps the start tag for a sibling that starts the same way
+  const stays = (a: Anchor, close: number, end: number): boolean => {
+    const q = patches.find((p) => touches(p, close, end));
+    if (!q || q.text) return true;
+    if (q.start <= a.start) return q.end < end;
+    const k = q.start - a.start;
+    if (patches.some((p) => p !== q && touches(p, a.start, q.start))) return true;
+    return !(q.end - k >= end && before.startsWith(before.slice(a.start, q.start), q.end - k));
+  };
+
+  // the element that the element of found holds alone, when it reads as the element of a did, given
+  // as its text, as when the patches wrapped it in a new element of the same start tag, or null
+  const wrapped = (a: Anchor, text: string, found: Anchor): Anchor | null => {
+    const s = slideAt(s1, found.start);
+    const { close } = elementClose(after, found, s ? s.end : after.length);
+    if (close <= found.end) return null;
+    const inner = after.slice(found.end, close);
+    const o = found.end + inner.length - inner.trimStart().length;
+    const t = startTagAt(after, o);
+    return t && t.tag === a.tag && overlaps(inserted, o, close) && squeeze(inner.trim()) === squeeze(text) ? t : null;
+  };
+
+  // the element of a where the patches inserted its text, when the element of found lost some of its
+  // inner text, as when a line diff shows a move as a swap of two texts, or null. an element that
+  // only gained text was edited, and the inserted text is a copy
+  const swapped = (a: Anchor, close: number, text: string, found: Anchor): Anchor | null => {
+    const o = findInserted(after, text, inserted, found.start);
+    if (o < 0) return null;
+    const s = slideAt(s1, found.start);
+    const c = elementClose(after, found, s ? s.end : after.length).close;
+    const old = before.slice(a.end, close);
+    return shared(old, c > found.end ? after.slice(found.end, c) : '') < old.length ? { start: o, end: o + a.end - a.start, tag: a.tag } : null;
+  };
+
   // the element of a in after, or null, and its text in before, or null when it is longer than cap
   const locate = (a: Anchor, limit: number): { anchor: Anchor | null; text: string | null } => {
     const found = byPatches(a, before, patches, after, regions);
     if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
     const bound = Math.max(a.end, Math.min(limit, a.start + cap));
-    const e = elementEnd(before, a, bound);
+    const { end: e, close } = elementClose(before, a, bound);
     if (e < 0 && bound < limit) return { anchor: found, text: null };
     const end = e < 0 ? bound : e;
     const text = before.slice(a.start, end);
-    // the text of an element taken from its place is looked for where the patches inserted text
-    if (patches.some((q) => touches(q, a.start, end)) && !(found && after.startsWith(text, found.start))) {
-      const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
-      if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
+    if (!patches.some((q) => touches(q, a.start, end)) || (found && after.startsWith(text, found.start))) return { anchor: found, text };
+    // an element found by its start tag is still the element, unless the patches removed it
+    if (found && e > a.end) {
+      if (stays(a, close, end)) return { anchor: wrapped(a, text, found) ?? swapped(a, close, text, found) ?? found, text };
+      const o = findInserted(after, text, inserted, found.start);
+      return { anchor: o >= 0 ? { start: o, end: o + a.end - a.start, tag: a.tag } : null, text };
     }
+    // the text of an element taken from its place is looked for where the patches inserted text
+    const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
+    if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
     return { anchor: found, text };
   };
 
