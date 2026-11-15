@@ -148,6 +148,15 @@ test('a backdrop that becomes another div asks for a reload, and is placed anew 
   await steps(t, [['a slide with a shape put before a slide with a backdrop, with an item of this slide changed', (s) => once(once(s, '<!-- content, the default layout', `${shapes}<!-- content, the default layout`), 'are shown together.</li>', 'are ihown together.</li>'), false]]);
 });
 
+// the parser of the whole file ignores the slash of a self-closing tag of HTML that is not void, and
+// the element left open is carried over the elements after it, where SVG closes it
+test('a self-closing tag of a formatting element in a text element asks for a reload, and one of SVG does not', async (t) => {
+  await steps(t, [['an em', (s) => once(s, 'Direct the viewer', 'Direct <em/>the viewer'), true]]);
+  await steps(t, [['a b', (s) => once(s, 'Direct the viewer', 'Direct <b/>the viewer'), true]]);
+  await steps(t, [['a strong in an item', (s) => once(s, 'are shown together.</li>', 'are <strong/>shown together.</li>'), true]]);
+  await steps(t, [['a rect of SVG', (s) => once(s, 'Direct the viewer', 'Direct <svg viewBox="0 0 1 1" width="20" height="20"><rect width="1" height="1"/></svg>the viewer'), false]]);
+});
+
 test('two changes in two text nodes of a paragraph with a formula keep both text nodes', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
