@@ -529,7 +529,10 @@ test('add regression test: .session/ is ignored by git in a talk whose .gitignor
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   writeFileSync(join(talk, '.gitignore'), 'node_modules/\n*.pdf\n');
-  const git = (...args) => spawnSync('git', args, { cwd: talk, encoding: 'utf8' });
+  // without the GIT_ variables of a git hook or of a caller, with which git init would set up the
+  // repository of GIT_DIR rather than the talk folder
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
+  const git = (...args) => spawnSync('git', args, { cwd: talk, encoding: 'utf8', env });
   const hasGit = git('init', '-q').status === 0;
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
   t.after(() => stopEdit(edit));
