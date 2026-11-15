@@ -53,6 +53,82 @@ const measure = (page, word, typed) => page.evaluate(`(async () => {
   return { apply: median(apply), open: median(open) };
 })()`);
 
+// the work of 21 applies as measure makes them: the parses of a text as long as half the file, the
+// changes written outside the text element of word, the attributes read of the elements of other
+// slides, and those read by one render of the deck, which reads the attributes of every element in
+// a text element. a section is left out, since the slide strip reads the attributes of each slide
+const work = (page, word, typed) => page.evaluate(`(async () => {
+  const base = ${JSON.stringify(page.source)};
+  const at = base.indexOf(${JSON.stringify(word)});
+  const deck = document.querySelector('.reveal .slides');
+  const target = [...deck.querySelectorAll('p, li, h1, h2')].find((el) => el.textContent.includes(${JSON.stringify(word)}));
+  const slide = target?.closest('.reveal .slides > section');
+  const host = ${typed ? `[...document.querySelectorAll('.reveal h1, .reveal h2')].find((h) => h.textContent.startsWith(${JSON.stringify(typed)}))` : 'null'};
+  if (!slide || (${!!typed} && !host)) return null;
+  const count = { parses: 0, writes: [], reads: 0, render: 0 };
+  let on = false;
+  const parse = DOMParser.prototype.parseFromString;
+  const get = Element.prototype.getAttribute;
+  DOMParser.prototype.parseFromString = function (s, type) {
+    if (on && s.length >= base.length / 2) count.parses++;
+    return parse.call(this, s, type);
+  };
+  Element.prototype.getAttribute = function (name) {
+    if (on && this.localName !== 'section' && deck.contains(this) && !slide.contains(this)) count.reads++;
+    return get.call(this, name);
+  };
+  // a class list sets its attribute again also when it does not change
+  const observer = new MutationObserver((records) => {
+    for (const r of records) {
+      if (!on || target.contains(r.target) || (r.type === 'attributes' && r.oldValue === get.call(r.target, r.attributeName))) continue;
+      count.writes.push(r.type + ' of ' + (r.target.localName ?? 'a text node'));
+    }
+  });
+  observer.observe(deck, { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true });
+  try {
+    on = true;
+    ${E}.render();
+    on = false;
+    count.render = count.reads;
+    count.reads = 0;
+    for (let i = 0; i < 21; i++) {
+      if (host) {
+        host.focus();
+        getSelection().selectAllChildren(host);
+        getSelection().collapseToEnd();
+        document.execCommand('insertText', false, 'x');
+        await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      }
+      on = true;
+      const r = await ${E}.apply(base.slice(0, at) + 'abcdefghijk'[i % 11] + base.slice(at + 1));
+      on = false;
+      if (r.reload) return null;
+    }
+  } finally {
+    on = false;
+    DOMParser.prototype.parseFromString = parse;
+    Element.prototype.getAttribute = get;
+    observer.disconnect();
+  }
+  count.writes = [...new Set(count.writes)];
+  return count;
+})()`);
+
+for (const typed of [false, true]) {
+  test(`an apply of one character writes only its text element, parses no file, and renders the deck ${typed ? 'once, after a key typed by the person' : 'not at all'}`, async (t) => {
+    const page = await editorPage(browser);
+    t.after(() => page.close());
+    await front(page);
+    const got = await work(page, 'Direct the viewer', typed && 'Presenting in HTML');
+    assert.ok(got, 'the applies did not need a reload');
+    t.diagnostic(`a render reads ${got.render} attributes of other slides, and the applies ${got.reads}`);
+    assert.ok(got.render > 0, 'a render reads the attributes of other slides');
+    assert.equal(got.parses, 0, 'the parses of the file');
+    assert.deepEqual(got.writes, [], 'the changes written outside the text element');
+    assert.ok(got.reads < (typed ? 22 : 1) * got.render, `the applies read ${got.reads} attributes of other slides, and a render ${got.render}`);
+  });
+}
+
 const DECKS = [
   ['test-deck.html', undefined, 'Direct the viewer', 'Presenting in HTML'],
   ['a deck of three slides', 'test/pages/editor-hidden.html', 'The first slide', 'Shown'],
