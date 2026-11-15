@@ -456,3 +456,53 @@ test('a page of a session that is not registered says that the host is not runni
     assert.deepEqual({ status: answer.status, type: answer.headers['content-type'], text: answer.text }, { status: 502, type: 'text/plain; charset=utf-8', text: plain }, `${method} ${path}`);
   }
 });
+
+test('a session ended with a record answers the requests of its guests under .session/ with 410 and the record', { timeout: 60_000 }, async (t) => {
+  const record = JSON.stringify({ ended: { by: 'Ann' } });
+  const end = (key, token, body = record) => fetch(`${relay.url}/host/${key}`, { method: 'DELETE', headers: { authorization: `Bearer ${SECRET}`, 'x-relay-token': token, 'content-type': 'application/json' }, body }).then((r) => r.status);
+  const guest = (key, path = '.session/events?token=t&since=v') => raw(relay.port, 'GET', `/${key}/${path}`, { host: 'relay' });
+  const key = (c) => c.repeat(22);
+  let relay = await startRelay({ host: '127.0.0.1', secret: SECRET, endedSessions: 2 });
+  t.after(() => relay.close());
+
+  await t.test('the record is answered under .session/, and every other path gets 502', async () => {
+    const host = await fakeHost(relay, key('a'));
+    assert.equal(await end(key('a'), host.token), 200);
+    const events = await guest(key('a'));
+    assert.deepEqual({ status: events.status, type: events.headers['content-type'], text: events.text }, { status: 410, type: 'application/json', text: record });
+    const hello = await raw(relay.port, 'POST', `/${key('a')}/.session/hello`, { host: 'relay', headers: { 'content-type': 'application/json' }, body: '{}' });
+    assert.equal(hello.status, 410);
+    assert.equal((await guest(key('a'), 'index.html')).status, 502);
+  });
+
+  await t.test('a new registration of the key deletes the kept end', async () => {
+    const host = await fakeHost(relay, key('a'));
+    const waiting = guest(key('a'));
+    const [item] = await host.next();
+    assert.equal(item.path, `/${key('a')}/.session/events`);
+    assert.equal(await host.push(item.id, '{"v":"x"}'), 204);
+    assert.equal((await waiting).status, 200);
+    assert.equal(await end(key('a'), host.token), 200);
+  });
+
+  await t.test('the relay keeps the newest ends up to its limit', async () => {
+    for (const c of ['b', 'c']) assert.equal(await end(key(c), (await fakeHost(relay, key(c))).token), 200);
+    assert.equal((await guest(key('a'))).status, 502, 'the oldest end is not kept');
+    assert.equal((await guest(key('b'))).status, 410);
+    assert.equal((await guest(key('c'))).status, 410);
+  });
+
+  await t.test('a record over the limit is refused, and the session ends without it', async () => {
+    const host = await fakeHost(relay, key('d'));
+    assert.equal(await end(key('d'), host.token, JSON.stringify({ ended: { by: 'x'.repeat(1024) } })), 413);
+    assert.equal((await guest(key('d'))).status, 502);
+    assert.equal(relay.sessions(), 0);
+  });
+
+  await t.test('an end is kept for endedMs', async () => {
+    await relay.close();
+    relay = await startRelay({ host: '127.0.0.1', secret: SECRET, endedMs: 200 });
+    assert.equal(await end(key('e'), (await fakeHost(relay, key('e'))).token), 200);
+    await until(async () => (await guest(key('e'))).status === 502, 'the end to be forgotten after endedMs');
+  });
+});
