@@ -239,12 +239,14 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
   let any = false;
   let more = false;
   if (a.classes.join(' ') !== b.classes.join(' ')) {
-    // the classes of the file in its order, then those that the theme, reveal.js, and the editor
-    // put. every step is shown while the deck is edited, as Doc.place marks the steps of a new slide
+    // the classes of the file in its order, then those of the theme and reveal.js, then those of the
+    // editor, as at an open. every step is shown while the deck is edited, as Doc.place marks the
+    // steps of a new slide
     const step = b.classes.includes('fragment') && !a.classes.includes('fragment');
     const unstep = a.classes.includes('fragment') && !b.classes.includes('fragment');
     const runtime = [...el.classList].filter((c) => !a.classes.includes(c) && !b.classes.includes(c) && !(unstep && c === 'visible'));
-    const list = [...new Set([...b.classes, ...runtime, ...(step ? ['visible'] : [])])];
+    const editor = runtime.filter((c) => c.startsWith('beeson-'));
+    const list = [...new Set([...b.classes, ...runtime.filter((c) => !editor.includes(c)), ...(step ? ['visible'] : []), ...editor])];
     if (list.length) el.setAttribute('class', list.join(' '));
     else el.removeAttribute('class');
     more = a.classes.some((c) => !b.classes.includes(c)) || b.classes.some((c) => !a.classes.includes(c));
