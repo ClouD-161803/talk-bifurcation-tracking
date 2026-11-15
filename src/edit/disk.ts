@@ -1,9 +1,9 @@
 // index.html on disk as one more replica of a session. the text of the authority is written at
 // most once per 250 ms of quiet and at the latest 1 s after the first unwritten operation, by a
-// temporary file in the same folder and a rename over the file. a change that the edit command did
-// not write itself is found by a stat every 500 ms, and merged as an operation of the author file,
-// on the base of the text written or read lately that is nearest to it, where the file wins a
-// conflict
+// temporary file next to the file and a rename over it, and at once at a stop. a change that the
+// edit command did not write itself is found by a stat every 500 ms and before each write, and
+// merged as an operation of the author file, on the base of the text written or read lately that is
+// nearest to it, where the file wins a conflict. the reads and the writes are done one at a time
 
 import { chmodSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { chmod, readFile, rename, stat, writeFile } from 'node:fs/promises';
@@ -122,6 +122,25 @@ function finish(task: Task<unknown>): void {
 // a copy of text, since a slice keeps in memory the whole text that it was cut from
 const copy = (text: string) => (text.length < 16 ? text : Buffer.from(text, 'utf16le').toString('utf16le'));
 const weight = (delta: Patch[]) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
+
+// the patches that turn text back into before. the common start and end are skipped by chunks, and
+// the changes are found on the whole lines between them, so that a small change of a large deck is
+// cheap. they are not widened to tokens as in diff(), since only their size matters here
+function reverse(text: string, before: string): Patch[] {
+  const max = Math.min(text.length, before.length);
+  let pre = 0, suf = 0;
+  for (let c = 65536; c >= 1; c >>= 4) while (pre + c <= max && text.slice(pre, pre + c) === before.slice(pre, pre + c)) pre += c;
+  for (let c = 65536; c >= 1; c >>= 4) {
+    while (suf + c <= max - pre && text.slice(text.length - suf - c, text.length - suf) === before.slice(before.length - suf - c, before.length - suf)) suf += c;
+  }
+  const from = pre === 0 ? 0 : text.lastIndexOf('\n', pre - 1) + 1;
+  let to = text.indexOf('\n', text.length - suf);
+  if (to < 0) to = text.length;
+  const found = changes(text.slice(from, to), before.slice(from, before.length - text.length + to)) ?? [
+    { start: pre - from, end: text.length - suf - from, text: before.slice(pre, before.length - suf) },
+  ];
+  return found.map((p) => ({ start: p.start + from, end: p.end + from, text: copy(p.text) }));
+}
 
 // the lines of a text turned back by a delta of the chain. count is told the lines that the delta
 // removes and adds
@@ -312,8 +331,7 @@ export class Disk {
 
   private remember(text: string): void {
     if (text === this.head) return;
-    // the changes are not widened to tokens as in diff(), since only their size matters here
-    const delta = (changes(text, this.head) ?? diff(text, this.head)).map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
+    const delta = reverse(text, this.head);
     this.back.push(delta);
     this.backBytes += weight(delta);
     this.head = text;
@@ -395,8 +413,8 @@ export class Disk {
       this.known = '';
       return true;
     }
-    // the signature is taken before the read, so that a write after the read is seen at the next check
     this.mode = modeOf(info);
+    // the signature is taken before the read, so that a write after the read is seen at the next check
     let sig = signature(info);
     if (sig === this.known) return true;
     let bytes: Buffer = yield { read: this.target };
