@@ -151,6 +151,20 @@ test('a frame below the slide is not drawn over the speaker notes', { timeout: 1
   clean(ben);
 });
 
+test('the flag of an element at the top edge of the slide is drawn whole in a landscape phone', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [onOne(shape('top', 800, 0, 300, 100))], pages: [{}, { width: 844, height: 390, mobile: true }] });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  await select(ana, el(0, '#top'));
+  const d = await untilDrawn(ben, (d) => d.flags.length === 1 && d.frames.length === 1, 'the frame and the flag of Ana on the page of Ben');
+  const top = await ben.evaluate(`${C}.app.stage.viewport.top`);
+  const room = d.frames[0].y - top;
+  assert.ok(room < 21, `the room above the frame, ${room} px, is less than the height of a flag`);
+  assert.ok(d.flags[0].y >= top - 0.5, `the flag at ${d.flags[0].y} is below the top of the canvas at ${top}`);
+  clean(ana);
+  clean(ben);
+});
+
 // counts the reads of layout from now on in window.__reads, with those made by theme/session.js
 const COUNT = `(() => {
   if (window.__reads) { window.__reads = { all: 0, session: 0 }; return; }
