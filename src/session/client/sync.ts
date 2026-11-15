@@ -46,11 +46,6 @@ export class Sync {
     return !this.replica.inFlight && this.replica.mine === this.replica.base;
   }
 
-  // an operation waits for its answer, which tells whether the text of a resync holds it
-  get unanswered(): boolean {
-    return this.replica.unanswered;
-  }
-
   get needsResync(): boolean {
     return this.lost || this.replica.needsResync;
   }

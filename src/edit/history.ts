@@ -4,16 +4,19 @@
 // version before, at once when a person names the current state or restores a version, and at a
 // stop. the versions are kept in .session/history.jsonl, appended only: a first line
 // { kind: "base", time, text }, then a line { kind: "version", id, time, authors, patches, marks,
-// slides, removed?, restored? } per version, whose patches turn the text of the version before
-// into its own, and a line { kind: "name", id, name } per name given or taken off. the texts that
-// a person set aside at a conflict are kept in .session/aside/, one file each
+// slides, removed?, restored?, start? } per version, whose patches turn the text of the version
+// before into its own, and a line { kind: "name", id, name } per name given or taken off. a new
+// history begins with a version of the base marked start. a line { kind: "open", author } is
+// written when a person becomes an author of the open version, so that a start after a crash
+// knows who made the edits after the last version. the texts that a person set aside at a
+// conflict are kept in .session/aside/, one file each
 
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
 import { apply, copy, diff } from '../session/patch.ts';
-import { parseVersion, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
+import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
 
@@ -30,6 +33,9 @@ export type HistoryOptions = {
   // the person removed first
   asideBytes?: number;
   asideFiles?: number;
+  // the texts kept as starting points of a rebuild take at most checkpointBytes, at two bytes a
+  // character, or four texts of the deck when they are larger
+  checkpointBytes?: number;
   now?: () => number;
   // the time in ms of a clock that does not jump, which stands while the computer sleeps, as the
   // timers do
@@ -48,7 +54,7 @@ export const isVersionId = (id: unknown): id is string => typeof id === 'string'
 const newId = () => randomBytes(9).toString('base64url');
 const ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
 // a text is rebuilt from the nearest text kept, one every STEP versions at the start, and fewer
-// once more than CHECKPOINTS are kept
+// once more than CHECKPOINTS are kept or their budget in bytes is passed
 const STEP = 50;
 const CHECKPOINTS = 64;
 
@@ -223,10 +229,11 @@ const validMarks = (marks: unknown, n: number): marks is Mark[] =>
   Array.isArray(marks) && marks.every((m) => m && Number.isInteger(m.start) && Number.isInteger(m.end) && 0 <= m.start && m.start <= m.end && m.end <= n && typeof m.author === 'string');
 const numbers = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
 
-// a name as it is kept, trimmed with inner whitespace collapsed, or null when it is too long
+// a name as it is kept, without characters that do not show nor controls other than whitespace,
+// trimmed with inner whitespace collapsed, or null when it is too long
 export function cleanVersionName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  const name = raw.replace(/\s+/g, ' ').trim();
+  const name = shown(raw).replace(/(?!\s)\p{Cc}/gu, '').replace(/\s+/g, ' ').trim();
   return Array.from(name).length > VERSION_NAME_MAX ? null : name;
 }
 
@@ -250,6 +257,7 @@ export class History {
   private readonly keep: number;
   private readonly asideBytes: number;
   private readonly asideFiles: number;
+  private readonly checkpointBytes: number;
   private readonly now: () => number;
   private readonly clock: () => number;
   private readonly log: (message: string) => void;
@@ -289,13 +297,15 @@ export class History {
     this.keep = options.keep ?? 30 * 24 * 3600 * 1000;
     this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
     this.asideFiles = options.asideFiles ?? 50;
+    this.checkpointBytes = options.checkpointBytes ?? 16 * 1024 * 1024;
     this.now = options.now ?? Date.now;
     this.clock = options.clock ?? (() => performance.now());
     this.log = options.log ?? (() => {});
     try {
       mkdirSync(dir, { recursive: true });
     } catch {}
-    let loaded = false;
+    // the authors of the version that was open when the last run ended, or null for a new history
+    let loaded: string[] | null = null;
     try {
       loaded = this.load();
     } catch (e) {
@@ -314,13 +324,19 @@ export class History {
     if (!loaded) {
       this.base = { time: this.now(), text };
       this.lastText = text;
+      // the deck as it read at the start is the first version, so that it can be restored
+      const start = this.version([], [], [], text);
+      start.start = true;
+      this.versions.push(start);
       this.writeAll();
     } else {
       this.found = { before: this.lastText, patches: copied(diff(this.lastText, text)) };
       if (this.found.patches.length) {
         const patches = this.found.patches;
-        this.push(this.version([AUTHOR], patches, clip([], patches, AUTHOR), text), text);
-      }
+        // the ranges of several authors cannot be told apart, hence they are given to none of them
+        const authors = loaded.length ? loaded : [AUTHOR];
+        this.push(this.version(authors, patches, clip([], patches, authors.length > 1 ? '' : authors[0]), text), text);
+      } else if (loaded.length) this.writeAll();
       if (this.bytes > this.maxBytes) this.compact();
     }
     this.held = text;
@@ -436,7 +452,12 @@ export class History {
     this.timer = null;
     const open = this.open;
     this.open = null;
-    if (text === this.lastText && !empty) return null;
+    if (text === this.lastText && !empty) {
+      // the lines of the open version are taken out of the file, so that a later start does not
+      // give its authors to a change from outside
+      if (open) this.writeAll();
+      return null;
+    }
     const patches = copied(diff(this.lastText, text));
     const author = open?.author ?? AUTHOR;
     const v = this.version(open ? [...open.authors] : [], patches, clip(open?.marks ?? [], patches, author), text, open?.time);
@@ -479,9 +500,12 @@ export class History {
   private checkpoint(i: number, text: string): void {
     if ((i + 1) % this.step !== 0) return;
     this.checkpoints.set(i, text);
-    if (this.checkpoints.size <= CHECKPOINTS) return;
-    this.step *= 2;
-    for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+    const budget = Math.max(this.checkpointBytes, 4 * 2 * text.length);
+    const bytes = () => [...this.checkpoints.values()].reduce((sum, t) => sum + 2 * t.length, 0);
+    while (this.checkpoints.size > CHECKPOINTS || bytes() > budget) {
+      this.step *= 2;
+      for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+    }
   }
 
   // a new version of text, which patches make from the text of the last version
@@ -520,7 +544,10 @@ export class History {
     open.last = t;
     open.time = w;
     open.author = op.author;
-    open.authors.add(op.author);
+    if (!open.authors.has(op.author)) {
+      open.authors.add(op.author);
+      this.append({ kind: 'open', author: op.author });
+    }
     open.marks = moveMarks(open.marks, op.patches, op.author);
     this.arm();
   }
@@ -570,6 +597,7 @@ export class History {
     }
     const named = this.versions.filter((v) => v.name);
     for (const v of named) lines.push(JSON.stringify({ kind: 'name', id: v.id, name: v.name }));
+    for (const author of this.open?.authors ?? []) lines.push(JSON.stringify({ kind: 'open', author }));
     const data = `${lines.join('\n')}\n`;
     const tmp = join(this.dir, `.history.jsonl.${randomBytes(6).toString('hex')}.tmp`);
     try {
@@ -606,17 +634,18 @@ export class History {
     this.changed();
   }
 
-  // true when the file was read, false when it does not exist or is empty. throws Unreadable for a
-  // file without a base, or with a line other than the last that cannot be read
-  private load(): boolean {
+  // the authors of the lines open after the last version line when the file was read, and null
+  // when it does not exist or is empty. throws Unreadable for a file without a base, or with a line
+  // other than the last that cannot be read
+  private load(): string[] | null {
     let content: string;
     try {
       content = readFileSync(this.file, 'utf8');
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw e;
     }
-    if (content === '') return false;
+    if (content === '') return null;
     const lines = content.split('\n');
     // the index of the last line with text, which a crash may have cut
     let last = lines.length - 1;
@@ -624,12 +653,18 @@ export class History {
     let good = 0;
     let text = '';
     const names = new Map<string, string>();
+    let open: string[] = [];
     for (let i = 0; i <= last; i++) {
       const record = this.parse(lines[i], i, text);
       if (record === null) {
         if (i < last || i === 0) throw new Unreadable();
-        // the line cut by a crash is taken off, so that the next line is appended whole
-        truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
+        // the line cut by a crash is taken off, so that the next line is appended whole. a file that
+        // cannot be written is written anew at the next line
+        try {
+          truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
+        } catch {
+          this.broken = true;
+        }
         break;
       }
       if (record.kind === 'base') {
@@ -639,23 +674,32 @@ export class History {
         text = apply(text, record.v.patches);
         this.versions.push(record.v);
         this.checkpoint(this.versions.length - 1, text);
+        open = [];
+      } else if (record.kind === 'open') {
+        if (!open.includes(record.author)) open.push(record.author);
       } else {
         names.set(record.id, record.name);
         this.names++;
       }
       good += lines[i].length + 1;
     }
-    if (good > content.length) appendFileSync(this.file, '\n');
+    if (good > content.length) {
+      try {
+        appendFileSync(this.file, '\n');
+      } catch {
+        this.broken = true;
+      }
+    }
     for (const v of this.versions) {
       const name = names.get(v.id);
       if (name) v.name = name;
     }
     this.lastText = text;
     this.bytes = statSync(this.file).size;
-    return true;
+    return open;
   }
 
-  private parse(line: string, i: number, text: string): { kind: 'base'; time: number; text: string } | { kind: 'version'; v: Version } | { kind: 'name'; id: string; name: string } | null {
+  private parse(line: string, i: number, text: string): { kind: 'base'; time: number; text: string } | { kind: 'version'; v: Version } | { kind: 'name'; id: string; name: string } | { kind: 'open'; author: string } | null {
     let r: Record<string, unknown>;
     try {
       r = JSON.parse(line);
@@ -665,6 +709,7 @@ export class History {
     if (!r || typeof r !== 'object') return null;
     if (i === 0) return r.kind === 'base' && Number.isFinite(r.time) && typeof r.text === 'string' ? { kind: 'base', time: r.time as number, text: r.text } : null;
     if (r.kind === 'name') return isVersionId(r.id) && typeof r.name === 'string' ? { kind: 'name', id: r.id, name: r.name } : null;
+    if (r.kind === 'open') return typeof r.author === 'string' ? { kind: 'open', author: r.author } : null;
     if (r.kind !== 'version' || !isVersionId(r.id) || !Number.isFinite(r.time) || !Array.isArray(r.authors) || !r.authors.every((a) => typeof a === 'string')) return null;
     if (!validPatches(r.patches, text.length) || !numbers(r.slides)) return null;
     const after = text.length + (r.patches as Patch[]).reduce((s, p) => s + p.text.length - (p.end - p.start), 0);
@@ -672,6 +717,7 @@ export class History {
     const removed = r.removed as Version['removed'];
     if (removed && numbers(removed.slides) && Number.isInteger(removed.elements)) v.removed = { slides: removed.slides, elements: removed.elements };
     if (isVersionId(r.restored)) v.restored = r.restored;
+    if (r.start === true) v.start = true;
     return { kind: 'version', v };
   }
 
@@ -695,5 +741,6 @@ function info(v: Version): VersionInfo {
   if (v.name) out.name = v.name;
   if (v.removed) out.removed = v.removed;
   if (v.restored) out.restored = v.restored;
+  if (v.start) out.start = true;
   return out;
 }

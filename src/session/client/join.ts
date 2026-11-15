@@ -5,7 +5,7 @@ import { changes, merge } from '../../editor/merge.ts';
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { accept, beforeJoin, type Copy } from './copy.ts';
-import { bdi, make, sheet, style } from './dom.ts';
+import { bdi, fitClass, make, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
 export const NAME = 'beeson-session-name';
@@ -97,7 +97,7 @@ function askName(client: Client, error = ''): Promise<string> {
       title: isHost() ? 'Start the session' : 'Join the session',
       text: 'Type the name that the others will see on your edits and comments.',
       body,
-      className: `beeson-session-join ${sheet()}`,
+      className: `beeson-session-join ${fitClass()}`,
       dismissable: false,
       stay: ['join'],
       buttons: [{ label: 'Join', value: 'join', primary: true }],

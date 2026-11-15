@@ -45,7 +45,7 @@ export const NET = `{
     count: (part, method, status) => log.filter((l) => matches({ part, method }, l.url, l.method) && (status === undefined || l.status === status)).length,
   };
   window.fetch = function (input, init) {
-    const url = typeof input === 'string' ? input : input.url;
+    const url = input instanceof Request ? input.url : String(input);
     const method = String(init?.method || input?.method || 'GET').toUpperCase();
     const entry = { url, method, at: Date.now(), status: null };
     log.push(entry);

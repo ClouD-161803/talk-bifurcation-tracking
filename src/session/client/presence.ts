@@ -260,15 +260,10 @@ export class Presence {
   private sentKey: string | null = null;
   private sentV: { epoch: string; n: number } | null = null;
   private sent: PresenceState | null = null;
-  // back online, before an answer with the token of this page, which an edit command started again
-  // does not know
-  private unconfirmed = false;
   private sentAt = 0;
   private lastSelected: Element[] = [];
   private lastSlide: Element | null = null;
   private timer = 0;
-  // set at pagehide, when the page says bye, after which it sends no state
-  private left = false;
   private restTimer = 0;
   private typingTimer = 0;
   private typedAt = -Infinity;
@@ -295,12 +290,7 @@ export class Presence {
       if (!this.log.seeded) this.seedLog();
       this.log.add(ops);
     });
-    // an answer of a poll or of hello is made with a token that the edit command knows
-    client.on('presence', () => {
-      this.confirm();
-      this.hear();
-    });
-    client.on('me', () => this.confirm());
+    client.on('presence', () => this.hear());
     const based = () => {
       if (!this.log.seeded || (client.base && this.log.behind(client.base.v))) this.seedLog();
       this.lost();
@@ -324,16 +314,19 @@ export class Presence {
       if ([...ids].some((id) => id !== client.client && !this.seen.has(id))) this.arrived = true;
       this.seen = ids;
     });
-    // a page that is not online sends nothing. a page back online sends its state again after the
-    // next answer with its token, since an edit command started again knows neither
+    // a page that is not online sends nothing. a page back online sends its state again at once,
+    // since an edit command started again does not know it, and a rejoin is online only once its
+    // hello gave the token that the state is sent with
     let online = false;
     let joined = false;
     client.on('state', () => {
       const was = online;
       online = client.connection === 'online';
       if (!online || was) return;
-      if (joined) this.unconfirmed = true;
-      else {
+      if (joined) {
+        this.sentKey = null;
+        this.due(true);
+      } else {
         // the log begins at the text of the join, since a state of another page may be of it, and
         // the answer of an operation of this page may move the base on before the poll that holds it
         if (!this.log.seeded) this.seedLog();
@@ -361,7 +354,6 @@ export class Presence {
       if (document.visibilityState === 'hidden') hiding = window.setTimeout(() => this.due(true), HIDING);
       else this.due(true);
     });
-    window.addEventListener('pagehide', () => (this.left = true));
     document.addEventListener('input', (ev) => {
       if (!app.hostOf(ev.target)) return;
       this.typed();
@@ -405,6 +397,8 @@ export class Presence {
   // e.g. by the part that follows a person
   set(fields: Partial<{ following: string | null; mode: PresenceState['mode'] }>): void {
     Object.assign(this.fields, fields);
+    // the selection is read now, since its selectionchange comes after this state
+    this.moved();
     this.due(true);
   }
 
@@ -497,20 +491,12 @@ export class Presence {
     return sel.kind === 'elements' || sel.kind === 'text' ? [...sel.items] : [];
   }
 
-  // the state sent again at the first answer with the token of this page after it is back online
-  private confirm(): void {
-    if (!this.unconfirmed) return;
-    this.unconfirmed = false;
-    this.sentKey = null;
-    this.due(true);
-  }
-
   // a change of the version alone is not sent until the state is BEHIND operations behind, since
   // every other page carries the offsets through the operations after v. it is sent at once when
   // the log of this page puts an offset of the last state in doubt or does not reach v, since
   // another page could then not carry it either, e.g. in the copy of a duplicated slide
   private send(): void {
-    if (this.left || this.client.connection !== 'online' || this.unconfirmed) return;
+    if (this.client.gone || this.client.connection !== 'online') return;
     const state = this.build();
     if (!state) return;
     const v = parseVersion(state.v)!;
@@ -728,8 +714,8 @@ export class Presence {
     }
     const before = this.locked;
     this.locked = locked;
-    for (const el of before.keys()) if (!locked.has(el)) el.classList.remove('beeson-locked');
-    for (const el of locked.keys()) el.classList.add('beeson-locked');
+    for (const el of before.keys()) if (!locked.has(el)) el.classList.remove('beeson-held');
+    for (const el of locked.keys()) el.classList.add('beeson-held');
     if (yielded || refused) this.hold(null);
     const same = before.size === locked.size && [...locked].every(([el, r]) => before.get(el) === r);
     if (!same || yielded || refused) for (const fn of [...this.lockListeners]) fn({ yielded, refused });

@@ -22,9 +22,10 @@ import { raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
 const IMAGE = resolve('demo/figure-light.png');
-// a request to an edit command that is not running fails in the console of the page, and the first
-// poll after a restart is answered 404, since the token is of the edit command before
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+// a request to an edit command that is not running fails in the console of the page, the first
+// poll after a restart is answered 404, since the token is of the edit command before, and a
+// request after End session through the relay is answered 410
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 410/, /status of 404 .*\/\.session\/events\?/];
 
 // the characters from to to of the first text node of the text element of expression selected
 async function select(page, expression, from, to) {
@@ -42,7 +43,7 @@ async function select(page, expression, from, to) {
 }
 
 test('the save state names the slides of the edits that wait, and the dialog of the end names those that did not reach the host', { timeout: 120_000 }, async (t) => {
-  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 600, pullMs: 1000, guestMs: 5000 });
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 3000, pullMs: 1000, guestMs: 5000 });
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -306,7 +307,8 @@ test('a picture dropped by one page is uploaded into media/ before the operation
     await ann.evaluate('window.__failMedia = true');
     await show(ann, 'One');
     await dropFiles(ann, [IMAGE]);
-    await ann.waitFor(`${STATE} === 'A picture could not be sent. Try again'`);
+    // the name of the file is unique to the page while another page is in the session
+    await ann.waitFor(`/^media\\/figure-light-[0-9a-z]{4}\\.png could not be sent\\. Try again$/.test(${STATE})`);
     assert.equal(await ann.evaluate(ACTION), 'Try again');
     assert.equal(server.read(), before);
     await ann.evaluate('window.__failMedia = false');
@@ -658,4 +660,47 @@ test('a picture dropped offline is kept with the copy, and the next join uploads
   assert.match(text, /src="media\/figure-light\.png"/);
   assert.ok(readFileSync(join(server.talk, 'media/figure-light.png')).equals(readFileSync(IMAGE)));
   clean(again);
+});
+
+test('a guest offline while the host ends the session is shown the end once online, with the slides of the edits that did not reach the host', { timeout: 120_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET } });
+  const { port, key } = server.edit;
+  await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
+  const host = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const guest = await tab(browser, `${relay.url}/${key}/index.html?edit&session`, { name: 'Lea' });
+  await converge(server, [host, guest]);
+
+  await goOffline(guest);
+  await guest.waitFor(`${C}.connection === 'offline'`);
+  await edit(guest, 0, 'h2', ' offline');
+  await guest.waitFor(`${STATE} === 'Offline. Changes on slide 1 are kept in this browser'`);
+  assert.equal((await raw(port, 'DELETE', `/${key}/.session/share`)).status, 200);
+  await goOnline(guest);
+  await front(guest);
+  await guest.waitFor(`document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent === 'Ann ended the session'`);
+  assert.equal(await guest.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), "Your changes up to now are in Ann's deck. Your changes on slide 1 did not reach Ann.");
+  assert.equal(await guest.evaluate(`${C}.connection`), 'ended');
+  assert.equal(await host.evaluate(`${C}.connection`), 'online');
+  assert.equal(server.read(), TALK);
+  clean(host);
+  clean(guest, REFUSED);
+});
+
+test('the end of the session closes the dialog of the conflicts, keeps the version of the person, and names the slides that did not reach the host', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const { server, ann, ben } = await conflicted(t, browser);
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await ann.waitFor(`${C}.connection === 'ended'`);
+  await ann.waitFor(`!document.querySelector('dialog.beeson-session-conflicts')`);
+  assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), 'Your changes up to now are in index.html. Your changes on slides 1 and 2 did not reach index.html.');
+  assert.equal(await ann.evaluate(`${el(0, 'p')}.textContent`), 'Opening slide');
+  clean(ann);
+  clean(ben);
 });

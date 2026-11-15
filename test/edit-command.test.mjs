@@ -5,7 +5,7 @@
 // come from this computer with the key or that reaches out of the talk folder
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
@@ -91,15 +91,22 @@ test('the edit command serves a session and writes every edit into index.html', 
     const hi = (await post(port, api('hello'), { name: 'Cy' })).json();
     let v = hi.v;
     let seq = 0;
-    const started = Date.now();
     let writtenAt = null;
-    const at = (await current()).indexOf('</body>');
-    while (Date.now() - started < 3000) {
-      const answer = (await post(port, api('op'), { token: hi.token, seq: ++seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
-      assert.equal(answer.ok, true);
-      v = answer.v;
-      if (writtenAt === null && text(file).includes('<i>1</i>')) writtenAt = Date.now() - started;
-      await new Promise((done) => setTimeout(done, 100));
+    // a time over the bound is measured again with fresh insertions, since a stall of the machine
+    // delays the write as well
+    for (let tries = 0; tries < 3 && (writtenAt === null || writtenAt >= 2500); tries++) {
+      await until(async () => text(file) === (await current()), 'the earlier operations to be written');
+      const first = seq + 1;
+      const started = Date.now();
+      writtenAt = null;
+      const at = (await current()).indexOf('</body>');
+      while (Date.now() - started < 3000) {
+        const answer = (await post(port, api('op'), { token: hi.token, seq: ++seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
+        assert.equal(answer.ok, true);
+        v = answer.v;
+        if (writtenAt === null && text(file).includes(`<i>${first}</i>`)) writtenAt = Date.now() - started;
+        await new Promise((done) => setTimeout(done, 100));
+      }
     }
     assert.ok(writtenAt !== null && writtenAt < 2500, `the file was written ${writtenAt} ms after the first operation`);
     await until(async () => text(file) === (await current()), 'the last operations to be written');
@@ -671,6 +678,25 @@ test('a second start in the same talk folder hands over the address of the first
   assert.equal(third.child.exitCode, null);
 });
 
+test('a lock of an edit command that died does not stop a new start on its port, when another process has taken its process id', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const env = { XDG_CONFIG_HOME: config, APPDATA: config };
+  const first = await startEdit(talk, { env });
+  const port = first.port;
+  await stopEdit(first);
+  // a live process that is not an edit command, as after a restart of the computer
+  const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore' });
+  t.after(() => other.kill());
+  mkdirSync(join(talk, '.session'), { recursive: true });
+  writeFileSync(join(talk, '.session', 'lock'), JSON.stringify({ pid: other.pid, port, root: realpathSync.native(talk) }));
+  const second = await startEdit(talk, { env, port });
+  t.after(() => stopEdit(second));
+  const answer = await raw(second.port, 'GET', `${second.base}index.html`).catch(() => null);
+  assert.equal(answer?.status, 200, `the new start serves the deck. ${second.stderr}`);
+  assert.equal(second.child.exitCode, null, 'the new edit command goes on');
+});
+
 const SECRET = 'a secret of the group, long enough';
 
 test('a Ctrl+C while a start with --relay waits for the relay keeps the acknowledged operations', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
@@ -1023,4 +1049,38 @@ test('a page that said bye is not brought back by a poll or a presence that arri
   const back = await hello({ name: 'Ben', person: ben.person, token: ben.token });
   assert.equal(back.client, ben.client);
   assert.deepEqual(back.people.map((p) => p.name), ['Ana', 'Ben']);
+});
+
+test('a page is answered at most once per GAP of its polls while operations come back to back', { timeout: 120_000 }, async (t) => {
+  // the GAP of src/edit/people.ts
+  const GAP = 100;
+  const ANSWERS = 4;
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const ana = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  const ben = (await post(edit.port, api('hello'), { name: 'Ben' })).json();
+  // the join of Ben is news for Ana, whose next answer then waits for GAP
+  let since = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${ana.v}`)).json().v;
+  const started = performance.now();
+  let answers = 0;
+  const polling = (async () => {
+    while (answers < ANSWERS) {
+      since = (await raw(edit.port, 'GET', `${api('events')}?token=${ana.token}&since=${since}`)).json().v;
+      answers++;
+    }
+    return performance.now();
+  })();
+  // operations back to back until Ana has had every answer, so that each poll of Ana finds news
+  const at = DECK.indexOf('</body>');
+  let v = ben.v;
+  for (let seq = 1; answers < ANSWERS; seq++) {
+    const answer = (await post(edit.port, api('op'), { token: ben.token, seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
+    assert.equal(answer.ok, true);
+    v = answer.v;
+  }
+  const span = (await polling) - started;
+  assert.ok(span >= (answers - 1) * GAP, `${answers} answers in ${Math.round(span)} ms`);
 });

@@ -12,7 +12,7 @@
 import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
 import { COLORS, nameKey, type Person } from '../protocol.ts';
 import type { Client } from './client.ts';
-import { make, sheet, style } from './dom.ts';
+import { fitClass, make, style } from './dom.ts';
 import { askTaken, claimOnReload, initials, nameField, rename } from './join.ts';
 
 export { initials };
@@ -101,10 +101,9 @@ export function disc(client: Client, person: string, size = 22): HTMLElement {
 const extras: ((someone: Someone) => MenuItem[])[] = [];
 
 // items added under the full name in the menu of the avatar of another person, e.g. Follow and Go
-// to Slide 7. the function returned removes them
-export function addPersonItems(fn: (someone: Someone) => MenuItem[]): () => void {
+// to Slide 7
+export function addPersonItems(fn: (someone: Someone) => MenuItem[]): void {
   extras.push(fn);
-  return () => void extras.splice(extras.indexOf(fn) >>> 0, 1);
 }
 
 export function personItems(someone: Someone): MenuItem[] {
@@ -216,7 +215,7 @@ async function changeName(client: Client): Promise<void> {
     title: 'Change your name',
     text: 'The others see this name on your avatar, your edits, and your comments.',
     body: field.body,
-    className: `beeson-session-rename ${sheet()}`,
+    className: `beeson-session-rename ${fitClass()}`,
     stay: ['change'],
     buttons: [
       { label: 'Cancel', value: 'cancel' },
@@ -259,7 +258,9 @@ async function changeName(client: Client): Promise<void> {
   };
   const opened = dialog.open();
   field.input.select();
+  const off = client.on('state', () => client.connection === 'ended' && dialog.close('cancel'));
   await opened;
+  off();
   dialog.el.remove();
 }
 
@@ -285,7 +286,7 @@ async function leave(client: Client): Promise<void> {
   const dialog = client.shell.dialog({
     title: 'You left the session',
     text: lines.join(' '),
-    className: `beeson-session-left ${sheet()}`,
+    className: `beeson-session-left ${fitClass()}`,
     buttons: [
       { label: 'Download a copy', value: 'download' },
       { label: 'Close', value: 'close' },

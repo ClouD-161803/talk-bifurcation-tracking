@@ -11,7 +11,7 @@ import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comm
 import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
 import { whenOf } from './labels.ts';
-import { closeMenu, openMenu } from './menu.ts';
+import type { OpenMenu } from '../../editor/ui/menu.ts';
 import { initials, inkOf, toneOf } from './people.ts';
 import { presenceOf } from './presence.ts';
 import { mountToasts, toast, type ToastButton, type ToastKind } from './toast.ts';
@@ -82,6 +82,8 @@ class Pane {
   private focused: string | null = null;
   private draft: { el: Element | null; slide: Element; box: HTMLElement; label: HTMLElement; field: Field } | null = null;
   private editing: { id: string; reply: string | null; field: Field } | null = null;
+  // the open menu of a thread or of a reply
+  private menu: OpenMenu | null = null;
   private nodes = new Map<string, HTMLElement>();
   private signs = new Map<string, string>();
   private replies = new Map<string, Field>();
@@ -398,12 +400,24 @@ class Pane {
       else head.append(offline(this.button('', 'Resolve', () => this.act(t.id, 'resolve'), 'icon resolve', 'check')));
     }
     if (i.author === this.client.person) {
-      const more = this.button('', root ? 'Thread actions' : 'Reply actions', () => {
-        if (closeMenu()) return;
-        openMenu(more, [
-          { label: 'Edit', run: () => this.edit(t, root ? null : i.id) },
-          { label: 'Delete', run: () => void this.remove(t, root ? null : i.id) },
-        ]);
+      const items = [
+        { label: 'Edit', run: () => this.edit(t, root ? null : i.id) },
+        { label: 'Delete', run: () => void this.remove(t, root ? null : i.id) },
+      ];
+      // a second press closes the menu
+      const more = this.button('', root ? 'Thread actions' : 'Reply actions', (ev) => {
+        if (this.menu) return this.menu.close();
+        const m = this.client.shell.menu(items, {
+          anchor: more.getBoundingClientRect(),
+          placement: 'below',
+          owner: more,
+          keyboard: ev.detail === 0,
+          label: more.title,
+          onClose: () => {
+            if (this.menu === m) this.menu = null;
+          },
+        });
+        this.menu = m;
       }, 'icon more', 'more');
       more.setAttribute('aria-haspopup', 'menu');
       head.append(offline(more));
@@ -419,7 +433,7 @@ class Pane {
     return box;
   }
 
-  private button(text: string, label: string, run: () => void, className: string, icon?: string): HTMLButtonElement {
+  private button(text: string, label: string, run: (ev: MouseEvent) => void, className: string, icon?: string): HTMLButtonElement {
     const b = make('button', className, text);
     b.type = 'button';
     b.title = label;
@@ -427,7 +441,7 @@ class Pane {
     if (icon) b.append(this.client.shell.icon(icon, 16));
     b.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      run();
+      run(ev);
     });
     return b;
   }

@@ -87,14 +87,14 @@ function place(parent: Element, nodes: Node[]): void {
   }
 }
 
-// the versions in groups: a named version alone, and unnamed versions closer than FOLD under the
-// newest of them, which do not cross a day
+// the versions in groups: a named version and the start of the history alone, and unnamed versions
+// closer than FOLD under the newest of them, which do not cross a day
 export function foldsOf(versions: VersionInfo[]): { head: VersionInfo; rest: VersionInfo[] }[] {
   const out: { head: VersionInfo; rest: VersionInfo[] }[] = [];
   for (const v of versions) {
     const last = out[out.length - 1];
     const prev = last ? last.rest[last.rest.length - 1] ?? last.head : null;
-    if (last && prev && !v.name && !last.head.name && prev.time - v.time < FOLD && dayKey(prev.time) === dayKey(v.time)) last.rest.push(v);
+    if (last && prev && !v.name && !v.start && !last.head.name && prev.time - v.time < FOLD && dayKey(prev.time) === dayKey(v.time)) last.rest.push(v);
     else out.push({ head: v, rest: [] });
   }
   return out;
@@ -114,6 +114,7 @@ export async function setAside(text: string, reason: string): Promise<AsideInfo>
 export function install(client: Client): void {
   current = client;
   const shell = client.shell.history;
+  const restoreWait = Number(new URLSearchParams(location.search).get('session-restore-wait')) || RESTORE_WAIT;
   let pane: HTMLElement | null = null;
   let list: HTMLElement;
   let asideHead: HTMLElement;
@@ -135,9 +136,9 @@ export function install(client: Client): void {
   let shownTime: number | null = null;
   let midnight = 0;
   let naming = false;
-  // a reload of the page held until the mode ends, see hold below
+  // a reload of the page deferred until the mode ends, see hooks.defer below
   let release: (() => void) | null = null;
-  let holding: Promise<void> | null = null;
+  let deferred: Promise<void> | null = null;
   // the nodes of the list kept between renders by key, hence a new answer writes only what changed
   const rows = new Map<string, { el: HTMLButtonElement; sig: string }>();
   const folds = new Map<string, { button: HTMLButtonElement; inner: HTMLElement }>();
@@ -231,12 +232,12 @@ export function install(client: Client): void {
   function versionRow(v: VersionInfo): HTMLButtonElement {
     const was = v.restored ? answer?.versions.find((x) => x.id === v.restored) : undefined;
     const restored = v.restored ? (was ? `Restored the version of ${whenOf(was.time)}` : 'Restored an earlier version') : '';
-    const sig = JSON.stringify([v.name, timeOf(v.time), restored, v.authors.map((a) => personOf(client, a)), v.slides]);
+    const sig = JSON.stringify([v.name, timeOf(v.time), restored, v.start, v.authors.map((a) => personOf(client, a)), v.slides]);
     return row('version', { kind: 'version', id: v.id }, sig, () => {
       const parts: (Node | string)[] = [make('span', 'title', v.name ?? timeOf(v.time))];
       if (v.name) parts.push(make('span', 'sub', timeOf(v.time)));
       if (restored) parts.push(make('span', 'sub', restored));
-      parts.push(authorsOf(client, v.authors));
+      parts.push(v.start ? make('span', 'who', 'Start of the history') : authorsOf(client, v.authors));
       if (v.slides.length) parts.push(make('span', 'slides', slidesText(v.slides)));
       return parts;
     });
@@ -311,9 +312,9 @@ export function install(client: Client): void {
     }
     used.clear();
     const nodes: Node[] = [
-      row('current', { kind: 'current' }, holding ? 'held' : '', () => {
+      row('current', { kind: 'current' }, deferred ? 'deferred' : '', () => {
         const parts: (Node | string)[] = [make('span', 'title', 'Current version')];
-        if (holding) parts.push(make('span', 'sub', 'The deck changed. It is loaded again when Version History is closed.'));
+        if (deferred) parts.push(make('span', 'sub', 'The deck changed. It is loaded again when Version History is closed.'));
         return parts;
       }),
       nameCurrent,
@@ -402,6 +403,8 @@ export function install(client: Client): void {
       if (!(back instanceof HTMLElement) || back === document.body || back.closest('.beeson-session-toast')) back = document.querySelector('.beeson-session-state');
       if (!aside) selected = { kind: 'current' };
       pane.hidden = false;
+      // a caret left in the inert deck would keep the text held against the others
+      getSelection()?.removeAllRanges();
       // the person stops following in this mode, and the others see the mode in the pill of following
       stopFollowing();
       presenceOf(client)?.set({ mode: 'history' });
@@ -425,7 +428,7 @@ export function install(client: Client): void {
     if (back instanceof HTMLElement && back.isConnected && !back.closest('[inert]')) back.focus();
     back = null;
     const go = release;
-    release = holding = null;
+    release = deferred = null;
     go?.();
   }
 
@@ -493,7 +496,7 @@ export function install(client: Client): void {
       count.textContent = over ? `${n} of at most ${VERSION_NAME_MAX} characters` : '';
       if (over) input.setAttribute('aria-describedby', count.id);
       else input.removeAttribute('aria-describedby');
-      const label = !n && id !== 'current' && was ? 'Remove Name' : 'Save';
+      const label = !n && id !== 'current' && was ? 'Remove name' : 'Save';
       if (save.textContent !== label) save.textContent = label;
       save.disabled = over || (!n && id !== 'current' && !was);
     };
@@ -534,7 +537,7 @@ export function install(client: Client): void {
         check();
       });
       const timer = window.setInterval(check, 100);
-      const limit = window.setTimeout(() => finish(), RESTORE_WAIT);
+      const limit = window.setTimeout(() => finish(), restoreWait);
       function finish(): void {
         off();
         clearInterval(timer);
@@ -572,13 +575,13 @@ export function install(client: Client): void {
   opener = open;
   addStateItem({ label: 'Version History', run: () => open() });
   // a reload that an apply needs waits for the end of the mode, which Current version says
-  client.hooks.hold = () => {
+  client.hooks.defer = () => {
     if (!on) return null;
-    if (!holding) {
-      holding = new Promise((done) => (release = done));
+    if (!deferred) {
+      deferred = new Promise((done) => (release = done));
       render();
     }
-    return holding;
+    return deferred;
   };
   client.on('history', (rev) => {
     if (answer && rev === answer.rev) return;

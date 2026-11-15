@@ -28,7 +28,7 @@ const THREADS = `[...document.querySelectorAll('${PANE} article')].map((a) => ({
 const TOASTS = `[...document.querySelectorAll('.beeson-session-toast > span')].map((s) => s.textContent)`;
 const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('aria-label')`;
 const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
-const LOCKED = (expression) => `${expression}.classList.contains('beeson-locked')`;
+const LOCKED = (expression) => `${expression}.classList.contains('beeson-held')`;
 // the id of the thread of the focus, or the tag of the focused element outside a thread
 const ACTIVE = `document.activeElement?.closest('article')?.dataset.id ?? document.activeElement?.localName ?? null`;
 const DRAFT = `${PANE} .draft textarea`;
@@ -64,10 +64,9 @@ async function openPane(page) {
   await page.waitFor(`!!document.querySelector('${PANE}:not([hidden])')`);
 }
 
-// a click on the item labeled label of the open menu, of the editor (a context menu) or of the client
-// (the menu of a thread)
+// a click on the item labeled label of the open menu, e.g. a context menu or the menu of a thread
 async function menu(page, label) {
-  const item = `[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"], .beeson-session-menu button')].find((i) => (i.querySelector('.label') ?? i).textContent === ${JSON.stringify(label)})`;
+  const item = `[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].find((i) => (i.querySelector('.label') ?? i).textContent === ${JSON.stringify(label)})`;
   await page.waitFor(`!!${item}`);
   const at = await page.evaluate(`(() => { const r = ${item}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   await click(page, at);

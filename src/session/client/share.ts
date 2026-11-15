@@ -7,7 +7,7 @@
 import type { ShareAnswer } from '../protocol.ts';
 import { qr } from '../qr.ts';
 import type { Client } from './client.ts';
-import { bdi, make, sheet, style, textOf } from './dom.ts';
+import { bdi, fitClass, make, style, textOf } from './dom.ts';
 import { disc, everyone, type Someone } from './people.ts';
 
 const COPIED = 2000;
@@ -55,11 +55,9 @@ type Status = (someone: Someone) => string | (string | Node)[];
 const statuses: Status[] = [];
 
 // a line beside a person in the list of the Share dialog, e.g. Typing on slide 4, Following Ana,
-// or Away. the first function that returns a text is shown, and a name in it is a bdi element. the
-// function returned removes it
-export function addPersonStatus(fn: Status): () => void {
+// or Away. the first function that returns a text is shown, and a name in it is a bdi element
+export function addPersonStatus(fn: Status): void {
   statuses.push(fn);
-  return () => void statuses.splice(statuses.indexOf(fn) >>> 0, 1);
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -160,7 +158,7 @@ function openShare(client: Client): void {
   const dialog = client.shell.dialog({
     title: 'Share',
     body,
-    className: `beeson-session-share-dialog ${sheet()}`,
+    className: `beeson-session-share-dialog ${fitClass()}`,
     stay: ['connect', 'end'],
     buttons: [],
     onButton: (value) => {
@@ -329,7 +327,7 @@ function openShare(client: Client): void {
     const sure = client.shell.dialog({
       title: 'End the session?',
       text: 'Guests can no longer edit. The deck stays open for you.',
-      className: sheet(),
+      className: fitClass(),
       buttons: [
         { label: 'Cancel', value: 'cancel' },
         { label: 'End session', value: 'end', primary: true },

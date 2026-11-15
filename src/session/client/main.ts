@@ -86,7 +86,7 @@ async function start(given: Handover): Promise<boolean> {
   if (!v) {
     const dialog = handover.dialog({
       title: 'This page is not served by an edit command',
-      text: 'The deck is edited without a session. Run npm run edit in the folder of the talk, and open the address that it prints.',
+      text: 'The deck is edited without a session. Double-click Edit.command (macOS), Edit.cmd (Windows), or Edit.sh (Linux) in the talk folder, or run npm run edit there, and open the address that it prints.',
       buttons: [{ label: 'OK', value: 'ok', primary: true }],
     });
     void dialog.open().then(() => dialog.el.remove());

@@ -14,9 +14,10 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
+import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
+import { BUBBLE, LOCKED, select, session } from './helpers/presence.mjs';
 import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -30,8 +31,11 @@ const PANE = '.beeson-session-history';
 const SHOWN = `!!document.querySelector('${PANE}:not([hidden])')`;
 const BAR = '.beeson-session-preview .bar';
 const FRAME = `document.querySelector('.beeson-session-preview iframe')`;
-// the rows of the list, the day headings, the folds, and the empty text, in order
-const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.version, .fold, .folded, h3, .empty)')].map((el) =>
+// the rows of the list, the day headings, the folds, and the empty text, in order. the row of the
+// start of the history is left out while it is unnamed, since the edit command begins every new
+// history with it
+const UNNAMED_START = (row) => `(${row}.querySelector(':scope > .who')?.textContent === 'Start of the history' && !${row}.querySelector('.sub'))`;
+const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.version, .fold, .folded, h3, .empty)')].filter((el) => !${UNNAMED_START('el')}).map((el) =>
   el.matches('.folded') ? { folded: [...el.children].map((r) => r.querySelector('.title').textContent), hidden: el.hidden }
   : el.matches('.row') ? { title: el.querySelector('.title').textContent, who: [...el.querySelectorAll('.author')].map((a) => a.textContent), slides: el.querySelector('.slides')?.textContent ?? '' }
   : el.matches('h3') ? { day: el.textContent } : el.matches('.fold') ? { fold: el.textContent } : { empty: el.textContent })`;
@@ -59,7 +63,7 @@ const press$ = (page, scope, text) => tapOrClick(page, button(scope, text));
 // the pane opened by the key of Version History
 async function openPane(page) {
   await front(page);
-  await press(page, 'Mod+Alt+Shift+H');
+  await press(page, HISTORY_KEY);
   await page.waitFor(SHOWN);
 }
 
@@ -110,7 +114,8 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await ann.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.textContent.startsWith('Version History')).click(), true`);
     await ann.waitFor(SHOWN);
     assert.deepEqual(await ann.evaluate(INERT), [true, true, true, true, true]);
-    assert.deepEqual(await ann.evaluate(LIST), [{ empty: 'No earlier versions yet.' }]);
+    await ann.waitFor(`!${LIST}.some((x) => x.empty === 'Loading versions…')`);
+    assert.deepEqual((await ann.evaluate(LIST)).filter((x) => x.title !== undefined), []);
     assert.equal(await ann.evaluate(`document.querySelector('${PANE} .row.current').getAttribute('aria-current')`), 'true');
   });
 
@@ -204,7 +209,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .versions .row.version')][1]`);
     await ann.waitFor(`document.querySelector('${PANE} .row[aria-current="true"]')?.dataset.id === 'version:${id}'`);
     await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
-    await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Download This Version')`);
+    await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Download This Version')`);
     await ann.waitFor('typeof window.__downloaded === "string"');
     const served = await raw(server.edit.port, 'GET', `${server.edit.base}index.html?version=${id}`);
     assert.equal(await ann.evaluate('window.__downloaded'), served.text);
@@ -214,7 +219,7 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
   await t.test('the guest opens the pane from the menu of the save state and sees the same list', async () => {
     await front(ben);
     await tapOrClick(ben, `document.querySelector('.beeson-session-state')`);
-    await tapOrClick(ben, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`);
+    await tapOrClick(ben, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
     await ben.waitFor(SHOWN);
     await ben.waitFor(`${LIST}.length === 3`);
     assert.deepEqual((await ben.evaluate(LIST)).map((x) => x.title ?? x.day ?? x.fold), (await ann.evaluate(LIST)).map((x) => x.title ?? x.day ?? x.fold));
@@ -225,14 +230,14 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
   await t.test('the focus goes back to the control that opened the mode, also to the button of the save state', async () => {
     await front(ben);
     await ben.evaluate(`(window.__before = [...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.getClientRects().length)).focus(), true`);
-    await press(ben, 'Mod+Alt+Shift+H');
+    await press(ben, HISTORY_KEY);
     await ben.waitFor(SHOWN);
     await press$(ben, PANE, 'Back to editor');
     await ben.waitFor(`!(${SHOWN})`);
     assert.equal(await ben.evaluate('document.activeElement === window.__before'), true);
     // an item of the menu run by the keyboard, i.e. a click on the focused item
     await ben.evaluate(`(() => { const b = document.querySelector('.beeson-session-state'); b.focus(); b.click(); return true; })()`);
-    const item = `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`;
+    const item = `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`;
     await ben.waitFor(`!!(${item})`);
     await ben.evaluate(`(() => { const b = ${item}; b.focus(); b.click(); return true; })()`);
     await ben.waitFor(SHOWN);
@@ -418,6 +423,37 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
   clean(ben);
 });
 
+test('the mode ends at the time limit of a restore whose operation does not reach the deck', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  // the time limit of a restore is a second rather than 5
+  const ann = await open(browser, `${sessionUrl(server.edit)}&session-restore-wait=1000`, { name: 'Ann' });
+  await converge(server, [ann]);
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Start' }).then(() => true)`);
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'p'));
+  await typeKeys(ann, ' later');
+  await converge(server, [ann]);
+  await openPane(ann);
+  await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Start')`);
+  // the applies of Ann wait until the end of the test
+  await ann.evaluate(`(() => {
+    const port = ${C}.port;
+    const apply = port.apply.bind(port);
+    window.__gate = new Promise((done) => (window.__open = done));
+    port.apply = (text) => window.__gate.then(() => apply(text));
+    return true;
+  })()`);
+  await press$(ann, BAR, 'Restore this version');
+  await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Restore');
+  await ann.waitFor(`!(${SHOWN})`);
+  assert.equal(await ann.evaluate(`${TEXT}.includes('First slide later')`), true);
+  await ann.evaluate('window.__open(), true');
+  assert.equal(await converge(server, [ann]), TALK);
+  clean(ann);
+});
+
 test('the pane of a page offline reads the versions once the page is online again', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -445,7 +481,7 @@ test('the pane of a page offline reads the versions once the page is online agai
   await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'OK');
   await server.start(['--port', String(port)]);
   await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
-  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Try Now')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Try Now')`);
   await ann.waitFor(ONLINE, 20_000);
   await ann.waitFor(`${LIST}[0]?.day === 'Today'`, 20_000);
   assert.equal(await ann.evaluate(`${LIST}[1].title`), 'Kept');
@@ -465,7 +501,7 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   await type(ann, ' on a phone');
   await converge(server, [ann]);
   await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
-  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Version History')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
   await ann.waitFor(SHOWN);
   await press$(ann, PANE, 'Name this version');
   await nameIt(ann, 'Phone');
@@ -500,16 +536,22 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
 
 const AFTER = TALK.indexOf('First slide') + 'First slide'.length;
 
-// a history written by hand: versions are { time, name?, id? }, oldest first, each of which adds an
-// x after First slide, and text is the deck at the newest of them
+// a history written by hand: versions are { time, name?, id?, start? }, oldest first, each of which
+// adds an x after First slide, apart from the start of the history, which holds the deck of the base
+// without authors. text is the deck at the newest of them
 function craft(versions) {
   const lines = [JSON.stringify({ kind: 'base', time: versions[0].time - MIN, text: TALK })];
+  let added = 0;
   versions.forEach((v, i) => {
     const id = v.id ?? `v${i}`;
-    lines.push(JSON.stringify({ kind: 'version', id, time: v.time, authors: ['pa'], slides: [1], patches: [{ start: AFTER, end: AFTER, text: 'x' }], marks: [{ start: AFTER, end: AFTER + 1, author: 'pa' }] }));
+    if (v.start) lines.push(JSON.stringify({ kind: 'version', id, time: v.time, authors: [], slides: [], patches: [], marks: [], start: true }));
+    else {
+      added++;
+      lines.push(JSON.stringify({ kind: 'version', id, time: v.time, authors: ['pa'], slides: [1], patches: [{ start: AFTER, end: AFTER, text: 'x' }], marks: [{ start: AFTER, end: AFTER + 1, author: 'pa' }] }));
+    }
     if (v.name) lines.push(JSON.stringify({ kind: 'name', id, name: v.name }));
   });
-  return { jsonl: `${lines.join('\n')}\n`, text: TALK.slice(0, AFTER) + 'x'.repeat(versions.length) + TALK.slice(AFTER) };
+  return { jsonl: `${lines.join('\n')}\n`, text: TALK.slice(0, AFTER) + 'x'.repeat(added) + TALK.slice(AFTER) };
 }
 
 // the edit command on a talk folder whose .session/history.jsonl is written before it starts
@@ -569,6 +611,14 @@ test('Name this version shows the name that a save replaces, an empty name under
     assert.equal((await versionsOf(ann))[0].name, 'Draft for Ben');
   });
 
+  await t.test('Esc in Name this version closes the dialog and leaves Version History open', async () => {
+    await press$(ann, PANE, 'Name this version');
+    await ann.waitFor(`${field}?.focused`);
+    await press(ann, 'Escape');
+    await ann.waitFor(`!document.querySelector('${DIALOG}') || !(${SHOWN})`);
+    assert.deepEqual(await ann.evaluate(`[!!document.querySelector('${DIALOG}'), ${SHOWN}]`), [false, true]);
+  });
+
   await t.test('after an edit the field under Current version is empty', async () => {
     await show(ben, 'One');
     await caretAtEnd(ben, el(0, 'h2'));
@@ -583,7 +633,7 @@ test('Name this version shows the name that a save replaces, an empty name under
     assert.equal(await ann.evaluate(`window.__count['/name']`), 0);
   });
 
-  await t.test('the name of a version is taken off by Remove Name, which an empty field shows', async () => {
+  await t.test('the name of a version is taken off by Remove name, which an empty field shows', async () => {
     await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
     await press$(ann, BAR, 'Name this version');
     await ann.waitFor(`${field}?.focused`);
@@ -591,7 +641,7 @@ test('Name this version shows the name that a save replaces, an empty name under
     assert.equal(await ann.evaluate(`${save}.textContent`), 'Save');
     await ann.evaluate(`${FIELD}.select(), true`);
     await press(ann, 'Backspace');
-    await ann.waitFor(`${save}.textContent === 'Remove Name'`);
+    await ann.waitFor(`${save}.textContent === 'Remove name'`);
     await press(ann, 'Enter');
     await ann.waitFor(`!document.querySelector('${DIALOG}')`);
     await ann.waitFor(`${LIST}[1]?.title !== 'Draft for Ben'`);
@@ -671,13 +721,71 @@ test('a fold stays open, and the focus stays on its control, while new versions 
     await version(' d');
     assert.equal(await ann.evaluate(`document.activeElement === (${button(BAR, 'Restore this version')})`), true);
     await tapOrClick(ann, `document.querySelector('${BAR} button.more')`);
-    await ann.waitFor(`document.activeElement?.closest('.beeson-session-menu') !== null`);
+    await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     await ann.evaluate(`window.__more = document.querySelector('${BAR} button.more'), true`);
     await version(' e');
-    assert.deepEqual(await ann.evaluate(`[window.__more.isConnected, window.__more.getAttribute('aria-expanded'), !!document.activeElement?.closest('.beeson-session-menu')]`), [true, 'true', true]);
+    assert.deepEqual(await ann.evaluate(`[window.__more.isConnected, window.__more.getAttribute('aria-expanded'), !!document.querySelector('.beeson-edit-menu')]`), [true, 'true', true]);
     await press(ann, 'Escape');
-    await ann.waitFor(`!document.querySelector('.beeson-session-menu') && document.activeElement === window.__more`);
+    await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement === window.__more`);
   });
+  clean(ann);
+});
+
+test('the start of the history is a row of its own, which reads Start of the history in the place of the authors', { timeout: 180_000 }, async (t) => {
+  const now = Date.now();
+  const first = Math.max(now - 10 * MIN, new Date(now).setHours(0, 0, 0, 0) + 1000);
+  const server = await crafted(t, craft([{ time: first, start: true }, { time: first + MIN }, { time: first + 2 * MIN }]), HELD);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  // the start of the history is marked in the answer as well, for an edit command that does not
+  // read start from its file
+  await ann.evaluate(`(() => {
+    const transport = ${C}.transport;
+    const get = transport.get.bind(transport);
+    transport.get = (path, query) => get(path, query).then((a) => {
+      if (path === 'history') for (const v of a.versions) if (v.id === 'v0') v.start = true;
+      return a;
+    });
+    return true;
+  })()`);
+  await openPane(ann);
+  // the rows and the folds of the list, each row by its id and the text in the place of its authors
+  const rows = `[...document.querySelectorAll('${PANE} .versions > :is(.row.version, .fold)')].map((el) => el.matches('.fold') ? el.textContent : [el.dataset.id.slice(8), el.querySelector(':scope > .who').textContent])`;
+  await ann.waitFor(`${rows}.length === 3`);
+  assert.deepEqual(await ann.evaluate(rows), [['v2', 'Someone'], 'Show 1 more', ['v0', 'Start of the history']]);
+  await tapOrClick(ann, `document.querySelector('${PANE} [data-id="version:v0"]')`);
+  await ann.waitFor(`!!${FRAME}?.contentDocument?.body?.textContent.includes('First slide')`, 30_000);
+  assert.equal(await ann.evaluate(`${FRAME}.contentDocument.body.textContent.includes('First slidex')`), false);
+  clean(ann);
+});
+
+test('a named version does not head a fold, unnamed versions fold within 30 minutes, and a fold does not cross midnight', { timeout: 180_000 }, async (t) => {
+  // midnight at the start of yesterday, hence every version is in the past
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - 1);
+  const midnight = start.getTime();
+  const hour = 60 * MIN;
+  const server = await crafted(t, craft([
+    { time: midnight - 10 * MIN },
+    { time: midnight + 10 * MIN },
+    { time: midnight + 3 * hour },
+    { time: midnight + 3 * hour + 20 * MIN },
+    { time: midnight + 5 * hour },
+    { time: midnight + 5 * hour + 5 * MIN, name: 'Named' },
+  ]), HELD);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  await openPane(ann);
+  // each row by its id, each fold by its text, and each day heading as day
+  const rows = `[...document.querySelectorAll('${PANE} .versions > :is(.row.version, .fold, h3)')].filter((el) => !${UNNAMED_START('el')}).map((el) => el.matches('h3') ? 'day' : el.matches('.fold') ? el.textContent : el.dataset.id.slice(8))`;
+  // the list is written at once, hence v1 is listed with all the others
+  await ann.waitFor(`${rows}.includes('v1')`);
+  assert.deepEqual(await ann.evaluate(rows), ['day', 'v5', 'v4', 'v3', 'Show 1 more', 'v1', 'day', 'v0']);
   clean(ann);
 });
 
@@ -1008,7 +1116,7 @@ test('the mode ends with the session, and a read of the versions that failed is 
   await ann.waitFor(`${LIST}[0]?.empty === 'The versions cannot be read while the page is offline.'`);
   assert.equal(await ann.evaluate(`${C}.connection`), 'online');
   await ann.evaluate(`${C}.refresh(), true`);
-  await ann.waitFor(`${LIST}[0]?.empty === 'No earlier versions yet.'`);
+  await ann.waitFor(`${LIST}.length > 0 && ${LIST}.every((x) => x.empty !== 'The versions cannot be read while the page is offline.' && x.empty !== 'Loading versions…')`);
   server.edit.child.kill('SIGTERM');
   await ann.waitFor(`${C}.connection === 'ended'`, 20_000);
   await ann.waitFor(`!(${SHOWN})`);
@@ -1049,4 +1157,36 @@ test('Version History stops following, and a page that follows the person reads 
   await ben.waitFor(`${PILL} === 'Following Ann'`);
   clean(ann);
   clean(ben);
+});
+
+test('Version History takes the caret out of the text, hence another person can type there at once', { timeout: 180_000 }, async (t) => {
+  const { pages: [ann, ben] } = await session(t, ['Ann', 'Ben']);
+  await show(ben, 'One');
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'h2'));
+  await typeKeys(ann, ' typed');
+  await press(ann, 'Mod+Alt+Shift+H');
+  await ann.waitFor(SHOWN);
+  // the presence state of Ann as the page of Ben reads it
+  const of = `${C}.presence.find((p) => p.name === 'Ann')?.state`;
+  await front(ben);
+  await ben.waitFor(`${of}?.mode === 'history'`);
+  assert.deepEqual(await ben.evaluate(`[${of}.caret, ${of}.held]`), [null, null]);
+  const focused = await ben.evaluate(`(() => { const h = ${el(0, 'h2')}; h.focus(); return document.activeElement === h; })()`);
+  assert.deepEqual([focused, await ben.evaluate(LOCKED(el(0, 'h2'))), await ben.evaluate(BUBBLE)], [true, false, null]);
+  clean(ann);
+  clean(ben);
+});
+
+test('Shift+F10 does not open the menu of the selected element over Version History', { timeout: 180_000 }, async (t) => {
+  const { pages: [ann] } = await session(t, ['Ann']);
+  await show(ann, 'One');
+  await select(ann, el(0, 'h2'));
+  await openPane(ann);
+  // the key opens a menu while its keydown is handled, hence the menu would be in the page once press ends
+  await press(ann, 'Shift+F10');
+  assert.equal(await ann.evaluate(`document.querySelectorAll('.beeson-edit-menu').length`), 0);
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  clean(ann);
 });

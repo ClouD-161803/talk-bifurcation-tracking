@@ -329,7 +329,7 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
   });
   // the refusals of the edit command to connect are answers of share with an error
   clean(host, [/\.session\/share/]);
-  clean(guest, [/502/]);
+  clean(guest, [/502/, /410/]);
 });
 
 test('on a phone of 390 px the controls of the session are in view with a hit area of 32 px, and the dialogs fit', { timeout: 300_000 }, async (t) => {
@@ -548,5 +548,23 @@ test('a poll answer rebuilds the list of the Share dialog once, and the initials
   const { answers, lists, segmenters } = await ann.evaluate('({ answers: window.__answers, lists: window.__lists, segmenters: window.__segmenters })');
   assert.ok(lists <= answers, `${lists} rebuilds of the list for ${answers} answers`);
   assert.ok(segmenters <= 1, `${segmenters} Intl.Segmenter built for ${answers} answers`);
+  clean(ann);
+});
+
+test('the end of the session closes the Change Name dialog', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await front(ann);
+  await press(ann, '.beeson-session-people .me');
+  await ann.waitFor(`!!${item('Change Name…')}`);
+  await press(ann, item('Change Name…'));
+  await ann.waitFor(`!!document.querySelector('dialog.beeson-session-rename')?.open`);
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await ann.waitFor(`${C}.connection === 'ended' && [...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'The session has ended')`);
+  await ann.waitFor(`!document.querySelector('dialog.beeson-session-rename')`);
   clean(ann);
 });

@@ -295,6 +295,10 @@ const MOTION = ['data-duration', 'data-stagger', 'data-loop'];
 // src/surface.ts. a surface and a plot read every other attribute and their labels once, at mount
 const CAMERA = ['data-azimuth', 'data-elevation', 'data-zoom', 'data-turn', 'data-zscale'];
 const DRAWN = '.surface, .plot';
+const figureOf = (attrs: Attr[]): string | null => {
+  const s = stateOf(attrs);
+  return s.classes.includes('tikz') ? (s.attrs['data-figure'] ?? '') : null;
+};
 // the theme draws a backdrop into its element once, hence an element does not become a backdrop or
 // stop being one in place
 const backdropOf = (attrs: Attr[]): boolean => stateOf(attrs).classes.includes('backdrop');
@@ -302,6 +306,10 @@ const backdropOf = (attrs: Attr[]): boolean => stateOf(attrs).classes.includes('
 // a change of the start tag of el from the attributes from to those of to that a drawing of the
 // theme around el does not read again
 function redrawn(el: Element, from: Attr[], to: Attr[]): boolean {
+  // a TikZ figure loads the output named by data-figure only at mount, see mountFigures() in
+  // src/tikz.ts. the spans of its parts are watched there, hence a change of data-part is not a
+  // reload
+  if (figureOf(from) !== figureOf(to)) return true;
   const holder = el.closest(DRAWN);
   if (!holder) return false;
   const a = stateOf(from).attrs;
@@ -330,6 +338,14 @@ function restep(ctx: Ctx, el: Element): void {
   }
 }
 
+// the theme drawn again around host after a change of its text: the citations numbered and the
+// theorems counted when host had a citation before the change, has one, or is in a theorem, and the
+// heads of the slides otherwise, since a count reads the whole deck at each key typed
+function refreshText(host: Element, had: boolean): void {
+  if (had || host.querySelector('cite') || host.closest('p.theorem')) (window as unknown as Page).Beeson?.refreshChrome?.();
+  else refreshHeads(host);
+}
+
 // the slides of reveal.js read again, with the theme drawn again around them
 export function refresh(app: App): void {
   (window as unknown as Page).Beeson?.refreshChrome?.();
@@ -348,11 +364,12 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
   const ctx = makeCtx(app, text);
   if (spot.kind === 'text') {
     const textEl = ctx.pairing.byLive.get(spot.live)!;
+    const had = !!textEl.live.querySelector('cite');
     if (inPlace(ctx, textEl, w)) {
       ctx.touched.add(spot.live);
       ctx.changed.push(spot.live);
       if (!checkText(ctx, textEl.live)) return null;
-      refreshHeads(textEl.live);
+      refreshText(textEl.live, had);
       return done(ctx, false, null);
     }
     // an element left open inside the text element is carried over the elements after it by the
@@ -362,7 +379,7 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
     const caret = coarse(ctx, textEl);
     if (caret === false) return within(ctx, spot.el, spot.live);
     if (!checkText(ctx, textEl.live)) return null;
-    refreshHeads(textEl.live);
+    refreshText(textEl.live, had);
     return done(ctx, false, caret && (() => caret(true)));
   }
   if (spot.kind === 'tag') {

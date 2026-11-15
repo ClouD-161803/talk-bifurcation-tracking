@@ -15,7 +15,7 @@ export const el = (slide, selector) => `document.querySelectorAll('.reveal .slid
 
 export const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
 export const REFUSED = 'Ana is typing here. You can edit this text once they leave it or stop for 30 s.';
-export const LOCKED = (expression) => `${expression}.classList.contains('beeson-locked')`;
+export const LOCKED = (expression) => `${expression}.classList.contains('beeson-held')`;
 // the bubble of page cleared, so that the next one can be told from it
 export const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
 

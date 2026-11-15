@@ -4,7 +4,9 @@
 // new file is named uniquely to this page, and the name that the edit command gives in its place
 // when the name is taken anyway is written only into the elements of the edits of this page. a
 // poster of a video and the picture of the other mode are files of the store as well, and they are
-// uploaded the same way. a file that the edit command would refuse is refused when it is added
+// uploaded the same way. a file that the edit command would refuse is refused when it is added.
+// a file refused anyway with a status that another try cannot change is given up, i.e. sent to the
+// others only as its path, and named in the save state while the text names it
 
 import type { MediaFile } from '../../editor/media/store.ts';
 import type { SrcEl } from '../../editor/source.ts';
@@ -26,9 +28,14 @@ const VIDEO = /\.(mp4|m4v|webm|mov|ogv)$/i;
 // with the parameter session-upload-wait of the address
 const UPLOAD_WAIT = 30_000;
 const UPLOAD_PER_MB = 1000;
-export const FAILED = 'A picture could not be sent. Try again';
+export const FAILED = (path: string) => `${path} could not be sent. Try again`;
+// the statuses of PUT media/ of the edit command and of the relay that another try cannot change:
+// a file outside the talk folder, too many files of the name, a body or a path too large, and a
+// type that is not taken
+const FINAL = new Set([403, 409, 413, 414, 415]);
 
-type State = { busy: boolean; failed: boolean; network: boolean };
+// failed names the file of a failed upload, and lost the first file given up that the text names
+type State = { busy: boolean; failed: string | null; network: boolean; lost: string | null };
 const states = new WeakMap<Client, State>();
 
 // the SHA-256 of blob in hex, or null where crypto.subtle is missing, i.e. outside a secure context
@@ -55,20 +62,24 @@ function inserted(base: string, text: string): [number, number][] {
 
 // the save state after a failed upload, or null
 export function failedLine(client: Client): string | null {
-  return states.get(client)?.failed ? FAILED : null;
+  const failed = states.get(client)?.failed;
+  return failed ? FAILED(failed) : null;
 }
+
+// the save state while the text names a file that was given up, or null
+export const lostLine = (client: Client): string | null => states.get(client)?.lost ?? null;
 
 export function retry(client: Client): void {
   const st = states.get(client);
   if (!st?.failed) return;
-  st.failed = false;
+  st.failed = null;
   client.refresh();
   client.rewrite();
 }
 
 export function install(client: Client): void {
   const store = client.shell.media;
-  const st: State = { busy: false, failed: false, network: false };
+  const st: State = { busy: false, failed: null, network: false, lost: null };
   states.set(client, st);
   const wait = Number(new URLSearchParams(location.search).get('session-upload-wait')) || UPLOAD_WAIT;
   // set at the first rename by the edit command, after which the elements are checked before each
@@ -76,6 +87,8 @@ export function install(client: Client): void {
   let moved = false;
   // the elements whose new name could not be written, which are not tried again
   const stuck = new WeakSet<Element>();
+  // the files given up, with the reason
+  const given = new Map<MediaFile, string>();
   let settling = false;
 
   store.refuse = (file) => {
@@ -156,8 +169,9 @@ export function install(client: Client): void {
   async function upload(files: MediaFile[]): Promise<void> {
     st.busy = true;
     let renamed = false;
+    let f: MediaFile | null = null;
     try {
-      for (const f of files) {
+      for (f of files) {
         const name = f.path.slice(f.path.lastIndexOf('/') + 1);
         const hash = await sha256(f.blob);
         const abort = new AbortController();
@@ -166,13 +180,24 @@ export function install(client: Client): void {
         let answer: { path?: unknown; error?: unknown } | null;
         try {
           response = await fetch(client.url(`media/${encodeURIComponent(name)}`, { token: client.token }), { method: 'PUT', body: f.blob, headers: { 'Content-Type': f.blob.type || 'application/octet-stream', ...(hash && { 'x-content-sha256': hash }) }, cache: 'no-store', signal: abort.signal });
-          answer = await response.json().catch(() => null);
+          const body = await response.text();
+          try {
+            answer = JSON.parse(body);
+          } catch {
+            // the relay answers its own refusals in plain text
+            answer = { error: body.trim() || undefined };
+          }
         } catch (e) {
           throw new Failure(0, e instanceof Error ? e.message : String(e));
         } finally {
           clearTimeout(timer);
         }
-        if (!response.ok || typeof answer?.path !== 'string') throw new Failure(response.ok ? 0 : response.status, typeof answer?.error === 'string' ? answer.error : 'the upload failed');
+        const error = typeof answer?.error === 'string' ? answer.error : `the upload was refused with status ${response.status}`;
+        if (FINAL.has(response.status)) {
+          given.set(f, error);
+          continue;
+        }
+        if (!response.ok || typeof answer?.path !== 'string') throw new Failure(response.ok ? 0 : response.status, error);
         store.saved([f]);
         if (answer.path !== f.path) {
           const now = client.snapshot();
@@ -181,8 +206,9 @@ export function install(client: Client): void {
         }
       }
     } catch (e) {
-      st.failed = true;
-      st.network = !(e instanceof Failure) || e.retried;
+      st.failed = f?.path || 'A file';
+      // a token that the edit command does not know, e.g. after its restart, is known after the hello
+      st.network = !(e instanceof Failure) || e.retried || e.status === 404;
     } finally {
       st.busy = false;
     }
@@ -192,13 +218,20 @@ export function install(client: Client): void {
 
   client.hooks.ready = (text) => {
     if (client.ended) return true;
-    const files = store.unsaved(text);
+    const named = store.unsaved(text);
+    const lost = named.find((f) => given.has(f));
+    const line = lost ? `${lost.path} was not sent to the others, since ${given.get(lost)}` : null;
+    if (line !== st.lost) {
+      st.lost = line;
+      client.refresh();
+    }
+    const files = named.filter((f) => !given.has(f));
     if (files.length) {
       if (!st.busy && !st.failed) void upload(files);
       return false;
     }
     if (st.failed) {
-      st.failed = false;
+      st.failed = null;
       client.refresh();
     }
     // e.g. an element of this page brought back by an undo with the first name of its file
@@ -209,7 +242,9 @@ export function install(client: Client): void {
     return true;
   };
 
-  // an upload that failed on the network is tried again once the page is online again
+  // an upload that failed on the network is tried again once the page is online again, or once its
+  // hello is answered, since a 404 may come while the page reads online
+  client.on('me', () => st.failed && st.network && retry(client));
   let was = client.connection;
   client.on('state', () => {
     const now = client.connection;

@@ -1,6 +1,6 @@
 // the Version History mode of a session, whose pane is drawn by theme/session.js: File > Version
 // History with its key, the chrome made inert, and the commands, pastes, and drops of the person
-// held while the mode is on, so that the deck changes only by the applies of the others
+// refused while the mode is on, so that the deck changes only by the applies of the others
 
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
@@ -11,14 +11,14 @@ let esc: (() => void) | null = null;
 
 // added when editor.js is evaluated, hence before the listeners of the installs, e.g. the keys of
 // commands.ts and the drop of media/drop.ts
-const hold = (ev: Event) => {
+const refuse = (ev: Event) => {
   if (!on || ev.target instanceof HTMLInputElement) return;
   ev.preventDefault();
   ev.stopImmediatePropagation();
 };
-for (const type of ['paste', 'cut', 'drop', 'dragover']) window.addEventListener(type, hold, true);
+for (const type of ['paste', 'cut', 'drop', 'dragover']) window.addEventListener(type, refuse, true);
 window.addEventListener('keydown', (ev) => {
-  if (!on || ev.key !== 'Escape' || !esc || document.querySelector('dialog[open], .beeson-session-menu')) return;
+  if (!on || ev.key !== 'Escape' || !esc || document.querySelector('dialog[open], .beeson-edit-menu')) return;
   ev.preventDefault();
   ev.stopImmediatePropagation();
   esc();

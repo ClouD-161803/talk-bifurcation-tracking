@@ -50,8 +50,9 @@ test('a page joins with the name typed in the dialog, and again without it', { t
   await page.waitFor(ONLINE);
   assert.deepEqual(await page.evaluate(`({ name: ${C}.name, host: ${C}.host, shown: !!document.querySelector('dialog.beeson-session-join[open]'), state: ${STATE} })`), { name: 'Ada Lovelace', host: true, shown: false, state: 'Saved to index.html' });
 
+  // the wait is for the new document, since the one before the reload is complete and online as well
   await page.evaluate('location.reload()');
-  await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+  await reloaded([page], [1]);
   assert.equal(await loads(page), 2);
   assert.equal(await page.evaluate(`${C}.name`), 'Ada Lovelace');
   assert.equal(await page.evaluate(`document.querySelector('dialog.beeson-session-join')`), null);
@@ -290,6 +291,23 @@ test('the save state is in view on a phone of 390 px and takes a tap, and the bu
     assert.ok(ended.length === 2 && !low(ended).length, `the buttons of the end dialog are ${ended.join(', ')} px high`);
   }
   clean(page);
+});
+
+test('the save state is written once in the title bar, in the title while it has room and otherwise in the button', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // the texts of the save state that are drawn, in the title and in the button
+  const drawn = `[...document.querySelectorAll('.beeson-edit-titlebar .doc .state, .beeson-session-state .name')].filter((el) => el.getClientRects().length).map((el) => [el.matches('.state') ? 'title' : 'button', el.textContent])`;
+  const wide = await open(browser, sessionUrl(server.edit), { width: 1440, height: 900 });
+  assert.deepEqual(await wide.evaluate(drawn), [['title', 'Saved to index.html']]);
+  // a title without room for the state leaves it out, as fit() of menubar.ts marks it. the texts
+  // are read in the same task, before fit() runs again
+  assert.deepEqual(await wide.evaluate(`(document.querySelector('.beeson-edit-titlebar .doc').classList.add('tight'), ${drawn})`), [['button', 'Saved to index.html']]);
+  const phone = await open(browser, sessionUrl(server.edit), { width: 390, height: 844, mobile: true, name: 'Ben' });
+  assert.deepEqual(await phone.evaluate(drawn), [['button', 'Saved to index.html']]);
+  clean(wide);
+  clean(phone);
 });
 
 test('a page that is hidden for good sends nothing after its bye, and stays out of the session', { timeout: 120_000 }, async (t) => {

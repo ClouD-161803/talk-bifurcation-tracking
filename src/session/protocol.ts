@@ -48,7 +48,8 @@ export type HelloRequest = { name: string; person?: string; token?: Token; v?: V
 export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise.
 // applied is the seq of the last operation of the client id was that the text holds, left out when
-// this client id is not known, e.g. after its operations left the table of the edit command
+// this client id is not known, e.g. after its operations left the table of the edit command. tex is
+// the number of changes of tex.js on disk since the start of the edit command
 export type HelloAnswer = {
   client: string;
   token: Token;
@@ -59,6 +60,7 @@ export type HelloAnswer = {
   v: Version;
   people: Person[];
   known: KnownPerson[];
+  tex: number;
   applied?: number;
 } & ({ ops: AppliedOp[]; text?: undefined } | { text: string; ops?: undefined });
 
@@ -92,12 +94,14 @@ export type WriteError = { message: string; unwritten: number };
 // restored is the latest restore, sent once to each page whose version since is before it, also to
 // a page that was dropped meanwhile. comments holds the threads changed since the last answer to
 // this page. a page reads the history and the comments again after each hello, since what changed
-// before is not sent to it
+// before is not sent to it. tex is as in HelloAnswer, and a page draws the deck again with tex.js
+// when it changed
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
   presence: Presence[];
   people: Person[];
+  tex: number;
   known?: KnownPerson[];
   writeError?: WriteError | null;
   ended?: Ended;
@@ -124,6 +128,7 @@ export type VersionInfo = {
   slides: number[];
   removed?: { slides: number[]; elements: number };
   restored?: string;
+  start?: true;
 };
 // GET history/<id>?token=
 export type VersionDetail = VersionInfo & { marks: Mark[] };
@@ -229,7 +234,7 @@ const JOINER = /^[\u200c\u200d]$/u;
 const shows = (c: string | undefined) => c !== undefined && !HIDDEN.test(c) && !/\s/.test(c);
 
 // the characters of raw that show, with the selectors and joiners that belong to them
-function shown(raw: string): string {
+export function shown(raw: string): string {
   const chars = Array.from(raw);
   const kept: string[] = [];
   chars.forEach((c, i) => {
@@ -240,6 +245,9 @@ function shown(raw: string): string {
   });
   return kept.join('');
 }
+
+// the error of a hello refused while the session holds as many pages as it takes
+export const FULL = 'the session is full';
 
 // a name as it is kept: without characters that do not show, trimmed, inner whitespace collapsed,
 // and cut to NAME_MAX characters. a name that is empty after this is refused

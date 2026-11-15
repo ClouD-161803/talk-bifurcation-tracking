@@ -103,9 +103,9 @@ async function openPane(page) {
   await page.waitFor(`!!document.querySelector('${PANE}:not([hidden])')`);
 }
 
-// a click on the item labeled label of the open menu of the client
+// a click on the item labeled label of the open menu
 async function menu(page, label) {
-  const item = `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === ${JSON.stringify(label)})`;
+  const item = `[...document.querySelectorAll('.beeson-edit-menu [role^="menuitem"]')].find((i) => (i.querySelector('.label') ?? i).textContent === ${JSON.stringify(label)})`;
   await page.waitFor(`!!${item}`);
   const at = await page.evaluate(`(() => { const r = ${item}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   await click(page, at);
@@ -265,7 +265,7 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   const thread = (anchor) => [{ anchor, texts: ['On the paragraph'] }];
 
   // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
-  await until(() => b.evaluate(`!document.querySelector('.reveal .slides > section:nth-child(2) > p').classList.contains('beeson-locked')`), 'the paragraph that Ann left to be free on the page of Ben');
+  await until(() => b.evaluate(`!document.querySelector('.reveal .slides > section:nth-child(2) > p').classList.contains('beeson-held')`), 'the paragraph that Ann left to be free on the page of Ben');
   await show(b, 'Two');
   await click(b, '.reveal section.present > p');
   await press(b, 'Escape');

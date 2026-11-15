@@ -2,17 +2,23 @@
 // test/editor-apply-fresh.test.mjs
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { editorPage } from './editor.mjs';
 import { front } from './apply.mjs';
 
-// a copy of the repository in a temporary folder, with the deck at text
+// a copy of the repository in a temporary folder, with the deck at text. the folders are linked.
+// tex.js and its sources are copied, since the fresh page of a Windows runner did not get a linked
+// tex.js
 export function freshDeck(t, text) {
   const dir = mkdtempSync(join(tmpdir(), 'beeson-fresh-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const name of readdirSync('.')) if (!name.endsWith('.html') && name !== 'node_modules' && name !== '.git') symlinkSync(resolve(name), join(dir, name));
+  for (const name of readdirSync('.')) {
+    if (name === 'node_modules' || name === '.git') continue;
+    if (statSync(name).isDirectory()) symlinkSync(resolve(name), join(dir, name));
+    else if (/\.(js|tex|bib)$/.test(name)) copyFileSync(name, join(dir, name));
+  }
   const file = join(dir, 'deck.html');
   writeFileSync(file, text);
   return file;
@@ -29,8 +35,10 @@ export function freshDeck(t, text) {
 // the places of the labels of a drawing, which are set when it is drawn, and the classes past,
 // present, and future, hidden, and aria-hidden of the slides of a stack that is not shown. they
 // also leave out the view of a backdrop fitted to its drawing, which the editor sets when it syncs
-// its backdrops, the data-latex of a formula, which MathJax writes with another spacing the first
-// time it loads a package, the text nodes of white space, an empty class, the way a style is
+// its backdrops, the number of a TikZ figure in its ids, which counts the figures of a page in the
+// order in which their outputs were loaded, the data-latex of a formula, which MathJax writes with
+// another spacing the first time it loads a package, the text nodes of white space, an empty class,
+// the way a style is
 // written, and the selection, the caret, and the focus, which are not part of the page that a text
 // opens
 export const PICTURE = `(() => {
@@ -51,6 +59,7 @@ export const PICTURE = `(() => {
       if (a.name === 'class') v = [...el.classList].filter((c) => !c.startsWith('hl-') && !(away && NAV.has(c))).join(' ');
       if (a.name === 'style') v = el.matches('.backdrop > .label, .surface > .label') ? '' : [...el.style].sort().map((p) => p + ': ' + el.style.getPropertyValue(p) + (el.style.getPropertyPriority(p) ? ' !important' : '')).join('; ');
       if ((a.name === 'class' || a.name === 'style') && !v) continue;
+      if (v.includes('tikz-')) v = v.replace(/(tikz-.+?-(?:dark|light)-)\\d+-/g, '$1');
       out.push(a.name + '=' + v);
     }
     return out.sort();
@@ -106,7 +115,7 @@ export async function looksFresh(t, browser, b, text, label = '') {
     const want = await c.evaluate(PICTURE);
     await front(b);
     const got = await b.evaluate(PICTURE);
-    if (got.join('\n') !== want.join('\n')) assert.fail(`${label}: the page differs from a fresh page ${difference(got, want)}`);
+    if (got.join('\n') !== want.join('\n')) assert.fail(`${label}: the page differs from a fresh page ${difference(got, want)}${c.errors.length ? `\nthe fresh page had the errors\n${c.errors.join('\n')}` : ''}`);
     assert.deepEqual(c.errors, [], `${label}: errors of a fresh page`);
   } finally {
     await c.close();
