@@ -13,7 +13,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
 import { press as key, type, typeKeys } from './helpers/editor.mjs';
 import { goOffline, tab } from './helpers/offline.mjs';
-import { post, until } from './helpers/session.mjs';
+import { post, raw, until } from './helpers/session.mjs';
 import { avatars, dialogButton, FITS, HIT, hold, item, menu, press, tap } from './helpers/share.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -472,4 +472,37 @@ test('add regression test: Leave Session reads Leaving… while it waits, is not
     'The deck stays open in this page, and your changes no longer reach the others. Your last changes did not reach the host.',
   ]);
   clean(host);
+});
+
+test('add regression test: a poll answer rebuilds the list of the Share dialog once, and the initials build no Intl.Segmenter each', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
+  const api = (route) => `${server.edit.base}.session/${route}`;
+  const cy = (await post(server.edit.port, api('hello'), { name: 'Cy Cole' })).json();
+  // Cy Cole polls once, since the edit command drops a page that never polls
+  await raw(server.edit.port, 'GET', `${api('events')}?token=${cy.token}&since=${cy.v}`);
+  await press(ann, '.beeson-session-share');
+  await ann.waitFor(`document.querySelector('${SHARE} h4')?.textContent === 'People in this session (2)'`);
+  await ann.evaluate(`(() => {
+    window.__answers = 0;
+    window.__lists = 0;
+    window.__segmenters = 0;
+    ${C}.on('people', () => window.__answers++);
+    new MutationObserver((records) => (window.__lists += records.length)).observe(document.querySelector('${SHARE} ul.people'), { childList: true });
+    const Segmenter = Intl.Segmenter;
+    if (Segmenter) Intl.Segmenter = new Proxy(Segmenter, { construct: (target, args, next) => (window.__segmenters++, Reflect.construct(target, args, next)) });
+  })()`);
+  for (let i = 0; i < 5; i++) {
+    const before = await ann.evaluate('window.__answers');
+    assert.equal((await post(server.edit.port, api('presence'), { token: cy.token, state: { n: i } })).status, 200);
+    await ann.waitFor(`window.__answers > ${before}`);
+  }
+  // a macrotask lets the observer take the last records
+  await ann.evaluate('new Promise((done) => setTimeout(done, 0))');
+  const { answers, lists, segmenters } = await ann.evaluate('({ answers: window.__answers, lists: window.__lists, segmenters: window.__segmenters })');
+  assert.ok(lists <= answers, `${lists} rebuilds of the list for ${answers} answers`);
+  assert.ok(segmenters <= 1, `${segmenters} Intl.Segmenter built for ${answers} answers`);
+  clean(ann);
 });
