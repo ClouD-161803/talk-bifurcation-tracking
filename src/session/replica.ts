@@ -6,7 +6,7 @@
 
 import type { AppliedOp, OpAnswer, OpRequest, Patch, Version } from './protocol.ts';
 import { formatVersion, parseVersion } from './protocol.ts';
-import { apply, checksum, diff, mergePatches, shift, valid } from './patch.ts';
+import { apply, checksum, diff, mergePatches, shift, valid, wellFormed } from './patch.ts';
 
 export type Side = 'ours' | 'theirs';
 
@@ -54,9 +54,12 @@ export class Replica {
     return this.flight !== null;
   }
 
-  // the text that the deck reads as after a change of the deck in this browser
-  edit(text: string): void {
-    this.mine = text;
+  // the text that the deck reads as after a change of the deck in this browser. returns the text
+  // with each lone surrogate replaced by U+FFFD, which the deck must then read as, or null when
+  // text is taken as it is
+  edit(text: string): string | null {
+    this.mine = wellFormed(text);
+    return this.mine === text ? null : this.mine;
   }
 
   // the operation to send now, or null when one is in flight, a resync is needed, or base is mine

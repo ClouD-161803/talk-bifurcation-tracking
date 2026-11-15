@@ -17,6 +17,24 @@ const isLow = (c: number) => c >= 0xdc00 && c <= 0xdfff;
 const splitsPair = (text: string, i: number) => i > 0 && i < text.length && isHigh(text.charCodeAt(i - 1)) && isLow(text.charCodeAt(i));
 const LONE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
+// text with each lone surrogate replaced by U+FFFD, since an operation must not carry one
+export function wellFormed(text: string): string {
+  const native = (text as { isWellFormed?: () => boolean }).isWellFormed;
+  if (native ? native.call(text) : !LONE.test(text)) return text;
+  const parts: string[] = [];
+  let at = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (isHigh(c) && i + 1 < text.length && isLow(text.charCodeAt(i + 1))) i++;
+    else if (isHigh(c) || isLow(c)) {
+      parts.push(text.slice(at, i), '�');
+      at = i + 1;
+    }
+  }
+  parts.push(text.slice(at));
+  return parts.join('');
+}
+
 // the most patches of an operation. diff() does not give more, since changes() gives up beyond
 // 2000 changed lines
 export const MAX_PATCHES = 2000;
