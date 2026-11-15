@@ -3597,16 +3597,19 @@
     syncParts(el);
   }
   var pending = Promise.resolve();
+  var latest = "dark";
   function mountFigures(root2, mode2) {
+    latest = mode2;
     const done = Promise.all(figuresUnder(root2).map(async (el) => {
       await load2(el.dataset.figure ?? "");
-      draw2(el, mode2);
+      draw2(el, latest);
     })).then(() => void 0);
     pending = Promise.all([pending, done]).then(() => void 0);
     return done;
   }
   var figuresReady = () => pending;
   function redrawFigures(mode2) {
+    latest = mode2;
     for (const el of figuresUnder(document)) if (drawn.has(el)) draw2(el, mode2);
   }
 

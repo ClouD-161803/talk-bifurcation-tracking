@@ -105,6 +105,9 @@ function draw(el: HTMLElement, mode: Mode): void {
 
 // every draw started by mountFigures, which a settled deck waits for
 let pending: Promise<void> = Promise.resolve();
+// the mode of the last call of mountFigures or redrawFigures. a figure is drawn in it once its
+// output is loaded, since redrawFigures skips a figure that is not drawn yet
+let latest: Mode = 'dark';
 
 /**
  * Draws each TikZ figure of root, and root itself if it is one, in the mode of the deck, once its
@@ -112,9 +115,10 @@ let pending: Promise<void> = Promise.resolve();
  * every figure is drawn.
  */
 export function mountFigures(root: ParentNode, mode: Mode): Promise<void> {
+  latest = mode;
   const done = Promise.all(figuresUnder(root).map(async (el) => {
     await load(el.dataset.figure ?? '');
-    draw(el, mode);
+    draw(el, latest);
   })).then(() => undefined);
   pending = Promise.all([pending, done]).then(() => undefined);
   return done;
@@ -125,5 +129,6 @@ export const figuresReady = (): Promise<void> => pending;
 
 /** Draws every TikZ figure of the page again in mode, after a flip of the mode. */
 export function redrawFigures(mode: Mode): void {
+  latest = mode;
   for (const el of figuresUnder(document)) if (drawn.has(el)) draw(el, mode);
 }
