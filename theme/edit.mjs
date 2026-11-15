@@ -1665,6 +1665,8 @@ var History = class {
     this.bytes = 0;
     // true when the file may not hold every line, after a write that failed
     this.broken = false;
+    // the lines of a name in the file, which is written anew once they are many more than the versions
+    this.names = 0;
     this.stopped = false;
     this.asides = [];
     // the last restore, with the n of the version of the authority that it made
@@ -1752,6 +1754,7 @@ var History = class {
       if (name) v.name = name;
       else delete v.name;
       this.append({ kind: "name", id: v.id, name });
+      if (++this.names > this.versions.length + 1e3) this.writeAll();
       this.changed();
     }
     return info(v);
@@ -1875,7 +1878,10 @@ var History = class {
     this.checkpoint(this.versions.length - 1, text);
     const { name, ...line } = v;
     this.append({ kind: "version", ...line });
-    if (name) this.append({ kind: "name", id: v.id, name });
+    if (name) {
+      this.append({ kind: "name", id: v.id, name });
+      this.names++;
+    }
     if (this.bytes > this.maxBytes) this.compact();
     this.changed();
   }
@@ -1932,7 +1938,8 @@ var History = class {
       const { name, ...line } = v;
       lines.push(JSON.stringify({ kind: "version", ...line }));
     }
-    for (const v of this.versions) if (v.name) lines.push(JSON.stringify({ kind: "name", id: v.id, name: v.name }));
+    const named = this.versions.filter((v) => v.name);
+    for (const v of named) lines.push(JSON.stringify({ kind: "name", id: v.id, name: v.name }));
     const data = `${lines.join("\n")}
 `;
     const tmp = join2(this.dir, `.history.jsonl.${randomBytes3(6).toString("hex")}.tmp`);
@@ -1940,6 +1947,7 @@ var History = class {
       writeFileSync2(tmp, data);
       renameRetriedSync(tmp, this.file);
       this.bytes = Buffer.byteLength(data);
+      this.names = named.length;
       this.broken = false;
     } catch (e) {
       this.log(`could not write ${this.file}: ${e.message}`);
@@ -1999,7 +2007,10 @@ var History = class {
         text = apply(text, record.v.patches);
         this.versions.push(record.v);
         this.checkpoint(this.versions.length - 1, text);
-      } else names.set(record.id, record.name);
+      } else {
+        names.set(record.id, record.name);
+        this.names++;
+      }
       good += lines[i].length + 1;
     }
     if (good > content.length) appendFileSync(this.file, "\n");

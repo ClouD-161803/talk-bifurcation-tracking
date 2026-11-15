@@ -267,6 +267,8 @@ export class History {
   private bytes = 0;
   // true when the file may not hold every line, after a write that failed
   private broken = false;
+  // the lines of a name in the file, which is written anew once they are many more than the versions
+  private names = 0;
   private stopped = false;
   private asides: AsideInfo[] = [];
   // the last restore, with the n of the version of the authority that it made
@@ -360,6 +362,7 @@ export class History {
       if (name) v.name = name;
       else delete v.name;
       this.append({ kind: 'name', id: v.id, name });
+      if (++this.names > this.versions.length + 1000) this.writeAll();
       this.changed();
     }
     return info(v);
@@ -495,7 +498,10 @@ export class History {
     this.checkpoint(this.versions.length - 1, text);
     const { name, ...line } = v;
     this.append({ kind: 'version', ...line });
-    if (name) this.append({ kind: 'name', id: v.id, name });
+    if (name) {
+      this.append({ kind: 'name', id: v.id, name });
+      this.names++;
+    }
     if (this.bytes > this.maxBytes) this.compact();
     this.changed();
   }
@@ -557,13 +563,15 @@ export class History {
       const { name, ...line } = v;
       lines.push(JSON.stringify({ kind: 'version', ...line }));
     }
-    for (const v of this.versions) if (v.name) lines.push(JSON.stringify({ kind: 'name', id: v.id, name: v.name }));
+    const named = this.versions.filter((v) => v.name);
+    for (const v of named) lines.push(JSON.stringify({ kind: 'name', id: v.id, name: v.name }));
     const data = `${lines.join('\n')}\n`;
     const tmp = join(this.dir, `.history.jsonl.${randomBytes(6).toString('hex')}.tmp`);
     try {
       writeFileSync(tmp, data);
       renameRetriedSync(tmp, this.file);
       this.bytes = Buffer.byteLength(data);
+      this.names = named.length;
       this.broken = false;
     } catch (e) {
       this.log(`could not write ${this.file}: ${(e as Error).message}`);
@@ -626,7 +634,10 @@ export class History {
         text = apply(text, record.v.patches);
         this.versions.push(record.v);
         this.checkpoint(this.versions.length - 1, text);
-      } else names.set(record.id, record.name);
+      } else {
+        names.set(record.id, record.name);
+        this.names++;
+      }
       good += lines[i].length + 1;
     }
     if (good > content.length) appendFileSync(this.file, '\n');
