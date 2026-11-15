@@ -257,7 +257,9 @@ export function install(app: App): void {
     if (!pairing) return plain(app.note?.text ?? 'Loading', app.note?.warn ?? false);
     if (!pairing.texts.length) return plain('This file is not the deck on the page', true);
     const problems = pairing.problems;
-    const parts = [app.dirty ? 'Unsaved changes' : app.note?.text ?? 'No unsaved changes'];
+    // in a session, the edits are not saved to a file, and its status takes the place of the save
+    const first = app.session ? app.session.status : app.dirty ? 'Unsaved changes' : app.note?.text ?? 'No unsaved changes';
+    const parts = first ? [first] : [];
     // a warning, e.g. an error of a save or of a draft, is shown with unsaved changes too
     if (app.dirty && app.note?.warn) parts.push(app.note.text);
     if (problems.length) parts.push(`${plural(problems.length, 'text')} cannot be edited`);
@@ -499,6 +501,7 @@ export function install(app: App): void {
   // from a server. the saved text is then paired again, so that the next save starts from it. a
   // save asked for while one is in flight is run after it
   async function save(): Promise<void> {
+    if (app.session) return app.session.save();
     if (saving) {
       again = true;
       return;
@@ -563,6 +566,7 @@ export function install(app: App): void {
   // the deck is written into a file chosen with the picker, and where there is no picker a save is
   // a download anyway
   async function saveAs(): Promise<void> {
+    if (app.session) return app.session.save();
     if (!app.source || !app.pairing) {
       app.note = { text: 'Choose the file of this deck first', warn: true };
       app.report();
@@ -597,7 +601,7 @@ export function install(app: App): void {
 
   function scheduleAutosave(): void {
     window.clearTimeout(autosaveTimer);
-    if (!app.autosave || !app.handle) return;
+    if (!app.autosave || !app.handle || app.session) return;
     autosaveTimer = window.setTimeout(() => {
       if (app.dirty && !saving) void save().catch((e) => app.fail(e));
     }, AUTOSAVE_DELAY);
@@ -650,7 +654,7 @@ export function install(app: App): void {
   app.autosave = canWrite() && stored(AUTOSAVE_KEY) === '1';
 
   app.listen('report', () => {
-    if (app.state !== 'waiting') {
+    if (app.state !== 'waiting' || app.session) {
       fileDialog.close(null);
       return;
     }
@@ -679,7 +683,7 @@ export function install(app: App): void {
     if (app.dirty) cleanIfSaved();
   });
   app.listen('dirty', scheduleAutosave);
-  window.addEventListener('beforeunload', (ev) => { if (app.dirty) ev.preventDefault(); });
+  window.addEventListener('beforeunload', (ev) => { if (app.dirty && !app.session) ev.preventDefault(); });
 }
 
 // the slide shown is kept in the hash through a reload, which reveal.js does not keep up to date

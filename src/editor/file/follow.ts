@@ -140,7 +140,7 @@ export function install(app: App): void {
   async function mergeInto(target: FileSystemFileHandle): Promise<'same' | 'other' | 'merged' | 'cancelled'> {
     const base = app.source;
     const pairing = app.pairing;
-    if (!base || !pairing) return 'same';
+    if (!base || !pairing || app.session) return 'same';
     let read: string | null;
     try {
       read = await readText(target);
@@ -193,7 +193,7 @@ export function install(app: App): void {
   // a change without unsaved edits, and without an open dialog, loads the page again. a change with
   // unsaved edits is named in the state and marked in the navigator until a save
   async function watch(): Promise<void> {
-    if (busy || diskText === null || app.state !== 'loaded' || saving || document.hidden) return;
+    if (busy || diskText === null || app.state !== 'loaded' || saving || document.hidden || app.session) return;
     busy = true;
     try {
       const at = saves;

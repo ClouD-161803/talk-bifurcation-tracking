@@ -68,6 +68,7 @@ export function install(app: App): void {
 
   // a draft that differs from the file that was opened is offered on the dialog
   function offer(): void {
+    if (app.session) return;
     const draft = readDraft();
     if (!draft || !app.source || draft.text === app.source.text) {
       if (draft) drop();
@@ -113,6 +114,7 @@ export function install(app: App): void {
   const drafts: Drafts = {
     keepSoon: () => {
       window.clearTimeout(draftTimer);
+      if (app.session) return;
       draftTimer = window.setTimeout(keepDraft, DRAFT_DELAY);
     },
     drop,
