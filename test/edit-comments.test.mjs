@@ -5,6 +5,7 @@
 // aside when it cannot be read, and the requests of a session
 
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import fs, { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -626,4 +627,32 @@ test('the comments are kept over a restart, and follow a change of index.html ma
   assert.deepEqual(comments.map((c) => c.text), ['Look']);
   reads(now.text, comments[0].anchor, '<p>Second slide</p>');
   reads(now.text, comments[0].slide, '<section>\n  <h2>Two');
+});
+
+test('a thread or a reply sent again with the id that its page made is made once', { timeout: 120_000 }, async (t) => {
+  const s = await session(t);
+  const ann = await s.hello('Ann');
+  const bo = await s.hello('Bo');
+  const { text, base } = await s.deck();
+  const id = randomUUID();
+  const body = { id, base, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'Look' };
+  const first = (await s.call('comments', ann, body)).json();
+  assert.equal(first.id, id);
+  const { v } = await s.get(bo);
+  const again = await s.call('comments', ann, body);
+  assert.equal(again.status, 200);
+  assert.deepEqual(again.json(), first);
+  assert.deepEqual((await s.get(bo)).comments.map((c) => c.id), [id]);
+  assert.equal((await s.get(bo)).v, v, 'a request sent again changes nothing');
+  assert.equal((await s.call('comments', bo, body)).status, 409, 'the id of the thread of another person');
+  assert.equal((await s.call('comments', ann, { ...body, id: 'x'.repeat(36) })).status, 400);
+  assert.equal((await s.call('comments', ann, { ...body, id: 7 })).status, 400);
+  const reply = randomUUID();
+  const replied = (await s.call(`comments/${id}/reply`, bo, { id: reply, text: 'Seen' })).json();
+  assert.deepEqual(replied.replies.map((r) => r.id), [reply]);
+  assert.deepEqual((await s.call(`comments/${id}/reply`, bo, { id: reply, text: 'Seen' })).json(), replied);
+  assert.equal((await s.call(`comments/${id}/reply`, ann, { id: reply, text: 'Seen' })).status, 409, 'the id of the reply of another person');
+  assert.equal((await s.call(`comments/${id}/reply`, bo, { id: 'x', text: 'Seen' })).status, 400);
+  // a page that does not send an id is given one
+  assert.match((await s.call('comments', ann, { ...body, id: undefined })).json().id, /^[A-Za-z0-9_-]+$/);
 });
