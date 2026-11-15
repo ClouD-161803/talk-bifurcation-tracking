@@ -2263,6 +2263,7 @@ var MENTIONS_MAX = 50;
 var LOG_MAX = 4e3;
 var isCommentId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
 var newId = () => randomBytes3(9).toString("base64url");
+var isPageId = (id) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id);
 var fail = (status, error2) => ({ status, error: error2 });
 var isFailure = (x) => !!x && typeof x.error === "string" && typeof x.status === "number";
 var isNumber = (x) => typeof x === "number" && Number.isFinite(x);
@@ -2372,6 +2373,9 @@ var Comments = class {
   }
   // a new thread of person. anchor and slide are of the text at version base
   add(person, body) {
+    if (body.id !== void 0 && !isPageId(body.id)) return fail(400, "id must be made by crypto.randomUUID()");
+    const held = body.id === void 0 ? void 0 : this.threads.get(body.id);
+    if (held) return held.author === person ? held : fail(409, "the id is taken");
     const text = cleanText(body.text);
     if (isFailure(text)) return text;
     const mentions = cleanMentions(body.mentions);
@@ -2384,7 +2388,7 @@ var Comments = class {
     const at = this.anchorsAt(n, body.anchor, body.slide);
     if (isFailure(at)) return at;
     const item = this.toCurrent(n, at);
-    const thread = { id: newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
+    const thread = { id: body.id ?? newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
     if (item.removed) thread.removed = { text: item.removed.text && copy(item.removed.text) };
     if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
     const head = headBytes(thread);
@@ -2398,13 +2402,16 @@ var Comments = class {
   reply(id, person, body) {
     const thread = this.threads.get(id);
     if (!thread) return fail(404, "there is no such thread");
+    if (body.id !== void 0 && !isPageId(body.id)) return fail(400, "id must be made by crypto.randomUUID()");
+    const held = body.id === void 0 ? void 0 : thread.replies.find((r) => r.id === body.id);
+    if (held) return held.author === person ? thread : fail(409, "the id is taken");
     const text = cleanText(body.text);
     if (isFailure(text)) return text;
     const mentions = cleanMentions(body.mentions);
     if (isFailure(mentions)) return mentions;
     if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
     if (this.locked) return readOnly();
-    const reply = { id: newId(), author: person, time: this.now(), text };
+    const reply = { id: body.id ?? newId(), author: person, time: this.now(), text };
     const size2 = replyBytes(reply);
     if (this.bytes + size2 > this.maxBytes) return tooLarge();
     thread.replies.push(reply);

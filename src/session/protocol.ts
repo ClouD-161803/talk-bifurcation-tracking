@@ -181,10 +181,11 @@ export type CommentsAnswer = { v: number; at: Version; comments: Comment[]; seen
 export type CommentsEvent = { v: number; changed: Comment[]; removed: string[] } | { v: number; changed: null; removed: null };
 // POST comments. anchor and slide are of the text at version base, an anchor without a slide is
 // on an element outside the slides, a slide without an anchor is a comment on the slide, and
-// neither is a comment on the deck. the answer is the thread
-export type CommentRequest = { token: Token; anchor: TagRange | null; slide: TagRange | null; base: Version; text: string; mentions?: string[] };
+// neither is a comment on the deck. the answer is the thread. id is made by crypto.randomUUID(),
+// and a request sent again with it is answered with the thread as it is
+export type CommentRequest = { token: Token; anchor: TagRange | null; slide: TagRange | null; base: Version; text: string; mentions?: string[]; id?: string };
 // POST comments/<id>/reply
-export type ReplyRequest = { token: Token; text: string; mentions?: string[] };
+export type ReplyRequest = { token: Token; text: string; mentions?: string[]; id?: string };
 // POST comments/<id>/edit and comments/<id>/delete, of the reply of id reply when it is given, and
 // of the thread otherwise, only by its author. the answer of a delete of a thread is empty
 export type CommentEditRequest = { token: Token; text: string; mentions?: string[]; reply?: string };

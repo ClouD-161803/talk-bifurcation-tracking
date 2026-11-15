@@ -45,6 +45,8 @@ const LOG_MAX = 4000;
 
 export const isCommentId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
 const newId = () => randomBytes(9).toString('base64url');
+// an id that a page made with crypto.randomUUID(), sent again with a request whose answer was lost
+const isPageId = (id: unknown): id is string => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id);
 const fail = (status: number, error: string): Failure => ({ status, error });
 export const isFailure = (x: unknown): x is Failure => !!x && typeof (x as Failure).error === 'string' && typeof (x as Failure).status === 'number';
 const isNumber = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
@@ -179,6 +181,9 @@ export class Comments {
 
   // a new thread of person. anchor and slide are of the text at version base
   add(person: string, body: Record<string, unknown>): Comment | Failure {
+    if (body.id !== undefined && !isPageId(body.id)) return fail(400, 'id must be made by crypto.randomUUID()');
+    const held = body.id === undefined ? undefined : this.threads.get(body.id);
+    if (held) return held.author === person ? held : fail(409, 'the id is taken');
     const text = cleanText(body.text);
     if (isFailure(text)) return text;
     const mentions = cleanMentions(body.mentions);
@@ -191,7 +196,7 @@ export class Comments {
     const at = this.anchorsAt(n, body.anchor, body.slide);
     if (isFailure(at)) return at;
     const item = this.toCurrent(n, at);
-    const thread: Comment = { id: newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
+    const thread: Comment = { id: (body.id as string | undefined) ?? newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
     if (item.removed) thread.removed = { text: item.removed.text && copy(item.removed.text) };
     if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
     const head = headBytes(thread);
@@ -206,13 +211,16 @@ export class Comments {
   reply(id: string, person: string, body: Record<string, unknown>): Comment | Failure {
     const thread = this.threads.get(id);
     if (!thread) return fail(404, 'there is no such thread');
+    if (body.id !== undefined && !isPageId(body.id)) return fail(400, 'id must be made by crypto.randomUUID()');
+    const held = body.id === undefined ? undefined : thread.replies.find((r) => r.id === body.id);
+    if (held) return held.author === person ? thread : fail(409, 'the id is taken');
     const text = cleanText(body.text);
     if (isFailure(text)) return text;
     const mentions = cleanMentions(body.mentions);
     if (isFailure(mentions)) return mentions;
     if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
     if (this.locked) return readOnly();
-    const reply: CommentReply = { id: newId(), author: person, time: this.now(), text };
+    const reply: CommentReply = { id: (body.id as string | undefined) ?? newId(), author: person, time: this.now(), text };
     const size = replyBytes(reply);
     if (this.bytes + size > this.maxBytes) return tooLarge();
     thread.replies.push(reply);
