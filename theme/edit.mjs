@@ -2137,9 +2137,12 @@ var Comments = class {
   // anchors of the text at version n moved to the current text
   toCurrent(n, item) {
     let text = this.authority.textAt(n);
+    let slides = null;
     for (const op of this.authority.since(formatVersion(this.authority.epoch, n)) ?? []) {
       const after = apply(text, op.patches);
-      item = moveAnchors(text, op.patches, after, [item]).items[0];
+      const r = moveAnchors(text, op.patches, after, [item], slides);
+      item = r.items[0];
+      slides = r.slides;
       text = after;
     }
     return item;
