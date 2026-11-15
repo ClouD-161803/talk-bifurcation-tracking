@@ -133,6 +133,41 @@ test('a citation deleted on one page is taken out of tex.js, and the others are 
   clean(ben, MISSING);
 });
 
+test('a macro added to preamble.tex on disk is written into tex.js, and is drawn on a page of the host and on a page of a guest through the relay', { timeout: 240_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const server = await texTalk(t);
+  const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: relay.url, secret: SECRET });
+  assert.equal(shared.status, 200, shared.text);
+  const [host, guest] = await pages(t, server, [sessionUrl(server.edit), shared.json().link]);
+  assert.equal(await host.evaluate('window.BeesonSession.client().host'), true);
+  assert.equal(await guest.evaluate('window.BeesonSession.client().host'), false);
+  await onEvery([host, guest], RED);
+  server.write('preamble.tex', `${server.read('preamble.tex')}\\newcommand{\\Q}{\\mathbb{Q}}\n`);
+  await until(() => server.read('tex.js').includes('"Q"'), 'the macro Q in tex.js');
+  assert.equal(server.read('tex.js'), deckTex(server.file).text, 'tex.js is the one of npm run tex');
+  await onEvery([host, guest], `!${RED}`);
+  assert.equal(await guest.evaluate('window.beesonTex.macros.Q'), '\\mathbb{Q}');
+  clean(host, MISSING);
+  clean(guest, MISSING);
+});
+
+test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 180_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  await onEvery([ann, ben], `${RED} && ${HEAD} === 'conjecture.'`);
+  const tex = server.read('tex.js');
+  const changed = tex
+    .replace('  "macros": {\n', '  "macros": {\n    "Q": "\\\\mathbb{Q}",\n')
+    .replace('  "theorems": {\n', '  "theorems": {\n    "conjecture": {"title":"Conjecture","style":"plain","counter":"theorem"},\n');
+  assert.notEqual(changed, tex);
+  server.write('tex.js', changed);
+  await onEvery([ann, ben], `!${RED} && ${HEAD} === 'Conjecture 2.'`);
+  assert.equal(server.read('tex.js'), changed, 'the edit command writes over a tex.js changed from outside');
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
 test('a start of the edit command and a join of two pages do not write any file of the talk folder', { timeout: 180_000 }, async (t) => {
   // a tex.js that the sources would not give, which a derivation at the start would write again
   const server = await texTalk(t, { change: (name, text) => (name === 'tex.js' ? text.replace('    "half": "\\\\frac{1}{2}",\n', '') : text) });
