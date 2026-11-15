@@ -8,6 +8,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { get } from 'node:http';
+import { connect } from 'node:net';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { startRelay } from '../scripts/relay.mjs';
@@ -171,4 +172,51 @@ test('add regression test: the relay does not forward Service-Worker-Allowed or 
   const names = (await answered).map(([k]) => k);
   assert.ok(names.includes('x-session-version'));
   for (const name of ['service-worker-allowed', 'set-cookie', 'clear-site-data']) assert.ok(!names.includes(name), name);
+});
+
+test('add regression test: the relay holds the bodies of slow uploads and slow readers within its memory cap', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 24 * 1024 * 1024, bodyBytes: 16 * 1024 * 1024 });
+  t.after(() => relay.close());
+  const key = 'm'.repeat(22);
+  const auth = { authorization: `Bearer ${SECRET}` };
+  const { token } = await (await fetch(`${relay.url}/host/${key}`, { method: 'POST', headers: auth })).json();
+  const host = { ...auth, 'x-relay-token': token };
+  const sockets = [];
+  t.after(() => sockets.forEach((s) => s.destroy()));
+  // a socket that sends head and then the given chunks, and keeps what comes back
+  const open = (head, ...chunks) => {
+    const socket = connect(relay.port, '127.0.0.1');
+    sockets.push(socket);
+    socket.got = '';
+    socket.on('data', (d) => (socket.got += d.toString('latin1')));
+    socket.on('error', () => {});
+    socket.write(head);
+    for (const c of chunks) socket.write(c);
+    return socket;
+  };
+  const chunk = (n) => `${n.toString(16)}\r\n${'x'.repeat(n)}\r\n`;
+  const MB = 1024 * 1024;
+
+  await t.test('a chunked upload counts against the cap while it is read', async () => {
+    const head = `PUT /${key}/media/a.png HTTP/1.1\r\nHost: relay\r\nTransfer-Encoding: chunked\r\n\r\n`;
+    const first = open(head, chunk(13 * MB));
+    await until(() => relay.held() >= 13 * MB, 'the relay to count the body that it reads');
+    const second = open(head, chunk(13 * MB));
+    await until(() => second.got.startsWith('HTTP/1.1 503'), 'the second upload to be refused');
+    first.destroy();
+    await until(() => relay.held() === 0, 'the place of the closed upload to be given back');
+  });
+
+  await t.test('an answer is counted until the guest has read it', async () => {
+    const guest = open(`GET /${key}/big.mp4 HTTP/1.1\r\nHost: relay\r\n\r\n`);
+    guest.pause();
+    const [item] = await (await fetch(`${relay.url}/host/${key}/pull`, { method: 'POST', headers: host })).json();
+    const push = await fetch(`${relay.url}/host/${key}/push/${item.id}`, { method: 'POST', headers: { ...host, 'x-relay-status': '200', 'x-relay-headers': '{}' }, body: Buffer.alloc(15 * MB) });
+    assert.equal(push.status, 204);
+    assert.ok(relay.held() >= 15 * MB, `the relay holds ${relay.held()} bytes for a guest that does not read`);
+    const other = await fetch(`${relay.url}/${key}/media/b.png`, { method: 'PUT', body: Buffer.alloc(10 * MB) });
+    assert.equal(other.status, 503);
+    guest.destroy();
+    await until(() => relay.held() === 0, 'the answer to be given back at the close');
+  });
 });

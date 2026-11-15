@@ -280,6 +280,8 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     port: address.port,
     url: `http://${address.family === 'IPv6' ? `[${address.address}]` : address.address}:${address.port}`,
     sessions: () => sessions.size,
+    // the bytes of bodies held at once, against memoryBytes
+    held: () => held,
     // the requests of guests that an edit command pulled and has not answered yet
     pulled: () => [...sessions.values()].reduce((n, s) => n + s.pending.size - s.queue.length, 0),
     close: () =>
