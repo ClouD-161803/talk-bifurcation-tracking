@@ -373,6 +373,8 @@ export class Comments {
   // nothing new when the request is sent again after its answer was lost
   private async once<T>(key: string, on: unknown[], send: (id: string) => Promise<T>): Promise<T> {
     let kept = this.unsent.get(key);
+    // randomUUID needs a secure context, which a page of a session has: the edit command is at
+    // 127.0.0.1, and relayAddress() takes only https or a loopback address
     if (!kept || kept.on.some((x, i) => x !== on[i])) this.unsent.set(key, (kept = { id: crypto.randomUUID(), on }));
     try {
       const answer = await send(kept.id);
