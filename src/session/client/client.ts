@@ -505,6 +505,7 @@ export class Client {
       this.end(answer.ended);
       return;
     }
+    if (answer.writeError !== undefined) this.setWarning(answer.writeError ? `The deck cannot be written on the host's machine: ${answer.writeError.message}` : null);
     this.people = answer.people;
     this.presence = answer.presence;
     this.emit('people');

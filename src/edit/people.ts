@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import type { Authority } from '../session/authority.ts';
-import { cleanPersonName, COLORS, isPersonId, isToken, nameKey, type Ended, type EventsAnswer, type KnownPerson, type Person, type Presence } from '../session/protocol.ts';
+import { cleanPersonName, COLORS, isPersonId, isToken, nameKey, type Ended, type EventsAnswer, type KnownPerson, type Person, type Presence, type WriteError } from '../session/protocol.ts';
 import { renameRetried, renameRetriedSync } from './disk.ts';
 
 const HOLD = 25_000;
@@ -29,7 +29,7 @@ export const MAX_STATE = 8 * 1024;
 // a person of people.json, with the times of the first and the last join in ms
 export type PersonRecord = KnownPerson & { first: number; last: number };
 
-type Member = Person & { state: unknown; lastSeen: number; joined: number; polled: boolean; seen: number; knownSeen: number; lastAnswer: number; polls: number };
+type Member = Person & { state: unknown; lastSeen: number; joined: number; polled: boolean; seen: number; knownSeen: number; writeSeen: number; lastAnswer: number; polls: number };
 
 type Poll = {
   client: string;
@@ -72,6 +72,9 @@ export class People {
   private polls = new Set<Poll>();
   private rev = 0;
   private knownRev = 0;
+  // the write of index.html that failed last, or null once a write succeeded, and its revision
+  private writeError: WriteError | null = null;
+  private writeRev = 0;
   private sweeper: ReturnType<typeof setInterval>;
   private ended: Ended | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -148,7 +151,7 @@ export class People {
       }
     }
     let member = this.members.get(id);
-    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev };
+    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0 };
     if (member) Object.assign(member, fields);
     else this.members.set(id, (member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 }));
     this.renamed(person);
@@ -218,6 +221,15 @@ export class People {
       member.polled = true;
       if (this.ended || this.hasNews(poll)) this.soon(poll);
     });
+  }
+
+  // a write of index.html that failed, or null at the first write that succeeds after it, told to
+  // every page when it changed
+  writeFailed(error: WriteError | null): void {
+    if (JSON.stringify(error) === JSON.stringify(this.writeError)) return;
+    this.writeError = error && { message: error.message, unwritten: error.unwritten };
+    this.writeRev++;
+    this.changed();
   }
 
   // the waiting polls answered with ended, at a stop of the edit command, and people.json written
@@ -291,7 +303,7 @@ export class People {
     if (!member && known && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
       const { person, name, color } = record;
       const now = Date.now();
-      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, lastAnswer: 0, polls: 0 };
+      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, writeSeen: 0, lastAnswer: 0, polls: 0 };
       this.members.set(client, member);
       this.changed();
     }
@@ -333,6 +345,7 @@ export class People {
     const presence: Presence[] = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
     const answer: EventsAnswer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list() };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
+    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
     return answer;
   }
 
@@ -345,6 +358,7 @@ export class People {
     if (member) {
       member.seen = this.rev;
       member.knownSeen = this.knownRev;
+      member.writeSeen = this.writeRev;
       member.lastAnswer = Date.now();
       member.lastSeen = Date.now();
       member.polls--;

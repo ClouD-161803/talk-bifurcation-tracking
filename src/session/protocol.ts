@@ -77,15 +77,20 @@ export type OpAnswer = { ok: true; v: Version } | { ok: false; reason: RefusalRe
 // the name of the host, or null when it is not known
 export type Ended = { by: string | null };
 
+// a write of index.html that failed, with the number of operations that are not in the file
+export type WriteError = { message: string; unwritten: number };
+
 // GET events?token=&since=. ops is null when since is of another epoch or older than the log,
 // and the browser then says hello again. known is sent only when it changed since the last answer
-// to this page. after ended, every poll of the page is answered with ended until it says hello
+// to this page, and so is writeError, which is null once a write succeeded after a failed one.
+// after ended, every poll of the page is answered with ended until it says hello
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
   presence: Presence[];
   people: Person[];
   known?: KnownPerson[];
+  writeError?: WriteError | null;
   ended?: Ended;
 };
 

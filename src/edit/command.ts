@@ -135,7 +135,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
   const authority = new Authority(text);
-  const disk = new Disk(index, authority, bom, { log });
+  // the pages are told of a write that fails, since an operation is acknowledged before it is written
+  const disk = new Disk(index, authority, bom, { log, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
   let port = 0;
   let relay: RelayLink | null = null;
