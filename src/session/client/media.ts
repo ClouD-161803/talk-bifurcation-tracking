@@ -182,7 +182,8 @@ export function install(client: Client): void {
       }
     } catch (e) {
       st.failed = true;
-      st.network = !(e instanceof Failure) || e.retried;
+      // a token that the edit command does not know, e.g. after its restart, is known after the hello
+      st.network = !(e instanceof Failure) || e.retried || e.status === 404;
     } finally {
       st.busy = false;
     }
@@ -209,7 +210,9 @@ export function install(client: Client): void {
     return true;
   };
 
-  // an upload that failed on the network is tried again once the page is online again
+  // an upload that failed on the network is tried again once the page is online again, or once its
+  // hello is answered, since a 404 may come while the page reads online
+  client.on('me', () => st.failed && st.network && retry(client));
   let was = client.connection;
   client.on('state', () => {
     const now = client.connection;
