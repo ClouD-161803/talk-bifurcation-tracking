@@ -12,7 +12,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statS
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
-import { apply, diff, shiftOffset } from '../session/patch.ts';
+import { apply, copy, diff, shiftOffset } from '../session/patch.ts';
 import { VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, renameRetriedSync } from './disk.ts';
@@ -120,6 +120,9 @@ function clip(marks: Mark[], patches: Patch[], author: string): Mark[] {
   }
   return tidy(out);
 }
+
+// patches whose texts are copied, since a slice of a text keeps the whole text in memory
+const copied = (patches: Patch[]): Patch[] => patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
 
 // the patches of a version, sorted, in bounds, and without overlap. valid() of patch.ts is not
 // used, since it caps the patches of one operation and a version may hold more
@@ -231,7 +234,7 @@ export class History {
       this.lastText = text;
       this.writeAll();
     } else {
-      this.found = { before: this.lastText, patches: diff(this.lastText, text) };
+      this.found = { before: this.lastText, patches: copied(diff(this.lastText, text)) };
       if (this.found.patches.length) {
         const patches = this.found.patches;
         this.push(this.version([AUTHOR], patches, clip([], patches, AUTHOR), text), text);
@@ -342,7 +345,7 @@ export class History {
     this.open = null;
     const text = this.authority.text;
     if (text === this.lastText && !empty) return null;
-    const patches = diff(this.lastText, text);
+    const patches = copied(diff(this.lastText, text));
     const author = open?.author ?? AUTHOR;
     const v = this.version(open ? [...open.authors] : [], patches, clip(open?.marks ?? [], patches, author), text, open?.time);
     if (restored) v.restored = restored;

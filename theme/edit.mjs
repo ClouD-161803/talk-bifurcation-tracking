@@ -376,7 +376,7 @@ function shiftOffset(offset, patches, after = true) {
   }
   return offset + delta;
 }
-var copy = (text) => text.length < 16 ? text : JSON.parse(JSON.stringify(text));
+var copy = (text) => text.length < 13 ? text : JSON.parse(JSON.stringify(text));
 function invert(text, patches) {
   let delta = 0;
   return patches.map((p) => {
@@ -880,7 +880,6 @@ function perform(step) {
   if ("read" in step) return readFile(step.read);
   return writeFile(step.write, step.bytes).then(() => step.mode === null ? void 0 : chmod(step.write, step.mode));
 }
-var copy2 = (text) => text.length < 16 ? text : Buffer.from(text, "utf16le").toString("utf16le");
 var weight = (delta) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
 function reverse(text, before2) {
   const max = Math.min(text.length, before2.length);
@@ -895,7 +894,7 @@ function reverse(text, before2) {
   const found = changes(text.slice(from, to), before2.slice(from, before2.length - text.length + to)) ?? [
     { start: pre - from, end: text.length - suf - from, text: before2.slice(pre, before2.length - suf) }
   ];
-  return found.map((p) => ({ start: p.start + from, end: p.end + from, text: copy2(p.text) }));
+  return found.map((p) => ({ start: p.start + from, end: p.end + from, text: copy(p.text) }));
 }
 function stepBack(lines, delta, count) {
   const starts = new Array(lines.length);
@@ -1566,6 +1565,7 @@ function clip(marks, patches, author) {
   }
   return tidy(out);
 }
+var copied = (patches) => patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
 var validPatches = (patches, n) => {
   if (!Array.isArray(patches)) return false;
   let at = 0;
@@ -1654,7 +1654,7 @@ var History = class {
       this.lastText = text;
       this.writeAll();
     } else {
-      this.found = { before: this.lastText, patches: diff2(this.lastText, text) };
+      this.found = { before: this.lastText, patches: copied(diff2(this.lastText, text)) };
       if (this.found.patches.length) {
         const patches = this.found.patches;
         this.push(this.version([AUTHOR], patches, clip([], patches, AUTHOR), text), text);
@@ -1756,7 +1756,7 @@ var History = class {
     this.open = null;
     const text = this.authority.text;
     if (text === this.lastText && !empty) return null;
-    const patches = diff2(this.lastText, text);
+    const patches = copied(diff2(this.lastText, text));
     const author = open2?.author ?? AUTHOR;
     const v = this.version(open2 ? [...open2.authors] : [], patches, clip(open2?.marks ?? [], patches, author), text, open2?.time);
     if (restored) v.restored = restored;

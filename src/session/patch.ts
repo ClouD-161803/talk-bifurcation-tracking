@@ -119,7 +119,7 @@ export function shiftOffset(offset: number, patches: Patch[], after = true): num
 
 // a copy of text, since a slice of 13 or more characters keeps the whole string that it was cut
 // from alive in V8, e.g. a version of the deck kept by a patch in the log of the authority
-export const copy = (text: string): string => (text.length < 16 ? text : JSON.parse(JSON.stringify(text)));
+export const copy = (text: string): string => (text.length < 13 ? text : JSON.parse(JSON.stringify(text)));
 
 // the patches that turn the text after an operation back into the text before it
 export function invert(text: string, patches: Patch[]): Patch[] {

@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { changes } from '../editor/merge.ts';
 import type { Authority } from '../session/authority.ts';
-import { apply, diff, mergePatches, type Patch } from '../session/patch.ts';
+import { apply, copy, diff, mergePatches, type Patch } from '../session/patch.ts';
 
 export const AUTHOR = 'file';
 const QUIET = 250;
@@ -105,8 +105,6 @@ function perform(step: Step): Promise<unknown> {
   return writeFile(step.write, step.bytes).then(() => (step.mode === null ? undefined : chmod(step.write, step.mode)));
 }
 
-// a copy of text, since a slice keeps in memory the whole text that it was cut from
-const copy = (text: string) => (text.length < 16 ? text : Buffer.from(text, 'utf16le').toString('utf16le'));
 const weight = (delta: Patch[]) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
 
 // the patches that turn text back into before. the common start and end are skipped by chunks, and
