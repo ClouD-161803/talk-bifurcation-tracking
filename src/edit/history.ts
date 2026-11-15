@@ -6,7 +6,9 @@
 // { kind: "base", time, text }, then a line { kind: "version", id, time, authors, patches, marks,
 // slides, removed?, restored?, start? } per version, whose patches turn the text of the version
 // before into its own, and a line { kind: "name", id, name } per name given or taken off. a new
-// history begins with a version of the base marked start. the texts that a person set aside at a
+// history begins with a version of the base marked start. a line { kind: "open", author } is
+// written when a person becomes an author of the open version, so that a start after a crash
+// knows who made the edits after the last version. the texts that a person set aside at a
 // conflict are kept in .session/aside/, one file each
 
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -296,7 +298,8 @@ export class History {
     try {
       mkdirSync(dir, { recursive: true });
     } catch {}
-    let loaded = false;
+    // the authors of the version that was open when the last run ended, or null for a new history
+    let loaded: string[] | null = null;
     try {
       loaded = this.load();
     } catch (e) {
@@ -324,8 +327,10 @@ export class History {
       this.found = { before: this.lastText, patches: copied(diff(this.lastText, text)) };
       if (this.found.patches.length) {
         const patches = this.found.patches;
-        this.push(this.version([AUTHOR], patches, clip([], patches, AUTHOR), text), text);
-      }
+        // the ranges of several authors cannot be told apart, hence they are given to none of them
+        const authors = loaded.length ? loaded : [AUTHOR];
+        this.push(this.version(authors, patches, clip([], patches, authors.length > 1 ? '' : authors[0]), text), text);
+      } else if (loaded.length) this.writeAll();
       if (this.bytes > this.maxBytes) this.compact();
     }
     this.held = text;
@@ -441,7 +446,12 @@ export class History {
     this.timer = null;
     const open = this.open;
     this.open = null;
-    if (text === this.lastText && !empty) return null;
+    if (text === this.lastText && !empty) {
+      // the lines of the open version are taken out of the file, so that a later start does not
+      // give its authors to a change from outside
+      if (open) this.writeAll();
+      return null;
+    }
     const patches = copied(diff(this.lastText, text));
     const author = open?.author ?? AUTHOR;
     const v = this.version(open ? [...open.authors] : [], patches, clip(open?.marks ?? [], patches, author), text, open?.time);
@@ -525,7 +535,10 @@ export class History {
     open.last = t;
     open.time = w;
     open.author = op.author;
-    open.authors.add(op.author);
+    if (!open.authors.has(op.author)) {
+      open.authors.add(op.author);
+      this.append({ kind: 'open', author: op.author });
+    }
     open.marks = moveMarks(open.marks, op.patches, op.author);
     this.arm();
   }
@@ -575,6 +588,7 @@ export class History {
     }
     const named = this.versions.filter((v) => v.name);
     for (const v of named) lines.push(JSON.stringify({ kind: 'name', id: v.id, name: v.name }));
+    for (const author of this.open?.authors ?? []) lines.push(JSON.stringify({ kind: 'open', author }));
     const data = `${lines.join('\n')}\n`;
     const tmp = join(this.dir, `.history.jsonl.${randomBytes(6).toString('hex')}.tmp`);
     try {
@@ -611,17 +625,18 @@ export class History {
     this.changed();
   }
 
-  // true when the file was read, false when it does not exist or is empty. throws Unreadable for a
-  // file without a base, or with a line other than the last that cannot be read
-  private load(): boolean {
+  // the authors of the lines open after the last version line when the file was read, and null
+  // when it does not exist or is empty. throws Unreadable for a file without a base, or with a line
+  // other than the last that cannot be read
+  private load(): string[] | null {
     let content: string;
     try {
       content = readFileSync(this.file, 'utf8');
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw e;
     }
-    if (content === '') return false;
+    if (content === '') return null;
     const lines = content.split('\n');
     // the index of the last line with text, which a crash may have cut
     let last = lines.length - 1;
@@ -629,6 +644,7 @@ export class History {
     let good = 0;
     let text = '';
     const names = new Map<string, string>();
+    let open: string[] = [];
     for (let i = 0; i <= last; i++) {
       const record = this.parse(lines[i], i, text);
       if (record === null) {
@@ -644,6 +660,9 @@ export class History {
         text = apply(text, record.v.patches);
         this.versions.push(record.v);
         this.checkpoint(this.versions.length - 1, text);
+        open = [];
+      } else if (record.kind === 'open') {
+        if (!open.includes(record.author)) open.push(record.author);
       } else {
         names.set(record.id, record.name);
         this.names++;
@@ -657,10 +676,10 @@ export class History {
     }
     this.lastText = text;
     this.bytes = statSync(this.file).size;
-    return true;
+    return open;
   }
 
-  private parse(line: string, i: number, text: string): { kind: 'base'; time: number; text: string } | { kind: 'version'; v: Version } | { kind: 'name'; id: string; name: string } | null {
+  private parse(line: string, i: number, text: string): { kind: 'base'; time: number; text: string } | { kind: 'version'; v: Version } | { kind: 'name'; id: string; name: string } | { kind: 'open'; author: string } | null {
     let r: Record<string, unknown>;
     try {
       r = JSON.parse(line);
@@ -670,6 +689,7 @@ export class History {
     if (!r || typeof r !== 'object') return null;
     if (i === 0) return r.kind === 'base' && Number.isFinite(r.time) && typeof r.text === 'string' ? { kind: 'base', time: r.time as number, text: r.text } : null;
     if (r.kind === 'name') return isVersionId(r.id) && typeof r.name === 'string' ? { kind: 'name', id: r.id, name: r.name } : null;
+    if (r.kind === 'open') return typeof r.author === 'string' ? { kind: 'open', author: r.author } : null;
     if (r.kind !== 'version' || !isVersionId(r.id) || !Number.isFinite(r.time) || !Array.isArray(r.authors) || !r.authors.every((a) => typeof a === 'string')) return null;
     if (!validPatches(r.patches, text.length) || !numbers(r.slides)) return null;
     const after = text.length + (r.patches as Patch[]).reduce((s, p) => s + p.text.length - (p.end - p.start), 0);
