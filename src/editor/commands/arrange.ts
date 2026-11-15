@@ -4,6 +4,7 @@
 // are run by the one keyboard dispatch of commands.ts
 
 import type { App } from '../app.ts';
+import type { Entry } from '../history.ts';
 import { HOST } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { CONTAINER, RESIZABLE, containerOf, frameRect, linesOf, mediaIn, movableOf, movablesOf, objectsOf, pictureOf, turnable } from '../canvas/hit.ts';
@@ -53,10 +54,11 @@ function caretAtEnd(el: Element): void {
   s?.addRange(range);
 }
 
-// the run of nudges in progress: the time of its last nudge, and its changes, whose destinations
-// each nudge of the run moves. a run ends at a pause, at another selection, and when an element is
-// no longer where the run put it, e.g. after a drag or an undo
-let run: { at: number; changes: { el: Element; from: Place; to: Place }[] } | null = null;
+// the run of nudges in progress: the time of its last nudge, its changes, whose destinations each
+// nudge of the run moves, and its entry of the history. a run ends at a pause, at another
+// selection, when an element is no longer where the run put it, e.g. after a drag or an undo, and
+// when its entry is no longer the last of the history, e.g. after an apply of a session dropped it
+let run: { at: number; changes: { el: Element; from: Place; to: Place }[]; entry: Entry | null } | null = null;
 
 const samePlace = (a: Place, b: Place) => (a.translate?.x ?? 0) === (b.translate?.x ?? 0) && (a.translate?.y ?? 0) === (b.translate?.y ?? 0) && a.width === b.width;
 
@@ -71,7 +73,7 @@ function nudge(app: App, dx: number, dy: number): void {
   const els = movedEls(app);
   if (!els.length) return;
   const now = performance.now();
-  const same = !!run && now - run.at < PAUSE && run.changes.length === els.length && run.changes.every((c, i) => c.el === els[i] && samePlace(placeOf(c.el), c.to));
+  const same = !!run && now - run.at < PAUSE && app.history.last === run.entry && run.changes.length === els.length && run.changes.every((c, i) => c.el === els[i] && samePlace(placeOf(c.el), c.to));
   const changes = els.map((el) => {
     const from = placeOf(el);
     writePlace(app, el, { ...from, translate: { x: (from.translate?.x ?? 0) + dx, y: (from.translate?.y ?? 0) + dy } });
@@ -81,7 +83,10 @@ function nudge(app: App, dx: number, dy: number): void {
     run.at = now;
     run.changes.forEach((c, i) => (c.to = changes[i].to));
     followAgain(app);
-  } else run = { at: now, changes: record(app, 'move', changes) };
+  } else {
+    const recorded = record(app, 'move', changes);
+    run = { at: now, changes: recorded, entry: app.history.last };
+  }
   // the upper left corner of the elements on the slide that the fields X and Y give, at the lower
   // right of the frames
   const boxes = els.map(frameRect);
