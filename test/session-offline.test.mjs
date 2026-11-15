@@ -339,3 +339,33 @@ test('a picture dropped by one page is uploaded into media/ before the operation
   clean(ann);
   clean(ben);
 });
+
+// a page of the origin of the edit command without the editor, which reads the locks of a page
+// after it is closed and plants copies in IndexedDB
+async function probeOf(browser, server) {
+  const probe = await browser.newPage({ width: 640, height: 480 });
+  await probe.goto(`${server.edit.url}index.html`);
+  return probe;
+}
+
+test('the save state says that an edit made offline is kept only once a copy holds it, and a crash of the page then keeps it', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url);
+  const probe = await probeOf(browser, server);
+  await converge(server, [a]);
+  await goOffline(a);
+  await edit(a, 0, 'p', ' before a crash');
+  await a.waitFor(`${STATE} === 'Offline. Changes on slide 1 are kept in this browser'`);
+  const kept = await rows(a);
+  assert.equal(kept.length, 1, 'a copy is in IndexedDB once the save state says that the changes are kept');
+  assert.ok(kept[0].mine.includes('<p>First slide before a crash</p>'));
+  // a crash runs no listener of pagehide
+  a.send('Page.crash').catch(() => {});
+  await released(probe, kept[0].id);
+  const again = await tab(browser, url);
+  assert.equal(await converge(server, [again]), TALK.replace('<p>First slide</p>', '<p>First slide before a crash</p>'));
+  clean(again);
+});
