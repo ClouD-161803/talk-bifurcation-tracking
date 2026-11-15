@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Authority, Disk } from '../theme/edit.mjs';
-import { DECK } from './helpers/session.mjs';
+import { DECK, until } from './helpers/session.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -92,4 +92,16 @@ test('a stop right after another program wrote the file keeps the change of this
   assert.ok(after.includes('ONE <h2>One'), 'the file lacks the operation entered before the stop');
   assert.ok(after.includes('AGENT <h2>Two'), 'the file lacks the change of the other program');
   assert.equal(authority.text, after);
+});
+
+test('a change of the file by another program while the edit command writes it is merged, and not overwritten', { timeout: 60_000 }, async (t) => {
+  const deck = big(20);
+  const { dir, file, authority } = setup(t, deck);
+  insert(authority, '<h2>One', 'ONE ');
+  await inFlight(dir);
+  writeFileSync(file, deck.replace('<h2>Two', 'AGENT <h2>Two'));
+  await until(() => {
+    const now = readFileSync(file, 'utf8');
+    return now === authority.text && now.includes('AGENT <h2>Two') && now.includes('ONE <h2>One');
+  }, 'the file and the authority to hold the operation and the change of the other program', 15_000);
 });
