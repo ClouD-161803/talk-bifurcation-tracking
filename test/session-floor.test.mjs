@@ -69,6 +69,9 @@ test('a held list item refuses Backspace and Delete from the item beside it, and
     await until(() => ben.evaluate(`${P}.locks.size === 1 && ${LOCKED(item(held))}`), `the item ${held} that Ana holds to be locked on the page of Ben`);
     const before = await listOf(ben);
     await put();
+    // Ana hears the hold of Ben before Ben leaves the item, hence the wait for the free items at the
+    // next case cannot end before this hold arrives
+    await until(() => ana.evaluate(`${P}.locks.size === 1`), 'the item that Ben holds to be locked on the page of Ana');
     await unbubble(ben);
     await press(ben, key);
     assert.equal(await listOf(ben), before, `${key} leaves the list as it was when Ana holds the item ${held}`);
