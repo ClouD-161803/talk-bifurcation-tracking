@@ -655,6 +655,11 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   focus.el?.focus({ preventScroll: true });
   restep(ctx, live);
   (window as unknown as Page).Beeson?.refreshChrome?.();
+  // the theme numbers the viewers in the order of the deck at an open and at a mount, see
+  // markViewers() in src/print.ts, and a viewer moved or after one taken off is numbered again so
+  document.querySelectorAll('tycho-viewer').forEach((v, i) => {
+    if (v.getAttribute('data-still') !== String(i)) v.setAttribute('data-still', String(i));
+  });
   keepSlide(app, current, at);
   const put = () => {
     if (!host?.isConnected || !caret) return;
