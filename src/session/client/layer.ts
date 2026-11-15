@@ -85,9 +85,9 @@ export function install(client: Client): void {
   // the chips of the last draw, each at a fraction of the slide and px from it, for a press
   let chips: { flags: HTMLElement; id: string; x: number; y: number; dx: number; dy: number }[] = [];
   // the shapes of the last read: of each element or group by the element that heads it, the
-  // members of each group, and each caret by client with its element and its offset, with the
-  // size of the slide, and the top of the canvas in px of the layer
-  let kept = { els: new Map<Element, Kept>(), groups: new Map<Element, Element[]>(), carets: new Map<string, Kept & { el: Element; offset: number }>(), W: 1, H: 1, edge: -Infinity, height: 0 };
+  // members of each group, and each caret by client with its element, its offset, and its angle,
+  // with the size of the slide, and the top of the canvas in px of the layer
+  let kept = { els: new Map<Element, Kept>(), groups: new Map<Element, Element[]>(), carets: new Map<string, Kept & { el: Element; offset: number; deg: number; line: number }>(), W: 1, H: 1, edge: -Infinity, height: 0 };
 
   const schedule = (): void => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -102,8 +102,8 @@ export function install(client: Client): void {
   // a click after a tap on a chip does not reach the canvas
   let eat = false;
 
-  // the translate in slide px of el with its ancestors, from the inline styles that the editor
-  // writes
+  // the translate in slide px of el with its ancestors, and the angle that they turn it by, from
+  // the inline styles that the editor writes
   const offset = (el: Element): [number, number] => {
     let x = 0, y = 0;
     for (let e: Element | null = el; e && e !== app.slides(); e = e.parentElement) {
@@ -112,6 +112,11 @@ export function install(client: Client): void {
       y += parseFloat(b) || 0;
     }
     return [x, y];
+  };
+  const turnOf = (el: Element): number => {
+    let deg = 0;
+    for (let e: Element | null = el; e && e !== app.slides(); e = e.parentElement) deg += parseFloat((e as HTMLElement).style?.rotate ?? '') || 0;
+    return deg;
   };
   const moved = (k: Kept, el: Element): Shape => {
     const [x, y] = offset(el);
@@ -144,7 +149,12 @@ export function install(client: Client): void {
       const s = shapes.carets[i];
       const { el, at } = r.caret!;
       if (!s) return;
-      kept.carets.set(r.client, { s, at: offset(el), el, offset: at });
+      const deg = turnOf(el);
+      // a caret in a turned text element, whose box is the upright box of the turned bar, falls
+      // back to the line height when it is turned near a right angle
+      const cs = deg ? getComputedStyle(el) : null;
+      const line = cs ? parseFloat(cs.lineHeight) || 1.2 * parseFloat(cs.fontSize) : 0;
+      kept.carets.set(r.client, { s, at: offset(el), el, offset: at, deg, line });
     });
   }
 
@@ -221,9 +231,14 @@ export function install(client: Client): void {
       const k = kept.carets.get(r.client);
       if (!k) continue;
       const s = moved(k, k.el);
+      const { W, H } = kept;
+      const a = (k.deg * Math.PI) / 180, cos = Math.abs(Math.cos(a)), sin = Math.abs(Math.sin(a));
+      // in slide px: the length of the bar and its center, from the upright box of the turned bar
+      const length = !k.deg ? s.h * H : cos > 0.5 ? (s.h * H) / cos : k.line;
+      const cx = s.x * W + (length * sin) / 2, cy = s.y * H + (length * cos) / 2;
       const c = make('div', `caret c${r.color % 4}`);
       c.dataset.client = r.client;
-      Object.assign(c.style, { left: `${s.x * 100}%`, top: `${s.y * 100}%`, height: `${s.h * 100}%` });
+      Object.assign(c.style, { left: `${(cx / W) * 100}%`, top: `${((cy - length / 2) / H) * 100}%`, height: `${(length / H) * 100}%`, transform: k.deg ? `rotate(${k.deg}deg)` : '' });
       nodes.push(c);
     }
     layer.replaceChildren(...nodes);
