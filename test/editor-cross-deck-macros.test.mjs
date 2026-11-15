@@ -1,14 +1,15 @@
-// the macros of slides pasted from the editor of deck A into the editor of deck B.
+// the macros and the theme of slides pasted from the editor of deck A into the editor of deck B.
 // after the paste, a dialog names each macro of the origin that deck B lacks or defines otherwise,
 // as the line of theme/macros.js that defines it, with a button that copies the lines. the entry
 // of the history of the paste is closed while the dialog is open, and a later paste of the same
-// macros adds a sentence to the note in place of the dialog
+// macros adds a sentence to the note in place of the dialog. a theme of another version adds one
+// sentence to the note of the paste
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { A, B, FILES, FIRST_B, QUERY, copySlide, errors, openDeck, pasteSlides, pasted, render, status } from './helpers/cross-deck.mjs';
+import { A, B, BACKDROP, FILES, FIRST_B, QUERY, copySlide, errors, openDeck, pasteSlides, pasted, render, status } from './helpers/cross-deck.mjs';
 import { center, click } from './helpers/editor.mjs';
 
 let browser;
@@ -99,4 +100,20 @@ test('a paste whose macros this deck defines the same opens no dialog', async (t
   await pasteSlides(b, FIRST_B, text);
   await pasted(b);
   assert.equal(await b.evaluate(`!!document.querySelector('${DIALOG}')`), false);
+  // the same theme adds nothing to the note
+  assert.doesNotMatch((await status(b)).message ?? '', /version/);
+});
+
+test('a theme of another version is named in the note of the paste with the sentences of its files', async (t) => {
+  const a = await deck(A);
+  t.after(() => a.close());
+  const text = await copySlide(a, BACKDROP);
+  const b = await deck(B);
+  t.after(() => b.close());
+  const version = await b.evaluate('Beeson.version');
+  await pasteSlides(b, FIRST_B, text.replace(/"version":"[^"]*"/, '"version":"0.0.1"'));
+  await pasted(b);
+  const { message } = await status(b);
+  assert.match(message, /media\/path\.js is drawn once the deck is saved and opened again\./);
+  assert.ok(message.includes(`theme version 0.0.1, and this deck version ${version}, hence what you pasted may be drawn differently.`), message);
 });
