@@ -309,11 +309,12 @@ export function compileFigure({ dir, name, source, box = {}, tools = findTools()
         // dimension, since text and lines are not scaled. a and b are measured from the pass at
         // scale 1 and the pass at the ratio of the box, and a last pass is run at the scale that
         // they give when the second pass misses the box
-        const keys = ['width', 'height'].filter((key) => target[key] !== null);
+        // a dimension in which the drawing does not have a size is not fitted
+        const first = out;
+        const keys = ['width', 'height'].filter((key) => target[key] !== null && first[key] > 0);
         const gaps = (out) => keys.map((key) => (target[key] - out[key]) * PX_PER_PT);
         const missed = (out) => Math.min(...gaps(out).map(Math.abs)) > SLACK || Math.min(...gaps(out)) < -SLACK;
-        const first = out;
-        const scale = Math.min(...keys.map((key) => target[key] / first[key]));
+        const scale = keys.length ? Math.min(...keys.map((key) => target[key] / first[key])) : 1;
         if (Math.abs(scale - 1) > 1e-3) {
           fit = { scale };
           out = pass('light', fit);
