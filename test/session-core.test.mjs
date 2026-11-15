@@ -96,32 +96,65 @@ function tokenEdit(r, text, created) {
 // in the token mode every edit inserts new tokens, a replica that falls behind the log of the
 // authority reads the whole state again, as after events without ops, and so does a replica with an
 // accepted operation in flight now and then. a replica that waits for the answer to an operation
-// does not read the whole state, as the client holds it back. every token is then in the text once
-function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxOps = 1000, spot = null, tokens = false } = {}) {
+// does not read the whole state, as the client holds it back. every token is then in the text once.
+// with faults the edit command restarts now and then, and an answer is lost now and then, after
+// which the client sends its request again until it is answered, one request at a time
+function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxOps = 1000, spot = null, tokens = false, faults = false } = {}) {
   const r = generator(seed);
   const where = `seed ${seed}`;
-  const authority = new Authority(text, { maxOps, epoch: `e${seed}` });
+  let authority = new Authority(text, { maxOps, epoch: `e${seed}` });
+  // the restarts of the edit command so far, and hence the one whose tokens are known
+  let process = 0;
   const spots = spot === null ? Array.from({ length: 3 }, () => r.int(text.length)) : [spot, spot, spot];
   const replicas = [];
   const toAuthority = [];
   const created = new Set();
-  const stats = { accepted: 0, refused: 0, ties: 0, joins: 0, resyncs: 0, flightResyncs: 0 };
+  const stats = { accepted: 0, refused: 0, ties: 0, joins: 0, resyncs: 0, flightResyncs: 0, restarts: 0, lost: 0, appliedRefused: 0, restartFlights: 0 };
 
   function join(at = authority.n) {
     const id = `client${replicas.length}x`;
-    const replica = new Replica(id, authority.textAt(at), `e${seed}.${at}`);
-    const state = { replica, inbox: authority.since(`e${seed}.${at}`).slice(), answers: [], sent: null, answered: null, editedSince: false };
+    const v = `${authority.version.split('.')[0]}.${at}`;
+    const replica = new Replica(id, authority.textAt(at), v);
+    const state = { replica, inbox: authority.since(v).slice(), answers: [], sent: null, answered: null, editedSince: false, process, sending: false };
     replicas.push(state);
     return state;
   }
 
+  // the client says hello again without v, with the client id of its operation in flight as was,
+  // and merges the whole text. after a restart it goes on under a new client id
+  function hello(state) {
+    const { replica } = state;
+    const applied = authority.applied(replica.sender);
+    if (state.process !== process) {
+      if (replica.inFlight) stats.restartFlights++;
+      replica.rebind(`client${replicas.indexOf(state)}p${process}`);
+      state.process = process;
+      state.inbox.length = 0;
+    }
+    replica.resync(authority.text, authority.version, applied);
+    state.sent = null;
+    stats.resyncs++;
+  }
+
+  // the edit command stops and starts again: index.html and .session/applied.json are written and
+  // read again under a new epoch, and the log and the tokens are lost. a part of the operations and
+  // the answers on the way is lost, and a request whose answer is lost is sent again
+  function restart() {
+    authority.written(authority.n);
+    const table = authority.table();
+    process++;
+    authority = new Authority(authority.text, { maxOps, epoch: `e${seed}r${process}`, applied: table });
+    for (const s of replicas) {
+      s.inbox.length = r.int(s.inbox.length + 1);
+      for (const { request } of s.answers.splice(r.int(s.answers.length + 1))) toAuthority.push({ state: s, request, process: s.process });
+    }
+    stats.restarts++;
+  }
+
   function send(state) {
     const { replica } = state;
-    if (replica.needsResync) {
-      // the client says hello again without v, and merges the whole text
-      replica.resync(authority.text, authority.version);
-      stats.resyncs++;
-    }
+    if (faults && state.sending) return;
+    if (replica.needsResync) hello(state);
     const request = replica.outgoing();
     if (!request) return;
     assert.equal(apply(replica.base, request.patches), replica.mine, `${where}: an operation does not turn base into mine`);
@@ -129,14 +162,23 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
     state.sent = request;
     state.answered = null;
     state.editedSince = false;
-    toAuthority.push({ state, request });
+    state.sending = true;
+    toAuthority.push({ state, request, process: state.process });
   }
 
   function submit(i) {
-    const [{ state, request }] = toAuthority.splice(i, 1);
+    const [entry] = toAuthority.splice(i, 1);
+    const { state, request } = entry;
     const before = authority.text;
-    const { answer, op } = authority.submit(request, state.replica.client);
-    if (answer.ok) {
+    let answer, op;
+    if (entry.process === process) ({ answer, op } = authority.submit(request, state.replica.client));
+    else {
+      // the token is of the edit command before a restart, and the base of another epoch
+      if (authority.applied(request.client) >= request.seq) stats.appliedRefused++;
+      answer = r.chance(0.5) ? { ok: false, reason: 'unknown', v: authority.version } : authority.submit(request, request.client).answer;
+    }
+    // a request sent again gets its earlier answer, without an operation
+    if (op) {
       stats.accepted++;
       // the operation is applied whole: every patch is moved, none is cut or left out
       assert.equal(op.patches.length, request.patches.length, `${where}: an operation was applied in part`);
@@ -144,26 +186,43 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
         assert.equal(p.text, request.patches[k].text, `${where}: a patch was changed`);
         assert.equal(p.end - p.start, request.patches[k].end - request.patches[k].start, `${where}: a patch was cut`);
       });
-      for (const s of replicas) s.inbox.push(op);
-    } else {
+      for (const s of replicas) if (s.process === process) s.inbox.push(op);
+    } else if (!answer.ok) {
       stats.refused++;
       assert.equal(authority.text, before, `${where}: a refused operation changed the text`);
     }
-    state.answers.push({ request, answer });
+    if (faults && r.chance(0.2)) {
+      // the answer is lost, and the client sends the request again
+      toAuthority.push(entry);
+      stats.lost++;
+    } else state.answers.push({ request, answer });
+  }
+
+  // an answer reaches the client, which sends its next request
+  function hear(state) {
+    const { request, answer } = state.answers.shift();
+    state.replica.answer(request, answer);
+    if (state.sent?.seq === request.seq) state.answered = answer;
+    if (!answer.ok && state.sent?.seq === request.seq) state.sent = null;
+    state.sending = false;
+    send(state);
   }
 
   // the whole state read again by a replica that does not wait for an answer
   function reread(state) {
-    if (state.sent && !state.answered) return false;
+    if ((state.sent && !state.answered) || (faults && state.sending)) return false;
     if (state.sent && state.answered.ok) stats.flightResyncs++;
     state.inbox.length = 0;
-    state.replica.resync(authority.text, authority.version);
-    if (!state.replica.inFlight) state.sent = null;
-    stats.resyncs++;
+    hello(state);
     return true;
   }
 
   function deliver(state, count) {
+    // after a restart the events of the edit command before are answered 404, and the client says hello again
+    if (state.process !== process && !state.inbox.length) {
+      if (!state.sending) hello(state);
+      return send(state);
+    }
     if (tokens && Number(state.replica.version.split('.')[1]) < authority.oldest && reread(state)) return send(state);
     for (const op of state.inbox.splice(0, count)) {
       const ack = op.client === state.replica.client && state.sent?.seq === op.seq;
@@ -180,6 +239,7 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
 
   for (let i = 0; i < people; i++) join();
   for (let step = 0; step < steps; step++) {
+    if (faults && r.chance(0.01)) restart();
     const roll = r.next();
     const state = r.pick(replicas);
     if (roll < 0.38) {
@@ -196,14 +256,10 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
       send(state);
     } else if (roll < 0.6 && toAuthority.length) {
       submit(r.int(toAuthority.length));
-    } else if (roll < 0.9 && state.inbox.length) {
+    } else if (roll < 0.9 && (state.inbox.length || state.process !== process)) {
       deliver(state, 1 + r.int(3));
     } else if (roll < 0.98 && state.answers.length) {
-      const { request, answer } = state.answers.shift();
-      state.replica.answer(request, answer);
-      if (state.sent?.seq === request.seq) state.answered = answer;
-      if (!answer.ok && state.sent?.seq === request.seq) state.sent = null;
-      send(state);
+      hear(state);
     } else if (tokens && roll < 0.995) {
       const flying = replicas.filter((s) => s.sent && s.answered?.ok);
       if (reread(flying.length ? r.pick(flying) : state)) send(state);
@@ -217,15 +273,10 @@ function session(seed, { text = deck, people = 2 + (seed % 4), steps = 250, maxO
   for (let round = 0; round < 10_000; round++) {
     if (toAuthority.length) submit(0);
     else {
-      const busy = replicas.find((s) => s.inbox.length || s.answers.length);
+      const busy = replicas.find((s) => s.inbox.length || s.answers.length || s.process !== process);
       if (!busy) break;
-      if (busy.answers.length) {
-        const { request, answer } = busy.answers.shift();
-        busy.replica.answer(request, answer);
-        if (busy.sent?.seq === request.seq) busy.answered = answer;
-        if (!answer.ok && busy.sent?.seq === request.seq) busy.sent = null;
-        send(busy);
-      } else deliver(busy, busy.inbox.length);
+      if (busy.answers.length) hear(busy);
+      else deliver(busy, busy.inbox.length);
     }
   }
   if (tokens) {
@@ -279,6 +330,16 @@ test('no edit is duplicated or lost when a replica reads the whole state again w
     flightResyncs += stats.flightResyncs;
   }
   assert.ok(flightResyncs > 50, `${flightResyncs} resyncs with an accepted operation in flight`);
+});
+
+test('no edit is duplicated or lost over restarts of the edit command, lost answers, and refusals of an applied operation', () => {
+  const total = { restarts: 0, lost: 0, appliedRefused: 0, restartFlights: 0 };
+  for (let seed = 601; seed <= 1000; seed++) {
+    const stats = session(seed, { text: TOKEN_TEXT, tokens: true, faults: true, maxOps: seed % 2 ? 3 : 1000, steps: 300 });
+    for (const k in total) total[k] += stats[k];
+  }
+  // the runs do cover restarts with an operation in flight, and refusals of an applied operation
+  assert.ok(total.restarts > 800 && total.lost > 2500 && total.appliedRefused > 1000 && total.restartFlights > 1500, JSON.stringify(total));
 });
 
 test('after a restart of the edit command, a resync keeps an operation in flight that the new text lacks, and does not repeat one that it holds', () => {
