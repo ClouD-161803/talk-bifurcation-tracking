@@ -188,3 +188,81 @@ test('a page without IndexedDB edits offline, says that its changes cannot be ke
   assert.equal(await page.evaluate(STATE), 'Saved to index.html');
   clean(page);
 });
+
+// Ann edits two texts offline, and Ben replaces the same word of one of them and changes another
+// text meanwhile. Ann comes back after more than 5 s, and the dialog of the conflicts lists the text
+// that both changed
+async function conflicted(t, browser) {
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const ann = await tab(browser, url);
+  const ben = await open(browser, url, { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await goOffline(ann);
+  await show(ann, 'One');
+  await select(ann, el(0, 'p'), 0, 5);
+  await type(ann, 'Opening');
+  await edit(ann, 1, 'li', ' by Ann');
+  await show(ben, 'One');
+  await select(ben, el(0, 'p'), 0, 5);
+  await type(ben, 'Initial');
+  await edit(ben, 1, 'p', ' by Ben');
+  await until(() => server.read().includes('Second slide by Ben'), 'the edits of Ben to reach the file');
+  await ann.waitFor(`Date.now() - window.__offAt > 5500`, 15_000);
+  await goOnline(ann);
+  await front(ann);
+  await ann.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`);
+  assert.deepEqual(await ann.evaluate(CONFLICTS), {
+    title: 'Others changed texts that you edited offline',
+    items: ['Slide 1: “Opening slide”'],
+    buttons: ['Download my version', 'Keep theirs', 'Keep mine'],
+  });
+  // the deck keeps the version of Ann while the dialog is open, also after Esc
+  await ann.evaluate(`document.querySelector('dialog.beeson-session-conflicts[open]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  assert.ok(await ann.evaluate(`!!document.querySelector('dialog.beeson-session-conflicts[open]') && ${TEXT}.includes('<p>Opening slide</p>')`));
+  return { server, ann, ben };
+}
+
+const BOTH = TALK.replace('<p>Second slide</p>', '<p>Second slide by Ben</p>').replace('<li>Alpha</li>', '<li>Alpha by Ann</li>');
+
+test('the dialog of the conflicts at a reconnect keeps either version, and every edit that does not conflict', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+
+  await t.test('Keep mine sends the version of Ann', async (t) => {
+    const { server, ann, ben } = await conflicted(t, browser);
+    await press(ann, 'Keep mine');
+    assert.equal(await converge(server, [ann, ben]), BOTH.replace('<p>First slide</p>', '<p>Opening slide</p>'));
+    clean(ann);
+    clean(ben);
+    await ann.close();
+    await ben.close();
+  });
+
+  await t.test('Keep theirs keeps the version of Ben', async (t) => {
+    const { server, ann, ben } = await conflicted(t, browser);
+    await press(ann, 'Keep theirs');
+    assert.equal(await converge(server, [ann, ben]), BOTH.replace('<p>First slide</p>', '<p>Initial slide</p>'));
+    clean(ann);
+    clean(ben);
+    await ann.close();
+    await ben.close();
+  });
+
+  await t.test('Download my version downloads the deck of Ann and keeps the dialog open', async (t) => {
+    const { server, ann, ben } = await conflicted(t, browser);
+    const before = await ann.evaluate(TEXT);
+    await press(ann, 'Download my version');
+    const [file] = await downloads(ann);
+    assert.equal(file.name, 'index.html');
+    assert.equal(file.text, before);
+    assert.ok(file.text.includes('<p>Opening slide</p>') && file.text.includes('<li>Alpha by Ann</li>'));
+    assert.ok(await ann.evaluate(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`));
+    await press(ann, 'Keep theirs');
+    assert.equal(await converge(server, [ann, ben]), BOTH.replace('<p>First slide</p>', '<p>Initial slide</p>'));
+    clean(ann);
+    clean(ben);
+    await ann.close();
+    await ben.close();
+  });
+});
