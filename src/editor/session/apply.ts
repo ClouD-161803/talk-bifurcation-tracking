@@ -14,6 +14,7 @@ import { contentRange, elementRange, parseSource, VOID, type Piece, type Source,
 import { stateOf } from '../tags.ts';
 import { RAW_TEXT, type Attr } from '../tokens.ts';
 import { caretOf, mapOffset, putCaret, textIn } from './caret.ts';
+import { refreshHeads } from '../history.ts';
 import { atPath, decodedIn, graft, liveChild, pathOf, retag, retext, textAt, type Spot, type Window } from './tree.ts';
 
 export const NO_MATH: MathLookup = () => null;
@@ -272,11 +273,15 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
     if (inPlace(ctx, textEl, w)) {
       ctx.touched.add(spot.live);
       ctx.changed.push(spot.live);
-      return checkText(ctx, textEl.live) ? done(ctx, false, null) : null;
+      if (!checkText(ctx, textEl.live)) return null;
+      refreshHeads(textEl.live);
+      return done(ctx, false, null);
     }
     const caret = coarse(ctx, textEl);
-    if (caret !== false) return checkText(ctx, textEl.live) ? done(ctx, false, caret && (() => caret(true))) : null;
-    return within(ctx, spot.el, spot.live);
+    if (caret === false) return within(ctx, spot.el, spot.live);
+    if (!checkText(ctx, textEl.live)) return null;
+    refreshHeads(textEl.live);
+    return done(ctx, false, caret && (() => caret(true)));
   }
   if (spot.kind === 'tag') {
     const from = spot.el.attrs;
@@ -530,6 +535,7 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   if (app.pairing.problems.length > problems || renderDeck(next, app.pairing, math, app.tagEdits).text !== ctx.text) return null;
   app.typing.attach();
   focus.el?.focus({ preventScroll: true });
+  (window as unknown as Page).Beeson?.refreshChrome?.();
   keepSlide(app, current, at);
   const put = () => {
     if (!host?.isConnected || !caret) return;

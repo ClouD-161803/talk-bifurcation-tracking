@@ -20,6 +20,18 @@ function caretAtEnd(host: Element): void {
 
 export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; selects?: 'undo' | 'redo' };
 
+type Page = { Beeson?: { refreshChrome?(): void } };
+
+/**
+ * The running heads and the outlines filled again when host is the heading of a section slide, which
+ * the theme writes into them, see src/chrome.ts.
+ */
+export function refreshHeads(host: Element): void {
+  const slide = host.closest('section');
+  if (!slide?.classList.contains('section') || slide.hasAttribute('data-run') || (slide.querySelector('h2') ?? slide.querySelector('h1')) !== host) return;
+  (window as unknown as Page).Beeson?.refreshChrome?.();
+}
+
 // the typing into a text element is coalesced while the keystrokes are closer than this, in ms
 const PAUSE = 1000;
 
@@ -277,6 +289,7 @@ export class History {
   private async put(host: Element, content: string): Promise<void> {
     await this.restore(host, content);
     this.known.set(host, content);
+    refreshHeads(host);
   }
 
   // called after an input into host. the entry is put into the history at the first input, and
@@ -299,6 +312,7 @@ export class History {
     if (typing.state.after === typing.state.before && !this.recorded(typing.entry)) return;
     if (!this.recorded(typing.entry)) this.record(typing.entry);
     if (!this.open) for (const fn of this.typers) fn(typing.entry);
+    refreshHeads(host);
     this.onChange();
   }
 
