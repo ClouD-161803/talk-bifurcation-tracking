@@ -2150,6 +2150,7 @@ var People = class {
     this.toldWaiters = [];
     this.hostPerson = null;
     this.polls = /* @__PURE__ */ new Set();
+    this.feedList = [];
     this.rev = 0;
     this.knownRev = 0;
     // the write of index.html that failed last, or null once a write succeeded, and its revision
@@ -2220,7 +2221,7 @@ var People = class {
       }
     }
     let member = this.members.get(id);
-    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0 };
+    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0, feeds: this.feedList.map((f) => f.rev()) };
     if (member) Object.assign(member, fields);
     else this.members.set(id, member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 });
     this.renamed(person);
@@ -2275,6 +2276,15 @@ var People = class {
     const known = this.clients.get(client);
     if (known) known.left = true;
     if (this.members.delete(client)) this.changed();
+  }
+  // a source of news for every page from now on
+  feed(f) {
+    this.feedList.push(f);
+    for (const m of this.members.values()) m.feeds.push(f.rev());
+  }
+  // the waiting polls woken after a change of a feed
+  news() {
+    this.wake();
   }
   // a long poll of client for the news after the version since
   events(client, since) {
@@ -2376,7 +2386,7 @@ var People = class {
     if (!member && known && !known.left && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
       const { person, name, color } = record;
       const now = Date.now();
-      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, writeSeen: 0, lastAnswer: 0, polls: 0 };
+      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, writeSeen: 0, feeds: this.feedList.map(() => -1), lastAnswer: 0, polls: 0 };
       this.members.set(client, member);
       this.changed();
     }
@@ -2395,7 +2405,7 @@ var People = class {
   hasNews(poll) {
     const member = this.members.get(poll.client);
     const at = this.authority.reach(poll.since);
-    return at === null || at < this.authority.n || !member || member.seen < this.rev;
+    return at === null || at < this.authority.n || !member || member.seen < this.rev || this.feedList.some((f, i) => member.feeds[i] < f.rev());
   }
   wake() {
     for (const poll of this.polls) if (this.hasNews(poll)) this.soon(poll);
@@ -2413,6 +2423,7 @@ var People = class {
     const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list() };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
     if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
+    if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i]));
     return answer;
   }
   answer(poll) {
@@ -2425,6 +2436,7 @@ var People = class {
       member.seen = this.rev;
       member.knownSeen = this.knownRev;
       member.writeSeen = this.writeRev;
+      member.feeds = this.feedList.map((f) => f.rev());
       member.lastAnswer = Date.now();
       member.polls--;
     }
