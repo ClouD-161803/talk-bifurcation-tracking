@@ -647,3 +647,26 @@ test('large replaces in one version take time in proportion to their patches and
     assert.ok(attempt < 3, `operations of 2000 patches ${large.toFixed(1)} ms against ${small.toFixed(1)} ms for 200`);
   }
 });
+
+test('a page that was dropped while two restores were made is told the later one, and a page that came after them is not told', { timeout: 180_000 }, async (t) => {
+  const s = await session(t);
+  const ann = await s.hello('Ann');
+  const bo = await s.hello('Bo');
+  assert.equal((await s.op(ann, 1, 'One', 'Uno')).ok, true);
+  const v1 = await s.closed(ann, 1);
+  const second = await s.op(ann, 2, 'Two', 'Deux');
+  const v2 = await s.closed(ann, 2);
+  // a page that does not poll after its hello is dropped, as one that was away for too long
+  const dropped = (page) => until(async () => !(await s.events(ann, second.v)).presence.some((p) => p.client === page.client), `${page.client} to be dropped`, 60_000);
+  await dropped(bo);
+  const restore = async (v) => (await post(s.edit.port, s.api(`history/${v.id}/restore`), { token: ann.token })).json();
+  await restore(v1);
+  const last = await restore(v2);
+  const back = await s.events(bo, bo.v);
+  assert.equal(back.ops.length, 4);
+  assert.deepEqual(back.restored, { by: ann.person, id: v2.id, time: v2.time });
+  const cy = await s.hello('Cy');
+  assert.equal(cy.v, last.v);
+  await dropped(cy);
+  assert.equal((await s.events(cy, cy.v)).restored, undefined);
+});
