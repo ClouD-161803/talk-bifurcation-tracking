@@ -6,7 +6,7 @@
 
 import type { App } from '../../editor/app.ts';
 import type { Command } from '../../editor/commands.ts';
-import { bubble } from './bubble.ts';
+import { bubble, ready } from './bubble.ts';
 import type { Client } from './client.ts';
 import { bdi, style } from './dom.ts';
 import { presenceOf, type Presence, type Resolved } from './presence.ts';
@@ -32,6 +32,7 @@ export function install(client: Client): void {
   if (!presence) return;
   const { app } = client;
   style('floor', '.beeson-locked, .beeson-locked * { cursor: not-allowed !important; }');
+  ready();
   // the selection is changed by this file, which is not an action of the person
   let filtering = false;
 

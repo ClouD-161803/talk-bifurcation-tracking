@@ -7,19 +7,36 @@ const SHOWN = 4000;
 
 const CSS = `
 .beeson-bubble { position: fixed; z-index: 1000; box-sizing: border-box; max-width: min(320px, calc(100vw - 32px)); padding: 8px 12px; border-radius: 8px; background: var(--ed-panel, #2c2c2e); color: var(--ed-text, #f5f5f7); border: 1px solid var(--ed-line, rgba(255, 255, 255, 0.16)); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28); font: 13px/1.35 system-ui, sans-serif; pointer-events: none; }
+.beeson-bubble-said { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 `;
 
 let shown: { el: HTMLElement; timer: number } | null = null;
+let said: HTMLElement | null = null;
+
+// the hidden status region that a screen reader reads each bubble from, made once before the first
+// bubble, since a region added together with its text is not read by every screen reader
+export function ready(): HTMLElement {
+  style('bubble', CSS);
+  if (!said?.isConnected) {
+    said = make('div', 'beeson-bubble-said');
+    said.setAttribute('role', 'status');
+    document.body.append(said);
+  }
+  return said;
+}
 
 export function bubble(near: Element | null, text: string | (string | Node)[]): void {
-  style('bubble', CSS);
+  const region = ready();
+  const parts = typeof text === 'string' ? [text] : text;
+  const plain = parts.map((p) => (typeof p === 'string' ? p : p.textContent)).join('');
+  // a repeated text is changed by a space, so that it is read again
+  region.textContent = region.textContent === plain ? `${plain}\u00a0` : plain;
   if (shown) {
     clearTimeout(shown.timer);
     shown.el.remove();
   }
   const el = make('div', 'beeson-bubble');
-  el.append(...(typeof text === 'string' ? [text] : text));
-  el.setAttribute('role', 'status');
+  el.append(...parts);
   document.body.append(el);
   // under near, or over it when the window has no room below, and inside the window
   const r = near?.isConnected ? near.getBoundingClientRect() : null;
