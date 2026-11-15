@@ -412,3 +412,42 @@ test('a version is named, and a name is taken off', { timeout: 120_000 }, async 
   assert.equal((await raw(s.edit.port, 'POST', s.api(`history/${v.id}/name`), { body: '{}', headers: { 'content-type': 'text/plain' } })).status, 415);
   assert.equal((await raw(s.edit.port, 'POST', s.api(`history/${v.id}/name`), { body: '[1]', headers: { 'content-type': 'application/json' } })).status, 400);
 });
+
+test('a restore is a new version on top, which every page gets as an operation of someone else', { timeout: 120_000 }, async (t) => {
+  const s = await session(t);
+  const ann = await s.hello('Ann');
+  const bo = await s.hello('Bo');
+  assert.equal((await s.op(ann, 1, 'One', 'Uno')).ok, true);
+  const v1 = await s.closed(ann, 1);
+  const t1 = await s.current();
+  const second = await s.op(ann, 2, 'Two', 'Deux');
+  assert.equal(second.ok, true);
+  const restored = (await post(s.edit.port, s.api(`history/${v1.id}/restore`), { token: ann.token })).json();
+  assert.equal(await s.current(), t1);
+  assert.equal(typeof restored.id, 'string');
+  assert.notEqual(restored.v, second.v);
+  const versions = (await s.list(bo)).versions;
+  assert.equal(versions.length, 3);
+  assert.equal(versions[2].id, v1.id);
+  assert.equal(versions[0].id, restored.id);
+  assert.equal(versions[0].restored, v1.id);
+  assert.deepEqual(versions[0].authors, [ann.person]);
+  assert.deepEqual(versions[0].slides, [2]);
+  assert.deepEqual(versions[1].slides, [2]);
+  assert.equal((await post(s.edit.port, s.api(`history/${restored.id}/restore`), { token: bo.token })).json().id, null, 'the deck already reads as the version');
+  await until(() => readFileSync(s.file, 'utf8') === t1, 'index.html to hold the text of the version');
+  for (const page of [bo, ann]) {
+    const events = await s.events(page, second.v);
+    assert.equal(events.ops.length, 1);
+    assert.notEqual(events.ops[0].client, page.client, 'the restore is an operation of someone else for every page');
+    assert.equal(events.ops[0].author, ann.person);
+    assert.deepEqual(events.restored, { by: ann.person, id: v1.id, time: v1.time });
+    assert.equal(typeof events.history, 'number');
+  }
+  // the restore is told once to each page
+  await post(s.edit.port, s.api('presence'), { token: ann.token, state: { slide: 2 } });
+  const later = await s.events(bo, restored.v);
+  assert.equal(later.restored, undefined);
+  assert.equal((await post(s.edit.port, s.api('history/nope/restore'), { token: ann.token })).status, 404);
+  assert.equal((await post(s.edit.port, s.api(`history/${v1.id}/restore`), { token: 'n'.repeat(22) })).status, 404);
+});
