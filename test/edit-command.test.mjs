@@ -5,7 +5,7 @@
 // come from this computer with the key or that reaches out of the talk folder
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
@@ -805,4 +805,49 @@ test('add regression test: a move of the sharing to another relay tells the gues
   assert.equal((await post(edit.port, api('share'), { relay: second.url, secret: SECRET })).status, 200);
   assert.deepEqual((await waiting).ended, { by: 'Ana' }, 'the waiting poll of the guest');
   assert.deepEqual((await events(second, ben, seen.v)).ended, { by: 'Ana' }, 'a poll of the guest through the new relay');
+});
+
+test('add regression test: a write of index.html that keeps failing is told to the pages, and the text is kept at the stop', { timeout: 120_000, skip: (process.platform === 'win32' || process.getuid?.() === 0) && 'a folder without write permission' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  const writable = () => chmodSync(talk, 0o755);
+  t.after(() => {
+    writable();
+    rmSync(root, { recursive: true, force: true });
+  });
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const host = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  let since = host.v;
+  // the next answer of events whose writeError is matched by test
+  const told = (test, what) =>
+    until(async () => {
+      const answer = (await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${since}`)).json();
+      since = answer.v;
+      return answer.writeError !== undefined && test(answer.writeError) && answer;
+    }, what, 60_000);
+  const op = async (seq, text) => {
+    const answer = (await post(edit.port, api('op'), { token: host.token, seq, base: since, patches: [{ start: 0, end: 0, text }] })).json();
+    assert.equal(answer.ok, true);
+  };
+
+  chmodSync(talk, 0o555);
+  await op(1, '<!-- one -->\n');
+  const failed = await told((e) => e !== null, 'the pages to be told that index.html is not written');
+  assert.equal(failed.writeError.unwritten, 1);
+  assert.match(failed.writeError.message, /EACCES|EPERM/);
+  writable();
+  await told((e) => e === null, 'the pages to be told that index.html is written again');
+  assert.ok(text(join(talk, 'index.html')).startsWith('<!-- one -->\n'));
+
+  chmodSync(talk, 0o555);
+  await op(2, '<!-- two -->\n');
+  await told((e) => e !== null, 'the pages to be told again');
+  edit.child.kill('SIGTERM');
+  assert.equal(await edit.exited, 1);
+  assert.ok(!text(join(talk, 'index.html')).startsWith('<!-- two -->'));
+  const kept = readdirSync(join(talk, '.session')).filter((n) => /^unwritten-.*\.html$/.test(n));
+  assert.equal(kept.length, 1, 'the text of the session is kept beside index.html');
+  assert.ok(edit.stderr.includes(join(talk, '.session', kept[0])), edit.stderr);
+  assert.ok(text(join(talk, '.session', kept[0])).startsWith('<!-- two -->\n<!-- one -->\n'));
 });
