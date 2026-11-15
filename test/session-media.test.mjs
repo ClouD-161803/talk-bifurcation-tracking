@@ -363,3 +363,26 @@ test('an upload whose answer was lost after the write is sent again without a se
     assert.deepEqual(media(server), ['x-2.png', 'x-3.png', 'x.png']);
   });
 });
+
+test('an upload cut on the network is sent again once the page is online again, without Try again', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  p.down = true;
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`);
+  p.down = false;
+  await goOffline(ann);
+  await ann.waitFor(`${C}.connection === 'offline'`);
+  await goOnline(ann);
+  // the page is online again once a poll is answered, which a page that joins makes happen at once
+  await post(server.edit.port, `${server.edit.base}.session/hello`, { name: 'Ben' });
+  const text = await converge(server, [ann]);
+  assert.deepEqual(sources(text)[0], ['media/plot.png']);
+  assert.ok(disk(server, 'media/plot.png').equals(LIGHT));
+  assert.equal(await ann.evaluate(STATE), 'Saved to index.html');
+  clean(ann, PROXIED);
+});
