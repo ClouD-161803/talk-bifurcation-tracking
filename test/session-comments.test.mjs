@@ -289,3 +289,133 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   clean(a);
   clean(b);
 });
+
+test('the actions on a thread, the rights of its author, the filters, a mention, a changed name, and a page that joins later or loads again', { timeout: 300_000 }, async (t) => {
+  const { browser, server, pages: [a, b] } = await pair(t);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'The first comment');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  const ARTICLE = `${PANE} article[data-id="${id}"]`;
+  const first = (texts) => ({ anchor: 'On Paragraph: First slide', texts });
+  await openPane(b);
+
+  await t.test('a reply reaches the author, who alone can edit or delete the comment', async () => {
+    await sees(b, THREADS, [first(['The first comment'])]);
+    assert.equal(await b.evaluate(`!!document.querySelector('${ARTICLE} > .item:first-child .more')`), false);
+    await click(b, `${ARTICLE} .reply textarea`);
+    await type(b, 'A reply');
+    await click(b, `${ARTICLE} .reply .actions .primary`);
+    await sees(a, THREADS, [first(['The first comment', 'A reply'])]);
+    const refused = (route) => b.evaluate(`${C}.transport.post('comments/${id}/${route}', { token: ${C}.token, text: 'Taken over', mentions: [] }).then(() => 0, (e) => e.status)`);
+    assert.equal(await refused('edit'), 403);
+    assert.equal(await refused('delete'), 403);
+
+    await front(a);
+    await click(a, `${ARTICLE} > .item:first-child .more`);
+    await menu(a, 'Edit');
+    await a.waitFor(`document.activeElement?.matches('${ARTICLE} textarea') && document.activeElement.value === 'The first comment'`);
+    await a.evaluate('document.activeElement.select()');
+    await type(a, 'The first comment, edited');
+    await click(a, `${ARTICLE} > .item:first-child .actions .primary`);
+    await sees(b, THREADS, [first(['The first comment, edited', 'A reply'])]);
+    assert.match(await b.evaluate(`document.querySelector('${ARTICLE} .item .time').textContent`), / \(edited\)$/);
+
+    await front(b);
+    await click(b, `${ARTICLE} > .item ~ .item .more`);
+    await menu(b, 'Delete');
+    await sees(a, THREADS, [first(['The first comment, edited'])]);
+  });
+
+  await t.test('a resolved thread leaves Open for Resolved, and Reopen brings it back', async () => {
+    await front(a);
+    await click(a, `${ARTICLE} .resolve`);
+    await sees(b, THREADS, []);
+    await sees(b, EMPTY, 'No open comments.');
+    await badge(b, 'One', 'p', null);
+    await click(b, `${PANE} .filters [data-filter="resolved"]`);
+    await sees(b, THREADS, [first(['The first comment, edited'])]);
+    assert.match(await b.evaluate(`document.querySelector('${ARTICLE} .resolved-by').textContent`), /^Resolved by Ann, /);
+    await click(b, `${ARTICLE} .text-button`);
+    await sees(b, EMPTY, 'No resolved comments.');
+    await click(b, `${PANE} .filters [data-filter="open"]`);
+    await sees(b, THREADS, [first(['The first comment, edited'])]);
+    await badge(a, 'One', 'p', '1');
+  });
+
+  await t.test('a mention reaches the person with a toast and a count, which a look at the thread clears', async () => {
+    await show(b, 'Two');
+    await click(b, '.reveal section.present > p');
+    await press(b, COMMENT_KEY);
+    await b.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
+    await typeKeys(b, 'Look, @An');
+    await sees(b, `[...document.querySelectorAll('${PANE} .draft .people li')].map((li) => [li.children[1].textContent, li.getAttribute('aria-selected')])`, [['Ann', 'true']]);
+    await press(b, 'Enter');
+    await typeKeys(b, 'what do you think?');
+    assert.equal(await b.evaluate('document.activeElement.value'), 'Look, @Ann what do you think?');
+    await click(b, `${PANE} .draft .actions .primary`);
+    await b.waitFor(`!document.querySelector('${PANE} .draft')`);
+    const look = { anchor: 'On Paragraph: Second slide', texts: ['Look, @Ann what do you think?'] };
+
+    await front(a);
+    await sees(a, TOASTS, ['Ben mentioned you on slide 2']);
+    await sees(a, COUNT, 'Comments, 1 unread');
+    assert.equal(await a.evaluate(`document.querySelector('.beeson-session-comments .count').textContent`), '1');
+    await sees(a, `[...document.querySelectorAll('${PANE} .mention')].map((m) => m.textContent)`, ['@Ann']);
+    await badge(a, 'Two', 'p', '1*');
+
+    // For You holds the threads that a person wrote, replied to, or is mentioned in
+    await click(a, `${PANE} .filters [data-filter="mine"]`);
+    await sees(a, THREADS, [first(['The first comment, edited']), look]);
+    await front(b);
+    await click(b, `${PANE} .filters [data-filter="mine"]`);
+    await sees(b, THREADS, [look]);
+    await click(b, `${PANE} .filters [data-filter="open"]`);
+    await sees(b, THREADS, [first(['The first comment, edited']), look]);
+
+    await front(a);
+    await click(a, '.beeson-session-toast button');
+    await sees(a, COUNT, 'Comments');
+    await badge(a, 'Two', 'p', '1');
+    assert.equal(await a.evaluate(`document.activeElement?.closest('article')?.querySelector('.text')?.textContent`), 'Look, @Ann what do you think?');
+  });
+
+  await t.test('a changed name is shown on the comments and the mentions of the person', async () => {
+    // as Change Name of the menu of the avatar does
+    await a.evaluate(`(async () => {
+      const c = ${C};
+      const answer = await c.transport.name(c.token, 'Annabel');
+      localStorage.setItem('beeson-session-name', answer.name);
+      c.setName(answer.name);
+    })()`);
+    await front(b);
+    await sees(b, `[...document.querySelectorAll('${PANE} .item .who')].map((w) => w.textContent)`, ['Annabel', 'Ben']);
+    await sees(b, `[...document.querySelectorAll('${PANE} .mention')].map((m) => m.textContent)`, ['@Annabel']);
+  });
+
+  await t.test('a page that joins later and a page that loads again show the threads, with what was read', async () => {
+    const c = await open(browser, sessionUrl(server.edit), { name: 'Cy' });
+    await openPane(c);
+    await sees(c, THREADS, [first(['The first comment, edited']), { anchor: 'On Paragraph: Second slide', texts: ['Look, @Annabel what do you think?'] }]);
+    await badge(c, 'One', 'p', '1*');
+    await badge(c, 'Two', 'p', '1*');
+    assert.equal(await c.evaluate(COUNT), 'Comments');
+
+    const count = await loads(a);
+    await a.evaluate('location.reload()').catch(() => {});
+    await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again');
+    await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+    await a.waitFor(ONLINE);
+    await front(a);
+    await badge(a, 'Two', 'p', '1');
+    assert.equal(await a.evaluate(COUNT), 'Comments');
+    await openPane(a);
+    await sees(a, THREADS, [first(['The first comment, edited']), { anchor: 'On Paragraph: Second slide', texts: ['Look, @Annabel what do you think?'] }]);
+    clean(c);
+  });
+
+  assert.equal(await converge(server, [a, b]), TALK);
+  clean(a);
+  // the refused edit and delete of a comment of another person
+  clean(b, [/status of 403/]);
+});
