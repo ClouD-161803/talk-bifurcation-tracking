@@ -16,12 +16,13 @@ export const SHOWN = 6000;
 
 export type ToastButton = { label: string; run(): void };
 
-const queue: { text: string; button?: ToastButton }[] = [];
+const queue: { line: (string | Node)[]; button?: ToastButton }[] = [];
 let region: HTMLElement | null = null;
 let timer = 0;
 
-export function toast(text: string, button?: ToastButton): void {
-  queue.push({ text, button });
+// text is a string, or a line of strings and nodes, e.g. with a name in a bdi element
+export function toast(text: string | (string | Node)[], button?: ToastButton): void {
+  queue.push({ line: typeof text === 'string' ? [text] : text, button });
   if (!timer) next();
 }
 
@@ -39,7 +40,9 @@ function next(): void {
     region.replaceChildren();
     return;
   }
-  const parts: Node[] = [make('span', '', shown.text)];
+  const span = make('span');
+  span.append(...shown.line);
+  const parts: Node[] = [span];
   if (shown.button) {
     const { label, run } = shown.button;
     const b = make('button', '', label);

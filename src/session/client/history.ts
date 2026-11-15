@@ -7,7 +7,7 @@
 
 import { parseVersion, VERSION_NAME_MAX, type AsideInfo, type HistoryAnswer, type Restored, type RestoreAnswer, type Version, type VersionInfo } from '../protocol.ts';
 import type { Client } from './client.ts';
-import { make, style } from './dom.ts';
+import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
 import { authorsOf, dayLabel, personOf, slidesText, timeOf, whenOf } from './labels.ts';
 import { presenceOf } from './presence.ts';
@@ -391,7 +391,7 @@ export function install(client: Client): void {
   });
   client.on('restored', (r: Restored) => {
     if (r.by === client.person) return;
-    toast(`${personOf(client, r.by)?.name ?? 'Someone'} restored the version of ${whenOf(r.time)}`);
+    toast([bdi(personOf(client, r.by)?.name ?? 'Someone'), ` restored the version of ${whenOf(r.time)}`]);
   });
   client.on('ended', () => close());
 }
