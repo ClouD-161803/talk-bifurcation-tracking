@@ -427,3 +427,38 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   await ann.waitFor(`!(${SHOWN})`);
   clean(ann);
 });
+
+// the text of the pill of following, or null while it is hidden
+const PILL = `(() => { const box = document.querySelector('.beeson-session-follow'); return !box || box.hidden ? null : box.querySelector('.text').textContent; })()`;
+const FOLLOWED = 'window.BeesonSession.follow().target';
+
+test('Version History stops following, and a page that follows the person reads that the person views the version history', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  const ids = { ann: await ann.evaluate(`${C}.person`), ben: await ben.evaluate(`${C}.person`) };
+  // Ben follows Ann, and Ann follows Ben
+  for (const [page, id] of [[ben, ids.ann], [ann, ids.ben]]) {
+    await front(page);
+    await page.waitFor(`${C}.resolved().some((r) => r.person === ${JSON.stringify(id)})`);
+    await page.evaluate(`window.BeesonSession.follow().start(${JSON.stringify(id)})`);
+    assert.equal(await page.evaluate(FOLLOWED), id);
+  }
+  await front(ben);
+  await ben.waitFor(`${PILL} === 'Following Ann'`);
+  await openPane(ann);
+  assert.equal(await ann.evaluate(FOLLOWED), null);
+  await front(ben);
+  await ben.waitFor(`${PILL} === 'Ann is viewing the version history'`);
+  assert.equal(await ben.evaluate(FOLLOWED), ids.ann);
+  await front(ann);
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  await front(ben);
+  await ben.waitFor(`${PILL} === 'Following Ann'`);
+  clean(ann);
+  clean(ben);
+});
