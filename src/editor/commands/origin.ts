@@ -42,7 +42,9 @@ export function originComment(text: string): string {
   return `${OPEN}${json.replace(/[-<>]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}-->`;
 }
 
-// the origin of a text of the clipboard, or null for a text without it, e.g. of an older editor
+// the origin of a text of the clipboard, or null for a text without it, e.g. of an older editor.
+// any page can write the clipboard, hence a deck that is not an address of http, https, or file
+// gives null, and a macro that theme/macros.js would not read as one is dropped
 export function originOf(text: string): Origin | null {
   const at = text.indexOf(MARK);
   if (at < 0) return null;
@@ -50,8 +52,13 @@ export function originOf(text: string): Origin | null {
   const end = rest.indexOf('-->');
   if (!rest.startsWith(OPEN) || end < 0) return null;
   try {
-    const o = JSON.parse(rest.slice(OPEN.length, end)) as Origin;
-    return typeof o.deck === 'string' && typeof o.version === 'string' && Array.isArray(o.macros) ? o : null;
+    const o = JSON.parse(rest.slice(OPEN.length, end));
+    if (!/^(https?|file):$/.test(new URL(o.deck).protocol)) return null;
+    const macros = (Array.isArray(o.macros) ? o.macros : []).filter(
+      (m: OriginMacro | null) => typeof m?.name === 'string' && /^[a-zA-Z]+$/.test(m.name) && typeof m.body === 'string' && Number.isInteger(m.args) && m.args >= 0 && m.args <= 9,
+    );
+    const version = typeof o.version === 'string' && /^[\w.+-]{0,40}$/.test(o.version) ? o.version : '';
+    return { deck: o.deck, version, macros: macros.map(({ name, body, args }: OriginMacro) => ({ name, body, args })) };
   } catch {
     return null;
   }

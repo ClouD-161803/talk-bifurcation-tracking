@@ -20,7 +20,7 @@ dialog.paste-macros p.hint { margin: 0 0 12px; color: var(--ed-text); }
 
 // a macro as an entry of window.beesonMacros, its body a string of JavaScript in single quotes
 const line = (m: OriginMacro): string => {
-  const body = `'${m.body.replace(/[\\']/g, (c) => `\\${c}`).replace(/\n/g, '\\n')}'`;
+  const body = `'${m.body.replace(/[\\']/g, (c) => `\\${c}`).replace(/[\n\r\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}'`;
   return `${m.name}: ${m.args ? `[${body}, ${m.args}]` : body},`;
 };
 
