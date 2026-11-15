@@ -173,3 +173,68 @@ test('anchors checked against a text that does not hold their start tags fall ba
   assert.deepEqual(r.items[4], { anchor: null, slide: null, removed: { text: null } });
   assert.deepEqual(r.items[5], deckItem);
 });
+
+test('a start tag is read whole, however long, and only where one begins', () => {
+  const long = `<p>a</p><img src="data:image/png;base64,${'A'.repeat(5000)}" alt="x > y"><p>b</p>`;
+  const img = startTagAt(long, long.indexOf('<img'));
+  assert.equal(img.tag, 'img');
+  assert.equal(long.slice(img.end, img.end + 3), '<p>');
+  assert.equal(startTagAt(long, 1), null);
+  assert.equal(startTagAt(long, long.indexOf('</p>')), null);
+  assert.equal(startTagAt('<!-- x -->', 0), null);
+  assert.equal(startTagAt('<p', 0), null);
+  assert.equal(startTagAt(long, -1), null);
+  assert.equal(startTagAt(long, 0.5), null);
+});
+
+test('the slides of the text after are those that a whole read finds, also when one slide alone is read', () => {
+  const before = deck(['<h2>Alpha</h2>', '<p>One</p>'], ['<h2>Beta</h2>', '<p>Two</p>', '<p>Three</p>'], ['<h2>Gamma</h2>']);
+  const at = (what) => before.indexOf(what);
+  const insert = (where, text) => [{ start: where, end: where, text }];
+  const cases = {
+    'an element inserted': insert(at('<p>Three'), '<p>New</p>\n  '),
+    'an element removed': [{ start: at('<p>Two'), end: at('<p>Three'), text: '' }],
+    'an insertion at the end tag': insert(at('</section>\n<section>\n  <h2>Gamma'), '<p>Last</p>\n'),
+    'a section inside a slide': insert(at('<p>Three'), '<section><p>x</p></section>'),
+    'an end tag of a section': insert(at('<p>Three'), '</section>'),
+    'an open HTML comment': insert(at('<p>Three'), '<!-- '),
+    'an open script': insert(at('<p>Three'), '<script>'),
+    'an open attribute value': insert(at('<p>Three'), '<p title="x>'),
+    'a closed HTML comment': insert(at('<p>Three'), '<!-- <section> -->'),
+    'two slides': [...insert(at('<p>One'), '<b>x</b>'), ...insert(at('<p>Two'), '<b>y</b>')],
+    'a start tag of a slide': [{ start: at('<section>\n  <h2>Beta') + 8, end: at('<section>\n  <h2>Beta') + 8, text: ' class="title"' }],
+    'a slide removed': [{ start: at('<section>\n  <h2>Beta'), end: at('<section>\n  <h2>Gamma'), text: '' }],
+  };
+  // the cases where the slide of the patches is read alone, and the slides before it are kept as given
+  const alone = new Set(['an element inserted', 'an element removed', 'an insertion at the end tag', 'a closed HTML comment']);
+  const items = [onElement(before, '<p>Three'), onElement(before, '<h2>Alpha'), onSlide(before, 'Gamma')];
+  for (const [name, patches] of Object.entries(cases)) {
+    let after = before;
+    for (const p of [...patches].reverse()) after = after.slice(0, p.start) + p.text + after.slice(p.end);
+    const given = slidesOf(before);
+    const r = moveAnchors(before, patches, after, items, given);
+    assert.deepEqual(r.slides, slidesOf(after), name);
+    assert.equal(r.slides[0] === given[0], alone.has(name), name);
+    reads(after, r.items[1].anchor, '<h2>Alpha');
+  }
+  // no items, no slides read
+  assert.deepEqual(moveAnchors(before, cases['an element inserted'], before, [], slidesOf(before)), { items: [], changed: [], slides: null });
+});
+
+test('an element longer than every inserted text and than 4 kB is not read to its end', () => {
+  const big = 'x'.repeat(REMOVED_MAX + 10);
+  const before = deck(['<h2>Alpha</h2>', `<div><p>${big}</p></div>`, '<p>After</p>']);
+  const items = [onElement(before, '<div>'), onElement(before, '<p>After')];
+  // a paragraph inserted inside the element: the start tag of the element is kept
+  const grown = before.replace('</p></div>', '</p><p>New</p></div>');
+  let r = move(before, grown, items);
+  reads(grown, r.items[0].anchor, '<div><p>xxx');
+  reads(grown, r.items[1].anchor, '<p>After');
+  assert.deepEqual(r.changed, [false, false]);
+  // the element removed: it falls back to its slide without its text
+  const gone = before.replace(`  <div><p>${big}</p></div>\n`, '');
+  r = move(before, gone, items);
+  reads(gone, r.items[0].anchor, '<section>\n  <h2>Alpha');
+  assert.deepEqual(r.items[0].removed, { text: null });
+  reads(gone, r.items[1].anchor, '<p>After');
+});
