@@ -438,7 +438,8 @@ body.no-lockup .reveal .slides section.closing::before { content: none; }
 .reveal .slides section .figure-box:not(.viewer-still):has(> img[style*="width:"], > video[style*="width:"], > .qr[style*="width:"], > tycho-viewer[style*="height:"], > .viewer-still[style*="height:"]) { width: auto; height: auto; }
 /* the videos of a figure box or a plate are stacked in one place, and a video under a later one that is shown is hidden
    once the later one has faded in, see src/video.ts. in a plate of the class row, the figures are side by side,
-   each in an equal share of the plate */
+   each in an equal share of the plate, and a figure resized by itself in the editor, with a width in its style, is
+   drawn at its width */
 .reveal .slides section .figure-box:has(> video ~ video),
 .reveal .slides section.figure .plate:not(.row):has(> video ~ video) { display: grid; grid-template: 100% / 100%; }
 .reveal .slides section .figure-box > video,
@@ -447,6 +448,7 @@ body.no-lockup .reveal .slides section.closing::before { content: none; }
 .reveal .slides section video.fragment[data-covered] { visibility: hidden; transition: opacity 400ms ease-out, visibility 0s 400ms; }
 .reveal .slides section.figure .plate.row { display: flex; gap: 60px; }
 .reveal .slides section.figure .plate.row > * { flex: 1 1 0; min-width: 0; object-position: center; }
+.reveal .slides section.figure .plate.row > [style*="width:"] { flex: none; }
 
 /* split: the black text column of the group deck, dark in both modes, with a figure at the right */
 .reveal .slides section.split .text-column { left: 0; top: 0; width: 760px; height: 1080px; padding: 120px 80px 0 120px; box-sizing: border-box; background: var(--text-column); color: var(--text-column-text); }
