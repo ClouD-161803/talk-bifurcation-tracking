@@ -25,7 +25,7 @@ import { VOID } from '../source.ts';
 import { tokenize } from '../tokens.ts';
 import { keepBeside } from './place.ts';
 import { keepPlaces } from '../canvas/drag.ts';
-import { MARK, docOf, refusedRead, slidesIn } from './slide.ts';
+import { MARK, docOf, readClipboard, refusedRead, slidesIn } from './slide.ts';
 import { arrive, originComment } from './origin.ts';
 import { cellAt, clearRange, pasteAtCell, pasteRange, pasteTable, rangeText, selectedRange } from './table.ts';
 import { removeJoining } from '../text/elements.ts';
@@ -486,7 +486,7 @@ export function install(app: App): void {
     let text = typeof arg === 'string' ? arg : '';
     const read = !text;
     let refused = false;
-    if (!text) text = (await navigator.clipboard?.readText().catch((e) => void (refused = e?.name === 'NotAllowedError'))) || '';
+    if (!text) ({ text, refused } = await readClipboard());
     if (!text && !inText(a)) {
       const files = await readMedia();
       if (files.length) return void (await insertFiles(a, files));

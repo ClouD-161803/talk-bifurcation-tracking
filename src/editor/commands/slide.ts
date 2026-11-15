@@ -180,10 +180,21 @@ function freshIds(app: App, text: string): string {
 // the text last copied, for a paste from a menu where the clipboard of the system cannot be read
 let copied = '';
 
-// the note of a paste from a menu whose read of the clipboard the browser refused, which the key
-// pastes from its own event
+// the text of the clipboard read for a paste from a menu. a page without navigator.clipboard,
+// e.g. over http from another machine, is refused as a read that the browser denies
+export async function readClipboard(): Promise<{ text: string; refused: boolean }> {
+  if (!navigator.clipboard?.readText) return { text: '', refused: true };
+  return navigator.clipboard.readText().then(
+    (text) => ({ text, refused: false }),
+    (e) => ({ text: '', refused: e?.name === 'NotAllowedError' }),
+  );
+}
+
+// the note of a refused read, after which the key pastes from its own event. without a fine
+// pointer, e.g. on a phone, the browser asks for the read again at the next Paste
 export function refusedRead(app: App): void {
-  app.note = { text: `The browser did not let the editor read the clipboard. Press ${display('Mod+V', app.platform)} to paste`, warn: true };
+  const how = matchMedia('(any-pointer: fine)').matches ? `Press ${display('Mod+V', app.platform)} to paste` : 'Choose Paste again and allow it when the browser asks';
+  app.note = { text: `The browser did not let the editor read the clipboard. ${how}`, warn: true };
   app.report();
 }
 
@@ -554,7 +565,8 @@ export function install(app: App): void {
       run: async (a, arg) => {
         let text = typeof arg === 'string' ? arg : '';
         let refused = false;
-        if (!text) text = (await navigator.clipboard?.readText().catch((e) => void (refused = e?.name === 'NotAllowedError'))) || copied;
+        if (!text) ({ text, refused } = await readClipboard());
+        text ||= copied;
         if (!text && refused) return refusedRead(a);
         await pasteSlides(a, text, inNav());
       },
