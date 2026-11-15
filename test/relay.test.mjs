@@ -333,6 +333,9 @@ function rawGuest(t, relay, head, ...chunks) {
   return socket;
 }
 
+const hex = (n) => `${n.toString(16)}\r\n${'x'.repeat(n)}\r\n`;
+const status = (socket) => Number(/^HTTP\/1\.1 (\d+)/.exec(socket.got)?.[1] ?? 0);
+
 test('add regression test: a push that is cut off gives its place in the memory of the relay back', { timeout: 60_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
@@ -345,4 +348,37 @@ test('add regression test: a push that is cut off gives its place in the memory 
   await until(() => relay.held() >= 3 * MB, 'the relay to hold the push that it reads');
   push.destroy();
   await until(() => relay.held() === 0, 'the place of the cut push to be given back', 5000);
+});
+
+test('add regression test: one session cannot fill the memory of the relay, and small answers pass when large ones fill it', { timeout: 60_000 }, async (t) => {
+  // a session may hold a quarter of memoryBytes, i.e. 8 MB, and 4 MB are kept for small answers
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, memoryBytes: 32 * MB });
+  t.after(() => relay.close());
+  const keys = ['a', 'b', 'c', 'd', 'e'].map((c) => c.repeat(22));
+  const hosts = await Promise.all(keys.map((key) => fakeHost(relay, key)));
+  // an upload that is never finished, as from a slow phone or a guest that stopped
+  const upload = (key, size) => rawGuest(t, relay, `PUT /${key}/media/v.mp4 HTTP/1.1\r\nHost: relay\r\nTransfer-Encoding: chunked\r\n\r\n`, hex(size));
+
+  upload(keys[0], 7 * MB);
+  upload(keys[0], MB);
+  await until(() => relay.held() === 8 * MB, 'the relay to hold the uploads of the first session');
+  const second = rawGuest(t, relay, `PUT /${keys[0]}/media/w.mp4 HTTP/1.1\r\nHost: relay\r\nTransfer-Encoding: chunked\r\n\r\n`, hex(7 * MB), '0\r\n\r\n');
+  await until(() => status(second), 'the second upload of the session to be answered');
+  assert.equal(status(second), 503, 'a session holds a quarter of the memory at most');
+  assert.equal(relay.held(), 8 * MB);
+  const own = raw(relay.port, 'GET', `/${keys[0]}/index.html`, { host: 'relay' });
+  const [item] = await hosts[0].next();
+  assert.equal(await hosts[0].push(item.id, 'deck'), 204, 'a small answer passes in a session that holds its share');
+  assert.equal((await own).text, 'deck');
+
+  for (const [key, size] of [[keys[1], 7 * MB], [keys[2], 7 * MB], [keys[3], 6 * MB]]) upload(key, size);
+  await until(() => relay.held() === 28 * MB, 'the relay to hold the uploads of three more sessions');
+  const [big, small] = [rawGuest(t, relay, `GET /${keys[4]}/clip.mp4 HTTP/1.1\r\nHost: relay\r\n\r\n`), rawGuest(t, relay, `GET /${keys[4]}/index.html HTTP/1.1\r\nHost: relay\r\n\r\n`)];
+  const items = await hosts[4].next(2);
+  const id = (path) => items.find((item) => item.path.endsWith(path)).id;
+  assert.equal(await hosts[4].push(id('clip.mp4'), Buffer.alloc(MB)), 503, 'a large answer does not take the place kept for small ones');
+  assert.equal(await hosts[4].push(id('index.html'), 'deck'), 204, 'a small answer passes when large ones fill the cap');
+  await until(() => status(small) && status(big), 'the guests to be answered');
+  assert.equal(status(small), 200);
+  assert.match(small.got, /\r\n\r\ndeck$/);
 });
