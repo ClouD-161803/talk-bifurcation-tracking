@@ -175,3 +175,43 @@ for (const [label, change] of AGAIN) {
     assert.deepEqual(b.errors, []);
   });
 }
+
+const SAME = [
+  ['a formula put at the end of its text', (text) => once(text, 'viewer\'s attention.</p>', 'viewer\'s attention. \\(x\\)</p>')],
+  ['a slide with formulas placed after it', (text) => duplicated(text, 'Equations are first class')],
+];
+
+for (const [label, change] of SAME) {
+  test(`a caret that the person moves inside the same text while the formulas of an apply are typeset stays there, after ${label}`, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    await showSlide(b, 'Show your steps');
+    assert.equal(await b.evaluate(`(() => {
+      const p = ${P1};
+      p.focus();
+      getSelection().collapse(p.firstChild, 6);
+      return document.activeElement === p;
+    })()`), true);
+    await closeGate(b);
+    await b.evaluate(`(() => {
+      window.__result = null;
+      ${E}.apply(${JSON.stringify(change(b.source))}).then((r) => (window.__result = r.reload));
+      return true;
+    })()`);
+    await b.waitFor('window.__held > 0');
+    // a press in the same text, as a click there, puts the caret at its character 3
+    await b.evaluate(`(() => {
+      window.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      getSelection().collapse(${P1}.firstChild, 3);
+      return true;
+    })()`);
+    await openGate(b);
+    await b.waitFor('window.__result !== null');
+    assert.equal(await b.evaluate('window.__result'), false);
+    assert.deepEqual(await b.evaluate(`(() => {
+      const sel = getSelection();
+      return { node: sel.focusNode === ${P1}.firstChild, offset: sel.focusOffset };
+    })()`), { node: true, offset: 3 });
+    assert.deepEqual(b.errors, []);
+  });
+}
