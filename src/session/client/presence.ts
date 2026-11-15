@@ -712,8 +712,8 @@ export class Presence {
     }
     const before = this.locked;
     this.locked = locked;
-    for (const el of before.keys()) if (!locked.has(el)) el.classList.remove('beeson-locked');
-    for (const el of locked.keys()) el.classList.add('beeson-locked');
+    for (const el of before.keys()) if (!locked.has(el)) el.classList.remove('beeson-held');
+    for (const el of locked.keys()) el.classList.add('beeson-held');
     if (yielded || refused) this.hold(null);
     const same = before.size === locked.size && [...locked].every(([el, r]) => before.get(el) === r);
     if (!same || yielded || refused) for (const fn of [...this.lockListeners]) fn({ yielded, refused });

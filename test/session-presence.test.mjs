@@ -196,7 +196,7 @@ test('the flag of a person who types reads that the person is typing, and the ca
 
 const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
 const REFUSED = 'Ana is typing here. You can edit this text once they leave it or stop for 30 s.';
-const LOCKED = (expression) => `${expression}.classList.contains('beeson-locked')`;
+const LOCKED = (expression) => `${expression}.classList.contains('beeson-held')`;
 // the bubble of page cleared, so that the next one can be told from it
 const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
 
@@ -258,10 +258,10 @@ test('a text element that another page holds refuses a caret, a press, a selecti
   await ana.evaluate(`Reveal.slide(${at})`);
   await caretAtEnd(ana, el(at, 'p'));
   const held = el(at, 'p');
-  const lockedAt = `[...document.querySelectorAll('.beeson-locked')].map((e) => [...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.contains(e)))`;
+  const lockedAt = `[...document.querySelectorAll('.beeson-held')].map((e) => [...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.contains(e)))`;
   await until(async () => JSON.stringify(await ben.evaluate(lockedAt)) === `[${at}]`, 'only the copy that Ana is in to be locked on the page of Ben');
-  for (const read of [TEXT, 'window.BeesonEditor.render()', `${C}.app.files.render()`]) assert.ok(!(await ben.evaluate(read)).includes('beeson-locked'), read);
-  assert.ok(!server.read().includes('beeson-locked'));
+  for (const read of [TEXT, 'window.BeesonEditor.render()', `${C}.app.files.render()`]) assert.ok(!(await ben.evaluate(read)).includes('beeson-held'), read);
+  assert.ok(!server.read().includes('beeson-held'));
 
   // a change of index.html from outside still reaches the held element
   let k = 0;

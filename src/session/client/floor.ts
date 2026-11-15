@@ -31,7 +31,7 @@ export function install(client: Client): void {
   const presence = presenceOf(client);
   if (!presence) return;
   const { app } = client;
-  style('floor', '.beeson-locked, .beeson-locked * { cursor: not-allowed !important; }');
+  style('floor', '.beeson-held, .beeson-held * { cursor: not-allowed !important; }');
   ready();
   // the selection is changed by this file, which is not an action of the person
   let filtering = false;
