@@ -5,7 +5,9 @@
 // write that keeps failing, and a file that is a symbolic link
 
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -388,6 +390,44 @@ test('a write that keeps failing is reported with the number of unwritten operat
   } finally {
     chmodSync(talk, 0o755);
     await stopEdit(edit);
+  }
+});
+
+test('add regression test: a stop that a paused relay and an unfinished request hold past 3 s exits nonzero while an operation is unwritten', { timeout: 120_000, skip: noChmod }, async (t) => {
+  const secret = 'the secret of the group for this test';
+  const env = { ...process.env, SLIDES_RELAY_SECRET: secret };
+  const relay = spawn(process.execPath, ['scripts/relay.mjs', '--port', '0', '--host', '127.0.0.1'], { env, stdio: ['ignore', 'pipe', 'ignore'] });
+  t.after(() => {
+    relay.kill('SIGCONT');
+    relay.kill();
+  });
+  let out = '';
+  relay.stdout.setEncoding('utf8').on('data', (chunk) => (out += chunk));
+  const port = Number((await until(() => /port (\d+)/.exec(out), 'the relay to listen'))[1]);
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { args: ['--relay', `http://127.0.0.1:${port}`], env: { SLIDES_RELAY_SECRET: secret, XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  await until(() => edit.stderr.includes('shared at'), 'the edit command to register with the relay');
+  const api = (route) => `${edit.base}.session/${route}`;
+  const open = new Socket();
+  t.after(() => open.destroy());
+  try {
+    const hello = (await post(edit.port, api('hello'), { name: 'Ann' })).json();
+    chmodSync(talk, 0o555);
+    const at = DECK.indexOf('One');
+    const answer = (await post(edit.port, api('op'), { token: hello.token, seq: 1, base: hello.v, patches: [{ start: at, end: at, text: 'X' }] })).json();
+    assert.equal(answer.ok, true);
+    // a request whose body does not end holds the close of the server for 300 ms, and the paused
+    // relay holds the end of the share for 2.5 s
+    await new Promise((done) => open.connect(edit.port, '127.0.0.1', done));
+    open.write(`POST ${api('op')} HTTP/1.1\r\nHost: 127.0.0.1:${edit.port}\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{"token":`);
+    relay.kill('SIGSTOP');
+    edit.child.kill('SIGTERM');
+    assert.equal(await edit.exited, 1);
+    assert.ok(edit.stderr.includes('1 operations are not written'), edit.stderr);
+  } finally {
+    chmodSync(talk, 0o755);
   }
 });
 
