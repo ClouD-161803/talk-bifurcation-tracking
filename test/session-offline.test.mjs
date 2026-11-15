@@ -170,3 +170,21 @@ test('two tabs of one browser keep their copies apart, and a new page takes over
   assert.deepEqual(await rows(d), []);
   for (const page of [b, c, d]) clean(page);
 });
+
+test('a page without IndexedDB edits offline, says that its changes cannot be kept, and sends them once online', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // as in a private window of a browser that refuses IndexedDB
+  const script = `IDBFactory.prototype.open = function () { throw new DOMException('The operation is insecure.', 'SecurityError'); };`;
+  const page = await tab(browser, sessionUrl(server.edit), { script });
+  await converge(server, [page]);
+  await goOffline(page);
+  await edit(page, 0, 'p', ' kept in memory');
+  await page.waitFor(`${STATE} === 'Offline. Keep this page open, since your changes cannot be kept in this browser'`);
+  assert.equal(await page.evaluate(ACTION), 'Try now');
+  await goOnline(page);
+  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide kept in memory</p>'));
+  assert.equal(await page.evaluate(STATE), 'Saved to index.html');
+  clean(page);
+});
