@@ -111,7 +111,9 @@ test('a guest is told that the host is not running, and the end of the session b
   });
 
   clean(host, REFUSED);
-  clean(guest, REFUSED);
+  // the hello without a name of the rejoin, refused when the kill lost the person of the guest, which
+  // the page sends again with the name
+  clean(guest, [...REFUSED, /status of 400 .*\/\.session\/hello/]);
 });
 
 test('a page whose operation is refused as invalid after a resync stops sending, and Load again loads it', { timeout: 120_000 }, async (t) => {

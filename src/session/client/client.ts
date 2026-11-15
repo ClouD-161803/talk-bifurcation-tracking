@@ -11,6 +11,7 @@ import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { keeps } from './copy.ts';
+import { NAME, store } from './join.ts';
 import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Taken, Token, Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
@@ -316,6 +317,7 @@ export class Client {
     this.token = a.token;
     this.person = a.person;
     this.name = a.name;
+    store(NAME, a.name);
     this.color = a.color;
     this.host = a.host;
     this.people = a.people;
@@ -572,12 +574,16 @@ export class Client {
         const sync = this.sync!;
         while (!this.ended) {
           const whole = sync.needsResync;
-          const request: HelloRequest = { name: this.name, person: this.person, token: this.token, was: sync.sender, ...(whole ? {} : { v: this.since }) };
+          // without a name, the edit command keeps the name of the person, which another page of the
+          // person may have changed
+          const request: HelloRequest = { name: '', person: this.person, token: this.token, was: sync.sender, ...(whole ? {} : { v: this.since }) };
           let answer: HelloAnswer | Taken;
           try {
-            answer = await this.transport.hello(request);
-            // another person holds the name now, and the edit command keeps the name of this person
-            if ('taken' in answer) answer = await this.transport.hello({ ...request, name: '' });
+            answer = await this.transport.hello(request).catch((e) => {
+              // the edit command does not know the person any longer, e.g. without people.json
+              if (!(e instanceof Failure && e.status === 400)) throw e;
+              return this.transport.hello({ ...request, name: this.name });
+            });
             if ('taken' in answer) throw new Failure(409, 'the name is taken');
           } catch (e) {
             await this.offline(e);
@@ -656,6 +662,12 @@ export class Client {
     if (answer.known) {
       this.known = answer.known;
       this.emit('known');
+      // Change Name on another page of the person
+      const name = answer.known.find((p) => p.person === this.person)?.name;
+      if (name && name !== this.name) {
+        store(NAME, name);
+        this.setName(name);
+      }
     }
     if (answer.ops === null) {
       this.sync!.lose();

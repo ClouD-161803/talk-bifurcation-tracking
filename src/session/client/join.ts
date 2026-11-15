@@ -8,7 +8,7 @@ import { accept, beforeJoin, type Copy } from './copy.ts';
 import { make, sheet, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
-const NAME = 'beeson-session-name';
+export const NAME = 'beeson-session-name';
 const PERSON = 'beeson-session-person';
 // the key of a name that the next join of the page claims, set by Change Name before a reload
 const CLAIM = 'beeson-session-claim';
