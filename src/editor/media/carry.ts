@@ -34,11 +34,13 @@ function refsIn(text: string): Ref[] {
 }
 
 // a fetch that a browser refuses, e.g. from file:// or from another port, rejects, and a file
-// that the server does not have is answered with an error status
+// that the server does not have is answered with an error status, or with a page of HTML by a
+// server that falls back to index.html
 async function fetched(url: string): Promise<Read> {
   try {
     const r = await fetch(url);
-    return r.ok ? await r.blob() : 'missing';
+    const page = /^text\/html\b/i.test(r.headers.get('content-type') ?? '') && !/\.html?$/i.test(new URL(url).pathname);
+    return r.ok && !page ? await r.blob() : 'missing';
   } catch {
     return 'refused';
   }
@@ -59,12 +61,14 @@ async function same(a: Blob, b: Blob | null): Promise<boolean> {
 }
 
 // the first path under media/ for name that holds the bytes of blob in this deck, with fresh
-// false, or else that the deck does not name, the store does not hold, and the page cannot read
+// false, or else that the deck does not name, the store does not hold, and the page cannot read.
+// past 100 names, a name made from the time is taken
 async function pathFor(blob: Blob, name: string, isTaken: (path: string) => boolean): Promise<{ path: string; fresh: boolean }> {
   const clean = safeName(name, 'file');
   const dot = clean.lastIndexOf('.');
   const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ''];
   for (let i = 1; ; i++) {
+    if (i > 100) return { path: `${FOLDER}/${stem}-${Date.now().toString(36)}${ext}`, fresh: true };
     const path = `${FOLDER}/${i === 1 ? clean : `${stem}-${i}${ext}`}`;
     const there = await here(path);
     if (await same(blob, there)) return { path, fresh: false };
