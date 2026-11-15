@@ -815,3 +815,18 @@ test('a hold whose holder is idle for 30 s is not locked on a page whose clock w
   clean(ana);
   clean(ben);
 });
+
+test('a listener of the client that throws is reported, and the page goes on polling', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await ben.evaluate(`(() => { let n = 0; ${C}.on('ops', () => { if (n++ === 0) throw new Error('a part failed'); }); return true; })()`);
+  await show(ana, 'One');
+  await caretAtEnd(ana, el(0, 'p'));
+  await type(ana, ' one');
+  await until(() => server.read().includes('First slide one'), 'the first edit in index.html');
+  await until(() => ben.evaluate(`window.BeesonEditor.session.text().includes('First slide one')`), 'the first edit on the page of Ben');
+  await type(ana, ' two');
+  await until(() => ben.evaluate(`window.BeesonEditor.session.text().includes('First slide one two')`), 'the second edit on the page of Ben');
+  assert.ok(ben.errors.some((e) => e.includes('a part failed')), `the error is reported: ${JSON.stringify(ben.errors)}`);
+  clean(ana);
+  clean(ben, [/a part failed/]);
+});
