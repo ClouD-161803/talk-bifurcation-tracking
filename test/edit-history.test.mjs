@@ -246,3 +246,37 @@ test('the slides of a version are numbered as the status bar numbers them', { ti
     assert.deepEqual(slideChanges(before, slidesOf(before), after, slidesOf(after), [{ start: at, end: at + 3 }]), { slides: [2] });
   });
 });
+
+test('the marks of a version hold who changed each range last, moved by later operations', { timeout: 60_000 }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'slides history-'));
+  try {
+    const { authority, history } = open(dir, DECK.replace('</body>', '<section>\n  <h2>Three</h2>\n  <p>Kept</p>\n  <p>Removed by Ann</p>\n</section>\n</body>'));
+    replace(authority, 'Two', 'Deux', ANN);
+    // an operation of Bo before the mark of Ann moves it
+    replace(authority, '<h2>One</h2>', '<h2>One</h2>\n  <p>Inserted by Bo</p>', BO);
+    replace(authority, 'Second slide', 'Second slide, typed by Ann', ANN);
+    // Bo writes over a part of what Ann typed, which splits her mark
+    replace(authority, 'typed by Ann', 'typed by Bo', BO);
+    // a removal leaves an empty mark
+    replace(authority, '  <p>Removed by Ann</p>\n', '', ANN);
+    const v = history.close();
+    const text = authority.text;
+    const marks = history.get(v.id).marks.map((m) => [m.author, text.slice(m.start, m.end), m.start === m.end]);
+    assert.deepEqual(marks.filter(([a]) => a === BO).map(([, s]) => s.trim()), ['<p>Inserted by Bo</p>', 'Bo']);
+    assert.ok(marks.some(([a, s]) => a === ANN && s === 'Deux'), JSON.stringify(marks));
+    assert.ok(marks.some(([a, s]) => a === ANN && s.includes('typed by')), JSON.stringify(marks));
+    assert.ok(marks.some(([a, , empty]) => a === ANN && empty), 'the removal of the paragraph leaves an empty mark');
+    assert.deepEqual(v.slides, [1, 2, 3]);
+    assert.deepEqual(new Set(history.get(v.id).authors), new Set([ANN, BO]));
+    // a change made and undone within one version is not marked
+    replace(authority, 'Deux', 'Dos', BO);
+    replace(authority, 'Dos', 'Deux', BO);
+    replace(authority, '<h2>One</h2>', '<h2>Uno</h2>', ANN);
+    const w = history.close();
+    assert.deepEqual(history.get(w.id).marks.map((m) => [m.author, authority.text.slice(m.start, m.end)]), [[ANN, 'Uno']]);
+    assert.deepEqual(w.slides, [1]);
+    history.stopSync();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
