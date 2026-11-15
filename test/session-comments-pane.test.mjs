@@ -387,6 +387,24 @@ test('offline, Resolve, Reopen, Edit, Delete, and the send buttons are disabled,
   clean(a, REFUSED);
 });
 
+test('a mention is toasted once, also after a reload of the page and a later change of its thread', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const id = await post(b, 1, 'Look, @Ann');
+  await sees(a, TOASTS, ['Ben mentioned you on slide 2']);
+  const count = await loads(a);
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again');
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await openPane(a);
+  await sees(a, THREADS, [{ anchor: 'On Slide 2', texts: ['Look, @Ann'] }]);
+  await act(b, id, 'reply', { text: 'plain reply', mentions: [] });
+  await sees(a, THREADS, [{ anchor: 'On Slide 2', texts: ['Look, @Ann', 'plain reply'] }]);
+  assert.deepEqual(await a.evaluate(TOASTS), []);
+  clean(a);
+  clean(b);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
