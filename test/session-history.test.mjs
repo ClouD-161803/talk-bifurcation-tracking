@@ -3,7 +3,9 @@
 // when it is named: the list after the edits of a host and a guest, live while the pane is
 // open, the mode with the chrome inert, folding and named versions, the preview with the outlines
 // of the changed elements in the tones of their authors, Restore seen by both pages and in
-// index.html, Name, Download, the page offline while the pane is open, and a phone of 390 px
+// index.html, Name, Download, the page offline while the pane is open, a phone of 390 px, and the
+// list, the toasts, and the mode against histories written by hand, a compaction, a conflict, a
+// reload held back, and midnight
 
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -980,6 +982,36 @@ test('Keep theirs at a conflict sets the text of the page aside, which Show open
     await ann.close();
     await ben.close();
   });
+});
+
+test('the mode ends with the session, and a read of the versions that failed is made again at the next state', { timeout: 300_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  // the first read of the versions is answered 500 while the page is online
+  await ann.evaluate(`(() => {
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      if (String(input).includes('/.session/history?') && !window.__failed) {
+        window.__failed = true;
+        return Promise.resolve(new Response(JSON.stringify({ error: 'busy' }), { status: 500 }));
+      }
+      return fetched.call(this, input, init);
+    };
+    return true;
+  })()`);
+  await openPane(ann);
+  await ann.waitFor(`${LIST}[0]?.empty === 'The versions cannot be read while the page is offline.'`);
+  assert.equal(await ann.evaluate(`${C}.connection`), 'online');
+  await ann.evaluate(`${C}.refresh(), true`);
+  await ann.waitFor(`${LIST}[0]?.empty === 'No earlier versions yet.'`);
+  server.edit.child.kill('SIGTERM');
+  await ann.waitFor(`${C}.connection === 'ended'`, 20_000);
+  await ann.waitFor(`!(${SHOWN})`);
+  assert.deepEqual(await ann.evaluate(INERT), [false, false, false, false, false]);
+  clean(ann, [/status of 500/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/]);
 });
 
 // the text of the pill of following, or null while it is hidden
