@@ -35,6 +35,17 @@ export function install(client: Client): void {
   ready();
   // the selection is changed by this file, which is not an action of the person
   let filtering = false;
+  // a composition of an input method is ended by a blur in Chrome and kept through it in Safari,
+  // hence the caret and the selection are left alone until it ends
+  let composing = false;
+  let after: (() => void) | null = null;
+  document.addEventListener('compositionstart', () => (composing = true), true);
+  document.addEventListener('compositionend', () => {
+    composing = false;
+    const f = after;
+    after = null;
+    if (f) setTimeout(f);
+  }, true);
 
   const out = (host: Element | null): void => {
     const active = document.activeElement as HTMLElement | null;
@@ -66,7 +77,7 @@ export function install(client: Client): void {
   for (const type of ['pointerdown', 'mousedown', 'click', 'dblclick']) window.addEventListener(type, pressed, true);
 
   app.selection.listen(() => {
-    if (!filtering) drop(app, presence, true, (f) => (filtering = f));
+    if (!filtering && !composing) drop(app, presence, true, (f) => (filtering = f));
   });
 
   app.commands.refuse((a: App, c: Command, arg?: unknown) => {
@@ -80,12 +91,16 @@ export function install(client: Client): void {
   });
 
   presence.onLocks(({ yielded, refused: lost }) => {
-    drop(app, presence, false, (f) => (filtering = f));
     const by = yielded ?? lost;
-    if (!by) return;
-    out(by.held);
-    if (app.selection.kind === 'text') app.selection.clear();
-    bubble(by.held, yielded ? taken(by) : refusal(by));
+    const leave = (): void => {
+      drop(app, presence, false, (f) => (filtering = f));
+      if (!by?.held || !presence.lockOf(by.held)) return;
+      out(by.held);
+      if (app.selection.kind === 'text') app.selection.clear();
+    };
+    if (composing) after = leave;
+    else leave();
+    if (by) bubble(by.held, yielded ? taken(by) : refusal(by));
   });
 }
 
