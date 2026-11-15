@@ -4,27 +4,17 @@
 // and the previous thread, R opens the reply, E resolves or reopens the thread, and U leaves it.
 // every text of a person is written as text, and never as HTML
 
-import { COLORS, COMMENT_MAX, type Comment } from '../protocol.ts';
+import { COMMENT_MAX, type Comment } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comments.ts';
 import { make, style } from './dom.ts';
 import { whenOf } from './labels.ts';
 import { closeMenu, openMenu } from './menu.ts';
+import { initials, inkOf, toneOf } from './people.ts';
 import { presenceOf } from './presence.ts';
 import { mountToasts, toast, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
-
-// the tone and the initials of a person, until people.ts of the avatars gives them
-function tone(color: number): { bg: string; fg: string } {
-  const v = COLORS[((color % COLORS.length) + COLORS.length) % COLORS.length];
-  return { bg: `var(${v})`, fg: v === '--data-5' ? '#fff' : '#1d1d1f' };
-}
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean).map((w) => Array.from(w));
-  if (!words.length) return '?';
-  return (words.length > 1 ? words[0][0] + words[words.length - 1][0] : words[0].slice(0, 2).join('')).toUpperCase();
-}
 
 const OFFLINE = 'Comments are sent once you are back online';
 
@@ -387,13 +377,13 @@ class Pane {
     const online = this.client.connection === 'online';
     const box = make('div', 'item');
     const head = make('div', 'head');
-    const avatar = make('span', 'avatar', initials(this.nameOf(i.author)));
-    const { bg, fg } = tone(this.colorOf(i.author));
-    avatar.style.background = bg;
-    avatar.style.color = fg;
+    const name = this.nameOf(i.author);
+    const avatar = make('span', 'avatar', initials(name) || '?');
+    avatar.style.background = toneOf(this.colorOf(i.author));
+    avatar.style.color = inkOf(this.colorOf(i.author));
     avatar.setAttribute('aria-hidden', 'true');
     const when = make('span', 'time', whenOf(i.time) + (i.edited ? ' (edited)' : ''));
-    const who = make('span', 'who', this.nameOf(i.author));
+    const who = make('span', 'who', name);
     who.dir = 'auto';
     head.append(avatar, who, when);
     // offline, an action is not sent later, hence its button is disabled
@@ -588,10 +578,9 @@ class Pane {
         li.id = `${people.id}-${k}`;
         li.setAttribute('role', 'option');
         li.setAttribute('aria-selected', String(k === active));
-        const a = make('span', 'avatar', initials(c.name));
-        const { bg, fg } = tone(this.colorOf(c.person));
-        a.style.background = bg;
-        a.style.color = fg;
+        const a = make('span', 'avatar', initials(c.name) || '?');
+        a.style.background = toneOf(this.colorOf(c.person));
+        a.style.color = inkOf(this.colorOf(c.person));
         const name = make('span', '', c.name);
         name.dir = 'auto';
         li.append(a, name);
