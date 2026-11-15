@@ -87,16 +87,26 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const people = new People(authority, join(root, '.session', 'people.json'), log);
   let port = 0;
   let relay: RelayLink | null = null;
+  let closed = false;
+  // the changes of the relay link run one at a time, so that a link is never left running unseen
+  let relayQueue: Promise<unknown> = Promise.resolve();
+  const serial = <T>(task: () => Promise<T>): Promise<T> => {
+    const run = relayQueue.then(task, task);
+    relayQueue = run.catch(() => {});
+    return run;
+  };
 
   async function share(request: Request): Promise<Response> {
     if (!request.direct) return error(403, 'only the host can share a session');
     if (request.method === 'GET') return json(200, { link: relay?.link ?? null });
     if (request.method === 'DELETE') {
-      // the guests are told before the relay that carries the answers is left
-      people.endGuests();
-      await relay?.stop();
-      relay = null;
-      return json(200, { link: null });
+      return serial(async () => {
+        // the guests are told before the relay that carries the answers is left
+        people.endGuests();
+        await relay?.stop();
+        relay = null;
+        return json(200, { link: null });
+      });
     }
     if (request.method !== 'POST') return error(405, 'GET, POST, or DELETE');
     if (!isJson(request)) return error(415, 'the body must be application/json');
@@ -111,20 +121,28 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const secret = body.secret ?? saved.secret;
     if (!address) return json(400, { link: null, error: ADDRESS_RULE });
     if (typeof secret !== 'string' || secret.length < 16) return json(400, { link: null, error: 'the secret has fewer than 16 characters' });
-    try {
-      await connect(address, secret);
-    } catch (e) {
-      return json(502, { link: null, error: (e as Error).message });
-    }
-    if (body.relay !== undefined || body.secret !== undefined) saveConfig({ relay: address, secret });
-    return json(200, { link: relay!.link });
+    return serial(async () => {
+      try {
+        await connect(address, secret);
+      } catch (e) {
+        return json(502, { link: null, error: (e as Error).message });
+      }
+      if (body.relay !== undefined || body.secret !== undefined) saveConfig({ relay: address, secret });
+      return json(200, { link: relay!.link });
+    });
   }
 
+  // called through serial alone
   async function connect(address: string, secret: string): Promise<void> {
     await relay?.stop();
     relay = null;
+    if (closed) throw new Error('the edit command is stopping');
     const next = new RelayLink(address, secret, key, handle, log);
     await next.start();
+    if (closed) {
+      await next.stop();
+      throw new Error('the edit command is stopping');
+    }
     relay = next;
   }
 
@@ -319,7 +337,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const secret = process.env.SLIDES_RELAY_SECRET || loadConfig().secret;
     if (!address) log(`${ADDRESS_RULE}, and the session is not shared`);
     else if (!secret || secret.length < 16) log('the secret of the relay is not set, and the session is not shared');
-    else await connect(address, secret).then(() => log(`shared at ${relay!.link}`), (e) => log(`the session is not shared: ${(e as Error).message}`));
+    else await serial(() => connect(address, secret)).then(() => log(`shared at ${relay!.link}`), (e) => log(`the session is not shared: ${(e as Error).message}`));
   }
 
   let closing: Promise<void> | null = null;
@@ -332,9 +350,11 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     link: () => relay?.link ?? null,
     close: () =>
       (closing ??= (async () => {
+        closed = true;
         people.end();
         disk.stopSync();
-        await Promise.race([relay?.stop(), new Promise((done) => setTimeout(done, 2000))]);
+        // a share in progress sees closed and stops its link, hence the stop waits behind it
+        await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
         // a poll that arrives in this time is answered with ended, rather than reset by the close
         await new Promise((done) => setTimeout(done, 200));
         await new Promise<void>((done) => {

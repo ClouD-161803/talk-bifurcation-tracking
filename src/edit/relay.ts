@@ -127,6 +127,7 @@ export class RelayLink {
         const response = await fetch(`${this.relay}/host/${this.key}/pull`, { method: 'POST', headers: this.auth(), signal: controller.signal });
         if (response.status === 401 || response.status === 404) {
           await response.body?.cancel();
+          if (!this.running) break;
           // the relay dropped the session, e.g. at its restart, hence it is registered again
           await this.register();
           continue;
