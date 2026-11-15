@@ -395,3 +395,27 @@ test('of two pages that claim one text element at the same time, the smaller cli
   clean(ana);
   clean(ben);
 });
+
+test('in a touch window of 390 px, a tap on a chip shows the name', { timeout: 120_000 }, async (t) => {
+  const { browser, server, pages: [ana] } = await session(t, ['Ana']);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', width: 390, height: 844, mobile: true });
+  await converge(server, [ana, ben]);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await select(ana, el(1, 'ul'));
+  const chip = await until_(ben, (d) => d.flags[0]?.chip, 'the flag of Ana to collapse to a chip');
+  assert.deepEqual(chip.flags.map((f) => f.text), ['AN']);
+  const at = await ben.evaluate(`(() => { const r = document.querySelector('.beeson-presence .flag.chip').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width }; })()`);
+  assert.equal(at.w, 16, 'the chip is 16 px wide');
+  // a tap 6 px off the chip, inside its hit area of 32 px
+  const point = { x: at.x + 6, y: at.y + 6 };
+  await ben.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+  await ben.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const shown = await until_(ben, (d) => d.flags[0] && !d.flags[0].chip, 'the chip to show the name after the tap');
+  assert.equal(shown.flags[0].text, 'Ana');
+  assert.equal(await ben.evaluate(`${C}.app.selection.kind`), 'none', 'the tap does not reach the canvas');
+  // and it collapses again
+  await until_(ben, (d) => d.flags[0]?.chip, 'the flag to collapse again');
+  clean(ana);
+  clean(ben);
+});
