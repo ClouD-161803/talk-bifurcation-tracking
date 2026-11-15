@@ -688,3 +688,18 @@ test('a guest offline while the host ends the session is shown the end once onli
   clean(host);
   clean(guest, REFUSED);
 });
+
+test('the end of the session closes the dialog of the conflicts, keeps the version of the person, and names the slides that did not reach the host', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const { server, ann, ben } = await conflicted(t, browser);
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await ann.waitFor(`${C}.connection === 'ended'`);
+  await ann.waitFor(`!document.querySelector('dialog.beeson-session-conflicts')`);
+  assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), 'Your changes up to now are in index.html. Your changes on slides 1 and 2 did not reach index.html.');
+  assert.equal(await ann.evaluate(`${el(0, 'p')}.textContent`), 'Opening slide');
+  clean(ann);
+  clean(ben);
+});
