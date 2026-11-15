@@ -139,12 +139,13 @@ export class Preview {
   private readonly actions: Actions;
   private readonly bar: HTMLElement;
   private versionBar: VersionBar | null = null;
-  private frame: HTMLIFrameElement;
+  private frame: HTMLIFrameElement | null = null;
   private changes = true;
   // the key of what is shown, e.g. version:<id>
   private key = '';
   private version: VersionInfo | null = null;
-  private texts = new Map<string, Promise<string>>();
+  // the read of the text of what is shown, and of nothing else
+  private read: { key: string; text: Promise<string> } | null = null;
   private text: string | null = null;
   private slides: Slide[] = [];
   private sections: (Element | null)[] = [];
@@ -159,8 +160,7 @@ export class Preview {
     this.el.setAttribute('aria-label', 'Preview');
     this.el.hidden = true;
     this.bar = make('div', 'bar');
-    this.frame = make('iframe');
-    this.el.append(this.bar, this.frame);
+    this.el.append(this.bar);
     pane.after(this.el);
     const layout = () => this.layout();
     window.addEventListener('resize', layout);
@@ -178,12 +178,17 @@ export class Preview {
     this.el.classList.toggle('two', c.width < TWO_ROWS);
   }
 
+  // the page, its text, and its elements let go
   hide(): void {
     this.el.hidden = true;
     this.key = '';
-    const blank = make('iframe');
-    this.frame.replaceWith(blank);
-    this.frame = blank;
+    this.version = null;
+    this.read = null;
+    this.text = null;
+    this.slides = [];
+    this.sections = [];
+    this.frame?.remove();
+    this.frame = null;
   }
 
   private url(kind: 'version' | 'aside', id: string): string {
@@ -196,16 +201,17 @@ export class Preview {
   // the text of what is shown, read once for its page and its download
   private textOf(kind: 'version' | 'aside', id: string): Promise<string> {
     const key = `${kind}:${id}`;
-    let p = this.texts.get(key);
-    if (!p) {
-      p = fetch(this.url(kind, id), { cache: 'no-store' }).then((r) => {
-        if (!r.ok) throw new Error(`The ${kind === 'version' ? 'version' : 'text'} could not be read`);
-        return r.text();
-      });
-      p.catch(() => this.texts.delete(key));
-      this.texts.set(key, p);
-    }
-    return p;
+    if (this.read?.key === key) return this.read.text;
+    const text = fetch(this.url(kind, id), { cache: 'no-store' }).then((r) => {
+      if (!r.ok) throw new Error(`The ${kind === 'version' ? 'version' : 'text'} could not be read`);
+      return r.text();
+    });
+    const read = { key, text };
+    text.catch(() => {
+      if (this.read === read) this.read = null;
+    });
+    this.read = read;
+    return text;
   }
 
   // a new iframe for each page, since a second page in one iframe would add an entry to the history
@@ -213,7 +219,8 @@ export class Preview {
   private frameFor(kind: 'version' | 'aside'): HTMLIFrameElement {
     const frame = make('iframe');
     frame.title = kind === 'version' ? 'The deck at this version' : 'The text set aside';
-    this.frame.replaceWith(frame);
+    if (this.frame) this.frame.replaceWith(frame);
+    else this.el.append(frame);
     this.frame = frame;
     this.el.hidden = false;
     this.layout();
@@ -262,7 +269,7 @@ export class Preview {
     box.checked = this.changes;
     box.addEventListener('change', () => {
       this.changes = box.checked;
-      this.frame.contentDocument?.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
+      this.frame?.contentDocument?.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
     });
     label.append(box, document.createTextNode('Show changes'));
     const more = this.button('⋯', () => this.more(more), 'more');
@@ -410,7 +417,7 @@ export class Preview {
 
   // section shown in the preview, once reveal.js is ready there
   private show(section: Element): void {
-    const reveal = (this.frame.contentWindow as (Window & { Reveal?: RevealLike }) | null)?.Reveal;
+    const reveal = (this.frame?.contentWindow as (Window & { Reveal?: RevealLike }) | null | undefined)?.Reveal;
     if (!reveal) return;
     const show = () => {
       const { h, v } = reveal.getIndices(section);
