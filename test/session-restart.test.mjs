@@ -15,8 +15,9 @@ import { DECK, post, startEdit, stopEdit, talkFolder, until } from './helpers/se
 
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 // a request to an edit command that is not running fails in the console of the page, and so does
-// the first request after a restart, since the token is of the edit command before
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/];
+// the first request after a restart, since the token is of the edit command before. an operation
+// or a hello that reaches the edit command while it stops is answered 503
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 503 .*\/\.session\/(op|hello)$/];
 
 test('a hello with the old client id gets the seq of its last operation in index.html after a kill', { timeout: 60_000 }, async (t) => {
   const folder = talkFolder(t, DECK);
