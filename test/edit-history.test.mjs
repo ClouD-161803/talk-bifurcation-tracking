@@ -792,3 +792,60 @@ test('the deck as it read when a new history began is its first version, kept th
   assert.equal(versions.length, 2);
   assert.equal(again.history.textOf(start.id), DECK);
 });
+
+test('the edits of a version that was open at a crash are listed as those of the people who made them', { timeout: 60_000 }, async (t) => {
+  // a new history on the same folder without stopSync, as after a kill or a power loss, since
+  // index.html is written by then
+  const crashed = (dir, text) => {
+    const again = open(dir, text);
+    const versions = again.history.list().versions;
+    const marks = again.history.get(versions[0].id).marks;
+    return { versions: versions.map((v) => [v.name ?? '', v.authors]), authors: [...new Set(marks.map((m) => m.author))] };
+  };
+
+  await t.test('one person, who is the author of each changed range', () => {
+    const dir = sessionDir(t);
+    const { authority, history } = open(dir, DECK);
+    history.name('current', 'Start');
+    replace(authority, 'First slide', 'First slide, edited by Ann', ANN);
+    assert.deepEqual(crashed(dir, authority.text), { versions: [['', [ANN]], ['Start', []]], authors: [ANN] });
+  });
+
+  await t.test('two people, whose ranges cannot be told apart', () => {
+    const dir = sessionDir(t);
+    const { authority, history } = open(dir, DECK);
+    history.name('current', 'Start');
+    replace(authority, 'One', 'Uno', ANN);
+    replace(authority, 'Two', 'Deux', BO);
+    replace(authority, 'Uno', 'Eins', ANN);
+    assert.deepEqual(crashed(dir, authority.text), { versions: [['', [ANN, BO]], ['Start', []]], authors: [''] });
+  });
+
+  await t.test('after the file was written anew in the open version', () => {
+    const dir = sessionDir(t);
+    const { authority, history } = open(dir, DECK);
+    const named = history.name('current', 'Start');
+    replace(authority, 'One', 'Uno', ANN);
+    // names given again and again write the file anew
+    for (let i = 0; i < 1100; i++) history.name(named.id, i % 2 ? 'Start' : 'Begin');
+    assert.deepEqual(crashed(dir, authority.text).versions, [['', [ANN]], ['Start', []]]);
+  });
+
+  await t.test('not of a later change from outside, once the open version ended without a change', () => {
+    const dir = sessionDir(t);
+    const { authority, history } = open(dir, DECK);
+    replace(authority, 'One', 'Uno', ANN);
+    replace(authority, 'Uno', 'One', ANN);
+    history.stopSync();
+    assert.deepEqual(crashed(dir, DECK.replace('Two', 'Deux')).versions[0], ['', ['file']]);
+  });
+
+  await t.test('not of a later change from outside, once a start after the crash found no change', () => {
+    const dir = sessionDir(t);
+    const { authority } = open(dir, DECK);
+    replace(authority, 'One', 'Uno', ANN);
+    // index.html was not written before the crash
+    assert.deepEqual(crashed(dir, DECK).versions, [['', []]]);
+    assert.deepEqual(crashed(dir, DECK.replace('Two', 'Deux')).versions[0], ['', ['file']]);
+  });
+});
