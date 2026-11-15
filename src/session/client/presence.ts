@@ -141,6 +141,12 @@ class Log {
     return this.text !== null;
   }
 
+  // true when the log does not reach version v, e.g. of a base read again as a whole text
+  behind(v: Version): boolean {
+    const at = parseVersion(v);
+    return !!at && (at.epoch !== this.epoch || at.n > this.n);
+  }
+
   add(ops: AppliedOp[]): void {
     for (const op of ops) {
       const at = parseVersion(op.v);
@@ -286,7 +292,7 @@ export class Presence {
     });
     client.on('me', () => this.confirm());
     const based = () => {
-      if (!this.log.seeded) this.seedLog();
+      if (!this.log.seeded || (client.base && this.log.behind(client.base.v))) this.seedLog();
       this.reread();
       this.due(false);
     };
@@ -589,7 +595,8 @@ export class Presence {
   }
 
   // the elements of the state of o read, or kept from the last read under the same offsets for an
-  // offset in doubt. a state of a version ahead of this page keeps the elements read before
+  // offset in doubt. a state of a version ahead of this page keeps the elements read before, and so
+  // does a state that the log does not reach, e.g. after a resync with the whole text
   private resolve(o: Other, id: string, name: string, color: number): void {
     const { client } = this;
     const s = o.state;
@@ -598,7 +605,7 @@ export class Presence {
     const offsets = [s.slide, s.held, s.caret?.el ?? null, ...s.selected];
     const els = this.read(offsets, s.v);
     o.ahead = els === 'ahead';
-    const prev = o.resolvedKey === key || o.ahead ? o.resolved : null;
+    const prev = o.resolvedKey === key || o.ahead || els === null ? o.resolved : null;
     if (!o.ahead) o.resolvedKey = key;
     if (o.ahead && prev) {
       o.resolved = { ...prev, name, color, typing: s.typing, following: s.following, mode: s.mode, beat: s.beat, away: s.away };
