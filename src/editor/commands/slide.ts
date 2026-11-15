@@ -16,6 +16,7 @@ import { tokenize } from '../tokens.ts';
 import { nextShown, setTransition, transitionOf } from '../review/transitions.ts';
 import { sample } from './layout.ts';
 import { injectStyle } from '../ui/dom.ts';
+import { originComment } from './origin.ts';
 
 // the mark that opens the text of slides on the clipboard, so that a paste in the navigator tells
 // slides apart from other text
@@ -143,11 +144,13 @@ const canShift = (app: App, up: boolean): boolean => {
   return t.length > 0 && shifted(list, new Set(t), up).some((s, i) => s !== list[i]);
 };
 
-// the text of slides on the clipboard: the mark, then each slide as it is written into the file
+// the text of slides on the clipboard: the mark, the origin of commands/origin.ts, then each slide
+// as it is written into the file
 export function clipText(app: App, slides: Element[]): string {
   const doc = docOf(app);
   const eol = app.source?.crlf ? '\r\n' : '\n';
-  return [MARK, ...slides.map((s) => doc.elementText(s))].join(eol);
+  const texts = slides.map((s) => doc.elementText(s));
+  return [MARK, originComment(texts.join(eol)), ...texts].join(eol);
 }
 
 // the sections of a text of the clipboard, each without the white space before it, or null for a

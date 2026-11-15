@@ -26,6 +26,7 @@ import { tokenize } from '../tokens.ts';
 import { keepBeside } from './place.ts';
 import { keepPlaces } from '../canvas/drag.ts';
 import { MARK, docOf, slidesIn } from './slide.ts';
+import { originComment } from './origin.ts';
 import { cellAt, clearRange, pasteAtCell, pasteRange, pasteTable, rangeText, selectedRange } from './table.ts';
 import { display } from '../keymap.ts';
 import { removeJoining } from '../text/elements.ts';
@@ -52,11 +53,13 @@ function caretElement(app: App): Element | null {
 // the thumbnails, where Duplicate duplicates the slide
 const inNavigator = (app: App): boolean => app.region() === 'navigator';
 
-// the text of els on the clipboard: the mark, then each element as it is written into the file
+// the text of els on the clipboard: the mark, the origin of commands/origin.ts, then each element
+// as it is written into the file
 export function clipText(app: App, els: Element[]): string {
   const doc = docOf(app);
   const eol = app.source?.crlf ? '\r\n' : '\n';
-  return [MARK, ...els.map((el) => doc.elementText(el))].join(eol);
+  const texts = els.map((el) => doc.elementText(el));
+  return [MARK, originComment(texts.join(eol)), ...texts].join(eol);
 }
 
 // the elements of a text of the clipboard, each without the white space before it, or null for a
