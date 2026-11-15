@@ -120,7 +120,7 @@ test('a page that must load again while offline reconnects first, and loads agai
   clean(page, REFUSED);
 });
 
-test('a session that ends while a page waits to load again shows its dialog, with the edit in the copy', { timeout: 120_000 }, async (t) => {
+test('a session that ends while a page waits to load again shows its dialog, with the edit in the copy', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const { server, page } = await waiting(t);
   server.edit.child.kill('SIGTERM');
   await server.edit.exited;
@@ -308,16 +308,19 @@ test('a page asks before it unloads only while this browser cannot keep an edit 
   // the page is online again only with the answer of the operation or of a poll
   await page.waitFor(`__net.held.length === 1`);
   assert.equal(await asks(), true);
-  // after the end, the check of files.ts asks for the changes of the deck
-  server.edit.child.kill('SIGTERM');
-  await server.edit.exited;
-  server.edit = null;
-  await page.waitFor(`${C}.connection === 'ended'`);
-  assert.equal(await listeners(), idle);
+  // after the end, the check of files.ts asks for the changes of the deck. a signal ends a process
+  // at once on Windows, where a page is thus not told the end of the session
+  if (process.platform !== 'win32') {
+    server.edit.child.kill('SIGTERM');
+    await server.edit.exited;
+    server.edit = null;
+    await page.waitFor(`${C}.connection === 'ended'`);
+    assert.equal(await listeners(), idle);
+  }
   clean(page, REFUSED);
 });
 
-test('the operations of the answer that ends the session are taken before its dialog, which then holds every acknowledged edit', { timeout: 120_000 }, async (t) => {
+test('the operations of the answer that ends the session are taken before its dialog, which then holds every acknowledged edit', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);

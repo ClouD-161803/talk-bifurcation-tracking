@@ -101,7 +101,7 @@ test('a guest is told that the host is not running, and the end of the session b
     assert.equal(await host.evaluate(STATE), 'Saved to index.html');
   });
 
-  await t.test('the host is told that the session has ended when the edit command stops', async () => {
+  await t.test('the host is told that the session has ended when the edit command stops', { skip: process.platform === 'win32' && 'signals' }, async () => {
     server.edit.child.kill('SIGTERM');
     await server.edit.exited;
     server.edit = null;

@@ -280,12 +280,15 @@ test('the save state is in view on a phone of 390 px and takes a tap, and the bu
   await other.evaluate(`document.querySelector('dialog.beeson-session-join .row button.primary').click()`);
   await other.waitFor(`${open_}?.querySelector('h3').textContent === 'Ann has joined this deck before. Is that you?'`);
   assert.deepEqual(low(await heights(other)), [], 'the buttons of the taken dialog');
-  server.edit.child.kill('SIGTERM');
-  await server.edit.exited;
-  server.edit = null;
-  await page.waitFor(`${open_}?.querySelector('h3').textContent === 'The session has ended'`);
-  const ended = await heights(page);
-  assert.ok(ended.length === 2 && !low(ended).length, `the buttons of the end dialog are ${ended.join(', ')} px high`);
+  // a signal ends a process at once on Windows, where a page is thus not told the end of the session
+  if (process.platform !== 'win32') {
+    server.edit.child.kill('SIGTERM');
+    await server.edit.exited;
+    server.edit = null;
+    await page.waitFor(`${open_}?.querySelector('h3').textContent === 'The session has ended'`);
+    const ended = await heights(page);
+    assert.ok(ended.length === 2 && !low(ended).length, `the buttons of the end dialog are ${ended.join(', ')} px high`);
+  }
   clean(page);
 });
 
