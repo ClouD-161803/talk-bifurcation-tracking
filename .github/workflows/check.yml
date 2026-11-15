@@ -90,8 +90,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # latex and dvisvgm, TikZ and pgfplots, and the fonts of the wrapper of a figure
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-pictures lmodern
+      # latex, dvisvgm, TikZ and pgfplots, and the fonts of the wrapper of a figure. dvisvgm is a
+      # package of its own on Ubuntu
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-pictures lmodern dvisvgm
       - run: latex --version && dvisvgm --version
       - run: node --test test/figures.test.mjs
       # the demo figures are compiled again from their sources, since the bytes of an output differ
