@@ -90,6 +90,9 @@ export class Client {
   ended: Ended | null = null;
   // the guest left with Leave Session, after which the page is ended as at the end of the session
   left = false;
+  // the page is hidden for good and said bye. it sends nothing after it, since a poll would bring
+  // it back into the session, and its unsent edits are kept by the copy
+  private gone = false;
   hooks: Hooks = {};
   // the presence of the other pages, read as elements of this page, set by presence.ts
   resolved: () => Resolved[] = () => [];
@@ -188,7 +191,9 @@ export class Client {
     this.since = answer.v;
     this.setConnection('online');
     window.addEventListener('pagehide', () => {
-      if (this.token && !this.ended) this.transport.bye(this.token);
+      if (!this.token || this.ended) return;
+      this.gone = true;
+      this.transport.bye(this.token);
     });
     // a page kept in the cache of the browser said bye, hence it joins again as a new page
     window.addEventListener('pageshow', (ev) => {
@@ -409,7 +414,7 @@ export class Client {
   private pump(): void {
     const sync = this.sync;
     // a page stays blocked, also under the new replica of a restart of the edit command
-    if (!sync || this.sending || this.joining || this.ended || this.blocked) return;
+    if (!sync || this.sending || this.joining || this.ended || this.blocked || this.gone) return;
     if (sync.blocked) {
       this.blocked = true;
       this.emit('state');
@@ -458,6 +463,7 @@ export class Client {
   // the edit command. it waits while an operation of this page is unanswered, i.e. while send()
   // sends it again, since only its answer tells resync() whether the whole text holds it
   private rejoin(): Promise<void> {
+    if (this.gone) return Promise.resolve();
     return (this.joining ??= (async () => {
       try {
         while (this.sending) await new Promise<void>((done) => this.idleWaiters.push(done));
@@ -496,7 +502,7 @@ export class Client {
   }
 
   private async poll(): Promise<void> {
-    while (!this.ended) {
+    while (!this.ended && !this.gone) {
       if (this.joining) {
         await this.joining;
         continue;
@@ -506,12 +512,12 @@ export class Client {
       try {
         answer = await this.transport.events(this.token, this.since);
       } catch (e) {
-        if (this.ended || generation !== this.generation) continue;
+        if (this.ended || this.gone || generation !== this.generation) continue;
         if (e instanceof Failure && (e.status === 404 || e.status === 400)) await this.rejoin();
         else await this.offline(e);
         continue;
       }
-      if (generation !== this.generation) continue;
+      if (this.gone || generation !== this.generation) continue;
       this.online();
       this.take(answer);
     }
@@ -621,7 +627,7 @@ export class Client {
     if (this.presenceBusy) return;
     this.presenceBusy = true;
     try {
-      while (this.presenceDue && this.token && !this.ended) {
+      while (this.presenceDue && this.token && !this.ended && !this.gone) {
         this.presenceDue = false;
         try {
           await this.transport.presence(this.token, this.presenceState);
