@@ -167,11 +167,91 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   return { patches: combine(keptTheirs, keptOurs), conflicts };
 }
 
-// the last text tokenized, since a diff is taken many times against one base
-let cached: { text: string; tokens: Token[] } | null = null;
+// the last text tokenized, since a diff is taken many times against one base. odd is true when the
+// text holds U+0130, whose lowercase is two code units long, which moves the offsets of tokenize()
+let cached: { text: string; tokens: Token[]; odd: boolean } | null = null;
 function tokensOf(text: string): Token[] {
-  if (cached?.text !== text) cached = { text, tokens: tokenize(text) };
-  return cached.tokens;
+  if (cached?.text === text) return cached.tokens;
+  const tokens = (cached && retokenize(cached, text)) ?? tokenize(text);
+  cached = { text, tokens, odd: text.includes('\u0130') };
+  return tokens;
+}
+
+// the characters past its end that tokenize() reads to end a token, at most, i.e. </textarea and one
+const AHEAD = 12;
+
+// the length of the start that a and b share, compared in blocks
+function sharedStart(a: string, b: string, n: number): number {
+  let i = 0;
+  for (let w = 4096; w > 1; w >>= 4) while (i + w <= n && a.slice(i, i + w) === b.slice(i, i + w)) i += w;
+  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+  return i;
+}
+
+function sharedEnd(a: string, b: string, n: number): number {
+  let i = 0;
+  for (let w = 4096; w > 1; w >>= 4) while (i + w <= n && a.slice(a.length - i - w, a.length - i) === b.slice(b.length - i - w, b.length - i)) i += w;
+  while (i < n && a.charCodeAt(a.length - 1 - i) === b.charCodeAt(b.length - 1 - i)) i++;
+  return i;
+}
+
+// a token of tokens moved by d
+function moved(t: Token, d: number): Token {
+  if (t.type !== 'start') return { ...t, start: t.start + d, end: t.end + d };
+  return { ...t, start: t.start + d, end: t.end + d, attrs: t.attrs.map((a) => ({ ...a, start: a.start + d, end: a.end + d })) };
+}
+
+// the tokens of text from those of the last text, the same as tokenize(text) gives: the tokens read
+// only from the start that both share are kept, the text from there is tokenized again up to a token
+// that starts in the end that both share, and the tokens of the last text from this one on are moved.
+// a start tag may be followed by raw text, hence the tokens are joined only where none comes before.
+// null when tokenize(text) costs about as much
+function retokenize(last: { text: string; tokens: Token[]; odd: boolean }, text: string): Token[] | null {
+  const old = last.tokens, n = text.length, d = n - last.text.length;
+  const both = Math.min(n, last.text.length);
+  const p = sharedStart(last.text, text, both);
+  const tail = n - sharedEnd(last.text, text, both - p);
+  if (last.odd || text.slice(p, tail).includes('\u0130')) return null;
+  let lo = 0, hi = old.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (old[mid].end + AHEAD <= p) lo = mid + 1;
+    else hi = mid;
+  }
+  let kept = lo;
+  while (kept > 0 && old[kept - 1].type === 'start') kept--;
+  const from = kept ? old[kept - 1].end : 0;
+  // the index of the token of the last text that starts at offset at, after a token that is not a start tag
+  const joins = (at: number): number => {
+    let lo = 0, hi = old.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (old[mid].start < at) lo = mid + 1;
+      else if (old[mid].start > at) hi = mid - 1;
+      else return mid > 0 && old[mid - 1].type === 'start' ? -1 : mid;
+    }
+    return -1;
+  };
+  for (let width = 1024; ; width *= 4) {
+    const to = Math.min(n, Math.max(from, tail) + width);
+    if (2 * (to - from) > n) return null;
+    const out = old.slice(0, kept);
+    let afterStart = false;
+    let wider = false;
+    for (const t of tokenize(text.slice(from, to))) {
+      const start = t.start + from;
+      const j = start >= tail && !afterStart ? joins(start - d) : -1;
+      if (j >= 0) {
+        for (let i = j; i < old.length; i++) out.push(d ? moved(old[i], d) : old[i]);
+        return out;
+      }
+      // a token that may read past the end of the slice is tokenized again in a wider one
+      if ((wider = to < n && t.end + from + AHEAD > to)) break;
+      out.push(moved(t, from));
+      afterStart = t.type === 'start';
+    }
+    if (!wider && to === n) return out;
+  }
 }
 
 // the start or end tag that holds offset i strictly inside, by bisection of the tokens
