@@ -21,9 +21,11 @@ export type Applied = { reload: boolean; changed: Element[] };
 // the text of each apply against the text last handed to it, i.e. the text it last read or passed
 // to apply. an edit of the person that the client has not read is kept through every apply, and
 // onChange is called after it. the listeners of onReload are called when the page does not read as
-// its text after the applies, after which the client loads the page again
+// its text after the applies, after which the client loads the page again. copy() reads the deck
+// with the edits of the person at any time, and leaves the text handed to the client as it is
 export type Port = {
   text(): string;
+  copy(): string;
   apply(text: string): Promise<Applied>;
   onChange(fn: () => void): () => void;
   onReload(fn: () => void): () => void;
@@ -465,6 +467,10 @@ export function install(app: App): Port {
       if (!ready()) throw new Error('no file is open');
       if (handed !== null && (busy() || applying || queued)) return handed;
       return (handed = virtual(current()));
+    },
+    copy: () => {
+      if (!ready()) throw new Error('no file is open');
+      return virtual(current());
     },
     apply: (text) => run(text),
     onChange(fn) {
