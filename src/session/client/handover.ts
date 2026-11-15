@@ -3,6 +3,7 @@
 
 import type { App } from '../../editor/app.ts';
 import type { Edit } from '../../editor/merge.ts';
+import type { MediaStore } from '../../editor/media/store.ts';
 import type { Port } from '../../editor/session/session.ts';
 import type { Dialog, DialogOptions } from '../../editor/ui/dialog.ts';
 import type { MenuItem, MenuOptions, OpenMenu } from '../../editor/ui/menu.ts';
@@ -26,6 +27,8 @@ export type Handover = {
   changedSlides(before: string, after: string): number[];
   // ' on slide 3', ' on slides 3 and 5', or '' without a slide
   onSlides(numbers: number[]): string;
+  // the images and videos added in the editor and not saved yet
+  media: MediaStore;
 };
 
 // window.BeesonSession, defined by theme/session.js. start() resolves with false when the page is

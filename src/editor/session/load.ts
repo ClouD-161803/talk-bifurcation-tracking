@@ -6,6 +6,7 @@ import type { App } from '../app.ts';
 import type { Entry } from '../../session/client/handover.ts';
 import { download, fileName } from '../file/files.ts';
 import { changedSlides, onSlides, slidesAt } from '../file/follow.ts';
+import { media } from '../media/store.ts';
 import { Dialog } from '../ui/dialog.ts';
 import { icon } from '../ui/icons.ts';
 import { openMenu } from '../ui/menu.ts';
@@ -36,6 +37,6 @@ export function load(app: App, port: Port): () => Promise<boolean> {
       return false;
     }
     const bar = document.querySelector<HTMLElement>('.beeson-edit-titlebar .right') ?? document.body;
-    return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text), menu: (items, options) => openMenu(app, items, options), slidesAt, changedSlides, onSlides });
+    return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text), menu: (items, options) => openMenu(app, items, options), slidesAt, changedSlides, onSlides, media });
   };
 }
