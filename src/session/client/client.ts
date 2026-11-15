@@ -123,6 +123,8 @@ export class Client {
   private changeWaiters: (() => void)[] = [];
   private framed = false;
   private driving = false;
+  // a drive waits on the person in the dialog of the conflicts, which the end does not wait for
+  private deciding = false;
   private inbox: AppliedOp[] = [];
   // the whole text of an answer of hello, merged by resync
   private fresh: { text: string; v: Version } | null = null;
@@ -423,7 +425,11 @@ export class Client {
         }
         const side = (this.fresh || this.inbox.length) && this.hooks.side?.(sync, this.fresh, this.inbox);
         if (side) {
-          const wins = await side;
+          this.deciding = true;
+          for (const fn of this.driveWaiters.splice(0)) fn();
+          const wins = await Promise.resolve(side).finally(() => (this.deciding = false));
+          // the end closed the dialog, and the deck keeps the version of the person
+          if (this.ended) break;
           if (sync.settle(this.fresh, this.inbox.splice(0), wins) !== null) stale = true;
           this.fresh = null;
         }
@@ -669,7 +675,7 @@ export class Client {
     if (answer.ended) {
       if (answer.ops) this.receive(answer.ops);
       this.since = answer.v;
-      while (this.driving) await new Promise<void>((done) => this.driveWaiters.push(done));
+      while (this.driving && !this.deciding) await new Promise<void>((done) => this.driveWaiters.push(done));
       await this.drive();
       this.end(answer.ended);
       return;
