@@ -98,3 +98,12 @@ test('a changed step index and a step taken group the steps as on a fresh page',
     ['a step taken', (s) => once(s, '<li class="fragment" data-fragment-index="2">Two elements', '<li data-fragment-index="2">Two elements'), false],
   ]);
 });
+
+// a slide put before a slide that starts as it does is read as a change inside the heading of this
+// slide, whose new bytes close the slide around it
+test('a text element whose tags do not balance asks for a reload, and a slide put before a slide with the same start does not', async (t) => {
+  await steps(t, [
+    ['a slide put before', (s) => once(s, slideWith(s, 'Embedding TyCHO'), `<section>\n  <h2>A new slide</h2>\n  <p>Its only paragraph.</p>\n</section>\n${slideWith(s, 'Embedding TyCHO')}`), false],
+    ['an em left open', (s) => once(s, 'Direct the viewer', 'Direct <em>the viewer'), true],
+  ]);
+});
