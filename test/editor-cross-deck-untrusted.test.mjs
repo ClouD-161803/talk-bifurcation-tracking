@@ -1,7 +1,8 @@
 // a paste of a text whose origin was written by another page, which any page can put on the
-// clipboard. a macro whose name, arguments, or body would not be read as such in theme/macros.js
-// is not listed. an origin whose deck is not a string with an address of http, https, or file is
-// pasted as a text without origin. an entry of the macros that is not a macro is skipped
+// clipboard. a macro whose name, arguments, body, or default would write more than its definition
+// into a preamble is not listed. an origin whose deck is not a string with an address of http,
+// https, or file is pasted as a text without origin. an entry of the macros that is not a macro is
+// skipped
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -23,15 +24,22 @@ after(async () => {
 const deck = (file) => openDeck(browser, `${server.origin}/${file}?${QUERY}`, file);
 const DIALOG = 'dialog.beeson-edit-dialog.paste-macros';
 
-test('a crafted name or number of arguments is not listed, and a line break is escaped', async (t) => {
+test('a crafted name, number of arguments, body, or default is not listed', async (t) => {
   const a = await deck(A);
   t.after(() => a.close());
   const text = withOrigin(await copySlide(a, FILES), (o) => ({
     ...o,
     macros: [
-      { name: "a: '', b: globalThis.pwned=1, c", body: 'x', args: 0 },
-      { name: 'evil', body: 'x', args: '1], globalThis.pwned=1, [' },
+      { name: 'x}\\input{secret}\\newcommand{\\y', body: 'x', args: 0 },
+      { name: 'count', body: 'x', args: '1]{}\\input{secret}[' },
       { name: 'cr', body: 'a\rb\u2028c', args: 0 },
+      { name: 'out', body: 'x}\\input{secret}{', args: 0 },
+      { name: 'rem', body: 'x%', args: 0 },
+      { name: 'last', body: 'x\\', args: 0 },
+      { name: 'opt', body: '#1', args: 1, default: 'a]{}\\input{secret}[' },
+      { name: 'open', body: '#1', args: 1, default: '{' },
+      { name: 'pct', body: '10\\%', args: 0 },
+      { name: 'set', body: '\\{#1\\}', args: 1, default: '{[a]}' },
       { name: 'dash', body: '\\text{a--b}', args: 0 },
     ],
   }));
@@ -41,7 +49,7 @@ test('a crafted name or number of arguments is not listed, and a line break is e
   await b.waitFor(`!!document.querySelector('${DIALOG}:not([hidden])')`, 30000);
   await pasted(b);
   const lines = await b.evaluate(`document.querySelector('${DIALOG} pre').textContent`);
-  assert.equal(lines, String.raw`cr: 'a\u000db\u2028c',` + '\n' + String.raw`dash: '\\text{a--b}',`);
+  assert.equal(lines, [String.raw`\newcommand{\dash}{\text{a--b}}`, String.raw`\newcommand{\pct}{10\%}`, String.raw`\newcommand{\set}[1][{[a]}]{\{#1\}}`].join('\n'));
 });
 
 for (const [what, other] of [['an address of http, https, or file', () => 'javascript:alert(1)'], ['a string', (o) => [o.deck]]]) test(`an origin whose deck is not ${what} is pasted as a text without origin`, async (t) => {

@@ -42,9 +42,27 @@ export function originComment(text: string): string {
   return `${OPEN}${json.replace(/[-<>]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}-->`;
 }
 
+// whether a body stays inside its braces in a line of a preamble, or with bracket whether the
+// default of an argument stays inside its brackets. the braces of t are then closed in order. t
+// does not have a line break, a comment, a backslash at its end, or with bracket a bracket
+// outside its braces
+function contained(t: string, bracket = false): boolean {
+  if (/[\u0000-\u0008\u000a-\u001f\u007f\u2028\u2029]/.test(t)) return false;
+  let depth = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === '\\') {
+      if (++i === t.length) return false;
+    } else if (t[i] === '{') depth++;
+    else if (t[i] === '}') {
+      if (--depth < 0) return false;
+    } else if (t[i] === '%' || (bracket && t[i] === ']' && !depth)) return false;
+  }
+  return !depth;
+}
+
 // the origin of a text of the clipboard, or null for a text without it, e.g. of an older editor.
 // any page can write the clipboard, hence a deck that is not a string with an address of http,
-// https, or file gives null, and a macro that theme/macros.js would not read as one is dropped
+// https, or file gives null, and a macro that a line of a preamble would not define alone is dropped
 export function originOf(text: string): Origin | null {
   const at = text.indexOf(MARK);
   if (at < 0) return null;
@@ -55,7 +73,7 @@ export function originOf(text: string): Origin | null {
     const o = JSON.parse(rest.slice(OPEN.length, end));
     if (typeof o.deck !== 'string' || !/^(https?|file):$/.test(new URL(o.deck).protocol)) return null;
     const macros = (Array.isArray(o.macros) ? o.macros : []).filter(
-      (m: OriginMacro | null) => typeof m?.name === 'string' && /^[a-zA-Z]+$/.test(m.name) && typeof m.body === 'string' && Number.isInteger(m.args) && m.args >= 0 && m.args <= 9 && ['undefined', 'string'].includes(typeof m.default),
+      (m: OriginMacro | null) => typeof m?.name === 'string' && /^[a-zA-Z]+$/.test(m.name) && typeof m.body === 'string' && contained(m.body) && Number.isInteger(m.args) && m.args >= 0 && m.args <= 9 && (m.default === undefined || (typeof m.default === 'string' && contained(m.default, true))),
     );
     const version = typeof o.version === 'string' && /^[\w.+-]{0,40}$/.test(o.version) ? o.version : '';
     return { deck: o.deck, version, macros: macros.map(({ name, body, args, default: d }: OriginMacro) => ({ name, body, args, default: d })) };

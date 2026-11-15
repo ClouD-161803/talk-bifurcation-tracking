@@ -45,7 +45,7 @@ export async function openDeck(browser, url, file) {
 // macros, which test/editor-cross-deck-macros.test.mjs covers
 const MACROS_OF_A = String.raw`({ orb: ['\\mathcal{O}_{\\half #1}', 1], half: '\\tfrac{1}{2}', dash: '\\text{a--b}', unused: '\\mathrm{u}' })`;
 export async function withMacrosOfA(page) {
-  await page.evaluate(`(() => { window.beesonMacros = ${MACROS_OF_A}; return true; })()`);
+  await page.evaluate(`(() => { window.beesonTex = { macros: ${MACROS_OF_A} }; return true; })()`);
   return page;
 }
 

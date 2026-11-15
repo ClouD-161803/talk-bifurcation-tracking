@@ -1,8 +1,8 @@
 // the step of a paste from another deck that names the macros of its origin that this deck lacks
-// or defines otherwise, in a dialog with the lines of theme/macros.js that define them as the first
+// or defines otherwise, in a dialog with the lines of a preamble that define them as the first
 // deck does. the dialog is not waited for, hence the entry of the history of the paste is closed
 // while it is open. a later paste of lines that a dialog of this page showed adds a sentence to
-// the note of the paste in place of the dialog. the editor neither writes theme/macros.js nor
+// the note of the paste in place of the dialog. the editor neither writes preamble.tex nor
 // expands a macro in the pasted text
 
 import type { App } from '../app.ts';
@@ -18,13 +18,10 @@ dialog.paste-macros pre { margin: 0 0 12px; padding: 8px 10px; max-height: 40vh;
 dialog.paste-macros p.hint { margin: 0 0 12px; color: var(--ed-text); }
 `;
 
-// a text as a string of JavaScript in single quotes
-const quoted = (t: string): string => `'${t.replace(/[\\']/g, (c) => `\\${c}`).replace(/[\n\r\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}'`;
-// a macro as an entry of window.beesonMacros
-const line = (m: OriginMacro): string => {
-  const body = quoted(m.body);
-  return `${m.name}: ${m.args ? `[${body}, ${m.args}${m.default === undefined ? '' : `, ${quoted(m.default)}`}]` : body},`;
-};
+// a macro as a line of a preamble. a deck that defines the macro otherwise is given \renewcommand,
+// since LaTeX stops at a second \newcommand of a name when it compiles a figure
+const line = (m: OriginMacro, lacking: boolean): string =>
+  `\\${lacking ? 'new' : 'renew'}command{\\${m.name}}${m.args || m.default !== undefined ? `[${m.args}]` : ''}${m.default === undefined ? '' : `[${m.default}]`}{${m.body}}`;
 
 // a macro off this deck: its line, its name, and whether this deck lacks it
 type Off = { line: string; name: string; lacking: boolean };
@@ -74,7 +71,7 @@ function show(app: App, offs: Off[]): void {
   const names = (lacking: boolean) => sheet!.offs.filter((o) => o.lacking === lacking).map((o) => o.name);
   const red = names(true).length ? `the formulas that use ${listed(names(true))} are drawn in red` : '';
   const own = names(false).length ? `the formulas that use ${listed(names(false))} are drawn with the definition of this deck` : '';
-  dialog.text.textContent = `Paste the lines below into theme/macros.js of this deck, inside the braces of window.beesonMacros, and open the deck again. Until then, ${[red, own].filter(Boolean).join(', and ')}.`;
+  dialog.text.textContent = `Choose File > Preamble… and paste the lines below at the end of the preamble of this deck. Until then, ${[red, own].filter(Boolean).join(', and ')}.`;
   pre.textContent = sheet.offs.map((o) => o.line).join('\n');
   hint.hidden = true;
   dialog.buttons.get('copy')!.textContent = 'Copy';
@@ -85,7 +82,7 @@ export function nameMacros(app: App, arrival: Arrival): void {
   const own = new Map(deckMacros().map((m) => [m.name, m]));
   const offs = arrival.origin.macros
     .filter((m) => own.get(m.name)?.body !== m.body || own.get(m.name)?.args !== m.args || own.get(m.name)?.default !== m.default)
-    .map((m) => ({ line: line(m), name: `\\${m.name}`, lacking: !own.has(m.name) }))
+    .map((m) => ({ line: line(m, !own.has(m.name)), name: `\\${m.name}`, lacking: !own.has(m.name) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   if (!offs.length) return;
   if (offs.every((o) => shown.has(o.line))) {

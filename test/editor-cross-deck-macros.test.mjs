@@ -1,16 +1,17 @@
 // the macros and the theme of slides pasted from the editor of deck A into the editor of deck B,
 // both on one local server. after the paste, a dialog names each macro of the origin that deck B
-// lacks or defines otherwise, as the line of theme/macros.js that defines it, with a button that
-// copies the lines. the entry of the history of the paste is closed while the dialog is open, and
-// a later paste of the same macros adds a sentence to the note in place of the dialog. a theme of
-// another version adds one sentence to the note of the paste
+// lacks or defines otherwise, as the line of a preamble that defines it, with a button that copies
+// the lines. the lines define the macros on the open deck once they are in the Preamble sheet. the
+// entry of the history of the paste is closed while the dialog is open, and a later paste of the
+// same macros adds a sentence to the note in place of the dialog. a theme of another version adds
+// one sentence to the note of the paste
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { A, B, BACKDROP, FILES, FIRST_B, QUERY, copySlide, errors, openDeck, pasteSlides, pasted, render, status } from './helpers/cross-deck.mjs';
-import { center, click } from './helpers/editor.mjs';
+import { center, click, type } from './helpers/editor.mjs';
 
 let browser;
 let server;
@@ -31,9 +32,9 @@ const read = (page) => page.evaluate(`(() => { const d = document.querySelector(
 // the macros of deck B, which defines half as deck A does, orb with another body, and not dash
 const OWN = String.raw`({ half: '\\tfrac{1}{2}', orb: ['\\mathcal{O}_{#1}', 1] })`;
 const ALL = String.raw`({ half: '\\tfrac{1}{2}', orb: ['\\mathcal{O}_{\\half #1}', 1], dash: '\\text{a--b}' })`;
-const define = (page, macros) => page.evaluate(`(() => { window.beesonMacros = ${macros}; if (window.MathJax?.config?.tex) MathJax.config.tex.macros = window.beesonMacros; return true; })()`);
-const LINES = String.raw`dash: '\\text{a--b}',
-orb: ['\\mathcal{O}_{\\half #1}', 1],`;
+const define = (page, macros) => page.evaluate(`(() => { window.beesonTex = { macros: ${macros} }; if (window.MathJax?.config?.tex) MathJax.config.tex.macros = window.beesonTex.macros; return true; })()`);
+const LINES = String.raw`\newcommand{\dash}{\text{a--b}}
+\renewcommand{\orb}[1]{\mathcal{O}_{\half #1}}`;
 
 test('a paste names the macros that this deck lacks or defines otherwise, and copies their lines', async (t) => {
   const a = await deck(A);
@@ -49,7 +50,7 @@ test('a paste names the macros that this deck lacks or defines otherwise, and co
   await pasted(b, 5000);
   const shown = await read(b);
   assert.equal(shown.lines, LINES);
-  assert.match(shown.text, /theme\/macros\.js of this deck, inside the braces of window\.beesonMacros/);
+  assert.match(shown.text, /^Choose File > Preamble… and paste the lines below at the end of the preamble of this deck\./);
   assert.match(shown.text, /drawn in red/);
   assert.match(shown.text, /\\orb.*definition of this deck/);
   assert.ok(!shown.text.includes('\\half'), 'half is defined the same in both decks');
@@ -130,6 +131,42 @@ test('a macro with an optional argument is listed with its default, also when on
   await b.waitFor(SHOWN, 30000);
   await pasted(b);
   const shown = await read(b);
-  assert.equal(shown.lines, String.raw`orb: ['\\mathcal{O}_{#1}', 1, 'k'],`);
+  assert.equal(shown.lines, String.raw`\renewcommand{\orb}[1][k]{\mathcal{O}_{#1}}`);
   assert.match(shown.text, /\\orb are drawn with the definition of this deck/);
+});
+
+// the deck of test/editor-tex-sheets.test.mjs, which has a preamble.tex. it defines half with
+// another body than deck A, and neither orb nor dash
+const TEX = 'test/pages/tex-sheets/index.html';
+const SHEET = 'dialog.beeson-edit-tex[open]';
+const RED = `!![...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent.trim() === ${JSON.stringify(FILES)})?.querySelector('[fill="red"], [data-mjx-error]')`;
+
+test('the lines of the dialog, put at the end of the Preamble sheet, define the macros of the paste on the open deck', { timeout: 120000 }, async (t) => {
+  const a = await deck(A);
+  t.after(() => a.close());
+  const text = await copySlide(a, FILES);
+  const b = await deck(TEX);
+  t.after(() => b.close());
+  await pasteSlides(b, 'Macros', text);
+  await b.waitFor(SHOWN, 30000);
+  await pasted(b);
+  const { lines } = await read(b);
+  assert.equal(lines, String.raw`\newcommand{\dash}{\text{a--b}}
+\renewcommand{\half}{\tfrac{1}{2}}
+\newcommand{\orb}[1]{\mathcal{O}_{\half #1}}`);
+  await b.waitFor(RED, 10000);
+  await b.evaluate(`document.querySelector('${DIALOG}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  await b.waitFor(`!${SHOWN}`, 5000);
+
+  await b.evaluate(`Promise.resolve(window.BeesonEditor.exec('file.preamble')).then(() => true)`);
+  await b.waitFor(`!!document.querySelector('${SHEET}:not([aria-busy])')`, 30000);
+  await b.evaluate(`(() => { const s = document.querySelector('${SHEET} textarea'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); return true; })()`);
+  await type(b, `${lines}\n`);
+  await b.waitFor(`!${RED}`, 30000);
+  // the three macros are read by the reader of the preamble, the second definition of half included
+  const row = (name) => b.evaluate(`document.querySelector('${SHEET} [data-macro="${name}"]')?.textContent.replace(/\\s+/g, ' ').trim() ?? null`);
+  assert.equal(await row('dash'), '\\dash 0 arguments');
+  assert.equal(await row('orb'), '\\orb 1 argument');
+  assert.deepEqual(await b.evaluate('[window.beesonTex.macros.half, window.beesonTex.macros.orb]'), ['\\tfrac{1}{2}', ['\\mathcal{O}_{\\half #1}', 1]]);
+  assert.deepEqual(await b.evaluate(`[...document.querySelectorAll('${SHEET} .skipped')].map((r) => r.textContent).filter((r) => /dash|half|orb/.test(r))`), []);
 });
