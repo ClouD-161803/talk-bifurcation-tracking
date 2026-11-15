@@ -722,6 +722,34 @@ test('the start of the history is a row of its own, which reads Start of the his
   clean(ann);
 });
 
+test('a named version does not head a fold, unnamed versions fold within 30 minutes, and a fold does not cross midnight', { timeout: 180_000 }, async (t) => {
+  // midnight at the start of yesterday, hence every version is in the past
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - 1);
+  const midnight = start.getTime();
+  const hour = 60 * MIN;
+  const server = await crafted(t, craft([
+    { time: midnight - 10 * MIN },
+    { time: midnight + 10 * MIN },
+    { time: midnight + 3 * hour },
+    { time: midnight + 3 * hour + 20 * MIN },
+    { time: midnight + 5 * hour },
+    { time: midnight + 5 * hour + 5 * MIN, name: 'Named' },
+  ]), HELD);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  await openPane(ann);
+  // each row by its id, each fold by its text, and each day heading as day
+  const rows = `[...document.querySelectorAll('${PANE} .versions > :is(.row.version, .fold, h3)')].filter((el) => !${UNNAMED_START('el')}).map((el) => el.matches('h3') ? 'day' : el.matches('.fold') ? el.textContent : el.dataset.id.slice(8))`;
+  // the list is written at once, hence v1 is listed with all the others
+  await ann.waitFor(`${rows}.includes('v1')`);
+  assert.deepEqual(await ann.evaluate(rows), ['day', 'v5', 'v4', 'v3', 'Show 1 more', 'v1', 'day', 'v0']);
+  clean(ann);
+});
+
 test('with many versions a new version writes only its own row, and the rows in view stay in place', { timeout: 300_000 }, async (t) => {
   const now = Date.now();
   // 150 versions 40 minutes apart, hence none of them folds
