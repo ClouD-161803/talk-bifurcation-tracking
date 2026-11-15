@@ -910,3 +910,16 @@ test('the texts kept in memory as starting points of a rebuild stay within their
   for (const [id, text] of texts) assert.equal(history.textOf(id), text, `the text of version ${id}`);
   history.stopSync();
 });
+
+test('a version that restored another is told as such after a restart', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const { authority, history } = open(dir, DECK);
+  replace(authority, 'One', 'Uno', ANN);
+  const v1 = history.close();
+  replace(authority, 'Two', 'Deux', BO);
+  history.close();
+  history.restore(v1.id, ANN);
+  history.stopSync();
+  const again = open(dir, authority.text);
+  assert.equal(again.history.list().versions[0].restored, v1.id);
+});
