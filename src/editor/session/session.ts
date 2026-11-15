@@ -8,10 +8,10 @@ import type { App } from '../app.ts';
 import { mathLookup, type MathLookup } from '../math.ts';
 import { apply as applyEdits, edits, mergeEdits } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
-import { elementRange, parseSource } from '../source.ts';
+import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
 import { applyAt, refresh, repairText, type Done } from './apply.ts';
 import { markOf, moved, type Mark } from './caret.ts';
-import { graft, locate, retag, windowOf, type Spot } from './tree.ts';
+import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
 
 // what an apply did: the elements it changed, e.g. for a flash, and reload when the deck could not
 // be made to read as the text, after which the client loads the page again
@@ -39,6 +39,18 @@ type Page = { MathJax?: { typesetPromise?(els: Element[]): Promise<unknown> } };
 
 // the time in ms after the last apply at which the page is read against its text
 const NET = 500;
+
+// the window of b against source.text. an insertion or a removal at the end of div.slides, e.g. a
+// slide after the last slide, whose common start runs into the end tag of div.slides, is moved
+// back over the bytes that it repeats, to start before this tag
+function windowIn(source: Source, b: string): Window | null {
+  const a = source.text;
+  let w = windowOf(a, b);
+  const cr = contentRange(source.slides);
+  if (!w || !cr) return w;
+  while (w.start > cr.start && w.endA > cr.end && (w.endA === w.start ? a[w.start - 1] === b[w.endB - 1] : w.endB === w.start && a[w.start - 1] === a[w.endA - 1])) w = { start: w.start - 1, endA: w.endA - 1, endB: w.endB - 1 };
+  return w;
+}
 
 export function install(app: App): Port {
   // clean holds while the source reads as the deck, i.e. since the last open or apply without an
@@ -288,7 +300,7 @@ export function install(app: App): Port {
       const rest = all.filter((e) => (e.start >= slide.end || e.end <= slide.start) && !(e.start === e.end && e.start > slide.start && e.start < slide.end));
       if (rest.length < all.length) shown = applyEdits(source.text, rest);
     }
-    let w = windowOf(source.text, shown);
+    let w = windowIn(source, shown);
     const spot = w && locate(source, app.pairing!, w.start, w.endA);
     if (spot?.kind === 'reload') return reload();
     if (spot && intoComposition(spot)) {
