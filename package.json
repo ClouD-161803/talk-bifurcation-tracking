@@ -10,7 +10,8 @@
     "check": "node scripts/check.mjs",
     "pdf": "node scripts/export-pdf.mjs",
     "pptx": "node scripts/export-pptx.mjs",
-    "edit": "node theme/edit.mjs"
+    "edit": "node theme/edit.mjs",
+    "relay": "node scripts/relay.mjs"
   },
   "author": "Beeson group, Princeton University",
   "license": "MIT",
