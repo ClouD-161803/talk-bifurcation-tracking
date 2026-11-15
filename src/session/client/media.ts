@@ -22,6 +22,10 @@ const GUEST_MAX = 16 * MB;
 // the extensions that PUT media/ takes, apart from json, which the editor does not add
 const TAKEN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|mp4|m4v|webm|mov|ogv)$/i;
 const VIDEO = /\.(mp4|m4v|webm|mov|ogv)$/i;
+// the deadline of an upload in ms, to which UPLOAD_PER_MB is added for each MB. it is set in a test
+// with the parameter session-upload-wait of the address
+const UPLOAD_WAIT = 30_000;
+const UPLOAD_PER_MB = 1000;
 export const FAILED = 'A picture could not be sent. Try again';
 
 type State = { busy: boolean; failed: boolean; network: boolean };
@@ -55,6 +59,7 @@ export function install(client: Client): void {
   const store = client.shell.media;
   const st: State = { busy: false, failed: false, network: false };
   states.set(client, st);
+  const wait = Number(new URLSearchParams(location.search).get('session-upload-wait')) || UPLOAD_WAIT;
   // set at the first rename by the edit command, after which the elements are checked before each
   // operation
   let moved = false;
@@ -143,13 +148,18 @@ export function install(client: Client): void {
     try {
       for (const f of files) {
         const name = f.path.slice(f.path.lastIndexOf('/') + 1);
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), wait + (UPLOAD_PER_MB * f.blob.size) / MB);
         let response: Response;
+        let answer: { path?: unknown; error?: unknown } | null;
         try {
-          response = await fetch(client.url(`media/${encodeURIComponent(name)}`, { token: client.token }), { method: 'PUT', body: f.blob, headers: { 'Content-Type': f.blob.type || 'application/octet-stream' }, cache: 'no-store' });
+          response = await fetch(client.url(`media/${encodeURIComponent(name)}`, { token: client.token }), { method: 'PUT', body: f.blob, headers: { 'Content-Type': f.blob.type || 'application/octet-stream' }, cache: 'no-store', signal: abort.signal });
+          answer = await response.json().catch(() => null);
         } catch (e) {
           throw new Failure(0, e instanceof Error ? e.message : String(e));
+        } finally {
+          clearTimeout(timer);
         }
-        const answer = (await response.json().catch(() => null)) as { path?: unknown; error?: unknown } | null;
         if (!response.ok || typeof answer?.path !== 'string') throw new Failure(response.ok ? 0 : response.status, typeof answer?.error === 'string' ? answer.error : 'the upload failed');
         store.saved([f]);
         if (answer.path !== f.path) {
