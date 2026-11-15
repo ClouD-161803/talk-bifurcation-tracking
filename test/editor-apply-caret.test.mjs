@@ -74,3 +74,36 @@ for (const [label, change] of MOVED) {
     assert.deepEqual(b.errors, []);
   });
 }
+
+test('a caret whose paragraph is moved to another slide stays in it, and the person stays on the slide until a key types into the paragraph', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  const text = once(once(b.source, LINE, ''), '  <h2>Code boxes, you guessed it...</h2>\n', '  <h2>Code boxes, you guessed it...</h2>\n' + LINE);
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'the person stays on the slide');
+  // a key of a command leaves the person on the slide
+  await press(b, 'Mod+C');
+  assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'the person stays on the slide after a key that does not type');
+  await typeKeys(b, 'Xyz');
+  await b.waitFor(`${P1}.textContent.endsWith('attention.Xyz')`);
+  assert.equal(await b.evaluate(`${E}.render()`), once(text, 'viewer\'s attention.</p>', 'viewer\'s attention.Xyz</p>'));
+  assert.deepEqual(await b.evaluate(`({ shown: Reveal.getCurrentSlide().contains(${P1}), active: document.activeElement === ${P1} })`), { shown: true, active: true }, 'the slide of the paragraph is shown, with the caret in it');
+  assert.deepEqual(b.errors, []);
+});
+
+test('a caret whose paragraph is moved to another slide is let go once the person clicks', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  const text = once(once(b.source, LINE, ''), '  <h2>Code boxes, you guessed it...</h2>\n', '  <h2>Code boxes, you guessed it...</h2>\n' + LINE);
+  assert.equal((await applyOn(b, text)).reload, false);
+  // a press on the slide is a new choice of the person, after which the keys do not type
+  await b.evaluate(`document.querySelector('.reveal').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))`);
+  await typeKeys(b, 'Xyz');
+  assert.equal(await b.evaluate('Reveal.getCurrentSlide() === window.__shown'), true, 'the person stays on the slide');
+  assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.deepEqual(b.errors, []);
+});
