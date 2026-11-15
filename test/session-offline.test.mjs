@@ -433,3 +433,101 @@ test('the copies of two closed tabs that changed the same text are both sent, th
   await c.waitFor(`(${ROWS}).then((r) => r.length === 0)`);
   clean(c);
 });
+
+// the copies of the origin of a page in IndexedDB, as { id, key }
+const ALL = `new Promise((done) => {
+  const r = indexedDB.open('beeson-session', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('copies', { keyPath: 'id' }).createIndex('key', 'key');
+  r.onsuccess = () => {
+    const q = r.result.transaction('copies').objectStore('copies').getAll();
+    q.onsuccess = () => {
+      r.result.close();
+      done(q.result.map((x) => ({ id: x.id, key: x.key })));
+    };
+  };
+})`;
+
+// a copy of a page that is gone put into IndexedDB, under the address of the page of the editor
+// unless row gives a key. row is the source of an object
+const plant = (page, row) =>
+  page.evaluate(`new Promise((done, fail) => {
+    const r = indexedDB.open('beeson-session', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('copies', { keyPath: 'id' }).createIndex('key', 'key');
+    r.onerror = () => fail(r.error);
+    r.onsuccess = () => {
+      const t = r.result.transaction('copies', 'readwrite');
+      t.objectStore('copies').put({ key: location.origin + location.pathname, files: [], ...${row} });
+      t.oncomplete = () => (r.result.close(), done(true));
+      t.onerror = () => fail(t.error);
+    };
+  })`);
+
+const EARLIER = `(() => {
+  const d = document.querySelector('dialog.beeson-session-earlier[open]');
+  return d && { title: d.querySelector('h3').textContent, text: d.querySelector('p').textContent, buttons: [...d.querySelectorAll('.row button')].map((b) => b.textContent) };
+})()`;
+const pressEarlier = (page, label) => page.evaluate(`[...document.querySelectorAll('dialog.beeson-session-earlier[open] .row button')].find((b) => b.textContent === ${JSON.stringify(label)}).click()`);
+const DAY = 86_400_000;
+
+test('a copy of an earlier session is added to a deck that changed since only when the person says so, and a copy older than 30 days is deleted', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const probe = await probeOf(browser, server);
+  // the deck of the earlier session, whose first slide index.html no longer has
+  const base = TALK.replace('<p>First slide</p>', '<p>Earlier first slide</p>');
+  const mine = base.replace('<li>Beta</li>', '<li>Beta TOKOLD</li>');
+  const row = (id, beat, extra = '') => `{ id: ${JSON.stringify(id)}, base: ${JSON.stringify(base)}, v: 'earlier.3', mine: ${JSON.stringify(mine)}, beat: ${beat}${extra} }`;
+  const picture = `, files: [{ path: 'media/earlier.png', blob: new Blob(['png'], { type: 'image/png' }) }]`;
+
+  await t.test('Download my version keeps the dialog open, and Add my changes adds them', async () => {
+    const beat = Date.now() - 2 * DAY;
+    await plant(probe, row('earlier-add', beat));
+    const page = await tab(browser, url, { wait: false });
+    await page.waitFor(`!!document.querySelector('dialog.beeson-session-earlier[open]')`);
+    const day = await page.evaluate(`new Date(${beat}).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })`);
+    assert.deepEqual(await page.evaluate(EARLIER), {
+      title: 'Changes from an earlier session',
+      text: `This browser kept your changes on slide 2 from ${day}, which were not sent. The deck has changed since then.`,
+      buttons: ['Download my version', 'Discard them', 'Add my changes'],
+    });
+    await pressEarlier(page, 'Download my version');
+    const [file] = await downloads(page);
+    assert.equal(file.text, mine);
+    assert.ok(await page.evaluate(`!!document.querySelector('dialog.beeson-session-earlier[open]')`));
+    await pressEarlier(page, 'Add my changes');
+    assert.equal(await converge(server, [page]), TALK.replace('<li>Beta</li>', '<li>Beta TOKOLD</li>'));
+    await page.waitFor(`(${ROWS}).then((r) => r.length === 0)`);
+    clean(page);
+    await page.close();
+  });
+
+  await t.test('Discard them deletes the copy with its pictures', async () => {
+    const before = server.read();
+    await plant(probe, row('earlier-discard', Date.now() - 2 * DAY, picture));
+    const page = await tab(browser, url, { wait: false });
+    await page.waitFor(`!!document.querySelector('dialog.beeson-session-earlier[open]')`);
+    await pressEarlier(page, 'Discard them');
+    await page.waitFor(ONLINE);
+    assert.equal(await converge(server, [page]), before);
+    assert.deepEqual(await rows(page), []);
+    assert.equal(await page.evaluate(`${C}.shell.media.get('media/earlier.png')`), null);
+    clean(page);
+    await page.close();
+  });
+
+  await t.test('a copy older than 30 days is deleted at a join without a dialog, also one of another address of the origin', async () => {
+    const before = server.read();
+    await plant(probe, row('earlier-old', Date.now() - 31 * DAY, picture));
+    await plant(probe, `{ ...${row('elsewhere-old', Date.now() - 31 * DAY)}, key: location.origin + '/another/index.html' }`);
+    await plant(probe, `{ ...${row('elsewhere-new', Date.now() - 2 * DAY)}, key: location.origin + '/another/index.html' }`);
+    const page = await tab(browser, url);
+    assert.equal(await converge(server, [page]), before);
+    assert.equal(await page.evaluate(`!!document.querySelector('dialog.beeson-session-earlier[open]')`), false);
+    assert.deepEqual(await page.evaluate(ALL), [{ id: 'elsewhere-new', key: await probe.evaluate(`location.origin + '/another/index.html'`) }]);
+    assert.equal(await page.evaluate(`${C}.shell.media.get('media/earlier.png')`), null);
+    clean(page);
+    await page.close();
+  });
+});
