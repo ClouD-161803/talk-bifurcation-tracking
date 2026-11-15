@@ -304,3 +304,22 @@ test('an upload that stalls fails at its deadline, and Try again sends the pictu
   assert.equal(await ann.evaluate(STATE), 'Saved to index.html');
   clean(ann, PROXIED);
 });
+
+test('the save state of a failed upload is cleared once the deck no longer names the picture', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  p.next('refuse');
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`);
+  await keys(ann, 'Mod+Z');
+  await ann.waitFor(`${IMAGES} === 0`);
+  await edit(ann, 0, 'p', ' typed');
+  await until(() => server.read().includes('<p>First slide typed</p>'), 'the edit in index.html');
+  await ann.waitFor(`${STATE} === 'Saved to index.html'`, 10_000);
+  assert.equal(await ann.evaluate(ACTION), null);
+  clean(ann, PROXIED);
+});
