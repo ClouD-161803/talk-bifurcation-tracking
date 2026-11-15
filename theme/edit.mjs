@@ -6,12 +6,12 @@ import { realpathSync as realpathSync3 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
-import { createReadStream, mkdirSync as mkdirSync3, readFileSync as readFileSync6, realpathSync as realpathSync2, unlinkSync as unlinkSync5, writeFileSync as writeFileSync5 } from "node:fs";
-import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile3 } from "node:fs/promises";
+import { createReadStream, mkdirSync as mkdirSync4, readFileSync as readFileSync7, realpathSync as realpathSync2, unlinkSync as unlinkSync6, writeFileSync as writeFileSync6 } from "node:fs";
+import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
 import { createServer } from "node:http";
-import { createHash, randomBytes as randomBytes5 } from "node:crypto";
+import { createHash, randomBytes as randomBytes6 } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join as join5, resolve, sep as sep2 } from "node:path";
+import { join as join6, resolve, sep as sep2 } from "node:path";
 
 // src/session/protocol.ts
 var VERSION_NAME_MAX = 80;
@@ -1379,9 +1379,10 @@ function writeApplied(file, table, log) {
   }
 }
 
-// src/edit/history.ts
-import { appendFileSync, mkdirSync, readdirSync as readdirSync2, readFileSync as readFileSync3, statSync as statSync2, truncateSync, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
+// src/edit/comments.ts
 import { randomBytes as randomBytes3 } from "node:crypto";
+import { mkdirSync, readFileSync as readFileSync3, renameSync as renameSync2, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { unlink, writeFile as writeFile2 } from "node:fs/promises";
 import { join as join2 } from "node:path";
 
 // src/session/slides.ts
@@ -1517,9 +1518,650 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   return out;
 }
 
-// src/edit/history.ts
-var isVersionId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
+// src/session/anchor.ts
+var REMOVED_MAX = 4096;
+var tagOf = (s) => ({ start: s.start, end: s.open, tag: "section" });
+var sameAnchor = (a, b) => a === b || !!a && !!b && a.start === b.start && a.end === b.end && a.tag === b.tag;
+var shiftTag = (a, patches) => ({ start: shiftOffset(a.start, patches, true), end: shiftOffset(a.end, patches, false), tag: a.tag });
+var touches = (p, s, e) => p.start < p.end ? p.start < e && s < p.end : s < p.start && p.start < e;
+var withRemoved = (anchor, slide, removed) => removed ? { anchor, slide, removed } : { anchor, slide };
+function startTagAt(text, i) {
+  if (!Number.isInteger(i) || i < 0 || text.charCodeAt(i) !== 60 || !/[A-Za-z]/.test(text.charAt(i + 1))) return null;
+  for (let size2 = 256; ; size2 *= 4) {
+    const whole = i + size2 >= text.length;
+    const t = tokenize(text.slice(i, i + size2))[0];
+    if (t?.type === "start" && (whole || t.end < size2)) return text.charCodeAt(i + t.end - 1) === 62 ? { start: i, end: i + t.end, tag: t.name } : null;
+    if (whole || t && t.type !== "start" && t.type !== "text") return null;
+  }
+}
+function slideAt(slides, i) {
+  let lo = 0;
+  let hi = slides.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = lo + hi >> 1;
+    if (slides[mid].start <= i) {
+      found = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return found >= 0 && i < slides[found].end ? slides[found] : null;
+}
+function slideAnchorAt(slides, i) {
+  const s = slideAt(slides, i);
+  return s ? tagOf(s) : null;
+}
+function elementEnd(text, at, limit) {
+  if (VOID.has(at.tag)) return at.end;
+  for (let size2 = Math.max(1024, 2 * (at.end - at.start)); ; size2 *= 4) {
+    const whole = at.start + size2 >= limit;
+    const tokens = tokenize(text.slice(at.start, whole ? limit : at.start + size2));
+    const first2 = tokens[0];
+    if (!first2 || first2.type !== "start" || first2.selfClosing) return at.end;
+    const n = whole ? tokens.length : tokens.length - 1;
+    const open2 = [];
+    for (let k = 0; k < n; k++) {
+      const t = tokens[k];
+      if (t.type === "start") {
+        if (!t.selfClosing && !VOID.has(t.name)) open2.push(t.name);
+      } else if (t.type === "end") {
+        const i = open2.lastIndexOf(t.name);
+        if (i < 0) return at.start + t.start;
+        open2.length = i;
+        if (i === 0) return at.start + t.end;
+      }
+    }
+    if (whole) return -1;
+  }
+}
+function insertedSpans(patches) {
+  const out = [];
+  let delta = 0;
+  for (const p of patches) {
+    if (p.text) out.push({ start: p.start + delta, end: p.start + delta + p.text.length });
+    delta += p.text.length - (p.end - p.start);
+  }
+  return out;
+}
+function overlaps(spans, s, e) {
+  let lo = 0;
+  let hi = spans.length - 1;
+  while (lo <= hi) {
+    const mid = lo + hi >> 1;
+    if (spans[mid].end <= s) lo = mid + 1;
+    else if (spans[mid].start >= e) hi = mid - 1;
+    else return true;
+  }
+  return false;
+}
+function findInserted(after, text, inserted, near) {
+  if (!text || !inserted.length) return -1;
+  let best = -1;
+  for (let o = after.indexOf(text), n = 0; o >= 0 && n < 256; o = after.indexOf(text, o + 1), n++) {
+    if (overlaps(inserted, o, o + text.length) && (best < 0 || Math.abs(o - near) < Math.abs(best - near))) best = o;
+  }
+  return best;
+}
+function matchSlides(a, b) {
+  const to = new Int32Array(a.length).fill(-1);
+  const kept = new Uint8Array(a.length);
+  const used = new Uint8Array(b.length);
+  const byText = /* @__PURE__ */ new Map();
+  b.forEach((t, j) => {
+    const list = byText.get(t);
+    if (list) list.push(j);
+    else byText.set(t, [j]);
+  });
+  a.forEach((t, i) => {
+    let best = -1;
+    for (const j of byText.get(t) ?? []) if (!used[j] && (best < 0 || Math.abs(j - i) < Math.abs(best - i))) best = j;
+    if (best < 0) return;
+    to[i] = best;
+    kept[i] = 1;
+    used[best] = 1;
+  });
+  const restA = [...a.keys()].filter((i) => to[i] < 0);
+  const restB = [...b.keys()].filter((j) => !used[j]);
+  for (const p of pairs(restA.map((i) => a[i]), restB.map((j) => b[j]))) to[restA[p.i]] = restB[p.j];
+  return { to, kept };
+}
+function wholeTag(text, start2, end) {
+  const t = startTagAt(text, start2);
+  return t && t.end === end ? t : null;
+}
+function byPatches(a, before2, patches, after, regions) {
+  let first2 = -1;
+  let last = -1;
+  for (let k = 0; k < patches.length && patches[k].start <= a.end; k++) {
+    if (!touches(patches[k], a.start, a.end)) continue;
+    if (first2 < 0) first2 = k;
+    last = k;
+  }
+  if (first2 < 0) return shiftTag(a, patches);
+  let inside = true;
+  for (let k = first2; k <= last; k++) if (!(patches[k].start > a.start && patches[k].end < a.end)) inside = false;
+  if (inside) return startTagAt(after, shiftOffset(a.start, patches, true));
+  const a0 = Math.min(a.start, patches[first2].start);
+  const b0 = Math.max(a.end, patches[last].end);
+  let delta = 0;
+  for (let k = 0; k < first2; k++) delta += patches[k].text.length - (patches[k].end - patches[k].start);
+  let grow = 0;
+  for (let k = first2; k <= last; k++) grow += patches[k].text.length - (patches[k].end - patches[k].start);
+  const a1 = a0 + delta;
+  const b1 = b0 + delta + grow;
+  const key = `${a0}:${b0}`;
+  let region = regions.get(key);
+  if (!region) regions.set(key, region = { tokens: tokenize(before2.slice(a0, b0)), fresh: tokenize(after.slice(a1, b1)) });
+  const fresh = region.fresh;
+  const t0 = fresh[0];
+  if (a0 === a.start && b0 === a.end && fresh.length === 1 && t0.type === "start" && t0.end === b1 - a1) return wholeTag(after, a1, b1);
+  for (const named of [true, false]) {
+    const old = region.tokens.filter((t2) => t2.type === "start" && (!named || t2.name === a.tag));
+    const now = fresh.filter((t2) => t2.type === "start" && (!named || t2.name === a.tag));
+    const k = old.findIndex((t2) => t2.start === a.start - a0);
+    const t = now[k];
+    if (k >= 0 && old.length === now.length && t.type === "start") return wholeTag(after, a1 + t.start, a1 + t.end);
+  }
+  return null;
+}
+function keepsTag(after, a, patches) {
+  const t = startTagAt(after, shiftOffset(a.start, patches, true));
+  return !!t && t.tag === a.tag && t.end === shiftOffset(a.end, patches, false);
+}
+var changedFrom = (it, next, patches) => !sameAnchor(next.anchor, it.anchor && shiftTag(it.anchor, patches)) || !sameAnchor(next.slide, it.slide && shiftTag(it.slide, patches)) || !!next.removed !== !!it.removed || next.removed?.text !== it.removed?.text;
+function betweenTags(text, p) {
+  if (p.start > 0 && text.lastIndexOf("<", p.start - 1) > text.lastIndexOf(">", p.start - 1)) return false;
+  const gt = text.indexOf(">", p.end);
+  if (gt < 0) return true;
+  const lt = text.indexOf("<", p.end);
+  return lt >= 0 && lt < gt;
+}
+function moveAnchors(before2, patches, after, items, slides = null) {
+  if (!patches.length) return { items, changed: items.map(() => false), slides };
+  if (!items.length) return { items, changed: [], slides: null };
+  const p = patches[0];
+  if (patches.length === 1 && !/[<>]/.test(p.text) && !/[<>]/.test(before2.slice(p.start, p.end)) && betweenTags(before2, p)) {
+    const out = new Array(items.length);
+    for (let k = 0; k < items.length; k++) {
+      const it = items[k];
+      if (it.anchor && touches(p, it.anchor.start, it.anchor.end) && !keepsTag(after, it.anchor, patches) || it.slide && touches(p, it.slide.start, it.slide.end) && !keepsTag(after, it.slide, patches)) {
+        return slow(before2, patches, after, items, slides);
+      }
+      out[k] = withRemoved(it.anchor && shiftTag(it.anchor, patches), it.slide && shiftTag(it.slide, patches), it.removed);
+    }
+    const shifted = slides && slides.map((s) => ({ start: shiftOffset(s.start, patches, true), end: shiftOffset(s.end, patches, false), open: shiftOffset(s.open, patches, false), number: s.number }));
+    return { items: out, changed: items.map(() => false), slides: shifted };
+  }
+  return slow(before2, patches, after, items, slides);
+}
+function shiftedSlides(before2, patches, after, s0) {
+  const s = slideAt(s0, patches[0].start);
+  if (!s || patches[0].start < s.open) return null;
+  const close = before2.lastIndexOf("</", s.end - 1);
+  if (close < s.open || patches[patches.length - 1].end > close) return null;
+  const growth = patches.reduce((n, q) => n + q.text.length - (q.end - q.start), 0);
+  const end = s.end + growth;
+  const tokens = tokenize(after.slice(s.open, end));
+  const last = tokens[tokens.length - 1];
+  if (!last || last.type !== "end" || last.name !== "section" || last.start !== close + growth - s.open || last.end !== end - s.open) return null;
+  for (let k = 0; k < tokens.length - 1; k++) {
+    const t = tokens[k];
+    if ((t.type === "start" || t.type === "end") && t.name === "section") return null;
+  }
+  const i = s0.indexOf(s);
+  const s1 = s0.map((x, k) => k < i ? x : k === i ? { ...x, end } : { start: x.start + growth, end: x.end + growth, open: x.open + growth, number: x.number });
+  const kept = new Uint8Array(s0.length).fill(1);
+  kept[i] = before2.slice(s.start, s.end) === after.slice(s.start, end) ? 1 : 0;
+  return { s1, to: Int32Array.from(s0.keys()), kept };
+}
+function matchedSlides(before2, s0, after) {
+  const s1 = slidesOf(after);
+  return { s1, ...matchSlides(s0.map((s) => before2.slice(s.start, s.end)), s1.map((s) => after.slice(s.start, s.end))) };
+}
+function slow(before2, patches, after, items, given) {
+  const s0 = given ?? slidesOf(before2);
+  const { s1, to, kept } = shiftedSlides(before2, patches, after, s0) ?? matchedSlides(before2, s0, after);
+  const index = new Map(s0.map((s, i) => [s.start, i]));
+  const inserted = insertedSpans(patches);
+  const cap2 = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
+  const regions = /* @__PURE__ */ new Map();
+  const locate = (a, limit) => {
+    const found = byPatches(a, before2, patches, after, regions);
+    if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
+    const bound = Math.max(a.end, Math.min(limit, a.start + cap2));
+    const e = elementEnd(before2, a, bound);
+    if (e < 0 && bound < limit) return { anchor: found, text: null };
+    const end = e < 0 ? bound : e;
+    const text = before2.slice(a.start, end);
+    if (patches.some((q) => touches(q, a.start, end)) && !(found && after.startsWith(text, found.start))) {
+      const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
+      if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
+    }
+    return { anchor: found, text };
+  };
+  const move = (it) => {
+    if (it.removed?.text) {
+      const o = findInserted(after, it.removed.text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : 0);
+      const t = o >= 0 ? startTagAt(after, o) : null;
+      if (t) {
+        const slide = slideAt(s1, o);
+        return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
+      }
+    }
+    const a = it.anchor;
+    if (!a) return withRemoved(null, null, it.removed);
+    let i = it.slide ? index.get(it.slide.start) ?? -1 : -1;
+    if (i < 0) {
+      const s = slideAt(s0, a.start);
+      i = s ? index.get(s.start) : -1;
+    }
+    const j = i >= 0 ? to[i] : -1;
+    if (it.slide && a.start === it.slide.start) {
+      if (j >= 0) return withRemoved(tagOf(s1[j]), tagOf(s1[j]), it.removed);
+      return { anchor: null, slide: null, removed: it.removed ?? { text: i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null } };
+    }
+    if (j >= 0 && kept[i]) {
+      const d = s1[j].start - s0[i].start;
+      return { anchor: { start: a.start + d, end: a.end + d, tag: a.tag }, slide: tagOf(s1[j]) };
+    }
+    const found = locate(a, i >= 0 ? s0[i].end : before2.length);
+    if (found.anchor) return { anchor: found.anchor, slide: slideAnchorAt(s1, found.anchor.start) };
+    const back = j >= 0 ? tagOf(s1[j]) : null;
+    return { anchor: back, slide: back, removed: { text: found.text !== null && found.text.length <= REMOVED_MAX ? found.text : null } };
+  };
+  const out = items.map(move);
+  return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], patches)), slides: s1 };
+}
+function checkAnchors(text, items, slides = slidesOf(text)) {
+  const starts = new Map(slides.map((s) => [s.start, s]));
+  const out = items.map((it) => {
+    if (!it.anchor) return withRemoved(null, null, it.removed);
+    const t = startTagAt(text, it.anchor.start);
+    if (t && t.end === it.anchor.end && t.tag === it.anchor.tag) return withRemoved(t, slideAnchorAt(slides, t.start), it.removed);
+    const back = it.slide && it.slide.tag === "section" && starts.get(it.slide.start)?.open === it.slide.end ? it.slide : null;
+    return { anchor: back, slide: back, removed: it.removed ?? { text: null } };
+  });
+  return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], [])), slides };
+}
+
+// src/edit/comments.ts
+var MENTIONS_MAX = 50;
+var LOG_MAX = 4e3;
+var isCommentId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
 var newId = () => randomBytes3(9).toString("base64url");
+var fail = (status, error2) => ({ status, error: error2 });
+var isFailure = (x) => !!x && typeof x.error === "string" && typeof x.status === "number";
+var isNumber = (x) => typeof x === "number" && Number.isFinite(x);
+var isInt = (x) => Number.isSafeInteger(x) && x >= 0;
+var charsOf = (t) => t.text.length + t.replies.reduce((n, r) => n + r.text.length, 0);
+function cleanText(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return fail(400, "the text is empty");
+  if (Array.from(raw).length > COMMENT_MAX) return fail(413, `the text is longer than ${COMMENT_MAX} characters`);
+  return raw;
+}
+function cleanMentions(raw) {
+  if (raw === void 0 || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > MENTIONS_MAX || !raw.every(isPersonId)) return fail(400, "mentions must be person ids");
+  return [...new Set(raw)];
+}
+var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && /^[a-z][^\s/>]{0,63}$/.test(a.tag);
+var isReply = (r) => !!r && isCommentId(r.id) && isPersonId(r.author) && isNumber(r.time) && typeof r.text === "string" && (r.edited === void 0 || isNumber(r.edited));
+function readThread(t) {
+  if (!t || typeof t !== "object") return null;
+  const c = t;
+  if (!isCommentId(c.id) || !isPersonId(c.author) || !isNumber(c.time) || typeof c.text !== "string") return null;
+  if (!(c.anchor === null || isAnchor(c.anchor)) || !(c.slide === null || isAnchor(c.slide))) return null;
+  if (!Array.isArray(c.replies) || c.replies.length > REPLIES_MAX || !c.replies.every(isReply)) return null;
+  if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
+  if (c.edited !== void 0 && !isNumber(c.edited)) return null;
+  if (c.resolved !== void 0 && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
+  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || typeof c.removed.text === "string"))) return null;
+  const out = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
+  if (c.removed) out.removed = { text: c.removed.text };
+  if (c.edited !== void 0) out.edited = c.edited;
+  if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
+  return out;
+}
+var Comments = class {
+  // dir is the .session folder of the talk, and found the patches from the text of the last version
+  // of the history to index.html at this start
+  constructor(dir, authority, found, options = {}) {
+    // grows with every change of a thread, but not with a shift of its anchors
+    this.v = 0;
+    this.threads = /* @__PURE__ */ new Map();
+    this.seenBy = /* @__PURE__ */ new Map();
+    this.chars = 0;
+    this.slides = null;
+    // the changes after v = logStart, in order
+    this.changes = [];
+    this.logStart = 0;
+    this.listeners = /* @__PURE__ */ new Set();
+    this.timer = null;
+    this.writing = null;
+    this.lastWrite = 0;
+    // the count of changes, and the count that the file holds
+    this.edits = 0;
+    this.saved = 0;
+    this.stopped = false;
+    this.file = join2(dir, "comments.json");
+    this.authority = authority;
+    this.now = options.now ?? Date.now;
+    this.log = options.log ?? (() => {
+    });
+    this.every = options.every ?? 1e3;
+    this.maxChars = options.maxChars ?? 16 * 1024 * 1024;
+    this.text = authority.text;
+    this.sum = checksum(this.text);
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+    }
+    const saved = this.load();
+    if (saved) this.place(saved.sum, found);
+    authority.observe((op, text) => this.operation(op, text));
+  }
+  onChange(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  list(person) {
+    return { v: this.v, at: this.authority.version, comments: [...this.threads.values()], seen: this.seenBy.get(person) ?? 0 };
+  }
+  // the changes after rev seen of a page, which holds -1 when it may have missed some
+  since(seen) {
+    if (seen < this.logStart) return { v: this.v, changed: null, removed: null };
+    const changed = /* @__PURE__ */ new Set();
+    const removed = /* @__PURE__ */ new Set();
+    for (let k = this.changes.length - 1; k >= 0 && this.changes[k].v > seen; k--) {
+      const { id, gone } = this.changes[k];
+      if (changed.has(id) || removed.has(id)) continue;
+      if (gone || !this.threads.has(id)) removed.add(id);
+      else changed.add(id);
+    }
+    return { v: this.v, changed: [...changed].map((id) => this.threads.get(id)), removed: [...removed] };
+  }
+  // a new thread of person. anchor and slide are of the text at version base
+  add(person, body) {
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (this.threads.size >= THREADS_MAX) return fail(409, `a deck holds at most ${THREADS_MAX} threads`);
+    if (this.chars + text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
+    const n = typeof body.base === "string" ? this.authority.reach(body.base) : null;
+    if (n === null) return fail(409, "base is not in the log, read the deck again");
+    const at = this.anchorsAt(n, body.anchor, body.slide);
+    if (isFailure(at)) return at;
+    const item = this.toCurrent(n, at);
+    const thread = { id: newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
+    if (item.removed) thread.removed = item.removed;
+    this.threads.set(thread.id, thread);
+    this.chars += text.length;
+    this.changed([thread.id]);
+    return thread;
+  }
+  reply(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
+    if (this.chars + text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
+    thread.replies.push({ id: newId(), author: person, time: this.now(), text });
+    this.chars += text.length;
+    this.mention(thread, mentions);
+    this.changed([id]);
+    return thread;
+  }
+  // a new text of the thread, or of its reply of id body.reply, by its author
+  edit(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    const target = this.target(thread, body.reply);
+    if (isFailure(target)) return target;
+    if (target.author !== person) return fail(403, "only the author may edit a comment");
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (this.chars + text.length - target.text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
+    this.chars += text.length - target.text.length;
+    target.text = text;
+    target.edited = this.now();
+    this.mention(thread, mentions);
+    this.changed([id]);
+    return thread;
+  }
+  // the thread, or its reply of id body.reply, deleted by its author. null when the thread is gone
+  remove(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    const target = this.target(thread, body.reply);
+    if (isFailure(target)) return target;
+    if (target.author !== person) return fail(403, "only the author may delete a comment");
+    if (target === thread) {
+      this.threads.delete(id);
+      this.chars -= charsOf(thread);
+      this.changed([id], true);
+      return null;
+    }
+    thread.replies = thread.replies.filter((r) => r !== target);
+    this.chars -= target.text.length;
+    this.changed([id]);
+    return thread;
+  }
+  resolve(id, person, resolved) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    if (resolved === !!thread.resolved) return thread;
+    if (resolved) thread.resolved = { by: person, time: this.now() };
+    else delete thread.resolved;
+    this.changed([id]);
+    return thread;
+  }
+  // the time up to which person has read the comments, which only grows
+  seen(person, time) {
+    if (!isNumber(time) || time < 0) return fail(400, "time must be a time in ms");
+    const seen = Math.max(this.seenBy.get(person) ?? 0, Math.min(time, this.now()));
+    if (seen !== this.seenBy.get(person)) {
+      this.seenBy.set(person, seen);
+      this.dirty();
+    }
+    return seen;
+  }
+  stopSync() {
+    if (this.stopped) return;
+    this.stopped = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (this.saved === this.edits) return;
+    const tmp = this.tmpName();
+    try {
+      writeFileSync2(tmp, this.serialize());
+      renameRetriedSync(tmp, this.file);
+      this.saved = this.edits;
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      try {
+        unlinkSync3(tmp);
+      } catch {
+      }
+    }
+  }
+  // resolves once a write in progress is over
+  async idle() {
+    while (this.writing) await this.writing;
+  }
+  target(thread, reply) {
+    if (reply === void 0 || reply === null) return thread;
+    return thread.replies.find((r) => r.id === reply) ?? fail(404, "there is no such reply");
+  }
+  mention(thread, mentions) {
+    for (const m of mentions) if (!thread.mentions.includes(m) && thread.mentions.length < 4 * MENTIONS_MAX) thread.mentions.push(m);
+  }
+  // the anchors of a request, checked against the text at version n
+  anchorsAt(n, anchor, slide) {
+    const text = this.authority.textAt(n);
+    const range = (x) => x === null || x === void 0 ? null : x && typeof x === "object" && isInt(x.start) && isInt(x.end) ? x : void 0;
+    const a = range(anchor);
+    const s = range(slide);
+    if (a === void 0 || s === void 0) return fail(400, "anchor and slide must be ranges or null");
+    const slides = slidesOf(text);
+    let slideTag = null;
+    if (s) {
+      slideTag = slideAnchorAt(slides, s.start);
+      if (!slideTag || slideTag.start !== s.start || slideTag.end !== s.end) return fail(400, "slide is not the start tag of a slide");
+    }
+    if (!a) return { anchor: slideTag, slide: slideTag };
+    const tag = startTagAt(text, a.start);
+    if (!tag || tag.end !== a.end) return fail(400, "anchor is not a start tag");
+    const holder = slideAnchorAt(slides, tag.start);
+    if (s && holder?.start !== slideTag.start) return fail(400, "slide does not hold the anchor");
+    return { anchor: tag, slide: holder };
+  }
+  // anchors of the text at version n moved to the current text
+  toCurrent(n, item) {
+    let text = this.authority.textAt(n);
+    for (const op of this.authority.since(formatVersion(this.authority.epoch, n)) ?? []) {
+      const after = apply(text, op.patches);
+      item = moveAnchors(text, op.patches, after, [item]).items[0];
+      text = after;
+    }
+    return item;
+  }
+  // the threads read from the file, or null when there is none or it cannot be read
+  load() {
+    let data;
+    try {
+      data = JSON.parse(readFileSync3(this.file, "utf8"));
+    } catch (e) {
+      if (e.code === "ENOENT") return null;
+      return this.unreadable();
+    }
+    const d = data;
+    if (!d || typeof d !== "object" || typeof d.sum !== "string" || !Array.isArray(d.comments) || d.comments.length > THREADS_MAX || !d.seen || typeof d.seen !== "object") return this.unreadable();
+    const threads = d.comments.map(readThread);
+    if (threads.some((t) => t === null)) return this.unreadable();
+    for (const t of threads) {
+      this.threads.set(t.id, t);
+      this.chars += charsOf(t);
+    }
+    for (const [person, time] of Object.entries(d.seen)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
+    return { sum: d.sum };
+  }
+  unreadable() {
+    const aside = join2(this.file, "..", `comments-unreadable-${Date.now()}.json`);
+    try {
+      renameSync2(this.file, aside);
+      this.log(`the comments could not be read, hence they were moved to ${aside}`);
+    } catch {
+    }
+    return null;
+  }
+  // the anchors of the file placed on the text of this start
+  place(sum, found) {
+    const threads = [...this.threads.values()];
+    let items = threads;
+    let moved2 = threads.map(() => false);
+    if (sum !== this.sum && found && found.patches.length && checksum(found.before) === sum) {
+      const r = moveAnchors(found.before, found.patches, this.text, items);
+      items = r.items;
+      moved2 = r.changed;
+    }
+    const checked = checkAnchors(this.text, items);
+    this.slides = checked.slides;
+    threads.forEach((t, k) => this.setAnchors(t, checked.items[k]));
+    const ids = threads.filter((_, k) => moved2[k] || checked.changed[k]).map((t) => t.id);
+    if (ids.length || sum !== this.sum) this.changed(ids);
+  }
+  setAnchors(t, item) {
+    t.anchor = item.anchor;
+    t.slide = item.slide;
+    if (item.removed) t.removed = item.removed;
+    else delete t.removed;
+  }
+  operation(op, after) {
+    const threads = [...this.threads.values()];
+    let r;
+    try {
+      r = moveAnchors(this.text, op.patches, after, threads, this.slides);
+    } catch (e) {
+      this.log(`the anchors of the comments could not be moved, hence they were checked: ${e.message}`);
+      r = checkAnchors(after, threads);
+    }
+    this.text = after;
+    this.sum = op.sum;
+    this.slides = r.slides;
+    const ids = [];
+    threads.forEach((t, k) => {
+      this.setAnchors(t, r.items[k]);
+      if (r.changed[k]) ids.push(t.id);
+    });
+    if (ids.length) this.changed(ids);
+    else if (threads.length) this.dirty();
+  }
+  changed(ids, gone = false) {
+    for (const id of ids) this.changes.push({ v: ++this.v, id, gone });
+    if (this.changes.length > LOG_MAX) {
+      const cut = this.changes.length - LOG_MAX;
+      this.logStart = this.changes[cut - 1].v;
+      this.changes = this.changes.slice(cut);
+    }
+    this.dirty();
+    if (ids.length) for (const fn of this.listeners) fn();
+  }
+  serialize() {
+    return JSON.stringify({ sum: this.sum, comments: [...this.threads.values()], seen: Object.fromEntries(this.seenBy) });
+  }
+  tmpName() {
+    return join2(this.file, "..", `.comments.json.${randomBytes3(6).toString("hex")}.tmp`);
+  }
+  dirty() {
+    this.edits++;
+    this.schedule();
+  }
+  // a write at most once in every ms, one at a time
+  schedule() {
+    if (this.stopped || this.timer || this.writing) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.writing = this.write().finally(() => {
+        this.writing = null;
+        if (this.saved !== this.edits) this.schedule();
+      });
+    }, Math.max(0, this.lastWrite + this.every - Date.now()));
+    this.timer.unref?.();
+  }
+  async write() {
+    if (this.stopped) return;
+    const edits = this.edits;
+    this.lastWrite = Date.now();
+    const tmp = this.tmpName();
+    try {
+      await writeFile2(tmp, this.serialize());
+      if (this.stopped) {
+        await unlink(tmp).catch(() => {
+        });
+        return;
+      }
+      await renameRetried(tmp, this.file);
+      this.saved = Math.max(this.saved, edits);
+    } catch (e) {
+      await unlink(tmp).catch(() => {
+      });
+      this.log(`could not write ${this.file}, trying again: ${e.message}`);
+    }
+  }
+};
+
+// src/edit/history.ts
+import { appendFileSync, mkdirSync as mkdirSync2, readdirSync as readdirSync2, readFileSync as readFileSync4, statSync as statSync2, truncateSync, unlinkSync as unlinkSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { randomBytes as randomBytes4 } from "node:crypto";
+import { join as join3 } from "node:path";
+var isVersionId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
+var newId2 = () => randomBytes4(9).toString("base64url");
 var ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
 var STEP = 50;
 var CHECKPOINTS = 64;
@@ -1694,8 +2336,8 @@ var History = class {
     this.restored = null;
     this.listeners = /* @__PURE__ */ new Set();
     this.dir = dir;
-    this.file = join2(dir, "history.jsonl");
-    this.asideDir = join2(dir, "aside");
+    this.file = join3(dir, "history.jsonl");
+    this.asideDir = join3(dir, "aside");
     this.authority = authority;
     this.quiet = options.quiet ?? 6e4;
     this.longest = options.longest ?? 3e5;
@@ -1708,7 +2350,7 @@ var History = class {
     this.log = options.log ?? (() => {
     });
     try {
-      mkdirSync(dir, { recursive: true });
+      mkdirSync2(dir, { recursive: true });
     } catch {
     }
     let loaded = false;
@@ -1716,7 +2358,7 @@ var History = class {
       loaded = this.load();
     } catch (e) {
       if (!(e instanceof Unreadable)) this.log(`could not read ${this.file}: ${e.message}`);
-      const aside = join2(dir, `history-unreadable-${Date.now()}.jsonl`);
+      const aside = join3(dir, `history-unreadable-${Date.now()}.jsonl`);
       if (setAsideSync(this.file, aside)) this.log(`the version history could not be read, hence it was kept in ${aside} and a new history begins`);
       else {
         this.frozen = true;
@@ -1808,17 +2450,17 @@ var History = class {
   setAside(text, author) {
     const bytes = Buffer.from(text, "utf8");
     if (bytes.length > this.asideBytes) return null;
-    const aside = { id: newId(), time: this.now(), author };
-    mkdirSync(this.asideDir, { recursive: true });
-    const tmp = join2(this.asideDir, `.${asideName(aside)}.tmp`);
-    writeFileSync2(tmp, bytes);
-    renameRetriedSync(tmp, join2(this.asideDir, asideName(aside)));
+    const aside = { id: newId2(), time: this.now(), author };
+    mkdirSync2(this.asideDir, { recursive: true });
+    const tmp = join3(this.asideDir, `.${asideName(aside)}.tmp`);
+    writeFileSync3(tmp, bytes);
+    renameRetriedSync(tmp, join3(this.asideDir, asideName(aside)));
     this.asides.push(aside);
     const theirs = this.asides.filter((a) => a.author === author);
     for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) {
       this.asides.splice(this.asides.indexOf(old), 1);
       try {
-        unlinkSync3(join2(this.asideDir, asideName(old)));
+        unlinkSync4(join3(this.asideDir, asideName(old)));
       } catch {
       }
     }
@@ -1830,7 +2472,7 @@ var History = class {
     const aside = this.asides.find((a) => a.id === id);
     if (!aside) return null;
     try {
-      return readFileSync3(join2(this.asideDir, asideName(aside)), "utf8");
+      return readFileSync4(join3(this.asideDir, asideName(aside)), "utf8");
     } catch {
       return null;
     }
@@ -1889,7 +2531,7 @@ var History = class {
     const slides = slidesOf(text);
     const changes2 = slideChanges(this.lastText, this.lastSlides, text, slides, marks);
     this.lastSlides = slides;
-    const v = { id: newId(), time, authors, slides: changes2.slides, patches, marks };
+    const v = { id: newId2(), time, authors, slides: changes2.slides, patches, marks };
     if (changes2.removed) v.removed = changes2.removed;
     return v;
   }
@@ -1965,9 +2607,9 @@ var History = class {
     for (const v of named) lines.push(JSON.stringify({ kind: "name", id: v.id, name: v.name }));
     const data = `${lines.join("\n")}
 `;
-    const tmp = join2(this.dir, `.history.jsonl.${randomBytes3(6).toString("hex")}.tmp`);
+    const tmp = join3(this.dir, `.history.jsonl.${randomBytes4(6).toString("hex")}.tmp`);
     try {
-      writeFileSync2(tmp, data);
+      writeFileSync3(tmp, data);
       renameRetriedSync(tmp, this.file);
       this.bytes = Buffer.byteLength(data);
       this.names = named.length;
@@ -1976,7 +2618,7 @@ var History = class {
       this.log(`could not write ${this.file}: ${e.message}`);
       this.broken = true;
       try {
-        unlinkSync3(tmp);
+        unlinkSync4(tmp);
       } catch {
       }
     }
@@ -2004,7 +2646,7 @@ var History = class {
   load() {
     let content;
     try {
-      content = readFileSync3(this.file, "utf8");
+      content = readFileSync4(this.file, "utf8");
     } catch (e) {
       if (e.code === "ENOENT") return false;
       throw e;
@@ -2088,7 +2730,7 @@ function info(v) {
 
 // src/edit/http.ts
 import { open, realpath as realpath2, stat as stat2 } from "node:fs/promises";
-import { extname, join as join3, relative, sep } from "node:path";
+import { extname, join as join4, relative, sep } from "node:path";
 var MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -2141,7 +2783,7 @@ function segmentsOf(rest) {
 }
 async function fileInside(root, segments) {
   try {
-    const real = await realpath2(join3(root, ...segments));
+    const real = await realpath2(join4(root, ...segments));
     if (!real.startsWith(root + sep) || relative(root, real).split(sep).some(hiddenSegment)) return null;
     return (await stat2(real)).isFile() ? real : null;
   } catch {
@@ -2208,9 +2850,9 @@ var decodeName = (part) => {
 var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeName));
 
 // src/edit/people.ts
-import { randomBytes as randomBytes4 } from "node:crypto";
-import { readFileSync as readFileSync4, unlinkSync as unlinkSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { unlink, writeFile as writeFile2 } from "node:fs/promises";
+import { randomBytes as randomBytes5 } from "node:crypto";
+import { readFileSync as readFileSync5, unlinkSync as unlinkSync5, writeFileSync as writeFileSync4 } from "node:fs";
+import { unlink as unlink2, writeFile as writeFile3 } from "node:fs/promises";
 var HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25e3;
 var GAP = 100;
 var GONE = Number(process.env.SLIDES_GONE_MS) || 4e4;
@@ -2222,10 +2864,10 @@ var MAX_CLIENTS = 1024;
 var MAX_KNOWN = 1024;
 var SAVE_GAP = 1e3;
 var MAX_STATE = 8 * 1024;
-var newId2 = () => randomBytes4(16).toString("base64url");
+var newId3 = () => randomBytes5(16).toString("base64url");
 function readPeople(file) {
   try {
-    const value = JSON.parse(readFileSync4(file, "utf8"));
+    const value = JSON.parse(readFileSync5(file, "utf8"));
     if (!Array.isArray(value)) return [];
     return value.filter(
       (r) => r && isPersonId(r.person) && cleanPersonName(r.name) && Number.isInteger(r.color) && r.color >= 0 && r.color < COLORS.length && Number.isFinite(r.first) && Number.isFinite(r.last)
@@ -2276,7 +2918,7 @@ var People = class {
   // refused unless claim is true, and the page then continues as this person. the token of an
   // earlier hello keeps its client id
   hello(rawName, rawPerson, rawToken, host, claim = false) {
-    let person = isPersonId(rawPerson) ? rawPerson : newId2();
+    let person = isPersonId(rawPerson) ? rawPerson : newId3();
     const name = cleanPersonName(rawName) || this.records.get(person)?.name || "";
     if (!name) return { empty: true };
     const holder = this.holderOf(name);
@@ -2285,8 +2927,8 @@ var People = class {
       person = holder.person;
     }
     const earlier = isToken(rawToken) ? this.tokens.get(rawToken) : void 0;
-    const id = earlier ?? randomBytes4(12).toString("base64url");
-    const token = earlier ? rawToken : newId2();
+    const id = earlier ?? randomBytes5(12).toString("base64url");
+    const token = earlier ? rawToken : newId3();
     if (!this.members.has(id)) {
       const pages = [...this.members.values()].filter((m) => m.person === person);
       const dropped = pages.length < MAX_PAGES ? void 0 : pages.find((m) => m.host === host) ?? (host ? pages[0] : void 0);
@@ -2580,13 +3222,13 @@ var People = class {
     if (!this.file || !this.dirty) return;
     this.dirty = false;
     this.savedAt = Date.now();
-    const tmp = `${this.file}.${randomBytes4(6).toString("hex")}.tmp`;
+    const tmp = `${this.file}.${randomBytes5(6).toString("hex")}.tmp`;
     this.saving = (async () => {
       try {
-        await writeFile2(tmp, this.json());
+        await writeFile3(tmp, this.json());
         await renameRetried(tmp, this.file);
       } catch (e) {
-        await unlink(tmp).catch(() => {
+        await unlink2(tmp).catch(() => {
         });
         this.log(`could not write ${this.file}: ${e.message}`);
         this.dirty = true;
@@ -2601,14 +3243,14 @@ var People = class {
     this.saveTimer = null;
     if (!this.file || !this.dirty && !this.saving) return;
     this.dirty = false;
-    const tmp = `${this.file}.${randomBytes4(6).toString("hex")}.tmp`;
+    const tmp = `${this.file}.${randomBytes5(6).toString("hex")}.tmp`;
     try {
-      writeFileSync3(tmp, this.json());
+      writeFileSync4(tmp, this.json());
       renameRetriedSync(tmp, this.file);
     } catch (e) {
       this.log(`could not write ${this.file}: ${e.message}`);
       try {
-        unlinkSync4(tmp);
+        unlinkSync5(tmp);
       } catch {
       }
     }
@@ -2616,19 +3258,19 @@ var People = class {
 };
 
 // src/edit/relay.ts
-import { mkdirSync as mkdirSync2, readFileSync as readFileSync5, writeFileSync as writeFileSync4, chmodSync } from "node:fs";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync6, writeFileSync as writeFileSync5, chmodSync } from "node:fs";
 import { homedir } from "node:os";
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 var RELAY_BODY = 16 * 1024 * 1024;
 var PULLS = 4;
 var FILE_ANSWERS = 8;
 function configFile() {
-  if (process.platform === "win32") return join4(process.env.APPDATA || join4(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
-  return join4(process.env.XDG_CONFIG_HOME || join4(homedir(), ".config"), "beeson-slides", "relay.json");
+  if (process.platform === "win32") return join5(process.env.APPDATA || join5(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
+  return join5(process.env.XDG_CONFIG_HOME || join5(homedir(), ".config"), "beeson-slides", "relay.json");
 }
 function loadConfig() {
   try {
-    const value = JSON.parse(readFileSync5(configFile(), "utf8"));
+    const value = JSON.parse(readFileSync6(configFile(), "utf8"));
     return { relay: typeof value.relay === "string" ? value.relay : void 0, secret: typeof value.secret === "string" ? value.secret : void 0 };
   } catch {
     return {};
@@ -2636,8 +3278,8 @@ function loadConfig() {
 }
 function saveConfig(config) {
   const file = configFile();
-  mkdirSync2(join4(file, ".."), { recursive: true, mode: 448 });
-  writeFileSync4(file, `${JSON.stringify(config, null, 2)}
+  mkdirSync3(join5(file, ".."), { recursive: true, mode: 448 });
+  writeFileSync5(file, `${JSON.stringify(config, null, 2)}
 `, { mode: 384 });
   try {
     chmodSync(file, 384);
@@ -2833,7 +3475,7 @@ var AlreadyRunning = class extends Error {
 async function holderOf(file, root, key, log) {
   let lock;
   try {
-    lock = JSON.parse(readFileSync6(file, "utf8"));
+    lock = JSON.parse(readFileSync7(file, "utf8"));
   } catch {
     return null;
   }
@@ -2856,10 +3498,10 @@ async function holderOf(file, root, key, log) {
 }
 function keepUnwritten(root, text) {
   const name = `unwritten-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.html`;
-  for (const dir of [join5(root, ".session"), tmpdir()]) {
+  for (const dir of [join6(root, ".session"), tmpdir()]) {
     try {
-      const file = join5(dir, name);
-      writeFileSync5(file, text, { flag: "wx" });
+      const file = join6(dir, name);
+      writeFileSync6(file, text, { flag: "wx" });
       return file;
     } catch {
     }
@@ -2867,26 +3509,26 @@ function keepUnwritten(root, text) {
   return null;
 }
 function keyOf(root) {
-  const dir = join5(root, ".session");
-  mkdirSync3(dir, { recursive: true });
+  const dir = join6(root, ".session");
+  mkdirSync4(dir, { recursive: true });
   try {
-    writeFileSync5(join5(dir, ".gitignore"), "*\n", { flag: "wx" });
+    writeFileSync6(join6(dir, ".gitignore"), "*\n", { flag: "wx" });
   } catch {
   }
-  const file = join5(dir, "key");
+  const file = join6(dir, "key");
   try {
-    const key2 = readFileSync6(file, "utf8").trim();
+    const key2 = readFileSync7(file, "utf8").trim();
     if (/^[A-Za-z0-9_-]{22,128}$/.test(key2)) return key2;
   } catch {
   }
-  const key = randomBytes5(16).toString("base64url");
-  writeFileSync5(file, `${key}
+  const key = randomBytes6(16).toString("base64url");
+  writeFileSync6(file, `${key}
 `, { mode: 384 });
   return key;
 }
 function savedPort(root) {
   try {
-    const port = Number(readFileSync6(join5(root, ".session", "port"), "utf8").trim());
+    const port = Number(readFileSync7(join6(root, ".session", "port"), "utf8").trim());
     return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
   } catch {
     return null;
@@ -2919,7 +3561,7 @@ async function sameFile(dir, name, size2, hash) {
     return m ? [{ name: d.name, n: Number(m[1] ?? 1) }] : [];
   });
   for (const f of found.sort((a, b) => a.n - b.n)) {
-    const file = join5(dir, f.name);
+    const file = join6(dir, f.name);
     try {
       if ((await stat3(file)).size === size2 && sha256(await readFile2(file)) === hash) return f.name;
     } catch {
@@ -2942,20 +3584,21 @@ async function start(options = {}) {
   const log = options.log ?? ((m) => process.stderr.write(`${m}
 `));
   const root = realpathSync2.native(resolve(options.folder ?? "."));
-  const index = join5(root, "index.html");
+  const index = join6(root, "index.html");
   const { text, bom } = readText(index);
   const key = keyOf(root);
-  const lockFile = join5(root, ".session", "lock");
+  const lockFile = join6(root, ".session", "lock");
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
-  const appliedFile = join5(root, ".session", "applied.json");
+  const appliedFile = join6(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const onWritten = (n) => {
     if (authority.written(n)) writeApplied(appliedFile, authority.table(), log);
   };
   const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
-  const people = new People(authority, join5(root, ".session", "people.json"), log);
+  const people = new People(authority, join6(root, ".session", "people.json"), log);
   let history;
+  let comments;
   let port = 0;
   let relay = null;
   let closed = false;
@@ -3027,7 +3670,7 @@ async function start(options = {}) {
     if (!clean) return error(415, "the file must be an image, a video, or json");
     if (request.body.length > MEDIA_MAX) return error(413, "the file is larger than 64 MB");
     if (!request.direct && request.body.length > GUEST_MEDIA_MAX) return error(413, "the file is larger than 16 MB, the limit of an upload through the relay");
-    const dir = join5(root, "media");
+    const dir = join6(root, "media");
     await mkdir(dir, { recursive: true });
     const real = await realpath3(dir);
     if (!real.startsWith(root + sep2)) return error(403, "media/ leaves the talk folder");
@@ -3042,7 +3685,7 @@ async function start(options = {}) {
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
       try {
-        await writeFile3(join5(real, candidate), request.body, { flag: "wx" });
+        await writeFile4(join6(real, candidate), request.body, { flag: "wx" });
         return json(200, { path: `media/${candidate}` });
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -3082,9 +3725,47 @@ async function start(options = {}) {
     }
     return error(404, "not found");
   }
+  function commentsApi(route, request) {
+    const parts = route.split("/");
+    if (request.method === "GET") {
+      const client2 = people.clientOf(new URLSearchParams(request.query).get("token"));
+      const person2 = client2 === null ? null : people.personOf(client2);
+      if (route !== "comments") return error(404, "not found");
+      return person2 === null ? error(404, "say hello first") : json(200, comments.list(person2));
+    }
+    if (request.method !== "POST") return error(405, "GET or POST");
+    if (closed) return error(503, "the edit command is stopping");
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    const person = client === null ? null : people.personOf(client);
+    if (person === null) return error(404, "say hello first");
+    const answer = (x) => isFailure(x) ? error(x.status, x.error) : json(200, x);
+    if (route === "comments") return answer(comments.add(person, body));
+    if (route === "comments/seen") {
+      const seen = comments.seen(person, body.time);
+      return isFailure(seen) ? answer(seen) : json(200, { seen });
+    }
+    if (parts.length !== 3 || !isCommentId(parts[1])) return error(404, "not found");
+    const id = parts[1];
+    switch (parts[2]) {
+      case "reply":
+        return answer(comments.reply(id, person, body));
+      case "edit":
+        return answer(comments.edit(id, person, body));
+      case "delete":
+        return answer(comments.remove(id, person, body) ?? {});
+      case "resolve":
+        return answer(comments.resolve(id, person, true));
+      case "reopen":
+        return answer(comments.resolve(id, person, false));
+    }
+    return error(404, "not found");
+  }
   async function api(route, request) {
     if (route.startsWith("media/")) return media(route.slice(6), request);
     if (route === "history" || route.startsWith("history/") || route === "aside") return historyApi(route, request);
+    if (route === "comments" || route.startsWith("comments/")) return commentsApi(route, request);
     if (route === "share") return share(request);
     if (route === "events") {
       if (request.method !== "GET") return error(405, "GET");
@@ -3256,7 +3937,7 @@ async function start(options = {}) {
   port = server.address().port;
   const lock = JSON.stringify({ pid: process.pid, port, root });
   try {
-    writeFileSync5(lockFile, lock, { flag: "wx" });
+    writeFileSync6(lockFile, lock, { flag: "wx" });
   } catch {
     const other = await holderOf(lockFile, root, key, log);
     if (other) {
@@ -3264,22 +3945,22 @@ async function start(options = {}) {
       await new Promise((done) => server.close(done));
       throw new AlreadyRunning(other);
     }
-    const tmp = `${lockFile}.${randomBytes5(6).toString("hex")}.tmp`;
-    writeFileSync5(tmp, lock);
+    const tmp = `${lockFile}.${randomBytes6(6).toString("hex")}.tmp`;
+    writeFileSync6(tmp, lock);
     renameRetriedSync(tmp, lockFile);
   }
   const unlock = () => {
     try {
-      if (readFileSync6(lockFile, "utf8") === lock) unlinkSync5(lockFile);
+      if (readFileSync7(lockFile, "utf8") === lock) unlinkSync6(lockFile);
     } catch {
     }
   };
   try {
-    writeFileSync5(join5(root, ".session", "port"), `${port}
+    writeFileSync6(join6(root, ".session", "port"), `${port}
 `);
   } catch {
   }
-  history = new History(join5(root, ".session"), authority, { ...options.history, log });
+  history = new History(join6(root, ".session"), authority, { ...options.history, log });
   history.onChange(() => people.news());
   people.feed({
     rev: () => history.rev,
@@ -3292,6 +3973,14 @@ async function start(options = {}) {
     write: (answer, _seen, since) => {
       const restored = history.restoredAfter(since);
       if (restored) answer.restored = restored;
+    }
+  });
+  comments = new Comments(join6(root, ".session"), authority, history.found, { ...options.comments, log });
+  comments.onChange(() => people.news());
+  people.feed({
+    rev: () => comments.v,
+    write: (answer, seen) => {
+      answer.comments = comments.since(seen);
     }
   });
   disk.start();
@@ -3324,6 +4013,7 @@ async function start(options = {}) {
         log(kept ? `the text of the session is kept in ${kept}` : "the text of the session could not be kept in any file");
       }
       history.stopSync();
+      comments.stopSync();
       written(unwritten2);
       await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
       await new Promise((done) => setTimeout(done, 200));
@@ -3532,648 +4222,6 @@ var Replica = class _Replica {
     const merged = mergePatches(kept, ours, wins);
     conflicts.push(...merged.conflicts);
     return apply(text, merged.patches);
-  }
-};
-
-// src/session/anchor.ts
-var REMOVED_MAX = 4096;
-var tagOf = (s) => ({ start: s.start, end: s.open, tag: "section" });
-var sameAnchor = (a, b) => a === b || !!a && !!b && a.start === b.start && a.end === b.end && a.tag === b.tag;
-var shiftTag = (a, patches) => ({ start: shiftOffset(a.start, patches, true), end: shiftOffset(a.end, patches, false), tag: a.tag });
-var touches = (p, s, e) => p.start < p.end ? p.start < e && s < p.end : s < p.start && p.start < e;
-var withRemoved = (anchor, slide, removed) => removed ? { anchor, slide, removed } : { anchor, slide };
-function startTagAt(text, i) {
-  if (!Number.isInteger(i) || i < 0 || text.charCodeAt(i) !== 60 || !/[A-Za-z]/.test(text.charAt(i + 1))) return null;
-  for (let size2 = 256; ; size2 *= 4) {
-    const whole = i + size2 >= text.length;
-    const t = tokenize(text.slice(i, i + size2))[0];
-    if (t?.type === "start" && (whole || t.end < size2)) return text.charCodeAt(i + t.end - 1) === 62 ? { start: i, end: i + t.end, tag: t.name } : null;
-    if (whole || t && t.type !== "start" && t.type !== "text") return null;
-  }
-}
-function slideAt(slides, i) {
-  let lo = 0;
-  let hi = slides.length - 1;
-  let found = -1;
-  while (lo <= hi) {
-    const mid = lo + hi >> 1;
-    if (slides[mid].start <= i) {
-      found = mid;
-      lo = mid + 1;
-    } else hi = mid - 1;
-  }
-  return found >= 0 && i < slides[found].end ? slides[found] : null;
-}
-function slideAnchorAt(slides, i) {
-  const s = slideAt(slides, i);
-  return s ? tagOf(s) : null;
-}
-function elementEnd(text, at, limit) {
-  if (VOID.has(at.tag)) return at.end;
-  for (let size2 = Math.max(1024, 2 * (at.end - at.start)); ; size2 *= 4) {
-    const whole = at.start + size2 >= limit;
-    const tokens = tokenize(text.slice(at.start, whole ? limit : at.start + size2));
-    const first2 = tokens[0];
-    if (!first2 || first2.type !== "start" || first2.selfClosing) return at.end;
-    const n = whole ? tokens.length : tokens.length - 1;
-    const open2 = [];
-    for (let k = 0; k < n; k++) {
-      const t = tokens[k];
-      if (t.type === "start") {
-        if (!t.selfClosing && !VOID.has(t.name)) open2.push(t.name);
-      } else if (t.type === "end") {
-        const i = open2.lastIndexOf(t.name);
-        if (i < 0) return at.start + t.start;
-        open2.length = i;
-        if (i === 0) return at.start + t.end;
-      }
-    }
-    if (whole) return -1;
-  }
-}
-function insertedSpans(patches) {
-  const out = [];
-  let delta = 0;
-  for (const p of patches) {
-    if (p.text) out.push({ start: p.start + delta, end: p.start + delta + p.text.length });
-    delta += p.text.length - (p.end - p.start);
-  }
-  return out;
-}
-function overlaps(spans, s, e) {
-  let lo = 0;
-  let hi = spans.length - 1;
-  while (lo <= hi) {
-    const mid = lo + hi >> 1;
-    if (spans[mid].end <= s) lo = mid + 1;
-    else if (spans[mid].start >= e) hi = mid - 1;
-    else return true;
-  }
-  return false;
-}
-function findInserted(after, text, inserted, near) {
-  if (!text || !inserted.length) return -1;
-  let best = -1;
-  for (let o = after.indexOf(text), n = 0; o >= 0 && n < 256; o = after.indexOf(text, o + 1), n++) {
-    if (overlaps(inserted, o, o + text.length) && (best < 0 || Math.abs(o - near) < Math.abs(best - near))) best = o;
-  }
-  return best;
-}
-function matchSlides(a, b) {
-  const to = new Int32Array(a.length).fill(-1);
-  const kept = new Uint8Array(a.length);
-  const used = new Uint8Array(b.length);
-  const byText = /* @__PURE__ */ new Map();
-  b.forEach((t, j) => {
-    const list = byText.get(t);
-    if (list) list.push(j);
-    else byText.set(t, [j]);
-  });
-  a.forEach((t, i) => {
-    let best = -1;
-    for (const j of byText.get(t) ?? []) if (!used[j] && (best < 0 || Math.abs(j - i) < Math.abs(best - i))) best = j;
-    if (best < 0) return;
-    to[i] = best;
-    kept[i] = 1;
-    used[best] = 1;
-  });
-  const restA = [...a.keys()].filter((i) => to[i] < 0);
-  const restB = [...b.keys()].filter((j) => !used[j]);
-  for (const p of pairs(restA.map((i) => a[i]), restB.map((j) => b[j]))) to[restA[p.i]] = restB[p.j];
-  return { to, kept };
-}
-function wholeTag(text, start2, end) {
-  const t = startTagAt(text, start2);
-  return t && t.end === end ? t : null;
-}
-function byPatches(a, before2, patches, after, regions) {
-  let first2 = -1;
-  let last = -1;
-  for (let k = 0; k < patches.length && patches[k].start <= a.end; k++) {
-    if (!touches(patches[k], a.start, a.end)) continue;
-    if (first2 < 0) first2 = k;
-    last = k;
-  }
-  if (first2 < 0) return shiftTag(a, patches);
-  let inside = true;
-  for (let k = first2; k <= last; k++) if (!(patches[k].start > a.start && patches[k].end < a.end)) inside = false;
-  if (inside) return startTagAt(after, shiftOffset(a.start, patches, true));
-  const a0 = Math.min(a.start, patches[first2].start);
-  const b0 = Math.max(a.end, patches[last].end);
-  let delta = 0;
-  for (let k = 0; k < first2; k++) delta += patches[k].text.length - (patches[k].end - patches[k].start);
-  let grow = 0;
-  for (let k = first2; k <= last; k++) grow += patches[k].text.length - (patches[k].end - patches[k].start);
-  const a1 = a0 + delta;
-  const b1 = b0 + delta + grow;
-  const key = `${a0}:${b0}`;
-  let region = regions.get(key);
-  if (!region) regions.set(key, region = { tokens: tokenize(before2.slice(a0, b0)), fresh: tokenize(after.slice(a1, b1)) });
-  const fresh = region.fresh;
-  const t0 = fresh[0];
-  if (a0 === a.start && b0 === a.end && fresh.length === 1 && t0.type === "start" && t0.end === b1 - a1) return wholeTag(after, a1, b1);
-  for (const named of [true, false]) {
-    const old = region.tokens.filter((t2) => t2.type === "start" && (!named || t2.name === a.tag));
-    const now = fresh.filter((t2) => t2.type === "start" && (!named || t2.name === a.tag));
-    const k = old.findIndex((t2) => t2.start === a.start - a0);
-    const t = now[k];
-    if (k >= 0 && old.length === now.length && t.type === "start") return wholeTag(after, a1 + t.start, a1 + t.end);
-  }
-  return null;
-}
-function keepsTag(after, a, patches) {
-  const t = startTagAt(after, shiftOffset(a.start, patches, true));
-  return !!t && t.tag === a.tag && t.end === shiftOffset(a.end, patches, false);
-}
-var changedFrom = (it, next, patches) => !sameAnchor(next.anchor, it.anchor && shiftTag(it.anchor, patches)) || !sameAnchor(next.slide, it.slide && shiftTag(it.slide, patches)) || !!next.removed !== !!it.removed || next.removed?.text !== it.removed?.text;
-function betweenTags(text, p) {
-  if (p.start > 0 && text.lastIndexOf("<", p.start - 1) > text.lastIndexOf(">", p.start - 1)) return false;
-  const gt = text.indexOf(">", p.end);
-  if (gt < 0) return true;
-  const lt = text.indexOf("<", p.end);
-  return lt >= 0 && lt < gt;
-}
-function moveAnchors(before2, patches, after, items, slides = null) {
-  if (!patches.length) return { items, changed: items.map(() => false), slides };
-  if (!items.length) return { items, changed: [], slides: null };
-  const p = patches[0];
-  if (patches.length === 1 && !/[<>]/.test(p.text) && !/[<>]/.test(before2.slice(p.start, p.end)) && betweenTags(before2, p)) {
-    const out = new Array(items.length);
-    for (let k = 0; k < items.length; k++) {
-      const it = items[k];
-      if (it.anchor && touches(p, it.anchor.start, it.anchor.end) && !keepsTag(after, it.anchor, patches) || it.slide && touches(p, it.slide.start, it.slide.end) && !keepsTag(after, it.slide, patches)) {
-        return slow(before2, patches, after, items, slides);
-      }
-      out[k] = withRemoved(it.anchor && shiftTag(it.anchor, patches), it.slide && shiftTag(it.slide, patches), it.removed);
-    }
-    const shifted = slides && slides.map((s) => ({ start: shiftOffset(s.start, patches, true), end: shiftOffset(s.end, patches, false), open: shiftOffset(s.open, patches, false), number: s.number }));
-    return { items: out, changed: items.map(() => false), slides: shifted };
-  }
-  return slow(before2, patches, after, items, slides);
-}
-function shiftedSlides(before2, patches, after, s0) {
-  const s = slideAt(s0, patches[0].start);
-  if (!s || patches[0].start < s.open) return null;
-  const close = before2.lastIndexOf("</", s.end - 1);
-  if (close < s.open || patches[patches.length - 1].end > close) return null;
-  const growth = patches.reduce((n, q) => n + q.text.length - (q.end - q.start), 0);
-  const end = s.end + growth;
-  const tokens = tokenize(after.slice(s.open, end));
-  const last = tokens[tokens.length - 1];
-  if (!last || last.type !== "end" || last.name !== "section" || last.start !== close + growth - s.open || last.end !== end - s.open) return null;
-  for (let k = 0; k < tokens.length - 1; k++) {
-    const t = tokens[k];
-    if ((t.type === "start" || t.type === "end") && t.name === "section") return null;
-  }
-  const i = s0.indexOf(s);
-  const s1 = s0.map((x, k) => k < i ? x : k === i ? { ...x, end } : { start: x.start + growth, end: x.end + growth, open: x.open + growth, number: x.number });
-  const kept = new Uint8Array(s0.length).fill(1);
-  kept[i] = before2.slice(s.start, s.end) === after.slice(s.start, end) ? 1 : 0;
-  return { s1, to: Int32Array.from(s0.keys()), kept };
-}
-function matchedSlides(before2, s0, after) {
-  const s1 = slidesOf(after);
-  return { s1, ...matchSlides(s0.map((s) => before2.slice(s.start, s.end)), s1.map((s) => after.slice(s.start, s.end))) };
-}
-function slow(before2, patches, after, items, given) {
-  const s0 = given ?? slidesOf(before2);
-  const { s1, to, kept } = shiftedSlides(before2, patches, after, s0) ?? matchedSlides(before2, s0, after);
-  const index = new Map(s0.map((s, i) => [s.start, i]));
-  const inserted = insertedSpans(patches);
-  const cap2 = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
-  const regions = /* @__PURE__ */ new Map();
-  const locate = (a, limit) => {
-    const found = byPatches(a, before2, patches, after, regions);
-    if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
-    const bound = Math.max(a.end, Math.min(limit, a.start + cap2));
-    const e = elementEnd(before2, a, bound);
-    if (e < 0 && bound < limit) return { anchor: found, text: null };
-    const end = e < 0 ? bound : e;
-    const text = before2.slice(a.start, end);
-    if (patches.some((q) => touches(q, a.start, end)) && !(found && after.startsWith(text, found.start))) {
-      const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
-      if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
-    }
-    return { anchor: found, text };
-  };
-  const move = (it) => {
-    if (it.removed?.text) {
-      const o = findInserted(after, it.removed.text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : 0);
-      const t = o >= 0 ? startTagAt(after, o) : null;
-      if (t) {
-        const slide = slideAt(s1, o);
-        return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
-      }
-    }
-    const a = it.anchor;
-    if (!a) return withRemoved(null, null, it.removed);
-    let i = it.slide ? index.get(it.slide.start) ?? -1 : -1;
-    if (i < 0) {
-      const s = slideAt(s0, a.start);
-      i = s ? index.get(s.start) : -1;
-    }
-    const j = i >= 0 ? to[i] : -1;
-    if (it.slide && a.start === it.slide.start) {
-      if (j >= 0) return withRemoved(tagOf(s1[j]), tagOf(s1[j]), it.removed);
-      return { anchor: null, slide: null, removed: it.removed ?? { text: i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null } };
-    }
-    if (j >= 0 && kept[i]) {
-      const d = s1[j].start - s0[i].start;
-      return { anchor: { start: a.start + d, end: a.end + d, tag: a.tag }, slide: tagOf(s1[j]) };
-    }
-    const found = locate(a, i >= 0 ? s0[i].end : before2.length);
-    if (found.anchor) return { anchor: found.anchor, slide: slideAnchorAt(s1, found.anchor.start) };
-    const back = j >= 0 ? tagOf(s1[j]) : null;
-    return { anchor: back, slide: back, removed: { text: found.text !== null && found.text.length <= REMOVED_MAX ? found.text : null } };
-  };
-  const out = items.map(move);
-  return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], patches)), slides: s1 };
-}
-function checkAnchors(text, items, slides = slidesOf(text)) {
-  const starts = new Map(slides.map((s) => [s.start, s]));
-  const out = items.map((it) => {
-    if (!it.anchor) return withRemoved(null, null, it.removed);
-    const t = startTagAt(text, it.anchor.start);
-    if (t && t.end === it.anchor.end && t.tag === it.anchor.tag) return withRemoved(t, slideAnchorAt(slides, t.start), it.removed);
-    const back = it.slide && it.slide.tag === "section" && starts.get(it.slide.start)?.open === it.slide.end ? it.slide : null;
-    return { anchor: back, slide: back, removed: it.removed ?? { text: null } };
-  });
-  return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], [])), slides };
-}
-
-// src/edit/comments.ts
-import { randomBytes as randomBytes6 } from "node:crypto";
-import { mkdirSync as mkdirSync4, readFileSync as readFileSync7, renameSync as renameSync2, unlinkSync as unlinkSync6, writeFileSync as writeFileSync6 } from "node:fs";
-import { unlink as unlink2, writeFile as writeFile4 } from "node:fs/promises";
-import { join as join6 } from "node:path";
-var MENTIONS_MAX = 50;
-var LOG_MAX = 4e3;
-var isCommentId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
-var newId3 = () => randomBytes6(9).toString("base64url");
-var fail = (status, error2) => ({ status, error: error2 });
-var isFailure = (x) => !!x && typeof x.error === "string" && typeof x.status === "number";
-var isNumber = (x) => typeof x === "number" && Number.isFinite(x);
-var isInt = (x) => Number.isSafeInteger(x) && x >= 0;
-var charsOf = (t) => t.text.length + t.replies.reduce((n, r) => n + r.text.length, 0);
-function cleanText(raw) {
-  if (typeof raw !== "string" || !raw.trim()) return fail(400, "the text is empty");
-  if (Array.from(raw).length > COMMENT_MAX) return fail(413, `the text is longer than ${COMMENT_MAX} characters`);
-  return raw;
-}
-function cleanMentions(raw) {
-  if (raw === void 0 || raw === null) return [];
-  if (!Array.isArray(raw) || raw.length > MENTIONS_MAX || !raw.every(isPersonId)) return fail(400, "mentions must be person ids");
-  return [...new Set(raw)];
-}
-var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && /^[a-z][^\s/>]{0,63}$/.test(a.tag);
-var isReply = (r) => !!r && isCommentId(r.id) && isPersonId(r.author) && isNumber(r.time) && typeof r.text === "string" && (r.edited === void 0 || isNumber(r.edited));
-function readThread(t) {
-  if (!t || typeof t !== "object") return null;
-  const c = t;
-  if (!isCommentId(c.id) || !isPersonId(c.author) || !isNumber(c.time) || typeof c.text !== "string") return null;
-  if (!(c.anchor === null || isAnchor(c.anchor)) || !(c.slide === null || isAnchor(c.slide))) return null;
-  if (!Array.isArray(c.replies) || c.replies.length > REPLIES_MAX || !c.replies.every(isReply)) return null;
-  if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
-  if (c.edited !== void 0 && !isNumber(c.edited)) return null;
-  if (c.resolved !== void 0 && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
-  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || typeof c.removed.text === "string"))) return null;
-  const out = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
-  if (c.removed) out.removed = { text: c.removed.text };
-  if (c.edited !== void 0) out.edited = c.edited;
-  if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
-  return out;
-}
-var Comments = class {
-  // dir is the .session folder of the talk, and found the patches from the text of the last version
-  // of the history to index.html at this start
-  constructor(dir, authority, found, options = {}) {
-    // grows with every change of a thread, but not with a shift of its anchors
-    this.v = 0;
-    this.threads = /* @__PURE__ */ new Map();
-    this.seenBy = /* @__PURE__ */ new Map();
-    this.chars = 0;
-    this.slides = null;
-    // the changes after v = logStart, in order
-    this.changes = [];
-    this.logStart = 0;
-    this.listeners = /* @__PURE__ */ new Set();
-    this.timer = null;
-    this.writing = null;
-    this.lastWrite = 0;
-    // the count of changes, and the count that the file holds
-    this.edits = 0;
-    this.saved = 0;
-    this.stopped = false;
-    this.file = join6(dir, "comments.json");
-    this.authority = authority;
-    this.now = options.now ?? Date.now;
-    this.log = options.log ?? (() => {
-    });
-    this.every = options.every ?? 1e3;
-    this.maxChars = options.maxChars ?? 16 * 1024 * 1024;
-    this.text = authority.text;
-    this.sum = checksum(this.text);
-    try {
-      mkdirSync4(dir, { recursive: true });
-    } catch {
-    }
-    const saved = this.load();
-    if (saved) this.place(saved.sum, found);
-    authority.observe((op, text) => this.operation(op, text));
-  }
-  onChange(fn) {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-  list(person) {
-    return { v: this.v, at: this.authority.version, comments: [...this.threads.values()], seen: this.seenBy.get(person) ?? 0 };
-  }
-  // the changes after rev seen of a page, which holds -1 when it may have missed some
-  since(seen) {
-    if (seen < this.logStart) return { v: this.v, changed: null, removed: null };
-    const changed = /* @__PURE__ */ new Set();
-    const removed = /* @__PURE__ */ new Set();
-    for (let k = this.changes.length - 1; k >= 0 && this.changes[k].v > seen; k--) {
-      const { id, gone } = this.changes[k];
-      if (changed.has(id) || removed.has(id)) continue;
-      if (gone || !this.threads.has(id)) removed.add(id);
-      else changed.add(id);
-    }
-    return { v: this.v, changed: [...changed].map((id) => this.threads.get(id)), removed: [...removed] };
-  }
-  // a new thread of person. anchor and slide are of the text at version base
-  add(person, body) {
-    const text = cleanText(body.text);
-    if (isFailure(text)) return text;
-    const mentions = cleanMentions(body.mentions);
-    if (isFailure(mentions)) return mentions;
-    if (this.threads.size >= THREADS_MAX) return fail(409, `a deck holds at most ${THREADS_MAX} threads`);
-    if (this.chars + text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
-    const n = typeof body.base === "string" ? this.authority.reach(body.base) : null;
-    if (n === null) return fail(409, "base is not in the log, read the deck again");
-    const at = this.anchorsAt(n, body.anchor, body.slide);
-    if (isFailure(at)) return at;
-    const item = this.toCurrent(n, at);
-    const thread = { id: newId3(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
-    if (item.removed) thread.removed = item.removed;
-    this.threads.set(thread.id, thread);
-    this.chars += text.length;
-    this.changed([thread.id]);
-    return thread;
-  }
-  reply(id, person, body) {
-    const thread = this.threads.get(id);
-    if (!thread) return fail(404, "there is no such thread");
-    const text = cleanText(body.text);
-    if (isFailure(text)) return text;
-    const mentions = cleanMentions(body.mentions);
-    if (isFailure(mentions)) return mentions;
-    if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
-    if (this.chars + text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
-    thread.replies.push({ id: newId3(), author: person, time: this.now(), text });
-    this.chars += text.length;
-    this.mention(thread, mentions);
-    this.changed([id]);
-    return thread;
-  }
-  // a new text of the thread, or of its reply of id body.reply, by its author
-  edit(id, person, body) {
-    const thread = this.threads.get(id);
-    if (!thread) return fail(404, "there is no such thread");
-    const target = this.target(thread, body.reply);
-    if (isFailure(target)) return target;
-    if (target.author !== person) return fail(403, "only the author may edit a comment");
-    const text = cleanText(body.text);
-    if (isFailure(text)) return text;
-    const mentions = cleanMentions(body.mentions);
-    if (isFailure(mentions)) return mentions;
-    if (this.chars + text.length - target.text.length > this.maxChars) return fail(413, "the comments of the deck are too large");
-    this.chars += text.length - target.text.length;
-    target.text = text;
-    target.edited = this.now();
-    this.mention(thread, mentions);
-    this.changed([id]);
-    return thread;
-  }
-  // the thread, or its reply of id body.reply, deleted by its author. null when the thread is gone
-  remove(id, person, body) {
-    const thread = this.threads.get(id);
-    if (!thread) return fail(404, "there is no such thread");
-    const target = this.target(thread, body.reply);
-    if (isFailure(target)) return target;
-    if (target.author !== person) return fail(403, "only the author may delete a comment");
-    if (target === thread) {
-      this.threads.delete(id);
-      this.chars -= charsOf(thread);
-      this.changed([id], true);
-      return null;
-    }
-    thread.replies = thread.replies.filter((r) => r !== target);
-    this.chars -= target.text.length;
-    this.changed([id]);
-    return thread;
-  }
-  resolve(id, person, resolved) {
-    const thread = this.threads.get(id);
-    if (!thread) return fail(404, "there is no such thread");
-    if (resolved === !!thread.resolved) return thread;
-    if (resolved) thread.resolved = { by: person, time: this.now() };
-    else delete thread.resolved;
-    this.changed([id]);
-    return thread;
-  }
-  // the time up to which person has read the comments, which only grows
-  seen(person, time) {
-    if (!isNumber(time) || time < 0) return fail(400, "time must be a time in ms");
-    const seen = Math.max(this.seenBy.get(person) ?? 0, Math.min(time, this.now()));
-    if (seen !== this.seenBy.get(person)) {
-      this.seenBy.set(person, seen);
-      this.dirty();
-    }
-    return seen;
-  }
-  stopSync() {
-    if (this.stopped) return;
-    this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    if (this.saved === this.edits) return;
-    const tmp = this.tmpName();
-    try {
-      writeFileSync6(tmp, this.serialize());
-      renameRetriedSync(tmp, this.file);
-      this.saved = this.edits;
-    } catch (e) {
-      this.log(`could not write ${this.file}: ${e.message}`);
-      try {
-        unlinkSync6(tmp);
-      } catch {
-      }
-    }
-  }
-  // resolves once a write in progress is over
-  async idle() {
-    while (this.writing) await this.writing;
-  }
-  target(thread, reply) {
-    if (reply === void 0 || reply === null) return thread;
-    return thread.replies.find((r) => r.id === reply) ?? fail(404, "there is no such reply");
-  }
-  mention(thread, mentions) {
-    for (const m of mentions) if (!thread.mentions.includes(m) && thread.mentions.length < 4 * MENTIONS_MAX) thread.mentions.push(m);
-  }
-  // the anchors of a request, checked against the text at version n
-  anchorsAt(n, anchor, slide) {
-    const text = this.authority.textAt(n);
-    const range = (x) => x === null || x === void 0 ? null : x && typeof x === "object" && isInt(x.start) && isInt(x.end) ? x : void 0;
-    const a = range(anchor);
-    const s = range(slide);
-    if (a === void 0 || s === void 0) return fail(400, "anchor and slide must be ranges or null");
-    const slides = slidesOf(text);
-    let slideTag = null;
-    if (s) {
-      slideTag = slideAnchorAt(slides, s.start);
-      if (!slideTag || slideTag.start !== s.start || slideTag.end !== s.end) return fail(400, "slide is not the start tag of a slide");
-    }
-    if (!a) return { anchor: slideTag, slide: slideTag };
-    const tag = startTagAt(text, a.start);
-    if (!tag || tag.end !== a.end) return fail(400, "anchor is not a start tag");
-    const holder = slideAnchorAt(slides, tag.start);
-    if (s && holder?.start !== slideTag.start) return fail(400, "slide does not hold the anchor");
-    return { anchor: tag, slide: holder };
-  }
-  // anchors of the text at version n moved to the current text
-  toCurrent(n, item) {
-    let text = this.authority.textAt(n);
-    for (const op of this.authority.since(formatVersion(this.authority.epoch, n)) ?? []) {
-      const after = apply(text, op.patches);
-      item = moveAnchors(text, op.patches, after, [item]).items[0];
-      text = after;
-    }
-    return item;
-  }
-  // the threads read from the file, or null when there is none or it cannot be read
-  load() {
-    let data;
-    try {
-      data = JSON.parse(readFileSync7(this.file, "utf8"));
-    } catch (e) {
-      if (e.code === "ENOENT") return null;
-      return this.unreadable();
-    }
-    const d = data;
-    if (!d || typeof d !== "object" || typeof d.sum !== "string" || !Array.isArray(d.comments) || d.comments.length > THREADS_MAX || !d.seen || typeof d.seen !== "object") return this.unreadable();
-    const threads = d.comments.map(readThread);
-    if (threads.some((t) => t === null)) return this.unreadable();
-    for (const t of threads) {
-      this.threads.set(t.id, t);
-      this.chars += charsOf(t);
-    }
-    for (const [person, time] of Object.entries(d.seen)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
-    return { sum: d.sum };
-  }
-  unreadable() {
-    const aside = join6(this.file, "..", `comments-unreadable-${Date.now()}.json`);
-    try {
-      renameSync2(this.file, aside);
-      this.log(`the comments could not be read, hence they were moved to ${aside}`);
-    } catch {
-    }
-    return null;
-  }
-  // the anchors of the file placed on the text of this start
-  place(sum, found) {
-    const threads = [...this.threads.values()];
-    let items = threads;
-    let moved2 = threads.map(() => false);
-    if (sum !== this.sum && found && found.patches.length && checksum(found.before) === sum) {
-      const r = moveAnchors(found.before, found.patches, this.text, items);
-      items = r.items;
-      moved2 = r.changed;
-    }
-    const checked = checkAnchors(this.text, items);
-    this.slides = checked.slides;
-    threads.forEach((t, k) => this.setAnchors(t, checked.items[k]));
-    const ids = threads.filter((_, k) => moved2[k] || checked.changed[k]).map((t) => t.id);
-    if (ids.length || sum !== this.sum) this.changed(ids);
-  }
-  setAnchors(t, item) {
-    t.anchor = item.anchor;
-    t.slide = item.slide;
-    if (item.removed) t.removed = item.removed;
-    else delete t.removed;
-  }
-  operation(op, after) {
-    const threads = [...this.threads.values()];
-    let r;
-    try {
-      r = moveAnchors(this.text, op.patches, after, threads, this.slides);
-    } catch (e) {
-      this.log(`the anchors of the comments could not be moved, hence they were checked: ${e.message}`);
-      r = checkAnchors(after, threads);
-    }
-    this.text = after;
-    this.sum = op.sum;
-    this.slides = r.slides;
-    const ids = [];
-    threads.forEach((t, k) => {
-      this.setAnchors(t, r.items[k]);
-      if (r.changed[k]) ids.push(t.id);
-    });
-    if (ids.length) this.changed(ids);
-    else if (threads.length) this.dirty();
-  }
-  changed(ids, gone = false) {
-    for (const id of ids) this.changes.push({ v: ++this.v, id, gone });
-    if (this.changes.length > LOG_MAX) {
-      const cut = this.changes.length - LOG_MAX;
-      this.logStart = this.changes[cut - 1].v;
-      this.changes = this.changes.slice(cut);
-    }
-    this.dirty();
-    if (ids.length) for (const fn of this.listeners) fn();
-  }
-  serialize() {
-    return JSON.stringify({ sum: this.sum, comments: [...this.threads.values()], seen: Object.fromEntries(this.seenBy) });
-  }
-  tmpName() {
-    return join6(this.file, "..", `.comments.json.${randomBytes6(6).toString("hex")}.tmp`);
-  }
-  dirty() {
-    this.edits++;
-    this.schedule();
-  }
-  // a write at most once in every ms, one at a time
-  schedule() {
-    if (this.stopped || this.timer || this.writing) return;
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.writing = this.write().finally(() => {
-        this.writing = null;
-        if (this.saved !== this.edits) this.schedule();
-      });
-    }, Math.max(0, this.lastWrite + this.every - Date.now()));
-    this.timer.unref?.();
-  }
-  async write() {
-    if (this.stopped) return;
-    const edits = this.edits;
-    this.lastWrite = Date.now();
-    const tmp = this.tmpName();
-    try {
-      await writeFile4(tmp, this.serialize());
-      if (this.stopped) {
-        await unlink2(tmp).catch(() => {
-        });
-        return;
-      }
-      await renameRetried(tmp, this.file);
-      this.saved = Math.max(this.saved, edits);
-    } catch (e) {
-      await unlink2(tmp).catch(() => {
-      });
-      this.log(`could not write ${this.file}, trying again: ${e.message}`);
-    }
   }
 };
 
