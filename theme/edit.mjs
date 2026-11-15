@@ -1361,9 +1361,9 @@ var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeN
 import { randomBytes as randomBytes3 } from "node:crypto";
 import { readFileSync as readFileSync3, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
 import { unlink, writeFile as writeFile2 } from "node:fs/promises";
-var HOLD = 25e3;
+var HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25e3;
 var GAP = 100;
-var GONE = 4e4;
+var GONE = Number(process.env.SLIDES_GONE_MS) || 4e4;
 var FIRST_POLL = 5e3;
 var MAX_PEOPLE = 64;
 var MAX_GUESTS = 48;
@@ -1397,6 +1397,10 @@ var People = class {
     this.records = /* @__PURE__ */ new Map();
     // the pages whose session ended, answered with ended until they say hello again
     this.ends = /* @__PURE__ */ new Map();
+    // the guests present at the last end of sharing that have not been answered with ended yet, and
+    // the callers that wait until none is left
+    this.untold = /* @__PURE__ */ new Set();
+    this.toldWaiters = [];
     this.hostPerson = null;
     this.polls = /* @__PURE__ */ new Set();
     this.rev = 0;
@@ -1525,7 +1529,10 @@ var People = class {
   // a long poll of client for the news after the version since
   events(client, since) {
     const end = this.ends.get(client);
-    if (end) return Promise.resolve({ ...this.state(since, null), ended: end });
+    if (end) {
+      this.told(client);
+      return Promise.resolve({ ...this.state(since, null), ended: end });
+    }
     const member = this.revive(client);
     if (!member) return null;
     return new Promise((done) => {
@@ -1552,9 +1559,12 @@ var People = class {
     this.saveSync();
   }
   // the session ended for every page that came through the relay. their waiting polls are
-  // answered with ended, while the pages of the host go on
+  // answered with ended, while the pages of the host go on. resolves once every guest present has
+  // been answered with ended, by a waiting poll or by a poll that arrives later
   endGuests() {
     const end = this.endedBy();
+    this.untold = new Set([...this.members.values()].filter((m) => !m.host).map((m) => m.client));
+    const told = new Promise((done) => this.toldWaiters.push(done));
     for (const [client, { host }] of this.clients) if (!host) this.ends.set(client, end);
     for (const client of this.ends.keys()) if (this.ends.size > MAX_CLIENTS) this.ends.delete(client);
     for (const poll of [...this.polls]) if (this.ends.has(poll.client)) this.answer(poll);
@@ -1566,6 +1576,12 @@ var People = class {
       }
     }
     if (gone) this.changed();
+    this.told(null);
+    return told;
+  }
+  told(client) {
+    if (client !== null) this.untold.delete(client);
+    if (!this.untold.size) for (const done of this.toldWaiters.splice(0)) done();
   }
   endedBy() {
     return { by: this.hostPerson && this.records.get(this.hostPerson)?.name || null };
@@ -1660,11 +1676,13 @@ var People = class {
       member.knownSeen = this.knownRev;
       member.writeSeen = this.writeRev;
       member.lastAnswer = Date.now();
-      member.lastSeen = Date.now();
       member.polls--;
     }
     const end = this.ended ?? this.ends.get(poll.client);
-    if (end) answer.ended = end;
+    if (end) {
+      answer.ended = end;
+      this.told(poll.client);
+    }
     poll.done(answer);
   }
   sweep() {
@@ -1940,6 +1958,7 @@ var MEDIA_MAX = 64 * 1024 * 1024;
 var GUEST_MEDIA_MAX = 16 * 1024 * 1024;
 var MEDIA_TYPES = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "bmp", "mp4", "m4v", "webm", "mov", "ogv", "json"]);
 var LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2e3;
+var END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1e3;
 var AlreadyRunning = class extends Error {
   constructor(found) {
     super(`the edit command already runs for this folder at ${found.url}`);
@@ -2050,7 +2069,12 @@ async function start(options = {}) {
     if (request.method === "GET") return json(200, { link: relay?.active ? relay.link : null });
     if (request.method === "DELETE") {
       return serial(async () => {
-        people.endGuests();
+        const told = people.endGuests();
+        if (relay) {
+          let timer;
+          await Promise.race([told, new Promise((done) => timer = setTimeout(done, END_WAIT))]);
+          clearTimeout(timer);
+        }
         await relay?.stop();
         relay = null;
         return json(200, { link: null });
@@ -2081,7 +2105,7 @@ async function start(options = {}) {
     });
   }
   async function connect(address, secret) {
-    if (relay && relay.relay !== address) people.endGuests();
+    if (relay && relay.relay !== address) void people.endGuests();
     await relay?.stop();
     relay = null;
     if (closed) throw new Error("the edit command is stopping");
