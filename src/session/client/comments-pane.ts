@@ -9,6 +9,7 @@ import type { Client } from './client.ts';
 import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comments.ts';
 import { make, style } from './dom.ts';
+import { stopFollowing } from './follow.ts';
 import { whenOf } from './labels.ts';
 import { closeMenu, openMenu } from './menu.ts';
 import { initials, inkOf, toneOf } from './people.ts';
@@ -697,6 +698,8 @@ class Pane {
   // a new comment on el, or on slide when el is null, as a draft at the top of the pane
   startDraft(el: Element | null, slide: Element, focus = true): void {
     if (inHistory()) return;
+    // a comment is an edit, and a person who edits does not follow
+    stopFollowing();
     this.shell.tab.set(true);
     if (this.filter === 'resolved') this.filter = 'open';
     this.drafted(el, slide);
