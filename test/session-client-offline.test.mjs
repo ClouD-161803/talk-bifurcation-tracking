@@ -10,7 +10,7 @@ import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, ops, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type } from './helpers/editor.mjs';
-import { raw, until } from './helpers/session.mjs';
+import { post, raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
@@ -115,6 +115,24 @@ test('a guest is told that the host is not running, and the end of the session b
   // the hello without a name of the rejoin, refused when the kill lost the person of the guest, which
   // the page sends again with the name
   clean(guest, [...REFUSED, /status of 400 .*\/\.session\/hello/]);
+});
+
+test('a page refused at its first hello because the session is full says so, and joins once a place is free', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // the 64 places of the session are held by people who do not poll, and who are not dropped meanwhile
+  const server = await talk(t, { env: { SLIDES_GONE_MS: '3600000' } });
+  const { port, key } = server.edit;
+  const tokens = [];
+  for (let i = 1; i <= 64; i++) tokens.push((await post(port, `/${key}/.session/hello`, { name: `Person ${i}` })).json().token);
+  const page = await open(browser, sessionUrl(server.edit), { wait: false });
+  await page.waitFor(`/^The session is full\\. Trying again in \\d+ s$/.test(${STATE})`);
+  assert.equal(await page.evaluate(ACTION), 'Try now');
+  assert.equal((await post(port, `/${key}/.session/bye`, { token: tokens[0] })).status, 200);
+  await click(page, '.beeson-session-action');
+  await page.waitFor(ONLINE);
+  assert.equal(await page.evaluate(STATE), 'Saved to index.html');
+  clean(page, [/status of 503 .*\/\.session\/hello/]);
 });
 
 test('a page whose operation is refused as invalid after a resync stops sending, and Load again loads it', { timeout: 120_000 }, async (t) => {
