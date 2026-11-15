@@ -25,10 +25,9 @@ import { VOID } from '../source.ts';
 import { tokenize } from '../tokens.ts';
 import { keepBeside } from './place.ts';
 import { keepPlaces } from '../canvas/drag.ts';
-import { MARK, docOf, slidesIn } from './slide.ts';
+import { MARK, docOf, refusedRead, slidesIn } from './slide.ts';
 import { arrive, originComment } from './origin.ts';
 import { cellAt, clearRange, pasteAtCell, pasteRange, pasteTable, rangeText, selectedRange } from './table.ts';
-import { display } from '../keymap.ts';
 import { removeJoining } from '../text/elements.ts';
 
 // the offset of a paste or a duplicate that would cover its source, in slide pixels
@@ -494,10 +493,7 @@ export function install(app: App): void {
     }
     text ||= clip?.text || '';
     // the key pastes from its own event, which the browser allows where it refuses the read
-    if (!text && refused) {
-      a.note = { text: `The browser did not let the editor read the clipboard. Press ${display('Mod+V', a.platform)} to paste`, warn: true };
-      return void a.report();
-    }
+    if (!text && refused) return refusedRead(a);
     const els = elementsIn(text);
     const slides = slidesIn(text)?.length ? text : null;
     const field = fieldOf(a);

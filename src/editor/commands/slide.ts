@@ -17,6 +17,7 @@ import { nextShown, setTransition, transitionOf } from '../review/transitions.ts
 import { sample } from './layout.ts';
 import { injectStyle } from '../ui/dom.ts';
 import { arrive, originComment } from './origin.ts';
+import { display } from '../keymap.ts';
 
 // the mark that opens the text of slides on the clipboard, so that a paste in the navigator tells
 // slides apart from other text
@@ -178,6 +179,13 @@ function freshIds(app: App, text: string): string {
 
 // the text last copied, for a paste from a menu where the clipboard of the system cannot be read
 let copied = '';
+
+// the note of a paste from a menu whose read of the clipboard the browser refused, which the key
+// pastes from its own event
+export function refusedRead(app: App): void {
+  app.note = { text: `The browser did not let the editor read the clipboard. Press ${display('Mod+V', app.platform)} to paste`, warn: true };
+  app.report();
+}
 
 function copySlides(app: App, data?: DataTransfer | null): string {
   const text = clipText(app, targets(app));
@@ -545,7 +553,9 @@ export function install(app: App): void {
       undoable: true,
       run: async (a, arg) => {
         let text = typeof arg === 'string' ? arg : '';
-        if (!text) text = (await navigator.clipboard?.readText().catch(() => '')) || copied;
+        let refused = false;
+        if (!text) text = (await navigator.clipboard?.readText().catch((e) => void (refused = e?.name === 'NotAllowedError'))) || copied;
+        if (!text && refused) return refusedRead(a);
         await pasteSlides(a, text, inNav());
       },
     },
