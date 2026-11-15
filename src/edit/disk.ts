@@ -386,6 +386,10 @@ export class Disk {
   private *merge(theirs: string): Task {
     if (theirs !== this.authority.text) {
       const base = yield* this.nearest(theirs);
+      // theirs is an earlier text of the session, as from an editor that saves a copy it did not
+      // reload, or from a git checkout. the newer edits of the session are kept and written back,
+      // since a stale save must not revert the edits of everyone
+      if (base === theirs) this.log(`${this.file} was written with an earlier text of the session, and the edit command keeps the newer edits and writes them back`);
       // the session may have changed while the chain was searched
       const current = this.authority.text;
       const file = diff(base, theirs);
