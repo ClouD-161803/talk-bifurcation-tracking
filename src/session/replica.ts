@@ -26,7 +26,11 @@ export class Replica {
   // true after a checksum mismatch, a gap in the operations, or a refusal that a new operation does
   // not repair. the client then says hello without v and passes the answer to resync()
   needsResync = false;
+  // true when an operation was refused as invalid again after the resync that followed the first
+  // refusal. nothing is sent any more, and the client asks the person to load the page again
+  blocked = false;
   private seq: number;
+  private invalids = 0;
   private flight: Flight | null = null;
   // after a refusal for a conflict, nothing is sent until base reaches the version of the refusal,
   // since the operation that won may not have been received yet
@@ -64,7 +68,7 @@ export class Replica {
 
   // the operation to send now, or null when one is in flight, a resync is needed, or base is mine
   outgoing(): OpRequest | null {
-    if (this.flight || this.needsResync || this.n < this.waitFor || this.mine === this.base) return null;
+    if (this.flight || this.needsResync || this.blocked || this.n < this.waitFor || this.mine === this.base) return null;
     const patches = diff(this.base, this.mine);
     if (patches.length === 0) return null;
     this.flight = { seq: ++this.seq, patches };
@@ -74,11 +78,18 @@ export class Replica {
   // the answer of the edit command to a request of outgoing(). an accepted operation is applied at
   // its broadcast, and a refused one is carried again by the next diff of base and mine
   answer(request: OpRequest, answer: OpAnswer): void {
-    if (answer.ok || this.flight?.seq !== request.seq) return;
+    if (this.flight?.seq !== request.seq) return;
+    if (answer.ok) {
+      this.invalids = 0;
+      return;
+    }
     this.flight = null;
     const at = parseVersion(answer.v);
     if (answer.reason === 'conflict' || (answer.reason === 'stale' && request.base !== this.version)) {
       this.waitFor = at && at.epoch === this.epoch ? at.n : this.n;
+    } else if (answer.reason === 'invalid' && ++this.invalids > 1) {
+      // a resync did not repair the operation, which would be refused at every send
+      this.blocked = true;
     } else {
       this.needsResync = true;
     }
