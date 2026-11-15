@@ -694,6 +694,42 @@ test('the key of the command Comment opens a draft while the focus is in the pan
   clean(a);
 });
 
+for (const scheme of ['dark', 'light']) {
+  test(`in ${scheme} mode, the text of a badge, a count, and a mention reaches 4.5:1, and the unread bar and the focus 3:1`, { timeout: 300_000 }, async (t) => {
+    const { pages: [a, b] } = await pair(t);
+    await show(a, 'One');
+    await click(a, '.reveal .slides > section:nth-child(1) p');
+    await comment(a, 'Mine');
+    const mine = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+    const theirs = await post(b, 1, 'Look, @Ann');
+    await a.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await openPane(a);
+    await sees(a, `!!document.querySelector('${ARTICLE(theirs)}.unread .mention')`, true);
+    await a.evaluate(`document.querySelector('${ARTICLE(mine)}').focus()`);
+    await show(a, 'One');
+    await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 1);
+    const one = await a.evaluate(`[${INK}(document.querySelector('.beeson-comment-badge')), ${GROUND}(document.querySelector('.beeson-comment-badge'))]`);
+    const counts = await a.evaluate(`[...document.querySelectorAll('.beeson-edit-nav .beeson-comment-count')].map((c) => [c.className, ${INK}(c), ${GROUND}(c)])`);
+    const mention = await a.evaluate(`(() => { const m = document.querySelector('${ARTICLE(theirs)} .mention'); return [${INK}(m), ${GROUND}(m)]; })()`);
+    const bar = await a.evaluate(`(() => { const t = document.querySelector('${ARTICLE(theirs)}'); return ['rgb(' + getComputedStyle(t).boxShadow.match(/rgba?\\(([^)]*)\\)/)[1] + ')', ${GROUND}(t)]; })()`);
+    const focus = await a.evaluate(`(() => { const t = document.querySelector('${ARTICLE(mine)}'); const s = getComputedStyle(t); return [s.outlineStyle, s.outlineColor, ${GROUND}(t.parentElement)]; })()`);
+    await show(a, 'Two');
+    await sees(a, `document.querySelectorAll('.beeson-comment-badge.unread').length`, 1);
+    const unread = await a.evaluate(`[${INK}(document.querySelector('.beeson-comment-badge')), ${GROUND}(document.querySelector('.beeson-comment-badge'))]`);
+    const ratios = {
+      badge: contrast(...one) >= 4.5,
+      unreadBadge: contrast(...unread) >= 4.5,
+      counts: counts.length === 2 && counts.every(([, ink, ground]) => contrast(ink, ground) >= 4.5),
+      mention: contrast(...mention) >= 4.5,
+      bar: contrast(...bar) >= 3,
+      focus: focus[0] !== 'none' && contrast(focus[1], focus[2]) >= 3,
+    };
+    assert.deepEqual(ratios, { badge: true, unreadBadge: true, counts: true, mention: true, bar: true, focus: true }, JSON.stringify({ one, unread, counts, mention, bar, focus }));
+    clean(a);
+    clean(b);
+  });
+}
+
 test('the accessibility tree of Chrome holds the field of a mention as a combobox, the list without a role, a thread described by its text, and the toast region before its first toast', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await front(a);
