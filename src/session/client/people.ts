@@ -12,7 +12,7 @@
 import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
 import { COLORS, nameKey, type Person } from '../protocol.ts';
 import type { Client } from './client.ts';
-import { make, sheet, style } from './dom.ts';
+import { fitClass, make, style } from './dom.ts';
 import { askTaken, claimOnReload, initials, nameField, rename } from './join.ts';
 
 export { initials };
@@ -215,7 +215,7 @@ async function changeName(client: Client): Promise<void> {
     title: 'Change your name',
     text: 'The others see this name on your avatar, your edits, and your comments.',
     body: field.body,
-    className: `beeson-session-rename ${sheet()}`,
+    className: `beeson-session-rename ${fitClass()}`,
     stay: ['change'],
     buttons: [
       { label: 'Cancel', value: 'cancel' },
@@ -286,7 +286,7 @@ async function leave(client: Client): Promise<void> {
   const dialog = client.shell.dialog({
     title: 'You left the session',
     text: lines.join(' '),
-    className: `beeson-session-left ${sheet()}`,
+    className: `beeson-session-left ${fitClass()}`,
     buttons: [
       { label: 'Download a copy', value: 'download' },
       { label: 'Close', value: 'close' },
