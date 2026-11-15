@@ -5,14 +5,14 @@
 // come from this computer with the key or that reaches out of the talk folder
 
 import assert from 'node:assert/strict';
-import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
-import { connect } from 'node:net';
-import { spawnSync } from 'node:child_process';
+import { connect, createServer as createNetServer } from 'node:net';
+import { spawn, spawnSync } from 'node:child_process';
 import { startRelay } from '../scripts/relay.mjs';
-import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
+import { DECK, EDIT, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const text = (file) => readFileSync(file, 'utf8');
 
@@ -665,4 +665,37 @@ test('add regression test: a second start in the same talk folder hands over the
   t.after(() => stopEdit(third));
   assert.equal((await raw(third.port, 'GET', `${third.base}index.html`)).status, 200);
   assert.equal(third.child.exitCode, null);
+});
+
+const SECRET = 'a secret of the group, long enough';
+
+test('add regression test: a Ctrl+C while a start with --relay waits for the relay keeps the acknowledged operations', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // a relay that takes each connection and never answers
+  const sockets = [];
+  const hanging = createNetServer((socket) => sockets.push(socket));
+  await new Promise((done) => hanging.listen(0, '127.0.0.1', done));
+  t.after(() => {
+    for (const socket of sockets) socket.destroy();
+    hanging.close();
+  });
+  const free = createNetServer();
+  await new Promise((done) => free.listen(0, '127.0.0.1', done));
+  const port = free.address().port;
+  await new Promise((done) => free.close(done));
+  const env = { ...process.env, SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config };
+  const child = spawn(process.execPath, [EDIT, talk, '--no-open', '--port', String(port), '--relay', `http://127.0.0.1:${hanging.address().port}`], { env, stdio: 'ignore' });
+  const exited = new Promise((done) => child.once('exit', (code, signal) => done({ code, signal })));
+  t.after(() => child.exitCode === null && child.signalCode === null && child.kill('SIGKILL'));
+  // a tab of the last run comes back on the same port and key while the relay is asked
+  const key = await until(() => existsSync(join(talk, '.session', 'key')) && text(join(talk, '.session', 'key')).trim(), 'the key of the session');
+  const api = (route) => `/${key}/.session/${route}`;
+  const hello = await until(() => post(port, api('hello'), { name: 'Ana' }).then((r) => r.status === 200 && r.json(), () => null), 'the hello of a page');
+  await until(() => sockets.length > 0, 'the edit command to ask the relay for a registration');
+  const op = (await post(port, api('op'), { token: hello.token, seq: 1, base: hello.v, patches: [{ start: 0, end: 0, text: '<!-- kept -->\n' }] })).json();
+  assert.equal(op.ok, true);
+  child.kill('SIGINT');
+  assert.equal((await exited).signal, null, 'the edit command was ended by the signal without its stop');
+  assert.ok(text(join(talk, 'index.html')).startsWith('<!-- kept -->\n'), 'the acknowledged operation is in index.html');
 });
