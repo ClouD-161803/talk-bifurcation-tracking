@@ -565,3 +565,31 @@ test('the dialog of the conflicts at a join that takes over a copy downloads the
   clean(again);
   clean(ben);
 });
+
+test('the dialog of the conflicts names a slide that the person removed offline by its text before the removal', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const ann = await tab(browser, url);
+  const ben = await open(browser, url, { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await goOffline(ann);
+  await show(ann, 'One');
+  await ann.evaluate(`(${C}.app.selection.clear(), ${C}.app.commands.run('slide.delete'), true)`);
+  await ann.waitFor(`document.querySelectorAll('.reveal .slides > section').length === 1`);
+  await show(ann, 'Two');
+  await caretAtEnd(ann, el(0, 'p'));
+  await type(ann, ' by Ann');
+  await edit(ben, 0, 'p', ' by Ben');
+  await until(() => server.read().includes('<p>First slide by Ben</p>'), 'the edit of Ben to reach the file');
+  await ann.waitFor(`Date.now() - window.__offAt > 5500`, 15_000);
+  await goOnline(ann);
+  await front(ann);
+  await ann.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`);
+  assert.deepEqual((await ann.evaluate(CONFLICTS)).items, ['Slide 1 (removed by you): “One First slide”']);
+  await press(ann, 'Keep theirs');
+  assert.equal(await converge(server, [ann, ben]), TALK.replace('<p>First slide</p>', '<p>First slide by Ben</p>').replace('<p>Second slide</p>', '<p>Second slide by Ann</p>'));
+  clean(ann);
+  clean(ben);
+});
