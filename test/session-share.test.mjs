@@ -17,6 +17,9 @@ import { post, raw, until } from './helpers/session.mjs';
 import { avatars, dialogButton, FITS, HIT, hold, item, menu, press, tap } from './helpers/share.mjs';
 
 const SECRET = 'the secret of the group for this test';
+// the label of an avatar without the slide and the activity of the person, e.g. Ben Carter of
+// Ben Carter, on slide 1, typing
+const bare = (label) => label?.replace(/, on slide .*$/, '') ?? null;
 const SHARE = 'dialog.beeson-session-share-dialog';
 
 // the avatars of a page once it shows count of them
@@ -42,11 +45,11 @@ test('the avatars of two and of six people, one person with two pages, and the i
   const url = sessionUrl(server.edit);
   const ann = await open(browser, url, { name: 'Ann Smith' });
   const ben = await open(browser, url, { name: 'Ben Carter' });
-  assert.deepEqual(await shown(ann, 2), [
+  assert.deepEqual((await shown(ann, 2)).map((a) => ({ ...a, label: bare(a.label) })), [
     { text: 'BC', label: 'Ben Carter', me: false },
     { text: 'AS', label: 'Ann Smith, you', me: true },
   ]);
-  assert.deepEqual(await shown(ben, 2), [
+  assert.deepEqual((await shown(ben, 2)).map((a) => ({ ...a, label: bare(a.label) })), [
     { text: 'AS', label: 'Ann Smith', me: false },
     { text: 'BC', label: 'Ben Carter, you', me: true },
   ]);
@@ -73,7 +76,7 @@ test('the avatars of two and of six people, one person with two pages, and the i
     for (const name of ['Cleo Diaz', 'Dan Evans', 'Ana Silva', 'Fay Gold']) more.push(await open(other, url, { name }));
     const list = await shown(ann, 6);
     assert.deepEqual(list.map((a) => a.text), ['BC', 'CD', 'DE', 'AS2', '+1', 'AS']);
-    assert.deepEqual(list.map((a) => a.label), ['Ben Carter', 'Cleo Diaz', 'Dan Evans', 'Ana Silva', '1 more person', 'Ann Smith, you']);
+    assert.deepEqual(list.map((a) => bare(a.label)), ['Ben Carter', 'Cleo Diaz', 'Dan Evans', 'Ana Silva', '1 more person', 'Ann Smith, you']);
     const ana = more[2];
     assert.deepEqual((await shown(ana, 6)).map((a) => a.text), ['AS', 'BC', 'CD', 'DE', '+1', 'AS2']);
     await press(ann, '.beeson-session-people .more');
@@ -82,7 +85,7 @@ test('the avatars of two and of six people, one person with two pages, and the i
     await key(ann, 'Escape');
     // the menu of another person opens on a right-click and holds the full name, since a click follows
     await front(ann);
-    await click(ann, `.beeson-session-people button[aria-label="Cleo Diaz"]`, { button: 'right' });
+    await click(ann, `.beeson-session-people button[title="Cleo Diaz"]`, { button: 'right' });
     await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual((await menu(ann)).slice(0, 2), ['Cleo Diaz', 'Follow']);
     await key(ann, 'Escape');
@@ -92,13 +95,13 @@ test('the avatars of two and of six people, one person with two pages, and the i
     await caretAtEnd(ann, `document.querySelector('.reveal .slides > section p')`);
     await key(ann, 'Escape');
     await ann.waitFor('window.BeesonEditor.selection().length === 1');
-    await ann.evaluate(`document.querySelector('.beeson-session-people button[aria-label="Cleo Diaz"]').focus()`);
+    await ann.evaluate(`document.querySelector('.beeson-session-people button[title="Cleo Diaz"]').focus()`);
     for (const keys of ['Shift+F10', 'ArrowDown']) {
       await key(ann, keys);
       await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
       assert.deepEqual((await menu(ann)).slice(0, 2), ['Cleo Diaz', 'Follow'], keys);
       await key(ann, 'Escape');
-      await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement?.getAttribute('aria-label') === 'Cleo Diaz'`);
+      await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement?.title === 'Cleo Diaz'`);
     }
     // a person who leaves is announced, and the avatars move up
     const before = await ann.evaluate(`document.querySelector('.beeson-session-live').textContent`);
@@ -136,9 +139,10 @@ test('Change Name is seen on the other page, also for one word and an emoji, and
     await rename(name);
     await ann.waitFor(`!document.querySelector('dialog.beeson-session-rename') && ${C}.name === ${JSON.stringify(name)}`);
     await front(ben);
-    const selector = `.beeson-session-people button[aria-label=${JSON.stringify(name)}]`;
+    const selector = `.beeson-session-people button[title=${JSON.stringify(name)}]`;
     await ben.waitFor(`!!document.querySelector(${JSON.stringify(selector)})`);
-    assert.deepEqual((await avatars(ben))[0], { text: initials, label: name, me: false });
+    const first = (await avatars(ben))[0];
+    assert.deepEqual({ ...first, label: bare(first.label) }, { text: initials, label: name, me: false });
     assert.equal((await avatars(ann)).at(-1).text, initials);
   }
 
@@ -337,7 +341,7 @@ test('on a phone of 390 px the controls of the session are in view with a hit ar
   assert.deepEqual(list.map((a) => a.text), ['BC', 'CD', '+1', 'PP']);
 
   const controls = await phone.evaluate(`[...document.querySelectorAll('.beeson-edit-titlebar .right button')].filter((b) => b.getClientRects().length).map((b) => ({ name: b.getAttribute('aria-label') ?? b.textContent, ...${HIT}(b) }))`);
-  assert.deepEqual(controls.map((c) => c.name), ['Ben Carter', 'Cleo Diaz', '1 more person', 'Pia Park, you', 'Saved to index.html', 'Share']);
+  assert.deepEqual(controls.map((c) => bare(c.name)), ['Ben Carter', 'Cleo Diaz', '1 more person', 'Pia Park, you', 'Saved to index.html', 'Share']);
   for (const c of controls) {
     assert.ok(c.inside && c.hit, `${c.name} is in view and takes a tap`);
     assert.ok(c.width >= 32 && c.height >= 32, `${c.name} has a hit area of ${c.width} by ${c.height} px`);
@@ -350,7 +354,7 @@ test('on a phone of 390 px the controls of the session are in view with a hit ar
     await phone.waitFor(`!!${item('Change Name…')}`);
     await key(phone, 'Escape');
     await phone.waitFor(`!document.querySelector('.beeson-edit-menu')`);
-    await hold(phone, '.beeson-session-people button[aria-label="Ben Carter"]', `!!document.querySelector('.beeson-edit-menu')`);
+    await hold(phone, '.beeson-session-people button[title="Ben Carter"]', `!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual((await menu(phone)).slice(0, 2), ['Ben Carter', 'Follow']);
     // the click after the hold leaves the menu open, and does not follow
     await phone.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))');
@@ -408,10 +412,10 @@ test('add regression test: an avatar keeps the keyboard focus when a person befo
   const cleo = await open(browser, url, { name: 'Cleo Diaz' });
   assert.deepEqual((await shown(ann, 3)).map((a) => a.text), ['BC', 'CD', 'AS']);
   const focused = `document.activeElement?.getAttribute('aria-label')`;
-  await ann.evaluate(`document.querySelector('.beeson-session-people button[aria-label="Cleo Diaz"]').focus()`);
+  await ann.evaluate(`document.querySelector('.beeson-session-people button[title="Cleo Diaz"]').focus()`);
   await ben.close();
   assert.deepEqual((await shown(ann, 2)).map((a) => a.text), ['CD', 'AS']);
-  assert.equal(await ann.evaluate(focused), 'Cleo Diaz', 'the focus after Ben Carter left');
+  assert.equal(bare(await ann.evaluate(focused)), 'Cleo Diaz', 'the focus after Ben Carter left');
   await ann.evaluate(`document.querySelector('.beeson-session-people .me').focus()`);
   await cleo.close();
   assert.deepEqual((await shown(ann, 1)).map((a) => a.text), ['AS']);
