@@ -689,6 +689,12 @@ export function install(app: App): void {
     if (app.dirty) cleanIfSaved();
   });
   app.listen('dirty', scheduleAutosave);
+  // the file has not been written by this page during a session, hence the deck counts as changed
+  // after it
+  app.listen('session', () => {
+    window.clearTimeout(autosaveTimer);
+    if (!app.session && app.state === 'loaded') app.markDirty();
+  });
   window.addEventListener('beforeunload', (ev) => { if (app.dirty && !app.session) ev.preventDefault(); });
 }
 
