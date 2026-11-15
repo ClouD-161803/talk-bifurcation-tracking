@@ -90,8 +90,9 @@ export type WriteError = { message: string; unwritten: number };
 // after ended, every poll of the page is answered with ended until it says hello.
 // history is the rev of the version history when it changed since the last answer to this page.
 // restored is the latest restore, sent once to each page whose version since is before it, also to
-// a page that was dropped meanwhile. a page reads the history again after each hello, since what
-// changed before is not sent to it
+// a page that was dropped meanwhile. comments holds the threads changed since the last answer to
+// this page. a page reads the history and the comments again after each hello, since what changed
+// before is not sent to it
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
@@ -102,6 +103,7 @@ export type EventsAnswer = {
   ended?: Ended;
   history?: number;
   restored?: Restored;
+  comments?: CommentsEvent;
 };
 
 // a range of the text of a version that was changed since the version before, with the person id
@@ -144,6 +146,58 @@ export type AsideAnswer = AsideInfo;
 export type Restored = { by: string; id: string; time: number };
 
 export const VERSION_NAME_MAX = 80;
+
+// the start tag of an element, from its < to its >, and the name of the element in lowercase
+export type Anchor = { start: number; end: number; tag: string };
+// a range of the text as a page sends it, of which the edit command reads the name of the element
+export type TagRange = { start: number; end: number };
+export type CommentReply = { id: string; author: string; time: number; text: string; edited?: number };
+// a thread of comments, kept in .session/comments.json. anchor is the start tag of the element
+// commented on, the start tag of the slide for a comment on a slide, and null for a comment on the
+// deck. slide is the start tag of the slide that holds the element, or null. a removed element
+// falls back to its slide, and a removed slide to the deck, and removed is then set, holding the
+// text of what was removed, or null when it was larger than 4 kB or is not known. a re-insertion of
+// this text attaches the thread to it again. author, by, and mentions are person ids, time and
+// edited are times in ms. the offsets are of the text at the version that the answer or the events
+// answer carrying the thread is of, and a page moves them itself with every later operation
+export type Comment = {
+  id: string;
+  anchor: Anchor | null;
+  slide: Anchor | null;
+  removed?: { text: string | null };
+  author: string;
+  time: number;
+  text: string;
+  edited?: number;
+  replies: CommentReply[];
+  resolved?: { by: string; time: number };
+  mentions: string[];
+};
+// GET comments?token=. v grows with every change of a thread, at is the version of the text that
+// the anchors are of, and seen is the time up to which the person of the page has read the comments
+export type CommentsAnswer = { v: number; at: Version; comments: Comment[]; seen: number };
+// the threads changed and the ids of the threads deleted since the last answer to a page, or null
+// in both when the page must read GET comments again
+export type CommentsEvent = { v: number; changed: Comment[]; removed: string[] } | { v: number; changed: null; removed: null };
+// POST comments. anchor and slide are of the text at version base, an anchor without a slide is
+// on an element outside the slides, a slide without an anchor is a comment on the slide, and
+// neither is a comment on the deck. the answer is the thread
+export type CommentRequest = { token: Token; anchor: TagRange | null; slide: TagRange | null; base: Version; text: string; mentions?: string[] };
+// POST comments/<id>/reply
+export type ReplyRequest = { token: Token; text: string; mentions?: string[] };
+// POST comments/<id>/edit and comments/<id>/delete, of the reply of id reply when it is given, and
+// of the thread otherwise, only by its author. the answer of a delete of a thread is empty
+export type CommentEditRequest = { token: Token; text: string; mentions?: string[]; reply?: string };
+export type CommentDeleteRequest = { token: Token; reply?: string };
+// POST comments/<id>/resolve and comments/<id>/reopen, by anyone
+export type ResolveRequest = { token: Token };
+// POST comments/seen
+export type SeenRequest = { token: Token; time: number };
+export type SeenAnswer = { seen: number };
+
+export const COMMENT_MAX = 4000;
+export const REPLIES_MAX = 200;
+export const THREADS_MAX = 2000;
 
 export type PresenceRequest = { token: Token; state: unknown };
 export type ByeRequest = { token: Token };
