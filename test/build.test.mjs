@@ -3,25 +3,48 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-test('the theme is built in a folder with a space in its name', (t) => {
+// a copy of the source and of build.mjs in a folder with a space in its name
+function copy(t) {
   const root = mkdtempSync(join(tmpdir(), 'slides build-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const path of ['build.mjs', 'package.json', 'tsconfig.json', 'src']) {
     cpSync(resolve(path), join(root, path), { recursive: true });
   }
   symlinkSync(resolve('node_modules'), join(root, 'node_modules'), 'junction');
+  return root;
+}
 
+test('the theme is built in a folder with a space in its name', (t) => {
+  const root = copy(t);
   execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
 
   assert.ok(existsSync(join(root, 'theme/beeson.js')));
   assert.ok(existsSync(join(root, 'theme/editor.js')));
   // the edit command of a talk is the compiled file, hence it must be built from the current source
   assert.equal(readFileSync(join(root, 'theme/edit.mjs'), 'utf8'), readFileSync(resolve('theme/edit.mjs'), 'utf8'), 'theme/edit.mjs is not built from src/edit, run npm run build');
+  assert.equal(readFileSync(join(root, 'theme/session.js'), 'utf8'), readFileSync(resolve('theme/session.js'), 'utf8'), 'theme/session.js is not built from src/session, run npm run build');
+});
+
+// the client reaches the editor through its handover, hence a stateful module of the editor in
+// its bundle fails the build, and a type does not
+test('the client of a session imports a module of the editor only as a type', (t) => {
+  const root = copy(t);
+  const client = join(root, 'src/session/client/dom.ts');
+  appendFileSync(client, "\nimport type { App } from '../../editor/app.ts';\nexport type Seen = App;\n");
+  execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
+  appendFileSync(client, "\nimport { make as editorMake } from '../../editor/ui/dom.ts';\nexport const seen = editorMake;\n");
+  let message = '';
+  try {
+    execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
+  } catch (e) {
+    message = String(e.stderr);
+  }
+  assert.match(message, /src\/editor\/ui\/dom\.ts, imported by src\/session\/client\/dom\.ts/);
 });
 
 test('the theme bundle carries none of the editor, which is all in theme/editor.js', () => {
@@ -45,4 +68,10 @@ test('theme/edit.mjs is under 256 kB and starts nothing when it is imported', ()
   assert.ok(size < 256 * 1024, `theme/edit.mjs is ${Math.round(size / 1024)} kB`);
   const out = execFileSync(process.execPath, ['--input-type=module', '-e', "const m = await import(process.argv[1]); console.log(typeof m.Authority, typeof m.Replica, typeof m.diff)", pathToFileURL(resolve('theme/edit.mjs')).href], { encoding: 'utf8', timeout: 30_000 });
   assert.equal(out.trim(), 'function function function');
+});
+
+// the client is loaded at each ?edit&session, beside theme/editor.js
+test('theme/session.js is under 192 kB', () => {
+  const size = statSync(resolve('theme/session.js')).size;
+  assert.ok(size < 192 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
 });
