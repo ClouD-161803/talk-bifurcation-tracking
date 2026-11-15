@@ -319,3 +319,22 @@ test('what a person read of a thread reaches the other pages of the person', { t
   clean(other);
   clean(b);
 });
+
+test('a listener that throws does not stop the page', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t);
+  await b.evaluate(`(${C}.on('comments', () => { throw new Error('a listener of the test throws'); }), true)`);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'A comment');
+  await openPane(b);
+  await sees(b, ARTICLES, 1, 'the thread on the page whose listener throws');
+  await caretAtEnd(a, el(0, 'h2'));
+  await type(a, ' typed');
+  await until(() => server.read().includes('<h2>One typed</h2>'), 'the typing to reach index.html');
+  // the long poll of the page whose listener throws goes on. its text is read only then, since
+  // session.text() waits for the loop of events
+  await sees(b, `${C}.base.text.includes('<h2>One typed</h2>')`, true, 'the typing on the page whose listener throws');
+  await converge(server, [a, b]);
+  clean(a);
+  clean(b, [/a listener of the test throws/]);
+});
