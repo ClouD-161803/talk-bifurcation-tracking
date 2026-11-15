@@ -136,3 +136,30 @@ test('a second paste of the same slide names the files that the first paste carr
   assert.deepEqual(saved.files, { 'orbit-2.png': size('figs/orbit.png'), 'clip.mp4': size('figs/clip.mp4'), 'clip-2.png': size('figs/clip.png') });
 });
 
+test('a file that the first deck has not saved yet is listed as not copied', async (t) => {
+  const a = await deck(A);
+  t.after(() => a.close());
+  // a picture added in deck A and not saved is named under media/, which its server does not have
+  const text = (await copySlide(a, FILES)).replace('src="figs/shared.png"', 'src="media/unsaved.png"');
+  const b = await deck(B);
+  t.after(() => b.close());
+  await pasteSlides(b, FIRST_B, text);
+  await pasted(b);
+  assert.equal(sectionOf(await render(b), FILES), CARRIED(sectionOf(a.source, FILES)).replace('src="figs/shared.png"', 'src="media/unsaved.png"'));
+  assert.ok((await status(b)).message.endsWith('media/unsaved.png was not copied from the folder a.'));
+});
+
+test('a deck at the root of a server is named by its address in the note', async (t) => {
+  const root = await serve(`${DIR}/b/media`);
+  t.after(() => root.close());
+  const a = await deck(A);
+  t.after(() => a.close());
+  const text = (await copySlide(a, FILES)).replace(/("deck":")[^"]*"/, `$1${root.origin}/index.html"`);
+  const b = await deck(B);
+  t.after(() => b.close());
+  // the browser refuses the read from another port, and the dialog is not shown without a picker
+  await b.evaluate(`(() => { window.showDirectoryPicker = undefined; const m = window.matchMedia; window.matchMedia = (q) => (q === '(any-pointer: fine)' ? { matches: false, media: q } : m.call(window, q)); return true; })()`);
+  await pasteSlides(b, FIRST_B, text);
+  await pasted(b);
+  assert.ok((await status(b)).message.endsWith(`figs/orbit.png, figs/clip.mp4, figs/clip.png, and figs/shared.png were not copied from ${root.origin}/index.html, since this browser cannot open a folder.`), (await status(b)).message);
+});
