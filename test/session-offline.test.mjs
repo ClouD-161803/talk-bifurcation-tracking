@@ -131,3 +131,42 @@ test('an edit made offline in a page that is closed reaches index.html after a r
   assert.deepEqual(await rows(again), []);
   clean(again, REFUSED);
 });
+
+test('two tabs of one browser keep their copies apart, and a new page takes over only the copy of a tab that is gone', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url);
+  const b = await tab(browser, url);
+  await converge(server, [a, b]);
+
+  await goOffline(a);
+  await goOffline(b);
+  await edit(a, 0, 'p', ' in tab A');
+  await edit(b, 1, 'p', ' in tab B');
+  const idA = await copied(a, 'First slide in tab A');
+  const idB = await copied(b, 'Second slide in tab B');
+  const kept = await rows(a);
+  assert.equal(kept.length, 2);
+  assert.ok(!kept.find((r) => r.id === idA).mine.includes('in tab B'), 'the copy of tab A holds the edit of tab B');
+  assert.ok(!kept.find((r) => r.id === idB).mine.includes('in tab A'), 'the copy of tab B holds the edit of tab A');
+
+  // both tabs are open, hence a new page sends neither copy
+  const c = await tab(browser, url);
+  assert.equal(await converge(server, [c]), TALK);
+  assert.deepEqual((await rows(c)).map((r) => r.id).sort(), [idA, idB].sort());
+
+  await a.close();
+  await released(c, idA);
+  const d = await tab(browser, url);
+  assert.equal(await converge(server, [c, d]), TALK.replace('<p>First slide</p>', '<p>First slide in tab A</p>'));
+  await d.waitFor(`(${ROWS}).then((r) => r.length === 1 && r[0].id === ${JSON.stringify(idB)})`);
+
+  await goOnline(b);
+  const text = await converge(server, [b, c, d]);
+  assert.equal(text, TALK.replace('<p>First slide</p>', '<p>First slide in tab A</p>').replace('<p>Second slide</p>', '<p>Second slide in tab B</p>'));
+  assert.equal(await b.evaluate(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`), false);
+  assert.deepEqual(await rows(d), []);
+  for (const page of [b, c, d]) clean(page);
+});
