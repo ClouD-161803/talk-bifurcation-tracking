@@ -584,7 +584,7 @@ test('Name this version shows the name that a save replaces, an empty name under
     assert.equal(await ann.evaluate(`window.__count['/name']`), 0);
   });
 
-  await t.test('the name of a version is taken off by Remove Name, which an empty field shows', async () => {
+  await t.test('the name of a version is taken off by Remove name, which an empty field shows', async () => {
     await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
     await press$(ann, BAR, 'Name this version');
     await ann.waitFor(`${field}?.focused`);
@@ -592,7 +592,7 @@ test('Name this version shows the name that a save replaces, an empty name under
     assert.equal(await ann.evaluate(`${save}.textContent`), 'Save');
     await ann.evaluate(`${FIELD}.select(), true`);
     await press(ann, 'Backspace');
-    await ann.waitFor(`${save}.textContent === 'Remove Name'`);
+    await ann.waitFor(`${save}.textContent === 'Remove name'`);
     await press(ann, 'Enter');
     await ann.waitFor(`!document.querySelector('${DIALOG}')`);
     await ann.waitFor(`${LIST}[1]?.title !== 'Draft for Ben'`);
