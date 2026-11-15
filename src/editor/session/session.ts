@@ -91,7 +91,7 @@ export function install(app: App): Port {
   const listeners = new Set<() => void>();
   const reloaders = new Set<() => void>();
   let pending = false;
-  let flushing = false;
+  let flushing: Promise<void> | null = null;
   let net = 0;
 
   // the text element of an open composition of an input method. the changes of its text are held
@@ -130,19 +130,30 @@ export function install(app: App): Port {
 
   // the listeners are called once the history, the document model, and the applies are quiet, so
   // that the text they read is the deck after a whole change
-  async function flush(): Promise<void> {
-    if (flushing) return;
-    flushing = true;
+  function flush(): Promise<void> {
+    if (!flushing && pending) flushing = drain();
+    return flushing ?? Promise.resolve();
+  }
+  async function drain(): Promise<void> {
     try {
-      while (pending) {
+      do {
         await chain;
         await quiet();
         if (applying || queued) continue;
         pending = false;
         for (const fn of [...listeners]) fn();
-      }
+      } while (pending);
     } finally {
-      flushing = false;
+      flushing = null;
+    }
+  }
+
+  // once every change of the person is reported through onChange, and no apply runs or waits
+  async function reported(): Promise<void> {
+    while (pending || flushing || applying || queued || busy()) {
+      await chain;
+      await quiet();
+      await flush();
     }
   }
 
@@ -464,7 +475,10 @@ export function install(app: App): Port {
     get status() {
       return status;
     },
-    save: () => saver(),
+    save: async () => {
+      await reported();
+      return saver();
+    },
   };
 
   return {
