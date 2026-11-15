@@ -607,3 +607,28 @@ test('a dialog of the conflicts that the browser closes keeps the version of the
   clean(ann);
   clean(ben);
 });
+
+test('the slide of each text of the dialog of the conflicts is found with one parse of the deck', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit));
+  await page.evaluate(`(window.__deck = ${JSON.stringify(readFileSync(resolve('test-deck.html'), 'utf8'))}, true)`);
+  // a call on a new text parses it, and the same call on the same text again is measured against
+  // it. a parser that is warm is measured, by a call on another text first
+  const measure = () =>
+    page.evaluate(`(() => {
+      const at = (text, i) => ${C}.shell.slidesAt(text, [{ start: 1000 * i, end: 1000 * i + 10, text: '' }]);
+      at(window.__deck + ' ', 0);
+      let t = performance.now();
+      at(window.__deck, 0);
+      const first = performance.now() - t;
+      t = performance.now();
+      for (let i = 1; i <= 8; i++) at(window.__deck, i);
+      return { first, again: (performance.now() - t) / 8 };
+    })()`);
+  let m = await measure();
+  for (let i = 0; i < 2 && !(m.again < m.first / 4); i++) m = await measure();
+  assert.ok(m.again < m.first / 4, `a call on the same text takes ${m.again} ms, against ${m.first} ms for the parse`);
+  clean(page);
+});
