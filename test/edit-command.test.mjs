@@ -644,3 +644,24 @@ test('add regression test: an operation that arrives during the stop is refused 
   const refused = late.status !== 200 || late.json().ok === false;
   assert.ok(kept || refused, `the late operation was answered ${late.status} ${late.text} and is not in index.html`);
 });
+
+test('add regression test: a second start in the same talk folder hands over the address of the first', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const env = { XDG_CONFIG_HOME: config, APPDATA: config };
+  const first = await startEdit(talk, { env });
+  t.after(() => stopEdit(first));
+  const second = await startEdit(talk, { env });
+  t.after(() => stopEdit(second));
+  assert.equal(second.port, first.port, 'the second start prints the address of the first');
+  assert.equal(second.url, first.url);
+  assert.equal(await second.exited, 0);
+  assert.equal(first.child.exitCode, null, 'the first edit command goes on');
+  // a lock left by an edit command that died does not stop a new start
+  first.child.kill('SIGKILL');
+  await first.exited;
+  const third = await startEdit(talk, { env });
+  t.after(() => stopEdit(third));
+  assert.equal((await raw(third.port, 'GET', `${third.base}index.html`)).status, 200);
+  assert.equal(third.child.exitCode, null);
+});
