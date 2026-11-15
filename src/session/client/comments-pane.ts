@@ -228,7 +228,8 @@ class Pane {
     for (const r of t.replies) parts.push(this.item(t, r, false));
     node.setAttribute('aria-label', `Comment by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`);
     if (t.resolved) {
-      const by = make('p', 'resolved-by', `Resolved by ${this.nameOf(t.resolved.by)}, ${time(t.resolved.time)}`);
+      const by = make('p', 'resolved-by', 'Resolved by ');
+      by.append(...named(this.nameOf(t.resolved.by), `, ${time(t.resolved.time)}`));
       parts.splice(1, 0, by);
     }
     const keep = node.contains(document.activeElement) && reply.box.contains(document.activeElement);
@@ -249,7 +250,9 @@ class Pane {
     avatar.style.color = fg;
     avatar.setAttribute('aria-hidden', 'true');
     const when = make('span', 'time', time(i.time) + (i.edited ? ' (edited)' : ''));
-    head.append(avatar, make('span', 'who', this.nameOf(i.author)), when);
+    const who = make('span', 'who', this.nameOf(i.author));
+    who.dir = 'auto';
+    head.append(avatar, who, when);
     if (root) {
       if (t.resolved) head.append(this.button('Reopen', 'Reopen', () => this.act(t.id, 'reopen'), 'text-button'));
       else head.append(this.button('', 'Resolve', () => this.act(t.id, 'resolve'), 'icon resolve', 'check'));
@@ -292,8 +295,9 @@ class Pane {
   // the text of a comment, with each mention as @ and the current name of the person
   private text(raw: string): HTMLElement {
     const p = make('p', 'text');
+    p.dir = 'auto';
     raw.split(MENTION).forEach((part, k) => {
-      if (k % 2) p.append(make('span', 'mention', `@${this.nameOf(part)}`));
+      if (k % 2) p.append(make('bdi', 'mention', `@${this.nameOf(part)}`));
       else if (part) p.append(document.createTextNode(part));
     });
     return p;
@@ -326,6 +330,7 @@ class Pane {
     const area = make('textarea');
     area.placeholder = placeholder;
     area.setAttribute('aria-label', placeholder);
+    area.dir = 'auto';
     area.rows = 1;
     area.maxLength = COMMENT_MAX;
     const people = make('ul', 'people');
@@ -392,7 +397,9 @@ class Pane {
         const { bg, fg } = tone(this.colorOf(c.person));
         a.style.background = bg;
         a.style.color = fg;
-        li.append(a, make('span', '', c.name));
+        const name = make('span', '', c.name);
+        name.dir = 'auto';
+        li.append(a, name);
         if (this.client.people.some((p) => p.person === c.person)) li.append(make('span', 'here', 'Here'));
         li.addEventListener('pointerdown', (ev) => ev.preventDefault());
         li.addEventListener('click', () => pick(k));
@@ -665,6 +672,9 @@ function message(e: unknown): string {
   return text ? `${text[0].toUpperCase()}${text.slice(1)}${/[.!?]$/.test(text) ? '' : '.'}` : 'The request failed.';
 }
 
+// a name isolated from the text around it, e.g. a name written right to left, and the text after it
+const named = (name: string, after: string): Node[] => [make('bdi', '', name), document.createTextNode(after)];
+
 const nameOf = (client: Client, person: string): string =>
   person === client.person ? client.name || 'You' : client.known.find((k) => k.person === person)?.name ?? 'Someone';
 
@@ -727,7 +737,7 @@ export function install(client: Client): void {
         if (i.author === client.person || toasted.has(i.id) || !i.text.includes(me) || stamp(i) <= Math.max(comments.seen, comments.read.get(t.id) ?? 0)) continue;
         toasted.add(i.id);
         const n = comments.numberOf(t);
-        toast(`${nameOf(client, i.author)} mentioned you ${n === null ? 'on the deck' : `on slide ${n}`}`, { label: 'Show', run: () => pane.open(t.id) }, kind);
+        toast(named(nameOf(client, i.author), ` mentioned you ${n === null ? 'on the deck' : `on slide ${n}`}`), { label: 'Show', run: () => pane.open(t.id) }, kind);
       }
     }
   });
