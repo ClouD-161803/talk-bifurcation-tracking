@@ -4,8 +4,9 @@
 // startRelay, so that the test does not wait 90 s
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { readFileSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { startRelay } from '../scripts/relay.mjs';
@@ -75,4 +76,28 @@ test('the relay refuses to start without a secret of 16 or more characters', () 
   const run = spawnSync(process.execPath, [resolve('scripts/relay.mjs'), '--port', '0'], { env, encoding: 'utf8', timeout: 30_000 });
   assert.equal(run.status, 1);
   assert.match(run.stderr, /SLIDES_RELAY_SECRET/);
+});
+
+test('the relay reads its secret from --secret-file, and refuses one under 16 characters', { timeout: 60_000 }, async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'slides relay-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const relay = resolve('scripts/relay.mjs');
+  const { SLIDES_RELAY_SECRET, ...env } = process.env;
+  const short = join(dir, 'short');
+  writeFileSync(short, 'fifteen chars..\n');
+  for (const file of [short, join(dir, 'missing')]) {
+    const run = spawnSync(process.execPath, [relay, '--port', '0', '--secret-file', file], { env, encoding: 'utf8', timeout: 30_000 });
+    assert.equal(run.status, 1, file);
+    assert.match(run.stderr, /secret/, file);
+  }
+  const good = join(dir, 'secret');
+  writeFileSync(good, `${SECRET}\n`);
+  const child = spawn(process.execPath, [relay, '--port', '0', '--host', '127.0.0.1', '--secret-file', good], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(() => child.kill());
+  let out = '';
+  child.stdout.on('data', (c) => (out += c));
+  const port = Number((await until(() => /port (\d+)/.exec(out), 'the relay to listen'))[1]);
+  // the secret of the file, without its newline, registers a session
+  const registered = await fetch(`http://127.0.0.1:${port}/host/${'k'.repeat(22)}`, { method: 'POST', headers: { authorization: `Bearer ${SECRET}` } });
+  assert.equal(registered.status, 200);
 });

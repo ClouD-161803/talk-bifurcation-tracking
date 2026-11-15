@@ -4,6 +4,9 @@
 //
 //   SLIDES_RELAY_SECRET=<the secret of the group, 16 or more characters> node scripts/relay.mjs --port N
 //
+// or with --secret-file <path> in place of the variable, so that a service definition does not
+// hold the secret. the file holds the secret alone, and whitespace at its ends is left out
+//
 // the protocol, which a Cloudflare Worker with a Durable Object per key can serve as well:
 //
 //   GET /                          answers relay
@@ -27,7 +30,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULTS = {
@@ -263,6 +266,8 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     port: address.port,
     url: `http://${address.family === 'IPv6' ? `[${address.address}]` : address.address}:${address.port}`,
     sessions: () => sessions.size,
+    // the requests of guests that an edit command pulled and has not answered yet
+    pulled: () => [...sessions.values()].reduce((n, s) => n + s.pending.size - s.queue.length, 0),
     close: () =>
       new Promise((done) => {
         clearInterval(sweeper);
@@ -288,13 +293,22 @@ if (isMain) {
     return i < 0 ? undefined : args[i + 1];
   };
   const port = Number(option('--port') ?? 8787);
-  const secret = process.env.SLIDES_RELAY_SECRET;
+  const file = option('--secret-file');
+  let secret = process.env.SLIDES_RELAY_SECRET;
+  if (file !== undefined) {
+    try {
+      secret = readFileSync(file, 'utf8').trim();
+    } catch (e) {
+      process.stderr.write(`The secret file ${file} cannot be read: ${e.message}\n`);
+      process.exit(1);
+    }
+  }
   if (!secret || secret.length < 16) {
-    process.stderr.write('Set the secret of the group, of 16 or more characters, in SLIDES_RELAY_SECRET.\n');
+    process.stderr.write('Set the secret of the group, of 16 or more characters, in SLIDES_RELAY_SECRET or in the file of --secret-file.\n');
     process.exit(1);
   }
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    process.stderr.write('usage: node scripts/relay.mjs --port N [--host ADDRESS]\n');
+    process.stderr.write('usage: node scripts/relay.mjs --port N [--host ADDRESS] [--secret-file PATH]\n');
     process.exit(2);
   }
   const relay = await startRelay({ port, host: option('--host'), secret });
