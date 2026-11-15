@@ -164,3 +164,30 @@ test('a selection is read at its element after another person inserts text and a
   }
   for (const page of [ana, ben, cy]) clean(page);
 });
+
+test('the flag of a person who types reads that the person is typing, and the caret is a bar', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await caretAtEnd(ana, el(1, 'p'));
+  await typeKeys(ana, ' and more');
+  await until(() => ben.evaluate(`${el(1, 'p')}.textContent.endsWith('and more')`), 'the text of Ana on the page of Ben');
+  const text = await ben.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(${el(1, 'p')}); const b = r.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; })()`);
+  const typing = await until_(ben, (d) => d.flags[0]?.text === 'Ana is typing' && d.carets.length === 1 && Math.abs(d.carets[0].x + d.carets[0].w / 2 - (text.x + text.w)) < 4, 'the flag of Ana typing and her caret at the end of the text');
+  const bar = typing.carets[0];
+  assert.ok(bar.y >= text.y - 2 && bar.y + bar.h <= text.y + text.h + 2 && bar.h > 10, 'the caret bar spans the line');
+  assert.ok(bar.w >= 1.5 && bar.w <= 4, `the caret bar is 2 px wide, and it is ${bar.w}`);
+  await until(async () => (await ben.evaluate(`${C}.resolved()[0]?.caret?.el.textContent`))?.endsWith('and more'), 'the caret element of Ana');
+  // the caret moved to the start rests, and its offset is sent
+  await ana.evaluate(`(() => { const r = document.createRange(); r.setStart(${el(1, 'p')}.firstChild, 0); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
+  const start = await until_(ben, (d) => d.carets.length === 1 && Math.abs(d.carets[0].x - text.x) < 4, 'the caret bar at the start of the text');
+  assert.ok(start.carets[0].x < bar.x);
+  // 2 s after the last key the flag reads the name again, and the caret stays
+  const still = await until_(ben, (d) => d.flags[0]?.text === 'Ana', 'the flag of Ana after she stops typing');
+  assert.equal(still.carets.length, 1);
+  // the caret that leaves the text takes the bar away
+  await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
+  await until_(ben, (d) => !d.carets.length, 'the caret bar to go');
+  clean(ana);
+  clean(ben);
+});
