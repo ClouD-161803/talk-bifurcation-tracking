@@ -31,8 +31,11 @@ const PANE = '.beeson-session-history';
 const SHOWN = `!!document.querySelector('${PANE}:not([hidden])')`;
 const BAR = '.beeson-session-preview .bar';
 const FRAME = `document.querySelector('.beeson-session-preview iframe')`;
-// the rows of the list, the day headings, the folds, and the empty text, in order
-const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.version, .fold, .folded, h3, .empty)')].map((el) =>
+// the rows of the list, the day headings, the folds, and the empty text, in order. the row of the
+// start of the history is left out while it is unnamed, since the edit command begins every new
+// history with it
+const UNNAMED_START = (row) => `(${row}.querySelector(':scope > .who')?.textContent === 'Start of the history' && !${row}.querySelector('.sub'))`;
+const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.version, .fold, .folded, h3, .empty)')].filter((el) => !${UNNAMED_START('el')}).map((el) =>
   el.matches('.folded') ? { folded: [...el.children].map((r) => r.querySelector('.title').textContent), hidden: el.hidden }
   : el.matches('.row') ? { title: el.querySelector('.title').textContent, who: [...el.querySelectorAll('.author')].map((a) => a.textContent), slides: el.querySelector('.slides')?.textContent ?? '' }
   : el.matches('h3') ? { day: el.textContent } : el.matches('.fold') ? { fold: el.textContent } : { empty: el.textContent })`;
@@ -111,7 +114,8 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await ann.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.textContent.startsWith('Version History')).click(), true`);
     await ann.waitFor(SHOWN);
     assert.deepEqual(await ann.evaluate(INERT), [true, true, true, true, true]);
-    assert.deepEqual(await ann.evaluate(LIST), [{ empty: 'No earlier versions yet.' }]);
+    await ann.waitFor(`!${LIST}.some((x) => x.empty === 'Loading versions…')`);
+    assert.deepEqual((await ann.evaluate(LIST)).filter((x) => x.title !== undefined), []);
     assert.equal(await ann.evaluate(`document.querySelector('${PANE} .row.current').getAttribute('aria-current')`), 'true');
   });
 
@@ -501,16 +505,22 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
 
 const AFTER = TALK.indexOf('First slide') + 'First slide'.length;
 
-// a history written by hand: versions are { time, name?, id? }, oldest first, each of which adds an
-// x after First slide, and text is the deck at the newest of them
+// a history written by hand: versions are { time, name?, id?, start? }, oldest first, each of which
+// adds an x after First slide, apart from the start of the history, which holds the deck of the base
+// without authors. text is the deck at the newest of them
 function craft(versions) {
   const lines = [JSON.stringify({ kind: 'base', time: versions[0].time - MIN, text: TALK })];
+  let added = 0;
   versions.forEach((v, i) => {
     const id = v.id ?? `v${i}`;
-    lines.push(JSON.stringify({ kind: 'version', id, time: v.time, authors: ['pa'], slides: [1], patches: [{ start: AFTER, end: AFTER, text: 'x' }], marks: [{ start: AFTER, end: AFTER + 1, author: 'pa' }] }));
+    if (v.start) lines.push(JSON.stringify({ kind: 'version', id, time: v.time, authors: [], slides: [], patches: [], marks: [], start: true }));
+    else {
+      added++;
+      lines.push(JSON.stringify({ kind: 'version', id, time: v.time, authors: ['pa'], slides: [1], patches: [{ start: AFTER, end: AFTER, text: 'x' }], marks: [{ start: AFTER, end: AFTER + 1, author: 'pa' }] }));
+    }
     if (v.name) lines.push(JSON.stringify({ kind: 'name', id, name: v.name }));
   });
-  return { jsonl: `${lines.join('\n')}\n`, text: TALK.slice(0, AFTER) + 'x'.repeat(versions.length) + TALK.slice(AFTER) };
+  return { jsonl: `${lines.join('\n')}\n`, text: TALK.slice(0, AFTER) + 'x'.repeat(added) + TALK.slice(AFTER) };
 }
 
 // the edit command on a talk folder whose .session/history.jsonl is written before it starts
@@ -679,6 +689,36 @@ test('a fold stays open, and the focus stays on its control, while new versions 
     await press(ann, 'Escape');
     await ann.waitFor(`!document.querySelector('.beeson-edit-menu') && document.activeElement === window.__more`);
   });
+  clean(ann);
+});
+
+test('the start of the history is a row of its own, which reads Start of the history in the place of the authors', { timeout: 180_000 }, async (t) => {
+  const now = Date.now();
+  const first = Math.max(now - 10 * MIN, new Date(now).setHours(0, 0, 0, 0) + 1000);
+  const server = await crafted(t, craft([{ time: first, start: true }, { time: first + MIN }, { time: first + 2 * MIN }]), HELD);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  // the start of the history is marked in the answer as well, for an edit command that does not
+  // read start from its file
+  await ann.evaluate(`(() => {
+    const transport = ${C}.transport;
+    const get = transport.get.bind(transport);
+    transport.get = (path, query) => get(path, query).then((a) => {
+      if (path === 'history') for (const v of a.versions) if (v.id === 'v0') v.start = true;
+      return a;
+    });
+    return true;
+  })()`);
+  await openPane(ann);
+  // the rows and the folds of the list, each row by its id and the text in the place of its authors
+  const rows = `[...document.querySelectorAll('${PANE} .versions > :is(.row.version, .fold)')].map((el) => el.matches('.fold') ? el.textContent : [el.dataset.id.slice(8), el.querySelector(':scope > .who').textContent])`;
+  await ann.waitFor(`${rows}.length === 3`);
+  assert.deepEqual(await ann.evaluate(rows), [['v2', 'Someone'], 'Show 1 more', ['v0', 'Start of the history']]);
+  await tapOrClick(ann, `document.querySelector('${PANE} [data-id="version:v0"]')`);
+  await ann.waitFor(`!!${FRAME}?.contentDocument?.body?.textContent.includes('First slide')`, 30_000);
+  assert.equal(await ann.evaluate(`${FRAME}.contentDocument.body.textContent.includes('First slidex')`), false);
   clean(ann);
 });
 
@@ -1009,7 +1049,7 @@ test('the mode ends with the session, and a read of the versions that failed is 
   await ann.waitFor(`${LIST}[0]?.empty === 'The versions cannot be read while the page is offline.'`);
   assert.equal(await ann.evaluate(`${C}.connection`), 'online');
   await ann.evaluate(`${C}.refresh(), true`);
-  await ann.waitFor(`${LIST}[0]?.empty === 'No earlier versions yet.'`);
+  await ann.waitFor(`${LIST}.length > 0 && ${LIST}.every((x) => x.empty !== 'The versions cannot be read while the page is offline.' && x.empty !== 'Loading versions…')`);
   server.edit.child.kill('SIGTERM');
   await ann.waitFor(`${C}.connection === 'ended'`, 20_000);
   await ann.waitFor(`!(${SHOWN})`);
