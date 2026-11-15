@@ -131,6 +131,26 @@ test('a selected group is framed once, with one flag, around its members', { tim
   clean(ben);
 });
 
+test('a frame below the slide is not drawn over the speaker notes', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [onOne(shape('low', 700, 900, 400, 500))] });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  await front(ben);
+  if (!(await ben.evaluate(`${C}.app.notes.shown()`))) await ben.evaluate(`${C}.app.commands.run('view.notes')`);
+  await select(ana, el(0, '#low'));
+  const d = await untilDrawn(ben, (d) => d.frames.length === 1, 'the frame of Ana on the page of Ben');
+  const pane = await boxOf(ben, `document.querySelector('.beeson-edit-pane')`);
+  const f = d.frames[0];
+  assert.ok(f.y < pane.y - 8 && f.y + f.h > pane.y + 8, `the frame crosses the top of the notes pane, at ${JSON.stringify({ f, pane })}`);
+  // a point of the left edge of the frame is hit where it is drawn
+  await ben.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: '.beeson-presence .frame { pointer-events: auto !important; }' }))`);
+  const at = (y) => ben.evaluate(`document.elementFromPoint(${f.x + 1}, ${y})?.classList.contains('frame') ?? false`);
+  assert.equal(await at(pane.y - 6), true, 'the frame is drawn on the canvas');
+  assert.equal(await at(pane.y + 6), false, 'the frame is not drawn over the notes pane');
+  clean(ana);
+  clean(ben);
+});
+
 // counts the reads of layout from now on in window.__reads, with those made by theme/session.js
 const COUNT = `(() => {
   if (window.__reads) { window.__reads = { all: 0, session: 0 }; return; }
