@@ -369,3 +369,27 @@ test('the save state says that an edit made offline is kept only once a copy hol
   assert.equal(await converge(server, [again]), TALK.replace('<p>First slide</p>', '<p>First slide before a crash</p>'));
   clean(again);
 });
+
+test('an edit typed after a load that takes over a copy, before hello is answered, is kept with the copy and reaches index.html', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  // the requests under .session/ fail from the load on while sessionStorage says so
+  const a = await tab(browser, url, { script: `if (sessionStorage.getItem('__offline')) window.__offline = true;` });
+  await converge(server, [a]);
+  await a.evaluate(`sessionStorage.setItem('__offline', '1')`);
+  await goOffline(a);
+  await edit(a, 0, 'p', ' TOKH1');
+  await copied(a, 'TOKH1');
+  await a.evaluate('window.__old = true');
+  await a.send('Page.reload');
+  await a.waitFor(`!window.__old && window.BeesonSession?.client?.()?.connection === 'offline'`);
+  await edit(a, 1, 'p', ' TOKH2');
+  await a.waitFor(`(${ROWS}).then((rows) => rows.length === 1 && rows[0].mine.includes('<p>First slide TOKH1</p>') && rows[0].mine.includes('<p>Second slide TOKH2</p>'))`);
+  await a.waitFor(`${STATE} === 'Offline. Changes on slides 1 and 2 are kept in this browser'`);
+  await a.evaluate(`sessionStorage.removeItem('__offline')`);
+  await goOnline(a);
+  assert.equal(await converge(server, [a]), TALK.replace('<p>First slide</p>', '<p>First slide TOKH1</p>').replace('<p>Second slide</p>', '<p>Second slide TOKH2</p>'));
+  clean(a);
+});
