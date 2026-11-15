@@ -423,6 +423,37 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
   clean(ben);
 });
 
+test('the mode ends at the time limit of a restore whose operation does not reach the deck', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  // the time limit of a restore is a second rather than 5
+  const ann = await open(browser, `${sessionUrl(server.edit)}&session-restore-wait=1000`, { name: 'Ann' });
+  await converge(server, [ann]);
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Start' }).then(() => true)`);
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'p'));
+  await typeKeys(ann, ' later');
+  await converge(server, [ann]);
+  await openPane(ann);
+  await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Start')`);
+  // the applies of Ann wait until the end of the test
+  await ann.evaluate(`(() => {
+    const port = ${C}.port;
+    const apply = port.apply.bind(port);
+    window.__gate = new Promise((done) => (window.__open = done));
+    port.apply = (text) => window.__gate.then(() => apply(text));
+    return true;
+  })()`);
+  await press$(ann, BAR, 'Restore this version');
+  await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Restore');
+  await ann.waitFor(`!(${SHOWN})`);
+  assert.equal(await ann.evaluate(`${TEXT}.includes('First slide later')`), true);
+  await ann.evaluate('window.__open(), true');
+  assert.equal(await converge(server, [ann]), TALK);
+  clean(ann);
+});
+
 test('the pane of a page offline reads the versions once the page is online again', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
