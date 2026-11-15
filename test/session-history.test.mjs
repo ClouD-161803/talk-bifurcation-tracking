@@ -36,6 +36,8 @@ const LIST = `[...document.querySelectorAll('${PANE} .versions > :is(.row.versio
 const button = (scope, text) => `[...document.querySelectorAll('${scope} button')].find((b) => b.textContent === ${JSON.stringify(text)} && b.getClientRects().length)`;
 const INERT = `['.beeson-edit-menubar', '.beeson-edit-top', '.beeson-edit-nav', '.reveal'].map((s) => document.querySelector(s)?.inert)`;
 const TIME = /^\d{1,2}:\d{2}\s?[AP]M$/;
+// the versions as the edit command lists them to the page, newest first
+const versionsOf = (page) => page.evaluate(`${C}.transport.get('history', { token: ${C}.token }).then((a) => a.versions)`);
 // the open dialog of the pane, its field, and its buttons
 const DIALOG = 'dialog.beeson-session-history-dialog[open]';
 const FIELD = `document.querySelector('${DIALOG} input')`;
@@ -430,6 +432,98 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   await press$(ann, PANE, 'Back to editor');
   await ann.waitFor(`!(${SHOWN})`);
   clean(ann);
+});
+
+// the requests of the page whose address includes part, counted in window.__count[part]
+const countRequests = (page, part) => page.evaluate(`(() => {
+  window.__count ??= {};
+  window.__count[${JSON.stringify(part)}] = 0;
+  const fetched = window.fetch;
+  window.fetch = function (input, init) {
+    if (String(input).includes(${JSON.stringify(part)})) window.__count[${JSON.stringify(part)}]++;
+    return fetched.call(this, input, init);
+  };
+  return true;
+})()`);
+
+test('Name this version shows the name that a save replaces, an empty name under Current version does nothing, and a name is counted in characters', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await openPane(ben);
+  await press$(ben, PANE, 'Name this version');
+  await nameIt(ben, 'Draft for Ben');
+  await ben.waitFor(`${LIST}[1]?.title === 'Draft for Ben'`);
+  await press(ben, 'Escape');
+  await openPane(ann);
+  await ann.waitFor(`${LIST}[1]?.title === 'Draft for Ben'`);
+  await countRequests(ann, '/name');
+  const field = `(() => { const i = ${FIELD}; return i && { value: i.value, start: i.selectionStart, end: i.selectionEnd, focused: i === document.activeElement }; })()`;
+  const save = `document.querySelector('${DIALOG} .row button.primary')`;
+
+  await t.test('under Current version the field holds the name of the newest version, selected, while no edit was made since', async () => {
+    await press$(ann, PANE, 'Name this version');
+    await ann.waitFor(`${field}?.focused`);
+    assert.deepEqual(await ann.evaluate(field), { value: 'Draft for Ben', start: 0, end: 13, focused: true });
+    await press(ann, 'Backspace');
+    await press(ann, 'Enter');
+    await ann.waitFor(`!document.querySelector('${DIALOG}')`);
+    assert.equal(await ann.evaluate(`window.__count['/name']`), 0);
+    assert.equal((await versionsOf(ann))[0].name, 'Draft for Ben');
+  });
+
+  await t.test('after an edit the field under Current version is empty', async () => {
+    await show(ben, 'One');
+    await caretAtEnd(ben, el(0, 'h2'));
+    await typeKeys(ben, ' more');
+    await converge(server, [ann, ben]);
+    await front(ann);
+    await press$(ann, PANE, 'Name this version');
+    await ann.waitFor(`${field}?.focused`);
+    assert.equal(await ann.evaluate(`${FIELD}.value`), '');
+    await press(ann, 'Enter');
+    await ann.waitFor(`!document.querySelector('${DIALOG}')`);
+    assert.equal(await ann.evaluate(`window.__count['/name']`), 0);
+  });
+
+  await t.test('the name of a version is taken off by Remove Name, which an empty field shows', async () => {
+    await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
+    await press$(ann, BAR, 'Name this version');
+    await ann.waitFor(`${field}?.focused`);
+    assert.equal(await ann.evaluate(`${FIELD}.value`), 'Draft for Ben');
+    assert.equal(await ann.evaluate(`${save}.textContent`), 'Save');
+    await ann.evaluate(`${FIELD}.select(), true`);
+    await press(ann, 'Backspace');
+    await ann.waitFor(`${save}.textContent === 'Remove Name'`);
+    await press(ann, 'Enter');
+    await ann.waitFor(`!document.querySelector('${DIALOG}')`);
+    await ann.waitFor(`${LIST}[1]?.title !== 'Draft for Ben'`);
+    assert.equal((await versionsOf(ann)).at(-1).name, undefined);
+  });
+
+  await t.test('Save of a version without a name is off while the field is empty or holds more than 80 characters', async () => {
+    await press$(ann, BAR, 'Name this version');
+    await ann.waitFor(`${field}?.focused`);
+    assert.equal(await ann.evaluate(`${FIELD}.value`), '');
+    assert.equal(await ann.evaluate(`${save}.disabled`), true);
+    await type(ann, 'a'.repeat(85));
+    assert.equal(await ann.evaluate(`${FIELD}.value.length`), 85);
+    assert.equal(await ann.evaluate(`${save}.disabled`), true);
+    assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} .count')?.textContent`), '85 of at most 80 characters');
+    // 80 characters outside the basic plane are 160 code units, and fit
+    await ann.evaluate(`${FIELD}.select(), true`);
+    await type(ann, '😀'.repeat(80));
+    assert.equal(await ann.evaluate(`Array.from(${FIELD}.value).length`), 80);
+    assert.equal(await ann.evaluate(`${save}.disabled`), false);
+    await press(ann, 'Enter');
+    await ann.waitFor(`!document.querySelector('${DIALOG}')`);
+    await ann.waitFor(`(${LIST}).some((x) => x.title === ${JSON.stringify('😀'.repeat(80))})`);
+  });
+  clean(ann);
+  clean(ben);
 });
 
 test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
