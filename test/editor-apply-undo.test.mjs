@@ -59,3 +59,29 @@ test('a move of the person and its redo are dropped when another person moves th
   assert.equal((await status(b)).redo, false, 'the redo of the move is dropped');
   assert.deepEqual(b.errors, []);
 });
+
+test('an insert or a duplicate of the person, and the redo of a removal, are dropped when another person changes inside them', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  const NEW = '<section>\n  <h2>New slide</h2>\n  <p>Words of the person.</p>\n</section>';
+  await b.evaluate(`${E}.doc.insert(${JSON.stringify(NEW)}, document.querySelector('.reveal .slides'), ${SLIDE('Thank you')})`);
+  await b.waitFor(`${E}.status().undo`);
+  assert.equal((await applyOn(b, once(await sessionText(b), 'Words of the person.', 'Words of the person. And a sentence of the other.'))).reload, false);
+  assert.equal((await status(b)).undo, false, 'the insert of a slide is dropped');
+
+  await b.evaluate(`${E}.doc.duplicate(${ITEM('Each step')}.parentElement)`);
+  await b.waitFor(`${E}.status().undo`);
+  let text = await sessionText(b);
+  const at = text.lastIndexOf('Two elements with the same index');
+  text = `${text.slice(0, at)}Two elements of the other${text.slice(at + 'Two elements'.length)}`;
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal((await status(b)).undo, false, 'the duplicate of a list is dropped');
+
+  await b.evaluate(`${E}.doc.remove(${ITEM('Dark and light mode')}.parentElement)`);
+  await b.waitFor(`${E}.status().undo`);
+  await b.evaluate(`${E}.undo()`);
+  await b.waitFor(`${E}.status().redo`);
+  assert.equal((await applyOn(b, once(await sessionText(b), 'You might have noticed a toggle', 'You may have noticed a toggle'))).reload, false);
+  assert.equal((await status(b)).redo, false, 'the redo of the removal of a list is dropped');
+  assert.deepEqual(b.errors, []);
+});
