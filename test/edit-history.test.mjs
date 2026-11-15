@@ -602,3 +602,31 @@ test('an operation after a sleep of the computer, or after the wall clock went b
     history.stopSync();
   });
 });
+
+test('large replaces in one version take time in proportion to their patches and marks', { timeout: 120_000 }, (t) => {
+  // four replaces of every paragraph of n, by two people in turn, in one version. the close is not
+  // timed, since its diff of n changed lines grows faster than n
+  const run = (n) => {
+    const head = '<body>\n';
+    const authority = new Authority(`${head}${'<p>a</p>\n'.repeat(n)}</body>\n`);
+    const history = new History(sessionDir(t), authority, { quiet: 3_600_000, longest: 3_600_000 });
+    let ops = 0;
+    for (let r = 0; r < 4; r++) {
+      const patches = Array.from({ length: n }, (_, i) => ({ start: head.length + 9 * i + 3, end: head.length + 9 * i + 4, text: 'bcde'[r] }));
+      const start = performance.now();
+      authority.enter(patches, r % 2 ? BO : ANN);
+      if (r > 0) ops += performance.now() - start;
+    }
+    const v = history.close();
+    assert.equal(history.get(v.id).marks.length, n);
+    history.stopSync();
+    return ops;
+  };
+  const fastest = (n) => Math.min(run(n), run(n), run(n));
+  for (let attempt = 1; ; attempt++) {
+    const small = fastest(200);
+    const large = fastest(2000);
+    if (large < 30 * small) break;
+    assert.ok(attempt < 3, `operations of 2000 patches ${large.toFixed(1)} ms against ${small.toFixed(1)} ms for 200`);
+  }
+});
