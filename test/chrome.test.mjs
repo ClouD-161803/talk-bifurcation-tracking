@@ -270,3 +270,36 @@ test('close() leaves neither a pipe to Chrome nor a timer', { timeout: 60000 }, 
   const now = kinds();
   for (const k of Object.keys(now)) assert.ok(now[k] <= before[k], `close() leaves ${JSON.stringify(now)}, against ${JSON.stringify(before)} before launch()`);
 });
+
+// on Windows, TcpPortRandomizationWin causes net::ERR_NO_BUFFER_SPACE on 127.0.0.1 loopback
+// fetches, including inside iframes where goto() reload recovery does not run
+test('chromeArgs disables TcpPortRandomizationWin on Windows only', async () => {
+  const { chromeArgs } = await import('../scripts/chrome.mjs');
+  assert.equal(typeof chromeArgs, 'function');
+  assert.ok(chromeArgs({ profile: 'p', platform: 'win32' }).includes('--disable-features=TcpPortRandomizationWin'));
+  assert.ok(!chromeArgs({ profile: 'p', platform: 'linux' }).includes('--disable-features=TcpPortRandomizationWin'));
+});
+
+test('an earlier net::ERR_NO_BUFFER_SPACE does not reload a later goto', { timeout: 60000 }, async (t) => {
+  const { serve } = await import('../scripts/webdriver.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'slides-refused-'));
+  writeFileSync(join(root, 'page.html'), `<!doctype html><link rel="icon" href="data:,"><script>
+    const loads = Number(localStorage.getItem('loads') ?? 0) + 1;
+    localStorage.setItem('loads', loads);
+  </script>`);
+  const browser = await launch({ offline: false });
+  const server = await serve(root);
+  t.after(async () => {
+    await browser.close();
+    server.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+  const page = await browser.newPage();
+  await page.goto(`${server.origin}/page.html?first`);
+  await page.evaluate(`console.error('Failed to load resource: net::ERR_NO_BUFFER_SPACE ' + location.origin + '/theme/macros.js')`);
+  await page.goto(`${server.origin}/page.html?second`);
+  assert.equal(await page.evaluate(`localStorage.getItem('loads')`), '2');
+  assert.deepEqual(page.errors, [
+    `console.error: Failed to load resource: net::ERR_NO_BUFFER_SPACE ${server.origin}/theme/macros.js`,
+  ]);
+});
