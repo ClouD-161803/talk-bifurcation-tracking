@@ -1,8 +1,11 @@
 // the Replica of src/session/replica.ts behind the few calls that the client makes, so that a change
 // of its signatures stays in this file. the client never transforms an operation itself
 
-import type { AppliedOp, OpAnswer, OpPost, Token, Version } from '../protocol.ts';
-import { Replica } from '../replica.ts';
+import type { AppliedOp, OpAnswer, OpPost, Patch, Token, Version } from '../protocol.ts';
+import { Replica, type Side } from '../replica.ts';
+
+// the whole text of an answer of hello, at version v
+export type Whole = { text: string; v: Version };
 
 export class Sync {
   private replica: Replica;
@@ -19,6 +22,11 @@ export class Sync {
 
   get version(): Version {
     return this.replica.version;
+  }
+
+  // the text of the authority at version, which every edit of this page is made on
+  get base(): string {
+    return this.replica.base;
   }
 
   // the text that the deck reads as, with every edit of this page
@@ -66,9 +74,29 @@ export class Sync {
   }
 
   // the whole text of the authority at v, into which the edits of this page are merged
-  resync(text: string, v: Version): string | null {
+  resync(text: string, v: Version, wins: Side = 'ours'): string | null {
     this.lost = false;
-    return this.replica.resync(text, v);
+    return this.replica.resync(text, v, wins);
+  }
+
+  // the patches of mine that conflict with the whole text and the operations, and the text of the
+  // authority after them, found on a clone of the replica
+  conflicts(whole: Whole | null, ops: AppliedOp[]): { conflicts: Patch[]; theirs: string } {
+    const r = this.replica.clone();
+    const conflicts: Patch[] = [];
+    if (whole) r.resync(whole.text, whole.v, 'ours', conflicts);
+    if (ops.length) conflicts.push(...r.catchUp(ops, 'ours').conflicts);
+    return { conflicts, theirs: r.base };
+  }
+
+  // the whole text and the operations merged with mine, where the side wins at a conflict, and a
+  // patch of the operations equal to one of mine is taken once. returns the text that the deck
+  // must read as, or null
+  settle(whole: Whole | null, ops: AppliedOp[], wins: Side): string | null {
+    const before = this.replica.mine;
+    if (whole) this.resync(whole.text, whole.v, wins);
+    if (ops.length) this.replica.catchUp(ops, wins);
+    return this.replica.mine === before ? null : this.replica.mine;
   }
 
   lose(): void {
