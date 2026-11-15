@@ -105,6 +105,11 @@ export function withOrigin(text, change) {
   return text.replace(m[0], () => `<!--beeson-origin ${json}-->`);
 }
 
+// the dialog over the page while the files of a paste are read, and whether it is drawn, which it
+// is only after a delay
+export const BUSY = 'dialog.beeson-edit-dialog.paste-busy';
+export const BUSY_DRAWN = `(() => { const d = document.querySelector('${BUSY}[open]'); return !!d && getComputedStyle(d).opacity === '1'; })()`;
+
 // the section of text headed title
 export function sectionOf(text, title) {
   const h = text.indexOf(`<h2>${title}</h2>`);

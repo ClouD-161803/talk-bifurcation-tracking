@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { click } from './helpers/editor.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { A, B, FILES, FIRST_B, QUERY, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { A, B, BUSY, BUSY_DRAWN, FILES, FIRST_B, QUERY, copyFigure, copySlide, errors, openDeck, pasteElements, pasteSlides, pasted, render, sectionOf, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 
 let browser;
 let serverA;
@@ -133,6 +133,19 @@ test('a cancelled dialog pastes the slides and lists the files that were not cop
   // the undo takes the paste off in one entry
   await b.evaluate('window.BeesonEditor.undo()');
   assert.equal(await render(b), b.source);
+});
+
+test('Stop ends the wait for a folder that the picker does not give, and the files are listed', async (t) => {
+  const { a, b, text } = await decks(t);
+  // a picker that neither gives a folder nor is cancelled, as a browser that still lists a large one
+  await b.evaluate(`(() => { window.showDirectoryPicker = () => new Promise(() => {}); return true; })()`);
+  await pasteSlides(b, FIRST_B, text);
+  await answer(b, 'Choose Folder…');
+  await b.waitFor(BUSY_DRAWN, 20000);
+  await b.evaluate(`document.querySelector('${BUSY} button').click()`);
+  await pasted(b);
+  assert.equal(sectionOf(await render(b), FILES), sectionOf(a.source, FILES));
+  assert.match((await status(b)).message, /figs\/orbit\.png, figs\/clip\.mp4, figs\/clip\.png, and figs\/shared\.png were not copied from the folder a\./);
 });
 
 test('in a browser without a folder picker, e.g. on a phone, the dialog is skipped and the files are listed', async (t) => {
