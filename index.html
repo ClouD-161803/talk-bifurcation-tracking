@@ -18,7 +18,7 @@ try {
   if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
 } catch (e) {}
 </script>
-<script src="theme/macros.js"></script>
+<script src="tex.js"></script>
 <script src="theme/mathjax-config.js"></script>
 <script src="theme/vendor/mathjax/tex-svg.js"></script>
 </head>
@@ -187,6 +187,38 @@ try {
   </div>
   <div class="foot" style="translate: 1064px -20px">A TyCHO mp4 export, see <code>web/scripts/video.mjs</code>.</div>
   <aside class="notes">The stable and the unstable manifolds of an \(\LL{1}\) halo orbit of the Earth–Moon system grow in 20 s and hold for 4 s, in the inertial frame at the top and in the rotating frame at the bottom. The arcs that reach the orbit are blue, the arcs that leave it are orange, the z axis is stretched by five, and the camera turns by 60 degrees in each loop. The clip and its poster are given once for each mode, with the classes for-dark and for-light, since a video does not have a transparent background.</aside>
+</section>
+
+<!-- a preamble: the macros, the environments, and the packages of preamble.tex are written into tex.js by npm run tex and by a save in the editor, and MathJax reads them from there -->
+<section>
+  <h2>Bring your LaTeX preamble</h2>
+  <p>Define the macros of your paper once</p>
+  <pre class="fragment" data-fragment-index="1"><code class="nohighlight">\newcommand{\state}{\boldsymbol{x}}
+\DeclareMathOperator{\Jac}{J}</code></pre>
+  <p class="fragment" data-fragment-index="2">Lines such as these go in <code>preamble.tex</code>, the file next to the deck, and they can be used on every slide.</p>
+  <p class="fragment" data-fragment-index="3">Paste your preamble into the Preamble sheet of the editor. A line that MathJax cannot read is listed there.</p>
+  <aside class="notes">The macros of this deck are in preamble.tex. A macro, an operator, an environment, a kind of theorem, and a package that MathJax has as an extension are read, and a line that is not read is listed by npm run tex and in the Preamble sheet.</aside>
+</section>
+
+<!-- theorems: a paragraph of the class theorem with its kind in data-kind and a name in data-name. the head is drawn by the theme, and a kind defined with \newtheorem in preamble.tex is numbered through the deck -->
+<section class="wide">
+  <h2>State a theorem</h2>
+  <p class="theorem" data-kind="definition">A <em>libration point</em> is a critical point of the effective potential \(\tilde U\).</p>
+  <p class="theorem fragment" data-fragment-index="1" data-kind="theorem" data-name="Euler, Lagrange">The restricted problem has five libration points, three on the axis of the primaries and two at the vertices of equilateral triangles<cite data-key="szebehely1967"></cite>.</p>
+  <p class="theorem fragment" data-fragment-index="2" data-kind="proof">Set \(\nabla \tilde U = 0\). Either \(y = 0\), with one root in each of the three intervals of the axis, or \(\rho_1 = \rho_2 = 1\).</p>
+  <aside class="notes">The head of a theorem is the title of its kind, its number, and its name, in the look of amsthm: a bold head over italic words for a theorem, upright words for a definition, and an italic head and a closing square for a proof. The two kinds of this slide are defined in preamble.tex.</aside>
+</section>
+
+<!-- citations: an empty cite element after the cited words, with the key of an entry of references.bib in data-key. the numbers start at 1 on each slide, and a reference is shown in the footnote line with the step of its citation -->
+<section>
+  <h2>Cite from a .bib file</h2>
+  <p>A citation is the key of an entry of <code>references.bib</code>, and its reference is shown at the bottom of the slide.</p>
+  <ul>
+    <li class="fragment" data-fragment-index="1">Heteroclinic connections join the Lyapunov orbits of \(\mathcal{L}_1\) and \(\mathcal{L}_2\)<cite data-key="koon2000"></cite></li>
+    <li class="fragment" data-fragment-index="2">The same construction is carried to the spatial problem<cite data-key="gomez2004"></cite></li>
+    <li class="fragment" data-fragment-index="3">In the editor, type <code>\cite{</code> to search the bibliography.</li>
+  </ul>
+  <aside class="notes">Each reference is shown with the step of its citation, and a paper cited twice on a slide keeps its number. The references are written into tex.js from references.bib, and a reference with a DOI is a link to its paper.</aside>
 </section>
 
 <section class="closing">
