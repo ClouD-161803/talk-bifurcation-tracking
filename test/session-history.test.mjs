@@ -38,6 +38,8 @@ const button = (scope, text) => `[...document.querySelectorAll('${scope} button'
 const INERT = `['.beeson-edit-menubar', '.beeson-edit-top', '.beeson-edit-nav', '.reveal'].map((s) => document.querySelector(s)?.inert)`;
 const TIME = /^\d{1,2}:\d{2}\s?[AP]M$/;
 const MIN = 60_000;
+// the time t written in the page as the pane writes it, in the locale of the page
+const timeIn = (page, t) => page.evaluate(`new Date(${t}).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })`);
 // the versions as the edit command lists them to the page, newest first
 const versionsOf = (page) => page.evaluate(`${C}.transport.get('history', { token: ${C}.token }).then((a) => a.versions)`);
 // the open dialog of the pane, its field, and its buttons
@@ -795,6 +797,50 @@ test('an apply that needs a reload is held while the mode is on, and the page is
   await ann.waitFor(ONLINE, 20_000);
   await ann.waitFor(`${TEXT}.includes('Beeson.start({ });')`);
   clean(ann);
+});
+
+test('a toast region is in the page before the first toast, and a toast during a modal dialog is shown when it closes', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  assert.equal(await ann.evaluate(`document.querySelector('.beeson-session-toast[role="status"]')?.textContent`), '');
+  await openPane(ann);
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Start');
+  await ann.waitFor(`${LIST}[1]?.title === 'Start'`);
+  const id = await rowId(ann, 0);
+  await show(ben, 'One');
+  await caretAtEnd(ben, el(0, 'p'));
+  await typeKeys(ben, ' later');
+  await converge(server, [ann, ben]);
+  await front(ann);
+  // the texts of the toasts of Ann, each with whether a modal dialog was open when it was shown, and
+  // the time of the restore
+  await ann.evaluate(`(() => {
+    window.__shown = [];
+    new MutationObserver(() => {
+      const text = document.querySelector('.beeson-session-toast')?.textContent ?? '';
+      if (text && window.__shown.at(-1)?.text !== text) window.__shown.push({ text, modal: !!document.querySelector('dialog:modal') });
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    ${C}.on('restored', () => (window.__restored = performance.now()));
+    return true;
+  })()`);
+  await press$(ann, PANE, 'Name this version');
+  await ann.waitFor(`${FIELD} === document.activeElement`);
+  await ben.evaluate(`${C}.transport.post('history/${id}/restore', { token: ${C}.token }).then(() => true)`);
+  await ann.waitFor('window.__restored > 0', 20_000);
+  await ann.waitFor(`!${TEXT}.includes('First slide later')`, 20_000);
+  assert.deepEqual(await ann.evaluate('window.__shown'), []);
+  await press$(ann, DIALOG, 'Cancel');
+  await ann.waitFor('window.__shown.length > 0');
+  const [shown] = await ann.evaluate('window.__shown');
+  assert.equal(shown.text, `Ben restored the version of ${await timeIn(ann, (await versionsOf(ann)).find((v) => v.name === 'Start').time)}`);
+  assert.equal(shown.modal, false);
+  clean(ann);
+  clean(ben);
 });
 
 test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
