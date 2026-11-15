@@ -10,13 +10,29 @@ import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync
 import { mkdir, realpath as realpath2, writeFile as writeFile3 } from "node:fs/promises";
 import { createServer } from "node:http";
 import { randomBytes as randomBytes3 } from "node:crypto";
+import { tmpdir } from "node:os";
 import { join as join4, resolve, sep as sep2 } from "node:path";
 
 // src/session/protocol.ts
 var COLORS = ["--data-2", "--data-3", "--data-5", "--data-7"];
+var HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}]$/u;
+var SELECTOR = /^[\ufe00-\ufe0f\u{e0020}-\u{e007f}\u{e0100}-\u{e01ef}]$/u;
+var JOINER = /^[\u200c\u200d]$/u;
+var shows = (c) => c !== void 0 && !HIDDEN.test(c) && !/\s/.test(c);
+function shown(raw) {
+  const chars = Array.from(raw);
+  const kept = [];
+  chars.forEach((c, i) => {
+    const before2 = kept[kept.length - 1];
+    if (!HIDDEN.test(c)) kept.push(c);
+    else if (SELECTOR.test(c) && (shows(before2) || SELECTOR.test(before2 ?? ""))) kept.push(c);
+    else if (JOINER.test(c) && (shows(before2) || SELECTOR.test(before2 ?? "")) && shows(chars[i + 1])) kept.push(c);
+  });
+  return kept.join("");
+}
 var NAME_MAX = 40;
-var cleanPersonName = (raw) => typeof raw === "string" ? Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, NAME_MAX).join("").trim() : "";
-var nameKey = (name) => cleanPersonName(name).normalize("NFC").toLowerCase();
+var cleanPersonName = (raw) => typeof raw === "string" ? shown(Array.from(shown(raw).replace(/\s+/g, " ").trim()).slice(0, NAME_MAX).join("")).trim() : "";
+var nameKey = (name) => cleanPersonName(name).normalize("NFKC").replace(/[\u200c\u200d\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, "").toLowerCase();
 var isPersonId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{22,64}$/.test(id);
 var isToken = (token) => typeof token === "string" && /^[A-Za-z0-9_-]{22,64}$/.test(token);
 var formatVersion = (epoch, n) => `${epoch}.${n}`;
@@ -1019,8 +1035,13 @@ var MIME = {
   ".gif": "image/gif",
   ".webp": "image/webp",
   ".avif": "image/avif",
+  ".bmp": "image/bmp",
   ".mp4": "video/mp4",
+  // an m4v is played as an mp4, which every browser names
+  ".m4v": "video/mp4",
   ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".ogv": "video/ogg",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
@@ -1163,6 +1184,9 @@ var People = class {
     this.polls = /* @__PURE__ */ new Set();
     this.rev = 0;
     this.knownRev = 0;
+    // the write of index.html that failed last, or null once a write succeeded, and its revision
+    this.writeError = null;
+    this.writeRev = 0;
     this.ended = null;
     this.saveTimer = null;
     this.savedAt = 0;
@@ -1193,8 +1217,10 @@ var People = class {
     const token = earlier ? rawToken : newId();
     if (!this.members.has(id)) {
       const pages = [...this.members.values()].filter((m) => m.person === person);
-      if (pages.length >= MAX_PAGES) this.members.delete(pages[0].client);
-      if (!this.hasPlace(host)) return { full: true };
+      const dropped = pages.length < MAX_PAGES ? void 0 : pages.find((m) => m.host === host) ?? (host ? pages[0] : void 0);
+      if (pages.length >= MAX_PAGES && !dropped) return { full: true };
+      if (!this.hasPlace(host, dropped)) return { full: true };
+      if (dropped) this.members.delete(dropped.client);
     }
     const now = Date.now();
     let record = this.records.get(person);
@@ -1204,7 +1230,8 @@ var People = class {
       this.trimRecords();
       this.knownRev++;
     } else {
-      if (record.name !== name && !claim) {
+      const own = host || earlier !== void 0 && this.clients.get(earlier)?.person === person;
+      if (record.name !== name && !claim && own) {
         record.name = name;
         this.knownRev++;
       }
@@ -1217,12 +1244,15 @@ var People = class {
     this.clients.set(id, { person, host, token });
     this.tokens.set(token, id);
     if (this.clients.size > MAX_CLIENTS) {
-      const [oldest, { token: old }] = this.clients.entries().next().value;
-      this.clients.delete(oldest);
-      this.tokens.delete(old);
+      for (const [client, { token: old }] of this.clients) {
+        if (this.members.has(client)) continue;
+        this.clients.delete(client);
+        this.tokens.delete(old);
+        break;
+      }
     }
     let member = this.members.get(id);
-    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev };
+    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0 };
     if (member) Object.assign(member, fields);
     else this.members.set(id, member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 });
     this.renamed(person);
@@ -1246,6 +1276,10 @@ var People = class {
       this.changed();
     }
     return { name };
+  }
+  // whether the page client is in the session, i.e. said hello and neither left nor was dropped
+  present(client) {
+    return this.members.has(client);
   }
   // the client id of the page of token, or null
   clientOf(token) {
@@ -1284,6 +1318,14 @@ var People = class {
       member.polled = true;
       if (this.ended || this.hasNews(poll)) this.soon(poll);
     });
+  }
+  // a write of index.html that failed, or null at the first write that succeeds after it, told to
+  // every page when it changed
+  writeFailed(error2) {
+    if (JSON.stringify(error2) === JSON.stringify(this.writeError)) return;
+    this.writeError = error2 && { message: error2.message, unwritten: error2.unwritten };
+    this.writeRev++;
+    this.changed();
   }
   // the waiting polls answered with ended, at a stop of the edit command, and people.json written
   end() {
@@ -1344,19 +1386,24 @@ var People = class {
     const known = this.clients.get(client);
     const record = known && this.records.get(known.person);
     const pages = known ? [...this.members.values()].filter((m) => m.person === known.person).length : 0;
+    if (known) {
+      this.clients.delete(client);
+      this.clients.set(client, known);
+    }
     if (!member && known && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
       const { person, name, color } = record;
       const now = Date.now();
-      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, lastAnswer: 0, polls: 0 };
+      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, writeSeen: 0, lastAnswer: 0, polls: 0 };
       this.members.set(client, member);
       this.changed();
     }
     if (member) member.lastSeen = Date.now();
     return member ?? null;
   }
-  hasPlace(host) {
-    if (this.members.size >= MAX_PEOPLE) return false;
-    return host || [...this.members.values()].filter((m) => !m.host).length < MAX_GUESTS;
+  // whether a page of the kind of host has a place, once the page leaving is dropped
+  hasPlace(host, leaving) {
+    if (this.members.size - (leaving ? 1 : 0) >= MAX_PEOPLE) return false;
+    return host || [...this.members.values()].filter((m) => !m.host && m !== leaving).length < MAX_GUESTS;
   }
   changed() {
     this.rev++;
@@ -1382,6 +1429,7 @@ var People = class {
     const presence = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
     const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list() };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
+    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
     return answer;
   }
   answer(poll) {
@@ -1393,6 +1441,7 @@ var People = class {
     if (member) {
       member.seen = this.rev;
       member.knownSeen = this.knownRev;
+      member.writeSeen = this.writeRev;
       member.lastAnswer = Date.now();
       member.lastSeen = Date.now();
       member.polls--;
@@ -1671,14 +1720,16 @@ var RelayLink = class {
 var DEFAULT_PORT = 8765;
 var JSON_MAX = 16 * 1024 * 1024;
 var MEDIA_MAX = 64 * 1024 * 1024;
-var MEDIA_TYPES = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "mp4", "webm", "json"]);
+var GUEST_MEDIA_MAX = 16 * 1024 * 1024;
+var MEDIA_TYPES = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "bmp", "mp4", "m4v", "webm", "mov", "ogv", "json"]);
+var LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2e3;
 var AlreadyRunning = class extends Error {
   constructor(found) {
     super(`the edit command already runs for this folder at ${found.url}`);
     this.found = found;
   }
 };
-async function holderOf(file, root, key) {
+async function holderOf(file, root, key, log) {
   let lock;
   try {
     lock = JSON.parse(readFileSync4(file, "utf8"));
@@ -1693,12 +1744,26 @@ async function holderOf(file, root, key) {
   }
   const url = `http://127.0.0.1:${lock.port}/${key}/`;
   try {
-    const answer = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(2e3) });
+    const answer = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(LOCK_WAIT) });
     await answer.body?.cancel();
     return answer.status === 302 ? { url, port: lock.port, key } : null;
-  } catch {
-    return null;
+  } catch (e) {
+    if (e.name !== "TimeoutError") return null;
+    log(`the edit command of process ${lock.pid} holds this folder and does not answer. Bring it back to the front, or end it`);
+    return { url, port: lock.port, key };
   }
+}
+function keepUnwritten(root, text) {
+  const name = `unwritten-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.html`;
+  for (const dir of [join4(root, ".session"), tmpdir()]) {
+    try {
+      const file = join4(dir, name);
+      writeFileSync4(file, text, { flag: "wx" });
+      return file;
+    } catch {
+    }
+  }
+  return null;
 }
 function keyOf(root) {
   const dir = join4(root, ".session");
@@ -1744,10 +1809,10 @@ async function start(options = {}) {
   const { text, bom } = readText(index);
   const key = keyOf(root);
   const lockFile = join4(root, ".session", "lock");
-  const earlier = await holderOf(lockFile, root, key);
+  const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
   const authority = new Authority(text);
-  const disk = new Disk(index, authority, bom, { log });
+  const disk = new Disk(index, authority, bom, { log, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join4(root, ".session", "people.json"), log);
   let port = 0;
   let relay = null;
@@ -1795,6 +1860,7 @@ async function start(options = {}) {
     });
   }
   async function connect(address, secret) {
+    if (relay && relay.relay !== address) people.endGuests();
     await relay?.stop();
     relay = null;
     if (closed) throw new Error("the edit command is stopping");
@@ -1808,9 +1874,12 @@ async function start(options = {}) {
   }
   async function media(name, request) {
     if (request.method !== "PUT") return error(405, "PUT");
+    const client = people.clientOf(new URLSearchParams(request.query).get("token"));
+    if (client === null || !people.present(client)) return error(404, "say hello first");
     const clean = cleanName(name);
     if (!clean) return error(415, "the file must be an image, a video, or json");
     if (request.body.length > MEDIA_MAX) return error(413, "the file is larger than 64 MB");
+    if (!request.direct && request.body.length > GUEST_MEDIA_MAX) return error(413, "the file is larger than 16 MB, the limit of an upload through the relay");
     const dir = join4(root, "media");
     await mkdir(dir, { recursive: true });
     const real = await realpath2(dir);
@@ -1992,7 +2061,7 @@ async function start(options = {}) {
   try {
     writeFileSync4(lockFile, lock, { flag: "wx" });
   } catch {
-    const other = await holderOf(lockFile, root, key);
+    const other = await holderOf(lockFile, root, key, log);
     if (other) {
       people.end();
       await new Promise((done) => server.close(done));
@@ -2015,7 +2084,7 @@ async function start(options = {}) {
     const secret = process.env.SLIDES_RELAY_SECRET || (address !== null && address === relayAddress(saved.relay) ? saved.secret : void 0);
     if (!address) log(`${ADDRESS_RULE}, and the session is not shared`);
     else if (!secret || secret.length < 16) log("the secret of the relay is not set, and the session is not shared");
-    else await serial(() => connect(address, secret)).then(() => log(`shared at ${relay.link}`), (e) => log(`the session is not shared: ${e.message}`));
+    else void serial(() => connect(address, secret)).then(() => log(`shared at ${relay.link}`), (e) => log(`the session is not shared: ${e.message}`));
   }
   let closing = null;
   return {
@@ -2030,6 +2099,10 @@ async function start(options = {}) {
       unlock();
       people.end();
       const unwritten = disk.stopSync();
+      if (unwritten) {
+        const kept = keepUnwritten(root, disk.bom ? `\uFEFF${authority.text}` : authority.text);
+        log(kept ? `the text of the session is kept in ${kept}` : "the text of the session could not be kept in any file");
+      }
       await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
       await new Promise((done) => setTimeout(done, 200));
       await new Promise((done) => {
