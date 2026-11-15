@@ -674,3 +674,26 @@ test('a state older than a resync with the whole text keeps its elements, and a 
   clean(ana);
   clean(ben);
 });
+
+test('a page that the edit command drops for silence and takes back sends its state again', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // a page without a poll for 3 s is dropped, and a poll is answered within a second
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000', SLIDES_GONE_MS: '3000' } });
+  const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ana, ben]);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await gatePolls(ana);
+  await select(ana, el(1, 'li:nth-child(2)'));
+  await until(async () => (await selectedOf(ben, 'Ana')).join() === 'Beta', 'the selection of Beta on the page of Ben');
+  // a frozen tab, whose poll waits without an error
+  await closePolls(ana);
+  await until(() => ben.evaluate(`!${C}.people.some((p) => p.name === 'Ana')`), 'the edit command to drop Ana');
+  await openPolls(ana);
+  await until(() => ben.evaluate(`${C}.people.some((p) => p.name === 'Ana')`), 'the edit command to take Ana back');
+  await until(async () => (await selectedOf(ben, 'Ana')).join() === 'Beta', 'the selection of Beta on the page of Ben again', 5000);
+  clean(ana);
+  clean(ben);
+});
