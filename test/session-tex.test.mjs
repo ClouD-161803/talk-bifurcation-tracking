@@ -133,6 +133,21 @@ test('a citation deleted on one page is taken out of tex.js, and the others are 
   clean(ben, MISSING);
 });
 
+test('a citation of a paper of tex.js put into a text element by one page is numbered on the other page', { timeout: 180_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  const tex = server.read('tex.js');
+  await show(ann, 'Citations');
+  await show(ben, 'Citations');
+  await cite(ann, `document.querySelector('.reveal section.present h2')`, 'gomez', 'gomez2004');
+  await converge(server, [ann, ben]);
+  // the heading cites first, hence gomez2004 is numbered 1 and koon2000 2
+  await onEvery([ann, ben], `${NUMBERS} === 'gomez2004=1 koon2000=2 gomez2004=1'`);
+  assert.equal(server.read('tex.js'), tex, 'tex.js is written for a paper that it has');
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
 test('a macro added to preamble.tex on disk is written into tex.js, and is drawn on a page of the host and on a page of a guest through the relay', { timeout: 240_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
