@@ -207,11 +207,12 @@ test('a lone surrogate typed into the deck is written as U+FFFD, on the page and
   clean(page);
 });
 
-test('the save state is in view on a phone of 390 px and takes a tap', { timeout: 120_000 }, async (t) => {
+test('the save state is in view on a phone of 390 px and takes a tap, and the buttons of the dialogs are 32 px high', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  const page = await open(browser, sessionUrl(server.edit), { width: 390, height: 844, mobile: true });
+  const phone = { width: 390, height: 844, mobile: true };
+  const page = await open(browser, sessionUrl(server.edit), phone);
   const box = await page.evaluate(`(() => {
     const b = document.querySelector('.beeson-session-state');
     const r = b.getBoundingClientRect();
@@ -220,6 +221,24 @@ test('the save state is in view on a phone of 390 px and takes a tap', { timeout
     return { inside: r.left >= 0 && r.right <= innerWidth, hit: b.contains(hit), height: r.height - parseFloat(after.top) - parseFloat(after.bottom), label: b.getAttribute('aria-label') };
   })()`);
   assert.deepEqual(box, { inside: true, hit: true, height: 32, label: 'Saved to index.html' });
+
+  const open_ = `document.querySelector('dialog.beeson-edit-dialog[open]')`;
+  // the layout height, which the transform of the animation at the open does not change
+  const heights = (p) => p.evaluate(`[...${open_}.querySelectorAll('.row button')].map((b) => b.offsetHeight)`);
+  const low = (list) => list.filter((h) => h < 32);
+  const other = await open(browser, sessionUrl(server.edit), { ...phone, name: '', wait: false });
+  await other.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
+  assert.deepEqual(low(await heights(other)), [], 'the buttons of the join dialog');
+  await other.evaluate(`document.querySelector('dialog.beeson-session-join input').value = 'Ann'`);
+  await other.evaluate(`document.querySelector('dialog.beeson-session-join .row button.primary').click()`);
+  await other.waitFor(`${open_}?.querySelector('h3').textContent === 'Ann has joined this deck before. Is that you?'`);
+  assert.deepEqual(low(await heights(other)), [], 'the buttons of the taken dialog');
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await page.waitFor(`${open_}?.querySelector('h3').textContent === 'The session has ended'`);
+  const ended = await heights(page);
+  assert.ok(ended.length === 2 && !low(ended).length, `the buttons of the end dialog are ${ended.join(', ')} px high`);
   clean(page);
 });
 
