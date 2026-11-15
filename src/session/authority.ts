@@ -16,6 +16,9 @@ type Entry = {
 };
 
 export type Submission = { answer: OpAnswer; op?: AppliedOp };
+// an answer kept against a repeat of its request, with the base and a checksum of the patches of
+// the request
+type Kept = { answer: OpAnswer; base: unknown; patches: string };
 export type Observer = (op: AppliedOp, text: string) => void;
 
 export type AuthorityOptions = {
@@ -46,7 +49,7 @@ export class Authority {
   private readonly maxOps: number;
   private readonly maxBytes: number;
   private readonly now: () => number;
-  private answers = new Map<string, Map<number, OpAnswer>>();
+  private answers = new Map<string, Map<number, Kept>>();
   private observers = new Set<Observer>();
   private seqOf = new Map<string, number>();
 
@@ -98,8 +101,11 @@ export class Authority {
   submit(request: OpRequest, author: string): Submission {
     const { client, seq } = request ?? ({} as OpRequest);
     if (typeof client !== 'string' || !Number.isSafeInteger(seq) || seq < 1) return { answer: this.refuse('invalid') };
+    const patches = checksum(JSON.stringify(request.patches) ?? '');
     const earlier = this.answers.get(client)?.get(seq);
-    if (earlier) return { answer: earlier };
+    // a repeat of a request is answered again, and another request under a used seq is refused,
+    // e.g. of a page that loaded again with its client id and started its seq anew
+    if (earlier) return { answer: earlier.base === request.base && earlier.patches === patches ? earlier.answer : this.refuse('invalid') };
     const known = this.answers.get(client);
     if (known && known.size >= ANSWERS_PER_CLIENT && seq < Math.min(...known.keys())) return { answer: this.refuse('stale') };
     const submission = this.order(request);
@@ -108,7 +114,7 @@ export class Authority {
       this.answers.set(client, (answers = new Map()));
       if (this.answers.size > CLIENTS) this.answers.delete(this.answers.keys().next().value!);
     }
-    answers.set(seq, submission.answer);
+    answers.set(seq, { answer: submission.answer, base: request.base, patches });
     if (answers.size > ANSWERS_PER_CLIENT) answers.delete(Math.min(...answers.keys()));
     if (submission.op) {
       submission.op.author = author;
