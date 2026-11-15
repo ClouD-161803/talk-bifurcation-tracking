@@ -419,3 +419,58 @@ test('in a touch window of 390 px, a tap on a chip shows the name', { timeout: 1
   clean(ana);
   clean(ben);
 });
+
+// counts the reads of layout from now on in window.__reads, with those made by theme/session.js
+const COUNT = `(() => {
+  if (window.__reads) { window.__reads = { all: 0, session: 0 }; return; }
+  window.__reads = { all: 0, session: 0 };
+  const note = () => {
+    window.__reads.all++;
+    if (/session\\.js/.test(new Error().stack)) window.__reads.session++;
+  };
+  const wrap = (proto, name) => {
+    const f = proto[name];
+    proto[name] = function (...args) { note(); return f.apply(this, args); };
+  };
+  const getter = (proto, name) => {
+    const d = Object.getOwnPropertyDescriptor(proto, name);
+    Object.defineProperty(proto, name, { ...d, get() { note(); return d.get.call(this); } });
+  };
+  for (const n of ['getBoundingClientRect', 'getClientRects']) { wrap(Element.prototype, n); wrap(Range.prototype, n); }
+  const style = window.getComputedStyle;
+  window.getComputedStyle = function (...args) { note(); return style.apply(this, args); };
+  for (const n of ['offsetWidth', 'offsetHeight', 'offsetLeft', 'offsetTop', 'offsetParent']) getter(HTMLElement.prototype, n);
+  for (const n of ['clientWidth', 'clientHeight', 'clientLeft', 'clientTop', 'scrollWidth', 'scrollHeight', 'scrollLeft', 'scrollTop']) getter(Element.prototype, n);
+})()`;
+
+test('a pointer move and a scroll over three frames read no layout for presence', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await front(ben);
+  await ben.evaluate(`${C}.app.stage.setZoom(2)`);
+  await frame(ben);
+  const canvas = await boxOf(ben, `${C}.app.stage.el`);
+  const run = async () => {
+    await front(ben);
+    await ben.evaluate(`(() => { const el = ${C}.app.stage.el; el.scrollLeft = el.scrollWidth / 4; el.scrollTop = el.scrollHeight / 4; })()`);
+    await frame(ben);
+    await ben.evaluate(COUNT);
+    for (let i = 0; i < 40; i++) await ben.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: canvas.x + 40 + ((canvas.w - 80) * i) / 40, y: canvas.y + canvas.h / 2 + 30 * Math.sin(i / 3) });
+    for (let i = 0; i < 10; i++) {
+      await ben.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: canvas.x + canvas.w / 2, y: canvas.y + canvas.h / 2, deltaX: 0, deltaY: i < 5 ? 60 : -60 });
+      await frame(ben);
+    }
+    await frame(ben);
+    return ben.evaluate('({ ...window.__reads })');
+  };
+  await select(ana, el(1, 'h2'), el(1, 'p'), el(1, 'ul'));
+  await until_(ben, (d) => d.frames.length === 3, 'the three frames of Ana on the page of Ben');
+  const framed = await run();
+  assert.equal((await drawn(ben)).frames.length, 3);
+  // the reads of the editor itself are counted as well, which shows that the count is taken
+  assert.ok(framed.all > 0, 'the reads of the page are counted');
+  assert.equal(framed.session, 0, 'theme/session.js reads no layout in a pointer move or a scroll over three frames');
+  clean(ana);
+  clean(ben);
+});
