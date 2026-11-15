@@ -348,3 +348,39 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
   clean(ann, [/status of 500/]);
   clean(ben);
 });
+
+test('the pane of a page offline reads the versions once the page is online again', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const { port } = server.edit;
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  await openPane(ann);
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Kept');
+  await ann.waitFor(`${LIST}[1]?.title === 'Kept'`);
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await ann.waitFor(`${C}.connection === 'offline'`);
+  await openPane(ann);
+  // the list read before is kept under the note
+  await ann.waitFor(`${LIST}[0]?.empty === 'The versions cannot be read while the page is offline.'`);
+  assert.equal(await ann.evaluate(`${LIST}[2].title`), 'Kept');
+  // a name cannot be given offline, and the dialog says so
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Lost');
+  await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'The version could not be named'`);
+  await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'OK');
+  await server.start(['--port', String(port)]);
+  await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-session-menu button')].find((b) => b.textContent === 'Try Now')`);
+  await ann.waitFor(ONLINE, 20_000);
+  await ann.waitFor(`${LIST}[0]?.day === 'Today'`, 20_000);
+  assert.equal(await ann.evaluate(`${LIST}[1].title`), 'Kept');
+  assert.equal(await ann.evaluate(SHOWN), true);
+  // the first requests after the restart carry the token of the edit command before, and are answered 404
+  clean(ann, [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/(events|history)\?/]);
+});
