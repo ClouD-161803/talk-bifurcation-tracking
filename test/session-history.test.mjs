@@ -150,11 +150,13 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
     await openPane(ann);
     await ann.waitFor(`${LIST}.length === 4`);
     const list = await ann.evaluate(LIST);
-    assert.deepEqual(list.map((x) => x.who ?? x.fold ?? x.day ?? x.folded), ['Today', ['Ann'], 'Show 1 more', [list[3].folded[0]]]);
+    // the rows of a fold are built when it is opened
+    assert.deepEqual(list.map((x) => x.who ?? x.fold ?? x.day ?? x.folded), ['Today', ['Ann'], 'Show 1 more', []]);
     assert.equal(list[3].hidden, true);
     await press$(ann, PANE, 'Show 1 more');
     await ann.waitFor(`${LIST}[3].hidden === false`);
     assert.equal(await ann.evaluate(`${LIST}[2].fold`), 'Hide 1 more');
+    assert.equal(await ann.evaluate(`${LIST}[3].folded.length`), 1);
   });
 
   await t.test('a version is named in the bar of its preview, and Only show named versions lists it alone', async () => {
@@ -615,6 +617,54 @@ test('a fold stays open, and the focus stays on its control, while new versions 
     assert.equal(await ann.evaluate(`document.activeElement === document.querySelector('${BAR} button.more') && document.activeElement.isConnected`), true);
   });
   clean(ann);
+});
+
+test('with many versions a new version writes only its own row, and the rows in view stay in place', { timeout: 300_000 }, async (t) => {
+  const now = Date.now();
+  // 150 versions 40 minutes apart, hence none of them folds
+  const server = await crafted(t, craft(Array.from({ length: 150 }, (_, i) => ({ time: now - (150 - i) * 40 * MIN }))), QUICK);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await openPane(ann);
+  const ROWS = `document.querySelectorAll('${PANE} .versions .row.version')`;
+  await ann.waitFor(`${ROWS}.length === 150`);
+  // the id of the first row in view and its place under the top of the pane in px
+  const view = `(() => {
+    const top = document.querySelector('${PANE}').getBoundingClientRect().top;
+    const row = [...${ROWS}].find((r) => r.getBoundingClientRect().bottom > top + 1);
+    return { id: row.dataset.id, top: Math.round(row.getBoundingClientRect().top - top) };
+  })()`;
+  // the row of v70 scrolled to the top of the pane, and the ids of the rows written from now on
+  // kept in window.__written
+  await ann.evaluate(`(() => {
+    const pane = document.querySelector('${PANE}');
+    const row = document.querySelector('${PANE} [data-id="version:v70"]');
+    pane.scrollTop += row.getBoundingClientRect().top - pane.getBoundingClientRect().top + 5;
+    window.__written = new Set();
+    new MutationObserver((records) => {
+      for (const r of records) {
+        for (const n of r.addedNodes) if (n.nodeType === 1) for (const row of [n, ...n.querySelectorAll('.row')]) if (row.matches('.row')) window.__written.add(row.dataset.id);
+        const row = (r.target.nodeType === 1 ? r.target : r.target.parentElement)?.closest('.row');
+        if (row) window.__written.add(row.dataset.id);
+      }
+    }).observe(document.querySelector('${PANE} .versions'), { childList: true, subtree: true, attributes: true, characterData: true });
+    return true;
+  })()`);
+  const before = await ann.evaluate(view);
+  assert.equal(before.id, 'version:v70');
+  await show(ben, 'Two');
+  await caretAtEnd(ben, el(1, 'p'));
+  await typeKeys(ben, ' new');
+  await front(ann);
+  await ann.waitFor(`${ROWS}.length === 151`, 20_000);
+  const written = await ann.evaluate('[...window.__written]');
+  assert.ok(written.length <= 2, `rows written: ${written.length}`);
+  assert.deepEqual(await ann.evaluate(view), before);
+  clean(ann);
+  clean(ben);
 });
 
 test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
