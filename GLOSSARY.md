@@ -122,7 +122,7 @@ Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" 
 
 ## Name flag
 
-The label with the name of a person at the upper left corner of the frame of an element that this person selected in a session.
+The small box with the name of a person at the upper left corner of the frame of an element that this person selected in a session.
 
 Avoid "cursor", "tag", and "badge".
 
