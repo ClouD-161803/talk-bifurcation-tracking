@@ -6,6 +6,7 @@ import type { Entry, Handover } from './handover.ts';
 import type { Dialog } from '../../editor/ui/dialog.ts';
 import { install as activity } from './activity.ts';
 import { Client, RETRY } from './client.ts';
+import { install as comments } from './comments-pane.ts';
 import { install as conflicts } from './conflicts.ts';
 import { install as copy, restore } from './copy.ts';
 import { install as dots } from './dots.ts';
@@ -25,7 +26,7 @@ import { mayRetry } from './transport.ts';
 
 // each part reads the Client and its events. the avatars go before the save state, and Share
 // before the parts that follow a person, draw the dots of the slides, and fill the lines of Share
-const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, history, presence, layer, floor, people, share, follow, dots, activity];
+const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, history, comments, presence, layer, floor, people, share, follow, dots, activity];
 
 let current: Client | null = null;
 
