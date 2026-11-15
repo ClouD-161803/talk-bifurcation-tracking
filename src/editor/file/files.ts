@@ -355,8 +355,9 @@ export function install(app: App): void {
     if (app.pairing?.texts.length) keep(handle);
   }
 
+  // Open, Open Recent, and Revert to Saved would replace the deck of everyone in a session
   async function openFile(): Promise<void> {
-    if (!(await readyToOpen())) return;
+    if (app.session || !(await readyToOpen())) return;
     if (canPick() && pickers.showOpenFilePicker) {
       let picked: FileSystemFileHandle[];
       try {
@@ -387,7 +388,7 @@ export function install(app: App): void {
   // a deck of Open Recent kept on another page is opened on its page, where the dialog offers its
   // file. a deck that is missing is taken off the list
   async function openRecent(r: Recent): Promise<void> {
-    if (!(await readyToOpen())) return;
+    if (app.session || !(await readyToOpen())) return;
     if (r.page !== pageOf()) {
       location.assign(r.page + location.search);
       return;
@@ -410,7 +411,7 @@ export function install(app: App): void {
   // the page is loaded again from the file, without the edits and their draft, hence the dialog of
   // the edits that were not saved is not offered after the reload
   async function revert(): Promise<void> {
-    if (!app.dirty) return;
+    if (!app.dirty || app.session) return;
     if ((await revertDialog.open('cancel')) !== 'revert') return;
     window.clearTimeout(autosaveTimer);
     app.drafts.drop();

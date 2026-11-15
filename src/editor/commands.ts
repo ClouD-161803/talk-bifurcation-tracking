@@ -62,8 +62,9 @@ export const OUTSIDE_DIALOGS: Region[] = ['canvas', 'text', 'field', 'navigator'
 export const EVERYWHERE: Region[] = [...OUTSIDE_DIALOGS, 'dialog'];
 
 // the keys that are kept from the browser wherever the editor has the focus, also where their
-// command is dimmed, since the browser would open a dialog of its own, e.g. its bookmark for Mod+D
-const HELD = ['Mod+D'];
+// command is dimmed, since the browser would open a dialog of its own, e.g. its bookmark for Mod+D,
+// or its Open for Mod+O, which is dimmed in a session
+const HELD = ['Mod+D', 'Mod+O'];
 
 // the keys that the menus list for a command whose keys reach it as clipboard events, since the
 // browser takes them in a text
