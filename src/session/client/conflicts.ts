@@ -73,8 +73,9 @@ export function ask(client: Client, base: string, mine: string, theirs: string):
   const list = make('ul');
   for (const i of items) list.append(make('li', '', `${i.slide ? `Slide ${i.slide}: ` : ''}${i.text ? `“${i.text}”` : 'a change without text'}`));
   const slides = [...new Set(items.flatMap((i) => (i.slide ? [i.slide] : [])))].sort((a, b) => a - b);
-  // the deck keeps the version of the person while the dialog is open, and the dialog is not closed
-  // by Esc or a click outside, hence the person cannot lose the edits that wait
+  // the dialog is not closed by Esc or a click outside, hence the person cannot lose the edits that
+  // wait. mine is the version of the person, which the deck reads at a reconnect, while at a join
+  // the deck reads the text of the page until the answer
   const dialog = client.shell.dialog({
     title: 'Others changed texts that you edited offline',
     text: `You and others changed the texts below${client.shell.onSlides(slides)} while you were offline. Every other edit of yours and of the others is kept either way.`,
@@ -83,19 +84,12 @@ export function ask(client: Client, base: string, mine: string, theirs: string):
     dismissable: false,
     stay: ['download'],
     buttons: [
-      { label: 'Download my version', title: 'Download the deck as this page has it, with your version of these texts', value: 'download' },
+      { label: 'Download my version', title: 'Download the deck with your version of these texts', value: 'download' },
       { label: 'Keep theirs', title: 'Drop your edits of these texts, and keep the version of the others', value: 'theirs' },
       { label: 'Keep mine', title: 'Send your version of these texts', value: 'ours', primary: true },
     ],
     onButton: (value) => {
-      if (value !== 'download') return;
-      let text = mine;
-      try {
-        text = client.port.text();
-      } catch {
-        // the text of the replica is the deck as this page has it
-      }
-      client.shell.download(text);
+      if (value === 'download') client.shell.download(mine);
     },
   });
   return dialog.open('ours').then((value) => {
