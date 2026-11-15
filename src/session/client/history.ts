@@ -32,7 +32,12 @@ html.beeson-editor body > .beeson-session-history[hidden] { display: none; }
 @media (max-width: 599.98px) {
   html.beeson-editor.beeson-history { --ed-insp-col: 0px; }
   html.beeson-editor body > .beeson-session-history { position: fixed; left: 0; right: 0; bottom: 28px; height: 55vh; height: 55dvh; z-index: 70; border-left: 0; border-top: 1px solid var(--ed-line); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18); }
+  /* while a version is previewed, the sheet shrinks to the row of the version and Versions */
+  html.beeson-editor body > .beeson-session-history.peek { height: auto; max-height: 55vh; max-height: 55dvh; padding-bottom: 6px; }
+  .beeson-session-history.peek > :not(.head, .rows), .beeson-session-history.peek .rows > :not(.row[aria-current="true"], .folded), .beeson-session-history.peek .folded > :not([aria-current="true"]) { display: none; }
+  .beeson-session-history.peek .show-list { display: block; }
 }
+.beeson-session-history .show-list { display: none; min-height: 32px; padding: 0 10px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); white-space: nowrap; }
 .beeson-session-history button, .beeson-session-preview button { font: inherit; color: inherit; }
 .beeson-session-history :is(button, input):focus-visible, .beeson-session-preview :is(button, input):focus-visible { outline: 2px solid var(--ed-focus); outline-offset: -2px; }
 .beeson-session-history .head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 4px 14px; }
@@ -122,6 +127,8 @@ export function install(client: Client): void {
   let loading: Promise<void> | null = null;
   let on = false;
   let selected: Selected = { kind: 'current' };
+  // the sheet of a phone shows the chosen version alone, until Versions is pressed
+  let peek = false;
   const opened = new Set<string>();
   let back: Element | null = null;
   // the time of the version last shown in the preview, which a toast names when it is merged
@@ -151,7 +158,14 @@ export function install(client: Client): void {
     const backButton = make('button', 'back', 'Back to editor');
     backButton.type = 'button';
     backButton.addEventListener('click', () => close());
-    head.append(title, backButton);
+    const showList = make('button', 'show-list', 'Versions');
+    showList.type = 'button';
+    showList.addEventListener('click', () => {
+      peek = false;
+      el.classList.remove('peek');
+      el.querySelector<HTMLElement>('.row[aria-current="true"]')?.focus();
+    });
+    head.append(title, showList, backButton);
     const label = make('label', 'named');
     named = make('input');
     named.type = 'checkbox';
@@ -339,11 +353,13 @@ export function install(client: Client): void {
 
   function showSelected(): void {
     if (selected.kind === 'current') {
+      pane?.classList.remove('peek');
       preview?.hide();
       return;
     }
     const id = selected.id;
     const info = selected.kind === 'version' ? answer?.versions.find((v) => v.id === id) : answer?.aside.find((a) => a.id === id);
+    pane!.classList.toggle('peek', peek && !!info);
     if (!info) return;
     preview ??= new Preview(client, pane!, { restore, name: (v) => void name(v.id, v.name ?? '') });
     if (selected.kind === 'aside') {
@@ -357,6 +373,7 @@ export function install(client: Client): void {
 
   function choose(select: Selected): void {
     selected = select;
+    peek = select.kind !== 'current';
     render();
   }
 
@@ -374,7 +391,10 @@ export function install(client: Client): void {
   function open(aside?: string): void {
     if (client.connection === 'ended') return;
     pane ??= build();
-    if (aside) selected = { kind: 'aside', id: aside };
+    if (aside) {
+      selected = { kind: 'aside', id: aside };
+      peek = true;
+    }
     if (!on) {
       on = true;
       back = document.activeElement;

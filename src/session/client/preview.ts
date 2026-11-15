@@ -11,20 +11,27 @@ import { slidesOf, VOID, type Slide } from '../slides.ts';
 import type { Client } from './client.ts';
 import { make, style } from './dom.ts';
 import { authorsOf, dayLabel, personOf, slidesText, timeOf } from './labels.ts';
-import { openMenu } from './menu.ts';
+import { openMenu, type MenuItem } from './menu.ts';
 
 const CSS = `
 .beeson-session-preview { position: fixed; z-index: 55; display: flex; flex-direction: column; box-sizing: border-box; background: var(--ed-canvas); color: var(--ed-text); font: 12px/1.35 var(--ed-font); }
 .beeson-session-preview[hidden] { display: none; }
 .beeson-session-preview .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 10px; background: var(--ed-panel); border-bottom: 1px solid var(--ed-line); }
 .beeson-session-preview .bar > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
-.beeson-session-preview .info { flex: 1 1 auto; }
+.beeson-session-preview .info { flex: 0 1 auto; }
 .beeson-session-preview .date { font-weight: 600; overflow-wrap: anywhere; }
 .beeson-session-preview .who { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
-.beeson-session-preview .removed { color: var(--ed-muted); }
+.beeson-session-preview .bar > .slides { flex: 1 1 120px; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.beeson-session-preview .slides > * { flex: none; }
+.beeson-session-preview .removed { color: var(--ed-muted); white-space: nowrap; }
 .beeson-session-preview .removed:empty { display: none; }
-.beeson-session-preview .actions { margin-left: auto; }
+.beeson-session-preview .actions { flex: none; margin-left: auto; }
+.beeson-session-preview.two .info { max-width: 55%; flex-wrap: nowrap; overflow: hidden; }
+.beeson-session-preview.two .date { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.beeson-session-preview.two .who { flex: none; flex-wrap: nowrap; white-space: nowrap; }
+.beeson-session-preview.two .bar > .slides { flex-basis: 0; }
 .beeson-session-preview.two .actions { flex: 1 0 100%; margin-left: 0; }
+.beeson-session-preview.two .actions .name { display: none; }
 .beeson-session-preview label.changes { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; white-space: nowrap; }
 .beeson-session-preview label.changes input { margin: 0; width: 16px; height: 16px; }
 .beeson-session-preview .bar button.slide { padding: 0 8px; }
@@ -39,7 +46,7 @@ section[data-beeson-changed] { outline-offset: -6px !important; }
 html.beeson-hide-changes [data-beeson-changed] { outline: none !important; }
 `;
 
-// the bar is wrapped onto two rows below this width in px
+// the bar is wrapped onto two rows, with Name this version in More, below this width in px
 const TWO_ROWS = 600;
 
 // text with a base element at the start of its head, so that its relative addresses resolve as in
@@ -243,14 +250,18 @@ export class Preview {
     more.setAttribute('aria-haspopup', 'menu');
     const restore = () => this.version && void this.actions.restore(this.version, this.text);
     const name = () => this.version && this.actions.name(this.version);
-    actions.append(label, this.button('Restore this version', restore), this.button('Name this version', name), more);
+    actions.append(label, this.button('Restore this version', restore), this.button('Name this version', name, 'name'), more);
     return { info, date, who, slides: make('div', 'slides'), shown: '', failed: make('span', 'removed'), actions };
   }
 
+  // the menu of More, which holds Name this version where the bar is narrow
   private more(button: HTMLElement): void {
     const v = this.version;
     if (!v) return;
-    openMenu(button, [{ label: 'Download This Version', run: () => void this.download('version', v.id) }]);
+    const items: MenuItem[] = [];
+    if (this.el.classList.contains('two')) items.push({ label: 'Name this version', run: () => this.actions.name(v) });
+    items.push({ label: 'Download This Version', run: () => void this.download('version', v.id) });
+    openMenu(button, items);
   }
 
   // the bar of version v, where only what differs from the bar shown is changed, so that the focus
@@ -282,7 +293,10 @@ export class Preview {
       b.slides.replaceChildren(...nodes, b.failed);
       if (focused !== null) [...b.slides.querySelectorAll('button')].find((x) => x.textContent === focused)?.focus();
     }
-    if (fresh) void this.fill(v);
+    if (fresh) {
+      b.slides.scrollLeft = 0;
+      void this.fill(v);
+    }
   }
 
   showAside(a: AsideInfo): void {
