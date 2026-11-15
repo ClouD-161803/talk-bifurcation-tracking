@@ -19,11 +19,13 @@ export type Applied = { reload: boolean; changed: Element[] };
 // the client reads text() inside a listener of onChange or after an apply has resolved, and writes
 // the text of each apply against the text last handed to it, i.e. the text it last read or passed
 // to apply. an edit of the person that the client has not read is kept through every apply, and
-// onChange is called after it
+// onChange is called after it. the listeners of onReload are called when the page does not read as
+// its text after the applies, after which the client loads the page again
 export type Port = {
   text(): string;
   apply(text: string): Promise<Applied>;
   onChange(fn: () => void): () => void;
+  onReload(fn: () => void): () => void;
   offsetOf(el: Element): number | null;
   elementAt(offset: number): Element | null;
   begin(): void;
@@ -33,6 +35,9 @@ export type Port = {
 };
 
 type Page = { MathJax?: { typesetPromise?(els: Element[]): Promise<unknown> } };
+
+// the time in ms after the last apply at which the page is read against its text
+const NET = 500;
 
 export function install(app: App): Port {
   // clean holds while the source reads as the deck, i.e. since the last open or apply without an
@@ -49,8 +54,10 @@ export function install(app: App): Port {
   let saver: () => Promise<void> | void = () => {};
   let active = false;
   const listeners = new Set<() => void>();
+  const reloaders = new Set<() => void>();
   let pending = false;
   let flushing = false;
+  let net = 0;
 
   // the text element of an open composition of an input method. the changes of its slide are held
   // back until the composition ends, while behind holds the text shown and the text wanted, and the
@@ -292,9 +299,21 @@ export function install(app: App): Port {
           }
         })
         .then(() => {
+          arm();
           if (pending) void flush();
         });
     });
+  }
+
+  // the page read against its text once the applies are over, while the person does not change
+  // the deck: a page that does not read as its text after an apply is loaded again
+  function arm(): void {
+    clearTimeout(net);
+    if (reloaders.size) net = window.setTimeout(check, NET);
+  }
+  function check(): void {
+    if (!ready() || !clean || behind || applying || queued || busy()) return;
+    if (app.files.render() !== app.source!.text) for (const fn of [...reloaders]) fn();
   }
 
   // the element of the page whose start tag is at offset of the text last applied or opened
@@ -329,6 +348,10 @@ export function install(app: App): Port {
     onChange(fn) {
       listeners.add(fn);
       return () => void listeners.delete(fn);
+    },
+    onReload(fn) {
+      reloaders.add(fn);
+      return () => void reloaders.delete(fn);
     },
     offsetOf,
     elementAt,
