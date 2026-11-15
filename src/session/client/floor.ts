@@ -119,11 +119,13 @@ function refused(app: App, presence: Presence, c: Command, arg: unknown): Resolv
     const current = app.current();
     return holding(sel.kind === 'slides' ? sel.items : current ? [current] : []);
   }
-  if (c.id === 'edit.undo') {
-    const last = app.history.last;
-    for (const el of [...(last?.els ?? []), ...(last?.touches ?? [])]) {
-      const by = presence.lockOf(el);
-      if (by) return by;
+  if (c.id === 'edit.undo' || c.id === 'edit.redo') {
+    const entry = c.id === 'edit.undo' ? app.history.last : app.history.next;
+    for (const part of entry ? app.history.partsOf(entry) : []) {
+      for (const el of [...(part.els ?? []), ...(part.touches ?? []), ...(part.detaches ?? [])]) {
+        const by = presence.lockOf(el);
+        if (by) return by;
+      }
     }
     return null;
   }

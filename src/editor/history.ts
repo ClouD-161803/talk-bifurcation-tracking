@@ -103,6 +103,16 @@ export class History {
     return this.done.at(-1) ?? null;
   }
 
+  // the entry that a redo would take back
+  get next(): Entry | null {
+    return this.undone.at(-1) ?? null;
+  }
+
+  // the entries of a transaction, or entry itself
+  partsOf(entry: Entry): readonly Entry[] {
+    return this.parts.get(entry) ?? [entry];
+  }
+
   // resolved once every undo and redo asked for has run
   idle(): Promise<void> {
     return this.queue;
