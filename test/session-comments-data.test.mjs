@@ -360,3 +360,21 @@ test('an element of another name at the offset of an anchor is not taken', { tim
   clean(a);
   clean(b);
 });
+
+test('a reply of another person in a thread of the person is unread until the person reads it', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'Mine');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  await sees(a, COUNT, 'Comments');
+  await b.evaluate(`${C}.transport.post('comments/${id}/reply', { token: ${C}.token, text: 'A reply', mentions: [] }).then(() => true)`);
+  await sees(a, COUNT, 'Comments, 1 unread');
+  await badge(a, 'One', 'p', '1*');
+  await openPane(a);
+  await click(a, `${PANE} article[data-id="${id}"] .text`);
+  await sees(a, COUNT, 'Comments');
+  await badge(a, 'One', 'p', '1');
+  clean(a);
+  clean(b);
+});
