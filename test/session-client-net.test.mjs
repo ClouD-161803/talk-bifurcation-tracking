@@ -11,7 +11,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { NET } from './helpers/net.mjs';
 import { ROWS } from './helpers/offline.mjs';
-import { click, type } from './helpers/editor.mjs';
+import { click, press, type } from './helpers/editor.mjs';
 import { until } from './helpers/session.mjs';
 
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
@@ -549,4 +549,40 @@ test('the answer of a poll that the edit command gave before its restart is drop
   const restarted = [...REFUSED, /status of 404 .*\/\.session\/presence/, /status of 400 .*\/\.session\/hello/];
   clean(a, restarted);
   clean(b, restarted);
+});
+
+const SAVED = `window.__saved = false, window.BeesonEditor.save().then(() => (window.__saved = true)), true`;
+
+test('Save and Saving… wait for the answer and the broadcast of every operation, also of an edit undone while it is in flight', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' saved');
+  await page.waitFor(`__net.held.length === 1 && ${STATE} === 'Saving…'`);
+  await page.evaluate(SAVED);
+  await page.waitFor(`__net.count('/.session/presence', 'POST', 200) > 0`);
+  assert.equal(await page.evaluate(`window.__saved`), false);
+  await page.evaluate(`__net.release('/.session/op')`);
+  await page.waitFor(`window.__saved && ${STATE} === 'Saved to index.html'`);
+  const saved = TALK.replace('<p>First slide</p>', '<p>First slide saved</p>');
+  assert.equal(await converge(server, [page]), saved);
+  // the deck reads as the text of the edit command while the operation of the edit is in flight,
+  // hence the operation that undoes it waits for its broadcast, and so does Save
+  await type(page, ' undone');
+  await page.waitFor(`__net.held.length === 1`);
+  for (let i = 0; i < ' undone'.length; i++) await press(page, 'Backspace');
+  await page.waitFor(`${TEXT}.includes('<p>First slide saved</p>')`);
+  await page.evaluate(SAVED);
+  await page.evaluate(`__net.release('/.session/op')`);
+  await page.waitFor(`__net.held.length === 1 && __net.count('/.session/op') === 3 && ${STATE} === 'Saving…'`);
+  assert.equal(await page.evaluate(`window.__saved`), false);
+  await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
+  await page.waitFor(`window.__saved`);
+  assert.equal(await converge(server, [page]), saved);
+  clean(page, REFUSED);
 });
