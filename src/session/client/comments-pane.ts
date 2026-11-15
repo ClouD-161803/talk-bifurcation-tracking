@@ -8,7 +8,7 @@ import { COMMENT_MAX, type Comment } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comments.ts';
-import { make, style } from './dom.ts';
+import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
 import { whenOf } from './labels.ts';
 import { closeMenu, openMenu } from './menu.ts';
@@ -888,7 +888,7 @@ function message(e: unknown): string {
 }
 
 // a name isolated from the text around it, e.g. a name written right to left, and the text after it
-const named = (name: string, after: string): Node[] => [make('bdi', '', name), document.createTextNode(after)];
+const named = (name: string, after: string): Node[] => [bdi(name), document.createTextNode(after)];
 
 const SLIDES = '.reveal .slides section';
 const TEXTS = `beeson-session-comment-texts:${location.pathname}`;
