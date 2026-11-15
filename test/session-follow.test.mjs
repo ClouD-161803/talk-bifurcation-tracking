@@ -403,6 +403,62 @@ test('the dots of the people on each slide in the navigator and the Slide Sorter
   for (const page of [ann, ben, cleo, dan, eve]) clean(page);
 });
 
+test('the line of each person in the Share dialog', { timeout: 120_000 }, async (t) => {
+  const { pages: [ann, ben], ids: [annId, benId] } = await session(t, ['Ann Smith', 'Ben Carter']);
+  await press(ann, '.beeson-session-share');
+  const DIALOG = 'dialog.beeson-session-share-dialog[open]';
+  await ann.waitFor(`document.querySelectorAll('${DIALOG} li').length === 2`);
+  // every line of Ben shown, recorded, since Typing on slide 2 lasts two seconds
+  await ann.evaluate(`(() => {
+    window.__lines = [];
+    const read = () => {
+      const li = document.querySelector('${DIALOG} li[data-person=${JSON.stringify(benId)}]');
+      const text = li?.querySelector('.activity').textContent;
+      if (text !== undefined && window.__lines.at(-1) !== text) window.__lines.push(text);
+    };
+    new MutationObserver(read).observe(document.querySelector('${DIALOG}'), { childList: true, subtree: true, characterData: true });
+    read();
+  })()`);
+  const line = (person) => `document.querySelector('${DIALOG} li[data-person=${JSON.stringify(person)}] .activity')?.textContent`;
+  const untilLine = async (person, text) => {
+    await front(ann);
+    await ann.waitFor(`${line(person)} === ${JSON.stringify(text)}`);
+  };
+  await untilLine(annId, 'On slide 1');
+  await untilLine(benId, 'On slide 1');
+  await show(ben, 'Two');
+  await untilLine(benId, 'On slide 2');
+  await front(ben);
+  await caretAtEnd(ben, on('Two', 'p'));
+  await typeKeys(ben, 'x');
+  await front(ann);
+  await ann.waitFor(`window.__lines.includes('Typing on slide 2')`);
+  await untilLine(benId, 'On slide 2');
+  for (const [mode, text] of [['history', 'Viewing the version history'], ['present', 'Presenting'], ['edit', 'On slide 2']]) {
+    await ben.evaluate(`${P}.set({ mode: ${JSON.stringify(mode)} })`);
+    await untilLine(benId, text);
+  }
+  // a page is away while it is hidden
+  await ben.evaluate(`window.__visibility = 'hidden'; document.dispatchEvent(new Event('visibilitychange'))`);
+  await untilLine(benId, 'Away');
+  await ben.evaluate(`window.__visibility = undefined; document.dispatchEvent(new Event('visibilitychange'))`);
+  await untilLine(benId, 'On slide 2');
+  // following goes before the rest
+  await front(ben);
+  await ben.evaluate(`${F}.start(${JSON.stringify(annId)})`);
+  await untilLine(benId, 'Following you');
+  await ben.evaluate(`${P}.set({ mode: 'history' })`);
+  await front(ben);
+  await ben.waitFor(`${C}.connection === 'online'`);
+  await untilLine(benId, 'Following you');
+  await ben.evaluate(`${F}.stop(); ${P}.set({ mode: 'edit' })`);
+  await untilLine(benId, 'On slide 1');
+  await ann.evaluate(`${F}.start(${JSON.stringify(benId)})`);
+  await untilLine(annId, 'Following Ben');
+  clean(ann);
+  clean(ben);
+});
+
 // a deck of n slides of about bytes / n characters each, with the bulk in the speaker notes
 function bigDeck(n, bytes) {
   const words = 'the orbit of the moon is followed by a ship that sees the far side '.repeat(Math.ceil(bytes / n / 68));
