@@ -31,6 +31,10 @@ type Range = { start: number; end: number };
 
 export const isVersionId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(id);
 const newId = () => randomBytes(9).toString('base64url');
+// a text is rebuilt from the nearest text kept, one every STEP versions at the start, and fewer
+// once more than CHECKPOINTS are kept
+const STEP = 50;
+const CHECKPOINTS = 64;
 
 // the new ranges of the patches of an operation in the text after it
 function rangesOf(patches: Patch[]): Range[] {
@@ -139,6 +143,9 @@ export class History {
   private readonly log: (message: string) => void;
   private base = { time: 0, text: '' };
   private versions: Version[] = [];
+  // the texts after some versions, by index, as starting points of a rebuild
+  private checkpoints = new Map<number, string>();
+  private step = STEP;
   private lastText = '';
   private lastSlides: Slide[] | null = null;
   private open: Open | null = null;
@@ -172,6 +179,8 @@ export class History {
         this.log(`the version history could not be read, hence it was moved to ${aside} and a new history begins`);
       } catch {}
       this.versions = [];
+      this.checkpoints.clear();
+      this.step = STEP;
     }
     const text = authority.text;
     if (!loaded) {
@@ -248,9 +257,19 @@ export class History {
 
   private textAt(i: number): string {
     if (i === this.versions.length - 1) return this.lastText;
-    let text = this.base.text;
-    for (let k = 0; k <= i; k++) text = apply(text, this.versions[k].patches);
+    let from = -1;
+    for (const k of this.checkpoints.keys()) if (k <= i && k > from) from = k;
+    let text = from < 0 ? this.base.text : this.checkpoints.get(from)!;
+    for (let k = from + 1; k <= i; k++) text = apply(text, this.versions[k].patches);
     return text;
+  }
+
+  private checkpoint(i: number, text: string): void {
+    if ((i + 1) % this.step !== 0) return;
+    this.checkpoints.set(i, text);
+    if (this.checkpoints.size <= CHECKPOINTS) return;
+    this.step *= 2;
+    for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
   }
 
   // a new version of text, which patches make from the text of the last version
@@ -267,6 +286,7 @@ export class History {
   private push(v: Version, text: string): void {
     this.versions.push(v);
     this.lastText = text;
+    this.checkpoint(this.versions.length - 1, text);
     this.append({ kind: 'version', ...v });
     this.changed();
   }
@@ -364,6 +384,7 @@ export class History {
       } else {
         text = apply(text, record.v.patches);
         this.versions.push(record.v);
+        this.checkpoint(this.versions.length - 1, text);
       }
       good += lines[i].length + 1;
     }
