@@ -98,7 +98,8 @@ export class Disk {
   // after the first operation that is not written
   schedule(): void {
     if (this.stopped) return;
-    const now = Date.now();
+    // a monotonic clock, since a step of the wall clock would move the deadline
+    const now = performance.now();
     this.firstUnwritten ??= now;
     if (this.timer) clearTimeout(this.timer);
     const wait = Math.max(0, Math.min(QUIET, this.firstUnwritten + LATEST - now));
