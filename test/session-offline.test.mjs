@@ -3,7 +3,10 @@
 // opened again sends, with the version in the log and after a restart of the edit command, two
 // tabs that keep their copies apart, IndexedDB blocked, the dialog of the conflicts at a reconnect
 // with each of its buttons, and the pictures uploaded into media/ before the operation that names
-// them
+// them. the regression tests at the end cover the save state before the first copy, edits typed
+// before hello is answered, two copies that conflict, a copy of an earlier session, the dialog of
+// the conflicts at a join, after a removed slide, and after a close by the browser, the parse of
+// the deck for this dialog, and the pictures of a copy
 
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
@@ -631,4 +634,39 @@ test('the slide of each text of the dialog of the conflicts is found with one pa
   for (let i = 0; i < 2 && !(m.again < m.first / 4); i++) m = await measure();
   assert.ok(m.again < m.first / 4, `a call on the same text takes ${m.again} ms, against ${m.first} ms for the parse`);
   clean(page);
+});
+
+// the paths of the files of the copies of the address of a page in IndexedDB
+const FILES = `new Promise((done) => {
+  const r = indexedDB.open('beeson-session', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('copies', { keyPath: 'id' }).createIndex('key', 'key');
+  r.onsuccess = () => {
+    const q = r.result.transaction('copies').objectStore('copies').getAll();
+    q.onsuccess = () => {
+      r.result.close();
+      done(q.result.filter((x) => x.key === location.origin + location.pathname).flatMap((x) => (x.files ?? []).map((f) => f.path)));
+    };
+  };
+})`;
+
+test('a picture dropped offline is kept with the copy, and the next join uploads it into media/', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url);
+  const probe = await probeOf(browser, server);
+  await converge(server, [a]);
+  await goOffline(a);
+  await show(a, 'One');
+  await dropFiles(a, [IMAGE]);
+  await a.waitFor(`(${FILES}).then((paths) => paths.includes('media/figure-light.png'))`);
+  const [{ id }] = await rows(a);
+  await a.close();
+  await released(probe, id);
+  const again = await tab(browser, url);
+  const text = await converge(server, [again]);
+  assert.match(text, /src="media\/figure-light\.png"/);
+  assert.ok(readFileSync(join(server.talk, 'media/figure-light.png')).equals(readFileSync(IMAGE)));
+  clean(again);
 });
