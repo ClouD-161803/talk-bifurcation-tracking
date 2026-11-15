@@ -512,3 +512,41 @@ test('a reconnect while an operation is unanswered waits for its answer, and a h
   assert.equal(await page.evaluate(el(0, 'p') + '.textContent'), 'First slide held');
   clean(page, REFUSED);
 });
+
+test('the answer of a poll that the edit command gave before its restart is dropped once the page said hello again', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const { port } = server.edit;
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
+  await converge(server, [a, b]);
+  // the answer of the next poll of b is held, which a change of a, or of its caret, answers
+  await b.evaluate(`__net.rule('/.session/events', 'late', { times: 1 })`);
+  await show(a, 'Two');
+  await caretAtEnd(a, el(1, 'p'));
+  await type(a, ' by Ann');
+  await type(a, ' again');
+  await b.waitFor(`__net.held.length === 1`);
+  await converge(server, [a]);
+  const [hellos, presences] = await b.evaluate(`['/.session/hello', '/.session/presence'].map((part) => __net.count(part, 'POST', 200))`);
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  await server.start(['--port', String(port)]);
+  // the presence of b is refused for its token from before the restart, and b says hello again
+  await show(b, 'One');
+  await caretAtEnd(b, el(0, 'p'));
+  await b.waitFor(`__net.count('/.session/hello', 'POST', 200) === ${hellos + 1} && __net.count('/.session/presence', 'POST', 200) > ${presences} && ${ONLINE} && !${C}.joining`, 20_000);
+  assert.equal(await b.evaluate(`${TEXT}.includes('<p>Second slide by Ann again</p>')`), true);
+  await b.evaluate(`__net.release('/.session/events')`);
+  await a.evaluate(`(${C}.tryNow(), true)`);
+  await a.waitFor(ONLINE, 20_000);
+  await type(a, ' now');
+  // b takes the change of a only by a poll after its hello, or by another hello
+  await b.waitFor(`${TEXT}.includes('<p>Second slide by Ann again now</p>')`, 20_000);
+  assert.equal(await b.evaluate(`__net.count('/.session/hello', 'POST', 200)`), hellos + 1);
+  assert.equal(await converge(server, [a, b]), TALK.replace('<p>Second slide</p>', '<p>Second slide by Ann again now</p>'));
+  const restarted = [...REFUSED, /status of 404 .*\/\.session\/presence/, /status of 400 .*\/\.session\/hello/];
+  clean(a, restarted);
+  clean(b, restarted);
+});
