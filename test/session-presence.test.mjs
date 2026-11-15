@@ -723,3 +723,32 @@ test('a selected element whose start tag another change renames is not read as t
   clean(ana);
   clean(ben);
 });
+
+test('a caret at the start of a line after a line break is drawn at the start of this line', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide, tail<br>next line</p>'));
+  const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ana, ben]);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await front(ana);
+  const mine = await ana.evaluate(`(() => {
+    const p = ${el(1, 'p')};
+    p.focus();
+    const r = document.createRange();
+    r.setStart(p.querySelector('br').nextSibling, 0);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    const b = r.getClientRects();
+    return { x: b[b.length - 1].left, y: b[b.length - 1].top, at: ${P}.client.shell.presence.caretIn(p) };
+  })()`);
+  await until(async () => (await ben.evaluate(`${C}.resolved()[0]?.caret?.at`)) === mine.at, 'the caret of Ana on the page of Ben');
+  const d = await until_(ben, (d) => d.carets.length === 1, 'the caret bar of Ana');
+  const bar = d.carets[0];
+  assert.ok(Math.abs(bar.x + bar.w / 2 - mine.x) < 2 && Math.abs(bar.y - mine.y) < 4, `the bar at ${JSON.stringify(bar)} is at the caret of Ana at ${JSON.stringify(mine)}`);
+  clean(ana);
+  clean(ben);
+});
