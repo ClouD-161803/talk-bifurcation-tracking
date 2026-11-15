@@ -241,13 +241,19 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     }
     if (action === 'push' && req.method === 'POST' && typeof id === 'string') {
       if (!session.pending.has(id)) return answer(res, 404, 'no request of this id, it may have timed out');
+      // the declared length is held at the start, so that pushes at once do not each fail partway
+      const declared = Math.min(Number(req.headers['content-length']) || 0, limits.bodyBytes);
       let reserved = 0;
+      let read = 0;
       let body;
       try {
         body = await bodyOf(req, limits.bodyBytes, (n) => {
-          if (!fits(session, reserved, n)) return false;
-          hold(session, n);
-          reserved += n;
+          read += n;
+          const more = Math.max(read, declared) - reserved;
+          if (more <= 0) return true;
+          if (!fits(session, reserved, more, declared)) return false;
+          hold(session, more);
+          reserved += more;
           return true;
         });
       } finally {
