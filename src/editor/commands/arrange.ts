@@ -6,7 +6,7 @@
 import type { App } from '../app.ts';
 import { HOST } from '../app.ts';
 import type { Command } from '../commands.ts';
-import { CONTAINER, RESIZABLE, containerOf, frameRect, linesOf, mediaIn, movableOf, movablesOf, objectsOf, pictureOf, turnable } from '../canvas/hit.ts';
+import { CONTAINER, RESIZABLE, containerOf, frameRect, linesOf, mediaIn, movableOf, movablesOf, objectsOf, pictureOf, severalOf, turnable } from '../canvas/hit.ts';
 import type { Place } from '../canvas/drag.ts';
 import { placeOf, record, withCorners, writePlace } from '../canvas/drag.ts';
 import { followAgain } from '../model/attach.ts';
@@ -173,7 +173,7 @@ export function commands(): Command[] {
       enabled: (app) => app.selection.kind === 'elements' || app.selection.kind === 'text',
       run: (app) => {
         const only = app.selection.only();
-        const up = only?.matches(RESIZABLE) ? containerOf(app, only) : null;
+        const up = only ? (only.matches(RESIZABLE) ? containerOf(app, only) : severalOf(app, only)) : null;
         const a = document.activeElement;
         if (a instanceof HTMLElement && (app.selection.items.some((el) => el.contains(a)) || a.classList.contains('beeson-handle'))) a.blur();
         if (up) app.selection.set('elements', [up]);
@@ -191,19 +191,19 @@ export function commands(): Command[] {
       run: (app) => app.commands.run('selection.clear'),
     },
     {
-      // the figure around an image, a video, or a QR code selected by a second click on it, as Esc
-      // selects it
+      // the figure around an image, a video, or a QR code selected by a second click on it, or
+      // around a figure selected inside a plate that holds several, as Esc selects it
       id: 'selection.container',
       label: 'Select Figure',
       menu: { bar: 'Edit', group: 'select', order: 33 },
       context: ['element'],
       enabled: (app) => {
         const only = app.selection.only();
-        return !!only && only.matches(RESIZABLE) && !!containerOf(app, only);
+        return !!only && (only.matches(RESIZABLE) ? !!containerOf(app, only) : !!severalOf(app, only));
       },
       run: (app) => {
         const only = app.selection.only();
-        const up = only ? containerOf(app, only) : null;
+        const up = only ? (only.matches(RESIZABLE) ? containerOf(app, only) : severalOf(app, only)) : null;
         if (up) app.selection.set('elements', [up]);
       },
     },
@@ -239,7 +239,9 @@ export function commands(): Command[] {
       },
     },
     {
-      // Return on a figure without text selects its image or video, unless the figure is locked
+      // Return on a figure without text selects its image or video, unless the figure is locked, and
+      // on a plate of several figures the figure of its first shown picture, one level down, as a
+      // second click does
       id: 'selection.selectMedia',
       label: 'Select Image',
       keys: { mac: ['Enter'], other: ['Enter'] },
@@ -252,7 +254,8 @@ export function commands(): Command[] {
       run: (app) => {
         const el = app.selection.only() as Element;
         const media = [...el.querySelectorAll('img, video')].find((m) => m.getBoundingClientRect().width > 0);
-        if (media) app.selection.set('elements', [media]);
+        const child = media ? mediaIn(el, media) : null;
+        if (child) app.selection.set('elements', [child]);
       },
     },
     {
