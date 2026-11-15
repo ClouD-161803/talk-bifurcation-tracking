@@ -23,8 +23,8 @@ const CSS = `
 .beeson-session-preview .who { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
 .beeson-session-preview .bar > .slides { flex: 1 1 120px; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
 .beeson-session-preview .slides > * { flex: none; }
-.beeson-session-preview .removed { color: var(--ed-muted); white-space: nowrap; }
-.beeson-session-preview .removed:empty { display: none; }
+.beeson-session-preview :is(.removed, .notes) { color: var(--ed-muted); white-space: nowrap; }
+.beeson-session-preview :is(.removed, .notes):empty { display: none; }
 .beeson-session-preview .actions { flex: none; margin-left: auto; }
 .beeson-session-preview.two .info { max-width: 55%; flex-wrap: nowrap; overflow: hidden; }
 .beeson-session-preview.two .date { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -44,6 +44,7 @@ const FRAME_CSS = `
 [data-beeson-changed] { outline: 6px solid var(--beeson-changed) !important; outline-offset: 6px !important; }
 section[data-beeson-changed] { outline-offset: -6px !important; }
 html.beeson-hide-changes [data-beeson-changed] { outline: none !important; }
+html:not(.beeson-hide-changes) :is([data-beeson-changed].fragment, [data-beeson-changed] .fragment) { opacity: 1 !important; visibility: visible !important; }
 `;
 
 // the bar is wrapped onto two rows, with Name this version in More, below this width in px
@@ -121,7 +122,7 @@ function sectionsOf(doc: Document, text: string, slides: Slide[]): (Element | nu
 type RevealLike = { isReady?(): boolean; on?(type: string, fn: () => void): void; getIndices(el: Element): { h: number; v?: number }; slide(h: number, v?: number): void };
 
 // the parts of the bar of a version, built once and changed where a version differs
-type VersionBar = { info: HTMLElement; date: HTMLElement; who: HTMLElement; slides: HTMLElement; shown: string; failed: HTMLElement; actions: HTMLElement };
+type VersionBar = { info: HTMLElement; date: HTMLElement; who: HTMLElement; slides: HTMLElement; shown: string; notes: HTMLElement; failed: HTMLElement; actions: HTMLElement };
 
 export type Actions = {
   restore(v: VersionInfo, text: string | null): Promise<void>;
@@ -251,7 +252,7 @@ export class Preview {
     const restore = () => this.version && void this.actions.restore(this.version, this.text);
     const name = () => this.version && this.actions.name(this.version);
     actions.append(label, this.button('Restore this version', restore), this.button('Name this version', name, 'name'), more);
-    return { info, date, who, slides: make('div', 'slides'), shown: '', failed: make('span', 'removed'), actions };
+    return { info, date, who, slides: make('div', 'slides'), shown: '', notes: make('span', 'notes'), failed: make('span', 'removed'), actions };
   }
 
   // the menu of More, which holds Name this version where the bar is narrow
@@ -280,7 +281,7 @@ export class Preview {
       b.who.replaceWith(who);
       b.who = who;
     }
-    if (fresh) b.failed.textContent = '';
+    if (fresh) b.notes.textContent = b.failed.textContent = '';
     const shown = JSON.stringify([v.slides, v.removed ?? null]);
     if (shown !== b.shown) {
       b.shown = shown;
@@ -290,7 +291,7 @@ export class Preview {
       if (v.removed?.slides.length) removed.push(`${slidesText(v.removed.slides)} removed`);
       if (v.removed?.elements) removed.push(`${v.removed.elements} ${v.removed.elements > 1 ? 'elements' : 'element'} removed`);
       if (removed.length) nodes.push(make('span', 'removed', removed.join(', ')));
-      b.slides.replaceChildren(...nodes, b.failed);
+      b.slides.replaceChildren(...nodes, b.notes, b.failed);
       if (focused !== null) [...b.slides.querySelectorAll('button')].find((x) => x.textContent === focused)?.focus();
     }
     if (fresh) {
@@ -361,13 +362,17 @@ export class Preview {
     doc.head.append(css);
     doc.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
     const targets = targetsOf(text, this.slides, detail.marks);
+    const notes = new Set<number>();
     for (const t of targets) {
       const section = this.sections[t.slide];
       const el = !section || t.name === null ? section : [...section.children].filter((c) => c.localName === t.name)[t.nth];
       if (!el) continue;
       el.setAttribute('data-beeson-changed', t.author);
       (el as HTMLElement).style.setProperty('--beeson-changed', personOf(this.client, t.author)?.color ?? 'var(--muted)');
+      // the notes are not drawn on the slide, hence their change is named in the bar
+      if (el.matches('aside.notes')) notes.add(this.slides[t.slide].number);
     }
+    if (notes.size && this.versionBar) this.versionBar.notes.textContent = `Notes of ${slidesText([...notes].sort((x, y) => x - y))} changed`;
     // a slide with a changed element first, and of a number without one, a slide of this number
     const marked = (k: number) => targets.some((t) => t.slide === k);
     const first = this.slides.findIndex((s, k) => this.sections[k] && v.slides.includes(s.number) && (marked(k) || !this.slides.some((o, j) => o.number === s.number && marked(j))));
