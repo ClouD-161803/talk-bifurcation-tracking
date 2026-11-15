@@ -325,7 +325,7 @@ type Plan = { live: Element; ops: Op[]; after: Element | null };
 
 // raw is set when a script or another element of raw text is put or taken among the children of
 // an element that is kept, which is a reload
-type Planner = { liveOf: Map<SrcEl, Element>; drops: { node: Element; bytes: string }[]; places: (Op & { kind: 'place' })[]; caretHost: Element | null; raw: boolean };
+type Planner = { liveOf: Map<SrcEl, Element>; drops: { node: Element; bytes: string; role: string }[]; places: (Op & { kind: 'place' })[]; caretHost: Element | null; raw: boolean };
 
 // the visible text among the children of s, outside its units, which a plan does not change
 const strayText = (s: SrcEl): string => s.children.flatMap((c) => (c.kind === 'text' && /\S/.test(c.decoded) ? [c.decoded.trim()] : [])).join('\n');
@@ -407,7 +407,7 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
     const node = nodeOf(u.el);
     if (used.has(i)) return;
     if (RAW_TEXT.has(u.el.tag)) pl.raw = true;
-    if (node) pl.drops.push({ node, bytes: body(ot, u) });
+    if (node) pl.drops.push({ node, bytes: body(ot, u), role: roleOf(node) });
   });
   let after: Element | null = null;
   for (let i = ou.length - q; i < ou.length && !after; i++) after = nodeOf(ou[i].el);
@@ -416,7 +416,7 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
 
 // the op of an old unit a changed into b, or null when b is placed in its stead
 function change(ctx: Ctx, pl: Planner, a: SrcEl, b: SrcEl, node: Element | null): Op | null {
-  if (!node || a.tag !== b.tag || RAW_TEXT.has(a.tag) || !a.open !== !b.open) return null;
+  if (!node || a.tag !== b.tag || RAW_TEXT.has(a.tag) || !a.open !== !b.open || isStack(a) !== isStack(b)) return null;
   const aText = isTextElement(a);
   if (aText !== isTextElement(b)) return null;
   if (aText) return ctx.pairing.byLive.get(node)?.src === a ? { kind: 'text', node, to: b } : null;
@@ -424,6 +424,14 @@ function change(ctx: Ctx, pl: Planner, a: SrcEl, b: SrcEl, node: Element | null)
   const plan = reconcile(ctx, pl, a, b, node);
   return plan && { kind: 'inner', node, from: a, to: b, plan };
 }
+
+// a slide that holds the slides of a vertical stack, which reveal.js and the theme set up apart
+// from a slide, hence a slide that becomes a stack or stops being one is placed anew
+const isStack = (e: SrcEl): boolean => e.tag === 'section' && e.children.some((c) => c.kind === 'element' && c.tag === 'section');
+
+// the role of a slide on the page, kept by a node reused in another place
+const roleOf = (el: Element): string => (el.localName !== 'section' ? '' : el.parentElement?.localName === 'section' ? 'inner' : el.querySelector(':scope > section') ? 'stack' : 'slide');
+const roleIn = (e: SrcEl): string => (e.tag !== 'section' ? '' : e.parent?.tag === 'section' ? 'inner' : isStack(e) ? 'stack' : 'slide');
 
 const isUnit = (ctx: Ctx, placed: Set<Element>, el: Element): boolean => ctx.pairing.elements.has(el) || placed.has(el);
 
@@ -493,7 +501,7 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   for (;;) {
     const a = el.parent ? elementRange(el) : contentRange(el);
     const b = to && (to.parent ? elementRange(to) : contentRange(to));
-    if (to && a && b && to.tag === el.tag && b.start === a.start && b.end === a.end + d) break;
+    if (to && a && b && to.tag === el.tag && b.start === a.start && b.end === a.end + d && isStack(to) === isStack(el)) break;
     const up = live.parentElement;
     if (!el.parent || !up || ctx.pairing.elements.get(up) !== el.parent) return null;
     el = el.parent;
@@ -504,10 +512,12 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   for (const [l, s] of ctx.pairing.elements) pl.liveOf.set(s, l);
   const plan = reconcile(ctx, pl, el, to, live);
   if (!plan || pl.raw) return null;
-  // a unit taken from one element and placed in another keeps its node
+  // a unit taken from one element and placed in another keeps its node, unless it is a slide that
+  // changes its role
   const pool = new Map<string, Element[]>();
-  for (const d of pl.drops) pool.set(d.bytes, [...(pool.get(d.bytes) ?? []), d.node]);
-  for (const op of pl.places) op.node = pool.get(op.bytes)?.shift() ?? null;
+  const key = (bytes: string, role: string) => `${role}\n${bytes}`;
+  for (const d of pl.drops) pool.set(key(d.bytes, d.role), [...(pool.get(key(d.bytes, d.role)) ?? []), d.node]);
+  for (const op of pl.places) op.node = pool.get(key(op.bytes, roleIn(op.src)))?.shift() ?? null;
   const reused = new Set(pl.places.flatMap((op) => (op.node ? [op.node] : [])));
   const deck = app.deck();
   const current = app.current();
