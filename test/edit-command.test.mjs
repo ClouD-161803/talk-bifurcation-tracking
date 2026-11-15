@@ -48,18 +48,18 @@ test('the edit command serves a session and writes every edit into index.html', 
 
   await t.test('an operation is applied and given to a poll of events', async () => {
     const at = DECK.indexOf('One');
-    const answer = (await post(port, api('op'), { client: hello.client, seq: 1, base: hello.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json();
+    const answer = (await post(port, api('op'), { token: hello.token, seq: 1, base: hello.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json();
     assert.deepEqual(answer, { ok: true, v: `${epoch}.1` });
-    const events = (await raw(port, 'GET', `${api('events')}?client=${hello.client}&since=${hello.v}`)).json();
+    const events = (await raw(port, 'GET', `${api('events')}?token=${hello.token}&since=${hello.v}`)).json();
     assert.equal(events.ops.length, 1);
     assert.equal(events.ops[0].author, hello.person);
     assert.deepEqual(events.people.map((p) => p.name).sort(), ['Ann', 'Bo']);
   });
 
   await t.test('a long poll is answered when an operation of another person arrives', async () => {
-    const waiting = raw(port, 'GET', `${api('events')}?client=${hello.client}&since=${epoch}.1`);
+    const waiting = raw(port, 'GET', `${api('events')}?token=${hello.token}&since=${epoch}.1`);
     const at = DECK.indexOf('Two');
-    const answer = (await post(port, api('op'), { client: bo.client, seq: 1, base: `${epoch}.1`, patches: [{ start: at, end: at + 3, text: 'Deux' }] })).json();
+    const answer = (await post(port, api('op'), { token: bo.token, seq: 1, base: `${epoch}.1`, patches: [{ start: at, end: at + 3, text: 'Deux' }] })).json();
     assert.equal(answer.ok, true);
     const events = (await waiting).json();
     assert.deepEqual(events.ops.map((op) => op.author), [bo.person]);
@@ -68,13 +68,13 @@ test('the edit command serves a session and writes every edit into index.html', 
 
   await t.test('an operation that conflicts with an earlier one of its base is refused whole', async () => {
     const at = DECK.indexOf('First');
-    const first = (await post(port, api('op'), { client: hello.client, seq: 2, base: `${epoch}.2`, patches: [{ start: at, end: at + 5, text: 'Primo' }] })).json();
+    const first = (await post(port, api('op'), { token: hello.token, seq: 2, base: `${epoch}.2`, patches: [{ start: at, end: at + 5, text: 'Primo' }] })).json();
     assert.equal(first.ok, true);
-    const second = (await post(port, api('op'), { client: bo.client, seq: 2, base: `${epoch}.2`, patches: [{ start: 0, end: 0, text: '<!-- a -->' }, { start: at + 1, end: at + 2, text: 'X' }] })).json();
+    const second = (await post(port, api('op'), { token: bo.token, seq: 2, base: `${epoch}.2`, patches: [{ start: 0, end: 0, text: '<!-- a -->' }, { start: at + 1, end: at + 2, text: 'X' }] })).json();
     assert.deepEqual(second, { ok: false, reason: 'conflict', v: `${epoch}.3` });
-    const repeated = (await post(port, api('op'), { client: bo.client, seq: 2, base: `${epoch}.2`, patches: [] })).json();
+    const repeated = (await post(port, api('op'), { token: bo.token, seq: 2, base: `${epoch}.2`, patches: [] })).json();
     assert.deepEqual(repeated, second);
-    assert.equal((await post(port, api('op'), { client: 'nobody-here', seq: 1, base: `${epoch}.3`, patches: [] })).json().reason, 'unknown');
+    assert.equal((await post(port, api('op'), { token: 'n'.repeat(22), seq: 1, base: `${epoch}.3`, patches: [] })).json().reason, 'unknown');
   });
 
   const current = async () => (await raw(port, 'GET', `${base}index.html`)).text;
@@ -94,7 +94,7 @@ test('the edit command serves a session and writes every edit into index.html', 
     let writtenAt = null;
     const at = (await current()).indexOf('</body>');
     while (Date.now() - started < 3000) {
-      const answer = (await post(port, api('op'), { client: hi.client, seq: ++seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
+      const answer = (await post(port, api('op'), { token: hi.token, seq: ++seq, base: v, patches: [{ start: at, end: at, text: `<i>${seq}</i>` }] })).json();
       assert.equal(answer.ok, true);
       v = answer.v;
       if (writtenAt === null && text(file).includes('<i>1</i>')) writtenAt = Date.now() - started;
@@ -109,7 +109,7 @@ test('the edit command serves a session and writes every edit into index.html', 
     await until(async () => text(file) === (await current()), 'the file to be written');
     writeFileSync(file, text(file).replace('</body>', '<section>\n  <h2>Three</h2>\n</section>\n</body>'));
     const ops = await until(async () => {
-      const events = (await raw(port, 'GET', `${api('events')}?client=${hello.client}&since=${v}`)).json();
+      const events = (await raw(port, 'GET', `${api('events')}?token=${hello.token}&since=${v}`)).json();
       return events.ops.some((op) => op.author === 'file') && events.ops;
     }, 'an operation of the file');
     assert.ok(ops.find((op) => op.author === 'file').patches.some((p) => p.text.includes('Three')));
@@ -121,7 +121,7 @@ test('the edit command serves a session and writes every edit into index.html', 
     const read = text(file);
     const v = (await post(port, api('hello'), boAgain)).json().v;
     const at = (await current()).indexOf('Second slide');
-    const answer = (await post(port, api('op'), { client: bo.client, seq: 10, base: v, patches: [{ start: at, end: at + 6, text: 'Seconda' }] })).json();
+    const answer = (await post(port, api('op'), { token: bo.token, seq: 10, base: v, patches: [{ start: at, end: at + 6, text: 'Seconda' }] })).json();
     assert.equal(answer.ok, true);
     await until(() => text(file).includes('Seconda slide'), 'the operation to be written');
     // the agent writes back the whole file it read before the operation, with its own edit
@@ -222,13 +222,13 @@ test('the edit command serves a session and writes every edit into index.html', 
   if (process.platform !== 'win32') {
     await t.test('a stop answers the waiting polls with ended and writes the last operation', async () => {
       const v = (await post(port, api('hello'), ann)).json().v;
-      const waiting = raw(port, 'GET', `${api('events')}?client=${hello.client}&since=${v}`);
+      const waiting = raw(port, 'GET', `${api('events')}?token=${hello.token}&since=${v}`);
       await until(async () => text(file) === (await current()), 'the file to be written');
-      const answer = (await post(port, api('op'), { client: hello.client, seq: 50, base: v, patches: [{ start: 0, end: 0, text: '<!-- last -->\n' }] })).json();
+      const answer = (await post(port, api('op'), { token: hello.token, seq: 50, base: v, patches: [{ start: 0, end: 0, text: '<!-- last -->\n' }] })).json();
       assert.equal(answer.ok, true);
       // the poll may be answered with the operation before the stop, and is then made again
       let events = (await waiting).json();
-      const again = events.ended ? null : raw(port, 'GET', `${api('events')}?client=${hello.client}&since=${events.v}`);
+      const again = events.ended ? null : raw(port, 'GET', `${api('events')}?token=${hello.token}&since=${events.v}`);
       edit.child.kill('SIGTERM');
       if (again) events = (await again).json();
       assert.deepEqual(events.ended, { by: 'Ann' });
@@ -245,7 +245,7 @@ test('a byte-order mark is kept in the file and left out of the text', { timeout
   t.after(() => stopEdit(edit));
   const hello = (await post(edit.port, `${edit.base}.session/hello`, { name: 'Ann' })).json();
   assert.equal(hello.text, DECK);
-  const answer = (await post(edit.port, `${edit.base}.session/op`, { client: hello.client, seq: 1, base: hello.v, patches: [{ start: 0, end: 15, text: '<!DOCTYPE html>' }] })).json();
+  const answer = (await post(edit.port, `${edit.base}.session/op`, { token: hello.token, seq: 1, base: hello.v, patches: [{ start: 0, end: 15, text: '<!DOCTYPE html>' }] })).json();
   assert.equal(answer.ok, true);
   const file = join(talk, 'index.html');
   await until(() => readFileSync(file).subarray(3).toString('utf8').startsWith('<!DOCTYPE html>'), 'the file to be written');
@@ -277,7 +277,7 @@ test('a person keeps an id, a name, and a tone, kept in .session/people.json', {
     assert.equal(answer.status, 200, answer.text);
     return answer.json();
   };
-  const poll = (who, since) => raw(edit.port, 'GET', `${api('events')}?client=${who.client}&since=${since}`).then((r) => r.json());
+  const poll = (who, since) => raw(edit.port, 'GET', `${api('events')}?token=${who.token}&since=${since}`).then((r) => r.json());
 
   const ann = await hello({ name: '  Ann  ', person: 'short' });
   assert.match(ann.person, /^[A-Za-z0-9_-]{22,}$/, 'a malformed person id is replaced');
@@ -288,7 +288,7 @@ test('a person keeps an id, a name, and a tone, kept in .session/people.json', {
   await t.test('a name held by another person is refused, unless it is claimed', async () => {
     const other = 'B'.repeat(22);
     assert.deepEqual(await hello({ name: ' aNN ', person: other }), { taken: { name: 'Ann' } });
-    assert.deepEqual(await hello({ name: 'ann', person: other, client: ann.client }), { taken: { name: 'Ann' } });
+    assert.deepEqual(await hello({ name: 'ann', person: other, token: ann.token }), { taken: { name: 'Ann' } });
     const second = await hello({ name: 'ANN', person: other, claim: true });
     assert.equal(second.person, ann.person);
     assert.equal(second.name, 'Ann');
@@ -296,7 +296,7 @@ test('a person keeps an id, a name, and a tone, kept in .session/people.json', {
     assert.notEqual(second.client, ann.client);
     assert.deepEqual(second.people.map((p) => [p.person, p.name]), [[ann.person, 'Ann'], [ann.person, 'Ann']], 'one person with two pages is listed twice');
     assert.deepEqual(second.known.map((p) => p.person), [ann.person]);
-    await post(edit.port, api('bye'), { client: second.client });
+    await post(edit.port, api('bye'), { token: second.token });
   });
 
   await t.test('a new person gets the tone that the fewest people present hold, and keeps it', async () => {
@@ -305,10 +305,10 @@ test('a person keeps an id, a name, and a tone, kept in .session/people.json', {
     const di = await hello({ name: 'Di' });
     assert.deepEqual([bo.color, cy.color, di.color], [1, 2, 3]);
     assert.equal((await hello({ name: 'Eve' })).color, 0);
-    await post(edit.port, api('bye'), { client: bo.client });
+    await post(edit.port, api('bye'), { token: bo.token });
     // present: Ann and Eve on tone 0, Cy on 2, and Di on 3
     assert.equal((await hello({ name: 'Flo' })).color, 1);
-    await post(edit.port, api('bye'), { client: di.client });
+    await post(edit.port, api('bye'), { token: di.token });
     assert.equal((await hello({ name: 'Bo', person: bo.person })).color, 1);
     assert.equal((await hello({ name: 'Gus' })).color, 3);
   });
@@ -321,23 +321,23 @@ test('a person keeps an id, a name, and a tone, kept in .session/people.json', {
   });
 
   await t.test('a rename reaches every page through people and known, and an operation names its person', async () => {
-    const again = await hello({ name: 'Ann', person: ann.person, client: ann.client });
+    const again = await hello({ name: 'Ann', person: ann.person, token: ann.token });
     const bo = await hello({ name: 'Bo', person: again.known.find((p) => p.name === 'Bo').person });
     // a first poll of Ann gets the news of the hello of Bo, and a second one waits
     const first = await poll(ann, ann.v);
     const waiting = poll(ann, first.v);
-    assert.deepEqual((await post(edit.port, api('name'), { client: bo.client, name: ' ANN ' })).json(), { taken: { name: 'Ann' } });
-    assert.deepEqual((await post(edit.port, api('name'), { client: bo.client, name: 'Bob  Marsh' })).json(), { name: 'Bob Marsh' });
+    assert.deepEqual((await post(edit.port, api('name'), { token: bo.token, name: ' ANN ' })).json(), { taken: { name: 'Ann' } });
+    assert.deepEqual((await post(edit.port, api('name'), { token: bo.token, name: 'Bob  Marsh' })).json(), { name: 'Bob Marsh' });
     const events = await waiting;
     assert.ok(events.people.some((p) => p.person === bo.person && p.name === 'Bob Marsh'));
     assert.ok(events.known.some((p) => p.person === bo.person && p.name === 'Bob Marsh'));
     const at = DECK.indexOf('One');
-    const op = (await post(edit.port, api('op'), { client: bo.client, seq: 1, base: events.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json();
+    const op = (await post(edit.port, api('op'), { token: bo.token, seq: 1, base: events.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json();
     assert.equal(op.ok, true);
     const next = await poll(ann, events.v);
     assert.deepEqual(next.ops.map((o) => o.author), [bo.person]);
     assert.equal(next.known, undefined, 'known is sent only when it changed');
-    assert.equal((await post(edit.port, api('name'), { client: 'nobody-here', name: 'X' })).status, 404);
+    assert.equal((await post(edit.port, api('name'), { token: 'n'.repeat(22), name: 'X' })).status, 404);
   });
 
   await t.test('people.json holds every person who joined, and survives a restart', async () => {
@@ -379,10 +379,10 @@ test('the end of sharing tells the guests and keeps the session of the host', { 
   assert.equal((await post(edit.port, api('share'), { relay: relay.url, secret })).status, 200);
   const ben = await (await guest('hello', { method: 'POST', headers: json, body: JSON.stringify({ name: 'Ben' }) })).json();
   assert.equal(ben.host, false);
-  const hostFirst = (await raw(edit.port, 'GET', `${api('events')}?client=${host.client}&since=${host.v}`)).json();
-  const guestFirst = await (await guest(`events?client=${ben.client}&since=${ben.v}`)).json();
-  const guestWaiting = guest(`events?client=${ben.client}&since=${guestFirst.v}`).then((r) => r.json());
-  const hostWaiting = raw(edit.port, 'GET', `${api('events')}?client=${host.client}&since=${hostFirst.v}`).then((r) => r.json());
+  const hostFirst = (await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${host.v}`)).json();
+  const guestFirst = await (await guest(`events?token=${ben.token}&since=${ben.v}`)).json();
+  const guestWaiting = guest(`events?token=${ben.token}&since=${guestFirst.v}`).then((r) => r.json());
+  const hostWaiting = raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=${hostFirst.v}`).then((r) => r.json());
   await until(() => relay.pulled() === 1, 'the edit command to pull the poll of the guest');
 
   assert.deepEqual((await raw(edit.port, 'DELETE', api('share'))).json(), { link: null });
@@ -394,14 +394,14 @@ test('the end of sharing tells the guests and keeps the session of the host', { 
 
   // shared again on the saved relay, the page of the guest is told the end until it says hello
   assert.equal((await post(edit.port, api('share'), {})).status, 200);
-  assert.deepEqual((await (await guest(`events?client=${ben.client}&since=${ben.v}`)).json()).ended, { by: 'Ana' });
-  const again = await (await guest('hello', { method: 'POST', headers: json, body: JSON.stringify({ name: 'Ben', person: ben.person, client: ben.client }) })).json();
+  assert.deepEqual((await (await guest(`events?token=${ben.token}&since=${ben.v}`)).json()).ended, { by: 'Ana' });
+  const again = await (await guest('hello', { method: 'POST', headers: json, body: JSON.stringify({ name: 'Ben', person: ben.person, token: ben.token }) })).json();
   assert.equal(again.person, ben.person);
-  const after = await (await guest(`events?client=${ben.client}&since=${ben.v}`)).json();
+  const after = await (await guest(`events?token=${ben.token}&since=${ben.v}`)).json();
   assert.equal(after.ended, undefined);
 
   const at = DECK.indexOf('One');
-  const op = (await post(edit.port, api('op'), { client: host.client, seq: 1, base: after.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json();
+  const op = (await post(edit.port, api('op'), { token: host.token, seq: 1, base: after.v, patches: [{ start: at, end: at + 3, text: 'Uno' }] })).json();
   assert.equal(op.ok, true, 'the edit command keeps running for the host');
 });
 
@@ -429,12 +429,12 @@ if (process.platform !== 'win32') {
       t.after(() => stopEdit(edit));
       const api = (route) => `${edit.base}.session/${route}`;
       const hello = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
-      const first = (await raw(edit.port, 'GET', `${api('events')}?client=${hello.client}&since=${hello.v}`)).json();
-      const answer = (await post(edit.port, api('op'), { client: hello.client, seq: 1, base: first.v, patches: [{ start: 0, end: 0, text: '<!-- last -->\n' }] })).json();
+      const first = (await raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${hello.v}`)).json();
+      const answer = (await post(edit.port, api('op'), { token: hello.token, seq: 1, base: first.v, patches: [{ start: 0, end: 0, text: '<!-- last -->\n' }] })).json();
       assert.equal(answer.ok, true);
       // the first poll after the operation is answered with it, and the second one waits
-      const next = (await raw(edit.port, 'GET', `${api('events')}?client=${hello.client}&since=${first.v}`)).json();
-      const waiting = raw(edit.port, 'GET', `${api('events')}?client=${hello.client}&since=${next.v}`);
+      const next = (await raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${first.v}`)).json();
+      const waiting = raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${next.v}`);
       await until(() => edit.stderr.includes('Keep this window open'), 'the edit command to be ready');
       edit.child.kill(signal);
       assert.deepEqual((await waiting).json().ended, { by: 'Ana' });
@@ -451,7 +451,7 @@ test('add regression test: a request body aborted by the browser does not stop t
   t.after(() => stopEdit(edit));
   const api = (route) => `${edit.base}.session/${route}`;
   const hello = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
-  const answer = (await post(edit.port, api('op'), { client: hello.client, seq: 1, base: hello.v, patches: [{ start: 0, end: 0, text: '<!-- kept -->\n' }] })).json();
+  const answer = (await post(edit.port, api('op'), { token: hello.token, seq: 1, base: hello.v, patches: [{ start: 0, end: 0, text: '<!-- kept -->\n' }] })).json();
   assert.equal(answer.ok, true);
   for (const path of ['/x', api('media/clip.mp4')]) {
     // a body of 1000 bytes announced, 2 sent, and the connection closed, as by a closed tab

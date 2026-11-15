@@ -9,10 +9,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomBytes } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
-import type { HelloRequest, NameRequest, OpRequest } from '../session/protocol.ts';
+import { isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { Disk, readText } from './disk.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
-import { isClientId, MAX_STATE, People } from './people.ts';
+import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
 
 export const DEFAULT_PORT = 8765;
@@ -181,7 +181,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
       const query = new URLSearchParams(request.query);
-      const waiting = people.events(query.get('client') ?? '', query.get('since') ?? '');
+      const waiting = people.events(people.clientOf(query.get('token')) ?? '', query.get('since') ?? '');
       return waiting ? json(200, await waiting) : error(404, 'say hello first');
     }
     if (!['hello', 'name', 'op', 'presence', 'bye'].includes(route)) return error(404, 'not found');
@@ -196,34 +196,41 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     }
     if (route === 'hello') {
       const hello = body as Partial<HelloRequest>;
-      const joined = people.hello(hello.name, hello.person, hello.client, request.direct, hello.claim === true);
+      const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ('taken' in joined) return json(200, { taken: joined.taken });
       if ('empty' in joined) return error(400, 'the name is empty');
       if ('full' in joined) return error(503, 'the session is full');
-      const { member } = joined;
-      const answer = { client: member.client, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known() };
+      const { member, token } = joined;
+      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known() };
       const ops = typeof hello.v === 'string' ? authority.since(hello.v) : null;
       return json(200, ops ? { ...answer, ops } : { ...answer, text: authority.text });
     }
+    // the client id is found from the secret token, and a client in the body is not read
+    const client = people.clientOf(body.token);
     if (route === 'op') {
-      const person = people.personOf(body.client);
-      if (person === null) return json(200, { ok: false, reason: 'unknown', v: authority.version });
+      const person = client === null ? null : people.personOf(client);
+      if (client === null || person === null) return json(200, { ok: false, reason: 'unknown', v: authority.version });
       if (Array.isArray(body.patches) && body.patches.length > 100_000) return json(200, { ok: false, reason: 'invalid', v: authority.version });
-      return json(200, authority.submit(body as unknown as OpRequest, person).answer);
+      const { seq, base, patches } = body as Partial<OpPost>;
+      return json(200, authority.submit({ client, seq, base, patches } as OpRequest, person).answer);
     }
-    if (!isClientId(body.client)) return error(400, 'client is missing');
+    if (!isToken(body.token)) return error(400, 'token is missing');
+    if (route === 'bye') {
+      if (client !== null) people.bye(client);
+      return json(200, {});
+    }
+    if (client === null) return error(404, 'say hello first');
     if (route === 'name') {
-      const renamed = people.rename(body.client, (body as Partial<NameRequest>).name);
+      const renamed = people.rename(client, (body as Partial<NameRequest>).name);
       if (!renamed) return error(404, 'say hello first');
       if ('empty' in renamed) return error(400, 'the name is empty');
       return json(200, renamed);
     }
     if (route === 'presence') {
       if ((JSON.stringify(body.state ?? null) ?? '').length > MAX_STATE) return error(413, 'the presence is too large');
-      return people.presence(body.client, body.state ?? null) ? json(200, {}) : error(404, 'say hello first');
+      return people.presence(client, body.state ?? null) ? json(200, {}) : error(404, 'say hello first');
     }
-    people.bye(body.client);
-    return json(200, {});
+    return error(404, 'not found');
   }
 
   function indexHtml(request: Request): Response {

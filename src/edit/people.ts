@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import type { Authority } from '../session/authority.ts';
-import { cleanPersonName, COLORS, isPersonId, nameKey, type Ended, type EventsAnswer, type KnownPerson, type Person, type Presence } from '../session/protocol.ts';
+import { cleanPersonName, COLORS, isPersonId, isToken, nameKey, type Ended, type EventsAnswer, type KnownPerson, type Person, type Presence } from '../session/protocol.ts';
 import { renameRetried, renameRetriedSync } from './disk.ts';
 
 const HOLD = 25_000;
@@ -32,9 +32,7 @@ type Poll = {
   gap: ReturnType<typeof setTimeout> | null;
 };
 
-export type Joined = { member: Member } | { taken: { name: string } } | { full: true } | { empty: true };
-
-export const isClientId = (c: unknown): c is string => typeof c === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(c);
+export type Joined = { member: Member; token: string } | { taken: { name: string } } | { full: true } | { empty: true };
 
 const newId = () => randomBytes(16).toString('base64url');
 
@@ -55,9 +53,11 @@ export class People {
   private authority: Authority;
   private file: string | null;
   private members = new Map<string, Member>();
-  // the person and the kind of every page that said hello, so that a browser back from a sleep
-  // keeps its person
-  private clients = new Map<string, { person: string; host: boolean }>();
+  // the person, the kind, and the token of every page that said hello, so that a browser back
+  // from a sleep keeps its person
+  private clients = new Map<string, { person: string; host: boolean; token: string }>();
+  // the client id of each token
+  private tokens = new Map<string, string>();
   private records = new Map<string, PersonRecord>();
   // the pages whose session ended, answered with ended until they say hello again
   private ends = new Map<string, Ended>();
@@ -85,8 +85,9 @@ export class People {
   }
 
   // a page joins as the person of the id, or as a new person. a name held by another person is
-  // refused unless claim is true, and the page then continues as this person
-  hello(rawName: unknown, rawPerson: unknown, client: unknown, host: boolean, claim = false): Joined {
+  // refused unless claim is true, and the page then continues as this person. the token of an
+  // earlier hello keeps its client id
+  hello(rawName: unknown, rawPerson: unknown, rawToken: unknown, host: boolean, claim = false): Joined {
     let person = isPersonId(rawPerson) ? rawPerson : newId();
     const name = cleanPersonName(rawName) || this.records.get(person)?.name || '';
     if (!name) return { empty: true };
@@ -95,7 +96,9 @@ export class People {
       if (!claim) return { taken: { name: holder.name } };
       person = holder.person;
     }
-    const id = isClientId(client) ? client : randomBytes(12).toString('base64url');
+    const earlier = isToken(rawToken) ? this.tokens.get(rawToken) : undefined;
+    const id = earlier ?? randomBytes(12).toString('base64url');
+    const token = earlier ? (rawToken as string) : newId();
     if (!this.members.has(id) && this.members.size >= MAX_PEOPLE) return { full: true };
     const now = Date.now();
     let record = this.records.get(person);
@@ -116,15 +119,20 @@ export class People {
     if (host) this.hostPerson = person;
     this.ends.delete(id);
     this.clients.delete(id);
-    this.clients.set(id, { person, host });
-    if (this.clients.size > MAX_CLIENTS) this.clients.delete(this.clients.keys().next().value!);
+    this.clients.set(id, { person, host, token });
+    this.tokens.set(token, id);
+    if (this.clients.size > MAX_CLIENTS) {
+      const [oldest, { token: old }] = this.clients.entries().next().value!;
+      this.clients.delete(oldest);
+      this.tokens.delete(old);
+    }
     let member = this.members.get(id);
     const fields = { person, name: record.name, color: record.color, host, lastSeen: now, seen: -1, knownSeen: this.knownRev };
     if (member) Object.assign(member, fields);
     else this.members.set(id, (member = { client: id, ...fields, state: null, lastAnswer: 0, polls: 0 }));
     this.renamed(person);
     this.changed();
-    return { member };
+    return { member, token };
   }
 
   // a new name of the person of the page client, or null when the page did not say hello
@@ -144,6 +152,11 @@ export class People {
       this.changed();
     }
     return { name };
+  }
+
+  // the client id of the page of token, or null
+  clientOf(token: unknown): string | null {
+    return isToken(token) ? (this.tokens.get(token) ?? null) : null;
   }
 
   // the person id of a page that said hello, or null

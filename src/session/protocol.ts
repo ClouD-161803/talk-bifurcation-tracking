@@ -1,14 +1,19 @@
 // the requests and answers between a browser of a session and the edit command, under
 // /<key>/.session/. every body is JSON, apart from the bytes of a media upload. a version is
 // written <epoch>.<n>, where the epoch is drawn at each start of the edit command and n counts the
-// operations applied since this start
+// operations applied since this start. hello gives a page a client id, which is public, and a
+// token, which is secret. every later request of the page carries the token, from which the client
+// id is found, and the client id cannot be used in its place
 
 export type Version = string;
 
 // the characters start to end of a text replaced by text, with offsets in UTF-16 code units
 export type Patch = { start: number; end: number; text: string };
 
-// a page of a session. person is the id that the browser keeps in localStorage, hence one person
+// the secret of a page, 22 characters of base64url
+export type Token = string;
+
+// a page of a session. client is the public id of the page. person is the id that the browser keeps in localStorage, hence one person
 // on two devices has two pages
 export type Person = { client: string; person: string; name: string; color: number; host: boolean };
 
@@ -34,13 +39,14 @@ export type AppliedOp = {
 
 // POST hello. v is the version of the text that the editor read, when it read one. a person id
 // that is missing or malformed is replaced by a new one. claim takes over the person who holds the
-// name, i.e. one person on a second device
-export type HelloRequest = { name: string; person?: string; client?: string; v?: Version; claim?: boolean };
+// name, i.e. one person on a second device. token keeps the client id of an earlier hello
+export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean };
 // the answer of hello and of name when another person holds the name, and nothing is changed
 export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise
 export type HelloAnswer = {
   client: string;
+  token: Token;
   person: string;
   name: string;
   color: number;
@@ -50,15 +56,18 @@ export type HelloAnswer = {
   known: KnownPerson[];
 } & ({ ops: AppliedOp[]; text?: undefined } | { text: string; ops?: undefined });
 
-// POST name: a new name of the person of the page client
-export type NameRequest = { client: string; name: string };
+// POST name: a new name of the person of the page of token
+export type NameRequest = { token: Token; name: string };
 export type NameAnswer = { name: string } | Taken;
 
-// POST op. base is the version of the text that the patches are of
+// an operation of a Replica. base is the version of the text that the patches are of
 export type OpRequest = { client: string; seq: number; base: Version; patches: Patch[] };
+// POST op: the OpRequest and the token of the page. a client in the body is replaced by the
+// client id of the token
+export type OpPost = OpRequest & { token: Token };
 // stale: base is of another epoch or older than the log. conflict: a patch conflicts with an
 // operation applied after base. invalid: the patches are out of bounds, unsorted, overlapping, or
-// cut a surrogate pair. unknown: the client did not say hello
+// cut a surrogate pair. unknown: the token is not of a page that said hello
 export type RefusalReason = 'stale' | 'conflict' | 'invalid' | 'unknown';
 export type OpAnswer = { ok: true; v: Version } | { ok: false; reason: RefusalReason; v: Version };
 
@@ -66,7 +75,7 @@ export type OpAnswer = { ok: true; v: Version } | { ok: false; reason: RefusalRe
 // the name of the host, or null when it is not known
 export type Ended = { by: string | null };
 
-// GET events?client=&since=. ops is null when since is of another epoch or older than the log,
+// GET events?token=&since=. ops is null when since is of another epoch or older than the log,
 // and the browser then says hello again. known is sent only when it changed since the last answer
 // to this page. after ended, every poll of the page is answered with ended until it says hello
 export type EventsAnswer = {
@@ -78,8 +87,8 @@ export type EventsAnswer = {
   ended?: Ended;
 };
 
-export type PresenceRequest = { client: string; state: unknown };
-export type ByeRequest = { client: string };
+export type PresenceRequest = { token: Token; state: unknown };
+export type ByeRequest = { token: Token };
 export type EmptyAnswer = Record<string, never>;
 
 // PUT media/<name>. path is relative to the talk folder, e.g. media/plot-2.png
@@ -101,6 +110,7 @@ export const cleanPersonName = (raw: unknown): string =>
 // two names are one when their keys are equal
 export const nameKey = (name: string): string => cleanPersonName(name).normalize('NFC').toLowerCase();
 export const isPersonId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(id);
+export const isToken = (token: unknown): token is Token => typeof token === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(token);
 
 export const formatVersion = (epoch: string, n: number): Version => `${epoch}.${n}`;
 

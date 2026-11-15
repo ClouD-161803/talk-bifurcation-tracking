@@ -42,7 +42,7 @@ test('a guest edits a deck through the relay', { timeout: 120_000 }, async (t) =
     const hello = await (await guest('.session/hello', { method: 'POST', headers: json, body: JSON.stringify({ name: 'Guest' }) })).json();
     assert.equal(hello.host, false);
     const at = DECK.indexOf('First slide');
-    const op = { client: hello.client, seq: 1, base: hello.v, patches: [{ start: at, end: at + 5, text: 'Opening' }] };
+    const op = { token: hello.token, seq: 1, base: hello.v, patches: [{ start: at, end: at + 5, text: 'Opening' }] };
     const answer = await (await guest('.session/op', { method: 'POST', headers: json, body: JSON.stringify(op) })).json();
     assert.equal(answer.ok, true);
     await until(() => readFileSync(join(talk, 'index.html'), 'utf8').includes('Opening slide'), 'the operation of the guest to be written');
