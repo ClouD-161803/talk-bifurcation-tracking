@@ -402,6 +402,8 @@ export function install(client: Client): void {
       if (!(back instanceof HTMLElement) || back === document.body || back.closest('.beeson-session-toast')) back = document.querySelector('.beeson-session-state');
       if (!aside) selected = { kind: 'current' };
       pane.hidden = false;
+      // a caret left in the inert deck would keep the text held against the others
+      getSelection()?.removeAllRanges();
       // the person stops following in this mode, and the others see the mode in the pill of following
       stopFollowing();
       presenceOf(client)?.set({ mode: 'history' });
