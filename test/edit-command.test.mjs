@@ -722,3 +722,23 @@ test('add regression test: hellos and byes of many pages do not log out a page t
   assert.equal(op.ok, true, `the operation of the host was answered ${JSON.stringify(op)}`);
   assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=`)).status, 200, 'the events of the host');
 });
+
+test('add regression test: a second start refuses to run while the first edit command does not answer', { timeout: 60_000, skip: process.platform === 'win32' && 'SIGSTOP' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const env = { XDG_CONFIG_HOME: config, APPDATA: config };
+  const first = await startEdit(talk, { env });
+  t.after(() => stopEdit(first));
+  // a Ctrl+Z in the terminal of the first edit command
+  first.child.kill('SIGSTOP');
+  try {
+    const second = await startEdit(talk, { env: { ...env, SLIDES_LOCK_TIMEOUT_MS: '300' } });
+    t.after(() => stopEdit(second));
+    assert.equal(second.port, first.port, 'the second start runs beside the first');
+    assert.equal(await second.exited, 0);
+    assert.match(second.stderr, /does not answer/);
+  } finally {
+    first.child.kill('SIGCONT');
+  }
+  assert.equal((await raw(first.port, 'GET', `${first.base}index.html`)).status, 200);
+});
