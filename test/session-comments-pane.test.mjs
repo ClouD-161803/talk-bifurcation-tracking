@@ -686,6 +686,19 @@ test('the accessibility tree of Chrome holds the field of a mention as a combobo
   clean(b);
 });
 
+test('the initials and the tone of a person in the pane are those of the avatar', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t, ['Ann 🇮🇹', 'Ben']);
+  await post(a, 0, 'With a flag');
+  await openPane(b);
+  await sees(b, `!!document.querySelector('${PANE} article .avatar')`, true);
+  const look = (selector) => `(() => { const n = ${selector}; return n && [n.textContent, getComputedStyle(n).backgroundColor, getComputedStyle(n).color]; })()`;
+  const avatar = await b.evaluate(look(`[...document.querySelectorAll('.beeson-session-avatar')].find((n) => n.getAttribute('aria-label')?.startsWith('Ann'))`));
+  assert.equal(avatar[0], 'A🇮🇹');
+  assert.deepEqual(await b.evaluate(look(`document.querySelector('${PANE} article .avatar')`)), avatar);
+  clean(a);
+  clean(b);
+});
+
 test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or more', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
