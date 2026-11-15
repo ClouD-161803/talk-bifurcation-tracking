@@ -412,6 +412,9 @@ test('a version is named, and a name is taken off', { timeout: 120_000 }, async 
   assert.deepEqual(listed.versions.map((x) => [x.id, x.name]), [[v.id, 'Second'], [base.id, undefined]]);
   assert.equal((await name(v.id, 'x'.repeat(81))).status, 400);
   assert.equal((await name(v.id, 'é'.repeat(80))).status, 200);
+  // the limit is in characters, of which an emoji is one and two UTF-16 code units
+  assert.equal((await name(v.id, '😀'.repeat(80))).status, 200);
+  assert.equal((await name(v.id, '😀'.repeat(81))).status, 400);
   assert.equal((await name(v.id, 42)).status, 400);
   assert.equal((await name('nope', 'x')).status, 404);
   assert.equal((await name('../x', 'x')).status, 404);
