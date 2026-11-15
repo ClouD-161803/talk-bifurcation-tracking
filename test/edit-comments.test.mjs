@@ -130,3 +130,32 @@ test('a deck holds at most 2000 threads', (t) => {
   for (let i = 0; i < 2000; i++) assert.ok(comments.add(ANN, onDeck(authority, `t${i}`)).id);
   assert.equal(comments.add(ANN, onDeck(authority, 'one too many')).status, 409);
 });
+
+test('the changes of the threads are told, and a shift of an anchor is not', (t) => {
+  const { authority, comments } = open(sessionDir(t), DECK);
+  let told = 0;
+  comments.onChange(() => told++);
+  const v0 = comments.v;
+  const text = authority.text;
+  const thread = comments.add(ANN, { base: authority.version, anchor: tagRange(text, '<p>Second'), slide: slideRange(text, 'Second'), text: 'x' });
+  const gone = comments.add(ANN, onDeck(authority, 'y'));
+  const first = comments.since(v0);
+  assert.deepEqual(new Set(first.changed), new Set([thread, gone]));
+  assert.deepEqual([first.v, first.removed], [comments.v, []]);
+  const v1 = comments.v;
+  replace(authority, 'First slide', 'First slide, longer');
+  assert.equal(comments.v, v1);
+  assert.deepEqual(comments.since(v1), { v: v1, changed: [], removed: [] });
+  reads(authority.text, comments.list(ANN).comments[0].anchor, '<p>Second slide</p>');
+  // the element of the thread removed
+  replace(authority, '  <p>Second slide</p>\n', '');
+  const fell = comments.since(v1);
+  assert.equal(fell.changed.length, 1);
+  assert.deepEqual(fell.changed[0].removed, { text: '<p>Second slide</p>' });
+  reads(authority.text, fell.changed[0].anchor, '<section>\n  <h2>Two');
+  const v2 = comments.v;
+  assert.equal(comments.remove(gone.id, ANN, {}), null);
+  assert.deepEqual(comments.since(v2), { v: comments.v, changed: [], removed: [gone.id] });
+  assert.deepEqual(comments.since(-1), { v: comments.v, changed: null, removed: null });
+  assert.equal(told, 4);
+});
