@@ -114,6 +114,7 @@ export async function setAside(text: string, reason: string): Promise<AsideInfo>
 export function install(client: Client): void {
   current = client;
   const shell = client.shell.history;
+  const restoreWait = Number(new URLSearchParams(location.search).get('session-restore-wait')) || RESTORE_WAIT;
   let pane: HTMLElement | null = null;
   let list: HTMLElement;
   let asideHead: HTMLElement;
@@ -536,7 +537,7 @@ export function install(client: Client): void {
         check();
       });
       const timer = window.setInterval(check, 100);
-      const limit = window.setTimeout(() => finish(), RESTORE_WAIT);
+      const limit = window.setTimeout(() => finish(), restoreWait);
       function finish(): void {
         off();
         clearInterval(timer);
