@@ -10,7 +10,7 @@ import { apply as applyEdits, edits, mergeEdits, type Edit } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
 import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
 import { applyAt, refresh, repairText, type Done } from './apply.ts';
-import { markOf, moved, type Mark } from './caret.ts';
+import { caretOf, mapOffset, markOf, moved, putCaret, textIn, type Mark } from './caret.ts';
 import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
 
 // what an apply did: the elements it changed, e.g. for a flash, and reload when the deck could not
@@ -99,8 +99,9 @@ export function install(app: App): Port {
   let composing: Element | null = null;
   let behind: { shown: string; want: string } | null = null;
 
-  // the caret of a text element that an apply moved to a slide that is not shown, see park
-  let parked: { host: Element; range: Range } | null = null;
+  // the caret of a text element that an apply moved to a slide that is not shown, as an offset into
+  // the text of the element, see park
+  let parked: { host: Element; offset: number; text: string } | null = null;
 
   const reload = (): Applied => ({ reload: true, changed: [] });
   const ready = () => !!app.source && !!app.pairing && !!app.pairing.root;
@@ -293,14 +294,10 @@ export function install(app: App): Port {
   // puts the caret back, hence the key goes into host. a press, a focus, or a move to another slide
   // lets the caret go
   function park(host: Element): void {
-    const sel = getSelection();
-    const range = document.createRange();
-    if (sel?.focusNode && host.contains(sel.focusNode)) range.setStart(sel.focusNode, sel.focusOffset);
-    else {
-      range.selectNodeContents(host);
-      range.collapse(false);
-    }
-    parked = { host, range };
+    const math = mathLookup();
+    const c = caretOf(host, math);
+    const text = c ? c.text : textIn(host, math);
+    parked = { host, offset: c ? c.offset : text.length, text };
   }
   // a character typed with Option or AltGr types, and a dead key or an input method starts to
   // type, where a shortcut does not
@@ -317,10 +314,7 @@ export function install(app: App): Port {
     app.showSlide(p.host);
     if (was === p.host) return;
     (p.host as HTMLElement).focus({ preventScroll: true });
-    const sel = getSelection();
-    if (!sel || document.activeElement !== p.host) return;
-    sel.removeAllRanges();
-    sel.addRange(p.range);
+    if (document.activeElement === p.host) putCaret(p.host, p.offset, mathLookup());
   }
   window.addEventListener('keydown', (ev) => {
     if (parked && types(ev)) unpark();
@@ -378,6 +372,12 @@ export function install(app: App): Port {
         return false;
       }
       const mark = done.caret ? markOf() : null;
+      const p = parked;
+      if (p && p.host.isConnected && done.touched(p.host)) {
+        const now = textIn(p.host, mathLookup());
+        p.offset = mapOffset(p.offset, p.text, now);
+        p.text = now;
+      }
       if (had?.isConnected && !app.current()?.contains(had)) park(had);
       settle(next, done);
       typesets.push(typeset(done, mark));
