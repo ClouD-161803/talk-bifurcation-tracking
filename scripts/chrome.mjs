@@ -53,18 +53,9 @@ export async function removeProfile(profile) {
   }
 }
 
-/**
- * Starts Chrome and returns an object with newPage() and close(). With offline set, every host
- * name is mapped to a failed lookup, thus each network load of a deck is reported as an error.
- * Without it, only 127.0.0.1 is reached. A request that is not answered within timeout ms fails.
- * With wholeFrames set, a frame is drawn only once every layer in it is rastered, which a screenshot
- * after a scroll and heavy work in the page needs, see scripts/export-pptx.mjs, and text is drawn
- * without subpixel antialiasing.
- */
-export async function launch({ offline = true, timeout = 120000, wholeFrames = false } = {}) {
-  const chrome = findChrome();
-  const profile = mkdtempSync(join(tmpdir(), 'beeson-chrome-'));
-  const args = [
+/** Returns the Chrome flags for a profile, offline mode, frame rastering, platform, and CI. */
+export function chromeArgs({ profile, offline = true, wholeFrames = false, platform = process.platform, ci = Boolean(process.env.CI) } = {}) {
+  return [
     '--headless=new',
     '--remote-debugging-pipe',
     `--user-data-dir=${profile}`,
@@ -77,9 +68,12 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
     '--enable-unsafe-swiftshader',
     // the paravirtual GPU of the macOS runners of GitHub fails at times to create a WebGL context,
     // hence WebGL is drawn there in SwiftShader, as on the Linux runners
-    ...(process.env.CI && process.platform === 'darwin' ? ['--use-angle=swiftshader'] : []),
+    ...(ci && platform === 'darwin' ? ['--use-angle=swiftshader'] : []),
     // the sandbox of Chrome cannot be started on the Ubuntu runners of GitHub, and the pages are local
-    ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
+    ...(platform === 'linux' ? ['--no-sandbox'] : []),
+    // on Windows 11 and Server 2025, TcpPortRandomizationWin sets SO_RANDOMIZE_PORT and causes
+    // spurious net::ERR_NO_BUFFER_SPACE on rapid 127.0.0.1 loopback fetches, including inside iframes
+    ...(platform === 'win32' ? ['--disable-features=TcpPortRandomizationWin'] : []),
     // without offline, only the server of scripts/webdriver.mjs at 127.0.0.1 is reached. With the
     // network, Chrome downloads components and models into the profile in the background, and on
     // Windows such a file is still locked when the profile is removed
@@ -94,6 +88,20 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
     ...(wholeFrames ? ['--disable-lcd-text'] : []),
     'about:blank',
   ];
+}
+
+/**
+ * Starts Chrome and returns an object with newPage() and close(). With offline set, every host
+ * name is mapped to a failed lookup, thus each network load of a deck is reported as an error.
+ * Without it, only 127.0.0.1 is reached. A request that is not answered within timeout ms fails.
+ * With wholeFrames set, a frame is drawn only once every layer in it is rastered, which a screenshot
+ * after a scroll and heavy work in the page needs, see scripts/export-pptx.mjs, and text is drawn
+ * without subpixel antialiasing.
+ */
+export async function launch({ offline = true, timeout = 120000, wholeFrames = false } = {}) {
+  const chrome = findChrome();
+  const profile = mkdtempSync(join(tmpdir(), 'beeson-chrome-'));
+  const args = chromeArgs({ profile, offline, wholeFrames });
   const child = spawn(chrome, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
   let stderr = '';
   child.stderr.setEncoding('utf8');
@@ -250,9 +258,8 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
         // that is missing, e.g. MathJax without theme/mathjax-config.js asks its CDN for a font
         const before = errors.length;
         const refused = () => {
-          const is = (error) => error.includes('net::ERR_NO_BUFFER_SPACE');
-          const found = errors.some(is);
-          if (found) errors.splice(0, errors.length, ...errors.slice(0, before).filter((error) => !is(error)));
+          const found = errors.slice(before).some((error) => error.includes('net::ERR_NO_BUFFER_SPACE'));
+          if (found) errors.splice(before);
           return found;
         };
         await load('Page.navigate', { url });
