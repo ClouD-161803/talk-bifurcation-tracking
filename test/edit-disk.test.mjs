@@ -5,7 +5,7 @@
 // write that keeps failing, and a file that is a symbolic link
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -121,6 +121,72 @@ test('a file written in two steps is taken once it is complete, and an empty fil
   await until(() => authority.text === '', 'the empty file to be taken', 15_000);
   const after = performance.now() - emptied;
   assert.ok(after >= 5000, `the empty file was taken ${Math.round(after)} ms after it was written`);
+});
+
+// a program that opens file, writes text up to cut, pauses, and writes the rest on the same handle,
+// as a slow save does
+async function saveInTwoSteps(file, text, cut, pause) {
+  const fd = openSync(file, 'w');
+  try {
+    writeSync(fd, text.slice(0, cut));
+    await pause();
+    writeSync(fd, text.slice(cut));
+  } finally {
+    closeSync(fd);
+  }
+}
+
+// the demo deck with EDITED before its first heading, as saved by another program, and the place
+// of the second heading in it, where a person types
+function savedDemo() {
+  const deck = readFileSync('index.html', 'utf8'), edited = deck.replace('<h2', 'EDITED <h2');
+  return { deck, edited, second: edited.indexOf('<h2', edited.indexOf('<h2') + 1) };
+}
+
+function assertWhole(file, authority, expected) {
+  assert.equal(authority.text.length, expected.length, 'the session does not hold the whole text');
+  assert.ok(authority.text === expected, 'the session differs from the whole text');
+  assert.ok(readFileSync(file, 'utf8') === expected, 'the file differs from the whole text');
+}
+
+test('add regression test: a save of the demo deck that pauses for 700 or 1500 ms after 60 percent ends with the whole text and the edit that a person made in the pause', { timeout: 60_000 }, async (t) => {
+  const { deck, edited, second } = savedDemo();
+  for (const pause of [700, 1500]) {
+    const { file, authority, disk } = setup(t, deck);
+    disk.start();
+    // the pause is a step of the program, and no result is read after it
+    await saveInTwoSteps(file, edited, Math.floor(edited.length * 0.6), async () => {
+      authority.enter([{ start: second - 'EDITED '.length, end: second - 'EDITED '.length, text: 'ANN ' }], 'Ann');
+      await sleep(pause);
+    });
+    await until(() => readFileSync(file, 'utf8') === authority.text && authority.text.includes('EDITED'), 'the save to be merged', 15_000);
+    assertWhole(file, authority, `${edited.slice(0, second)}ANN ${edited.slice(second)}`);
+  }
+});
+
+test('add regression test: a save of the demo deck that pauses after 30 percent until this part is taken ends with the whole text, and with the edit that a person made in the pause', { timeout: 60_000 }, async (t) => {
+  const { deck, edited, second } = savedDemo();
+  const cut = Math.floor(edited.length * 0.3), part = edited.slice(0, cut);
+  {
+    const { file, authority, disk } = setup(t, deck);
+    disk.start();
+    await saveInTwoSteps(file, edited, cut, () => until(() => authority.text === part, 'the first part to be taken', 15_000));
+    await disk.stop();
+    assertWhole(file, authority, edited);
+  }
+  // the whole text is saved again by its path, as by a program whose handle was left on the file
+  // that the write of the edit of the person replaced
+  {
+    const { file, authority, disk } = setup(t, deck);
+    disk.start();
+    writeFileSync(file, part);
+    await until(() => authority.text === part, 'the first part to be taken', 15_000);
+    authority.enter([{ start: second, end: second, text: 'ANN ' }], 'Ann');
+    await until(() => readFileSync(file, 'utf8') === authority.text, 'the write of the edit of the person');
+    writeFileSync(file, edited);
+    await disk.stop();
+    assertWhole(file, authority, `${edited.slice(0, second)}ANN ${edited.slice(second)}`);
+  }
 });
 
 test('an agent that writes back after more than 100 writes of people keeps every edit of the people', { timeout: 120_000 }, async (t) => {
