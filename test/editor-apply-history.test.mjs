@@ -8,6 +8,7 @@ import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { typeKeys } from './helpers/editor.mjs';
 import { E, applied, applyOn, caretAtEnd, sessionPage, showSlide } from './helpers/apply.mjs';
+import { closeGate, openGate } from './helpers/gate.mjs';
 
 let browser;
 before(async () => {
@@ -262,3 +263,33 @@ test('the undo of an entry kept through a move of a slide far away gives the tex
     assert.deepEqual(b.errors, [], kind);
   }
 });
+
+// dictation and an input method insert text with an input event and without a key, while the
+// formulas of an apply are typeset, after which the caret of the apply is not put back
+const typedDuringTypeset = [
+  ['a formula put into its text element', (s) => once(s, 'Design the complete', 'Design \\(x\\) the complete')],
+  ['its text element changed by a structural apply that places a slide with a formula', (s) => once(once(s, 'viewer\'s attention.</p>', 'viewer\'s attention!</p>'), '<section>\n  <h2>Equations are first class', '<section>\n  <h2>A formula</h2>\n  <p>\\(x^2\\)</p>\n</section>\n\n<section>\n  <h2>Equations are first class')],
+];
+for (const [label, change] of typedDuringTypeset) {
+  test(`text inserted without a key while the formulas of an apply are typeset keeps the caret after it, with ${label}`, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    await showSlide(b, 'Show your steps');
+    await b.evaluate(`(() => { const p = ${P1}; p.focus(); getSelection().collapse(p.firstChild, 'Design'.length); return true; })()`);
+    await closeGate(b);
+    await b.evaluate(`(() => {
+      window.__result = null;
+      ${E}.apply(${JSON.stringify(change(b.source))}).then((r) => (window.__result = r.reload));
+      return true;
+    })()`);
+    await b.waitFor('window.__held > 0');
+    await b.evaluate(`document.execCommand('insertText', false, 'Spoken')`);
+    await openGate(b);
+    await b.waitFor('window.__result !== null');
+    assert.equal(await b.evaluate('window.__result'), false, 'the reload of the apply');
+    await b.evaluate(`document.execCommand('insertText', false, 'Z')`);
+    const text = await b.evaluate(`${E}.render()`);
+    assert.ok(text.includes('DesignSpokenZ'), JSON.stringify(text.slice(text.indexOf('Spoken') - 30, text.indexOf('Spoken') + 40)));
+    assert.deepEqual(b.errors, []);
+  });
+}
