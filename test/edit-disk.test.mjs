@@ -210,6 +210,16 @@ test('add regression test: an agent that changes the 193 kB line of the demo dec
   assert.equal(authority.text.slice(end - 9 - marks.join('').length, end), `</script>${marks.join('')}`);
 });
 
+test('a search for the base that runs out of its time merges on the nearest text found by then, and says so in one line of the log', { timeout: 60_000 }, async (t) => {
+  const { file, authority, disk, lines } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20, budget: 0 });
+  disk.start();
+  for (const word of [' a', ' b', ' c']) await typeInto(authority, file, ' slide</p>', word);
+  writeFileSync(file, authority.text.replace('<h2>Two', 'AGENT <h2>Two'));
+  await until(() => readFileSync(file, 'utf8') === authority.text && authority.text.includes('AGENT'), 'the change of the agent to be merged');
+  assert.equal(lines.filter((l) => l.includes('was cut')).length, 1, lines.join('\n'));
+  assert.ok(authority.text.includes('First a b c slide</p>'));
+});
+
 test('an outside write back to an earlier text keeps the newer edits of the session, and says so in a line of the log', { timeout: 60_000 }, async (t) => {
   const { file, authority, disk, lines } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
   disk.start();
