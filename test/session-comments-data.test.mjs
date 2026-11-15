@@ -338,3 +338,25 @@ test('a listener that throws does not stop the page', { timeout: 300_000 }, asyn
   clean(a);
   clean(b, [/a listener of the test throws/]);
 });
+
+test('an element of another name at the offset of an anchor is not taken', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'On the paragraph');
+  await badge(b, 'One', 'p', '1*');
+  // port.elementAt answers the heading at the offset of the paragraph, as an index that is behind
+  // its deck would. the event base draws the badges again
+  await b.evaluate(`(() => {
+    const c = ${C};
+    const at = c.port.offsetOf(${el(0, 'p')});
+    const heading = ${el(0, 'h2')};
+    const elementAt = c.port.elementAt;
+    c.port.elementAt = (offset) => (offset === at ? heading : elementAt(offset));
+    c.emit('base', c.base.text, c.base.v, []);
+  })()`);
+  await badge(b, 'One', null, '1*');
+  await badge(b, 'One', 'h2', null);
+  clean(a);
+  clean(b);
+});
