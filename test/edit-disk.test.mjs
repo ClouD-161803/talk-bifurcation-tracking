@@ -105,3 +105,20 @@ test('a change of the file by another program while the edit command writes it i
     return now === authority.text && now.includes('AGENT <h2>Two') && now.includes('ONE <h2>One');
   }, 'the file and the authority to hold the operation and the change of the other program', 15_000);
 });
+
+test('a file written in two steps is taken once it is complete, and an empty file is not taken before 5 s', { timeout: 60_000 }, async (t) => {
+  const { file, authority, disk, lines } = setup(t, DECK);
+  disk.start();
+  const edited = DECK.replace('<h2>One', 'EDITED <h2>One');
+  writeFileSync(file, edited.slice(0, Math.floor(edited.length * 0.3)));
+  await until(() => authority.text !== DECK || lines.some((l) => l.includes('partly written')), 'the disk to see the first step');
+  writeFileSync(file, edited);
+  await until(() => authority.text.includes('EDITED') && readFileSync(file, 'utf8') === authority.text, 'the second step to be merged');
+  assert.equal(authority.text, edited);
+
+  const emptied = performance.now();
+  writeFileSync(file, '');
+  await until(() => authority.text === '', 'the empty file to be taken', 15_000);
+  const after = performance.now() - emptied;
+  assert.ok(after >= 5000, `the empty file was taken ${Math.round(after)} ms after it was written`);
+});
