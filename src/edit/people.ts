@@ -90,6 +90,8 @@ export class People {
   // the write of index.html that failed last, or null once a write succeeded, and its revision
   private writeError: WriteError | null = null;
   private writeRev = 0;
+  // the changes of tex.js on disk, by the edit command or by another program
+  private texRev = 0;
   private sweeper: ReturnType<typeof setInterval>;
   private ended: Ended | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -270,6 +272,17 @@ export class People {
     this.changed();
   }
 
+  // tex.js changed on disk, told to every page, which draws the deck again with it
+  texChanged(): void {
+    this.texRev++;
+    this.changed();
+  }
+
+  // the number of changes of tex.js on disk, for the answer of hello
+  tex(): number {
+    return this.texRev;
+  }
+
   // the waiting polls answered with ended, at a stop of the edit command, and people.json written
   end(): void {
     this.ended = this.endedBy();
@@ -391,7 +404,7 @@ export class People {
   // known is left out when the page has had the list since its last change
   private state(since: string, member: Member | null): EventsAnswer {
     const presence: Presence[] = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
-    const answer: EventsAnswer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list() };
+    const answer: EventsAnswer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
     if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
     if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i], since));

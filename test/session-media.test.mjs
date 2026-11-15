@@ -2,9 +2,10 @@
 // the page that uploaded the file, a name unique to the page while another page is in the session,
 // the store of the page keyed by the new name, undo and redo after a rename, the limits of a
 // picture and a video, the deadline of an upload, the save state after the picture of a failed
-// upload is removed, an upload whose answer was lost sent again without a second copy, and an upload
-// cut on the network sent again at a reconnect. the uploads of a page are sent through a proxy of
-// the test, by which they are held, stalled, cut, or refused
+// upload is removed, an upload that the session refuses given up, an upload whose answer was lost
+// sent again without a second copy, and an upload cut on the network sent again at a reconnect.
+// the uploads of a page are sent through a proxy of the test, by which they are held, stalled, cut,
+// or refused
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -22,7 +23,7 @@ import { post, raw, until } from './helpers/session.mjs';
 
 const LIGHT = readFileSync(resolve('demo/figure-light.png'));
 const DARK = readFileSync(resolve('demo/figure-dark.png'));
-const FAILED = 'A picture could not be sent. Try again';
+const FAILED = (path) => `${path} could not be sent. Try again`;
 const IMG = /<img [^>]*src="(media\/[^"]+)"[^>]*>/g;
 // the media/ paths of the images of each slide of text
 const sources = (text) => text.split('<section').slice(1).map((s) => [...s.matchAll(IMG)].map((m) => m[1]));
@@ -61,8 +62,9 @@ function writeOutside(server, html) {
  * A proxy of the test in front of the edit command, and the address of the editor through it. Each
  * PUT of media/ is handled by the next mode given to next(), and is passed on once none is left.
  * With hold it is forwarded at release(), with stall it is read and never answered, and with cut
- * its connection is closed. With refuse it is answered 500 without being forwarded, and with lose
- * it is forwarded and answered 504 once the edit command has answered. While down is set, every
+ * its connection is closed. With refuse it is answered 500 without being forwarded, with large it
+ * is answered 413 as the relay answers a body over its limit, and with lose it is forwarded and
+ * answered 504 once the edit command has answered. While down is set, every
  * PUT is cut, since Chrome sends a PUT again once when its connection is closed.
  */
 async function proxy(t, edit) {
@@ -104,6 +106,7 @@ async function proxy(t, edit) {
       if (mode === 'stall') return;
       if (mode === 'cut') return req.socket.destroy();
       if (mode === 'refuse') return answer(res, json(500, 'the proxy refused the upload'));
+      if (mode === 'large') return answer(res, { status: 413, headers: { 'content-type': 'text/plain; charset=utf-8' }, body: Buffer.from('the body is larger than the limit of the relay') });
       if (mode === 'hold') await new Promise((go) => held.push(go));
       const got = await forward(req, body);
       if (res.destroyed) return;
@@ -219,7 +222,8 @@ test('the names that the edit command gives to the files of one drop are written
     p.next('pass', 'refuse');
     await show(bea, 'One');
     await dropFiles(bea, [file(server, 'a', 'plot.png', LIGHT), file(server, 'b', 'plot-2.png', DARK)]);
-    await bea.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`);
+    // the second file is given another name by the rename of the first
+    await bea.waitFor(`/^media\\/plot\\S*\\.png could not be sent\\. Try again$/.test(${STATE})`);
     await click(bea, '.beeson-session-action');
     const [one] = sources(await converge(server, [bea]));
     assert.equal(new Set(one).size, 2, `each image names a file of its own: ${one}`);
@@ -294,7 +298,7 @@ test('an upload that stalls fails at its deadline, and Try again sends the pictu
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
   await edit(ann, 1, 'p', ' typed');
-  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`, 15_000);
+  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED('media/plot.png'))}`, 15_000);
   assert.equal(await ann.evaluate(ACTION), 'Try again');
   assert.equal(server.read(), before);
   await click(ann, '.beeson-session-action');
@@ -315,7 +319,7 @@ test('the save state of a failed upload is cleared once the deck no longer names
   p.next('refuse');
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
-  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`);
+  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED('media/plot.png'))}`);
   await keys(ann, 'Mod+Z');
   await ann.waitFor(`${IMAGES} === 0`);
   await edit(ann, 0, 'p', ' typed');
@@ -323,6 +327,33 @@ test('the save state of a failed upload is cleared once the deck no longer names
   await ann.waitFor(`${STATE} === 'Saved to index.html'`, 10_000);
   assert.equal(await ann.evaluate(ACTION), null);
   clean(ann, PROXIED);
+});
+
+test('an upload that the session refuses although the page did not is given up and named in the save state, and the later edits of the page reach index.html', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  p.next('large');
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`${STATE} === 'media/plot.png was not sent to the others, since the body is larger than the limit of the relay'`, 10_000);
+  assert.equal(await ann.evaluate(ACTION), null);
+  await edit(ann, 1, 'p', ' typed');
+  const text = await converge(server, [ann]);
+  assert.match(text, /<p>Second slide typed<\/p>/);
+  assert.deepEqual(sources(text)[0], ['media/plot.png']);
+  assert.equal(p.puts, 1);
+  assert.equal(await ann.evaluate(STATE), 'media/plot.png was not sent to the others, since the body is larger than the limit of the relay');
+  // the save state is cleared once the deck no longer names the picture
+  await keys(ann, 'Mod+Z');
+  await keys(ann, 'Mod+Z');
+  await ann.waitFor(`${IMAGES} === 0`);
+  await edit(ann, 0, 'p', ' typed');
+  await until(() => server.read().includes('<p>First slide typed</p>'), 'the edit in index.html');
+  await ann.waitFor(`${STATE} === 'Saved to index.html'`, 10_000);
+  clean(ann, [/status of 413/]);
 });
 
 test('an upload whose answer was lost after the write is sent again without a second copy in media/', { timeout: 120_000 }, async (t) => {
@@ -335,7 +366,7 @@ test('an upload whose answer was lost after the write is sent again without a se
     p.next('lose');
     await show(ann, 'One');
     await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
-    await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`);
+    await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED('media/plot.png'))}`);
     assert.deepEqual(media(server), ['plot.png']);
     await click(ann, '.beeson-session-action');
     const text = await converge(server, [ann]);
@@ -374,7 +405,7 @@ test('an upload cut on the network is sent again once the page is online again, 
   p.down = true;
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
-  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`);
+  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED('media/plot.png'))}`);
   p.down = false;
   await goOffline(ann);
   await ann.waitFor(`${C}.connection === 'offline'`);
@@ -408,5 +439,7 @@ test('an upload refused by an edit command that started again, before the hello 
   const text = await converge(server, [ann]);
   assert.deepEqual(sources(text)[0], ['media/plot.png']);
   assert.equal(await ann.evaluate(`__net.count('/.session/media/', 'PUT')`), 2);
-  clean(ann, [/status of 404/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/]);
+  // people.json is written at most once a second, hence a killed edit command may not know Ann
+  // after its start. her hello without a name is then answered 400, and sent again with her name
+  clean(ann, [/status of 404/, /status of 400 .*\/\.session\/hello$/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/]);
 });

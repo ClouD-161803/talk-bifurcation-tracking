@@ -71,7 +71,8 @@ function show(app: App, offs: Off[]): void {
   const names = (lacking: boolean) => sheet!.offs.filter((o) => o.lacking === lacking).map((o) => o.name);
   const red = names(true).length ? `the formulas that use ${listed(names(true))} are drawn in red` : '';
   const own = names(false).length ? `the formulas that use ${listed(names(false))} are drawn with the definition of this deck` : '';
-  dialog.text.textContent = `Choose File > Preamble… and paste the lines below at the end of the preamble of this deck. Until then, ${[red, own].filter(Boolean).join(', and ')}.`;
+  const where = app.session ? 'In a session, the host pastes the lines below at the end of preamble.tex in the talk folder' : 'Choose File > Preamble… and paste the lines below at the end of the preamble of this deck';
+  dialog.text.textContent = `${where}. Until then, ${[red, own].filter(Boolean).join(', and ')}.`;
   pre.textContent = sheet.offs.map((o) => o.line).join('\n');
   hint.hidden = true;
   dialog.buttons.get('copy')!.textContent = 'Copy';

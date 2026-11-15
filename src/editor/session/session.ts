@@ -9,6 +9,7 @@ import { mathLookup, type MathLookup } from '../math.ts';
 import { apply as applyEdits, edits, mergeEdits, type Edit } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
 import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
+import { redrawTex as redrawDeckTex } from '../tex/install.ts';
 import { applyAt, refresh, repairText, type Done } from './apply.ts';
 import { caretOf, mapOffset, markOf, moved, putCaret, textIn, type Mark } from './caret.ts';
 import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
@@ -24,7 +25,8 @@ export type Applied = { reload: boolean; changed: Element[] };
 // its text after the applies, after which the client loads the page again. copy() reads the deck
 // with the edits of the person at any time, and leaves the text handed to the client as it is.
 // rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
-// into the source, e.g. so that offsetOf knows an element made since the last apply
+// into the source, e.g. so that offsetOf knows an element made since the last apply. redrawTex()
+// draws the deck again with the tex.js next to it, after the edit command counted a change of it
 export type Port = {
   text(): string;
   copy(): string;
@@ -37,6 +39,7 @@ export type Port = {
   end(): void;
   setStatus(text: string | null): void;
   onSave(fn: () => Promise<void> | void): void;
+  redrawTex(): Promise<void>;
 };
 
 type Page = { MathJax?: { typesetPromise?(els: Element[]): Promise<unknown> } };
@@ -293,7 +296,7 @@ export function install(app: App): Port {
     const mj = (window as unknown as Page).MathJax;
     const all = [...done.typeset];
     if (made.length && mj?.typesetPromise) all.push(mj.typesetPromise(made));
-    if (!all.length) return;
+    if (!all.length && !made.length) return;
     await Promise.allSettled(all);
     mine = true;
     try {
@@ -529,5 +532,6 @@ export function install(app: App): Port {
     onSave(fn) {
       saver = fn;
     },
+    redrawTex: () => redrawDeckTex(app),
   };
 }

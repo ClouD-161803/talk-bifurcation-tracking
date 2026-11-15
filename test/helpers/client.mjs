@@ -117,7 +117,7 @@ export async function open(browser, url, { name = 'Ann', width = 1280, height = 
       });
       const fetched = window.fetch;
       window.fetch = function (input, init) {
-        const url = typeof input === 'string' ? input : input.url;
+        const url = input instanceof Request ? input.url : String(input);
         if (url.includes('/.session/op')) {
           sessionStorage.setItem('__ops', String(Number(sessionStorage.getItem('__ops') || 0) + 1));
           if (window.__corrupt) {

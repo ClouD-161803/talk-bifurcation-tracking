@@ -6,12 +6,12 @@ import { realpathSync as realpathSync3 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
-import { createReadStream, mkdirSync as mkdirSync3, readFileSync as readFileSync6, realpathSync as realpathSync2, unlinkSync as unlinkSync5, writeFileSync as writeFileSync5 } from "node:fs";
-import { mkdir, readdir, readFile as readFile2, realpath as realpath3, stat as stat3, writeFile as writeFile4 } from "node:fs/promises";
+import { createReadStream, mkdirSync as mkdirSync3, readFileSync as readFileSync7, realpathSync as realpathSync2, unlinkSync as unlinkSync5, writeFileSync as writeFileSync5 } from "node:fs";
+import { mkdir, readdir, readFile as readFile3, realpath as realpath3, stat as stat4, writeFile as writeFile5 } from "node:fs/promises";
 import { createServer } from "node:http";
-import { createHash, randomBytes as randomBytes5 } from "node:crypto";
+import { createHash, randomBytes as randomBytes6 } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join as join5, resolve, sep as sep2 } from "node:path";
+import { join as join6, resolve, sep as sep2 } from "node:path";
 
 // src/session/protocol.ts
 var VERSION_NAME_MAX = 80;
@@ -1041,6 +1041,8 @@ var Disk = class {
     });
     this.onWritten = options.onWritten ?? (() => {
     });
+    this.onPoll = options.onPoll ?? (() => {
+    });
     this.timing = {
       quiet: options.quiet ?? QUIET,
       latest: options.latest ?? LATEST,
@@ -1071,7 +1073,10 @@ var Disk = class {
     authority.observe(() => this.schedule());
   }
   start() {
-    this.poller = setInterval(() => void this.exclusive(() => this.check(Infinity)), this.timing.poll);
+    this.poller = setInterval(() => {
+      void this.exclusive(() => this.check(Infinity));
+      this.onPoll();
+    }, this.timing.poll);
   }
   // an operation was applied: the file is written after 250 ms of quiet, and at the latest 1 s
   // after the first operation that is not written
@@ -1161,7 +1166,7 @@ var Disk = class {
     const text = this.authority.text, n = this.authority.n;
     if (text === this.written) {
       this.writtenN = n;
-      this.onWritten(n);
+      this.onWritten(n, text);
       return;
     }
     const tmp = this.tmpName();
@@ -1193,7 +1198,7 @@ var Disk = class {
     }
     this.written = text;
     this.writtenN = n;
-    this.onWritten(n);
+    this.onWritten(n, text);
     this.known = signature(made);
     this.remember(text);
     if (this.failures) {
@@ -1257,7 +1262,7 @@ var Disk = class {
     this.known = sig;
     this.bom = read.bom;
     this.written = this.taken = read.text;
-    if (this.authority.text === read.text) this.onWritten(this.writtenN = this.authority.n);
+    if (this.authority.text === read.text) this.onWritten(this.writtenN = this.authority.n, read.text);
     else this.schedule();
     return true;
   }
@@ -2328,6 +2333,8 @@ var People = class {
     // the write of index.html that failed last, or null once a write succeeded, and its revision
     this.writeError = null;
     this.writeRev = 0;
+    // the changes of tex.js on disk, by the edit command or by another program
+    this.texRev = 0;
     this.ended = null;
     this.saveTimer = null;
     this.savedAt = 0;
@@ -2483,6 +2490,15 @@ var People = class {
     this.writeRev++;
     this.changed();
   }
+  // tex.js changed on disk, told to every page, which draws the deck again with it
+  texChanged() {
+    this.texRev++;
+    this.changed();
+  }
+  // the number of changes of tex.js on disk, for the answer of hello
+  tex() {
+    return this.texRev;
+  }
   // the waiting polls answered with ended, at a stop of the edit command, and people.json written
   end() {
     this.ended = this.endedBy();
@@ -2592,7 +2608,7 @@ var People = class {
   // known is left out when the page has had the list since its last change
   state(since, member) {
     const presence = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
-    const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list() };
+    const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
     if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
     if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i], since));
@@ -2887,6 +2903,788 @@ var RelayLink = class {
   }
 };
 
+// src/edit/tex.ts
+import { readFileSync as readFileSync6, statSync as statSync3 } from "node:fs";
+import { readFile as readFile2, stat as stat3, unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
+import { randomBytes as randomBytes5 } from "node:crypto";
+import { join as join5 } from "node:path";
+
+// src/accents.ts
+var ACCENT = {
+  "`": "\u0300",
+  "'": "\u0301",
+  "^": "\u0302",
+  "~": "\u0303",
+  '"': "\u0308",
+  "=": "\u0304",
+  ".": "\u0307",
+  u: "\u0306",
+  v: "\u030C",
+  H: "\u030B",
+  c: "\u0327",
+  k: "\u0328",
+  r: "\u030A",
+  d: "\u0323",
+  b: "\u0331"
+};
+var LETTER = { ss: "\xDF", o: "\xF8", O: "\xD8", l: "\u0142", L: "\u0141", ae: "\xE6", AE: "\xC6", oe: "\u0153", OE: "\u0152", aa: "\xE5", AA: "\xC5", i: "\u0131", j: "\u0237" };
+var BASE = String.raw`(?:\{\s*(\\[ij]|[A-Za-z])\s*\}|(\\[ij](?![A-Za-z])|[A-Za-z]))`;
+var SYMBOL_ACCENT = new RegExp(String.raw`\\([\`'^~"=.])\s*${BASE}`, "g");
+var LETTER_ACCENT = new RegExp(String.raw`\\([uvHckrdb])(?:\s*\{\s*(\\[ij]|[A-Za-z])\s*\}|\s+(\\[ij](?![A-Za-z])|[A-Za-z]))`, "g");
+var accented = (_, accent, braced, bare2) => {
+  const base = (braced ?? bare2 ?? "").replace("\\", "");
+  return (base + ACCENT[accent]).normalize("NFC");
+};
+function words(tex) {
+  return tex.replace(SYMBOL_ACCENT, accented).replace(LETTER_ACCENT, accented).replace(/\\(ss|ae|AE|oe|OE|aa|AA|o|O|l|L|i|j)(?![A-Za-z])\s*/g, (_, name) => LETTER[name]).replace(/\\([{}])/g, (_, brace) => brace === "{" ? "" : "").replace(/\\([&%#_])/g, "$1").replace(/\\[,;: ]|~/g, " ").replace(/---/g, "\u2014").replace(/--/g, "\u2013").replace(/``/g, "\u201C").replace(/''/g, "\u201D").replace(/\\[A-Za-z@]+\*?\s*/g, "").replace(/[{}]/g, "").replace(/\u0001/g, "{").replace(/\u0002/g, "}");
+}
+function plainText(tex) {
+  const parts = tex.replace(/\\\$/g, "").split(/(\$[^$]*\$)/);
+  return parts.map((part, index) => index % 2 ? part : words(part)).join("").replace(/\u0003/g, "$").replace(/\s+/g, " ").trim();
+}
+
+// src/bibtex.ts
+var MONTHS = {
+  jan: "January",
+  feb: "February",
+  mar: "March",
+  apr: "April",
+  may: "May",
+  jun: "June",
+  jul: "July",
+  aug: "August",
+  sep: "September",
+  oct: "October",
+  nov: "November",
+  dec: "December"
+};
+var NAME = /^[^\s,#{}()"=@]+/;
+var Skip = class extends Error {
+};
+var tidy2 = (text) => text.replace(/\s+/g, " ").trim();
+function readBibtex(source) {
+  const n = source.length;
+  const strings = new Map(Object.entries(MONTHS));
+  const entries = [];
+  const skipped = [];
+  const keys = /* @__PURE__ */ new Set();
+  const space = (i2) => {
+    while (i2 < n && /\s/.test(source[i2])) i2++;
+    return i2;
+  };
+  const unclosed = (shut) => new Skip(shut === "}" ? "a brace is not closed" : "a parenthesis is not closed");
+  const name = (i2) => NAME.exec(source.slice(i2, i2 + 200))?.[0] ?? "";
+  const group = (i2) => {
+    const paren = source[i2] === "(";
+    let depth = paren ? 1 : 0;
+    for (let k = i2; k < n; k++) {
+      if (source[k] === "{") depth++;
+      else if (source[k] === "}") depth--;
+      else if (paren && source[k] === ")" && depth === 1) depth--;
+      if (depth === 0) return k + 1;
+    }
+    throw unclosed(paren ? ")" : "}");
+  };
+  const value = (i2, field2) => {
+    let text = "";
+    for (; ; ) {
+      i2 = space(i2);
+      if (source[i2] === "{") {
+        const end = group(i2);
+        text += source.slice(i2 + 1, end - 1);
+        i2 = end;
+      } else if (source[i2] === '"') {
+        let depth = 0;
+        let k = i2 + 1;
+        for (; k < n && !(source[k] === '"' && depth === 0); k++) {
+          if (source[k] === "{") depth++;
+          else if (source[k] === "}" && --depth < 0) break;
+        }
+        if (source[k] !== '"') throw new Skip("a quote is not closed");
+        text += source.slice(i2 + 1, k);
+        i2 = k + 1;
+      } else {
+        const word = name(i2);
+        if (!word) throw new Skip(`the field ${field2} does not have a value`);
+        text += /^\d+$/.test(word) ? word : strings.get(word.toLowerCase()) ?? word;
+        i2 += word.length;
+      }
+      i2 = space(i2);
+      if (source[i2] !== "#") return [text, i2];
+      i2++;
+    }
+  };
+  const field = (i2, shut) => {
+    const named = name(i2);
+    if (!named) throw i2 >= n || source[i2] === "@" ? unclosed(shut) : new Skip("the name of a field is expected");
+    const equals = space(i2 + named.length);
+    if (source[equals] !== "=") throw new Skip(`the field ${named} does not have a value`);
+    const [text, end] = value(equals + 1, named);
+    return [named.toLowerCase(), text, end];
+  };
+  const entry = (start2, type, open2, line2) => {
+    const shut = source[open2] === "{" ? "}" : ")";
+    let i2 = space(open2 + 1);
+    const key = /^[^\s,{}()"=#@]*/.exec(source.slice(i2, i2 + 500))?.[0] ?? "";
+    i2 = space(i2 + key.length);
+    if (!key || source[i2] !== "," && source[i2] !== shut) throw new Skip("the entry does not have a key");
+    const fields = {};
+    let last = "";
+    while (source[i2] !== shut) {
+      if (i2 >= n || source[i2] === "@") throw unclosed(shut);
+      if (source[i2] !== ",") throw new Skip(`a comma is missing after the field ${last}`);
+      i2 = space(i2 + 1);
+      if (source[i2] === shut) break;
+      const [named, text, end] = field(i2, shut);
+      if (!(named in fields)) fields[named] = tidy2(text);
+      last = named;
+      i2 = space(end);
+    }
+    if (keys.has(key)) throw new Skip(`the key ${key} is the key of an entry above`);
+    keys.add(key);
+    entries.push({ type, key, fields, line: line2, start: start2, end: i2 + 1 });
+    return i2 + 1;
+  };
+  let seen = 0;
+  let line = 1;
+  let i = 0;
+  while ((i = source.indexOf("@", i)) >= 0) {
+    const start2 = i;
+    const head = /^@([A-Za-z]+)\s*[{(]/.exec(source.slice(i, i + 80));
+    if (!head) {
+      i++;
+      continue;
+    }
+    for (; seen < start2; seen++) if (source[seen] === "\n") line++;
+    const type = head[1].toLowerCase();
+    const open2 = start2 + head[0].length - 1;
+    try {
+      if (type === "comment" || type === "preamble") i = group(open2);
+      else if (type === "string") {
+        const shut = source[open2] === "{" ? "}" : ")";
+        const [named, text, end] = field(space(open2 + 1), shut);
+        if (source[space(end)] !== shut) throw unclosed(shut);
+        strings.set(named, text);
+        i = space(end) + 1;
+      } else i = entry(start2, type, open2, line);
+    } catch (error2) {
+      if (!(error2 instanceof Skip)) throw error2;
+      const eol = source.indexOf("\n", start2);
+      i = eol < 0 ? n : eol;
+      skipped.push({ line, text: source.slice(start2, i).trim(), reason: error2.message });
+    }
+  }
+  return { entries, skipped };
+}
+
+// src/kinds.ts
+var usual = (title, style) => ({ title, style, counter: null });
+var USUAL = {
+  theorem: usual("Theorem", "plain"),
+  lemma: usual("Lemma", "plain"),
+  proposition: usual("Proposition", "plain"),
+  corollary: usual("Corollary", "plain"),
+  definition: usual("Definition", "definition"),
+  example: usual("Example", "definition"),
+  remark: usual("Remark", "remark"),
+  proof: usual("Proof", "remark")
+};
+
+// src/preamble.ts
+var EXTENSION = {
+  amsmath: "",
+  amssymb: "",
+  amsfonts: "",
+  amstext: "",
+  amsbsy: "",
+  amsopn: "",
+  latexsym: "",
+  amsthm: "",
+  ntheorem: "",
+  mathtools: "mathtools",
+  physics: "physics",
+  braket: "braket",
+  cancel: "cancel",
+  color: "color",
+  xcolor: "color",
+  bm: "",
+  xspace: "",
+  mhchem: "mhchem",
+  amscd: "amscd",
+  bussproofs: "bussproofs",
+  cases: "cases",
+  centernot: "centernot",
+  colortbl: "colortbl",
+  empheq: "empheq",
+  extpfeil: "extpfeil",
+  gensymb: "gensymb",
+  textcomp: "textcomp",
+  units: "units",
+  upgreek: "upgreek"
+};
+var UNVENDORED = /* @__PURE__ */ new Set(["bbm", "bbold", "bboldx", "dsfont"]);
+var STYLES = ["plain", "definition", "remark"];
+var Skip2 = class extends Error {
+};
+var listed = (names) => names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+var tidy3 = (text) => text.replace(/\s*\n\s*/g, " ").trim();
+function uncomment(source) {
+  const src = source.replace(/\r\n?/g, "\n");
+  let text = "";
+  const lines = [];
+  let line = 1;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === "\\" && i + 1 < src.length && src[i + 1] !== "\n") {
+      text += c + src[i + 1];
+      lines.push(line, line);
+      i++;
+    } else if (c === "%") {
+      while (i < src.length && src[i] !== "\n") i++;
+      line++;
+      while (src[i + 1] === " " || src[i + 1] === "	") i++;
+    } else {
+      text += c;
+      lines.push(line);
+      if (c === "\n") line++;
+    }
+  }
+  return { text, lines };
+}
+function readPreamble(source, options = {}) {
+  const macros = {};
+  const environments = {};
+  const packages = [];
+  const theorems = {};
+  const skipped = [];
+  const lets = /* @__PURE__ */ new Map();
+  const files = /* @__PURE__ */ new Set([options.file ?? "preamble.tex"]);
+  let style = "plain";
+  let order2 = 0;
+  let done = false;
+  const define = (macro, def) => {
+    for (const [alias, { target, entry }] of lets) {
+      if (target !== macro) continue;
+      delete macros[alias];
+      lets.delete(alias);
+      skipped.push({ ...entry, reason: `\\${macro} is defined again later in the preamble, and its first meaning cannot be kept` });
+    }
+    lets.delete(macro);
+    macros[macro] = def;
+  };
+  const scan = (file, source2) => {
+    const { text, lines } = uncomment(source2);
+    const n = text.length;
+    let from = 0;
+    let at = 0;
+    const space = (i2) => {
+      while (i2 < n && /\s/.test(text[i2])) i2++;
+      return i2;
+    };
+    const entry = (end) => ({ order: at, file, line: lines[from], text: tidy3(text.slice(from, end)) });
+    const note = (end, reason) => void skipped.push({ ...entry(end), reason });
+    const control = (i2) => {
+      let end = i2 + 1;
+      while (end < n && /[A-Za-z@]/.test(text[end])) end++;
+      if (end === i2 + 1) end++;
+      return [text.slice(i2 + 1, end), end];
+    };
+    const group = (i2) => {
+      if (text[i2] !== "{") throw new Skip2("a brace is expected");
+      let depth = 0;
+      for (let k = i2; k < n; k++) {
+        if (text[k] === "\\") k++;
+        else if (text[k] === "{") depth++;
+        else if (text[k] === "}" && --depth === 0) return [text.slice(i2 + 1, k), k + 1];
+      }
+      throw new Skip2("a brace is not closed");
+    };
+    const bracket = (i2) => {
+      const open2 = space(i2);
+      if (text[open2] !== "[") return null;
+      let depth = 0;
+      for (let k = open2 + 1; k < n; k++) {
+        if (text[k] === "\\") k++;
+        else if (text[k] === "{") depth++;
+        else if (text[k] === "}") depth--;
+        else if (text[k] === "]" && depth === 0) return [text.slice(open2 + 1, k), k + 1];
+      }
+      throw new Skip2("a bracket is not closed");
+    };
+    const argument = (i2) => {
+      const start2 = space(i2);
+      if (start2 >= n) throw new Skip2("an argument is missing");
+      if (text[start2] === "{") {
+        const [inner, end2] = group(start2);
+        return [tidy3(inner), end2];
+      }
+      if (text[start2] !== "\\") return [text[start2], start2 + 1];
+      const [name, end] = control(start2);
+      return [`\\${name}`, end];
+    };
+    const macroName = (i2) => {
+      const [name, end] = argument(i2);
+      if (!/^\\([A-Za-z@]+|.)$/.test(name)) throw new Skip2("the name of a macro is expected");
+      return [name.slice(1), end];
+    };
+    const counts = (i2, owner) => {
+      const count = bracket(i2);
+      if (!count) return [0, null, i2];
+      const args = Number(count[0]);
+      if (!Number.isInteger(args) || args < 0 || args > 9) throw new Skip2(`the number of arguments of ${owner} is not read`);
+      const preset = bracket(count[1]);
+      return preset ? [args, preset[0], preset[1]] : [args, null, count[1]];
+    };
+    const lineEnd = (start2) => {
+      let depth = 0;
+      let first2 = -1;
+      for (let k = start2; k < n; k++) {
+        if (text[k] === "\\") k++;
+        else if (text[k] === "{") depth++;
+        else if (text[k] === "}") depth--;
+        else if (text[k] === "\n") {
+          if (first2 < 0) first2 = k;
+          if (depth <= 0) return k;
+        }
+      }
+      return depth > 0 && first2 >= 0 ? first2 : n;
+    };
+    const read = (found) => {
+      files.add(found.file);
+      scan(found.file, found.text);
+    };
+    const statement = () => {
+      if (text[from] !== "\\") throw new Skip2("not a definition");
+      const [name, after] = control(from);
+      let i2 = after;
+      const starred = text[i2] === "*";
+      switch (name) {
+        case "newcommand":
+        case "renewcommand":
+        case "providecommand":
+        case "DeclareRobustCommand": {
+          const [macro, a] = macroName(starred ? i2 + 1 : i2);
+          const [args, preset, b] = counts(a, `\\${macro}`);
+          const [body, end] = argument(b);
+          if (name !== "providecommand" || !(macro in macros)) define(macro, preset !== null ? [body, args, preset] : args ? [body, args] : body);
+          return end;
+        }
+        case "def":
+        case "gdef": {
+          const [macro, a] = macroName(i2);
+          const brace = text.indexOf("{", a);
+          if (brace < 0) throw new Skip2("a brace is expected");
+          const params = text.slice(a, brace).replace(/\s/g, "");
+          let args = 0;
+          while (params.startsWith(`#${args + 1}`, 2 * args)) args++;
+          if (params.length !== 2 * args) throw new Skip2("a \\def with delimited parameters is not read");
+          const [body, end] = argument(brace);
+          define(macro, args ? [body, args] : body);
+          return end;
+        }
+        case "let": {
+          const [alias, a] = macroName(i2);
+          let b = space(a);
+          if (text[b] === "=") b = space(b + 1);
+          if (text[b] !== "\\") throw new Skip2("a \\let of a character is not read");
+          const [target, end] = control(b);
+          const origin = lets.get(target)?.target ?? (target in macros ? null : target);
+          const copy2 = macros[target];
+          define(alias, origin !== null ? `\\${origin}` : Array.isArray(copy2) ? [...copy2] : copy2);
+          if (origin !== null) lets.set(alias, { target: origin, entry: entry(end) });
+          return end;
+        }
+        case "DeclareMathOperator": {
+          const [macro, a] = macroName(starred ? i2 + 1 : i2);
+          const [body, end] = argument(a);
+          define(macro, `\\operatorname${starred ? "*" : ""}{${body}}`);
+          return end;
+        }
+        case "newenvironment":
+        case "renewenvironment": {
+          const [environment, a] = group(space(starred ? i2 + 1 : i2));
+          const [args, preset, b] = counts(a, `the environment ${environment}`);
+          const [begin, c] = argument(b);
+          const [finish, end] = argument(c);
+          environments[environment.trim()] = preset !== null ? [begin, finish, args, preset] : args ? [begin, finish, args] : [begin, finish];
+          return end;
+        }
+        case "usepackage":
+        case "RequirePackage": {
+          const [names, a] = group(space(bracket(i2)?.[1] ?? i2));
+          const end = bracket(a)?.[1] ?? a;
+          const missing2 = [];
+          const unvendored = [];
+          for (const pkg of names.split(",").map((s) => s.trim()).filter(Boolean)) {
+            const found = options.resolve?.(pkg, "package");
+            if (found) {
+              if (!files.has(found.file)) read(found);
+            } else if (pkg in EXTENSION) {
+              if (EXTENSION[pkg] && !packages.includes(EXTENSION[pkg])) packages.push(EXTENSION[pkg]);
+            } else (UNVENDORED.has(pkg) ? unvendored : missing2).push(pkg);
+          }
+          const reasons = [];
+          if (missing2.length) reasons.push(`MathJax does not have an extension for the package${missing2.length > 1 ? "s" : ""} ${listed(missing2)}`);
+          if (unvendored.length) reasons.push(`the font of the package${unvendored.length > 1 ? "s" : ""} ${listed(unvendored)} is not vendored`);
+          if (reasons.length) note(end, reasons.join(", and "));
+          return end;
+        }
+        case "documentclass":
+        case "LoadClass": {
+          const [cls, a] = group(space(bracket(i2)?.[1] ?? i2));
+          const found = options.resolve?.(cls.trim(), "class");
+          if (found && !files.has(found.file)) read(found);
+          return bracket(a)?.[1] ?? a;
+        }
+        case "input":
+        case "include": {
+          while (text[i2] === " " || text[i2] === "	") i2++;
+          let end = i2;
+          let named;
+          if (text[i2] === "{") [named, end] = group(i2);
+          else {
+            while (end < n && !/\s/.test(text[end])) end++;
+            named = text.slice(i2, end);
+          }
+          const found = options.resolve?.(named.trim(), "input");
+          if (!found) note(end, `the file ${named.trim()} is not found`);
+          else if (files.has(found.file)) note(end, `the file ${found.file} is read already`);
+          else read(found);
+          return end;
+        }
+        case "theoremstyle": {
+          const [named, end] = group(space(i2));
+          style = STYLES.includes(named.trim()) ? named.trim() : "plain";
+          if (style !== named.trim()) note(end, `the style ${named.trim()} is not plain, definition, or remark, hence plain is used`);
+          return end;
+        }
+        case "newtheorem": {
+          const [named, a] = group(space(starred ? i2 + 1 : i2));
+          const kind = named.trim();
+          const shared2 = bracket(a);
+          const [title, b] = group(space(shared2?.[1] ?? a));
+          const within = bracket(b);
+          const end = within?.[1] ?? b;
+          let counter = starred ? null : kind;
+          if (!starred && shared2) {
+            const other = theorems[shared2[0].trim()]?.counter;
+            if (other) counter = other;
+            else note(end, `the counter ${shared2[0].trim()} is not the counter of a kind, hence ${kind} is numbered by itself`);
+          } else if (!starred && within) note(end, `a number within ${within[0].trim()} is not read, hence ${kind} is numbered through the deck`);
+          theorems[kind] = { title: plainText(title), style, counter };
+          return end;
+        }
+        case "begin": {
+          const [environment] = group(space(i2));
+          if (environment.trim() !== "document") throw new Skip2("not a definition");
+          done = true;
+          return n;
+        }
+        case "endinput":
+          return n;
+        case "NeedsTeXFormat":
+        case "ProvidesPackage":
+        case "ProvidesClass":
+        case "ProvidesFile": {
+          const [, a] = group(space(i2));
+          return bracket(a)?.[1] ?? a;
+        }
+        case "makeatletter":
+        case "makeatother":
+        case "relax":
+        case "long":
+        case "global":
+        case "protected":
+          return i2;
+        default:
+          throw new Skip2("not a definition");
+      }
+    };
+    let i = 0;
+    while (!done) {
+      from = space(i);
+      if (from >= n) break;
+      at = ++order2;
+      try {
+        i = statement();
+      } catch (error2) {
+        if (!(error2 instanceof Skip2)) throw error2;
+        i = lineEnd(from);
+        note(i, error2.message);
+      }
+    }
+  };
+  scan(options.file ?? "preamble.tex", source);
+  skipped.sort((a, b) => a.order - b.order);
+  return { macros, environments, packages, theorems, skipped: skipped.map(({ file, line, text, reason }) => ({ file, line, text, reason })) };
+}
+
+// src/reference.ts
+var VENUE = ["shortjournal", "journal", "journaltitle", "booktitle", "publisher", "school", "institution", "howpublished"];
+function split(text, separator) {
+  let depth = 0;
+  let masked = "";
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    masked += depth > 0 ? "\0" : text[i];
+    if (text[i] === "}") depth--;
+  }
+  const parts = [];
+  let from = 0;
+  for (const match of masked.matchAll(separator)) {
+    parts.push(text.slice(from, match.index));
+    from = match.index + match[0].length;
+  }
+  parts.push(text.slice(from));
+  return parts;
+}
+function particle(word) {
+  const first2 = plainText(word)[0] ?? "";
+  return !/^\{[^\\]/.test(word) && first2 !== first2.toUpperCase() && first2 === first2.toLowerCase();
+}
+function namesOf(field) {
+  const names = [];
+  let others = false;
+  for (const raw of split(field.trim(), /\s+and\s+/gi)) {
+    const text = raw.trim();
+    if (!text) continue;
+    if (text.toLowerCase() === "others") {
+      others = true;
+      continue;
+    }
+    const parts = split(text, /\s*,\s*/g);
+    if (parts.length > 1) {
+      names.push({ family: plainText(parts[0]), given: plainText(parts[parts.length - 1]) });
+      continue;
+    }
+    const words2 = split(text, /[\s~]+/g).filter(Boolean);
+    const first2 = words2.slice(0, -1).findIndex(particle);
+    const cut = first2 < 0 ? words2.length - 1 : first2;
+    names.push({ family: plainText(words2.slice(cut).join(" ")), given: plainText(words2.slice(0, cut).join(" ")) });
+  }
+  return { names, others };
+}
+var bare = (text) => (text ?? "").replace(/\\([_%#&~])/g, "$1").replace(/[{}\s]/g, "");
+function authorsOf(entry) {
+  const { names, others } = namesOf(entry.fields.author ?? entry.fields.editor ?? "");
+  if (!names.length) return "";
+  if (names.length === 1 && !others) return names[0].family;
+  if (names.length === 2 && !others) return `${names[0].family} & ${names[1].family}`;
+  return `${names[0].family} et al.`;
+}
+function venueOf(entry) {
+  for (const field of VENUE) {
+    const text = plainText(entry.fields[field] ?? "");
+    if (text) return text;
+  }
+  const eprint = bare(entry.fields.eprint);
+  return eprint && /arxiv/i.test(`${entry.fields.archiveprefix ?? ""}${entry.fields.eprinttype ?? ""}`) ? `arXiv:${eprint}` : "";
+}
+function referenceOf(entry) {
+  const url = bare(entry.fields.url);
+  const parts = {
+    authors: authorsOf(entry),
+    title: plainText(entry.fields.title ?? ""),
+    venue: venueOf(entry),
+    volume: plainText(entry.fields.volume ?? ""),
+    year: plainText(entry.fields.year ?? "") || (/\d{4}/.exec(entry.fields.date ?? "")?.[0] ?? ""),
+    doi: bare(entry.fields.doi).replace(/^(https?:\/\/(dx\.)?doi\.org\/|doi:)/i, ""),
+    url: /^https?:\/\//i.test(url) ? url : ""
+  };
+  if (!parts.authors && !parts.venue && !parts.title) parts.title = entry.key;
+  return Object.fromEntries(Object.entries(parts).filter(([, text]) => text));
+}
+
+// src/texfile.ts
+function citedKeys(html) {
+  const keys = /* @__PURE__ */ new Set();
+  const text = html.replace(/<!--[\s\S]*?-->/g, "").replace(/<script\b[\s\S]*?<\/script\s*>/gi, "");
+  for (const match of text.matchAll(/<cite\b[^>]*?\sdata-key\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
+    for (const key of (match[1] ?? match[2]).split(",")) if (key.trim()) keys.add(key.trim());
+  }
+  return [...keys];
+}
+function texOf(preamble, bibliography, html) {
+  const entries = new Map(bibliography.entries.map((entry) => [entry.key, entry]));
+  const references = {};
+  const missing2 = [];
+  for (const key of citedKeys(html).sort()) {
+    const entry = entries.get(key);
+    if (entry) references[key] = referenceOf(entry);
+    else missing2.push(key);
+  }
+  const { macros, environments, packages, theorems } = preamble;
+  return { tex: { macros, environments, packages, theorems, references }, missing: missing2 };
+}
+var ascii = (value) => JSON.stringify(value).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+function texScript(tex) {
+  const lines = ["// written from preamble.tex and references.bib by npm run tex and by a save in the editor.", "// change the two sources, since this file is written again from them", "window.beesonTex = {"];
+  for (const [name, part] of Object.entries(tex)) {
+    const entries = Array.isArray(part) ? [] : Object.entries(part);
+    if (!entries.length) lines.push(`  ${ascii(name)}: ${ascii(part)},`);
+    else lines.push(`  ${ascii(name)}: {`, ...entries.map(([key, value]) => `    ${ascii(key)}: ${ascii(value)},`), "  },");
+  }
+  lines.push("};");
+  return `${lines.join("\n")}
+`;
+}
+
+// src/edit/tex.ts
+var STABLE2 = 300;
+var signature2 = (s) => `${s.size}:${s.mtimeMs}:${s.ino}`;
+var keysOf = (html) => citedKeys(html).sort().join(",");
+function deriveTex(dir, html) {
+  const files = /* @__PURE__ */ new Map();
+  const unread = [];
+  const text = (name) => {
+    const file = join5(dir, name);
+    try {
+      files.set(name, signature2(statSync3(file)));
+      return readFileSync6(file, "utf8");
+    } catch (e) {
+      const code = e.code;
+      if (!files.has(name)) files.set(name, "");
+      if (code !== "ENOENT" && code !== "ENOTDIR") unread.push(`${name} is not read: ${e.message}`);
+      return null;
+    }
+  };
+  const names = {
+    input: (name) => /\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name],
+    package: (name) => [`${name}.sty`],
+    class: (name) => [`${name}.cls`]
+  };
+  const find = (name, kind) => {
+    for (const file of names[kind](name)) {
+      const found = text(file);
+      if (found !== null) return { file, text: found };
+    }
+    return null;
+  };
+  const preamble = readPreamble(text("preamble.tex") ?? "", { file: "preamble.tex", resolve: find });
+  const bibliography = readBibtex(text("references.bib") ?? "");
+  const { tex } = texOf(preamble, bibliography, html);
+  return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread };
+}
+var TexWriter = class {
+  // html is the text of index.html at the start. the files are read for their signatures, and
+  // nothing is written
+  constructor(dir, html, options = {}) {
+    this.sourcesSeen = null;
+    this.texSeen = null;
+    // the derivations and the polls run one at a time
+    this.chain = Promise.resolve();
+    this.due = false;
+    this.polling = false;
+    this.stopped = false;
+    this.dir = dir;
+    this.file = join5(dir, "tex.js");
+    this.log = options.log ?? (() => {
+    });
+    this.onChange = options.onChange ?? (() => {
+    });
+    this.stable = options.stable ?? STABLE2;
+    this.html = html;
+    this.keys = keysOf(html);
+    this.watched = deriveTex(dir, html).files;
+    this.texSig = sigOf(this.file);
+  }
+  // index.html holds html on disk. tex.js is derived again when it cites other keys
+  written(html) {
+    if (html === this.html) return;
+    this.html = html;
+    if (keysOf(html) !== this.keys) this.derive();
+  }
+  // a stat of the files of the last derivation and of tex.js, at each poll of index.html
+  poll() {
+    if (this.polling || this.stopped) return;
+    this.polling = true;
+    void this.run(async () => {
+      try {
+        await this.look();
+      } finally {
+        this.polling = false;
+      }
+    });
+  }
+  // no poll after a stop. resolves once the derivation of the last write of index.html is over
+  async stop() {
+    this.stopped = true;
+    await this.idle();
+  }
+  // resolves once every derivation and poll is over
+  async idle() {
+    let chain;
+    do
+      await (chain = this.chain);
+    while (chain !== this.chain);
+  }
+  run(task) {
+    return this.chain = this.chain.then(task).catch((e) => this.log(`tex.js: ${e.message}`));
+  }
+  derive() {
+    if (this.due) return;
+    this.due = true;
+    void this.run(() => {
+      this.due = false;
+      return this.write();
+    });
+  }
+  async look() {
+    const now = performance.now();
+    const sigs = await Promise.all([...this.watched.keys()].map(async (name) => [name, await statSig(join5(this.dir, name))]));
+    const sources = sigs.map(([name, sig]) => `${name}
+${sig}`).join("\n");
+    if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
+      if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive();
+    } else this.sourcesSeen = null;
+    const tex = await statSig(this.file);
+    if (tex !== this.texSig) {
+      if (this.texSeen?.sig !== tex) this.texSeen = { sig: tex, at: now };
+      else if (now - this.texSeen.at >= this.stable) {
+        this.texSig = tex;
+        this.texSeen = null;
+        this.onChange();
+      }
+    } else this.texSeen = null;
+  }
+  async write() {
+    const html = this.html;
+    const derived = deriveTex(this.dir, html);
+    this.keys = keysOf(html);
+    this.watched = derived.files;
+    this.sourcesSeen = null;
+    if (!derived.sources) return;
+    if (derived.unread.length) {
+      this.log(`tex.js is not written, since ${derived.unread.join(", and ")}`);
+      return;
+    }
+    const old = await readFile2(this.file, "utf8").catch(() => null);
+    if (old === derived.text) return;
+    const tmp = join5(this.dir, `.tex.js.${randomBytes5(6).toString("hex")}.tmp`);
+    try {
+      await writeFile4(tmp, derived.text);
+      const made = await stat3(tmp);
+      await renameRetried(tmp, this.file);
+      this.texSig = signature2(made);
+      this.texSeen = null;
+      this.onChange();
+    } catch (e) {
+      await unlink3(tmp).catch(() => {
+      });
+      this.log(`could not write ${this.file}: ${e.message}`);
+    }
+  }
+};
+function sigOf(file) {
+  try {
+    return signature2(statSync3(file));
+  } catch {
+    return "";
+  }
+}
+var statSig = (file) => stat3(file).then(signature2, () => "");
+
 // src/edit/command.ts
 var DEFAULT_PORT = 8765;
 var JSON_MAX = 16 * 1024 * 1024;
@@ -2904,7 +3702,7 @@ var AlreadyRunning = class extends Error {
 async function holderOf(file, root, key, log) {
   let lock;
   try {
-    lock = JSON.parse(readFileSync6(file, "utf8"));
+    lock = JSON.parse(readFileSync7(file, "utf8"));
   } catch {
     return null;
   }
@@ -2927,9 +3725,9 @@ async function holderOf(file, root, key, log) {
 }
 function keepUnwritten(root, text) {
   const name = `unwritten-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.html`;
-  for (const dir of [join5(root, ".session"), tmpdir()]) {
+  for (const dir of [join6(root, ".session"), tmpdir()]) {
     try {
-      const file = join5(dir, name);
+      const file = join6(dir, name);
       writeFileSync5(file, text, { flag: "wx" });
       return file;
     } catch {
@@ -2938,26 +3736,26 @@ function keepUnwritten(root, text) {
   return null;
 }
 function keyOf(root) {
-  const dir = join5(root, ".session");
+  const dir = join6(root, ".session");
   mkdirSync3(dir, { recursive: true });
   try {
-    writeFileSync5(join5(dir, ".gitignore"), "*\n", { flag: "wx" });
+    writeFileSync5(join6(dir, ".gitignore"), "*\n", { flag: "wx" });
   } catch {
   }
-  const file = join5(dir, "key");
+  const file = join6(dir, "key");
   try {
-    const key2 = readFileSync6(file, "utf8").trim();
+    const key2 = readFileSync7(file, "utf8").trim();
     if (/^[A-Za-z0-9_-]{22,128}$/.test(key2)) return key2;
   } catch {
   }
-  const key = randomBytes5(16).toString("base64url");
+  const key = randomBytes6(16).toString("base64url");
   writeFileSync5(file, `${key}
 `, { mode: 384 });
   return key;
 }
 function savedPort(root) {
   try {
-    const port = Number(readFileSync6(join5(root, ".session", "port"), "utf8").trim());
+    const port = Number(readFileSync7(join6(root, ".session", "port"), "utf8").trim());
     return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
   } catch {
     return null;
@@ -2990,9 +3788,9 @@ async function sameFile(dir, name, size2, hash) {
     return m ? [{ name: d.name, n: Number(m[1] ?? 1) }] : [];
   });
   for (const f of found.sort((a, b) => a.n - b.n)) {
-    const file = join5(dir, f.name);
+    const file = join6(dir, f.name);
     try {
-      if ((await stat3(file)).size === size2 && sha256(await readFile2(file)) === hash) return f.name;
+      if ((await stat4(file)).size === size2 && sha256(await readFile3(file)) === hash) return f.name;
     } catch {
     }
   }
@@ -3013,20 +3811,22 @@ async function start(options = {}) {
   const log = options.log ?? ((m) => process.stderr.write(`${m}
 `));
   const root = realpathSync2.native(resolve(options.folder ?? "."));
-  const index = join5(root, "index.html");
+  const index = join6(root, "index.html");
   const { text, bom } = readText(index);
   const key = keyOf(root);
-  const lockFile = join5(root, ".session", "lock");
+  const lockFile = join6(root, ".session", "lock");
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
-  const appliedFile = join5(root, ".session", "applied.json");
+  const appliedFile = join6(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const appliedTable = new AppliedTable(appliedFile, log);
-  const onWritten = (n) => {
+  const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged() });
+  const onWritten = (n, written2) => {
     if (authority.written(n)) appliedTable.write(authority.table());
+    tex.written(written2);
   };
-  const disk = new Disk(index, authority, bom, { log, onWritten, onWriteError: (e) => people.writeFailed(e) });
-  const people = new People(authority, join5(root, ".session", "people.json"), log);
+  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
+  const people = new People(authority, join6(root, ".session", "people.json"), log);
   let history;
   let port = 0;
   let relay = null;
@@ -3099,7 +3899,7 @@ async function start(options = {}) {
     if (!clean) return error(415, "the file must be an image, a video, or json");
     if (request.body.length > MEDIA_MAX) return error(413, "the file is larger than 64 MB");
     if (!request.direct && request.body.length > GUEST_MEDIA_MAX) return error(413, "the file is larger than 16 MB, the limit of an upload through the relay");
-    const dir = join5(root, "media");
+    const dir = join6(root, "media");
     await mkdir(dir, { recursive: true });
     const real = await realpath3(dir);
     if (!real.startsWith(root + sep2)) return error(403, "media/ leaves the talk folder");
@@ -3114,7 +3914,7 @@ async function start(options = {}) {
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
       try {
-        await writeFile4(join5(real, candidate), request.body, { flag: "wx" });
+        await writeFile5(join6(real, candidate), request.body, { flag: "wx" });
         return json(200, { path: `media/${candidate}` });
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -3183,7 +3983,7 @@ async function start(options = {}) {
       if ("full" in joined) return error(503, FULL);
       const { member, token } = joined;
       const applied = typeof hello.was === "string" ? authority.applied(hello.was) : void 0;
-      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), ...applied === void 0 ? {} : { applied } };
+      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), tex: people.tex(), ...applied === void 0 ? {} : { applied } };
       const ops = typeof hello.v === "string" ? authority.since(hello.v) : null;
       return json(200, ops ? { ...answer, ops } : { ...answer, text: authority.text });
     }
@@ -3336,22 +4136,22 @@ async function start(options = {}) {
       await new Promise((done) => server.close(done));
       throw new AlreadyRunning(other);
     }
-    const tmp = `${lockFile}.${randomBytes5(6).toString("hex")}.tmp`;
+    const tmp = `${lockFile}.${randomBytes6(6).toString("hex")}.tmp`;
     writeFileSync5(tmp, lock);
     renameRetriedSync(tmp, lockFile);
   }
   const unlock = () => {
     try {
-      if (readFileSync6(lockFile, "utf8") === lock) unlinkSync5(lockFile);
+      if (readFileSync7(lockFile, "utf8") === lock) unlinkSync5(lockFile);
     } catch {
     }
   };
   try {
-    writeFileSync5(join5(root, ".session", "port"), `${port}
+    writeFileSync5(join6(root, ".session", "port"), `${port}
 `);
   } catch {
   }
-  history = new History(join5(root, ".session"), authority, { ...options.history, log });
+  history = new History(join6(root, ".session"), authority, { ...options.history, log });
   history.onChange(() => people.news());
   people.feed({
     rev: () => history.rev,
@@ -3391,6 +4191,7 @@ async function start(options = {}) {
       unlock();
       people.end();
       const unwritten2 = await disk.stop();
+      await tex.stop();
       await appliedTable.stop();
       if (unwritten2) {
         const kept = keepUnwritten(root, disk.bom ? `\uFEFF${authority.text}` : authority.text);
@@ -3722,6 +4523,7 @@ export {
   History,
   NAME_MAX,
   Replica,
+  TexWriter,
   apply,
   changes,
   checksum,
@@ -3730,6 +4532,7 @@ export {
   combine,
   conflict,
   decode,
+  deriveTex,
   diff2 as diff,
   formatVersion,
   invert,

@@ -31,7 +31,7 @@ export function install(client: Client): void {
   const presence = presenceOf(client);
   if (!presence) return;
   const { app } = client;
-  style('floor', '.beeson-locked, .beeson-locked * { cursor: not-allowed !important; }');
+  style('floor', '.beeson-held, .beeson-held * { cursor: not-allowed !important; }');
   ready();
   // the selection is changed by this file, which is not an action of the person
   let filtering = false;
@@ -66,9 +66,20 @@ export function install(client: Client): void {
     if (host && presence.holder(host)) ev.preventDefault();
   }, true);
 
+  // a plain press in a container of several objects around a locked element, e.g. a plate with a
+  // held caption, selects the object under the pointer first, as a second click on the container
+  // would. the drag then takes this object, and only the container stays refused
+  const pickInside = (ev: PointerEvent, target: Element): void => {
+    if (!presence.locks.size || ev.button !== 0 || ev.shiftKey || ev.metaKey || ev.ctrlKey || app.hostOf(target)) return;
+    let up = target.parentElement;
+    while (up && !presence.lockOf(up)) up = up.parentElement;
+    const child = up && client.shell.presence.childIn(up, target);
+    if (child && !presence.lockOf(child) && !app.selection.elements().some((s) => child.contains(s))) app.selection.set('elements', [child]);
+  };
   const pressed = (ev: Event): void => {
     const target = ev.target instanceof Element ? ev.target : null;
     const by = target ? presence.lockOf(target, false) : null;
+    if (!by && target && ev.type === 'pointerdown') pickInside(ev as PointerEvent, target);
     if (!by || !target || target.closest('.beeson-edit-titlebar, .beeson-edit-toolbar, .beeson-inspector, dialog')) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();

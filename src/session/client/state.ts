@@ -1,5 +1,5 @@
 // the save state of a session, a button in .right of the title bar in place of Autosave, whose
-// text is given to the status bar as well. a click on it opens its menu, with Try Now while a
+// text is given to the title as well. a click on it opens its menu, with Try Now while a
 // reconnect waits and the items that other parts add, or else saves, which in a session waits for
 // the acknowledgments. a second button beside it is Try now while a reconnect waits, and Load again
 // while the page is blocked
@@ -7,7 +7,7 @@
 import { BLOCKED, type Client } from './client.ts';
 import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
-import { failedLine, retry as retryUpload } from './media.ts';
+import { failedLine, lostLine, retry as retryUpload } from './media.ts';
 import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
 import { isLeaving } from './people.ts';
 
@@ -16,8 +16,10 @@ const ITEMS: MenuItem[] = [];
 export const addStateItem = (item: MenuItem): void => void ITEMS.push(item);
 
 // the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
-// of their own, see people.ts
+// of their own, see people.ts. the button is drawn without its text while the title shows it, i.e.
+// from the width at which menubar.ts shows the state, and while the title has room for it
 const CSS = `
+@media (min-width: 900px) { .beeson-edit-titlebar:has(.doc:not(.tight) .state) .right button.beeson-session-state .name { display: none; } }
 .beeson-edit-titlebar .right button.beeson-session-state, .beeson-edit-titlebar .right button.beeson-session-action { position: relative; }
 .beeson-edit-titlebar .right button.beeson-session-state::after, .beeson-edit-titlebar .right button.beeson-session-action::after { content: ''; position: absolute; inset: -5px -2px; }
 .beeson-edit-titlebar .right button.beeson-session-state svg { flex: none; color: var(--ed-muted); }
@@ -49,6 +51,8 @@ function view(client: Client): View {
       if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null };
       const failed = failedLine(client);
       if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload' };
+      const lost = lostLine(client);
+      if (lost) return { text: lost, icon: 'warning', warn: true, action: null };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
       const restored = restoredLine(client);
       if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
@@ -56,7 +60,7 @@ function view(client: Client): View {
   }
 }
 
-const ACTIONS = { retry: ['Try now', 'Reconnect now'], reload: ['Load again', 'Load the page again'], upload: ['Try again', 'Send the picture again'] } as const;
+const ACTIONS = { retry: ['Try now', 'Reconnect now'], reload: ['Load again', 'Load the page again'], upload: ['Try again', 'Send the file again'] } as const;
 
 export function install(client: Client): void {
   style('state', CSS);

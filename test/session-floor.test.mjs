@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, show } from './helpers/client.mjs';
-import { press, typeKeys } from './helpers/editor.mjs';
+import { drag, press, typeKeys } from './helpers/editor.mjs';
 import { BUBBLE, el, hold, leave, LOCKED, P, REFUSED, release, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -198,6 +198,33 @@ test('a text element taken from a page that composes with an input method keeps 
   assert.deepEqual(await loser.evaluate(caret), { focused: true, caret: true }, 'the caret stays during the composition');
   await compose('compositionend');
   await until(async () => JSON.stringify(await loser.evaluate(caret)) === JSON.stringify({ focused: false, caret: false }), 'the caret to leave at the end of the composition');
+  clean(ana);
+  clean(ben);
+});
+
+const PLATE = `  <p>First slide</p>
+  <div class="plate row">
+    <figure id="first"><img src="brand/logo.png" alt="A"><figcaption class="caption">The first figure.</figcaption></figure>
+    <figure id="second"><img src="brand/logo.png" alt="B"><figcaption class="caption">The second figure.</figcaption></figure>
+  </div>`;
+
+test('a figure of a plate is selected and dragged by itself while the caption of another figure of the plate is held', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', PLATE]] });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  const caption = el(0, '#first figcaption');
+  await caretAtEnd(ana, caption);
+  await typeKeys(ana, ' typed');
+  await until(() => ben.evaluate(`${LOCKED(caption)} && ${caption}.textContent === 'The first figure. typed'`), 'the caption that Ana holds, with her text, to be locked on the page of Ben');
+  await front(ben);
+  await unbubble(ben);
+  await drag(ben, 'section.present #second img', { dx: 60, dy: 20 });
+  assert.deepEqual(await ben.evaluate(`window.BeesonEditor.selection().map((e) => e.localName + (e.id ? '#' + e.id : ''))`), ['figure#second']);
+  assert.equal(await ben.evaluate(BUBBLE), null, 'the press is not refused');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<figure id="second" style="translate: -?\d+px -?\d+px">/);
+  assert.match(text, /<div class="plate row">/);
+  assert.match(text, /The first figure\. typed<\/figcaption>/);
   clean(ana);
   clean(ben);
 });

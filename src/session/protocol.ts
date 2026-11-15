@@ -48,7 +48,8 @@ export type HelloRequest = { name: string; person?: string; token?: Token; v?: V
 export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise.
 // applied is the seq of the last operation of the client id was that the text holds, left out when
-// this client id is not known, e.g. after its operations left the table of the edit command
+// this client id is not known, e.g. after its operations left the table of the edit command. tex is
+// the number of changes of tex.js on disk since the start of the edit command
 export type HelloAnswer = {
   client: string;
   token: Token;
@@ -59,6 +60,7 @@ export type HelloAnswer = {
   v: Version;
   people: Person[];
   known: KnownPerson[];
+  tex: number;
   applied?: number;
 } & ({ ops: AppliedOp[]; text?: undefined } | { text: string; ops?: undefined });
 
@@ -91,12 +93,14 @@ export type WriteError = { message: string; unwritten: number };
 // history is the rev of the version history when it changed since the last answer to this page.
 // restored is the latest restore, sent once to each page whose version since is before it, also to
 // a page that was dropped meanwhile. a page reads the history again after each hello, since what
-// changed before is not sent to it
+// changed before is not sent to it. tex is as in HelloAnswer, and a page draws the deck again with
+// tex.js when it changed
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
   presence: Presence[];
   people: Person[];
+  tex: number;
   known?: KnownPerson[];
   writeError?: WriteError | null;
   ended?: Ended;
