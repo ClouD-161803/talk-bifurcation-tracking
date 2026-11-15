@@ -222,3 +222,30 @@ for (const [label, ofSlide] of COMPOSING) {
     assert.deepEqual(b.errors, []);
   });
 }
+
+test('a page that does not read as its text after an apply is loaded again through onReload', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await b.evaluate(`(() => {
+    window.__reloads = 0;
+    ${E}.session.onReload(() => window.__reloads++);
+    return true;
+  })()`);
+  const one = once(b.source, 'Thank you', 'Thanks');
+  assert.equal((await applyOn(b, one)).reload, false);
+  // a timer of the page set after the apply runs after the check of the port, which is set at the
+  // end of the apply with a shorter delay
+  await b.evaluate('new Promise((done) => setTimeout(done, 1000))');
+  assert.equal(await b.evaluate('window.__reloads'), 0, 'a page that reads as its text is not loaded again');
+  // a text node changed behind the back of the editor stands for a defect of an apply
+  await b.evaluate(`(() => {
+    const p = ${P2};
+    p.firstChild.data = p.firstChild.data.replace('Copy-paste', 'Broken');
+    return true;
+  })()`);
+  const two = once(one, 'Design the complete', 'Plan the complete');
+  assert.equal((await applyOn(b, two)).reload, false);
+  await b.waitFor('window.__reloads > 0');
+  assert.equal(await b.evaluate('window.__reloads'), 1);
+  assert.deepEqual(b.errors, []);
+});
