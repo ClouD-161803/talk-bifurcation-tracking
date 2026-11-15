@@ -434,3 +434,25 @@ test('add regression test: a registration without the token is refused right aft
   // an edit command that died stops pulling, and a new start gets the key once answeredMs passed
   await until(async () => (await register()) === 200, 'a registration after the end of the pulls');
 });
+
+test('add regression test: a page of a session that is not registered says that the host is not running', { timeout: 60_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const key = 'k'.repeat(22);
+  const accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+  const page = await raw(relay.port, 'GET', `/${key}/index.html?edit&session`, { headers: { accept } });
+  assert.equal(page.status, 502);
+  assert.match(page.headers['content-type'], /^text\/html/);
+  assert.ok(page.text.includes("The host's edit command is not running. This link works again once the host starts it."), page.text);
+  assert.doesNotMatch(page.text, /<script/i);
+  // the requests of the client keep the plain text, which the transport reads as the message
+  const plain = 'no edit command is registered for this session';
+  for (const [method, path, headers] of [
+    ['GET', `/${key}/.session/events?token=t&since=v`, { accept: '*/*' }],
+    ['GET', `/${key}/index.html`, { accept: '*/*' }],
+    ['POST', `/${key}/.session/hello`, { accept, 'content-type': 'application/json' }],
+  ]) {
+    const answer = await raw(relay.port, method, path, { headers, body: method === 'POST' ? '{}' : undefined });
+    assert.deepEqual({ status: answer.status, type: answer.headers['content-type'], text: answer.text }, { status: 502, type: 'text/plain; charset=utf-8', text: plain }, `${method} ${path}`);
+  }
+});
