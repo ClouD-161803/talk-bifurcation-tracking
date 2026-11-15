@@ -665,6 +665,11 @@ class Pane {
     area.addEventListener('click', update);
     area.addEventListener('blur', () => setTimeout(close, 150));
     area.addEventListener('keydown', (ev) => {
+      // a key of an input method that composes a text is its own
+      if (ev.isComposing || ev.keyCode === 229) {
+        ev.stopPropagation();
+        return;
+      }
       if (!people.hidden && choices.length) {
         if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
           ev.preventDefault();
