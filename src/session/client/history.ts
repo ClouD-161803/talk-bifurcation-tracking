@@ -129,6 +129,9 @@ export function install(client: Client): void {
   let shownTime: number | null = null;
   let midnight = 0;
   let naming = false;
+  // a reload of the page held until the mode ends, see hold below
+  let release: (() => void) | null = null;
+  let holding: Promise<void> | null = null;
   // the nodes of the list kept between renders by key, hence a new answer writes only what changed
   const rows = new Map<string, { el: HTMLButtonElement; sig: string }>();
   const folds = new Map<string, { button: HTMLButtonElement; inner: HTMLElement }>();
@@ -293,7 +296,11 @@ export function install(client: Client): void {
     }
     used.clear();
     const nodes: Node[] = [
-      row('current', { kind: 'current' }, '', () => [make('span', 'title', 'Current version')]),
+      row('current', { kind: 'current' }, holding ? 'held' : '', () => {
+        const parts: (Node | string)[] = [make('span', 'title', 'Current version')];
+        if (holding) parts.push(make('span', 'sub', 'The deck changed. It is loaded again when Version History is closed.'));
+        return parts;
+      }),
       nameCurrent,
     ];
     const versions = (answer?.versions ?? []).filter((v) => !named.checked || v.name);
@@ -405,6 +412,9 @@ export function install(client: Client): void {
     presenceOf(client)?.set({ mode: 'edit' });
     if (back instanceof HTMLElement && back.isConnected && !back.closest('[inert]')) back.focus();
     back = null;
+    const go = release;
+    release = holding = null;
+    go?.();
   }
 
   function fail(title: string, e: unknown): void {
@@ -549,6 +559,15 @@ export function install(client: Client): void {
   shell.onCommand(() => open());
   opener = open;
   addStateItem({ label: 'Version History', run: () => open() });
+  // a reload that an apply needs waits for the end of the mode, which Current version says
+  client.hooks.hold = () => {
+    if (!on) return null;
+    if (!holding) {
+      holding = new Promise((done) => (release = done));
+      render();
+    }
+    return holding;
+  };
   client.on('history', (rev) => {
     if (answer && rev === answer.rev) return;
     stale = true;

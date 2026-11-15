@@ -57,6 +57,8 @@ export type Hooks = {
   side?(sync: Sync, whole: Whole | null, ops: AppliedOp[]): Side | Promise<Side> | null;
   // false while text names a file that is not uploaded yet, after which rewrite() is called
   ready?(text: string): boolean;
+  // a promise while a reload of the page has to wait, e.g. for the end of Version History
+  hold?(): Promise<void> | null;
 };
 
 // the reconnects in s, the last one repeated
@@ -533,6 +535,14 @@ export class Client {
 
   // the session may end or the page be blocked first, and the dialog of this state takes over
   private async reload(): Promise<void> {
+    const held = this.hooks.hold?.();
+    if (held) {
+      await held;
+      if (this.ended) {
+        this.slides().inert = false;
+        return;
+      }
+    }
     try {
       await this.flush();
     } catch {
