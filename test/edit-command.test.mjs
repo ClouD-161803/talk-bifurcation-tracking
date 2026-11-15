@@ -483,6 +483,27 @@ test('share requests at the same time leave no relay link running after the end 
   const secret = 'a secret of the group, long enough';
   const relay = await startRelay({ host: '127.0.0.1', secret, guestMs: 2000 });
   t.after(() => relay.close());
+  // the edit command reaches the relay through a door, at which the requests of a share are held
+  // until the stop is sent. two requests sent at once can arrive in either order, and a stop that
+  // arrives before the share rightly leaves the link running
+  const door = { held: null, arrived: () => {} };
+  const through = createServer((req, res) => {
+    const pass = () => {
+      const { host: _, ...headers } = req.headers;
+      const out = httpRequest(`${relay.url}${req.url}`, { method: req.method, headers }, (answer) => {
+        res.writeHead(answer.statusCode, answer.headers);
+        answer.pipe(res);
+      });
+      out.on('error', () => res.destroy());
+      req.pipe(out);
+    };
+    if (!door.held) return pass();
+    door.held.then(pass);
+    door.arrived();
+  });
+  await new Promise((done) => through.listen(0, '127.0.0.1', done));
+  t.after(() => (through.closeAllConnections(), through.close()));
+  const via = `http://127.0.0.1:${through.address().port}`;
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
   t.after(() => stopEdit(edit));
   const share = `${edit.base}.session/share`;
@@ -492,12 +513,21 @@ test('share requests at the same time leave no relay link running after the end 
     for (let i = 0; i < 40; i++) assert.equal(await guest(), 502, `guest request ${i}`);
   };
 
-  const both = await Promise.all([post(edit.port, share, { relay: relay.url, secret }), post(edit.port, share, { relay: relay.url, secret })]);
+  const both = await Promise.all([post(edit.port, share, { relay: via, secret }), post(edit.port, share, { relay: via, secret })]);
   assert.deepEqual(both.map((r) => r.status), [200, 200]);
   assert.deepEqual((await raw(edit.port, 'DELETE', share)).json(), { link: null });
   await unreachable();
 
-  const [shared, stopped] = await Promise.all([post(edit.port, share, { relay: relay.url, secret }), raw(edit.port, 'DELETE', share)]);
+  // the stop is sent once the first request of the share is at the door, i.e. during the share
+  let open;
+  const arrived = new Promise((done) => (door.arrived = done));
+  door.held = new Promise((done) => (open = done));
+  const sharing = post(edit.port, share, { relay: via, secret });
+  await arrived;
+  const stopping = raw(edit.port, 'DELETE', share);
+  door.held = null;
+  open();
+  const [shared, stopped] = await Promise.all([sharing, stopping]);
   assert.equal(shared.status, 200);
   assert.deepEqual(stopped.json(), { link: null });
   assert.deepEqual((await raw(edit.port, 'GET', share)).json(), { link: null }, 'a stop sent during a share ends it');

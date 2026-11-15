@@ -79,8 +79,7 @@ test('a surface function does not name its heights, and its states are named aft
 });
 
 // the retired words of the glossary in REFERENCE.md, AGENTS.md, and the skills. the error-correction
-// block of a QR code, the block arrow of a shape, and a finding that blocks a PR are other words and
-// stay
+// block of a QR code and the block arrow of a shape are other words and stay
 const PROSE = [
   /\bGhosted\b/, /marks of Markdown/, /closing mark\b/, /\bits mark\b/, /each mark is drawn/,
   /cut into layers/, /one layer at a time/, /on a layer that hides/, /\bglue/i, /(?<!dis)\bcards?\b/i,
@@ -92,7 +91,7 @@ test('REFERENCE.md, AGENTS.md, and the skills use the words of the glossary', ()
   const docs = ['REFERENCE.md', 'AGENTS.md', ...readdirSync(join(root, '.agents/skills'), { recursive: true }).filter((f) => f.endsWith('.md')).map((f) => join('.agents/skills', f))];
   const hits = docs.flatMap((f) =>
     read(f)
-      .replace(/error-correction block|double block arrow|block arrow|finding that blocks/gi, '')
+      .replace(/error-correction block|double block arrow|block arrow/gi, '')
       .split('\n')
       .map((line, i) => [line, i])
       .flatMap(([line, i]) => PROSE.filter((p) => p.test(line)).map((p) => `${f}:${i + 1}: ${p}`)),
