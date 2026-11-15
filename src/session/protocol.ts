@@ -173,7 +173,7 @@ const JOINER = /^[\u200c\u200d]$/u;
 const shows = (c: string | undefined) => c !== undefined && !HIDDEN.test(c) && !/\s/.test(c);
 
 // the characters of raw that show, with the selectors and joiners that belong to them
-function shown(raw: string): string {
+export function shown(raw: string): string {
   const chars = Array.from(raw);
   const kept: string[] = [];
   chars.forEach((c, i) => {

@@ -1693,7 +1693,7 @@ var validMarks = (marks, n) => Array.isArray(marks) && marks.every((m) => m && N
 var numbers = (x) => Array.isArray(x) && x.every((n) => Number.isInteger(n));
 function cleanVersionName(raw) {
   if (typeof raw !== "string") return null;
-  const name = raw.replace(/\s+/g, " ").trim();
+  const name = shown(raw).replace(new RegExp("(?!\\s)\\p{Cc}", "gu"), "").replace(/\s+/g, " ").trim();
   return Array.from(name).length > VERSION_NAME_MAX ? null : name;
 }
 var Unreadable = class extends Error {

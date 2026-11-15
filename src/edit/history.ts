@@ -16,7 +16,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
 import { apply, copy, diff } from '../session/patch.ts';
-import { parseVersion, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
+import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
 
@@ -226,10 +226,11 @@ const validMarks = (marks: unknown, n: number): marks is Mark[] =>
   Array.isArray(marks) && marks.every((m) => m && Number.isInteger(m.start) && Number.isInteger(m.end) && 0 <= m.start && m.start <= m.end && m.end <= n && typeof m.author === 'string');
 const numbers = (x: unknown): x is number[] => Array.isArray(x) && x.every((n) => Number.isInteger(n));
 
-// a name as it is kept, trimmed with inner whitespace collapsed, or null when it is too long
+// a name as it is kept, without characters that do not show nor controls other than whitespace,
+// trimmed with inner whitespace collapsed, or null when it is too long
 export function cleanVersionName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  const name = raw.replace(/\s+/g, ' ').trim();
+  const name = shown(raw).replace(/(?!\s)\p{Cc}/gu, '').replace(/\s+/g, ' ').trim();
   return Array.from(name).length > VERSION_NAME_MAX ? null : name;
 }
 
