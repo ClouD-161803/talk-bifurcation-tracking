@@ -6,14 +6,19 @@ import { realpathSync as realpathSync2 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
-import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync3, realpathSync, writeFileSync as writeFileSync3 } from "node:fs";
-import { mkdir, realpath as realpath2, writeFile as writeFile2 } from "node:fs/promises";
+import { createReadStream, mkdirSync as mkdirSync2, readFileSync as readFileSync4, realpathSync, unlinkSync as unlinkSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { mkdir, realpath as realpath2, writeFile as writeFile3 } from "node:fs/promises";
 import { createServer } from "node:http";
 import { randomBytes as randomBytes3 } from "node:crypto";
 import { join as join4, resolve, sep as sep2 } from "node:path";
 
 // src/session/protocol.ts
 var COLORS = ["--data-2", "--data-3", "--data-5", "--data-7"];
+var NAME_MAX = 40;
+var cleanPersonName = (raw) => typeof raw === "string" ? Array.from(raw.replace(/\s+/g, " ").trim()).slice(0, NAME_MAX).join("").trim() : "";
+var nameKey = (name) => cleanPersonName(name).normalize("NFC").toLowerCase();
+var isPersonId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{22,64}$/.test(id);
+var isToken = (token) => typeof token === "string" && /^[A-Za-z0-9_-]{22,64}$/.test(token);
 var formatVersion = (epoch, n) => `${epoch}.${n}`;
 function parseVersion(v) {
   if (typeof v !== "string") return null;
@@ -748,7 +753,7 @@ function readText(file) {
 
 // src/edit/http.ts
 import { open, realpath, stat as stat2 } from "node:fs/promises";
-import { extname, join as join2, sep } from "node:path";
+import { extname, join as join2, relative, sep } from "node:path";
 var MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -779,6 +784,7 @@ var json = (status, value) => ({
   body: JSON.stringify(value)
 });
 var error = (status, message) => json(status, { error: message });
+var hiddenSegment = (s) => s.startsWith(".") || s.endsWith(".") || s.endsWith(" ") || s.toLowerCase() === "node_modules";
 function segmentsOf(rest) {
   const out = [];
   for (const raw of rest.split("/")) {
@@ -788,7 +794,7 @@ function segmentsOf(rest) {
     } catch {
       return null;
     }
-    if (s === "" || s.startsWith(".") || s.toLowerCase() === "node_modules" || /[\\/:\0]/.test(s)) return null;
+    if (s === "" || hiddenSegment(s) || /[\\/:\0]/.test(s)) return null;
     out.push(s);
   }
   return out;
@@ -796,7 +802,7 @@ function segmentsOf(rest) {
 async function fileInside(root, segments) {
   try {
     const real = await realpath(join2(root, ...segments));
-    if (!real.startsWith(root + sep)) return null;
+    if (!real.startsWith(root + sep) || relative(root, real).split(sep).some(hiddenSegment)) return null;
     return (await stat2(real)).isFile() ? real : null;
   } catch {
     return null;
@@ -863,46 +869,145 @@ var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeN
 
 // src/edit/people.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
+import { readFileSync as readFileSync2, unlinkSync as unlinkSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { unlink as unlink2, writeFile as writeFile2 } from "node:fs/promises";
 var HOLD = 25e3;
 var GAP = 100;
 var GONE = 4e4;
+var FIRST_POLL = 5e3;
 var MAX_PEOPLE = 64;
+var MAX_GUESTS = 48;
+var MAX_PAGES = 8;
+var MAX_CLIENTS = 1024;
 var MAX_KNOWN = 1024;
+var SAVE_GAP = 1e3;
 var MAX_STATE = 8 * 1024;
-var isClientId = (c) => typeof c === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(c);
+var newId = () => randomBytes2(16).toString("base64url");
+function readPeople(file) {
+  try {
+    const value = JSON.parse(readFileSync2(file, "utf8"));
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (r) => r && isPersonId(r.person) && cleanPersonName(r.name) && Number.isInteger(r.color) && r.color >= 0 && r.color < COLORS.length && Number.isFinite(r.first) && Number.isFinite(r.last)
+    );
+  } catch {
+    return [];
+  }
+}
 var People = class {
-  constructor(authority) {
+  // file is the people.json of the talk folder, or null to keep the people in memory alone
+  constructor(authority, file = null, log = () => {
+  }) {
     this.members = /* @__PURE__ */ new Map();
-    // every client that said hello, so that a browser back from a sleep keeps its name and color
-    this.known = /* @__PURE__ */ new Map();
+    // the person, the kind, and the token of every page that said hello, so that a browser back
+    // from a sleep keeps its person
+    this.clients = /* @__PURE__ */ new Map();
+    // the client id of each token
+    this.tokens = /* @__PURE__ */ new Map();
+    this.records = /* @__PURE__ */ new Map();
+    // the pages whose session ended, answered with ended until they say hello again
+    this.ends = /* @__PURE__ */ new Map();
+    this.hostPerson = null;
     this.polls = /* @__PURE__ */ new Set();
     this.rev = 0;
-    this.arrivals = 0;
-    this.ended = false;
+    this.knownRev = 0;
+    this.ended = null;
+    this.saveTimer = null;
+    this.savedAt = 0;
+    this.dirty = false;
+    this.saving = null;
     this.authority = authority;
+    this.file = file;
+    this.log = log;
+    if (file) for (const r of readPeople(file)) this.records.set(r.person, r);
     authority.observe(() => this.wake());
-    this.sweeper = setInterval(() => this.sweep(), 5e3);
+    this.sweeper = setInterval(() => this.sweep(), 1e3);
     this.sweeper.unref?.();
   }
-  hello(name, client, host) {
-    const id = isClientId(client) ? client : randomBytes2(12).toString("base64url");
-    const before2 = this.known.get(id);
-    if (!this.members.has(id) && this.members.size >= MAX_PEOPLE) return null;
-    const color = before2?.color ?? this.arrivals++ % COLORS.length;
-    this.known.set(id, { name, color, host });
-    if (this.known.size > MAX_KNOWN) this.known.delete(this.known.keys().next().value);
+  // a page joins as the person of the id, or as a new person. a name held by another person is
+  // refused unless claim is true, and the page then continues as this person. the token of an
+  // earlier hello keeps its client id
+  hello(rawName, rawPerson, rawToken, host, claim = false) {
+    let person = isPersonId(rawPerson) ? rawPerson : newId();
+    const name = cleanPersonName(rawName) || this.records.get(person)?.name || "";
+    if (!name) return { empty: true };
+    const holder = this.holderOf(name);
+    if (holder && holder.person !== person) {
+      if (!claim) return { taken: { name: holder.name } };
+      person = holder.person;
+    }
+    const earlier = isToken(rawToken) ? this.tokens.get(rawToken) : void 0;
+    const id = earlier ?? randomBytes2(12).toString("base64url");
+    const token = earlier ? rawToken : newId();
+    if (!this.members.has(id)) {
+      const pages = [...this.members.values()].filter((m) => m.person === person);
+      if (pages.length >= MAX_PAGES) this.members.delete(pages[0].client);
+      if (!this.hasPlace(host)) return { full: true };
+    }
+    const now = Date.now();
+    let record = this.records.get(person);
+    if (!record) {
+      record = { person, name, color: this.freeColor(), first: now, last: now };
+      this.records.set(person, record);
+      this.trimRecords();
+      this.knownRev++;
+    } else {
+      if (record.name !== name && !claim) {
+        record.name = name;
+        this.knownRev++;
+      }
+      record.last = now;
+    }
+    this.save();
+    if (host) this.hostPerson = person;
+    this.ends.delete(id);
+    this.clients.delete(id);
+    this.clients.set(id, { person, host, token });
+    this.tokens.set(token, id);
+    if (this.clients.size > MAX_CLIENTS) {
+      const [oldest, { token: old }] = this.clients.entries().next().value;
+      this.clients.delete(oldest);
+      this.tokens.delete(old);
+    }
     let member = this.members.get(id);
-    if (member) Object.assign(member, { name, host, lastSeen: Date.now(), seen: -1 });
-    else this.members.set(id, member = { client: id, name, color, host, state: null, lastSeen: Date.now(), seen: -1, lastAnswer: 0, polls: 0 });
+    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev };
+    if (member) Object.assign(member, fields);
+    else this.members.set(id, member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 });
+    this.renamed(person);
     this.changed();
-    return member;
+    return { member, token };
   }
-  // the name of a client that said hello, or null
-  nameOf(client) {
-    return typeof client === "string" ? this.known.get(client)?.name ?? null : null;
+  // a new name of the person of the page client, or null when the page did not say hello
+  rename(client, rawName) {
+    const member = this.revive(client);
+    if (!member) return null;
+    const name = cleanPersonName(rawName);
+    if (!name) return { empty: true };
+    const holder = this.holderOf(name);
+    if (holder && holder.person !== member.person) return { taken: { name: holder.name } };
+    const record = this.records.get(member.person);
+    if (record.name !== name) {
+      record.name = name;
+      this.knownRev++;
+      this.save();
+      this.renamed(member.person);
+      this.changed();
+    }
+    return { name };
+  }
+  // the client id of the page of token, or null
+  clientOf(token) {
+    return isToken(token) ? this.tokens.get(token) ?? null : null;
+  }
+  // the person id of a page that said hello, or null
+  personOf(client) {
+    return typeof client === "string" ? this.clients.get(client)?.person ?? null : null;
   }
   list() {
-    return [...this.members.values()].map(({ client, name, color, host }) => ({ client, name, color, host }));
+    return [...this.members.values()].map(({ client, person, name, color, host }) => ({ client, person, name, color, host }));
+  }
+  known() {
+    return [...this.records.values()].map(({ person, name, color }) => ({ person, name, color }));
   }
   presence(client, state) {
     const member = this.revive(client);
@@ -916,31 +1021,90 @@ var People = class {
   }
   // a long poll of client for the news after the version since
   events(client, since) {
+    const end = this.ends.get(client);
+    if (end) return Promise.resolve({ ...this.state(since, null), ended: end });
     const member = this.revive(client);
     if (!member) return null;
     return new Promise((done) => {
       const poll = { client, since, done, hold: setTimeout(() => this.answer(poll), HOLD), gap: null };
       this.polls.add(poll);
       member.polls++;
+      member.polled = true;
       if (this.ended || this.hasNews(poll)) this.soon(poll);
     });
   }
-  // the waiting polls answered with ended, at a stop of the edit command
+  // the waiting polls answered with ended, at a stop of the edit command, and people.json written
   end() {
-    this.ended = true;
+    this.ended = this.endedBy();
     clearInterval(this.sweeper);
     for (const poll of [...this.polls]) this.answer(poll);
+    this.saveSync();
+  }
+  // the session ended for every page that came through the relay. their waiting polls are
+  // answered with ended, while the pages of the host go on
+  endGuests() {
+    const end = this.endedBy();
+    for (const [client, { host }] of this.clients) if (!host) this.ends.set(client, end);
+    for (const client of this.ends.keys()) if (this.ends.size > MAX_CLIENTS) this.ends.delete(client);
+    for (const poll of [...this.polls]) if (this.ends.has(poll.client)) this.answer(poll);
+    let gone = false;
+    for (const [client, member] of this.members) {
+      if (!member.host) {
+        this.members.delete(client);
+        gone = true;
+      }
+    }
+    if (gone) this.changed();
+  }
+  endedBy() {
+    return { by: this.hostPerson && this.records.get(this.hostPerson)?.name || null };
+  }
+  holderOf(name) {
+    const key = nameKey(name);
+    for (const r of this.records.values()) if (nameKey(r.name) === key) return r;
+    return null;
+  }
+  // the tone that the fewest people now present hold, the lowest at a tie
+  freeColor() {
+    const count = COLORS.map(() => 0);
+    const present = new Set([...this.members.values()].map((m) => m.person));
+    for (const person of present) {
+      const color = this.records.get(person)?.color;
+      if (color !== void 0) count[color]++;
+    }
+    return count.indexOf(Math.min(...count));
+  }
+  // the absent people who joined least lately dropped from a list over MAX_KNOWN
+  trimRecords() {
+    if (this.records.size <= MAX_KNOWN) return;
+    const present = new Set([...this.members.values()].map((m) => m.person));
+    const absent = [...this.records.values()].filter((r) => !present.has(r.person)).sort((a, b) => a.last - b.last);
+    for (const r of absent.slice(0, this.records.size - MAX_KNOWN)) this.records.delete(r.person);
+  }
+  renamed(person) {
+    const record = this.records.get(person);
+    if (record) {
+      for (const m of this.members.values()) if (m.person === person) m.name = record.name;
+    }
   }
   revive(client) {
     let member = this.members.get(client);
-    const known = this.known.get(client);
-    if (!member && known && this.members.size < MAX_PEOPLE) {
-      member = { client, ...known, state: null, lastSeen: Date.now(), seen: -1, lastAnswer: 0, polls: 0 };
+    const known = this.clients.get(client);
+    const record = known && this.records.get(known.person);
+    const pages = known ? [...this.members.values()].filter((m) => m.person === known.person).length : 0;
+    if (!member && known && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
+      const { person, name, color } = record;
+      const now = Date.now();
+      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, lastAnswer: 0, polls: 0 };
       this.members.set(client, member);
       this.changed();
     }
     if (member) member.lastSeen = Date.now();
     return member ?? null;
+  }
+  hasPlace(host) {
+    if (this.members.size >= MAX_PEOPLE) return false;
+    return host || [...this.members.values()].filter((m) => !m.host).length < MAX_GUESTS;
   }
   changed() {
     this.rev++;
@@ -961,48 +1125,109 @@ var People = class {
     const wait = this.ended || !member ? 0 : Math.max(0, member.lastAnswer + GAP - Date.now());
     poll.gap = setTimeout(() => this.answer(poll), wait);
   }
+  // known is left out when the page has had the list since its last change
+  state(since, member) {
+    const presence = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
+    const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list() };
+    if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
+    return answer;
+  }
   answer(poll) {
     if (!this.polls.delete(poll)) return;
     clearTimeout(poll.hold);
     if (poll.gap) clearTimeout(poll.gap);
-    const member = this.members.get(poll.client);
+    const member = this.members.get(poll.client) ?? null;
+    const answer = this.state(poll.since, member);
     if (member) {
       member.seen = this.rev;
+      member.knownSeen = this.knownRev;
       member.lastAnswer = Date.now();
       member.lastSeen = Date.now();
       member.polls--;
     }
-    const presence = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
-    const answer = { v: this.authority.version, ops: this.authority.since(poll.since), presence, people: this.list() };
-    if (this.ended) answer.ended = true;
+    const end = this.ended ?? this.ends.get(poll.client);
+    if (end) answer.ended = end;
     poll.done(answer);
   }
   sweep() {
     const now = Date.now();
     let gone = false;
     for (const [client, member] of this.members) {
-      if (member.polls === 0 && now - member.lastSeen > GONE) {
+      if (member.polls === 0 && (now - member.lastSeen > GONE || !member.polled && now - member.joined > FIRST_POLL)) {
         this.members.delete(client);
         gone = true;
       }
     }
     if (gone) this.changed();
   }
+  json() {
+    return `${JSON.stringify([...this.records.values()], null, 1)}
+`;
+  }
+  // people.json written by a temporary file and a rename, at most once a second
+  save() {
+    if (!this.file) return;
+    this.dirty = true;
+    if (this.saveTimer || this.saving) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      void this.flush();
+    }, Math.max(0, this.savedAt + SAVE_GAP - Date.now()));
+    this.saveTimer.unref?.();
+  }
+  async flush() {
+    if (!this.file || !this.dirty) return;
+    this.dirty = false;
+    this.savedAt = Date.now();
+    const tmp = `${this.file}.${randomBytes2(6).toString("hex")}.tmp`;
+    this.saving = (async () => {
+      try {
+        await writeFile2(tmp, this.json());
+        await renameRetried(tmp, this.file);
+      } catch (e) {
+        await unlink2(tmp).catch(() => {
+        });
+        this.log(`could not write ${this.file}: ${e.message}`);
+        this.dirty = true;
+      }
+    })();
+    await this.saving;
+    this.saving = null;
+    if (this.dirty) this.save();
+  }
+  saveSync() {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    if (!this.file || !this.dirty && !this.saving) return;
+    this.dirty = false;
+    const tmp = `${this.file}.${randomBytes2(6).toString("hex")}.tmp`;
+    try {
+      writeFileSync2(tmp, this.json());
+      renameRetriedSync(tmp, this.file);
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      try {
+        unlinkSync2(tmp);
+      } catch {
+      }
+    }
+  }
 };
 
 // src/edit/relay.ts
-import { mkdirSync, readFileSync as readFileSync2, writeFileSync as writeFileSync2, chmodSync } from "node:fs";
+import { mkdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync3, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as join3 } from "node:path";
 var RELAY_BODY = 16 * 1024 * 1024;
 var PULLS = 4;
+var FILE_ANSWERS = 8;
 function configFile() {
   if (process.platform === "win32") return join3(process.env.APPDATA || join3(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
   return join3(process.env.XDG_CONFIG_HOME || join3(homedir(), ".config"), "beeson-slides", "relay.json");
 }
 function loadConfig() {
   try {
-    const value = JSON.parse(readFileSync2(configFile(), "utf8"));
+    const value = JSON.parse(readFileSync3(configFile(), "utf8"));
     return { relay: typeof value.relay === "string" ? value.relay : void 0, secret: typeof value.secret === "string" ? value.secret : void 0 };
   } catch {
     return {};
@@ -1011,18 +1236,20 @@ function loadConfig() {
 function saveConfig(config) {
   const file = configFile();
   mkdirSync(join3(file, ".."), { recursive: true, mode: 448 });
-  writeFileSync2(file, `${JSON.stringify(config, null, 2)}
+  writeFileSync3(file, `${JSON.stringify(config, null, 2)}
 `, { mode: 384 });
   try {
     chmodSync(file, 384);
   } catch {
   }
 }
+var ADDRESS_RULE = "the address of the relay must start with https://";
 function relayAddress(value) {
   if (typeof value !== "string" || value.length > 2048) return null;
   try {
     const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return null;
+    const local = url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "localhost");
+    if (url.protocol !== "https:" && !local || url.username || url.password || url.search || url.hash) return null;
     return url.href.replace(/\/+$/, "");
   } catch {
     return null;
@@ -1030,18 +1257,31 @@ function relayAddress(value) {
 }
 var sleep2 = (ms) => new Promise((done) => setTimeout(done, ms));
 var asciiJson = (value) => JSON.stringify(value).replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+var Taken = class extends Error {
+  constructor() {
+    super("this session is already shared by another edit command, e.g. one started in a copy of this talk folder");
+  }
+};
 var RelayLink = class {
   constructor(relay, secret, key, handle, log) {
     this.token = "";
     this.running = false;
     this.registering = null;
     this.controllers = /* @__PURE__ */ new Set();
+    // the requests of guests being answered, which a stop lets finish
+    this.serving = /* @__PURE__ */ new Set();
+    this.fileSlots = FILE_ANSWERS;
+    this.fileQueue = [];
     this.relay = relay;
     this.secret = secret;
     this.key = key;
     this.handle = handle;
     this.log = log;
     this.link = `${relay}/${key}/index.html?edit&session`;
+  }
+  // false once stopped, or once another edit command took the key
+  get active() {
+    return this.running;
   }
   // registers the session and starts the pulls. rejects when the relay refuses the registration
   async start() {
@@ -1052,6 +1292,7 @@ var RelayLink = class {
   async stop() {
     this.running = false;
     for (const c of this.controllers) c.abort();
+    await Promise.race([Promise.allSettled([...this.serving]), sleep2(1500)]);
     await fetch(`${this.relay}/host/${this.key}`, { method: "DELETE", headers: this.auth(), signal: AbortSignal.timeout(3e3) }).catch(() => {
     });
   }
@@ -1061,7 +1302,11 @@ var RelayLink = class {
   register() {
     this.registering ??= (async () => {
       try {
-        const response = await fetch(`${this.relay}/host/${this.key}`, { method: "POST", headers: { Authorization: `Bearer ${this.secret}` }, signal: AbortSignal.timeout(1e4) });
+        const response = await fetch(`${this.relay}/host/${this.key}`, { method: "POST", headers: this.auth(), signal: AbortSignal.timeout(1e4) });
+        if (response.status === 409) {
+          await response.body?.cancel();
+          throw new Taken();
+        }
         if (!response.ok) throw new Error(`the relay refused the session with ${response.status} ${(await response.text()).slice(0, 200)}`);
         const { token } = await response.json();
         if (typeof token !== "string") throw new Error("the relay did not give a token");
@@ -1082,15 +1327,27 @@ var RelayLink = class {
         const response = await fetch(`${this.relay}/host/${this.key}/pull`, { method: "POST", headers: this.auth(), signal: controller.signal });
         if (response.status === 401 || response.status === 404) {
           await response.body?.cancel();
+          if (!this.running) break;
           await this.register();
           continue;
         }
         if (!response.ok) throw new Error(`pull answered ${response.status}`);
         const pulled = await response.json();
-        if (Array.isArray(pulled)) for (const item of pulled) void this.serve(item);
+        if (Array.isArray(pulled)) {
+          for (const item of pulled) {
+            const serving = this.serve(item);
+            this.serving.add(serving);
+            void serving.finally(() => this.serving.delete(serving));
+          }
+        }
         backoff = 500;
       } catch (e) {
         if (!this.running) break;
+        if (e instanceof Taken) {
+          this.running = false;
+          this.log(`the session is no longer shared: ${e.message}`);
+          break;
+        }
         this.log(`the relay is not reached, trying again: ${e.message}`);
         await sleep2(backoff);
         backoff = Math.min(backoff * 2, 1e4);
@@ -1104,6 +1361,7 @@ var RelayLink = class {
     if (!item || typeof item.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(item.id)) return;
     let response;
     let body;
+    let slot = false;
     try {
       const ok = typeof item.method === "string" && typeof item.path === "string" && typeof item.query === "string" && typeof item.body === "string";
       if (!ok || !item.path.startsWith(`/${this.key}/`)) throw new Error("malformed request");
@@ -1111,6 +1369,11 @@ var RelayLink = class {
       for (const [k, v] of Object.entries(item.headers ?? {})) if (typeof v === "string") headers[k.toLowerCase()] = v;
       response = await this.handle({ method: item.method, path: item.path, query: item.query, headers, body: Buffer.from(item.body, "base64"), direct: false });
       const b = response.body;
+      if (b !== void 0 && typeof b === "object" && !Buffer.isBuffer(b)) {
+        if (this.fileSlots > 0) this.fileSlots--;
+        else await new Promise((done) => this.fileQueue.push(done));
+        slot = true;
+      }
       body = b === void 0 ? Buffer.alloc(0) : typeof b === "string" ? Buffer.from(b) : Buffer.isBuffer(b) ? b : await readBody(b);
     } catch (e) {
       response = { status: 502, headers: { "Content-Type": "text/plain" } };
@@ -1121,15 +1384,33 @@ var RelayLink = class {
       body = Buffer.from("the answer is too large for the relay");
     }
     try {
-      const pushed = await fetch(`${this.relay}/host/${this.key}/push/${item.id}`, {
-        method: "POST",
-        headers: { ...this.auth(), "Content-Type": "application/octet-stream", "x-relay-status": String(response.status), "x-relay-headers": asciiJson(response.headers) },
-        body,
-        signal: AbortSignal.timeout(6e4)
-      });
-      await pushed.body?.cancel();
+      const push = async () => {
+        const token = this.token;
+        const pushed2 = await fetch(`${this.relay}/host/${this.key}/push/${item.id}`, {
+          method: "POST",
+          headers: { ...this.auth(), "Content-Type": "application/octet-stream", "x-relay-status": String(response.status), "x-relay-headers": asciiJson(response.headers) },
+          body,
+          signal: AbortSignal.timeout(6e4)
+        });
+        await pushed2.body?.cancel();
+        return { status: pushed2.status, token };
+      };
+      let pushed = await push();
+      if (pushed.status === 401 && this.running) {
+        if (this.registering) await this.registering.catch(() => {
+        });
+        if (this.token === pushed.token) await this.register();
+        pushed = await push();
+      }
+      if (pushed.status < 200 || pushed.status > 299) this.log(`the relay refused an answer with ${pushed.status}`);
     } catch (e) {
       this.log(`an answer did not reach the relay: ${e.message}`);
+    } finally {
+      if (slot) {
+        const next = this.fileQueue.shift();
+        if (next) next();
+        else this.fileSlots++;
+      }
     }
   }
 };
@@ -1139,17 +1420,49 @@ var DEFAULT_PORT = 8765;
 var JSON_MAX = 16 * 1024 * 1024;
 var MEDIA_MAX = 64 * 1024 * 1024;
 var MEDIA_TYPES = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "mp4", "webm", "json"]);
+var AlreadyRunning = class extends Error {
+  constructor(found) {
+    super(`the edit command already runs for this folder at ${found.url}`);
+    this.found = found;
+  }
+};
+async function holderOf(file, root, key) {
+  let lock;
+  try {
+    lock = JSON.parse(readFileSync4(file, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(lock?.pid) || !Number.isInteger(lock?.port) || lock.root !== root || lock.pid === process.pid) return null;
+  try {
+    process.kill(lock.pid, 0);
+  } catch (e) {
+    if (e.code !== "EPERM") return null;
+  }
+  const url = `http://127.0.0.1:${lock.port}/${key}/`;
+  try {
+    const answer = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(2e3) });
+    await answer.body?.cancel();
+    return answer.status === 302 ? { url, port: lock.port, key } : null;
+  } catch {
+    return null;
+  }
+}
 function keyOf(root) {
   const dir = join4(root, ".session");
   mkdirSync2(dir, { recursive: true });
+  try {
+    writeFileSync4(join4(dir, ".gitignore"), "*\n", { flag: "wx" });
+  } catch {
+  }
   const file = join4(dir, "key");
   try {
-    const key2 = readFileSync3(file, "utf8").trim();
+    const key2 = readFileSync4(file, "utf8").trim();
     if (/^[A-Za-z0-9_-]{22,128}$/.test(key2)) return key2;
   } catch {
   }
   const key = randomBytes3(16).toString("base64url");
-  writeFileSync3(file, `${key}
+  writeFileSync4(file, `${key}
 `, { mode: 384 });
   return key;
 }
@@ -1178,18 +1491,32 @@ async function start(options = {}) {
   const index = join4(root, "index.html");
   const { text, bom } = readText(index);
   const key = keyOf(root);
+  const lockFile = join4(root, ".session", "lock");
+  const earlier = await holderOf(lockFile, root, key);
+  if (earlier) throw new AlreadyRunning(earlier);
   const authority = new Authority(text);
   const disk = new Disk(index, authority, bom, { log });
-  const people = new People(authority);
+  const people = new People(authority, join4(root, ".session", "people.json"), log);
   let port = 0;
   let relay = null;
+  let closed = false;
+  let relayQueue = Promise.resolve();
+  const serial = (task) => {
+    const run = relayQueue.then(task, task);
+    relayQueue = run.catch(() => {
+    });
+    return run;
+  };
   async function share(request) {
     if (!request.direct) return error(403, "only the host can share a session");
-    if (request.method === "GET") return json(200, { link: relay?.link ?? null });
+    if (request.method === "GET") return json(200, { link: relay?.active ? relay.link : null });
     if (request.method === "DELETE") {
-      await relay?.stop();
-      relay = null;
-      return json(200, { link: null });
+      return serial(async () => {
+        people.endGuests();
+        await relay?.stop();
+        relay = null;
+        return json(200, { link: null });
+      });
     }
     if (request.method !== "POST") return error(405, "GET, POST, or DELETE");
     if (!isJson(request)) return error(415, "the body must be application/json");
@@ -1201,22 +1528,30 @@ async function start(options = {}) {
     }
     const saved = loadConfig();
     const address = relayAddress(body.relay ?? saved.relay);
-    const secret = body.secret ?? saved.secret;
-    if (!address) return json(400, { link: null, error: "the address of the relay is not an http or https URL" });
+    const secret = body.secret ?? (address !== null && address === relayAddress(saved.relay) ? saved.secret : void 0);
+    if (!address) return json(400, { link: null, error: ADDRESS_RULE });
+    if (secret === void 0) return json(400, { link: null, error: "a new address of the relay needs the secret" });
     if (typeof secret !== "string" || secret.length < 16) return json(400, { link: null, error: "the secret has fewer than 16 characters" });
-    try {
-      await connect(address, secret);
-    } catch (e) {
-      return json(502, { link: null, error: e.message });
-    }
-    if (body.relay !== void 0 || body.secret !== void 0) saveConfig({ relay: address, secret });
-    return json(200, { link: relay.link });
+    return serial(async () => {
+      try {
+        await connect(address, secret);
+      } catch (e) {
+        return json(e instanceof Taken ? 409 : 502, { link: null, error: e.message });
+      }
+      if (body.relay !== void 0 || body.secret !== void 0) saveConfig({ relay: address, secret });
+      return json(200, { link: relay.link });
+    });
   }
   async function connect(address, secret) {
     await relay?.stop();
     relay = null;
+    if (closed) throw new Error("the edit command is stopping");
     const next = new RelayLink(address, secret, key, handle, log);
     await next.start();
+    if (closed) {
+      await next.stop();
+      throw new Error("the edit command is stopping");
+    }
     relay = next;
   }
   async function media(name, request) {
@@ -1232,7 +1567,7 @@ async function start(options = {}) {
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
       try {
-        await writeFile2(join4(real, candidate), request.body, { flag: "wx" });
+        await writeFile3(join4(real, candidate), request.body, { flag: "wx" });
         return json(200, { path: `media/${candidate}` });
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -1246,11 +1581,12 @@ async function start(options = {}) {
     if (route === "events") {
       if (request.method !== "GET") return error(405, "GET");
       const query = new URLSearchParams(request.query);
-      const waiting = people.events(query.get("client") ?? "", query.get("since") ?? "");
+      const waiting = people.events(people.clientOf(query.get("token")) ?? "", query.get("since") ?? "");
       return waiting ? json(200, await waiting) : error(404, "say hello first");
     }
-    if (!["hello", "op", "presence", "bye"].includes(route)) return error(404, "not found");
+    if (!["hello", "name", "op", "presence", "bye"].includes(route)) return error(404, "not found");
     if (request.method !== "POST") return error(405, "POST");
+    if (closed && (route === "op" || route === "hello")) return error(503, "the edit command is stopping");
     if (!isJson(request)) return error(415, "the body must be application/json");
     let body;
     try {
@@ -1261,26 +1597,40 @@ async function start(options = {}) {
     }
     if (route === "hello") {
       const hello = body;
-      const name = (typeof hello.name === "string" ? hello.name.trim().slice(0, 64) : "") || "Guest";
-      const member = people.hello(name, hello.client, request.direct);
-      if (!member) return error(503, "the session is full");
-      const answer = { client: member.client, color: member.color, host: member.host, v: authority.version, people: people.list() };
+      const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
+      if ("taken" in joined) return json(200, { taken: joined.taken });
+      if ("empty" in joined) return error(400, "the name is empty");
+      if ("full" in joined) return error(503, "the session is full");
+      const { member, token } = joined;
+      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known() };
       const ops = typeof hello.v === "string" ? authority.since(hello.v) : null;
       return json(200, ops ? { ...answer, ops } : { ...answer, text: authority.text });
     }
+    const client = people.clientOf(body.token);
     if (route === "op") {
-      const name = people.nameOf(body.client);
-      if (name === null) return json(200, { ok: false, reason: "unknown", v: authority.version });
+      const person = client === null ? null : people.personOf(client);
+      if (client === null || person === null) return json(200, { ok: false, reason: "unknown", v: authority.version });
       if (Array.isArray(body.patches) && body.patches.length > 1e5) return json(200, { ok: false, reason: "invalid", v: authority.version });
-      return json(200, authority.submit(body, name).answer);
+      const { seq, base, patches } = body;
+      return json(200, authority.submit({ client, seq, base, patches }, person).answer);
     }
-    if (!isClientId(body.client)) return error(400, "client is missing");
+    if (!isToken(body.token)) return error(400, "token is missing");
+    if (route === "bye") {
+      if (client !== null) people.bye(client);
+      return json(200, {});
+    }
+    if (client === null) return error(404, "say hello first");
+    if (route === "name") {
+      const renamed = people.rename(client, body.name);
+      if (!renamed) return error(404, "say hello first");
+      if ("empty" in renamed) return error(400, "the name is empty");
+      return json(200, renamed);
+    }
     if (route === "presence") {
       if ((JSON.stringify(body.state ?? null) ?? "").length > MAX_STATE) return error(413, "the presence is too large");
-      return people.presence(body.client, body.state ?? null) ? json(200, {}) : error(404, "say hello first");
+      return people.presence(client, body.state ?? null) ? json(200, {}) : error(404, "say hello first");
     }
-    people.bye(body.client);
-    return json(200, {});
+    return error(404, "not found");
   }
   function indexHtml(request) {
     let version = authority.version;
@@ -1326,10 +1676,15 @@ async function start(options = {}) {
     const chunks = [];
     let length = 0;
     if (Number(headers["content-length"] ?? 0) > limit) return send(req, res, error(413, "the body is too large"), true);
-    for await (const chunk of req) {
-      length += chunk.length;
-      if (length > limit) return send(req, res, error(413, "the body is too large"), true);
-      chunks.push(chunk);
+    try {
+      for await (const chunk of req) {
+        length += chunk.length;
+        if (length > limit) return send(req, res, error(413, "the body is too large"), true);
+        chunks.push(chunk);
+      }
+    } catch {
+      res.destroy();
+      return;
     }
     const request = { method: req.method ?? "GET", path: q < 0 ? url : url.slice(0, q), query: q < 0 ? "" : url.slice(q + 1), headers, body: Buffer.concat(chunks), direct: true };
     let response;
@@ -1359,7 +1714,12 @@ async function start(options = {}) {
     res.writeHead(response.status, headers);
     res.end(head ? void 0 : bytes);
   }
-  const server = createServer((req, res) => void onRequest(req, res));
+  const server = createServer(
+    (req, res) => onRequest(req, res).catch((e) => {
+      log(`a request failed: ${e.message}`);
+      res.destroy();
+    })
+  );
   server.headersTimeout = 2e4;
   server.requestTimeout = 12e4;
   await new Promise((done, fail) => {
@@ -1376,13 +1736,34 @@ async function start(options = {}) {
     tryListen(options.port ?? DEFAULT_PORT);
   });
   port = server.address().port;
+  const lock = JSON.stringify({ pid: process.pid, port, root });
+  try {
+    writeFileSync4(lockFile, lock, { flag: "wx" });
+  } catch {
+    const other = await holderOf(lockFile, root, key);
+    if (other) {
+      people.end();
+      await new Promise((done) => server.close(done));
+      throw new AlreadyRunning(other);
+    }
+    const tmp = `${lockFile}.${randomBytes3(6).toString("hex")}.tmp`;
+    writeFileSync4(tmp, lock);
+    renameRetriedSync(tmp, lockFile);
+  }
+  const unlock = () => {
+    try {
+      if (readFileSync4(lockFile, "utf8") === lock) unlinkSync3(lockFile);
+    } catch {
+    }
+  };
   disk.start();
   if (options.relay) {
     const address = relayAddress(options.relay);
-    const secret = process.env.SLIDES_RELAY_SECRET || loadConfig().secret;
-    if (!address) log(`${options.relay} is not an http or https URL, and the session is not shared`);
+    const saved = loadConfig();
+    const secret = process.env.SLIDES_RELAY_SECRET || (address !== null && address === relayAddress(saved.relay) ? saved.secret : void 0);
+    if (!address) log(`${ADDRESS_RULE}, and the session is not shared`);
     else if (!secret || secret.length < 16) log("the secret of the relay is not set, and the session is not shared");
-    else await connect(address, secret).then(() => log(`shared at ${relay.link}`), (e) => log(`the session is not shared: ${e.message}`));
+    else await serial(() => connect(address, secret)).then(() => log(`shared at ${relay.link}`), (e) => log(`the session is not shared: ${e.message}`));
   }
   let closing = null;
   return {
@@ -1391,11 +1772,13 @@ async function start(options = {}) {
     key,
     root,
     authority,
-    link: () => relay?.link ?? null,
+    link: () => relay?.active ? relay.link : null,
     close: () => closing ??= (async () => {
+      closed = true;
+      unlock();
       people.end();
       disk.stopSync();
-      await Promise.race([relay?.stop(), new Promise((done) => setTimeout(done, 2e3))]);
+      await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
       await new Promise((done) => setTimeout(done, 200));
       await new Promise((done) => {
         server.close(() => done());
@@ -1592,6 +1975,15 @@ async function main(argv) {
   try {
     running = await start({ folder, port, relay });
   } catch (e) {
+    if (e instanceof AlreadyRunning) {
+      const { url, port: p, key } = e.found;
+      process.stdout.write(`${JSON.stringify({ url, port: p, key })}
+`);
+      process.stderr.write(`The edit command already runs for this folder at ${url}index.html?edit&session
+`);
+      if (open2) openBrowser(`${url}index.html?edit&session`);
+      return;
+    }
     const err = e;
     const message = err instanceof NotUtf8 ? "index.html is not valid UTF-8, hence the edit command cannot keep its bytes. Save it as UTF-8 and start again." : err.code === "ENOENT" ? `There is no index.html in ${folder ?? "this folder"}. Start the edit command in a talk folder.` : `The edit command could not start: ${err.message}`;
     process.stderr.write(`${message}
@@ -1606,10 +1998,20 @@ at ${page}
 Keep this window open while you edit, and close it or press Ctrl+C to stop.
 `);
   if (open2) openBrowser(page);
+  for (const stream of [process.stdout, process.stderr]) stream.on("error", () => {
+  });
   const stop = () => {
     void running.close().finally(() => process.exit(0));
     setTimeout(() => process.exit(0), 3e3).unref();
   };
+  const fail = (e) => {
+    process.stderr.write(`The edit command failed: ${e?.stack ?? e}
+`);
+    void running.close().finally(() => process.exit(1));
+    setTimeout(() => process.exit(1), 3e3).unref();
+  };
+  process.on("uncaughtException", fail);
+  process.on("unhandledRejection", fail);
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
     try {
       process.on(signal, stop);
@@ -1628,18 +2030,22 @@ if (isMain) void main(process.argv.slice(2));
 export {
   Authority,
   COLORS,
+  NAME_MAX,
   Replica,
   apply,
   changes,
   checksum,
   cleanName,
+  cleanPersonName,
   combine,
   conflict,
   decode,
   diff2 as diff,
   formatVersion,
   invert,
+  isPersonId,
   mergePatches,
+  nameKey,
   parseVersion,
   shift,
   shiftOffset,
