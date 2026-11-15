@@ -127,6 +127,12 @@ export class Client {
     this.transport = new Transport(location.href);
     port.onChange(() => this.onChange());
     port.onSave(() => this.flush());
+    // the port found that the page does not read as its text after an apply
+    port.onReload(() => {
+      if (this.frozen || this.ended) return;
+      this.frozen = true;
+      void this.reload();
+    });
   }
 
   on<K extends keyof ClientEvents>(event: K, fn: (...args: ClientEvents[K]) => void): () => void {
