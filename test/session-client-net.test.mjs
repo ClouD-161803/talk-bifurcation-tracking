@@ -240,3 +240,22 @@ test('a page whose theme/session.js does not load says so, and Load again joins'
   await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
   clean(page, [/ERR_BLOCKED_BY_CLIENT/]);
 });
+
+test('a page is online as soon as a request after an outage succeeds, while the edit command holds its poll', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt !== null`);
+  await page.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
+  // the edit command holds a poll without news for 25 s
+  await page.waitFor(`${ONLINE} && ${STATE} === 'Saved to index.html'`, 10_000);
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-session-action').hidden`), true);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' back');
+  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide back</p>'));
+  clean(page, REFUSED);
+});
