@@ -2,7 +2,7 @@
 // not get an answer of the edit command throws a Failure, whose status is 0 for the network, 502
 // when the relay does not reach an edit command, and the status of any other error
 
-import type { EventsAnswer, HelloAnswer, HelloRequest, NameAnswer, OpAnswer, OpPost, Taken, Token, Version } from '../protocol.ts';
+import type { CommentsAnswer, EventsAnswer, HelloAnswer, HelloRequest, NameAnswer, OpAnswer, OpPost, Taken, Token, Version } from '../protocol.ts';
 
 // a request with this status, or 0 for the network, may succeed when it is sent again later, e.g.
 // while the edit command restarts
@@ -54,6 +54,10 @@ export class Transport {
 
   events(token: Token, since: Version): Promise<EventsAnswer> {
     return this.send(this.url('events', { token, since }), { method: 'GET' }, POLL_WAIT);
+  }
+
+  comments(token: Token): Promise<CommentsAnswer> {
+    return this.send(this.url('comments', { token }), { method: 'GET' }, POST_WAIT);
   }
 
   // sent while the page is hidden for good, hence its answer is not read
