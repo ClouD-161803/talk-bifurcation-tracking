@@ -9,6 +9,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { request as httpRequest } from 'node:http';
+import { connect } from 'node:net';
 import { startRelay } from '../scripts/relay.mjs';
 import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
@@ -441,3 +442,27 @@ if (process.platform !== 'win32') {
     });
   }
 }
+
+test('add regression test: a request body aborted by the browser does not stop the edit command', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  const answer = (await post(edit.port, api('op'), { client: hello.client, seq: 1, base: hello.v, patches: [{ start: 0, end: 0, text: '<!-- kept -->\n' }] })).json();
+  assert.equal(answer.ok, true);
+  for (const path of ['/x', api('media/clip.mp4')]) {
+    // a body of 1000 bytes announced, 2 sent, and the connection closed, as by a closed tab
+    await new Promise((done, fail) => {
+      const socket = connect(edit.port, '127.0.0.1', () => {
+        socket.write(`${path.endsWith('.mp4') ? 'PUT' : 'POST'} ${path} HTTP/1.1\r\nHost: 127.0.0.1:${edit.port}\r\nContent-Length: 1000\r\n\r\nab`, () => socket.destroy());
+      });
+      socket.on('close', done);
+      socket.on('error', fail);
+    });
+    for (let i = 0; i < 3; i++) assert.equal((await raw(edit.port, 'GET', `${edit.base}index.html`)).status, 200);
+  }
+  assert.equal(edit.child.exitCode, null, edit.stderr);
+  await until(() => text(join(talk, 'index.html')).startsWith('<!-- kept -->'), 'the operation to be written');
+});
