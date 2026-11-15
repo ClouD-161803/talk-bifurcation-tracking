@@ -82,17 +82,23 @@ function forwardable(headers, max) {
 }
 
 // the body of a request, null when it is larger than max bytes, and busy when take refuses the
-// place of a chunk, which take is asked for before the chunk is kept. a refused body is paused
-// rather than destroyed, so that the refusal can still be sent
+// place of a chunk, which take is asked for before the chunk is kept. a refusal is resolved once
+// the rest of the body is read and dropped, up to DRAIN bytes, since Node closes the socket
+// after an answer to an unread body, and a client still writing then gets a reset in its place
+const DRAIN = 64 * 1024 * 1024;
 function bodyOf(req, max, take = () => true) {
-  if (Number(req.headers['content-length'] ?? 0) > max) return Promise.resolve(null);
   return new Promise((done, fail) => {
     const chunks = [];
     let length = 0;
+    let refusal;
     const stop = (value) => {
+      refusal = value;
       req.off('data', onData);
-      req.pause();
-      done(value);
+      let dropped = 0;
+      req.on('data', (c) => {
+        dropped += c.length;
+        if (dropped > DRAIN) req.destroy();
+      });
     };
     const onData = (chunk) => {
       length += chunk.length;
@@ -100,8 +106,10 @@ function bodyOf(req, max, take = () => true) {
       if (!take(chunk.length)) return stop('busy');
       chunks.push(chunk);
     };
-    req.on('data', onData);
-    req.once('end', () => done(Buffer.concat(chunks)));
+    if (Number(req.headers['content-length'] ?? 0) > max) stop(null);
+    else if (!take(0)) stop('busy');
+    else req.on('data', onData);
+    req.once('end', () => done(refusal === undefined ? Buffer.concat(chunks) : refusal));
     req.once('error', fail);
     req.once('close', () => fail(new Error('the request was aborted')));
   });
@@ -241,7 +249,10 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (!session) return answer(res, 502, 'no edit command is registered for this session');
     if (session.pending.size >= limits.waiting) return answer(res, 503, 'the session has too many waiting requests');
     const declared = Number(req.headers['content-length'] ?? 0);
-    if (held + Math.min(declared, limits.bodyBytes) > limits.memoryBytes) return answer(res, 503, 'the relay is busy', { Connection: 'close' });
+    if (held + Math.min(declared, limits.bodyBytes) > limits.memoryBytes) {
+      await bodyOf(req, limits.bodyBytes, () => false);
+      return answer(res, 503, 'the relay is busy', { Connection: 'close' });
+    }
     const id = randomBytes(9).toString('base64url');
     const entry = {
       bytes: 0,

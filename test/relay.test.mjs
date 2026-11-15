@@ -201,8 +201,9 @@ test('add regression test: the relay holds the bodies of slow uploads and slow r
     const head = `PUT /${key}/media/a.png HTTP/1.1\r\nHost: relay\r\nTransfer-Encoding: chunked\r\n\r\n`;
     const first = open(head, chunk(13 * MB));
     await until(() => relay.held() >= 13 * MB, 'the relay to count the body that it reads');
-    const second = open(head, chunk(13 * MB));
+    const second = open(head, chunk(13 * MB), '0\r\n\r\n');
     await until(() => second.got.startsWith('HTTP/1.1 503'), 'the second upload to be refused');
+    assert.equal(relay.held(), 13 * MB, 'the relay holds the first upload alone');
     first.destroy();
     await until(() => relay.held() === 0, 'the place of the closed upload to be given back');
   });
