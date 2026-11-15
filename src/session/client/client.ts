@@ -206,9 +206,11 @@ export class Client {
     this.emit('state');
   }
 
-  // the name of this page after Change Name
+  // the name of this page after Change Name, also in the people of the session as last heard, from
+  // which the initials are drawn
   setName(name: string): void {
     this.name = name;
+    for (const page of this.people) if (page.person === this.person) page.name = name;
     this.emit('me');
   }
 
