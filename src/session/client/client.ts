@@ -10,8 +10,9 @@
 import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/session.ts';
 import type { AppliedOp, Ended, EventsAnswer, HelloAnswer, HelloRequest, KnownPerson, OpPost, Person, Presence, Taken, Token, Version } from '../protocol.ts';
+import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
-import { Sync } from './sync.ts';
+import { Sync, type Whole } from './sync.ts';
 import { Failure, Transport } from './transport.ts';
 
 // joining: before the first answer of hello. online: the last request was answered. offline: a
@@ -31,6 +32,15 @@ export type ClientEvents = {
   // connection, saving, retryAt, blocked, or warning changed
   state: [];
   ended: [Ended];
+};
+
+// the parts of the offline path that the core calls, set by conflicts.ts and media.ts
+export type Hooks = {
+  // the side that wins at a conflict of the whole text and the operations that the next drive
+  // merges, after a dialog when it is a promise, or null for a typing race, where mine wins
+  side?(sync: Sync, whole: Whole | null, ops: AppliedOp[]): Side | Promise<Side> | null;
+  // false while text names a file that is not uploaded yet, after which rewrite() is called
+  ready?(text: string): boolean;
 };
 
 // the reconnects in s, the last one repeated
@@ -75,6 +85,7 @@ export class Client {
   ended: Ended | null = null;
   // the guest left with Leave Session, after which the page is ended as at the end of the session
   left = false;
+  hooks: Hooks = {};
 
   private sync: Sync | null = null;
   // the version after the operations taken from the last answer, which the next poll asks after
@@ -95,6 +106,7 @@ export class Client {
   // after an apply that left the deck at another text: the deck is not read again, and the page is
   // loaded again
   private frozen = false;
+  private rewrites: ((text: string) => string)[] = [];
 
   private sending: OpPost | null = null;
   private idleWaiters: (() => void)[] = [];
@@ -200,7 +212,24 @@ export class Client {
 
   // every edit of this page is acknowledged by the edit command
   acked(): boolean {
-    return !!this.sync && (this.frozen || !this.dirty) && !this.sending && this.sync.acked;
+    return !!this.sync && (this.frozen || !this.dirty) && !this.rewrites.length && !this.sending && this.sync.acked;
+  }
+
+  // fn applied to the text of the deck at the next drive, which runs now, e.g. for the name of an
+  // uploaded file, and the deck made to read as its result
+  rewrite(fn?: (text: string) => string): void {
+    if (fn) this.rewrites.push(fn);
+    void this.drive();
+  }
+
+  // the text of the authority that this page applied, its version, and the text of the deck
+  snapshot(): { base: string; v: Version; mine: string } | null {
+    return this.sync && { base: this.sync.base, v: this.sync.version, mine: this.sync.mine };
+  }
+
+  // the save state is drawn again, e.g. after a failed upload
+  refresh(): void {
+    this.emit('state');
   }
 
   // resolves once every edit of this page is acknowledged, which is a save in a session
@@ -285,6 +314,18 @@ export class Client {
           const text = this.read();
           if (text !== null && sync.edit(text) !== null) stale = true;
         }
+        for (const fn of this.rewrites.splice(0)) {
+          const text = fn(sync.mine);
+          if (text === sync.mine) continue;
+          sync.edit(text);
+          stale = true;
+        }
+        const side = (this.fresh || this.inbox.length) && this.hooks.side?.(sync, this.fresh, this.inbox);
+        if (side) {
+          const wins = await side;
+          if (sync.settle(this.fresh, this.inbox.splice(0), wins) !== null) stale = true;
+          this.fresh = null;
+        }
         if (this.fresh) {
           const { text, v } = this.fresh;
           this.fresh = null;
@@ -357,6 +398,7 @@ export class Client {
       if (!this.frozen) void this.rejoin();
       return;
     }
+    if (sync.mine !== sync.base && this.hooks.ready && !this.hooks.ready(sync.mine)) return;
     const op = sync.outgoing(this.token);
     if (op) void this.send(op);
   }
