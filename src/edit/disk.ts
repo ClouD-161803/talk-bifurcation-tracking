@@ -6,6 +6,7 @@
 
 import { readFileSync, renameSync, statSync, unlinkSync, writeFileSync, type Stats } from 'node:fs';
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { changes } from '../editor/merge.ts';
@@ -16,6 +17,11 @@ export const AUTHOR = 'file';
 const QUIET = 250;
 const LATEST = 1000;
 const POLL = 500;
+// a file that looks partly written is taken once it has not changed for 2 s, or 5 s when it is
+// empty, and at a stop the wait ends after 7 s
+const SETTLE = 2000;
+const SETTLE_EMPTY = 5000;
+const SETTLE_AT_STOP = 7000;
 const RING_TEXTS = 64;
 const RING_CHARS = 8 * 1024 * 1024;
 
@@ -139,7 +145,7 @@ export class Disk {
   }
 
   start(): void {
-    this.poller = setInterval(() => void this.exclusive(() => this.check()), POLL);
+    this.poller = setInterval(() => void this.exclusive(() => this.check(Infinity)), POLL);
   }
 
   // an operation was applied: the file is written after 250 ms of quiet, and at the latest 1 s
@@ -164,7 +170,7 @@ export class Disk {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     if (this.poller) clearInterval(this.poller);
-    finish(this.write());
+    finish(this.write(SETTLE_AT_STOP));
   }
 
   // resolves once a write or a check in progress is over
@@ -208,12 +214,15 @@ export class Disk {
     while (this.ring.length > 1 && (this.ring.length > RING_TEXTS || chars > RING_CHARS)) chars -= this.ring.shift()!.text.length;
   }
 
-  private *write(): Task {
+  private *write(limit = Infinity): Task {
     this.firstUnwritten = null;
     // a change of the file since the last write is merged first, so that it is not overwritten, and
     // so is a change made while the temporary file is written
     for (let tries = 0; tries < 5; tries++) {
-      yield* this.check();
+      if (!(yield* this.check(limit))) {
+        this.log(`${this.file} is still being written by another program, and the edit command does not write it`);
+        return;
+      }
       if ((yield* this.put()) !== 'changed') return;
     }
     this.schedule();
@@ -256,21 +265,41 @@ export class Disk {
     this.remember(n, text);
   }
 
-  // a change of the file that the edit command did not write
-  private *check(): Task {
+  // a change of the file that the edit command did not write, or false when the file was still
+  // being written after limit ms
+  private *check(limit: number): Task<boolean> {
     const info: Stats | null = yield { stat: this.file };
     // a file that is gone is written again
-    if (!info) return void (this.known = '');
+    if (!info) {
+      this.known = '';
+      return true;
+    }
     // the signature is taken before the read, so that a write after the read is seen at the next check
-    const sig = signature(info);
-    if (sig === this.known) return;
-    // the file is read until two reads agree, since a program may be writing it
+    let sig = signature(info);
+    if (sig === this.known) return true;
     let bytes: Buffer = yield { read: this.file };
-    for (let i = 0; i < 20; i++) {
-      yield { sleep: 20 };
+    // the file is read until it has not changed for a while, since a program may be writing it: 20 ms
+    // for a file that looks complete, and longer for a file that is empty, shorter than half of the
+    // text before, or not valid UTF-8, since such a file is often written in steps
+    const before = Buffer.byteLength(this.written), started = performance.now();
+    let since = started, told = false;
+    for (let reads = 0; ; reads++) {
+      const wait = bytes.length === 0 ? SETTLE_EMPTY : bytes.length * 2 < before || !isUtf8(bytes) ? SETTLE : 0;
+      if (!wait && reads >= 20) break;
+      if (wait && !told) {
+        this.log(`${this.file} looks partly written, and the edit command waits until it has not changed for ${wait / 1000} s`);
+        told = true;
+      }
+      if (performance.now() - started > limit) return false;
+      yield { sleep: wait ? 100 : 20 };
+      const now: Stats | null = yield { stat: this.file };
+      if (!now) {
+        this.known = '';
+        return true;
+      }
       const again: Buffer = yield { read: this.file };
-      if (again.equals(bytes)) break;
-      bytes = again;
+      if (!again.equals(bytes)) [bytes, sig, since] = [again, signature(now), performance.now()];
+      else if (performance.now() - since >= wait) break;
     }
     let read: { text: string; bom: boolean };
     try {
@@ -278,15 +307,16 @@ export class Disk {
     } catch {
       this.log(`${this.file} was changed into a file that is not valid UTF-8, and the change is left out`);
       this.known = sig;
-      return;
+      return true;
     }
     this.known = sig;
     // the bytes of the last write or read, as after a touch of the file
-    if (read.text === this.written && read.bom === this.bom) return;
+    if (read.text === this.written && read.bom === this.bom) return true;
     this.bom = read.bom;
     this.merge(read.text);
     this.written = read.text;
     if (this.authority.text !== read.text) this.schedule();
+    return true;
   }
 
   // the text now on disk, written by another program from a text that it read some time before
