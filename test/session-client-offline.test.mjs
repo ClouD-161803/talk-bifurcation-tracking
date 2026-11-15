@@ -113,3 +113,34 @@ test('a guest is told that the host is not running, and the end of the session b
   clean(host, REFUSED);
   clean(guest, REFUSED);
 });
+
+test('a page whose operation is refused as invalid after a resync stops sending, and Load again loads it', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit));
+  await converge(server, [page]);
+  await page.evaluate('window.__corrupt = true');
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' refused');
+  await page.waitFor(`${STATE} === 'Your changes cannot be sent. Load the page again.'`);
+  assert.equal(await page.evaluate(ACTION), 'Load again');
+  // the first refusal is followed by a resync and one more operation, and then nothing is sent. an
+  // operation would be sent in the frame that reads the next edit
+  assert.equal(await ops(page), 2);
+  await type(page, ' again');
+  await page.waitFor(`${TEXT}.includes('refused again')`);
+  await frame(page);
+  assert.equal(await ops(page), 2);
+  assert.equal(server.read(), TALK);
+  const count = await loads(page);
+  await click(page, '.beeson-session-action').catch((e) => {
+    if (!/Inspected target navigated or closed/.test(e.message)) throw e;
+  });
+  await until(async () => (await loads(page).catch(() => 0)) > count, 'the page to load again');
+  await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+  assert.equal(await page.evaluate(STATE), 'Saved to index.html');
+  assert.equal(await page.evaluate(TEXT), TALK);
+  clean(page, [/status of 400/]);
+});
