@@ -147,6 +147,69 @@ test('an agent that writes back after more than 100 writes of people keeps every
   assert.deepEqual(tokens.filter((token) => !after.includes(token)), []);
 });
 
+const timesIn = (text, part) => text.split(part).length - 1;
+
+// a person who enters each of words before at in the text of the authority, and waits until the
+// disk has written it
+async function typeInto(authority, file, at, word) {
+  insert(authority, at, word);
+  const text = authority.text;
+  await until(() => readFileSync(file, 'utf8') === text, `the write of ${word.trim()}`);
+}
+
+test('add regression test: an agent that changes a line in which a person typed before and after its read keeps every word once', { timeout: 120_000 }, async (t) => {
+  for (const before of [8, 10, 20]) {
+    const { file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
+    disk.start();
+    const words = Array.from({ length: before + 3 }, (_, k) => ` w${k}`);
+    for (const word of words.slice(0, before)) await typeInto(authority, file, ' slide</p>', word);
+    const read = readFileSync(file, 'utf8');
+    for (const word of words.slice(before)) await typeInto(authority, file, ' slide</p>', word);
+    writeFileSync(file, read.replace('First', 'FIRST'));
+    await until(() => readFileSync(file, 'utf8') === authority.text && authority.text.includes('FIRST'), 'the change of the agent to be merged');
+    assert.ok(authority.text.includes(`<p style="left: 10px">FIRST${words.join('')} slide</p>`), `${before} words before the read: ${authority.text.split('\n')[5]}`);
+  }
+});
+
+test('add regression test: an agent that adds a paragraph after a person moved a slide 8 or 9 times keeps each slide once', { timeout: 120_000 }, async (t) => {
+  const slides = Array.from({ length: 12 }, (_, i) => `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text of slide ${i}</p>\n</section>\n`);
+  const deck = `<!doctype html>\n<html>\n<body>\n${slides.join('')}</body>\n</html>\n`;
+  for (const moves of [8, 9]) {
+    const { file, authority, disk } = setup(t, deck, { quiet: 5, latest: 20, poll: 20 });
+    disk.start();
+    const read = readFileSync(file, 'utf8');
+    for (let k = 0; k < moves; k++) {
+      // the first slide is moved to the end in one operation, as a drag in the Slide Sorter
+      const text = authority.text, start = text.indexOf('<section>'), end = text.indexOf('</section>\n') + '</section>\n'.length, at = text.indexOf('</body>');
+      authority.enter([{ start, end, text: '' }, { start: at, end: at, text: text.slice(start, end) }], 'Ann');
+      const moved = authority.text;
+      await until(() => readFileSync(file, 'utf8') === moved, `the write of move ${k + 1}`);
+    }
+    writeFileSync(file, read.replace('<p>Text of slide 5</p>', '<p>Text of slide 5</p>\n  <p>AGENT</p>'));
+    await until(() => readFileSync(file, 'utf8') === authority.text && authority.text.includes('AGENT'), 'the change of the agent to be merged');
+    const order = [...authority.text.matchAll(/<h2>Slide (\d+)<\/h2>/g)].map((m) => Number(m[1]));
+    assert.deepEqual(order, Array.from({ length: 12 }, (_, i) => (i + moves) % 12), `${moves} moves`);
+    assert.equal(timesIn(authority.text, 'AGENT'), 1);
+  }
+});
+
+test('add regression test: an agent that changes the 193 kB line of the demo deck after 8 writes of a person in this line keeps every write once', { timeout: 120_000 }, async (t) => {
+  const deck = readFileSync('index.html', 'utf8');
+  const long = deck.split('\n').find((line) => line.length > 100_000);
+  assert.ok(long?.endsWith('</script>') && deck.includes(`${long}\n</tycho-viewer>`), 'the demo deck lacks its long line before </tycho-viewer>');
+  const { file, authority, disk } = setup(t, deck, { quiet: 5, latest: 20, poll: 20 });
+  disk.start();
+  const marks = Array.from({ length: 11 }, (_, k) => `P${k}Q`);
+  for (const mark of marks.slice(0, 8)) await typeInto(authority, file, '\n</tycho-viewer>', mark);
+  const read = readFileSync(file, 'utf8');
+  for (const mark of marks.slice(8)) await typeInto(authority, file, '\n</tycho-viewer>', mark);
+  writeFileSync(file, read.replace(long.slice(0, 120), `${long.slice(0, 100)}AGENT${long.slice(100, 120)}`));
+  await until(() => readFileSync(file, 'utf8') === authority.text && authority.text.includes('AGENT'), 'the change of the agent to be merged', 60_000);
+  assert.equal(timesIn(authority.text, 'AGENT'), 1);
+  const end = authority.text.indexOf('\n</tycho-viewer>');
+  assert.equal(authority.text.slice(end - 9 - marks.join('').length, end), `</script>${marks.join('')}`);
+});
+
 test('an outside write back to an earlier text keeps the newer edits of the session, and says so in a line of the log', { timeout: 60_000 }, async (t) => {
   const { file, authority, disk, lines } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
   disk.start();
