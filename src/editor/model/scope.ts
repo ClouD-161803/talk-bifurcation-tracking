@@ -53,7 +53,7 @@ export const LINE_ATTRS: Record<string, string[]> = {
 // the elements whose width is set in a style, by tag or by class, and those whose height is set as
 // well, which a resize stretches
 const SIZED_TAGS = new Set(['img', 'video', 'tycho-viewer']);
-const STRETCHED_TAGS = new Set(['img', 'video']);
+const STRETCHED_TAGS = new Set(['img', 'video', 'tycho-viewer']);
 // the text elements whose width is set in a style in px, as a text box of Keynote and PowerPoint
 const TEXT_TAGS = new Set(['h1', 'h2', 'h3', 'p', 'ul', 'ol']);
 const takesWidth = (tag: string, classes: string[]) => TEXT_TAGS.has(tag) || (tag === 'div' && classes.includes('math')) || classes.includes('caption');
