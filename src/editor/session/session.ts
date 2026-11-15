@@ -67,6 +67,9 @@ export function install(app: App): Port {
   let behind: { shown: string; want: string } | null = null;
   const held: ((a: Applied) => void)[] = [];
 
+  // the caret of a text element that an apply moved to a slide that is not shown, see park
+  let parked: { host: Element; range: Range } | null = null;
+
   const reload = (): Applied => ({ reload: true, changed: [] });
   const ready = () => !!app.source && !!app.pairing && !!app.pairing.root;
   const busy = () => !app.history.settled || app.doc.busy;
@@ -79,6 +82,7 @@ export function install(app: App): Port {
     clean = ready();
     handed = clean ? app.source!.text : null;
     behind = null;
+    parked = null;
     for (const fn of held.splice(0)) fn(reload());
   });
 
@@ -223,6 +227,41 @@ export function install(app: App): Port {
     }
   }
 
+  // the caret of host, which an apply moved to a slide that is not shown, where it cannot have the
+  // focus. the person stays on the slide, and the first key that types shows the slide of host and
+  // puts the caret back, hence the key goes into host. a press, a focus, or a move to another slide
+  // lets the caret go
+  function park(host: Element): void {
+    const sel = getSelection();
+    const range = document.createRange();
+    if (sel?.focusNode && host.contains(sel.focusNode)) range.setStart(sel.focusNode, sel.focusOffset);
+    else {
+      range.selectNodeContents(host);
+      range.collapse(false);
+    }
+    parked = { host, range };
+  }
+  const types = (ev: KeyboardEvent): boolean => !ev.isComposing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && (ev.key.length === 1 || ev.key === 'Backspace' || ev.key === 'Delete' || ev.key === 'Enter');
+  window.addEventListener('keydown', (ev) => {
+    const p = parked;
+    if (!p || !types(ev)) return;
+    parked = null;
+    const was = document.activeElement;
+    if (!p.host.isConnected || (was !== p.host && was !== document.body)) return;
+    app.showSlide(p.host);
+    if (was === p.host) return;
+    (p.host as HTMLElement).focus({ preventScroll: true });
+    const sel = getSelection();
+    if (!sel || document.activeElement !== p.host) return;
+    sel.removeAllRanges();
+    sel.addRange(p.range);
+  }, true);
+  window.addEventListener('pointerdown', () => void (parked = null), true);
+  document.addEventListener('focusin', () => void (parked = null), true);
+  app.listen('slide', () => {
+    if (!mine) parked = null;
+  });
+
   // the turn of an apply of text, or of the changes held back when text is null. null while a
   // change is held back
   async function turn(text: string | null): Promise<Applied | null> {
@@ -259,6 +298,7 @@ export function install(app: App): Port {
     behind = shown === target ? null : { shown, want: target };
     let changed: Element[] = [];
     if (w && spot) {
+      const had = app.caretHost();
       let done: Done | null;
       mine = true;
       try {
@@ -271,6 +311,7 @@ export function install(app: App): Port {
         return reload();
       }
       const mark = done.caret ? markOf() : null;
+      if (had?.isConnected && !app.current()?.contains(had)) park(had);
       settle(shown, done);
       await typeset(done, mark);
       changed = done.changed.filter((el) => el.isConnected);
