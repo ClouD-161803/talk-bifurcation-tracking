@@ -398,3 +398,34 @@ test('a rejoin of a second page of a person keeps the name that another page of 
   clean(a);
   clean(b);
 });
+
+// whether the center of each element of selector is in the window and reaches the element
+const REACHED = (selector) => `[...document.querySelectorAll(${JSON.stringify(selector)})].filter((e) => e.offsetParent).map((e) => {
+  const r = e.getBoundingClientRect();
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  return { name: e.textContent.trim() || e.getAttribute('aria-label'), ok: x >= 0 && x <= innerWidth && e.contains(document.elementFromPoint(x, y)) };
+}).filter((e) => !e.ok).map((e) => e.name)`;
+
+test('on a phone, the menus and the controls of the session are reached while offline, and a tap on the save state reconnects', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { width: 390, height: 844, mobile: true, script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt !== null`);
+  const controls = '.beeson-edit-menubar [role=menuitem], .beeson-edit-titlebar .right button';
+  assert.deepEqual(await page.evaluate(REACHED(controls)), []);
+  await page.evaluate(`__net.clear()`);
+  await click(page, '.beeson-session-state');
+  await page.waitFor(`${ONLINE} && ${STATE} === 'Saved to index.html'`, 10_000);
+  assert.deepEqual(await page.evaluate(REACHED(controls)), []);
+  // the blocked state, with Load again
+  await page.evaluate('window.__corrupt = true');
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' refused');
+  await page.waitFor(`${C}.blocked`);
+  assert.deepEqual(await page.evaluate(REACHED(controls)), []);
+  clean(page, [...REFUSED, /status of 400/]);
+});
