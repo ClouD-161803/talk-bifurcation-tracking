@@ -402,3 +402,101 @@ test('the dots of the people on each slide in the navigator and the Slide Sorter
   });
   for (const page of [ann, ben, cleo, dan, eve]) clean(page);
 });
+
+// a deck of n slides of about bytes / n characters each, with the bulk in the speaker notes
+function bigDeck(n, bytes) {
+  const words = 'the orbit of the moon is followed by a ship that sees the far side '.repeat(Math.ceil(bytes / n / 68));
+  const slides = Array.from({ length: n }, (_, i) => `<section>\n  <h2>Slide ${i + 1}:</h2>\n  <p>Text of slide ${i + 1}</p>\n  <aside class="notes">${words.slice(0, Math.floor(bytes / n))}</aside>\n</section>\n`);
+  return TALK.replace(/<section>[\s\S]*<\/section>\n/, slides.join('\n'));
+}
+
+test('a deck of 200 slides with three people typing finds the slides of each operation without a parse of the deck', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false, timeout: 120_000 });
+  t.after(() => browser.close());
+  const folder = talkFolder(t, bigDeck(200, 2_000_000));
+  for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
+  const edit = await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config } });
+  t.after(async () => {
+    await stopEdit(edit);
+    rmSync(folder.root, { recursive: true, force: true });
+  });
+  const url = sessionUrl(edit);
+  const ana = await open(browser, url, { name: 'Ana' });
+  const ben = await open(browser, url, { name: 'Ben' });
+  const cleo = await open(browser, url, { name: 'Cleo' });
+  assert.ok((await ana.evaluate(`${C}.port.text().length`)) > 2_000_000);
+  // the calls of Ana into the editor that parse the deck, and the time of each read of the slides
+  // of an operation
+  await front(ana);
+  await ana.evaluate(`(() => {
+    const c = ${C};
+    window.__calls = { slidesAt: 0, changedSlides: 0, slidesIn: 0, time: 0, ops: 0 };
+    for (const k of ['slidesAt', 'changedSlides']) {
+      const f = c.shell[k];
+      c.shell[k] = (...a) => (window.__calls[k]++, f(...a));
+    }
+    const hooks = c.shell.slides, f = hooks.slidesIn;
+    hooks.slidesIn = (ranges) => {
+      const t = performance.now();
+      try {
+        return f(ranges);
+      } finally {
+        window.__calls.slidesIn++;
+        window.__calls.time += performance.now() - t;
+      }
+    };
+    c.on('ops', (ops) => (window.__calls.ops += ops.filter((op) => op.author !== c.person).length));
+  })()`);
+  const typists = [[ana, 'Slide 10:'], [ben, 'Slide 100:'], [cleo, 'Slide 190:']];
+  for (const [page, heading] of typists) await show(page, heading);
+  // the caret is set again at each turn, since a page brought behind another loses it
+  for (let round = 0; round < 6; round++) {
+    for (const [page, heading] of typists) {
+      await front(page);
+      await caretAtEnd(page, on(heading, 'p'));
+      await typeKeys(page, 'ab');
+    }
+  }
+  // each page is brought to the front until the three agree, since a page behind does not apply
+  let last = [];
+  await until(async () => {
+    const texts = [];
+    for (const [page] of typists) {
+      await front(page);
+      texts.push(await page.evaluate(`${ONLINE} && ${C}.acked() ? ${C}.port.text() : null`));
+    }
+    last = texts.map((x) => (x === null ? 'not acknowledged' : `${x.length} characters, ${x.split('ab').length - 1} ab`));
+    return texts[0] && texts.every((x) => x === texts[0]) && texts[0].split('ab').length > 18;
+  }, 'the three pages to agree', 120_000).catch((e) => {
+    throw new Error(`${e.message}: ${last.join('; ')}`);
+  });
+  // the keys of a page may be sent as fewer operations than keys, and the texts agree once Ana has
+  // applied every operation
+  await front(ana);
+  const calls = await ana.evaluate('window.__calls');
+  assert.ok(calls.ops > 0, 'the operations of Ben and Cleo reached Ana');
+  assert.equal(calls.slidesAt, 0, 'the deck is not parsed for the slides of an operation');
+  assert.equal(calls.changedSlides, 0, 'the deck is not compared for the slides of an operation');
+  assert.ok(calls.slidesIn > 0, 'the slides of the operations were read');
+  // the slides of Ben and Cleo are marked with their names
+  for (const [n, name] of [[100, 'Ben'], [190, 'Cleo']]) {
+    await ana.waitFor(`(() => { const row = ${C}.app.nav.rowOf(Reveal.getSlides()[${n - 1}]); return row.classList.contains('changed') && row.querySelector('.no').title === 'Changed by ${name} since you last saw it.'; })()`);
+  }
+  // a read of the slides of an operation is bound by a tenth of one parse of the same deck, taken
+  // in the same page, and measured again before the test fails
+  const parse = () => ana.evaluate(`(() => {
+    const c = ${C}, text = c.port.text(), t = performance.now();
+    for (let i = 0; i < 3; i++) c.shell.slidesAt(text, [{ start: 0, end: 1, text: '' }]);
+    return (performance.now() - t) / 3;
+  })()`);
+  const read = () => ana.evaluate(`(() => {
+    const hooks = ${C}.shell.slides, source = window.BeesonEditor.session.text(), at = source.indexOf('Text of slide 150'), t = performance.now();
+    for (let i = 0; i < 30; i++) hooks.slidesIn([{ start: at, end: at + 2, text: '' }]);
+    return (performance.now() - t) / 30;
+  })()`);
+  let [mean, bound] = [calls.time / calls.slidesIn, (await parse()) / 10];
+  if (mean >= bound) [mean, bound] = [await read(), (await parse()) / 10];
+  t.diagnostic(`${calls.slidesIn} reads of the slides of ${calls.ops} operations, ${mean.toFixed(3)} ms each, and a tenth of a parse ${bound.toFixed(3)} ms`);
+  assert.ok(mean < bound, `a read of the slides of an operation took ${mean.toFixed(3)} ms, and a tenth of a parse ${bound.toFixed(3)} ms`);
+  for (const [page] of typists) clean(page);
+});
