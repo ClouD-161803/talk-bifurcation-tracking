@@ -29,8 +29,10 @@ export function freshDeck(t, text) {
 // the places of the labels of a drawing, which are set when it is drawn, and the classes past,
 // present, and future, hidden, and aria-hidden of the slides of a stack that is not shown. they
 // also leave out the view of a backdrop fitted to its drawing, which the editor sets when it syncs
-// its backdrops, the data-latex of a formula, which MathJax writes with another spacing the first
-// time it loads a package, the text nodes of white space, an empty class, the way a style is
+// its backdrops, the number of a TikZ figure in its ids, which counts the figures of a page in the
+// order in which their outputs were loaded, the data-latex of a formula, which MathJax writes with
+// another spacing the first time it loads a package, the text nodes of white space, an empty class,
+// the way a style is
 // written, and the selection, the caret, and the focus, which are not part of the page that a text
 // opens
 export const PICTURE = `(() => {
@@ -51,6 +53,7 @@ export const PICTURE = `(() => {
       if (a.name === 'class') v = [...el.classList].filter((c) => !c.startsWith('hl-') && !(away && NAV.has(c))).join(' ');
       if (a.name === 'style') v = el.matches('.backdrop > .label, .surface > .label') ? '' : [...el.style].sort().map((p) => p + ': ' + el.style.getPropertyValue(p) + (el.style.getPropertyPriority(p) ? ' !important' : '')).join('; ');
       if ((a.name === 'class' || a.name === 'style') && !v) continue;
+      if (v.includes('tikz-')) v = v.replace(/(tikz-.+?-(?:dark|light)-)\\d+-/g, '$1');
       out.push(a.name + '=' + v);
     }
     return out.sort();
