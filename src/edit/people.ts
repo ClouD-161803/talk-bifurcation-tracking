@@ -178,6 +178,11 @@ export class People {
     return { name };
   }
 
+  // whether the page client is in the session, i.e. said hello and neither left nor was dropped
+  present(client: string): boolean {
+    return this.members.has(client);
+  }
+
   // the client id of the page of token, or null
   clientOf(token: unknown): string | null {
     return isToken(token) ? (this.tokens.get(token) ?? null) : null;

@@ -66,7 +66,7 @@ export function install(client: Client): void {
         const name = f.path.slice(f.path.lastIndexOf('/') + 1);
         let response: Response;
         try {
-          response = await fetch(client.url(`media/${encodeURIComponent(name)}`), { method: 'PUT', body: f.blob, headers: { 'Content-Type': f.blob.type || 'application/octet-stream' }, cache: 'no-store' });
+          response = await fetch(client.url(`media/${encodeURIComponent(name)}`, { token: client.token }), { method: 'PUT', body: f.blob, headers: { 'Content-Type': f.blob.type || 'application/octet-stream' }, cache: 'no-store' });
         } catch (e) {
           throw new Failure(0, e instanceof Error ? e.message : String(e));
         }

@@ -231,11 +231,12 @@ test('add regression test: a slow upload through the relay is not cut by the tim
   const edit = await startEdit(talk, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config } });
   t.after(() => stopEdit(edit));
   await until(async () => (await fetch(`${relay.url}/${edit.key}/index.html`)).status === 200, 'the edit command to register');
+  const hello = await (await fetch(`${relay.url}/${edit.key}/.session/hello`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Guest' }) })).json();
   const socket = connect(relay.port, '127.0.0.1');
   t.after(() => socket.destroy());
   let got = '';
   socket.on('data', (d) => (got += d));
-  socket.write(`PUT /${edit.key}/.session/media/slow.png HTTP/1.1\r\nHost: relay\r\nContent-Length: 6000\r\nConnection: close\r\n\r\n`);
+  socket.write(`PUT /${edit.key}/.session/media/slow.png?token=${hello.token} HTTP/1.1\r\nHost: relay\r\nContent-Length: 6000\r\nConnection: close\r\n\r\n`);
   // the body is sent over 2.5 s, longer than guestMs, as on a slow uplink
   for (let i = 0; i < 6; i++) {
     socket.write('x'.repeat(1000));

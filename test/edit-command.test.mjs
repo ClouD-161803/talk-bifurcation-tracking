@@ -154,7 +154,8 @@ test('the edit command serves a session and writes every edit into index.html', 
   });
 
   await t.test('a media upload is given a clean name, a free name, and a capped size', async () => {
-    const put = (name, body, headers) => raw(port, 'PUT', api(`media/${name}`), { body, headers });
+    const { token } = (await post(port, api('hello'), ann)).json();
+    const put = (name, body, headers) => raw(port, 'PUT', api(`media/${name}?token=${token}`), { body, headers });
     assert.deepEqual((await put('My%20Plot%20(1).PNG', 'a')).json(), { path: 'media/my-plot-1.png' });
     assert.deepEqual((await put('My%20Plot%20(1).PNG', 'b')).json(), { path: 'media/my-plot-1-2.png' });
     assert.deepEqual((await put('plot.png', 'c')).json(), { path: 'media/plot-2.png' });
@@ -164,7 +165,7 @@ test('the edit command serves a session and writes every edit into index.html', 
     assert.equal((await put('index.html', 'f')).status, 415);
     // a body over 64 MB is refused from its Content-Length, before it is sent
     const status = await new Promise((done, fail) => {
-      const req = httpRequest({ host: '127.0.0.1', port, method: 'PUT', path: api('media/big.mp4'), headers: { 'content-length': 64 * 1024 * 1024 + 1 } }, (res) => {
+      const req = httpRequest({ host: '127.0.0.1', port, method: 'PUT', path: api(`media/big.mp4?token=${token}`), headers: { 'content-length': 64 * 1024 * 1024 + 1 } }, (res) => {
         res.resume();
         done(res.statusCode);
         req.destroy();

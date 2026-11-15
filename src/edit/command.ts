@@ -221,6 +221,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
 
   async function media(name: string, request: Request): Promise<Response> {
     if (request.method !== 'PUT') return error(405, 'PUT');
+    const client = people.clientOf(new URLSearchParams(request.query).get('token'));
+    if (client === null || !people.present(client)) return error(404, 'say hello first');
     const clean = cleanName(name);
     if (!clean) return error(415, 'the file must be an image, a video, or json');
     if (request.body.length > MEDIA_MAX) return error(413, 'the file is larger than 64 MB');
