@@ -2026,6 +2026,14 @@ function keyOf(root) {
 `, { mode: 384 });
   return key;
 }
+function savedPort(root) {
+  try {
+    const port = Number(readFileSync5(join4(root, ".session", "port"), "utf8").trim());
+    return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+  } catch {
+    return null;
+  }
+}
 function cleanName(raw) {
   let name;
   try {
@@ -2296,18 +2304,19 @@ async function start(options = {}) {
   );
   server.headersTimeout = 2e4;
   server.requestTimeout = 12e4;
+  const ports = options.port !== void 0 ? [options.port] : [.../* @__PURE__ */ new Set([savedPort(root) ?? DEFAULT_PORT, DEFAULT_PORT, 0])];
   await new Promise((done, fail) => {
-    const tryListen = (p) => {
+    const tryListen = (i) => {
       server.once("error", (e) => {
-        if (e.code === "EADDRINUSE" && options.port === void 0 && p !== 0) tryListen(0);
+        if ((e.code === "EADDRINUSE" || e.code === "EACCES") && i + 1 < ports.length) tryListen(i + 1);
         else fail(e);
       });
-      server.listen(p, "127.0.0.1", () => {
+      server.listen(ports[i], "127.0.0.1", () => {
         server.removeAllListeners("error");
         done();
       });
     };
-    tryListen(options.port ?? DEFAULT_PORT);
+    tryListen(0);
   });
   port = server.address().port;
   const lock = JSON.stringify({ pid: process.pid, port, root });
@@ -2330,6 +2339,11 @@ async function start(options = {}) {
     } catch {
     }
   };
+  try {
+    writeFileSync4(join4(root, ".session", "port"), `${port}
+`);
+  } catch {
+  }
   disk.start();
   if (options.relay) {
     const address = relayAddress(options.relay);
