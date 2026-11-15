@@ -64,8 +64,9 @@ function cleanMentions(raw: unknown): string[] | Failure {
   return [...new Set(raw as string[])];
 }
 
+// any tag name, since the tokenizer gives one of any length and of any character but a few
 const isAnchor = (a: unknown): a is Anchor =>
-  !!a && isInt((a as Anchor).start) && isInt((a as Anchor).end) && (a as Anchor).start < (a as Anchor).end && typeof (a as Anchor).tag === 'string' && /^[a-z][^\s/>]{0,63}$/.test((a as Anchor).tag);
+  !!a && isInt((a as Anchor).start) && isInt((a as Anchor).end) && (a as Anchor).start < (a as Anchor).end && typeof (a as Anchor).tag === 'string' && (a as Anchor).tag.length > 0;
 
 const isReply = (r: unknown): r is CommentReply =>
   !!r && isCommentId((r as CommentReply).id) && isPersonId((r as CommentReply).author) && isNumber((r as CommentReply).time) && typeof (r as CommentReply).text === 'string' && ((r as CommentReply).edited === undefined || isNumber((r as CommentReply).edited));
@@ -341,13 +342,18 @@ export class Comments {
     }
     const d = data as { sum?: unknown; comments?: unknown; seen?: unknown };
     if (!d || typeof d !== 'object' || typeof d.sum !== 'string' || !Array.isArray(d.comments) || d.comments.length > THREADS_MAX || !d.seen || typeof d.seen !== 'object') return this.unreadable();
-    const threads = d.comments.map(readThread);
-    if (threads.some((t) => t === null)) return this.unreadable();
-    for (const t of threads as Comment[]) {
+    let bad = 0;
+    for (const raw of d.comments) {
+      const t = readThread(raw);
+      if (!t) {
+        bad++;
+        continue;
+      }
       this.threads.set(t.id, t);
       this.chars += charsOf(t);
     }
     for (const [person, time] of Object.entries(d.seen as Record<string, unknown>)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
+    if (bad) this.setAside(false, `${bad} of the threads could not be read, hence they were left out`);
     return { sum: d.sum };
   }
 

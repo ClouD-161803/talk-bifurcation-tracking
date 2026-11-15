@@ -1918,7 +1918,7 @@ function cleanMentions(raw) {
   if (!Array.isArray(raw) || raw.length > MENTIONS_MAX || !raw.every(isPersonId)) return fail(400, "mentions must be person ids");
   return [...new Set(raw)];
 }
-var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && /^[a-z][^\s/>]{0,63}$/.test(a.tag);
+var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && a.tag.length > 0;
 var isReply = (r) => !!r && isCommentId(r.id) && isPersonId(r.author) && isNumber(r.time) && typeof r.text === "string" && (r.edited === void 0 || isNumber(r.edited));
 function readThread(t) {
   if (!t || typeof t !== "object") return null;
@@ -2166,13 +2166,18 @@ var Comments = class {
     }
     const d = data;
     if (!d || typeof d !== "object" || typeof d.sum !== "string" || !Array.isArray(d.comments) || d.comments.length > THREADS_MAX || !d.seen || typeof d.seen !== "object") return this.unreadable();
-    const threads = d.comments.map(readThread);
-    if (threads.some((t) => t === null)) return this.unreadable();
-    for (const t of threads) {
+    let bad = 0;
+    for (const raw of d.comments) {
+      const t = readThread(raw);
+      if (!t) {
+        bad++;
+        continue;
+      }
       this.threads.set(t.id, t);
       this.chars += charsOf(t);
     }
     for (const [person, time] of Object.entries(d.seen)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
+    if (bad) this.setAside(false, `${bad} of the threads could not be read, hence they were left out`);
     return { sum: d.sum };
   }
   unreadable() {
