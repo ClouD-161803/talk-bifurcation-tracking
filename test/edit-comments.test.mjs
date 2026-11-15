@@ -10,6 +10,8 @@ import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { Authority, Comments, checksum, diff, slidesOf, startTagAt } from '../theme/edit.mjs';
 import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
@@ -379,6 +381,26 @@ test('a thread on an element of any tag name is read again at a start, and a thr
     again.comments.stopSync();
     assert.deepEqual(readJson(file).comments.map((c) => c.text), ['kept', 'new']);
   });
+});
+
+test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc');
+  const used = () => {
+    gc();
+    gc();
+    return process.memoryUsage().heapUsed;
+  };
+  const n = 100;
+  const filler = `<section>\n  <p>${'x'.repeat(100_000)}</p>\n</section>\n`;
+  const deck = DECK.replace('<p>Second slide</p>', Array.from({ length: n }, (_, k) => `<p>Paragraph ${k} of the slide</p>`).join('\n  ')).replace('</body>', `${filler}</body>`);
+  const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 10 } });
+  for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p>Paragraph ${k} `), slide: null, text: `p${k}` });
+  const before = used();
+  for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
+  const grown = used() - before;
+  assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.startsWith('<p>Paragraph')));
+  assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 
 test('a shift of the anchors by typing is written to the file', async (t) => {
