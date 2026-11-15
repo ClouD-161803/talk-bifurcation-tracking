@@ -24,7 +24,7 @@ const RESTORE_WAIT = 5000;
 const STYLE = `
 html.beeson-editor.beeson-history { --ed-insp-col: 288px; }
 html.beeson-editor.beeson-history body > .beeson-edit-inspector { display: none; }
-html.beeson-editor body > .beeson-session-history { grid-area: insp; position: relative; z-index: 50; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; background: var(--ed-panel); border-left: 1px solid var(--ed-line); color: var(--ed-text); font: 12px/1.4 var(--ed-font); }
+html.beeson-editor body > .beeson-session-history { grid-area: insp; position: relative; z-index: 50; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; background: var(--ed-panel); border-left: 1px solid var(--ed-line); color: var(--ed-text); font: 12px/1.4 var(--ed-font); }
 html.beeson-editor body > .beeson-session-history[hidden] { display: none; }
 @media (max-width: 855.98px) {
   html.beeson-editor.beeson-history { --ed-nav-col: 0px; }
@@ -69,6 +69,19 @@ let current: Client | null = null;
 let opener: ((aside?: string) => void) | null = null;
 
 const dayKey = (t: number) => new Date(t).toDateString();
+const keyOf = (s: Selected) => (s.kind === 'current' ? 'current' : `${s.kind}:${s.id}`);
+
+// the children of parent made nodes, in order, with each node that is in place left alone, since a
+// node moved or written again loses the focus and is read again by a screen reader
+function place(parent: Element, nodes: Node[]): void {
+  const want = new Set(nodes);
+  for (const c of [...parent.childNodes]) if (!want.has(c)) c.remove();
+  let at = parent.firstChild;
+  for (const n of nodes) {
+    if (n === at) at = at.nextSibling;
+    else parent.insertBefore(n, at);
+  }
+}
 
 // the versions in groups: a named version alone, and unnamed versions closer than FOLD under the
 // newest of them, which do not cross a day
@@ -102,6 +115,7 @@ export function install(client: Client): void {
   let asideHead: HTMLElement;
   let asideList: HTMLElement;
   let named: HTMLInputElement;
+  let nameCurrent: HTMLButtonElement;
   let preview: Preview | null = null;
   let answer: HistoryAnswer | null = null;
   let failed = false;
@@ -112,6 +126,12 @@ export function install(client: Client): void {
   const opened = new Set<string>();
   let back: Element | null = null;
   let naming = false;
+  // the nodes of the list kept between renders by key, hence a new answer writes only what changed
+  const rows = new Map<string, { el: HTMLButtonElement; sig: string }>();
+  const folds = new Map<string, { button: HTMLButtonElement; inner: HTMLElement }>();
+  const heads = new Map<string, HTMLElement>();
+  const notes = new Map<string, HTMLElement>();
+  const used = new Set<string>();
 
   function build(): HTMLElement {
     style('history', STYLE);
@@ -131,6 +151,10 @@ export function install(client: Client): void {
     named.addEventListener('change', render);
     label.append(named, document.createTextNode('Only show named versions'));
     list = make('div', 'rows versions');
+    nameCurrent = make('button', 'name-current', 'Name this version');
+    nameCurrent.type = 'button';
+    nameCurrent.dataset.id = 'name-current';
+    nameCurrent.addEventListener('click', () => void name('current', ''));
     asideHead = make('h3', 'aside-head', 'Set aside');
     asideList = make('div', 'rows aside-list');
     el.append(head, label, list, asideHead, asideList);
@@ -159,75 +183,133 @@ export function install(client: Client): void {
     return loading;
   }
 
-  function row(className: string, select: Selected, parts: (Node | string)[]): HTMLButtonElement {
-    const b = make('button', `row ${className}`);
-    b.type = 'button';
-    const id = select.kind === 'current' ? 'current' : `${select.kind}:${select.id}`;
-    b.dataset.id = id;
-    const is = selected.kind === select.kind && (select.kind === 'current' || (selected as { id: string }).id === select.id);
-    b.setAttribute('aria-current', String(is));
-    b.append(...parts);
-    b.addEventListener('click', () => choose(select));
-    return b;
+  const isSelected = (s: Selected) => selected.kind === s.kind && (s.kind === 'current' || (selected as { id: string }).id === s.id);
+
+  // the row of select, written again only when sig, what it shows, changed
+  function row(className: string, select: Selected, sig: string, parts: () => (Node | string)[]): HTMLButtonElement {
+    const id = keyOf(select);
+    let r = rows.get(id);
+    if (!r) {
+      const b = make('button', `row ${className}`);
+      b.type = 'button';
+      b.dataset.id = id;
+      b.addEventListener('click', () => choose(select));
+      r = { el: b, sig: '' };
+      rows.set(id, r);
+    }
+    if (r.sig !== sig) {
+      r.el.replaceChildren(...parts());
+      r.sig = sig;
+    }
+    const is = String(isSelected(select));
+    if (r.el.getAttribute('aria-current') !== is) r.el.setAttribute('aria-current', is);
+    used.add(id);
+    return r.el;
   }
 
   function versionRow(v: VersionInfo): HTMLButtonElement {
-    const parts: (Node | string)[] = [make('span', 'title', v.name ?? timeOf(v.time))];
-    if (v.name) parts.push(make('span', 'sub', timeOf(v.time)));
-    if (v.restored) {
-      const was = answer?.versions.find((x) => x.id === v.restored);
-      parts.push(make('span', 'sub', was ? `Restored the version of ${whenOf(was.time)}` : 'Restored an earlier version'));
+    const was = v.restored ? answer?.versions.find((x) => x.id === v.restored) : undefined;
+    const restored = v.restored ? (was ? `Restored the version of ${whenOf(was.time)}` : 'Restored an earlier version') : '';
+    const sig = JSON.stringify([v.name, timeOf(v.time), restored, v.authors.map((a) => personOf(client, a)), v.slides]);
+    return row('version', { kind: 'version', id: v.id }, sig, () => {
+      const parts: (Node | string)[] = [make('span', 'title', v.name ?? timeOf(v.time))];
+      if (v.name) parts.push(make('span', 'sub', timeOf(v.time)));
+      if (restored) parts.push(make('span', 'sub', restored));
+      parts.push(authorsOf(client, v.authors));
+      if (v.slides.length) parts.push(make('span', 'slides', slidesText(v.slides)));
+      return parts;
+    });
+  }
+
+  function note(text: string): HTMLElement {
+    let p = notes.get(text);
+    if (!p) notes.set(text, (p = make('p', 'empty', text)));
+    used.add(`note:${text}`);
+    return p;
+  }
+
+  function heading(key: string, label: string): HTMLElement {
+    let h = heads.get(key);
+    if (!h) heads.set(key, (h = make('h3', 'day')));
+    if (h.textContent !== label) h.textContent = label;
+    used.add(`day:${key}`);
+    return h;
+  }
+
+  // the button and the rows of a fold, kept by its oldest version, which a newer version that joins
+  // it does not change. its rows are made only while it is open
+  function foldOf(fold: { rest: VersionInfo[] }): Node[] {
+    const key = fold.rest[fold.rest.length - 1]!.id;
+    if (selected.kind === 'version' && fold.rest.some((v) => v.id === (selected as { id: string }).id)) opened.add(key);
+    let f = folds.get(key);
+    if (!f) {
+      const button = make('button', 'fold');
+      button.type = 'button';
+      button.dataset.id = `fold:${key}`;
+      button.addEventListener('click', () => {
+        if (!opened.delete(key)) opened.add(key);
+        render();
+      });
+      folds.set(key, (f = { button, inner: make('div', 'folded') }));
     }
-    parts.push(authorsOf(client, v.authors));
-    if (v.slides.length) parts.push(make('span', 'slides', slidesText(v.slides)));
-    return row('version', { kind: 'version', id: v.id }, parts);
+    used.add(`fold:${key}`);
+    const shown = opened.has(key);
+    const text = `${shown ? 'Hide' : 'Show'} ${fold.rest.length} more`;
+    if (f.button.textContent !== text) f.button.textContent = text;
+    if (f.button.getAttribute('aria-expanded') !== String(shown)) f.button.setAttribute('aria-expanded', String(shown));
+    if (f.inner.hidden === shown) f.inner.hidden = !shown;
+    place(f.inner, shown ? fold.rest.map(versionRow) : []);
+    return [f.button, f.inner];
+  }
+
+  // the first node of the pane in view and its top, which stays in place when nodes above it change
+  function anchorOf(): { el: Element; top: number } | null {
+    if (!pane || pane.scrollTop <= 0) return null;
+    const top = pane.getBoundingClientRect().top;
+    for (const el of pane.querySelectorAll('.rows > *, .folded > *')) {
+      const r = el.getBoundingClientRect();
+      if (r.height && r.bottom > top) return { el, top: r.top };
+    }
+    return null;
   }
 
   function render(): void {
     if (!pane || !on) return;
-    const focused = document.activeElement instanceof HTMLElement && pane.contains(document.activeElement) ? document.activeElement.dataset.id ?? null : null;
-    const nodes: Node[] = [row('current', { kind: 'current' }, [make('span', 'title', 'Current version')])];
-    const nameCurrent = make('button', 'name-current', 'Name this version');
-    nameCurrent.type = 'button';
-    nameCurrent.dataset.id = 'name-current';
-    nameCurrent.addEventListener('click', () => void name('current', ''));
-    nodes.push(nameCurrent);
+    const active = document.activeElement instanceof HTMLElement && pane.contains(document.activeElement) ? document.activeElement : null;
+    const anchor = anchorOf();
+    used.clear();
+    const nodes: Node[] = [
+      row('current', { kind: 'current' }, '', () => [make('span', 'title', 'Current version')]),
+      nameCurrent,
+    ];
     const versions = (answer?.versions ?? []).filter((v) => !named.checked || v.name);
-    if (failed) nodes.push(make('p', 'empty', 'The versions cannot be read while the page is offline.'));
+    if (failed) nodes.push(note('The versions cannot be read while the page is offline.'));
     if (!answer) {
-      if (!failed) nodes.push(make('p', 'empty', 'Loading versions…'));
-    } else if (!versions.length) nodes.push(make('p', 'empty', named.checked && answer.versions.length ? 'No named versions yet.' : 'No earlier versions yet.'));
+      if (!failed) nodes.push(note('Loading versions…'));
+    } else if (!versions.length) nodes.push(note(named.checked && answer.versions.length ? 'No named versions yet.' : 'No earlier versions yet.'));
     let day = '';
     for (const fold of foldsOf(versions)) {
       const label = dayLabel(fold.head.time);
-      if (label !== day) nodes.push(make('h3', 'day', (day = label)));
+      if (label !== day) nodes.push(heading(dayKey(fold.head.time), (day = label)));
       nodes.push(versionRow(fold.head));
-      if (!fold.rest.length) continue;
-      const key = fold.rest[fold.rest.length - 1]!.id;
-      if (selected.kind === 'version' && fold.rest.some((v) => v.id === (selected as { id: string }).id)) opened.add(key);
-      const more = make('button', 'fold');
-      more.type = 'button';
-      more.dataset.id = `fold:${key}`;
-      const inner = make('div', 'folded');
-      const draw = () => {
-        const shown = opened.has(key);
-        more.textContent = `${shown ? 'Hide' : 'Show'} ${fold.rest.length} more`;
-        more.setAttribute('aria-expanded', String(shown));
-        inner.hidden = !shown;
-      };
-      more.addEventListener('click', () => {
-        if (!opened.delete(key)) opened.add(key);
-        draw();
-      });
-      inner.append(...fold.rest.map(versionRow));
-      draw();
-      nodes.push(more, inner);
+      if (fold.rest.length) nodes.push(...foldOf(fold));
     }
-    list.replaceChildren(...nodes);
+    place(list, nodes);
     const asides = answer?.aside ?? [];
     asideHead.hidden = asideList.hidden = !asides.length;
-    asideList.replaceChildren(...asides.map((a) => row('aside', { kind: 'aside', id: a.id }, [make('span', 'title', `${dayLabel(a.time)}, ${timeOf(a.time)}`), authorsOf(client, [a.author])])));
-    if (focused) pane.querySelector<HTMLElement>(`[data-id="${CSS.escape(focused)}"]`)?.focus();
+    place(
+      asideList,
+      asides.map((a) =>
+        row('aside', { kind: 'aside', id: a.id }, JSON.stringify([dayLabel(a.time), timeOf(a.time), personOf(client, a.author)]), () => [make('span', 'title', `${dayLabel(a.time)}, ${timeOf(a.time)}`), authorsOf(client, [a.author])]),
+      ),
+    );
+    for (const [map, prefix] of [[rows, ''], [folds, 'fold:'], [heads, 'day:'], [notes, 'note:']] as const) {
+      for (const k of map.keys()) if (!used.has(prefix + k)) map.delete(k);
+    }
+    // a control of the list that was moved has lost the focus
+    const id = active?.dataset.id;
+    if (active && id && document.activeElement !== active) pane.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)?.focus();
+    if (anchor?.el.isConnected) pane.scrollTop += anchor.el.getBoundingClientRect().top - anchor.top;
     showSelected();
   }
 
