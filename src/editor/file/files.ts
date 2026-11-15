@@ -26,6 +26,8 @@ const FILE_TYPES = [{ description: 'HTML', accept: { 'text/html': ['.html', '.ht
 const AUTOSAVE_KEY = 'beeson-autosave';
 // the pause after the last change, in ms, before an autosave
 const AUTOSAVE_DELAY = 1500;
+// the longest wait, in ms, for the edits of a page of a session to be sent before a show or an export
+const SEND_WAIT = 4000;
 
 const pickers = window as unknown as Pickers;
 // the pickers are read when they are used, so that a test can take them away
@@ -431,10 +433,24 @@ export function install(app: App): void {
     return `${pageOf()}${query ? `?${query}` : ''}`;
   }
 
+  // the edits of this page sent in a session, before a show or an export. a page that is offline
+  // cannot send them, hence the wait ends after SEND_WAIT with the reason
+  async function sent(): Promise<void> {
+    let timer = 0;
+    const late = new Promise<never>((_, fail) => {
+      timer = window.setTimeout(() => fail(new Error('Your last changes are not sent yet. Try again once they are saved')), SEND_WAIT);
+    });
+    try {
+      await Promise.race([app.session!.save(), late]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // with unsaved changes, the user is asked first, and false is returned for no export or show. in a
   // session every edit is shared, and the edits of this page are sent first
   async function savedFirst(action: 'present' | 'export' | 'print' | 'pptx'): Promise<boolean> {
-    if (app.session) await app.session.save();
+    if (app.session) await sent();
     if (!app.dirty || app.session) return true;
     const choice = await askFirst(action);
     if (!choice) return false;
@@ -629,7 +645,7 @@ export function install(app: App): void {
     const choice = app.session ? 'save' : app.dirty ? await askFirst('present') : 'saved';
     if (!choice) return null;
     const show = tab ? null : startShow(app);
-    if (choice === 'save') await save().catch((e) => (show?.end(), Promise.reject(e)));
+    if (choice === 'save') await (app.session ? sent() : save()).catch((e) => (show?.end(), Promise.reject(e)));
     if (choice === 'discard') await discardEdits();
     if (choice === 'save' && app.dirty && !app.session) {
       show?.end();
