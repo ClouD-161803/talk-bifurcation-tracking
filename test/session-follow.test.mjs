@@ -459,6 +459,30 @@ test('the line of each person in the Share dialog', { timeout: 120_000 }, async 
   clean(ben);
 });
 
+test('a page that closes sends no state after its bye', { timeout: 60_000 }, async (t) => {
+  const { pages: [ann, ben] } = await session(t, ['Ann Smith', 'Ben Carter']);
+  // Ben reads the visibility of Chrome, which hides a page as it closes, and tells Ann each request
+  // that it sends and each change of its visibility, in order
+  await ann.evaluate(`window.__sent = []; new BroadcastChannel('sent').onmessage = (m) => window.__sent.push(m.data)`);
+  await ben.evaluate(`(() => {
+    window.__visibility = 'real';
+    const channel = new BroadcastChannel('sent');
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      channel.postMessage((typeof input === 'string' ? input : input.url).replace(/^.*[/][.]session[/]/, '').replace(/[?].*$/, ''));
+      return fetched.call(this, input, init);
+    };
+    document.addEventListener('visibilitychange', () => channel.postMessage(document.visibilityState));
+  })()`);
+  await front(ben);
+  clean(ben);
+  await ben.close();
+  await ann.waitFor(`window.__sent.includes('bye') && window.__sent.includes('hidden')`);
+  const sent = await ann.evaluate('window.__sent');
+  assert.deepEqual(sent.slice(sent.indexOf('bye')).filter((s) => s === 'presence'), [], `Ben sent ${sent.join(', ')}`);
+  clean(ann);
+});
+
 // a deck of n slides of about bytes / n characters each, with the bulk in the speaker notes
 function bigDeck(n, bytes) {
   const words = 'the orbit of the moon is followed by a ship that sees the far side '.repeat(Math.ceil(bytes / n / 68));
