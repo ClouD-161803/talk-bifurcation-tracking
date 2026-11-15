@@ -31,7 +31,7 @@
 //                                  registered for key, and 504 when it does not answer in 60 s
 //
 // limits: 16 MB per body, 256 MB of bodies held at once, of which a session holds a quarter at
-// most, 256 waiting requests per session, 64
+// most and 4 MB are kept for bodies of at most 64 kB, 256 waiting requests per session, 64
 // sessions, and a session dropped after 90 s without a pull. hop-by-hop headers, cookies, and credentials are not forwarded
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -57,6 +57,10 @@ export const DEFAULTS = {
   // the part of memoryBytes that the bodies of one session may hold, so that one guest cannot
   // stop the answers of every session
   sessionShare: 1 / 4,
+  // the place of memoryBytes kept for bodies of at most smallBytes, e.g. hello, op, and events,
+  // which thus still pass when large answers fill the rest
+  reserveBytes: 4 * 1024 * 1024,
+  smallBytes: 64 * 1024,
   connections: 2048,
 };
 
@@ -144,10 +148,13 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
   const sessions = new Map();
   let held = 0;
 
-  // whether n more bytes of a body fit in the memory, for session
-  function fits(session, n) {
-    if (held + n > limits.memoryBytes) return false;
-    return session.held + n <= limits.memoryBytes * limits.sessionShare;
+  // whether n more bytes of a body of which sofar bytes are held fit in the memory, for session.
+  // declared is the length of the body announced in its head, or 0. a small body may use the
+  // reserve beyond the share of its session as well, e.g. while slow phones read a video
+  function fits(session, sofar, n, declared = 0) {
+    const reserve = Math.max(sofar + n, declared) <= limits.smallBytes ? limits.reserveBytes : 0;
+    if (held + n > limits.memoryBytes - limits.reserveBytes + reserve) return false;
+    return session.held + n <= limits.memoryBytes * limits.sessionShare + reserve;
   }
   function hold(session, n) {
     held += n;
@@ -232,7 +239,7 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
       let body;
       try {
         body = await bodyOf(req, limits.bodyBytes, (n) => {
-          if (!fits(session, n)) return false;
+          if (!fits(session, reserved, n)) return false;
           hold(session, n);
           reserved += n;
           return true;
@@ -268,7 +275,7 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (!session) return answer(res, 502, 'no edit command is registered for this session');
     if (session.pending.size >= limits.waiting) return answer(res, 503, 'the session has too many waiting requests');
     const declared = Number(req.headers['content-length'] ?? 0);
-    if (!fits(session, Math.min(declared, limits.bodyBytes))) {
+    if (!fits(session, 0, Math.min(declared, limits.bodyBytes), declared)) {
       await bodyOf(req, limits.bodyBytes, () => false);
       return answer(res, 503, 'the relay is busy', { Connection: 'close' });
     }
@@ -306,7 +313,7 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     // each chunk is counted against memoryBytes while it is read, so that the cap holds for slow
     // uploads and for a chunked body that declares no length
     const body = await bodyOf(req, limits.bodyBytes, (n) => {
-      if (session.pending.get(id) !== entry || !fits(session, n)) return false;
+      if (session.pending.get(id) !== entry || !fits(session, entry.bytes, n, declared)) return false;
       hold(session, n);
       entry.bytes += n;
       return true;
