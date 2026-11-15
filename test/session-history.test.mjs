@@ -732,6 +732,41 @@ test('the restore of a version of another year names its year, and the time of t
   clean(ben);
 });
 
+test('the day headings of an open pane move on at midnight', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  await openPane(ann);
+  await press$(ann, PANE, 'Name this version');
+  await nameIt(ann, 'Before midnight');
+  await ann.waitFor(`${LIST}[1]?.title === 'Before midnight'`);
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  // the clock of the page set 3 s before the next midnight
+  await ann.evaluate(`(() => {
+    const Real = Date;
+    const next = new Real();
+    next.setHours(24, 0, 0, 0);
+    const shift = next.getTime() - 3000 - Real.now();
+    window.Date = class extends Real {
+      constructor(...a) {
+        if (a.length) super(...a);
+        else super(Real.now() + shift);
+      }
+      static now() {
+        return Real.now() + shift;
+      }
+    };
+    return true;
+  })()`);
+  await openPane(ann);
+  await ann.waitFor(`${LIST}[0]?.day === 'Today'`);
+  await ann.waitFor(`${LIST}[0]?.day === 'Yesterday'`, 10_000);
+  clean(ann);
+});
+
 test('Keep theirs at a conflict sets the text of the page aside, which Show opens in Version History', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
