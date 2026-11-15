@@ -747,7 +747,7 @@ test('a fold stays open, and the focus stays on its control, while new versions 
   clean(ann);
 });
 
-test('the start of the history is a row of its own, which reads Start of the history in the place of the authors', { timeout: 180_000 }, async (t) => {
+test('the start of the history is a row of its own, which reads Start of the history in the place of the authors, as the bar of its preview does', { timeout: 180_000 }, async (t) => {
   const now = Date.now();
   const first = Math.max(now - 10 * MIN, new Date(now).setHours(0, 0, 0, 0) + 1000);
   const server = await crafted(t, craft([{ time: first, start: true }, { time: first + MIN }, { time: first + 2 * MIN }]), HELD);
@@ -774,6 +774,7 @@ test('the start of the history is a row of its own, which reads Start of the his
   await tapOrClick(ann, `document.querySelector('${PANE} [data-id="version:v0"]')`);
   await ann.waitFor(`!!${FRAME}?.contentDocument?.body?.textContent.includes('First slide')`, 30_000);
   assert.equal(await ann.evaluate(`${FRAME}.contentDocument.body.textContent.includes('First slidex')`), false);
+  assert.equal(await ann.evaluate(`document.querySelector('${BAR} .who').textContent`), 'Start of the history');
   clean(ann);
 });
 
