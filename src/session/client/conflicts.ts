@@ -67,7 +67,7 @@ function texts(client: Client, base: string, mine: string, theirs: string): { sl
   return [...out.values()];
 }
 
-function ask(client: Client, base: string, mine: string, theirs: string): Promise<Side> {
+export function ask(client: Client, base: string, mine: string, theirs: string): Promise<Side> {
   style('conflicts', CSS);
   const items = texts(client, base, mine, theirs);
   const list = make('ul');

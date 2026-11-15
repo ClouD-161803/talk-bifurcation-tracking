@@ -5,9 +5,11 @@
 // that two tabs of one browser never write or send each other's copy
 
 import { changes, merge } from '../../editor/merge.ts';
+import { apply, diff, mergePatches } from '../patch.ts';
 import type { Version } from '../protocol.ts';
+import type { Side } from '../replica.ts';
 import type { Client } from './client.ts';
-import { arm } from './conflicts.ts';
+import { arm, ask } from './conflicts.ts';
 
 const DB = 'beeson-session';
 const STORE = 'copies';
@@ -45,6 +47,9 @@ type State = {
   note: string | null;
   // the copy of the page before its join, which the join sets until the first answer of hello
   early: (() => Copy | null) | null;
+  // records of pages that are gone conflicted with the copy taken over, and are merged once it is sent
+  left: boolean;
+  merging: boolean;
 };
 
 const states = new WeakMap<Client, State>();
@@ -83,20 +88,30 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   });
 }
 
-async function gone(row: Row): Promise<boolean> {
+// whether the page of a record is gone, with the locks read once
+async function goneOf(): Promise<(row: Row) => boolean> {
   const l = locks();
   if (l) {
     try {
-      return !(await l.query()).held?.some((h) => h.name === lockOf(row.id));
+      const held = new Set(((await l.query()).held ?? []).map((h) => h.name));
+      return (row) => !held.has(lockOf(row.id));
     } catch {
       // the heartbeat is read instead
     }
   }
-  return Date.now() - row.beat > GONE;
+  return (row) => Date.now() - row.beat > GONE;
+}
+
+// the records of pages of this address that are gone
+async function deadRows(st: State): Promise<Row[]> {
+  const rows = ((await run('readonly', (s) => s.index('key').getAll(key()))) ?? []) as Row[];
+  const gone = await goneOf();
+  return rows.filter((r) => r.id !== st.id && gone(r));
 }
 
 // the edits of each other row written into the text of the oldest row with merge.ts. a row whose
-// texts are too far apart for merge.ts is not taken, and a later join finds it again
+// texts are too far apart for merge.ts, or whose edits conflict with the copy, is not taken, and is
+// merged after this copy is sent, with the dialog of the conflicts
 function combine(rows: Row[]): { copy: Copy; taken: Row[] } {
   const [first, ...rest] = [...rows].sort((a, b) => a.beat - b.beat);
   const copy: Copy = { base: first.base, v: first.v, mine: first.mine };
@@ -104,7 +119,7 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[] } {
   for (const r of rest) {
     const edits = changes(r.base, r.mine);
     const merged = edits && merge(r.base, edits, copy.mine, 'ours');
-    if (!merged) continue;
+    if (!merged || merged.conflicts.length) continue;
     copy.mine = merged.text;
     taken.push(r);
   }
@@ -114,7 +129,7 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[] } {
 function stateOf(client: Client): State {
   let st = states.get(client);
   if (!st) {
-    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null };
+    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, left: false, merging: false };
     states.set(client, st);
   }
   return st;
@@ -139,10 +154,11 @@ export async function restore(client: Client): Promise<Copy | null> {
     st.unavailable = true;
     return null;
   }
-  const dead: Row[] = [];
-  for (const r of rows) if (r.id !== st.id && (await gone(r))) dead.push(r);
+  const gone = await goneOf();
+  const dead = rows.filter((r) => r.id !== st.id && gone(r));
   if (!dead.length) return null;
   const { copy, taken } = combine(dead);
+  st.left = dead.length > taken.length;
   const files = taken.flatMap((r) => r.files ?? []);
   for (const f of files) client.shell.media.adopt(f.path, f.blob);
   st.stored = true;
@@ -158,6 +174,46 @@ export async function restore(client: Client): Promise<Copy | null> {
   st.restored = client.shell.changedSlides(copy.base, copy.mine);
   arm(client);
   return copy;
+}
+
+// the records left by restore(), merged into the deck as a reconnect merges, with the dialog of the
+// conflicts, once the copy taken over is sent. update is called once the record of the page holds them
+async function rest(client: Client, st: State, update: () => void): Promise<void> {
+  st.left = false;
+  st.merging = true;
+  try {
+    const dead = await deadRows(st);
+    if (!dead.length) return;
+    const { copy, taken } = combine(dead);
+    st.left = dead.length > taken.length;
+    const s = client.snapshot();
+    if (!s || client.ended || changes(copy.base, s.mine) === null) return;
+    const files = taken.flatMap((r) => r.files ?? []);
+    // the edits of the copy merged into now, the text of the deck, as Replica.resync merges
+    const ours = diff(copy.base, copy.mine);
+    const into = (now: string, side: Side) => {
+      const theirs = diff(copy.base, now).filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
+      const m = mergePatches(theirs, ours, side);
+      return { text: apply(copy.base, m.patches), conflicts: m.conflicts };
+    };
+    const side: Side = into(s.mine, 'ours').conflicts.length ? await ask(client, copy.base, copy.mine, s.mine) : 'ours';
+    if (client.ended) return;
+    for (const f of files) client.shell.media.adopt(f.path, f.blob);
+    st.restored = client.shell.changedSlides(copy.base, copy.mine);
+    const now = client.snapshot() ?? s;
+    const mine = into(now.mine, side).text;
+    client.rewrite((text) => into(text, side).text);
+    st.stored = true;
+    await run('readwrite', (store) => {
+      for (const r of taken) store.delete(r.id);
+      store.put({ id: st.id, key: key(), base: now.base, v: now.v, mine, files: client.shell.media.unsaved(mine).map((f) => ({ path: f.path, blob: f.blob })), beat: Date.now() } satisfies Row);
+    });
+    update();
+  } catch {
+    // the records are kept for a later join
+  } finally {
+    st.merging = false;
+  }
 }
 
 // the numbers of the slides with edits of a copy, found again only for another copy, since a parse
@@ -263,6 +319,7 @@ export function install(client: Client): void {
       st.note = `Sent your changes${client.shell.onSlides(numbers)} from before the page was closed`;
       client.refresh();
     }
+    if (st.left && !st.merging) void rest(client, st, update);
   };
 
   const tick = (): void => {
