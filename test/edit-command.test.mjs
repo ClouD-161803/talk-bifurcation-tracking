@@ -624,3 +624,23 @@ test('add regression test: guests cannot fill the places of a session, and a pag
     assert.equal(host.status, 200, host.text);
   });
 });
+
+test('add regression test: an operation that arrives during the stop is refused rather than lost', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = (await post(edit.port, api('hello'), { name: 'Ana' })).json();
+  const first = (await raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${hello.v}`)).json();
+  const waiting = raw(edit.port, 'GET', `${api('events')}?token=${hello.token}&since=${first.v}`);
+  await until(() => edit.stderr.includes('Keep this window open'), 'the edit command to be ready');
+  edit.child.kill('SIGTERM');
+  // the answer of ended comes after the last write of index.html has begun
+  assert.ok((await waiting).json().ended);
+  const late = await post(edit.port, api('op'), { token: hello.token, seq: 1, base: first.v, patches: [{ start: 0, end: 0, text: '<!-- late -->\n' }] });
+  assert.equal(await edit.exited, 0);
+  const kept = text(join(talk, 'index.html')).startsWith('<!-- late -->\n');
+  const refused = late.status !== 200 || late.json().ok === false;
+  assert.ok(kept || refused, `the late operation was answered ${late.status} ${late.text} and is not in index.html`);
+});
