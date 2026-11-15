@@ -783,6 +783,19 @@ test('the initials and the tone of a person in the pane are those of the avatar'
   clean(b);
 });
 
+test('a page that is not mentioned gets no toast for a new comment', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await recordToasts(b);
+  await openPane(b);
+  await post(a, 0, 'Nobody is mentioned');
+  await sees(b, THREADS, [{ anchor: 'On Slide 1', texts: ['Nobody is mentioned'] }]);
+  await post(a, 1, 'Look, @Ben');
+  await sees(b, TOASTS, ['Ann mentioned you on slide 2']);
+  assert.deepEqual(await b.evaluate('window.__toasts'), ['Ann mentioned you on slide 2']);
+  clean(a);
+  clean(b);
+});
+
 test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or more', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
