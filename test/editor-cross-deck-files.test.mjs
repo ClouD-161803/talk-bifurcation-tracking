@@ -117,7 +117,7 @@ test('a file whose path has a malformed escape is carried under a safe name', as
   await b.evaluate(`(() => { const f = window.fetch; window.fetch = (u, o) => (/\\/figs\\/100%/.test(String(u)) ? Promise.resolve(String(u).includes('/a/') ? new Response('png') : new Response('', { status: 404 })) : f(u, o)); return true; })()`);
   await pasteSlides(b, FIRST_B, text);
   await pasted(b);
-  assert.equal(sectionOf(await render(b), FILES), CARRIED(sectionOf(a.source, FILES)).replace('src="figs/shared.png"', 'src="media/100-.png"'));
+  assert.equal(sectionOf(await render(b), FILES), CARRIED(sectionOf(a.source, FILES)).replace('src="figs/shared.png"', 'src="media/100.png"'));
 });
 
 test('a second paste of the same slide names the files that the first paste carried', async (t) => {
@@ -131,7 +131,9 @@ test('a second paste of the same slide names the files that the first paste carr
     await pasted(b);
   }
   const out = await render(b);
-  assert.equal(out.split(CARRIED(sectionOf(a.source, FILES))).length, 3, 'the two pastes do not name the same files');
+  // the second paste is given a fresh id for its paragraph, hence only its files are compared
+  const named = CARRIED(sectionOf(a.source, FILES)).match(/(src|poster)="media\/[^"]*"/g).join(' ');
+  assert.equal(out.match(/(src|poster)="media\/[^"]*"/g).join(' '), `${named} ${named} src="media/orbit.png"`);
   const saved = await b.evaluate(SAVE_INTO('twice'));
   assert.deepEqual(saved.files, { 'orbit-2.png': size('figs/orbit.png'), 'clip.mp4': size('figs/clip.mp4'), 'clip-2.png': size('figs/clip.png') });
 });

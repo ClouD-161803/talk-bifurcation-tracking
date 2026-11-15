@@ -1,9 +1,10 @@
 // the files of slides or elements pasted from another deck, kept as new media of this deck. each
 // relative src or poster of an img, a video, or a source, and each data-trajectories, is read from
 // the address of the first deck, and the pasted text names its new path under media/. a file that
-// this deck has at the same path with the same bytes keeps its path, and a file of this deck is
-// never replaced. where the browser refuses the read, e.g. from file:// or from another port, a
-// dialog asks for the folder of the first deck, which is kept for its address while the page lives
+// this deck has at the same path, or under media/, with the same bytes is named and not copied
+// again, and a file of this deck that the page can read is never replaced. where the browser
+// refuses the read, e.g. from file:// or from another port, a dialog asks for the folder of the
+// first deck, which is kept for its address while the page lives once a file is found in it
 
 import type { App } from '../app.ts';
 import type { Arrival } from '../commands/origin.ts';
@@ -57,15 +58,17 @@ async function same(a: Blob, b: Blob | null): Promise<boolean> {
   return x.every((v, i) => v === y[i]);
 }
 
-// the first path under media/ for name that the deck does not name, that the store does not
-// hold, and that is not a file of this deck that the page can read
-async function freePath(name: string, isTaken: (path: string) => boolean): Promise<string> {
+// the first path under media/ for name that holds the bytes of blob in this deck, with fresh
+// false, or else that the deck does not name, the store does not hold, and the page cannot read
+async function pathFor(blob: Blob, name: string, isTaken: (path: string) => boolean): Promise<{ path: string; fresh: boolean }> {
   const clean = safeName(name, 'file');
   const dot = clean.lastIndexOf('.');
   const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ''];
   for (let i = 1; ; i++) {
     const path = `${FOLDER}/${i === 1 ? clean : `${stem}-${i}${ext}`}`;
-    if (!media.get(path) && !isTaken(path) && !(await here(path))) return path;
+    const there = await here(path);
+    if (await same(blob, there)) return { path, fresh: false };
+    if (!there && !isTaken(path)) return { path, fresh: true };
   }
 }
 
@@ -78,8 +81,18 @@ const canPick = (): boolean => !!picker() || ('webkitdirectory' in HTMLInputElem
 
 const folders = new Map<string, Folder>();
 let dialog: Dialog | null = null;
+// the folder picked in the click on the button of the open dialog
+let picked: Promise<Folder | null> = Promise.resolve(null);
 
-const parts = (path: string): string[] => path.split(/[?#]/)[0].split('/').filter((p) => p && p !== '.').map(decodeURIComponent);
+// a malformed escape, e.g. in 100%.png, is kept as it is written
+const decoded = (s: string): string => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+const parts = (path: string): string[] => path.split(/[?#]/)[0].split('/').filter((p) => p && p !== '.').map(decoded);
 
 async function inHandle(dir: FileSystemDirectoryHandle, path: string): Promise<Blob | null> {
   try {
@@ -114,12 +127,12 @@ function pick(): Promise<Folder | null> {
   });
 }
 
-// the folder of the deck at address, asked for once. the picker is opened in the click on the
-// button, which grants it in every browser
+// the folder of the deck at address, asked for until one with a file of the deck is chosen. the
+// picker is opened in the click on the button, which grants it in every browser
 async function folderOf(address: string, name: string): Promise<Folder | null> {
   const kept = folders.get(address);
   if (kept) return kept;
-  let picked: Promise<Folder | null> = Promise.resolve(null);
+  picked = Promise.resolve(null);
   dialog ??= new Dialog({
     title: 'Choose the folder of the copied deck',
     text: '',
@@ -132,11 +145,9 @@ async function folderOf(address: string, name: string): Promise<Folder | null> {
       if (v === 'choose') picked = pick();
     },
   });
-  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in the folder ${name} of ${address}. The browser lets this page read them only once you choose this folder.`;
+  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in the folder ${name ? `${name} ` : ''}of ${address}. The browser lets this page read them only once you choose this folder.`;
   if ((await dialog.open('choose')) !== 'choose') return null;
-  const folder = await picked;
-  if (folder) folders.set(address, folder);
-  return folder;
+  return picked;
 }
 
 const listed = (n: string[]) => (n.length < 3 ? n.join(' and ') : `${n.slice(0, -1).join(', ')}, and ${n.at(-1)}`);
@@ -149,10 +160,13 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   const read = new Map<string, Read>();
   // the files of one deck are all refused once one is
   for (const p of paths) read.set(p, [...read.values()].includes('refused') ? 'refused' : await fetched(new URL(p, arrival.origin.deck).href));
-  const name = decodeURIComponent(new URL('.', arrival.origin.deck).pathname.split('/').filter(Boolean).pop() ?? '');
+  const name = decoded(new URL('.', arrival.origin.deck).pathname.split('/').filter(Boolean).pop() ?? '');
   const refused = paths.filter((p) => read.get(p) === 'refused');
   const folder = refused.length && canPick() ? await folderOf(arrival.origin.deck, name) : null;
-  if (folder) for (const p of refused) read.set(p, (await folder(p)) ?? 'missing');
+  if (folder) {
+    for (const p of refused) read.set(p, (await folder(p)) ?? 'missing');
+    if (refused.some((p) => read.get(p) instanceof Blob)) folders.set(arrival.origin.deck, folder);
+  }
   const isTaken = taken(app);
   const to = new Map<string, string>();
   const lost: string[] = [];
@@ -163,9 +177,8 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
       continue;
     }
     if (await same(blob, await here(p))) continue;
-    const path = await freePath(decodeURIComponent(p.split(/[?#]/)[0].split('/').pop() ?? ''), isTaken);
-    media.add(blob, path.slice(FOLDER.length + 1), isTaken);
-    to.set(p, path);
+    const { path, fresh } = await pathFor(blob, decoded(p.split(/[?#]/)[0].split('/').pop() ?? ''), isTaken);
+    to.set(p, fresh ? media.add(blob, path.slice(FOLDER.length + 1), isTaken).path : path);
   }
   arrival.texts = arrival.texts.map((text, i) => {
     let out = text;
@@ -173,7 +186,7 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
     return out;
   });
   const why = refused.length && !canPick() ? ', since this browser cannot open a folder' : '';
-  if (lost.length) arrival.notes.push(`${listed(lost)} ${lost.length > 1 ? 'were' : 'was'} not copied from the folder ${name}${why}.`);
+  if (lost.length) arrival.notes.push(`${listed(lost)} ${lost.length > 1 ? 'were' : 'was'} not copied from ${name ? `the folder ${name}` : arrival.origin.deck}${why}.`);
   // the theme reads a trajectory file from the disk only, and once per page
   const drawn = [...new Set(refs.flat().filter((r) => r.name === 'data-trajectories' && to.has(r.path)).map((r) => to.get(r.path)!))];
   if (drawn.length) arrival.notes.push(`The ${drawn.length > 1 ? 'backdrops' : 'backdrop'} of ${listed(drawn)} ${drawn.length > 1 ? 'are' : 'is'} drawn once the deck is saved and opened again.`);
