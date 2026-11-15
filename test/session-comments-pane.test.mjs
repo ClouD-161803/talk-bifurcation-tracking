@@ -225,6 +225,28 @@ test('more toasts than three in a row are joined into one, and each toast has a 
   clean(b);
 });
 
+test('a toast stays while the pointer is over it or the focus is in it', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const shown = await toastTime(a, 500);
+  await post(b, 0, 'Look, @Ann');
+  await sees(a, TOASTS, ['Ben mentioned you on slide 1']);
+  await a.evaluate(`document.querySelector('.beeson-session-toast button').focus()`);
+  await elapse(a, shown * 3);
+  assert.deepEqual(await a.evaluate(`[${TOASTS}, document.activeElement?.textContent]`), [['Ben mentioned you on slide 1'], 'Show']);
+  await a.evaluate(`document.activeElement.blur()`);
+  await sees(a, TOASTS, []);
+
+  await post(b, 0, 'Again, @Ann');
+  await sees(a, TOASTS, ['Ben mentioned you on slide 1']);
+  await a.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...(await center(a, '.beeson-session-toast > span')) });
+  await elapse(a, shown * 3);
+  assert.deepEqual(await a.evaluate(TOASTS), ['Ben mentioned you on slide 1']);
+  await a.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+  await sees(a, TOASTS, []);
+  clean(a);
+  clean(b);
+});
+
 test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or more', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
