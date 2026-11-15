@@ -453,3 +453,103 @@ test('offline, the Comment command is disabled, and a draft is kept until the pa
   assert.equal(await converge(server, [a]), TALK);
   clean(a, REFUSED);
 });
+
+test('the three tabs of the inspector and the keys of the pane, text that looks like HTML, and a phone of 390 px', { timeout: 300_000 }, async (t) => {
+  const { browser, server, pages: [a, b] } = await pair(t, ['<b>Ann</b>', 'Ben']);
+  const RAW = '<img src=x onerror="window.__html = 1"><b>bold</b> & <script>window.__html = 2</script>';
+
+  await t.test('the tabs Format, Steps, and Comments take their keys and the arrow keys', async () => {
+    await front(a);
+    assert.deepEqual(await a.evaluate(TABS), ['Format', 'Steps', 'Comments']);
+    await click(a, '.reveal .slides > section:nth-child(1)');
+    for (const [keys, tab] of [['Ctrl+Mod+4', 'Comments'], ['Ctrl+Mod+1', 'Format'], ['Ctrl+Mod+2', 'Steps'], ['Ctrl+Mod+4', 'Comments'], ['Ctrl+Mod+4', null]]) {
+      await press(a, keys);
+      await sees(a, TAB, tab, `the tab after ${keys}`);
+    }
+    await press(a, 'Ctrl+Mod+1');
+    await a.evaluate(`document.querySelector('#beeson-edit-tab-format').focus()`);
+    for (const [key, tab] of [['ArrowRight', 'Steps'], ['ArrowRight', 'Comments'], ['ArrowRight', 'Format'], ['ArrowLeft', 'Comments']]) {
+      await press(a, key);
+      await sees(a, `[${TAB}, document.activeElement.textContent]`, [tab, tab], `the tab after ${key}`);
+    }
+    assert.equal(await a.evaluate(`window.BeesonEditor.state('view.comments').checked`), true);
+  });
+
+  await t.test('the text and the name of a person are shown as text', async () => {
+    await show(a, 'One');
+    await click(a, '.reveal .slides > section:nth-child(1) p');
+    await comment(a, RAW);
+    await openPane(b);
+    await sees(b, THREADS, [{ anchor: 'On Paragraph: First slide', texts: [RAW] }]);
+    assert.deepEqual(await b.evaluate(`({
+      who: document.querySelector('${PANE} .item .who').textContent,
+      elements: document.querySelectorAll('${PANE} :is(.text, .who, .avatar) *').length,
+      html: window.__html ?? null,
+    })`), { who: '<b>Ann</b>', elements: 0, html: null });
+  });
+
+  await t.test('the keys of the pane move between the threads, reply, resolve, and leave', async () => {
+    await show(a, 'Two');
+    await click(a, '.reveal .slides > section:nth-child(2) > p');
+    await comment(a, 'The second thread');
+    const ids = await a.evaluate(`[...document.querySelectorAll('${PANE} article')].map((n) => n.dataset.id)`);
+    assert.equal(ids.length, 2);
+    const at = `document.activeElement?.closest('article')?.dataset.id ?? null`;
+    await a.evaluate(`document.querySelector('${PANE} article').focus()`);
+    await press(a, 'J');
+    await sees(a, `[${at}, Reveal.getIndices().h]`, [ids[1], 1]);
+    await press(a, 'K');
+    await sees(a, `[${at}, Reveal.getIndices().h]`, [ids[0], 0]);
+    await press(a, 'R');
+    await sees(a, `document.activeElement.matches('${PANE} article[data-id="${ids[0]}"] .reply textarea')`, true);
+    await press(a, 'Escape');
+    await sees(a, `document.activeElement.matches('${PANE} article[data-id="${ids[0]}"]')`, true);
+    await press(a, 'U');
+    await sees(a, `!!document.activeElement?.closest('${PANE}')`, false);
+    await a.evaluate(`document.querySelector('${PANE} article[data-id="${ids[1]}"]').focus()`);
+    await press(a, 'E');
+    await sees(a, `[...document.querySelectorAll('${PANE} article')].map((n) => n.dataset.id)`, [ids[0]]);
+  });
+
+  await t.test('Comment Badges hides and shows the badges on the canvas', async () => {
+    await show(a, 'One');
+    await badge(a, 'One', 'p', '1');
+    await click(a, '.reveal .slides > section:nth-child(1)');
+    await press(a, 'Escape');
+    await press(a, 'Shift+C');
+    await sees(a, `document.querySelector('.beeson-comment-badges').hidden`, true);
+    assert.equal(await a.evaluate(`window.BeesonEditor.state('view.commentBadges').checked`), false);
+    await press(a, 'Shift+C');
+    await badge(a, 'One', 'p', '1');
+  });
+
+  await t.test('on a phone, the button Comments, the pane, and a badge take a tap, with 32 px or more', async () => {
+    const c = await open(browser, sessionUrl(server.edit), { name: 'Cy', width: 390, height: 844, mobile: true });
+    await front(c);
+    assert.deepEqual(await c.evaluate(`(() => {
+      const b = document.querySelector('.beeson-session-comments');
+      const r = b.getBoundingClientRect();
+      return { inside: r.left >= 0 && r.right <= innerWidth, hit: b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
+    })()`), { inside: true, hit: true });
+    await sees(c, HITS('.beeson-session-comments'), []);
+    await show(c, 'One');
+    await sees(c, `${badgeOf(el(0, 'p'))}`, '1*');
+    await sees(c, HITS('.beeson-comment-badge'), []);
+    await touch(c, '.beeson-comment-badge');
+    await sees(c, TAB, 'Comments');
+    await sees(c, `document.activeElement?.closest('article')?.querySelector('.text')?.textContent`, RAW);
+    await sees(c, HITS(`.beeson-edit-inspector .tabs button, ${PANE} :is(button, textarea)`), []);
+    await touch(c, `${PANE} article .reply textarea`);
+    await type(c, 'From a phone');
+    await sees(c, HITS(`${PANE} :is(button, textarea)`), []);
+    await touch(c, `${PANE} article .reply .actions .primary`);
+    await sees(a, THREADS, [{ anchor: 'On Paragraph: First slide', texts: [RAW, 'From a phone'] }]);
+    await touch(c, '.beeson-session-comments');
+    await sees(c, TAB, null);
+    clean(c);
+  });
+
+  assert.equal(await converge(server, [a, b]), TALK);
+  clean(a);
+  clean(b);
+});
