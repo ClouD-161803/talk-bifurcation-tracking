@@ -157,8 +157,27 @@ export class MediaStore {
   saved(files: MediaFile[]): void {
     for (const f of files) {
       f.saved = true;
-      this.keep(() => tx('readwrite', (s) => s.delete([deck(), f.path])));
+      const path = f.path;
+      this.keep(() => tx('readwrite', (s) => s.delete([deck(), path])));
     }
+  }
+
+  // f is kept under path, the name that the edit command gave it, so that an element of another
+  // page that names the first name of f shows the file in media/. a file not uploaded yet that had
+  // path is given a new name for which taken is false, under which it is uploaded
+  renamed(f: MediaFile, path: string, taken: (path: string) => boolean): void {
+    const other = this.byPath.get(path);
+    this.move(f, path);
+    if (other && other !== f && !other.saved) this.move(other, this.free(path, taken));
+  }
+
+  // the row of a file not uploaded yet is moved as well, so that a draft finds it under path
+  private move(f: MediaFile, path: string): void {
+    const from = f.path;
+    if (this.byPath.get(from) === f) this.byPath.delete(from);
+    f.path = path;
+    this.byPath.set(path, f);
+    if (!f.saved) this.keep(() => tx('readwrite', (s) => (s.delete([deck(), from]), s.put({ deck: deck(), path, blob: f.blob } satisfies Row))));
   }
 
   // each src and poster under root, root included, that names a file of the store is shown from
