@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { typeKeys } from './helpers/editor.mjs';
-import { E, applied, applyOn, caretAtEnd, frame, sessionPage, showSlide } from './helpers/apply.mjs';
+import { E, applied, applyOn, caretAtEnd, sessionPage, showSlide } from './helpers/apply.mjs';
 
 let browser;
 before(async () => {
@@ -153,24 +153,17 @@ test('an edit made while an apply waits for its turn is merged into the text of 
   assert.deepEqual(b.errors, []);
 });
 
-test('an apply into a text with an open composition waits for its end, and an apply into another text does not', async (t) => {
+test('an apply into a text with an open composition resolves at once and leaves the text until its end, and an apply into another text is applied at once', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await showSlide(b, 'Show your steps');
   await caretAtEnd(b, P1);
   await b.evaluate(`${P1}.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }))`);
   const into = once(b.source, 'Design the complete', 'Plan the complete');
-  await b.evaluate(`(() => {
-    window.__applied = null;
-    ${E}.apply(${JSON.stringify(into)}).then((r) => (window.__applied = r.reload));
-    return true;
-  })()`);
-  await frame(b);
-  await frame(b);
-  assert.equal(await b.evaluate('window.__applied'), null, 'the apply waits for the composition');
-  assert.equal(await b.evaluate(`${E}.render()`), b.source);
+  assert.equal((await applyOn(b, into)).reload, false);
+  assert.equal(await b.evaluate(`${E}.render()`), b.source, 'the composing text is left as it is');
+  assert.equal(await b.evaluate(`${E}.session.text()`), into, 'the text read holds the change');
   await b.evaluate(`${P1}.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '' }))`);
-  await b.waitFor('window.__applied === false');
   await applied(b, into, 'after the composition');
   await caretAtEnd(b, P1);
   await b.evaluate(`${P1}.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }))`);

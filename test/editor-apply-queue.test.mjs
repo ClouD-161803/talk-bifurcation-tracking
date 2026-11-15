@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { click, typeKeys } from './helpers/editor.mjs';
-import { E, applyOn, caretAtEnd, frame, sessionPage, showSlide } from './helpers/apply.mjs';
+import { E, applyOn, caretAtEnd, frame, front, sessionPage, showSlide } from './helpers/apply.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 
 let browser;
@@ -188,40 +188,71 @@ test('an edit of the person is kept when the apply removes more than half of the
   assert.deepEqual(b.errors, []);
 });
 
-const COMPOSING = [
-  ['an apply into the composing text', (text) => once(text, 'Design the complete', 'Plan the complete')],
-  ['an apply that puts a box on the slide of the composing text', (text) => once(text, 'viewer\'s attention.</p>\n', 'viewer\'s attention.</p>\n  <p>A box of another person.</p>\n')],
-];
+const PLAN = (text) => once(text, 'Design the complete', 'Plan the complete');
+const compose = (page, type) => page.evaluate(`${P1}.dispatchEvent(new CompositionEvent(${JSON.stringify(type)}, { bubbles: true, data: '' }))`);
 
-for (const [label, ofSlide] of COMPOSING) {
-  test(`during a composition, ${label} waits for its end, while the apply after it and onChange do not`, async (t) => {
-    const b = await sessionPage(browser);
-    t.after(() => b.close());
-    await showSlide(b, 'Show your steps');
-    await caretAtEnd(b, P1);
-    await b.evaluate(`${P1}.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }))`);
-    const first = ofSlide(b.source);
-    const second = once(first, '<h1>Thank you</h1>', '<h1>Thank you Y</h1>');
-    const told = await changes(b);
-    await start(b, 'first', first);
-    await start(b, 'second', second);
-    await b.evaluate(`document.execCommand('insertText', false, 'q')`);
-    // the change on another slide is applied, and the typing is told, while the composition is open
-    await b.waitFor(`${THANKS}.textContent === 'Thank you Y'`);
-    await b.waitFor(`window.__changes > ${told}`);
-    const want = once(second, 'viewer\'s attention.</p>', 'viewer\'s attention.q</p>');
-    assert.equal(await sessionText(b), want, 'the text read during the composition');
-    assert.equal(await b.evaluate(`${P1}.textContent`), 'Design the complete slide first, then break it up into steps. Direct the viewer\'s attention.q', 'the composing text is left as it is');
-    assert.equal(await b.evaluate(`[...document.querySelectorAll('.reveal p')].some((p) => p.textContent.startsWith('A box'))`), false, 'the slide of the composing text is left as it is');
-    await b.evaluate(`${P1}.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '' }))`);
-    await b.waitFor(resolved('first', 'second'));
-    assert.deepEqual(await b.evaluate('window.__results'), { first: false, second: false });
-    assert.equal(await render(b), want);
-    assert.equal(await sessionText(b), want);
-    assert.deepEqual((await b.evaluate(`${E}.status()`)).problems, []);
-    assert.deepEqual(b.errors, []);
-  });
-}
+test('during a composition, an apply into the composing text resolves at once and holds back only this text, which takes the change at the end of the composition', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  const first = PLAN(b.source);
+  const second = once(first, '<h1>Thank you</h1>', '<h1>Thank you Y</h1>');
+  const told = await changes(b);
+  await start(b, 'first', first);
+  await start(b, 'second', second);
+  await b.evaluate(`document.execCommand('insertText', false, 'q')`);
+  // the client waits for each apply before it sends or applies anything more
+  await b.waitFor(resolved('first', 'second'));
+  assert.deepEqual(await b.evaluate('window.__results'), { first: false, second: false });
+  assert.equal(await b.evaluate(`${THANKS}.textContent`), 'Thank you Y');
+  await b.waitFor(`window.__changes > ${told}`);
+  const want = once(second, 'viewer\'s attention.</p>', 'viewer\'s attention.q</p>');
+  assert.equal(await sessionText(b), want, 'the text read during the composition');
+  assert.equal(await b.evaluate(`${P1}.textContent`), 'Design the complete slide first, then break it up into steps. Direct the viewer\'s attention.q', 'the composing text is left as it is');
+  await compose(b, 'compositionend');
+  await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
+  assert.equal(await render(b), want);
+  assert.equal(await sessionText(b), want);
+  assert.deepEqual((await b.evaluate(`${E}.status()`)).problems, []);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a composing text that loses the focus without the end of its composition takes the change held back', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  const text = PLAN(b.source);
+  await start(b, 'first', text);
+  await b.waitFor(`${E}.session.text() === ${JSON.stringify(text)}`);
+  assert.equal(await b.evaluate(`${P1}.textContent.startsWith('Design')`), true, 'the change is held back');
+  await caretAtEnd(b, `[...document.querySelectorAll('.reveal h2')].find((h) => h.textContent.startsWith('Show your steps'))`);
+  await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
+  assert.equal(await render(b), text);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a composing text on a page that is hidden without the end of its composition takes the change held back', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  const text = PLAN(b.source);
+  await start(b, 'first', text);
+  await b.waitFor(`${E}.session.text() === ${JSON.stringify(text)}`);
+  assert.equal(await b.evaluate(`${P1}.textContent.startsWith('Design')`), true, 'the change is held back');
+  const other = await browser.newPage();
+  t.after(() => other.close());
+  await front(other);
+  await b.waitFor('document.hidden');
+  await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
+  assert.equal(await render(b), text);
+  assert.deepEqual(b.errors, []);
+});
 
 test('a page that does not read as its text after an apply is loaded again through onReload', async (t) => {
   const b = await sessionPage(browser);
