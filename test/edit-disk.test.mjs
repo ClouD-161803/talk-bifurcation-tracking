@@ -5,7 +5,7 @@
 // write that keeps failing, and a file that is a symbolic link
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -156,4 +156,26 @@ test('an outside write back to an earlier text keeps the newer edits of the sess
   await until(() => lines.some((l) => l.includes('earlier text')), 'a line of the log on the earlier text');
   await until(() => readFileSync(file, 'utf8') === authority.text, 'the session text to be written back');
   assert.ok(authority.text.includes('<p>typo</p>'), 'the session lost its newer edit');
+});
+
+// a folder made read-only by chmod refuses a new file neither on Windows nor to root
+const noReadOnlyFolder = process.platform === 'win32' || process.getuid?.() === 0 ? 'a read-only folder does not refuse a write on Windows or to root' : false;
+
+test('a write that keeps failing is reported with the number of unwritten operations', { timeout: 120_000, skip: noReadOnlyFolder }, async (t) => {
+  const reports = [];
+  const { dir, file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, onWriteError: (e) => reports.push(e) });
+  try {
+    chmodSync(dir, 0o555);
+    insert(authority, '<h2>One', 'ONE ');
+    await until(() => reports.length > 0, 'a report of the failed write');
+    assert.equal(reports[0].unwritten, 1);
+    assert.ok(reports[0].message.length > 0);
+    chmodSync(dir, 0o755);
+    await until(() => reports.at(-1) === null && readFileSync(file, 'utf8').includes('ONE '), 'a report that the write succeeded again');
+    chmodSync(dir, 0o555);
+    insert(authority, '<h2>Two', 'TWO ');
+    assert.equal(disk.stopSync(), 1);
+  } finally {
+    chmodSync(dir, 0o755);
+  }
 });
