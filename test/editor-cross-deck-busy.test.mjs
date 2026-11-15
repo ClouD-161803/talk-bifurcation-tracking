@@ -90,20 +90,23 @@ test('Stop pastes the slide without the files not read by then, and does not ask
 });
 
 // Stop is clicked in the page as the dialog opens, since the dialog may be drawn before a click
-// of the test arrives
-const EARLY = `(() => {
+// of the test arrives. with busy, the page first computes for busy ms without a frame, as a slow
+// machine does, hence the dialog is still not drawn at the click
+const EARLY = (busy) => `(() => {
   window.__early = 0;
   new MutationObserver(() => {
     const stop = document.querySelector('${BUSY}[open] button');
     if (!stop || window.__early) return;
+    const until = performance.now() + ${busy};
+    while (performance.now() < until);
     window.__early = 1;
     stop.click();
   }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] });
   return true;
 })()`;
 
-test('Stop pressed before the dialog is drawn does not stop the reads', async (t) => {
-  const { b } = await heldPaste(t, EARLY, 'window.__early === 1');
+for (const [when, busy] of [['as the dialog opens', 0], ['after a long task without a frame', 600]]) test(`Stop pressed ${when}, before the dialog is drawn, does not stop the reads`, async (t) => {
+  const { b } = await heldPaste(t, EARLY(busy), 'window.__early === 1');
   hold = false;
   release();
   await pasted(b);
