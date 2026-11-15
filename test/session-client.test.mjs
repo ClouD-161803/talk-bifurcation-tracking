@@ -170,3 +170,25 @@ test('the edits of two pages reach each other and index.html byte for byte', { t
 
   clean(a);
 });
+
+test('a name held by another person asks whether it is this person, and Yes takes the person over', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'ann', wait: false });
+  const asked = `document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent`;
+  await b.waitFor(`${asked} === 'Ann has joined this deck before. Is that you?'`);
+  assert.deepEqual(await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].map((x) => x.textContent)`), ['Use another name', 'Yes, continue']);
+  await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].find((x) => x.textContent === 'Use another name').click()`);
+  await b.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
+  await b.evaluate(`document.querySelector('dialog.beeson-session-join input').value = 'Ann'`);
+  await b.evaluate(`document.querySelector('dialog.beeson-session-join .row button').click()`);
+  await b.waitFor(`${asked} === 'Ann has joined this deck before. Is that you?'`);
+  await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].find((x) => x.textContent === 'Yes, continue').click()`);
+  await b.waitFor(ONLINE);
+  assert.equal(await b.evaluate(`${C}.person`), await a.evaluate(`${C}.person`));
+  assert.equal(await b.evaluate(`${C}.name`), 'Ann');
+  clean(a);
+  clean(b);
+});
