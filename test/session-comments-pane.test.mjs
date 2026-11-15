@@ -425,6 +425,28 @@ test('only a name picked from the list is a mention, and a name typed by hand is
   clean(b);
 });
 
+test('an edit of a comment keeps two mentions with one shown name apart', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  // two people that never joined, whose names are thus shown as Someone
+  const twins = ['A'.repeat(22), 'B'.repeat(22)];
+  const id = await a.evaluate(`(async () => {
+    const c = ${C};
+    const t = c.base.text;
+    const at = t.indexOf('<section', t.indexOf('<section') + 1);
+    return (await c.transport.post('comments', { token: c.token, anchor: null, slide: { start: at, end: t.indexOf('>', at) + 1 }, base: c.base.v, text: 'cc @{${twins[0]}} and @{${twins[1]}}', mentions: ${JSON.stringify(twins)} })).id;
+  })()`);
+  await openPane(a);
+  await sees(a, `document.querySelector('${ARTICLE(id)} .text')?.textContent ?? null`, 'cc @Someone and @Someone');
+  await click(a, `${ARTICLE(id)} > .item:first-child .more`);
+  await menu(a, 'Edit');
+  await a.waitFor(`document.activeElement?.matches('${ARTICLE(id)} textarea')`);
+  await type(a, '!');
+  await click(a, `${ARTICLE(id)} > .item:first-child .actions .primary`);
+  await sees(a, `document.querySelector('${ARTICLE(id)} .text')?.textContent ?? null`, 'cc @Someone and @Someone!');
+  assert.deepEqual((await stored(a)).map((c) => [c.text, c.mentions]), [[`cc @{${twins[0]}} and @{${twins[1]}}!`, twins]]);
+  clean(a);
+});
+
 test('more toasts than three in a row are joined into one, and each toast has a button that closes it', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(a);
