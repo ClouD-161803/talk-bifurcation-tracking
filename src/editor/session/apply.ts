@@ -259,6 +259,21 @@ function setTag(ctx: Ctx, el: Element, from: Attr[], to: Attr[]): boolean {
 }
 
 type Page = { Beeson?: { mount?(root: Element): void; refreshChrome?(): void } };
+// the attributes of a surface that the editor sets on its drawing, see configure() in
+// src/surface.ts. a surface and a plot read every other attribute and their labels once, at mount
+const CAMERA = ['data-azimuth', 'data-elevation', 'data-zoom', 'data-turn', 'data-zscale'];
+const DRAWN = '.surface, .plot';
+
+// a change of the start tag of el from the attributes from to those of to that a drawing of the
+// theme around el does not read again
+function redrawn(el: Element, from: Attr[], to: Attr[]): boolean {
+  const holder = el.closest(DRAWN);
+  if (!holder) return false;
+  const a = stateOf(from).attrs;
+  const b = stateOf(to).attrs;
+  const free = holder === el && el.matches('.surface') ? CAMERA : [];
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].some((k) => k !== 'class' && k !== 'style' && a[k] !== b[k] && !free.includes(k));
+}
 
 // the slides of reveal.js read again, with the theme drawn again around them
 export function refresh(app: App): void {
@@ -294,6 +309,7 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
   if (spot.kind === 'tag') {
     const from = spot.el.attrs;
     if (!retag(ctx.source, spot.el, text)) return within(ctx, spot.el, spot.live);
+    if (redrawn(spot.live, from, spot.el.attrs)) return null;
     // a class or an attribute may be read by the theme or by reveal.js, e.g. a step, where a place
     // or a size in the style is not
     if (setTag(ctx, spot.live, from, spot.el.attrs)) refresh(app);
@@ -331,9 +347,10 @@ type Op =
 // after, the node of the first unit kept at the end
 type Plan = { live: Element; ops: Op[]; after: Element | null };
 
-// raw is set when a script or another element of raw text is put or taken among the children of
-// an element that is kept, which is a reload
-type Planner = { liveOf: Map<SrcEl, Element>; drops: { node: Element; bytes: string; role: string }[]; places: (Op & { kind: 'place' })[]; caretHost: Element | null; raw: boolean };
+// reload is set when a script or another element of raw text is put or taken among the children of
+// an element that is kept, or when a surface or a plot, which read their element once, would
+// change, which is a reload
+type Planner = { liveOf: Map<SrcEl, Element>; drops: { node: Element; bytes: string; role: string }[]; places: (Op & { kind: 'place' })[]; caretHost: Element | null; reload: boolean };
 
 // the visible text among the children of s, outside its units, which a plan does not change
 const strayText = (s: SrcEl): string => s.children.flatMap((c) => (c.kind === 'text' && /\S/.test(c.decoded) ? [c.decoded.trim()] : [])).join('\n');
@@ -406,7 +423,7 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
       ops.push(op);
       return;
     }
-    if (RAW_TEXT.has(u.el.tag)) pl.raw = true;
+    if (RAW_TEXT.has(u.el.tag) || live.closest(DRAWN)) pl.reload = true;
     const op = { kind: 'place' as const, src: u.el, bytes: body(nt, u), node: null };
     pl.places.push(op);
     ops.push(op);
@@ -414,7 +431,7 @@ function reconcile(ctx: Ctx, pl: Planner, from: SrcEl, to: SrcEl, live: Element)
   om.forEach((u, i) => {
     const node = nodeOf(u.el);
     if (used.has(i)) return;
-    if (RAW_TEXT.has(u.el.tag)) pl.raw = true;
+    if (RAW_TEXT.has(u.el.tag) || live.closest(DRAWN)) pl.reload = true;
     if (node) pl.drops.push({ node, bytes: body(ot, u), role: roleOf(node) });
   });
   let after: Element | null = null;
@@ -427,7 +444,12 @@ function change(ctx: Ctx, pl: Planner, a: SrcEl, b: SrcEl, node: Element | null)
   if (!node || a.tag !== b.tag || RAW_TEXT.has(a.tag) || !a.open !== !b.open || isStack(a) !== isStack(b)) return null;
   const aText = isTextElement(a);
   if (aText !== isTextElement(b)) return null;
-  if (aText) return ctx.pairing.byLive.get(node)?.src === a ? { kind: 'text', node, to: b } : null;
+  if (aText) {
+    if (ctx.pairing.byLive.get(node)?.src !== a) return null;
+    if (redrawn(node, a.attrs, b.attrs)) pl.reload = true;
+    return { kind: 'text', node, to: b };
+  }
+  if (redrawn(node, a.attrs, b.attrs)) pl.reload = true;
   if (VOID.has(a.tag)) return { kind: 'inner', node, from: a, to: b, plan: null };
   const plan = reconcile(ctx, pl, a, b, node);
   return plan && { kind: 'inner', node, from: a, to: b, plan };
@@ -529,10 +551,11 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
     live = up;
     to = atPath(next.slides, pathOf(el));
   }
-  const pl: Planner = { liveOf: new Map(), drops: [], places: [], caretHost: app.caretHost(), raw: false };
+  const pl: Planner = { liveOf: new Map(), drops: [], places: [], caretHost: app.caretHost(), reload: false };
   for (const [l, s] of ctx.pairing.elements) pl.liveOf.set(s, l);
+  if (live.closest(DRAWN) && live !== live.closest(DRAWN)) return null;
   const plan = reconcile(ctx, pl, el, to, live);
-  if (!plan || pl.raw) return null;
+  if (!plan || pl.reload) return null;
   // a unit taken from one element and placed in another keeps its node, unless it is a slide that
   // changes its role
   const pool = new Map<string, Element[]>();
