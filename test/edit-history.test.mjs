@@ -141,3 +141,108 @@ test('a file that cannot be read is moved aside, and a new history begins', { ti
     });
   }
 });
+
+// a deck with a title slide, a hidden slide, a stack of two vertical slides, and a closing slide
+// with an appendix after it
+const STACKED = [
+  '<!doctype html>',
+  '<body><div class="reveal"><div class="slides">',
+  '<section class="title">',
+  '  <h1>Title</h1>',
+  '</section>',
+  '<section>',
+  '  <h2>Alpha</h2>',
+  '  <p>One</p>',
+  '  <p>Two</p>',
+  '</section>',
+  '<section data-visibility="hidden">',
+  '  <h2>Hidden</h2>',
+  '</section>',
+  '<section>',
+  '  <section>',
+  '    <h2>Down one</h2>',
+  '  </section>',
+  '  <section>',
+  '    <h2>Down two</h2>',
+  '  </section>',
+  '</section>',
+  '<section>',
+  '  <h2>Beta</h2>',
+  '</section>',
+  '<section class="closing">',
+  '  <h2>Thanks</h2>',
+  '</section>',
+  '<section>',
+  '  <h2>Appendix</h2>',
+  '</section>',
+  '<section>',
+  '  <section><h2>Appendix down</h2></section>',
+  '</section>',
+  '</div></div></body>',
+  '',
+].join('\n');
+
+test('the slides of a version are numbered as the status bar numbers them', { timeout: 60_000 }, async (t) => {
+  await t.test('a slide at the top by its place in the show, and a vertical slide as reveal.js counts it', () => {
+    const numberOf = (heading) => slidesOf(STACKED).find((s) => STACKED.slice(s.start, s.end).includes(heading))?.number;
+    // the hidden slide takes the place of the shown slide after it, and the stack is one place
+    assert.deepEqual(['Title', 'Alpha', 'Hidden', 'Beta', 'Thanks', 'Appendix<'].map(numberOf), [1, 2, 3, 4, 5, 6]);
+    // reveal.js counts the hidden slide and each vertical slide, and leaves out the title slide
+    assert.equal(numberOf('Down one'), 3);
+    assert.equal(numberOf('Down two'), 4);
+    // the closing slide and the appendix are uncounted for reveal.js
+    assert.equal(numberOf('Appendix down'), 6);
+    assert.equal(slidesOf(STACKED).length, 9);
+  });
+
+  const { authority, history } = open(sessionDir(t), STACKED);
+  const close = () => history.close();
+
+  await t.test('a changed slide', () => {
+    replace(authority, 'Down two', 'Down 2', ANN);
+    close();
+    const v = history.list().versions[0];
+    assert.deepEqual(v.slides, [4]);
+    assert.equal(v.removed, undefined);
+  });
+
+  await t.test('an added slide', () => {
+    replace(authority, '<section>\n  <h2>Beta</h2>', '<section>\n  <h2>New</h2>\n</section>\n<section>\n  <h2>Beta</h2>', BO);
+    close();
+    const v = history.list().versions[0];
+    assert.deepEqual(v.slides, [4]);
+    assert.equal(v.removed, undefined);
+  });
+
+  await t.test('a removed slide, numbered in the version before', () => {
+    replace(authority, '<section>\n  <h2>New</h2>\n</section>\n', '', ANN);
+    close();
+    assert.deepEqual(history.list().versions[0].slides, []);
+    assert.deepEqual(history.list().versions[0].removed, { slides: [4], elements: 0 });
+  });
+
+  await t.test('an element removed from a slide that stays', () => {
+    replace(authority, '  <p>Two</p>\n', '', ANN);
+    close();
+    const v = history.list().versions[0];
+    assert.deepEqual(v.slides, [2]);
+    assert.deepEqual(v.removed, { slides: [], elements: 1 });
+  });
+
+  await t.test('a removed vertical slide and a changed one in one version', () => {
+    replace(authority, '  <section>\n    <h2>Down one</h2>\n  </section>\n', '', BO);
+    replace(authority, 'Down 2', 'Down 2b', ANN);
+    close();
+    const v = history.list().versions[0];
+    assert.deepEqual(v.slides, [3]);
+    assert.deepEqual(v.removed, { slides: [3], elements: 0 });
+    assert.deepEqual(history.list().versions[0].authors, [BO, ANN]);
+  });
+
+  await t.test('slideChanges on two texts', () => {
+    const before = STACKED;
+    const after = STACKED.replace('<p>One</p>', '<p>Uno</p>');
+    const at = after.indexOf('Uno');
+    assert.deepEqual(slideChanges(before, slidesOf(before), after, slidesOf(after), [{ start: at, end: at + 3 }]), { slides: [2] });
+  });
+});
