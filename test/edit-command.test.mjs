@@ -763,3 +763,24 @@ test('add regression test: a guest who knows the person id of the host cannot re
   for (let i = 0; i < 8; i++) await guest({ name: 'claudio', claim: true });
   assert.equal((await raw(edit.port, 'GET', `${api('events')}?token=${host.token}&since=`)).status, 200, 'the page of the host is dropped for a page of a guest');
 });
+
+test('add regression test: names that look the same as a name present, or that show nothing, are refused', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const hello = (name) => post(edit.port, `${edit.base}.session/hello`, { name });
+  assert.equal((await hello('Claudio')).status, 200);
+  // a zero-width space, a soft hyphen, the fullwidth forms, a right-to-left override, and a joiner
+  for (const name of ['Claudio​', 'Cl­audio', 'Ｃｌａｕｄｉｏ', 'Claudio‮', '⁧Claudio', 'Clau‍dio']) {
+    assert.deepEqual((await hello(name)).json(), { taken: { name: 'Claudio' } }, JSON.stringify(name));
+  }
+  for (const name of ['​', '‮‍', '️', '⁦ ­']) assert.equal((await hello(name)).status, 400, JSON.stringify(name));
+  // a family emoji joined by zero-width joiners, an emoji with its variation selector, and names in
+  // Arabic, Hebrew, and Persian, the last with a zero-width non-joiner, are kept as typed
+  for (const name of ['\u{1F468}‍\u{1F469}‍\u{1F467} Ana', '❤️ Bo', 'سارا', 'דנה', 'نیک‌نام']) {
+    const answer = await hello(name);
+    assert.equal(answer.status, 200, JSON.stringify(name));
+    assert.equal(answer.json().name, name);
+  }
+});
