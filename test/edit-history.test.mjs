@@ -10,6 +10,8 @@ import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { Authority, History, diff, slideChanges, slidesOf } from '../theme/edit.mjs';
 import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
@@ -525,4 +527,27 @@ test('a change of index.html while the edit command was not running becomes a ve
   assert.ok(detail.marks.every((m) => m.author === 'file'));
   assert.equal((await raw(second.port, 'GET', `${second.base}index.html?version=${versions[1].id}`)).text, written);
   assert.ok(existsSync(join(folder.talk, '.session', 'history.jsonl')));
+});
+
+test('200 versions of a deck of 400 kB keep the changes of each version, not a copy of the deck each', { timeout: 120_000 }, (t) => {
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc');
+  const slides = Array.from({ length: 400 }, (_, i) => `<section>\n  <h2>Slide ${i}</h2>\n  <p>${'Words of the slide. '.repeat(48)}</p>\n</section>\n`);
+  const authority = new Authority(`<!doctype html>\n<body>\n${slides.join('')}</body>\n`, { maxOps: 10 });
+  const history = new History(sessionDir(t), authority, { quiet: 3_600_000, longest: 3_600_000 });
+  gc();
+  gc();
+  const before = process.memoryUsage().heapUsed;
+  for (let i = 0; i < 200; i++) {
+    const at = authority.text.indexOf('</p>', authority.text.indexOf(`<h2>Slide ${i}<`));
+    authority.enter([{ start: at, end: at, text: ` <b>typed in version ${i}</b>` }], ANN);
+    history.close();
+  }
+  gc();
+  gc();
+  const growth = (process.memoryUsage().heapUsed - before) / 2 ** 20;
+  assert.equal(history.list().versions.length, 200);
+  // a copy of the deck per version would be 80 MB
+  assert.ok(growth < 16, `the heap grew by ${growth.toFixed(1)} MB`);
+  history.stopSync();
 });
