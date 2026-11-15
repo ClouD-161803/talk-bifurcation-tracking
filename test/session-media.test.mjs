@@ -280,3 +280,27 @@ test('a picture over 16 MB is refused on the host as well, and a video of the ho
   assert.equal(await refuse('big.mp4', 'video/mp4', 65), 'big.mp4 is larger than 64 MB, the largest file that can be sent to the others');
   clean(ann);
 });
+
+test('an upload that stalls fails at its deadline, and Try again sends the picture and the edits after it', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, server.edit);
+  // the deadline shortened from 30 s to 1 s, to which 1 s per MB is added
+  const ann = await tab(browser, `${p.url}&session-upload-wait=1000`);
+  const before = server.read();
+  p.next('stall');
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await edit(ann, 1, 'p', ' typed');
+  await ann.waitFor(`${STATE} === ${JSON.stringify(FAILED)}`, 15_000);
+  assert.equal(await ann.evaluate(ACTION), 'Try again');
+  assert.equal(server.read(), before);
+  await click(ann, '.beeson-session-action');
+  const text = await converge(server, [ann]);
+  assert.match(text, /<p>Second slide typed<\/p>/);
+  assert.deepEqual(sources(text)[0], ['media/plot.png']);
+  assert.equal(p.puts, 2);
+  assert.equal(await ann.evaluate(STATE), 'Saved to index.html');
+  clean(ann, PROXIED);
+});
