@@ -12,6 +12,7 @@ import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TEXT } from './helpers/client.mjs';
 import { click, type, typeKeys } from './helpers/editor.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
+import { ANSWERS, NET } from './helpers/net.mjs';
 import { post, until } from './helpers/session.mjs';
 
 const P = 'window.BeesonSession.presence()';
@@ -841,7 +842,7 @@ test('after Leave Session and after the end of the session, no element stays loc
   // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered soon
   const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
   const pages = [];
-  for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name }));
+  for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name, script: `${NET}\n${ANSWERS}` }));
   await converge(server, pages);
   const [ana, ben, cy] = pages;
   const p = el(1, 'p');
@@ -851,9 +852,15 @@ test('after Leave Session and after the end of the session, no element stays loc
   await until(() => server.read().includes('<p>Second slidex</p>'), 'the letter of Ana in index.html');
   await until(async () => (await ben.evaluate(LOCKED(p))) && (await cy.evaluate(LOCKED(p))), 'the paragraph locked on the pages of Ben and Cy');
   await front(ben);
-  await ben.evaluate(`${C}.leave()`);
+  // Ben leaves while a poll of his is in flight, and its answer, which his client drops, arrives after
+  await ben.waitFor(`(() => {
+    if (__net.log.findLast((l) => l.url.includes('/.session/events'))?.status !== null) return false;
+    window.__before = window.__answers;
+    ${C}.leave();
+    return true;
+  })()`);
   await until(() => ben.evaluate(`${C}.connection === 'ended'`), 'Ben to leave');
-  await until(() => ben.evaluate(`${C}.people.length === 2`), 'the answer of the poll of Ben after he left');
+  await ben.waitFor(`window.__answers > window.__before`);
   assert.deepEqual(await ben.evaluate(`({ locked: ${LOCKED(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { locked: false, resolved: 0, timers: 0 });
   // a caret and keys after the end begin no hold
   await ben.evaluate(`document.querySelectorAll('dialog[open]').forEach((d) => d.close())`);
