@@ -8,6 +8,7 @@ import { install as conflicts } from './conflicts.ts';
 import { install as copy, restore } from './copy.ts';
 import { install as end } from './end.ts';
 import { join, rename } from './join.ts';
+import { install as layer } from './layer.ts';
 import { install as media } from './media.ts';
 import { install as people } from './people.ts';
 import { install as presence, presenceOf } from './presence.ts';
@@ -15,7 +16,7 @@ import { install as share, pageLink } from './share.ts';
 import { install as state } from './state.ts';
 
 // each part reads the Client and its events. the avatars go before the save state, and Share last
-const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, presence, people, share];
+const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, presence, layer, people, share];
 
 let current: Client | null = null;
 
