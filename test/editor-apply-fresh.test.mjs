@@ -107,3 +107,16 @@ test('a text element whose tags do not balance asks for a reload, and a slide pu
     ['an em left open', (s) => once(s, 'Direct the viewer', 'Direct <em>the viewer'), true],
   ]);
 });
+
+test('two changes in two text nodes of a paragraph with a formula keep both text nodes', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  const p = `[...document.querySelectorAll('.reveal p')].find((p) => p.textContent.startsWith('where'))`;
+  await b.evaluate(`(() => { const p = ${p}; window.__first = p.firstChild; window.__last = p.lastChild; })()`);
+  const first = once(b.source, 'where \\(\\tilde U\\) is', 'where X\\(\\tilde U\\) is');
+  assert.equal((await applyOn(b, first)).reload, false);
+  const second = once(first, 'X\\(\\tilde U\\) is', 'X\\(\\tilde U\\)Y is');
+  assert.equal((await applyOn(b, second)).reload, false);
+  await applied(b, second, 'two changes');
+  assert.deepEqual(await b.evaluate(`(() => { const p = ${p}; return [p.firstChild === window.__first, p.lastChild === window.__last, p.firstChild.data, p.lastChild.data]; })()`), [true, true, 'where X', 'Y is the effective potential.']);
+});
