@@ -219,6 +219,34 @@ test('during a composition, an apply into the composing text resolves at once an
   assert.deepEqual(b.errors, []);
 });
 
+test('during a composition, the changes before and after the composing text are applied at once', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  let text = once(b.source, '<h2>Chapter one</h2>', '<h2>Chapter one A</h2>');
+  text = once(text, '<h2>Show your steps one at a time</h2>', '<h2>Show your steps one at a time B</h2>');
+  text = PLAN(text);
+  text = once(text, 'Two elements with the same index', 'Two items with the same index');
+  text = once(text, 'one slide per step.</li>\n  </ul>\n', 'one slide per step.</li>\n  </ul>\n  <p>A box of another person.</p>\n');
+  text = once(text, '<h1>Thank you</h1>', '<h1>Thank you C</h1>');
+  await start(b, 'all', text);
+  await b.waitFor(`(() => {
+    const heads = [...document.querySelectorAll('.reveal h2')].map((h) => h.textContent);
+    return heads.includes('Chapter one A') && heads.includes('Show your steps one at a time B') && ${THANKS}?.textContent === 'Thank you C'
+      && [...document.querySelectorAll('.reveal li')].some((li) => li.textContent.startsWith('Two items'))
+      && [...document.querySelectorAll('.reveal p')].some((p) => p.textContent === 'A box of another person.');
+  })()`);
+  assert.equal(await b.evaluate(`${P1}.textContent`), 'Design the complete slide first, then break it up into steps. Direct the viewer\'s attention.', 'the composing text is left as it is');
+  await compose(b, 'compositionend');
+  await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
+  assert.equal(await b.evaluate('window.__results.all'), false);
+  assert.equal(await render(b), text);
+  assert.deepEqual((await b.evaluate(`${E}.status()`)).problems, []);
+  assert.deepEqual(b.errors, []);
+});
+
 test('a composing text that loses the focus without the end of its composition takes the change held back', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
