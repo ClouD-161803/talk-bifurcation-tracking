@@ -1,6 +1,6 @@
 name: pr-agent
 
-# PR-Agent, the open-source reviewer of the-pr-agent/pr-agent, describes, reviews, and improves
+# PR-Agent, the open-source reviewer of the-pr-agent/pr-agent, describes and reviews
 # every pull request that a branch of this repository opens, with a model on the NRP gateway, and
 # it answers the commands of a PR comment, such as /review, /improve, /describe, and /ask. The
 # model and its key are set here, since the key is a secret, and the knobs that belong to the
@@ -113,5 +113,5 @@ jobs:
           OPENAI.KEY: ${{ secrets.NRP_API_KEY }}
           github_action_config.auto_describe: "true"
           github_action_config.auto_review: "true"
-          github_action_config.auto_improve: "true"
+          github_action_config.auto_improve: "false"
           github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
