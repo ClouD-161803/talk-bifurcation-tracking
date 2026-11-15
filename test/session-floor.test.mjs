@@ -145,3 +145,31 @@ test('the bubble of a refusal for a text element on another slide names the slid
   clean(ben);
 });
 
+// the hidden status region of the bubbles, with its text
+const SAID = `(() => {
+  const all = document.querySelectorAll('.beeson-bubble-said');
+  const r = all[0]?.getBoundingClientRect();
+  return { count: all.length, role: all[0]?.getAttribute('role') ?? null, text: all[0]?.textContent.trim() ?? null, size: r ? Math.max(r.width, r.height) : null, kept: !!all[0] && all[0] === window.__said };
+})()`;
+
+test('a refusal is read from one hidden status region, which is in the page before the first bubble', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await front(ben);
+  const first = await ben.evaluate(`(() => { window.__said = document.querySelector('.beeson-bubble-said'); return ${SAID}; })()`);
+  assert.deepEqual(first, { count: 1, role: 'status', text: '', size: 1, kept: true }, 'an empty status region before any bubble');
+  await caretAtEnd(ana, p);
+  await until(() => ben.evaluate(LOCKED(p)), 'the paragraph that Ana holds to be locked on the page of Ben');
+  for (let i = 0; i < 2; i++) {
+    await unbubble(ben);
+    await ben.evaluate(`${p}.focus()`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED);
+    assert.equal(await ben.evaluate(`document.querySelector('.beeson-bubble').getAttribute('role')`), null, 'the bubble itself has no role');
+    assert.deepEqual(await ben.evaluate(SAID), { count: 1, role: 'status', text: REFUSED, size: 1, kept: true }, `the refusal ${i + 1} in the status region`);
+  }
+  clean(ana);
+  clean(ben);
+});
+
