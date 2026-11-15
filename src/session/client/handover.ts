@@ -5,6 +5,7 @@ import type { App } from '../../editor/app.ts';
 import type { Edit } from '../../editor/merge.ts';
 import type { MediaStore } from '../../editor/media/store.ts';
 import type { Port } from '../../editor/session/session.ts';
+import type { PresenceHooks } from '../../editor/session/presence.ts';
 import type { Dialog, DialogOptions } from '../../editor/ui/dialog.ts';
 import type { MenuItem, MenuOptions, OpenMenu } from '../../editor/ui/menu.ts';
 
@@ -29,6 +30,8 @@ export type Handover = {
   onSlides(numbers: number[]): string;
   // the images and videos added in the editor and not saved yet
   media: MediaStore;
+  // what presence.ts and layer.ts of the client read of the editor, from src/editor/session/presence.ts
+  presence: PresenceHooks;
 };
 
 // window.BeesonSession, defined by theme/session.js. start() resolves with false when the page is
