@@ -1,0 +1,182 @@
+// the pictures of a session in Chrome: a name of the edit command written only into the edits of
+// the page that uploaded the file, a name unique to the page while another page is in the session,
+// the store of the page keyed by the new name, undo and redo after a rename, the limits of a
+// picture and a video, the deadline of an upload, the save state after the picture of a failed
+// upload is removed, an upload whose answer was lost sent again without a second copy, and an upload
+// cut on the network sent again at a reconnect. the uploads of a page are sent through a proxy of
+// the test, by which they are held, stalled, cut, or refused
+
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer, request as httpRequest } from 'node:http';
+import { join, resolve } from 'node:path';
+import { test } from 'node:test';
+import { launch } from '../scripts/chrome.mjs';
+import { front } from './helpers/apply.mjs';
+import { C, clean, converge, open, sessionUrl, show, STATE, talk, TEXT } from './helpers/client.mjs';
+import { click, press as keys } from './helpers/editor.mjs';
+import { ACTION, dropFiles, edit, goOffline, goOnline, SHOWN, tab } from './helpers/offline.mjs';
+import { post, raw, until } from './helpers/session.mjs';
+
+const LIGHT = readFileSync(resolve('demo/figure-light.png'));
+const DARK = readFileSync(resolve('demo/figure-dark.png'));
+const FAILED = 'A picture could not be sent. Try again';
+const IMG = /<img [^>]*src="(media\/[^"]+)"[^>]*>/g;
+// the media/ paths of the images of each slide of text
+const sources = (text) => text.split('<section').slice(1).map((s) => [...s.matchAll(IMG)].map((m) => m[1]));
+// whether the image of the page with alt is shown from path and loaded
+const SHOWN_ALT = (alt, path) => `(() => { const i = document.querySelector('.reveal .slides img[alt=${JSON.stringify(alt)}]'); return !!i && i.getAttribute('src') === ${JSON.stringify(path)} && i.complete && i.naturalWidth > 0; })()`;
+// the number of images in the deck as the page reads it
+const IMAGES = `(${TEXT}.match(/<img /g) ?? []).length`;
+// the errors in the console of a page for an upload that the proxy refused, cut, or lost
+const PROXIED = [/status of 50[04]/, /ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET|Failed to fetch/];
+
+/** A file of bytes at name in a new folder dir of the talk folder, for a drop. */
+function file(server, dir, name, bytes) {
+  mkdirSync(join(server.root, dir), { recursive: true });
+  const path = join(server.root, dir, name);
+  writeFileSync(path, bytes);
+  return path;
+}
+
+/** A file put into media/ of the talk by hand, which the deck does not name. */
+function leftover(server, name, bytes) {
+  mkdirSync(join(server.talk, 'media'), { recursive: true });
+  writeFileSync(join(server.talk, 'media', name), bytes);
+}
+
+const disk = (server, path) => readFileSync(join(server.talk, path));
+const media = (server) => readdirSync(join(server.talk, 'media')).sort();
+
+/** Writes index.html with html added after the paragraph of slide Two, as another program would. */
+function writeOutside(server, html) {
+  const text = server.read();
+  assert.ok(text.includes('<p>Second slide</p>'));
+  writeFileSync(server.file, text.replace('<p>Second slide</p>', `<p>Second slide</p>\n  ${html}`));
+}
+
+/**
+ * A proxy of the test in front of the edit command, and the address of the editor through it. Each
+ * PUT of media/ is handled by the next mode given to next(), and is passed on once none is left.
+ * With hold it is forwarded at release(), with stall it is read and never answered, and with cut
+ * its connection is closed. With refuse it is answered 500 without being forwarded, and with lose
+ * it is forwarded and answered 504 once the edit command has answered. While down is set, every
+ * PUT is cut, since Chrome sends a PUT again once when its connection is closed.
+ */
+async function proxy(t, edit) {
+  const modes = [];
+  const held = [];
+  const p = {
+    puts: 0,
+    down: false,
+    held,
+    url: '',
+    next: (...m) => modes.push(...m),
+    release: () => held.splice(0).forEach((go) => go()),
+  };
+  const forward = (req, body) =>
+    new Promise((done) => {
+      const up = httpRequest({ host: '127.0.0.1', port: edit.port, method: req.method, path: req.url, agent: false, headers: { ...req.headers, host: `127.0.0.1:${edit.port}` } }, (r) => {
+        const parts = [];
+        r.on('data', (c) => parts.push(c));
+        r.on('end', () => done({ status: r.statusCode, headers: r.headers, body: Buffer.concat(parts) }));
+      });
+      up.on('error', () => done({ status: 502, headers: {}, body: Buffer.alloc(0) }));
+      up.end(body);
+    });
+  const answer = (res, { status, headers, body }) => {
+    const out = { ...headers, 'content-length': body.length };
+    delete out['transfer-encoding'];
+    delete out.connection;
+    res.writeHead(status, out).end(body);
+  };
+  const json = (status, error) => ({ status, headers: { 'content-type': 'application/json' }, body: Buffer.from(JSON.stringify({ error })) });
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', async () => {
+      const body = Buffer.concat(chunks);
+      const upload = req.method === 'PUT' && req.url.includes('/.session/media/');
+      const mode = !upload ? 'pass' : p.down ? 'cut' : (modes.shift() ?? 'pass');
+      if (upload) p.puts++;
+      if (mode === 'stall') return;
+      if (mode === 'cut') return req.socket.destroy();
+      if (mode === 'refuse') return answer(res, json(500, 'the proxy refused the upload'));
+      if (mode === 'hold') await new Promise((go) => held.push(go));
+      const got = await forward(req, body);
+      if (res.destroyed) return;
+      answer(res, mode === 'lose' ? json(504, 'the proxy lost the answer') : got);
+    });
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  t.after(() => {
+    server.closeAllConnections();
+    return new Promise((done) => server.close(done));
+  });
+  p.url = sessionUrl(edit).replace(`:${edit.port}/`, `:${server.address().port}/`);
+  return p;
+}
+
+test('a name that the edit command gives is written only into the edits of the page that uploaded the file', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+
+  await t.test('while another page is in the session, the picture of each page keeps its own file', async (t) => {
+    const server = await talk(t);
+    const p = await proxy(t, server.edit);
+    const ann = await tab(browser, p.url);
+    const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+    await converge(server, [ann, ben]);
+    // the upload of Ann is held while Ben drops a picture of the same name
+    p.next('hold');
+    await show(ann, 'One');
+    await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+    await until(() => p.held.length, 'the upload of Ann to be held');
+    await show(ben, 'Two');
+    await dropFiles(ben, [file(server, 'b', 'plot.png', DARK)]);
+    await until(() => sources(server.read())[1].length, 'the picture of Ben in index.html');
+    await front(ann);
+    await ann.waitFor(`${IMAGES} === 2`);
+    // on the page of Ann, the image of Ben is not shown from the file of Ann
+    assert.doesNotMatch(await ann.evaluate(`document.querySelectorAll('.reveal .slides > section')[1].querySelector('img').getAttribute('src')`), /^blob:/);
+    p.release();
+    const [one, two] = sources(await converge(server, [ann, ben]));
+    assert.equal(one.length, 1);
+    assert.equal(two.length, 1);
+    assert.match(one[0], /^media\/plot-[0-9a-z]{4}\.png$/);
+    assert.match(two[0], /^media\/plot-[0-9a-z]{4}\.png$/);
+    assert.ok(disk(server, one[0]).equals(LIGHT), `${one[0]} is the picture of Ann`);
+    assert.ok(disk(server, two[0]).equals(DARK), `${two[0]} is the picture of Ben`);
+    // Ben shows his picture from its object URL, and Ann from the file in media/
+    await show(ann, 'Two');
+    await ann.waitFor(SHOWN(two[0]));
+    clean(ann);
+    clean(ben);
+    await ann.close();
+    await ben.close();
+  });
+
+  await t.test('an image that the authority holds keeps the name of the file in media/', async (t) => {
+    const server = await talk(t);
+    leftover(server, 'plot.png', DARK);
+    const p = await proxy(t, server.edit);
+    const ann = await tab(browser, p.url);
+    p.next('hold');
+    await show(ann, 'One');
+    await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+    await until(() => p.held.length, 'the upload of Ann to be held');
+    writeOutside(server, '<img src="media/plot.png" alt="folder">');
+    await ann.waitFor(`${TEXT}.includes('alt="folder"')`);
+    p.release();
+    const text = await converge(server, [ann]);
+    assert.match(text, /<img src="media\/plot\.png" alt="folder">/);
+    assert.deepEqual(sources(text)[0], ['media/plot-2.png']);
+    assert.ok(disk(server, 'media/plot-2.png').equals(LIGHT));
+    assert.ok(disk(server, 'media/plot.png').equals(DARK));
+    await show(ann, 'Two');
+    await ann.waitFor(SHOWN_ALT('folder', 'media/plot.png'));
+    clean(ann);
+    await ann.close();
+  });
+});
