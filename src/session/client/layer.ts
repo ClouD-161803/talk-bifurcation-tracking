@@ -7,6 +7,7 @@
 import type { Shape } from '../../editor/session/presence.ts';
 import type { Client } from './client.ts';
 import { bdi, make, style } from './dom.ts';
+import { badge } from './people.ts';
 import type { Resolved } from './presence.ts';
 
 // in ms, the time that a flag shows the name before it collapses to a chip with initials
@@ -36,11 +37,6 @@ html.beeson-previewing .beeson-presence, html.beeson-playing .beeson-presence, h
 .beeson-presence .flags:not(.hover) .flag.chip .short { display: inline; }
 .beeson-presence .caret { position: absolute; width: 2px; margin-left: -1px; background: var(--tone); box-shadow: 0 0 0 1px var(--edge); }
 `;
-
-const initials = (name: string): string => {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  return (words.length > 1 ? words[0][0] + words[words.length - 1][0] : Array.from(words[0] ?? '?').slice(0, 2).join('')).toUpperCase();
-};
 
 // the position of a box of fractions of the slide, grown by px on each side
 const placed = (s: Shape, px: number): Partial<CSSStyleDeclaration> => ({
@@ -115,7 +111,7 @@ export function install(client: Client): void {
         flag.dataset.client = r.client;
         const long = make('span', 'long');
         long.append(bdi(r.name), r.typing ? ' is typing' : '');
-        flag.append(long, make('span', 'short', initials(r.name)));
+        flag.append(long, make('span', 'short', badge(client, r.person).initials));
         flag.title = r.name;
         flags.append(flag);
       }
