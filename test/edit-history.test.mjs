@@ -97,3 +97,25 @@ test('the text of every version is rebuilt from the file after a restart', { tim
   assert.deepEqual(again.history.found.patches, []);
   assert.equal(again.history.textOf('unknown'), null);
 });
+
+test('a last line cut by a crash is left out, and the file is appended to whole again', { timeout: 60_000 }, (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'history.jsonl');
+  const { authority, history } = open(dir, DECK);
+  replace(authority, 'One', 'Uno', ANN);
+  const v1 = history.close();
+  const t1 = authority.text;
+  history.stopSync();
+  const whole = readFileSync(file, 'utf8');
+  appendFileSync(file, '{"kind":"version","id":"cut","time":1,"authors":["Ann"],"patches":[{"sta');
+  const again = open(dir, t1);
+  assert.deepEqual(again.history.list().versions.map((v) => v.id), [v1.id]);
+  assert.equal(readFileSync(file, 'utf8'), whole);
+  replace(again.authority, 'Two', 'Deux', BO);
+  const v2 = again.history.close();
+  again.history.stopSync();
+  const third = open(dir, again.authority.text);
+  assert.deepEqual(third.history.list().versions.map((v) => v.id), [v2.id, v1.id]);
+  assert.equal(third.history.textOf(v1.id), t1);
+  assert.equal(third.history.textOf(v2.id), again.authority.text);
+});
