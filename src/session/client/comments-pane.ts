@@ -181,6 +181,7 @@ class Pane {
   render(): void {
     const had = !!document.activeElement?.closest('.beeson-comments article');
     const give = this.salvage();
+    this.retarget();
     for (const b of this.filters.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.filter === this.filter));
     const places = this.comments.places();
     const shown = this.sorted(places).filter((t) => this.visible(t));
@@ -280,6 +281,15 @@ class Pane {
       toast(named(this.nameOf(was.t.author), ' deleted this thread. Your reply is kept as a new comment.'));
     }
     return give;
+  }
+
+  // a draft whose element or slide left the deck, e.g. deleted by another person, moves to its
+  // slide, or to the slide shown, as a reply does in salvage()
+  private retarget(): void {
+    const d = this.draft;
+    if (!d || (d.el?.isConnected !== false && d.slide.isConnected)) return;
+    const slide = d.slide.isConnected ? d.slide : this.shell.target().slide;
+    if (slide) this.drafted(null, slide);
   }
 
   // the draft and the replies being typed written to sessionStorage, at most once a second
@@ -735,6 +745,8 @@ class Pane {
         this.render();
       };
       const field = this.field('Comment, or type @ to mention someone', 'Comment', async (text, mentions) => {
+        // the tab may be hidden, and render() then did not move the draft
+        this.retarget();
         const d = this.draft!;
         const thread = await this.comments.add(d.el, d.slide, text, mentions);
         this.draft = null;
