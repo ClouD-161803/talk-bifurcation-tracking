@@ -910,6 +910,37 @@ test('a composition in a text element whose content is twice in its slide after 
   assert.deepEqual([title(end), para(end), slideOf(end, 1).includes('<ul>')], ['<h2>SecondKJ slide SecondK slide</h2>', '<p>Second你好 slide</p>', false]);
 });
 
+// the content of an empty paragraph is written by an insertion at its start, which rest takes once.
+// with drag, the place of the paragraph is written as during a drag, without an entry of the
+// history, and the edit of its start tag ends where the content starts
+async function emptyComposition(t, drag) {
+  const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>Second slide</p>\n  <p></p>']] });
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  const [ana, ben] = pages;
+  await front(ana);
+  assert.ok(await ana.evaluate(`(() => {
+    const q = ${el(1, 'p:nth-of-type(2)')};
+    if (${drag}) { ${C}.app.tagEdits.set(q, { translate: { x: 8, y: 0 } }); q.style.translate = '8px 0px'; }
+    ${HOLD};
+    q.focus(); getSelection().collapse(q, 0);
+    return document.activeElement === q;
+  })()`));
+  await ana.send('Input.imeSetComposition', { text: 'K', selectionStart: 1, selectionEnd: 1 });
+  await ana.evaluate(RELEASE);
+  await ana.send('Input.imeSetComposition', { text: 'KJ', selectionStart: 2, selectionEnd: 2 });
+  await until(async () => (await ana.evaluate(`${C}.acked()`)) && (await ana.evaluate(TEXT)) === server.read(), 'the text that Ana reads during the composition in index.html');
+  const p = drag ? '<p style="translate: 8px 0px">' : '<p>';
+  assert.equal(slideOf(server.read(), 1), `<section>\n  <h2>Two</h2>\n  <p>Second slide</p>\n  ${p}</p>\n  <ul>\n    <li>Alpha</li>\n    <li>Beta</li>\n  </ul>\n</section>`);
+  await ana.send('Input.insertText', { text: '你好' });
+  assert.ok(slideOf(await converge(server, pages), 1).includes(`\n  ${p}你好</p>\n`));
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+}
+
+test('a composition in an empty paragraph that starts while the history is busy keeps the paragraph whole in index.html', { timeout: 300_000 }, (t) => emptyComposition(t, false));
+
+test('a composition in an empty paragraph during a drag of it that starts while the history is busy reaches index.html only once it is committed', { timeout: 300_000 }, (t) => emptyComposition(t, true));
+
 const heading = (text) => text.match(/<h2>[^\n]*<\/h2>/g)[0];
 
 // the transaction writes OneX into the heading of slide One, waits until the test ends it, and
