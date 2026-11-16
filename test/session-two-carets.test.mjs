@@ -296,3 +296,19 @@ test('a word composed at the start of a word that another person makes bold duri
   assert.equal(text, '<p>Second 你好<strong>slide</strong></p>');
   assert.deepEqual([await loads(ana), ana.errors, ben.errors], [1, [], []], 'the page of Ana is not loaded again');
 });
+
+test('a paste of more than 500 characters and a key of a third person on the other side of an unread key of the person are kept with it', { timeout: 240_000 }, async (t) => {
+  const paste = 'x'.repeat(600);
+  const text = await race(t, {
+    names: ['Ana', 'Ben', 'Cleo'],
+    ana: [6, 6, 'A'],
+    marker: 'slideC',
+    ben: async (ben, cleo) => {
+      assert.ok(await caretAt(ben, 0));
+      await ben.evaluate(`document.execCommand('insertText', false, ${JSON.stringify(paste)})`);
+      await caretAtEnd(cleo, p);
+      await typeKeys(cleo, 'C');
+    },
+  });
+  assert.equal(text, `<p>${paste}SecondA slideC</p>`);
+});
