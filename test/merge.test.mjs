@@ -117,7 +117,8 @@ test('revert removes the letters of the person and keeps the same letter typed n
   // the person typed "ab", and another person typed "a" on its left, which the diff of the two
   // texts places between "a" and "b", inside the span of the person
   assert.equal(revert('XabY', 'XY', 'XaabY'), 'XaY');
-  assert.equal(revert('Plan the and slide.', 'Plan the slide.', 'Plan the aand slide.'), 'Plan the aslide.');
+  // the span of the person is either " and" or "and ", and the two give different texts
+  assert.equal(revert('Plan the and slide.', 'Plan the slide.', 'Plan the aand slide.'), null);
 });
 
 test('revert finds the span of the person with each &nbsp; read as a space, and keeps an insertion of another person after a space that the browser rewrote', () => {
@@ -127,6 +128,20 @@ test('revert finds the span of the person with each &nbsp; read as a space, and 
   assert.equal(revert(after, before, 'X <code>x+1</code>&nbsp;qab cdslide'), 'X <code>x+1</code>&nbsp;qslide');
   assert.equal(revert(after, before, 'X <code>x+1</code> qab cdslide'), 'X <code>x+1</code> qslide');
   assert.equal(revert(before, after, 'X <code>x+1</code> qslide'), 'X <code>x+1</code> qab cdslide', 'the redo puts the text of the person back after the insertion on its left');
+});
+
+test('revert removes a word typed with a leading space before a space, and refuses rather than moves a space when another person typed at an end of it', () => {
+  // the person typed " big" after "Hello", which the two texts also give as "big " after "Hello "
+  const before = '<p>Hello world</p>';
+  const after = '<p>Hello big world</p>';
+  const typed = (q) => revert(after, before, `${after.slice(0, q)}X${after.slice(q)}`);
+  assert.equal(typed(after.indexOf(' big')), '<p>HelloX world</p>');
+  assert.equal(typed(after.indexOf('world')), '<p>Hello Xworld</p>');
+  assert.equal(typed(after.indexOf('</p>')), '<p>Hello worldX</p>');
+  // X after the space of the person and X after big are not told apart by the texts
+  assert.equal(typed(after.indexOf('big')), null);
+  assert.equal(typed(after.indexOf(' world')), null);
+  assert.equal(typed(after.indexOf('ig')), null);
 });
 
 test('revert gives null for an insertion inside the span that is not beside it, a removal across the span, and too many edits of others', () => {
