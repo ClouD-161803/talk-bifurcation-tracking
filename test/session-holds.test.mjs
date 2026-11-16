@@ -526,6 +526,82 @@ test('a drag of a figure whose caption is held, or of the plate around it, is re
   clean(ben);
 });
 
+const FIGURE = '<figure id="first"><img src="brand/logo.png" alt="A"><figcaption class="caption">The first figure.</figcaption></figure>';
+const THREE = `<section>
+  <h2>Three</h2>
+  <figure id="second"><img src="brand/logo.png" alt="B"><figcaption class="caption">The second figure.</figcaption></figure>
+  <div class="foot">Another note</div>
+</section>`;
+
+test('Caption off, Footnote off, and a layout of the slide are refused when they would take off a held caption or footnote, and taken on a slide where nothing is held', { timeout: 180_000 }, async (t) => {
+  const edits = [
+    ['  <p>First slide</p>', `  <p>First slide</p>\n  ${FIGURE}`],
+    ['  <p>Second slide</p>', '  <p>Second slide</p>\n  <div class="foot">A note</div>'],
+    ['  </ul>\n</section>\n', `  </ul>\n</section>\n\n${THREE}\n`],
+  ];
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  const caption = el(0, 'figcaption');
+  const foot = el(1, '.foot');
+  const slide = (n) => `${C}.app.doc.elementText(document.querySelectorAll('.reveal .slides > section')[${n}])`;
+  const none = async () => {
+    await front(ben);
+    await leave(ben);
+    await ben.evaluate(`${C}.app.selection.clear()`);
+  };
+  const run = async (id) => {
+    await unbubble(ben);
+    await ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
+    await frame(ben);
+  };
+  // each case: the command, how Ben selects on the slide of index n, and the element that it takes off
+  const cases = [
+    ['figure.caption with the picture selected', 'figure.caption', (n) => select(ben, el(n, 'img')), (n) => el(n, 'figcaption')],
+    ['figure.caption with a caret in the caption', 'figure.caption', async (n) => {
+      await none();
+      await ben.evaluate(`(() => { const c = ${el(n, 'figcaption')}; c.focus(); getSelection().collapse(c.firstChild, 3); })()`);
+      await frame(ben);
+    }, (n) => el(n, 'figcaption')],
+    ['slide.layout.title with nothing selected', 'slide.layout.title', none, null],
+    ['slide.footnote with nothing selected', 'slide.footnote', none, (n) => el(n, '.foot')],
+  ];
+  // the slide of the held element of each case, and the third slide, where nothing is held
+  const holds = [[caption, 0, 'One'], [caption, 0, 'One'], [caption, 0, 'One'], [foot, 1, 'Two']];
+  for (const [i, [what, id, put, off]] of cases.entries()) {
+    const [held, n, heading] = holds[i];
+    if (held !== holds[i - 1]?.[0]) {
+      await show(ana, heading);
+      await holding(ana, ben, held, ' typed');
+      // a clock of Ben far behind keeps the hold for the whole test
+      await ben.evaluate(`${P}.skew = -1e8`);
+    }
+    await show(ben, heading);
+    await put(n);
+    const before = await ben.evaluate(slide(n));
+    await run(id);
+    assert.equal(await ben.evaluate(slide(n)), before, `${what} leaves the slide of the held element as it was`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, what);
+    await show(ben, 'Three');
+    await put(2);
+    const three = await ben.evaluate(slide(2));
+    await run(id);
+    assert.notEqual(await ben.evaluate(slide(2)), three, `${what} on a slide where nothing is held is taken`);
+    assert.equal(await ben.evaluate(BUBBLE), null, `${what} on a slide where nothing is held`);
+    if (off) assert.equal(await ben.evaluate(`${off(2)} === null`), true, `${what} on a slide where nothing is held takes off its element`);
+    for (let k = 0; k < 4 && (await ben.evaluate(slide(2))) !== three; k++) await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+    assert.equal(await ben.evaluate(slide(2)), three, `${what} on a slide where nothing is held is undone`);
+  }
+  assert.ok(await caretOf(ben, 'Ana', foot), 'the caret of Ana stays in the footnote');
+  await caretAtEnd(ana, foot);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /The first figure\. typed<\/figcaption><\/figure>/);
+  assert.match(text, /<div class="foot">A note typed more<\/div>/);
+  clean(ana);
+  clean(ben);
+});
+
 const PREVIEWS = ['slide.previewTransition', 'slide.guides.copy', 'steps.preview', 'steps.playFrom', 'backdrop.preview', 'preview.backdrop', 'preview.selectBackdrop'];
 
 test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, New Slide, Text Box, Copy Style, Format, Comment, a preview, and Copy Guides', { timeout: 180_000 }, async (t) => {
