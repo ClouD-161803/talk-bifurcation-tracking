@@ -2357,6 +2357,7 @@ var headBytes = (t) => bytesOf({ ...t, replies: [] }) + 1;
 var replyBytes = (r) => bytesOf(r) + 1;
 var tooLarge = () => fail(413, "the comments of the deck are too large");
 var copyRemoved = (r) => r.slide === void 0 ? { text: r.text && copy(r.text) } : { text: r.text && copy(r.text), slide: copy(r.slide) };
+var NOT_SAVED = "The host could not save the comment";
 var readOnly = () => fail(503, "the comments could not be read at the start, hence they are read only until the edit command is started again");
 function cleanText(raw) {
   if (typeof raw !== "string" || !raw.trim()) return fail(400, "the text is empty");
@@ -2421,6 +2422,8 @@ var Comments = class {
     this.timer = null;
     this.writing = null;
     this.lastWrite = 0;
+    // the count of writes made at once, after which a write in progress is older than the file
+    this.writesNow = 0;
     // the count of changes, and the count that the file holds
     this.edits = 0;
     this.saved = 0;
@@ -2494,8 +2497,12 @@ var Comments = class {
     this.threads.set(thread.id, thread);
     this.heads.set(thread.id, head);
     this.bytes += head;
-    this.changed([thread.id]);
-    return thread;
+    const undo = () => {
+      this.threads.delete(thread.id);
+      this.heads.delete(thread.id);
+      this.bytes -= head;
+    };
+    return this.commit([thread.id], undo, NOT_SAVED) ?? thread;
   }
   reply(id, person, body) {
     const thread = this.threads.get(id);
@@ -2512,12 +2519,18 @@ var Comments = class {
     const reply = { id: body.id ?? newId(), author: person, time: this.now(), text };
     const size2 = replyBytes(reply);
     if (this.bytes + size2 > this.maxBytes) return tooLarge();
+    const mentioned = thread.mentions.length;
     thread.replies.push(reply);
     this.bytes += size2;
     this.mention(thread, mentions);
     this.recount(thread);
-    this.changed([id]);
-    return thread;
+    const undo = () => {
+      thread.replies.pop();
+      this.bytes -= size2;
+      thread.mentions.length = mentioned;
+      this.recount(thread);
+    };
+    return this.commit([id], undo, NOT_SAVED) ?? thread;
   }
   // a new text of the thread, or of its reply of id body.reply, by its author
   edit(id, person, body) {
@@ -2534,13 +2547,21 @@ var Comments = class {
     const edited = this.now();
     const grow = target === thread ? headBytes({ ...thread, text, edited }) - this.heads.get(id) : replyBytes({ ...target, text, edited }) - replyBytes(target);
     if (grow > 0 && this.bytes + grow > this.maxBytes) return tooLarge();
+    const was = { text: target.text, edited: target.edited, mentioned: thread.mentions.length };
     if (target !== thread) this.bytes += grow;
     target.text = text;
     target.edited = edited;
     this.mention(thread, mentions);
     this.recount(thread);
-    this.changed([id]);
-    return thread;
+    const undo = () => {
+      target.text = was.text;
+      if (was.edited === void 0) delete target.edited;
+      else target.edited = was.edited;
+      if (target !== thread) this.bytes -= grow;
+      thread.mentions.length = was.mentioned;
+      this.recount(thread);
+    };
+    return this.commit([id], undo, NOT_SAVED) ?? thread;
   }
   // the thread, or its reply of id body.reply, deleted by its author. null when the thread is gone
   remove(id, person, body) {
@@ -2550,30 +2571,51 @@ var Comments = class {
     if (isFailure(target)) return target;
     if (target.author !== person) return fail(403, "only the author may delete a comment");
     if (this.locked) return readOnly();
+    const error2 = "The host could not delete the comment";
     if (target === thread) {
+      const threads = [...this.threads];
+      const head = this.heads.get(id);
+      const size2 = head + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
+      const check = this.checks.get(id);
+      const reads = [...this.readBy].filter(([, read]) => read.has(id)).map(([p, read]) => [p, read.get(id)]);
       this.threads.delete(id);
-      this.bytes -= this.heads.get(id) + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
+      this.bytes -= size2;
       this.heads.delete(id);
       this.checks.delete(id);
       for (const [p, read] of this.readBy) if (read.delete(id) && !read.size) this.readBy.delete(p);
-      this.changed([id], true);
-      return null;
+      const undo2 = () => {
+        this.threads = new Map(threads);
+        this.bytes += size2;
+        this.heads.set(id, head);
+        if (check) this.checks.set(id, check);
+        for (const [p, at] of reads) this.readBy.set(p, (this.readBy.get(p) ?? /* @__PURE__ */ new Map()).set(id, at));
+      };
+      return this.commit([id], undo2, error2, true) ?? null;
     }
-    thread.replies = thread.replies.filter((r) => r !== target);
+    const replies = thread.replies;
+    thread.replies = replies.filter((r) => r !== target);
     this.bytes -= replyBytes(target);
-    this.changed([id]);
-    return thread;
+    const undo = () => {
+      thread.replies = replies;
+      this.bytes += replyBytes(target);
+    };
+    return this.commit([id], undo, error2) ?? thread;
   }
   resolve(id, person, resolved) {
     const thread = this.threads.get(id);
     if (!thread) return fail(404, "there is no such thread");
     if (resolved === !!thread.resolved) return thread;
     if (this.locked) return readOnly();
+    const was = thread.resolved;
     if (resolved) thread.resolved = { by: person, time: this.now() };
     else delete thread.resolved;
     this.recount(thread);
-    this.changed([id]);
-    return thread;
+    const undo = () => {
+      if (was) thread.resolved = was;
+      else delete thread.resolved;
+      this.recount(thread);
+    };
+    return this.commit([id], undo, resolved ? "The host could not resolve the thread" : "The host could not reopen the thread") ?? thread;
   }
   // the time up to which person has read the comments, which only grows
   seen(person, time) {
@@ -2612,18 +2654,35 @@ var Comments = class {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     if (this.saved === this.edits || this.locked) return;
+    this.writeNow();
+  }
+  // the file written at once, or false when it could not be
+  writeNow() {
     const tmp = this.tmpName();
     try {
       writeFileSync3(tmp, this.serialize());
       renameRetriedSync(tmp, this.file);
       this.saved = this.edits;
+      this.writesNow++;
+      return true;
     } catch (e) {
       this.log(`could not write ${this.file}: ${e.message}`);
       try {
         unlinkSync3(tmp);
       } catch {
       }
+      return false;
     }
+  }
+  // a change of the threads written before it is told and answered, since a page drops a comment
+  // that the host answered and then lost, or else taken back by undo and refused with error
+  commit(ids, undo, error2, gone = false) {
+    if (!this.writeNow()) {
+      undo();
+      return fail(503, error2);
+    }
+    this.changed(ids, gone, true);
+    return null;
   }
   // resolves once a write in progress is over
   async idle() {
@@ -2781,14 +2840,15 @@ var Comments = class {
     if (ids.length) this.changed(ids);
     else if (threads.length) this.dirty();
   }
-  changed(ids, gone = false) {
+  // written is true when the file holds the changes already
+  changed(ids, gone = false, written = false) {
     for (const id of ids) this.changes.push({ v: ++this.v, id, gone });
     if (this.changes.length > LOG_MAX) {
       const cut = this.changes.length - LOG_MAX;
       this.logStart = this.changes[cut - 1].v;
       this.changes = this.changes.slice(cut);
     }
-    this.dirty();
+    if (!written) this.dirty();
     if (ids.length) for (const fn of this.listeners) fn();
   }
   // true when a patch touches the element of the check of t, or ends or starts at it
@@ -2837,16 +2897,17 @@ var Comments = class {
   async write() {
     if (this.stopped) return;
     const edits = this.edits;
+    const writesNow = this.writesNow;
     this.lastWrite = Date.now();
     const tmp = this.tmpName();
     try {
       await writeFile3(tmp, this.serialize());
-      if (this.stopped) {
+      if (this.stopped || this.writesNow !== writesNow) {
         await unlink2(tmp).catch(() => {
         });
         return;
       }
-      await renameRetried(tmp, this.file);
+      renameRetriedSync(tmp, this.file);
       this.saved = Math.max(this.saved, edits);
     } catch (e) {
       await unlink2(tmp).catch(() => {
