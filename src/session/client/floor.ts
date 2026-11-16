@@ -162,8 +162,11 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
     if (by) return by;
   }
   // Caption takes off the caption of the selected figure, and Footnote the footnote of the slide,
-  // which need not be selected
-  const off = c.id === 'figure.caption' ? sel.items[0]?.closest('figure, .figure-box') : c.id === 'slide.footnote' ? app.current()?.querySelector('.foot:not([data-generated])') : null;
+  // which need not be selected. a drawing of a file, from the gallery of Insert Backdrop or the
+  // Drawing popup, takes the labels off the backdrop given or the one of the slide
+  const given = (arg as { el?: unknown } | null | undefined)?.el;
+  const backdrop = given instanceof Element ? given : app.current()?.querySelector(':scope > .backdrop');
+  const off = c.id === 'figure.caption' ? sel.items[0]?.closest('figure, .figure-box') : c.id === 'slide.footnote' ? app.current()?.querySelector('.foot:not([data-generated])') : c.id === 'insert.backdrop' || c.id === 'backdrop.builtIn' ? backdrop : null;
   const by = off && presence.holderOf(off);
   if (by) return by;
   // a selection of elements that contains a held element takes no command that changes it, and a
