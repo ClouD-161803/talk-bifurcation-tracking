@@ -502,7 +502,7 @@ export function checkOf(text: string, a: Anchor): Check {
 
 // the start tag of the name of a, the nearest to its offset, whose element reads as at the check, or
 // null. the checksum holds the length of the text it was taken of
-export function findChecked(text: string, a: Anchor, c: Check): Anchor | null {
+function findChecked(text: string, a: Anchor, c: Check): Anchor | null {
   const len = parseInt(c.sum, 16);
   const at = (o: number) => {
     if (checksum(text.slice(o, o + len)) !== c.sum) return null;
@@ -527,6 +527,19 @@ export function findChecked(text: string, a: Anchor, c: Check): Anchor | null {
     }
   }
   return null;
+}
+
+// every start tag of name whose element reads as at the check, in the order of the text
+export function allChecked(text: string, name: string, c: Check): Anchor[] {
+  const len = parseInt(c.sum, 16);
+  const out: Anchor[] = [];
+  if (!c.tag) return out;
+  for (let o = text.indexOf(c.tag); o >= 0; o = text.indexOf(c.tag, o + 1)) {
+    if (checksum(text.slice(o, o + len)) !== c.sum) continue;
+    const t = startTagAt(text, o);
+    if (t && t.tag === name) out.push(t);
+  }
+  return out;
 }
 
 // items checked against text, e.g. at a start of the edit command when their text is not known. an

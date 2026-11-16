@@ -14,7 +14,7 @@ import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
-import { goOffline, tab } from './helpers/offline.mjs';
+import { copied, goOffline, tab } from './helpers/offline.mjs';
 import { post as request, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
@@ -519,22 +519,36 @@ test('a draft and a reply being typed are kept through a reload of the page, and
   clean(a);
 });
 
-test('a draft stays on its element when an element before it is removed or inserted while its page is away', { timeout: 300_000 }, async (t) => {
+// the label and the text of the draft of the pane, or null
+const DRAFTED = `(() => { const d = document.querySelector('${PANE} .draft'); return d && { label: d.querySelector('.anchor').textContent, text: d.querySelector('textarea').value }; })()`;
+
+// page leaves, change is made, which has reads in index.html, and page loads again, as a tab does
+// that a phone drops in the background. others are the pages that stay
+async function left(server, page, others, change, has) {
+  const url = await page.evaluate('location.href');
+  await page.goto('about:blank');
+  await change();
+  await until(() => has(server.read()), 'the change to reach index.html');
+  await converge(server, others);
+  await page.goto(url);
+  await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await page.waitFor(ONLINE);
+  await converge(server, [page, ...others]);
+}
+
+// a draft with the text Half a draft on target, of kind element or slide, and its label and text
+async function drafted(page, target, kind = 'element') {
+  await front(page);
+  await page.evaluate(`window.BeesonEditor.exec('insert.comment', { kind: '${kind}', target: ${target} })`);
+  await page.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(page, 'Half a draft');
+  return page.evaluate(DRAFTED);
+}
+
+test('a draft stays on its element when an element before it is removed or inserted while its page is away', { timeout: 660_000 }, async (t) => {
   const { server, pages: [a, b] } = await pair(t);
-  const state = `(() => { const d = document.querySelector('${PANE} .draft'); return d && { label: d.querySelector('.anchor').textContent, text: d.querySelector('textarea').value }; })()`;
-  // the page of Ann leaves, the deck is changed, and the page loads again, as a tab does that a
-  // phone drops in the background
-  const away = async (change, has) => {
-    const url = await a.evaluate('location.href');
-    await a.goto('about:blank');
-    await change();
-    await until(() => has(server.read()), 'the change to reach index.html');
-    await converge(server, [b]);
-    await a.goto(url);
-    await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
-    await a.waitFor(ONLINE);
-    await converge(server, [a, b]);
-  };
+  const state = DRAFTED;
+  const away = (change, has) => left(server, a, [b], change, has);
   // the draft of Ann is on the first item of the list, which another item follows
   await show(a, 'Two');
   await a.evaluate(`window.BeesonEditor.exec('insert.comment', { kind: 'element', target: ${el(1, 'li')} })`);
@@ -590,6 +604,173 @@ test('a draft on an element that its page inserted is kept on it through a reloa
   await a.waitFor(ONLINE);
   await sees(a, state, first, 'the draft after a reload');
   clean(a);
+});
+
+test('a draft stays on its element when its page leaves with an edit before it that the edit command has not acknowledged', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'Two');
+  const first = await drafted(a, el(1, 'li'));
+  assert.deepEqual(first, { label: 'On Item: Alpha', text: 'Half a draft' });
+  // the operations of the page are held, as on a network that does not answer
+  await a.evaluate(`(() => {
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      return url.includes('/.session/op') ? new Promise(() => {}) : fetched.call(this, input, init);
+    };
+  })()`);
+  // a paragraph inserted before the list
+  await caretAtEnd(a, el(1, 'p'));
+  await press(a, 'Enter');
+  await typeKeys(a, 'Inserted');
+  // a reread of the deck, as places() and add() of comments.ts make, puts the paragraph into the
+  // source and not into the base
+  await a.evaluate(`${C}.port.rebase().then(() => true)`);
+  await a.waitFor(`${C}.app.source.text.includes('Inserted') && !${C}.acked()`, 30_000);
+  await a.send('Page.enable', {});
+  const count = await loads(a);
+  // the page asks before it leaves with an edit that was not sent
+  const accept = setInterval(() => a.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}), 200);
+  t.after(() => clearInterval(accept));
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again', 30_000);
+  clearInterval(accept);
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await sees(a, DRAFTED, first, 'the draft after a reload with an edit before it that was not acknowledged');
+});
+
+test('a draft goes to its slide, and not to an element that reads the same, when its element is changed or removed while its page is away', { timeout: 660_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, `<section>
+  <h2>One</h2>
+  <ul>
+    <li>TBD</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Two</h2>
+  <table>
+    <tr><td>a</td><td>0</td></tr>
+    <tr><td>b</td><td>0</td></tr>
+    <tr><td>c</td><td>0</td></tr>
+  </table>
+  <ul>
+    <li>Done</li>
+    <li>TBD</li>
+  </ul>
+</section>
+`);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  const away = (change, has) => left(server, a, [b], () => writeFileSync(server.file, change(server.read())), has);
+  const cancel = async () => {
+    await click(a, `${PANE} .draft .actions button:not(.primary)`);
+    await a.waitFor(`!document.querySelector('${PANE} .draft')`);
+  };
+  await show(a, 'Two');
+
+  // a paragraph written above the table moves the three cells that read 0 by more than a row, and
+  // the draft stays on the cell of row b
+  const cell = { label: 'On Table cell: 0', text: 'Half a draft' };
+  assert.deepEqual(await drafted(a, el(1, 'tr:nth-child(2) td:nth-child(2)')), cell);
+  await away((text) => text.replace('  <table>', '  <p>A paragraph written above the table while the page was away</p>\n  <table>'), (text) => text.includes('written above'));
+  await sees(a, DRAFTED, cell, 'the draft after an insertion above three cells that read the same');
+  await click(a, `${PANE} .draft .actions .primary`);
+  await a.waitFor(`!document.querySelector('${PANE} .draft')`);
+  await converge(server, [a, b]);
+  const sent = await a.evaluate(`${C}.transport.comments(${C}.token).then((x) => x.comments.map((c) => c.anchor.start))`);
+  assert.deepEqual(sent.map((start) => server.read().slice(start - 10, start + 10)), ['<td>b</td><td>0</td>'], 'the comment is on the cell of row b');
+
+  // the item of the draft is removed, and the item of slide Two that reads the same is not taken
+  await show(a, 'One');
+  assert.deepEqual(await drafted(a, el(0, 'li')), { label: 'On Item: TBD', text: 'Half a draft' });
+  await away((text) => text.replace('    <li>TBD</li>\n', ''), (text) => text.split('<li>TBD</li>').length === 2);
+  await sees(a, DRAFTED, { label: 'On Slide 1', text: 'Half a draft' }, 'the draft after a removal of its item, which read as an item of another slide');
+  await cancel();
+
+  // the cell of the draft is changed, and a cell of another row that reads as it did is not taken
+  await show(a, 'Two');
+  assert.deepEqual(await drafted(a, el(1, 'tr:nth-child(1) td:nth-child(2)')), cell);
+  await away((text) => text.replace('<td>a</td><td>0</td>', '<td>a</td><td>7</td>'), (text) => text.includes('<td>7</td>'));
+  await sees(a, DRAFTED, { label: 'On Slide 2', text: 'Half a draft' }, 'the draft after a change of its cell, which read as two other cells');
+  clean(a);
+  clean(b);
+});
+
+test('a draft on a slide that reads as another slide, and a draft on a stack, stay on it when it is changed while the page is away', { timeout: 660_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, `<section>
+  <h2>One</h2>
+</section>
+
+<section>
+  <h2>Title</h2>
+</section>
+
+<section>
+  <h2>Title</h2>
+</section>
+
+<section>
+  <section>
+    <h2>Up</h2>
+    <p>Upper slide</p>
+  </section>
+  <section>
+    <h2>Down</h2>
+  </section>
+</section>
+`);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  const away = (change, has) => left(server, a, [b], () => writeFileSync(server.file, change(server.read())), has);
+  const slide = (i) => `document.querySelectorAll('.reveal .slides > section')[${i}]`;
+
+  // the second of two slides that read the same is renamed
+  await a.evaluate('Reveal.slide(2)');
+  assert.deepEqual(await drafted(a, slide(2), 'slide'), { label: 'On Slide 3', text: 'Half a draft' });
+  await away((text) => {
+    const i = text.lastIndexOf('<h2>Title</h2>');
+    return `${text.slice(0, i)}<h2>Named</h2>${text.slice(i + 14)}`;
+  }, (text) => text.includes('Named'));
+  await sees(a, DRAFTED, { label: 'On Slide 3', text: 'Half a draft' }, 'the draft after a change of its slide, which read as the slide before it');
+  await click(a, `${PANE} .draft .actions button:not(.primary)`);
+  await a.waitFor(`!document.querySelector('${PANE} .draft')`);
+
+  // a stack, as a right-click on its row in the navigator targets it, with a change inside it
+  await a.evaluate('Reveal.slide(3, 0)');
+  assert.deepEqual(await drafted(a, slide(3), 'slide'), { label: 'On the slide', text: 'Half a draft' });
+  await away((text) => text.replace('Upper slide', 'Upper slide, changed'), (text) => text.includes('Upper slide, changed'));
+  await sees(a, DRAFTED, { label: 'On the slide', text: 'Half a draft' }, 'the draft on a stack after a change inside it');
+  clean(a);
+  clean(b);
+});
+
+test('a draft stays on its element when its page leaves with an edit of this element that the edit command has not acknowledged', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const a = await tab(browser, sessionUrl(server.edit));
+  await show(a, 'Two');
+  assert.deepEqual(await drafted(a, el(1, 'li:nth-child(2)')), { label: 'On Item: Beta', text: 'Half a draft' });
+  // the operations of the page fail, and its edit is kept in the copy of the browser, which is
+  // merged once the page has loaded again
+  await a.evaluate('window.__blockOps = true');
+  await caretAtEnd(a, el(1, 'li:nth-child(2)'));
+  await type(a, ' typed');
+  await copied(a, 'Beta typed');
+  await a.evaluate('(window.__before = true, location.reload())').catch(() => {});
+  await until(() => a.evaluate('!window.__before && !!window.BeesonEditor').catch(() => false), 'the page to load again');
+  await a.waitFor('window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await until(() => server.read().includes('Beta typed'), 'the copy to reach index.html');
+  await sees(a, DRAFTED, { label: 'On Item: Beta typed', text: 'Half a draft' }, 'the draft after a reload with an edit of its element that was not acknowledged');
 });
 
 test('a mention is toasted once, also after a reload of the page, a reply, and an edit of the comment', { timeout: 300_000 }, async (t) => {
