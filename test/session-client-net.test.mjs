@@ -439,9 +439,9 @@ test('a page asks before it unloads after a Redo that follows an offline Undo, o
   assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: true, copied: false });
 });
 
-// the handler of the next write of the copy waits after window.__hold until window.__release(),
-// and after window.__fail every write fails at once, after the handlers that wait. a handler that
-// waits is a write that ends late, e.g. on a slow disk
+// the handler of the next write of the copy waits after window.__hold until window.__release(), and
+// the handler of every write while window.__holdAll. after window.__fail every write fails at once,
+// after the handlers that wait. a handler that waits is a write that ends late, e.g. on a slow disk
 const LATE_WRITES = `{
   const put = IDBObjectStore.prototype.put;
   const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
@@ -451,7 +451,7 @@ const LATE_WRITES = `{
     configurable: true,
     get() { return complete.get.call(this); },
     set(fn) {
-      const hold = fn && window.__hold && this.mode === 'readwrite' && this.objectStoreNames.contains('copies');
+      const hold = fn && (window.__hold || window.__holdAll) && this.mode === 'readwrite' && this.objectStoreNames.contains('copies');
       if (hold) window.__hold = false;
       complete.set.call(this, hold ? (ev) => held.push(() => fn.call(this, ev)) : fn);
     },
@@ -675,6 +675,61 @@ test('a page asks before it unloads for an edit typed while IndexedDB does not a
   assert.deepEqual(await page.evaluate('window.__told'), { asking: true, hellos: 0 });
   await page.waitFor(`/cannot be kept/.test(${STATE}) && ${C}.connection === 'offline'`);
   assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks while its copy cannot be kept');
+});
+
+// window.__holdText holds the answer of events whose text includes it until window.__again(), and
+// while window.__holdOp each answer of an operation waits until window.__opGo(), counted in
+// window.__opsHeld
+const HELD = `{
+  const fetched = window.fetch;
+  let again = () => {};
+  const events = new Promise((done) => (again = done));
+  const ops = [];
+  window.__opsHeld = 0;
+  window.__again = () => (again(), true);
+  window.__opGo = () => (ops.splice(0).forEach((go) => go()), true);
+  window.fetch = function (input, init) {
+    const url = String(input instanceof Request ? input.url : input);
+    const answer = fetched.call(this, input, init);
+    if (url.includes('/.session/op')) {
+      if (!window.__holdOp) return answer;
+      return answer.then((r) => new Promise((done) => (window.__opsHeld++, ops.push(() => done(r)))));
+    }
+    if (!url.includes('/.session/events')) return answer;
+    return answer.then(async (r) => {
+      if (!window.__holdText || !(await r.clone().text()).includes(window.__holdText)) return r;
+      window.__eventsHeld = true;
+      await events;
+      return r;
+    });
+  };
+}`;
+
+test('a page asks before it unloads after a Redo of an Undo that the edit command applied, until its copy holds the Redo', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${LATE_WRITES}\n${HELD}` });
+  await converge(server, [page]);
+  const n = Number((await page.evaluate(`${C}.snapshot().v`)).split('.')[1]);
+  await page.evaluate(`window.__holdText = 'Zed'; window.__holdOp = true; true`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`window.__opsHeld === 1 && window.__eventsHeld === true && (${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  // the record of ' Zed' at the version before the edit stays the one that the page keeps
+  await page.evaluate('window.__holdAll = true');
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${C}.snapshot().mine.includes('Zed')`);
+  // the operation of the edit and its broadcast arrive, and the Undo is sent and applied
+  await page.evaluate('window.__again(), window.__opGo()');
+  await page.waitFor(`window.__opsHeld === 2 && ${C}.snapshot().v.endsWith('.${n + 2}')`);
+  await page.evaluate(`${C}.on('settled', () => ${C}.snapshot().mine.includes('Zed') && setTimeout(() => (window.__asking ??= ${C}.asking))); true`);
+  await press(page, REDO);
+  await page.waitFor('window.__asking !== undefined');
+  assert.equal(await page.evaluate('window.__asking'), true, 'the page asks while its copy holds the edit at the version before the Undo');
+  await page.evaluate('(window.__holdAll = false, window.__release())');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
 });
 
 // the time in ms that each listener of beforeunload was on window before its removal, in
