@@ -557,6 +557,7 @@ export class Presence {
     void client.port.rebase().catch(() => {}).then(() => {
       this.refreshing = false;
       this.refreshed = now();
+      this.reread(true);
       this.due(true);
     });
   }
@@ -608,14 +609,17 @@ export class Presence {
   }
 
   // the elements of every state read again after an apply: an element that left the page is read
-  // from the offsets again, and a state of a version that this page had not reached is read now
-  private reread(): void {
+  // from the offsets again, and a state of a version that this page had not reached is read now.
+  // with all, every state is read again, after the port read the deck into its source
+  private reread(all = false): void {
     let changed = false;
     for (const [id, o] of this.others) {
       const r = o.resolved;
       const gone = !!r && (r.selected.some((el) => !el.isConnected) || (r.slide && !r.slide.isConnected) || (r.caret && !r.caret.el.isConnected) || (r.held && !r.held.isConnected));
-      if (!gone && !o.ahead) continue;
+      if (!all && !gone && !o.ahead) continue;
       this.resolve(o, id, r?.name ?? '', r?.color ?? 0);
+      // a hold that this page could not read when it heard of it begins now
+      if (!r?.held && o.resolved?.held) o.activeAt = this.now();
       changed = true;
     }
     if (changed) this.publish();
@@ -680,13 +684,14 @@ export class Presence {
     if (from.n > to.n) return 'ahead';
     if (from.n !== to.n && this.log.carry(0, from, to.n) === undefined) return null;
     const changes = this.changes.of(base.text, source);
-    const mapped = offsets.map((o) => {
-      if (o === null) return null;
-      const up = this.log.carry(o, from, to.n);
-      return up === null || up === undefined ? null : carry(up, changes);
-    });
+    const ups = offsets.map((o) => (o === null ? null : this.log.carry(o, from, to.n) ?? null));
+    const mapped = ups.map((up) => (up === null ? null : carry(up, changes)));
     const found = client.shell.presence.elementsAt(mapped.map((m) => m ?? -1));
-    return found.map((el, i) => (mapped[i] === null ? null : el));
+    const els = found.map((el, i) => (mapped[i] === null ? null : el));
+    // an edit of this page that is not in the source can put an offset in doubt, e.g. a move of
+    // its element. the port then reads the deck into its source, and the states are read again
+    if (source !== base.text && ups.some((up, i) => up !== null && !els[i])) this.refresh();
+    return els;
   }
 
   // the floor rule: the locks of this page, and whether it yields the text element that it holds
