@@ -605,6 +605,40 @@ test('a draft on an element that its page inserted is kept on it through a reloa
   clean(a);
 });
 
+test('a draft stays on its element when its page leaves with an edit before it that the edit command has not acknowledged', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'Two');
+  const first = await drafted(a, el(1, 'li'));
+  assert.deepEqual(first, { label: 'On Item: Alpha', text: 'Half a draft' });
+  // the operations of the page are held, as on a network that does not answer
+  await a.evaluate(`(() => {
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      return url.includes('/.session/op') ? new Promise(() => {}) : fetched.call(this, input, init);
+    };
+  })()`);
+  // a paragraph inserted before the list
+  await caretAtEnd(a, el(1, 'p'));
+  await press(a, 'Enter');
+  await typeKeys(a, 'Inserted');
+  // a reread of the deck, as places() and add() of comments.ts make, puts the paragraph into the
+  // source and not into the base
+  await a.evaluate(`${C}.port.rebase().then(() => true)`);
+  await a.waitFor(`${C}.app.source.text.includes('Inserted') && !${C}.acked()`, 30_000);
+  await a.send('Page.enable', {});
+  const count = await loads(a);
+  // the page asks before it leaves with an edit that was not sent
+  const accept = setInterval(() => a.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}), 200);
+  t.after(() => clearInterval(accept));
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again', 30_000);
+  clearInterval(accept);
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await sees(a, DRAFTED, first, 'the draft after a reload with an edit before it that was not acknowledged');
+});
+
 test('a draft goes to its slide, and not to an element that reads the same, when its element is changed or removed while its page is away', { timeout: 660_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
