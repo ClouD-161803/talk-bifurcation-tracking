@@ -219,8 +219,9 @@ export function install(app: App): Port {
     clearTimeout(release);
     composing = app.hostOf(ev.target);
     // a deck changed in part is not rendered, hence while the history or the document model is busy
-    // the edits of the person that the source does not hold yet are held with the composing text
-    rest = composing && ready() ? (busy() ? app.source!.text : current()) : null;
+    // rest is the text last handed to the client, which holds the edits of the person that it has
+    // read, and only the edits that it has not read yet are held with the composing text
+    rest = composing && ready() ? (busy() ? (handed ?? app.source!.text) : current()) : null;
   }, true);
   document.addEventListener('compositionend', () => {
     composing = null;
