@@ -219,11 +219,42 @@ export function fine(a: string, b: string): Edit[] {
     return { start, end: start + e.text.length, text: a.slice(e.start, e.end) };
   }));
   d = 0;
-  return widen(a, back.map((p) => {
+  return widen(a, wraps(b, back.map((p) => {
     const start = p.start - d;
     d += p.end - p.start - p.text.length;
     return { start, end: start + p.text.length, text: b.slice(p.start, p.end) };
-  }));
+  })));
+}
+
+// the edits of a into b with each pair that wraps a run in a new element, i.e. a start tag in the
+// new text of one and its end tag in the new text of a later one, joined into one edit over the run,
+// as the authority reads a format. an insertion at the start of the run then goes before the element
+function wraps(b: string, es: Edit[]): Edit[] {
+  const at: number[] = [];
+  let d = 0;
+  for (const e of es) {
+    at.push(e.start + d);
+    d += e.text.length - (e.end - e.start);
+  }
+  const last = at[at.length - 1] + es[es.length - 1].text.length;
+  const out: Edit[] = [];
+  for (let i = 0; i < es.length; i++) {
+    let k = i;
+    for (const m of es[i].text.matchAll(/<([A-Za-z][\w:-]*)(?:\s[^<>]*)?>/g)) {
+      const tag = new RegExp(`<(/?)${m[1]}(?=[\\s/>])[^<>]*>`, 'gi');
+      tag.lastIndex = at[i] + m.index + m[0].length;
+      let depth = 1, end: RegExpExecArray | null = null;
+      for (let t = tag.exec(b); t && t.index < last; t = tag.exec(b)) if ((depth += t[1] ? -1 : 1) === 0) {
+        end = t;
+        break;
+      }
+      if (!end) continue;
+      for (let j = i + 1; j < es.length; j++) if (at[j] <= end.index && end.index + end[0].length <= at[j] + es[j].text.length) k = Math.max(k, j);
+    }
+    out.push(k === i ? es[i] : { start: es[i].start, end: es[k].end, text: b.slice(at[i], at[k] + es[k].text.length) });
+    i = k;
+  }
+  return out;
 }
 
 // the most units in which another person may have changed a text that revert() is given
