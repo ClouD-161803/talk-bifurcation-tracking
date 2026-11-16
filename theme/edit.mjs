@@ -696,7 +696,11 @@ function combine(first2, second) {
   return out;
 }
 function finer(base, patches, other) {
-  return patches.flatMap((p) => other.some((o) => conflict(p, o)) ? fine(base, apply2(base, [p])) : [p]);
+  return patches.flatMap((p) => {
+    if (!other.some((o) => conflict(p, o))) return [p];
+    const edits3 = fine(base, apply2(base, [p]));
+    return edits3.every((e) => p.start <= e.start && e.end <= p.end) ? edits3 : [p];
+  });
 }
 function mergePatches(theirs, ours, wins = "ours", base, nested = true, keep) {
   if (base !== void 0 && nested) {

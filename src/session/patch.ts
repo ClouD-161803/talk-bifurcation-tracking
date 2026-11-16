@@ -145,9 +145,15 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
 
 // the patches of one operation of base with each that conflicts with a patch of the other given
 // as the edits that fine() finds in it, since a patch spans a line from its first change to its
-// last, e.g. a format and a key of the same operation further on the line
+// last, e.g. a format and a key of the same operation further on the line. a patch is kept whole
+// when one of these edits is not inside it, since fine() finds the removal of a line some characters
+// further on when the next line starts with the same characters
 function finer(base: string, patches: Patch[], other: Patch[]): Patch[] {
-  return patches.flatMap((p) => (other.some((o) => conflict(p, o)) ? fine(base, apply(base, [p])) : [p]));
+  return patches.flatMap((p) => {
+    if (!other.some((o) => conflict(p, o))) return [p];
+    const edits = fine(base, apply(base, [p]));
+    return edits.every((e) => p.start <= e.start && e.end <= p.end) ? edits : [p];
+  });
 }
 
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
