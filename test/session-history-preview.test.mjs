@@ -437,6 +437,51 @@ test('on a phone of 390, 360, and 320 px and in a window of 1000 px, the bar of 
   clean(eve);
 });
 
+// the authors of the bar whose name is broken inside a word although the author is narrower than
+// the info, i.e. is squeezed next to the date
+const SQUEEZED = `[...document.querySelectorAll('${BAR} .who > *')].filter((a) => {
+  const r = document.createRange();
+  r.selectNodeContents(a);
+  const lines = new Set([...r.getClientRects()].filter((x) => x.width > 1).map((x) => Math.round(x.top)));
+  return lines.size > a.textContent.trim().split(/[\\s-]+/).length && a.getBoundingClientRect().width < document.querySelector('${BAR} .info').getBoundingClientRect().width - 1;
+}).map((a) => a.textContent)`;
+
+// the waits are 60 s for the edit command to start, 15 s for the page and 15 s for the pane, 20 s
+// for the version, and 3 s per size
+test('on a phone, the bar of the preview of a version by three people with long names breaks a name inside a word only when the name has the width of the info to itself', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const { port, base } = server.edit;
+  const api = (route) => `${base}.session/${route}`;
+  const hello = async (name) => ({ ...(await post(port, api('hello'), { name })).json(), seq: 0 });
+  const op = async (p, patches) => {
+    const r = await raw(port, 'GET', `${base}index.html`);
+    assert.equal((await post(port, api('op'), { token: p.token, seq: ++p.seq, base: r.headers['x-session-version'], patches: patches(r.text) })).json().ok, true);
+  };
+  const eve = await open(browser, sessionUrl(server.edit), { name: 'Eve', width: 390, height: 844, mobile: true });
+  const people = [await hello('Alexandra Konstantinopoulou'), await hello('Bartholomew Fitzgerald-Smythe'), await hello('Guinevere Montgomery')];
+  await op(people[0], (text) => [{ start: 0, end: text.length, text: THIRTEEN }]);
+  await nameNow(eve, 'Deck');
+  for (let k = 2; k <= 13; k++) await op(people[k % 3], (text) => [{ start: text.indexOf(`<h2>Slide ${k}`) + `<h2>Slide ${k}`.length, end: text.indexOf(`<h2>Slide ${k}`) + `<h2>Slide ${k}`.length, text: ' x' }]);
+  await nameNow(eve, 'Three');
+  await tapOrClick(eve, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(eve, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await eve.waitFor(SHOWN);
+  await eve.waitFor(`!!(${rowByTitle('Three')})`);
+  await eve.evaluate(`${rowByTitle('Three')}.click(), true`);
+  await eve.waitFor(`document.querySelectorAll('${BAR} button.slide').length === 12 && document.querySelectorAll('${BAR} .who > *').length === 3 && ${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0`, 20_000);
+  const wrong = [];
+  for (const [width, height] of [[390, 844], [320, 640], [664, 390]]) {
+    await eve.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+    await eve.waitFor(`innerWidth === ${width} && innerHeight === ${height} && ${PLACED}`, 3000);
+    const squeezed = await eve.evaluate(SQUEEZED);
+    if (squeezed.length) wrong.push(`${width} by ${height}: ${squeezed.join(', ')}`);
+  }
+  assert.deepEqual(wrong, []);
+  clean(eve);
+});
+
 test('a version that changes only the start tag of a slide outlines the slide itself', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
