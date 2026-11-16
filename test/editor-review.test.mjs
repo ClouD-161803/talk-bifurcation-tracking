@@ -144,7 +144,14 @@ for (const platform of PLATFORMS) {
 
   test(`a rehearsal writes data-timing on each slide shown, as one entry of the history, on ${platform}`, async () => {
     const page = await reviewPage(platform, 4);
-    await exec(page, 'play.rehearse');
+    // the start of the rehearsal and each key are recorded with a clock in the page, since on a slow
+    // machine a key may reach the page late, and the slide is shown until it does
+    await page.evaluate(`(() => {
+      window.__keys = [];
+      window.addEventListener('keydown', (ev) => window.__keys.push({ key: ev.key, at: performance.now() }), true);
+      window.BeesonEditor.exec('play.rehearse');
+      window.__start = performance.now();
+    })()`);
     await page.waitFor(`!!document.querySelector('dialog.beeson-edit-presenter[open].rehearse')`);
     await wait(1100);
     await press(page, 'ArrowRight');
@@ -156,7 +163,13 @@ for (const platform of PLATFORMS) {
     await press(page, 'Enter');
     await page.waitFor(`!document.querySelector('dialog.beeson-edit-presenter[open]')`);
     const times = await page.evaluate(`[4, 5].map((i) => document.querySelectorAll('.reveal .slides > section')[i].getAttribute('data-timing'))`);
-    for (const t of times) assert.match(t ?? '', /^[12]$/);
+    // slide 5 is shown until the first ArrowRight, and slide 6 until Escape
+    const at = await page.evaluate(`[window.__start, ...['ArrowRight', 'Escape'].map((key) => window.__keys.find((k) => k.key === key).at)]`);
+    for (const [i, t] of times.entries()) {
+      const ms = at[i + 1] - at[i];
+      assert.match(t ?? '', /^\d+$/);
+      assert.ok([seconds(ms - 50), seconds(ms + 50)].includes(Number(t)), `slide ${i + 5} is shown for ${Math.round(ms)} ms, and its data-timing is ${t}`);
+    }
     const edits = [[NARROW, `<section class="narrow" data-timing="${times[0]}">`], [WIDE, `<section class="wide" data-timing="${times[1]}">`]];
     await roundTrip(page, edits);
     assert.equal((await state(page, 'play.clearTimings')).enabled, true);
