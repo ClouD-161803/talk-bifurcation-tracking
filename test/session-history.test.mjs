@@ -1516,6 +1516,23 @@ test('Show changes tints a paragraph with a character reference in an attribute,
   });
 });
 
+test('Show changes tints the children of a slide to which the theme appends a list of references, a running head, or the step that shows every step again', { timeout: 360_000 }, async (t) => {
+  // the deck does not load tex.js, hence the references are set by a script of the slide, which
+  // runs before Beeson.start()
+  const tex = `<script>window.beesonTex = { references: { floquet1883: { authors: 'G. Floquet', title: 'Sur les équations différentielles linéaires', year: '1883' } } };</script>`;
+  const seen = await tintsOf(t, [
+    { name: 'cited', html: `<p>Floquet <cite data-key="floquet1883"></cite> showed it</p>\n  <div class="foot">Caption typed here</div>\n  <div class="theorem">A theorem typed here</div>\n  ${tex}`, marks: [['typed', 0], ['typed', 1]] },
+    // the slide after a section slide has a running head
+    { name: 'run', html: '<p>Before</p>\n</section>\n<section class="section">\n  <h2>Part</h2>\n</section>\n<section>\n  <h2>After</h2>\n  <div class="foot">Caption typed here</div>', marks: [['typed', 0]] },
+    { name: 'restore', html: '<p class="fragment">One</p>\n  <p class="fragment">Two</p>\n  <span>Aside typed</span>', marks: [['typed', 0]] },
+  ]);
+  assert.deepEqual(seen, {
+    cited: { tints: ['typed in div[0]', 'typed in div[1]'], outlined: ['div[0]', 'div[1]'] },
+    run: { tints: ['typed in div[0]'], outlined: ['div[0]'] },
+    restore: { tints: ['typed in span[0]'], outlined: ['span[0]'] },
+  });
+});
+
 const OVERWRITTEN = 'A change of index.html from outside replaced text of this session. The text is kept in Version History.';
 
 // the toasts of the page stay until they are pressed, since a slow runner may take more than their 6 s
