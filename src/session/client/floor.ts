@@ -68,17 +68,31 @@ export function install(client: Client): void {
 
   // a plain press in a container of several objects around a locked element, e.g. a plate with a
   // held caption, selects the object under the pointer first, as a second click on the container
-  // would. the drag then takes this object, and only the container stays refused
+  // would. the drag then takes this object, and only the container stays refused. the editor takes
+  // the press as one on a selected object, whose click selects the picture inside it, hence the
+  // object is selected again at the click
+  let picked: Element | null = null;
   const pickInside = (ev: PointerEvent, target: Element): void => {
     if (!presence.locks.size || ev.button !== 0 || ev.shiftKey || ev.metaKey || ev.ctrlKey || app.hostOf(target)) return;
     let up = target.parentElement;
     while (up && !presence.lockOf(up)) up = up.parentElement;
     const child = up && client.shell.presence.childIn(up, target);
-    if (child && !presence.lockOf(child) && !app.selection.elements().some((s) => child.contains(s))) app.selection.set('elements', [child]);
+    if (child && !presence.lockOf(child) && !app.selection.elements().some((s) => child.contains(s))) {
+      app.selection.set('elements', [child]);
+      picked = child;
+    }
+  };
+  const unpick = (): void => {
+    const child = picked;
+    picked = null;
+    const [only, more] = app.selection.elements();
+    if (child && only && !more && only !== child && child.contains(only)) app.selection.set('elements', [child]);
   };
   const pressed = (ev: Event): void => {
     const target = ev.target instanceof Element ? ev.target : null;
     const by = target ? presence.lockOf(target, false) : null;
+    if (ev.type === 'pointerdown') picked = null;
+    if (ev.type === 'click') unpick();
     if (!by && target && ev.type === 'pointerdown') pickInside(ev as PointerEvent, target);
     if (!by || !target || target.closest('.beeson-edit-titlebar, .beeson-edit-toolbar, .beeson-inspector, dialog')) return;
     ev.preventDefault();
