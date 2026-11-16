@@ -154,7 +154,7 @@ function findInserted(after: string, text: string, inserted: Span[], near: numbe
 // the slides of before matched to those of after. a slide that no patch touches is the same slide at
 // its shifted place. of the others, a slide of equal text is matched first, the nearest between
 // several, and then the rest in order, two slides only when they share at least half of the shorter
-// text. a slide left out is removed
+// text without tags. a slide left out is removed
 function matchSlides(before: string, s0: Slide[], after: string, s1: Slide[], patches: Patch[]): { to: Int32Array; kept: Uint8Array } {
   const to = new Int32Array(s0.length).fill(-1);
   const kept = new Uint8Array(s0.length);
@@ -397,6 +397,16 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     return { anchor: found, text };
   };
 
+  // the start tag of the name of a at its place among those of its name in slide from, found in the
+  // slide to of after, or null when the two slides do not hold as many
+  const samePlace = (a: Anchor, from: Slide, to: Slide): Anchor | null => {
+    const named = (text: string, s: Slide) => tokenize(text.slice(s.start, s.end)).filter((t) => t.type === 'start' && t.name === a.tag);
+    const old = named(before, from);
+    const now = named(after, to);
+    const k = old.findIndex((t) => t.start === a.start - from.start);
+    return k >= 0 && old.length === now.length ? wholeTag(after, to.start + now[k].start, to.start + now[k].end) : null;
+  };
+
   // the element of a removed text that the patches inserted again into the slide of it, or anywhere
   // for a thread of the deck, unless the same operation took the text from elsewhere
   const reattach = (it: Anchored, text: string): Anchored | null => {
@@ -434,8 +444,24 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
       const d = s1[j].start - s0[i].start;
       return { anchor: { start: a.start + d, end: a.end + d, tag: a.tag }, slide: tagOf(s1[j]) };
     }
+    // an element of a removed slide is kept only where the patches inserted its text, as by a move.
+    // a line diff may leave its start tag in place for an element of another slide
+    if (i >= 0 && j < 0) {
+      const bound = Math.max(a.end, Math.min(s0[i].end, a.start + cap));
+      const e = elementEnd(before, a, bound);
+      const text = e < 0 ? null : before.slice(a.start, e);
+      const o = text ? findInserted(after, text, inserted, shiftOffset(a.start, patches)) : -1;
+      if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, slide: slideAnchorAt(s1, o) };
+      return { anchor: null, slide: null, removed: { text: text !== null && text.length <= REMOVED_MAX ? text : null } };
+    }
     const found = locate(a, i >= 0 ? s0[i].end : before.length);
-    if (found.anchor) return { anchor: found.anchor, slide: slideAnchorAt(s1, found.anchor.start) };
+    const at = found.anchor && slideAnchorAt(s1, found.anchor.start);
+    // an element changed at a start tag outside the slide that its slide was paired with is found by
+    // its place in that slide, since a line diff may leave its start tag to an element of the next one
+    if (found.anchor && j >= 0 && at?.start !== s1[j].start && found.text !== null && !after.startsWith(found.text, found.anchor.start)) {
+      const t = samePlace(a, s0[i], s1[j]);
+      if (t) return { anchor: t, slide: tagOf(s1[j]) };
+    } else if (found.anchor) return { anchor: found.anchor, slide: at };
     const back = j >= 0 ? tagOf(s1[j]) : null;
     return { anchor: back, slide: back, removed: { text: found.text !== null && found.text.length <= REMOVED_MAX ? found.text : null } };
   };

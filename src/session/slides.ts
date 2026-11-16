@@ -93,7 +93,7 @@ function childrenOf(html: string): Range[] {
 
 // the pairs of an item of a and an item of b that are one item, matched first by equal text in
 // order, and then, between two equal ones, by the most characters shared at the start and the end.
-// with half, two items are paired only when they share at least half of the shorter text
+// with half, the items are slides, paired only when they share at least half of the shorter text
 export function pairs(a: string[], b: string[], half = false): { i: number; j: number; same: boolean }[] {
   const out: { i: number; j: number; same: boolean }[] = [];
   let pre = 0;
@@ -153,13 +153,22 @@ function bestPairs(a: string[], b: string[], half: boolean): [number, number][] 
   return out.reverse();
 }
 
-// the pairs in order of an item of a and an item of b that share the most characters in all, where
-// an item is left out rather than paired with one that shares less than half of the shorter text
+// the markup inside the section of a slide, and its text without tags, with spaces collapsed
+const inner = (x: string) => x.slice(x.indexOf('>') + 1, x.lastIndexOf('<')).replace(/\s+/g, ' ').trim();
+const words = (x: string) => x.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+
+// the pairs in order of a slide of a and a slide of b that share the most characters in all, where
+// a slide is left out rather than paired with one that shares less than half of the shorter text.
+// the texts are read without tags, since short slides share most of their markup, and the markup
+// inside their sections is read when neither slide has text, e.g. two slides of one picture each
 function closePairs(a: string[], b: string[]): [number, number][] {
   const n = a.length, m = b.length;
+  const wa = a.map(words), wb = b.map(words);
+  const ia = a.map(inner), ib = b.map(inner);
   const gain = (i: number, j: number) => {
-    const s = shared(a[i], b[j]);
-    return s > 0 && 2 * s >= Math.min(a[i].length, b[j].length) ? s : -1;
+    const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
+    const s = shared(x, y);
+    return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
   for (let i = n - 1; i >= 0; i--) {

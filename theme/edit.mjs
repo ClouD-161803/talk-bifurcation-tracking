@@ -1540,11 +1540,16 @@ function bestPairs(a, b, half) {
   }
   return out.reverse();
 }
+var inner = (x) => x.slice(x.indexOf(">") + 1, x.lastIndexOf("<")).replace(/\s+/g, " ").trim();
+var words = (x) => x.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 function closePairs(a, b) {
   const n = a.length, m = b.length;
+  const wa = a.map(words), wb = b.map(words);
+  const ia = a.map(inner), ib = b.map(inner);
   const gain = (i, j) => {
-    const s = shared(a[i], b[j]);
-    return s > 0 && 2 * s >= Math.min(a[i].length, b[j].length) ? s : -1;
+    const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
+    const s = shared(x, y);
+    return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
   for (let i = n - 1; i >= 0; i--) {
@@ -1860,10 +1865,10 @@ function slow(before2, patches, after, items, given) {
     const s = slideAt(s1, found.start);
     const { close } = elementClose(after, found, s ? s.end : after.length);
     if (close <= found.end) return null;
-    const inner = after.slice(found.end, close);
-    const o = found.end + inner.length - inner.trimStart().length;
+    const inner2 = after.slice(found.end, close);
+    const o = found.end + inner2.length - inner2.trimStart().length;
     const t = startTagAt(after, o);
-    return t && t.tag === a.tag && overlaps(inserted, o, close) && squeeze(inner.trim()) === squeeze(text) ? t : null;
+    return t && t.tag === a.tag && overlaps(inserted, o, close) && squeeze(inner2.trim()) === squeeze(text) ? t : null;
   };
   const swapped = (a, close, text, found) => {
     const o = findInserted(after, text, inserted, found.start);
@@ -1890,6 +1895,13 @@ function slow(before2, patches, after, items, given) {
     const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
     if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
     return { anchor: found, text };
+  };
+  const samePlace = (a, from, to2) => {
+    const named = (text, s) => tokenize(text.slice(s.start, s.end)).filter((t) => t.type === "start" && t.name === a.tag);
+    const old = named(before2, from);
+    const now = named(after, to2);
+    const k = old.findIndex((t) => t.start === a.start - from.start);
+    return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
   };
   const reattach = (it, text) => {
     let within = null;
@@ -1923,8 +1935,20 @@ function slow(before2, patches, after, items, given) {
       const d = s1[j].start - s0[i].start;
       return { anchor: { start: a.start + d, end: a.end + d, tag: a.tag }, slide: tagOf(s1[j]) };
     }
+    if (i >= 0 && j < 0) {
+      const bound = Math.max(a.end, Math.min(s0[i].end, a.start + cap2));
+      const e = elementEnd(before2, a, bound);
+      const text = e < 0 ? null : before2.slice(a.start, e);
+      const o = text ? findInserted(after, text, inserted, shiftOffset(a.start, patches)) : -1;
+      if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, slide: slideAnchorAt(s1, o) };
+      return { anchor: null, slide: null, removed: { text: text !== null && text.length <= REMOVED_MAX ? text : null } };
+    }
     const found = locate(a, i >= 0 ? s0[i].end : before2.length);
-    if (found.anchor) return { anchor: found.anchor, slide: slideAnchorAt(s1, found.anchor.start) };
+    const at = found.anchor && slideAnchorAt(s1, found.anchor.start);
+    if (found.anchor && j >= 0 && at?.start !== s1[j].start && found.text !== null && !after.startsWith(found.text, found.anchor.start)) {
+      const t = samePlace(a, s0[i], s1[j]);
+      if (t) return { anchor: t, slide: tagOf(s1[j]) };
+    } else if (found.anchor) return { anchor: found.anchor, slide: at };
     const back = j >= 0 ? tagOf(s1[j]) : null;
     return { anchor: back, slide: back, removed: { text: found.text !== null && found.text.length <= REMOVED_MAX ? found.text : null } };
   };
@@ -3874,12 +3898,12 @@ var accented = (_, accent, braced, bare2) => {
   const base = (braced ?? bare2 ?? "").replace("\\", "");
   return (base + ACCENT[accent]).normalize("NFC");
 };
-function words(tex) {
+function words2(tex) {
   return tex.replace(SYMBOL_ACCENT, accented).replace(LETTER_ACCENT, accented).replace(/\\(ss|ae|AE|oe|OE|aa|AA|o|O|l|L|i|j)(?![A-Za-z])\s*/g, (_, name) => LETTER[name]).replace(/\\([{}])/g, (_, brace) => brace === "{" ? "" : "").replace(/\\([&%#_])/g, "$1").replace(/\\[,;: ]|~/g, " ").replace(/---/g, "\u2014").replace(/--/g, "\u2013").replace(/``/g, "\u201C").replace(/''/g, "\u201D").replace(/\\[A-Za-z@]+\*?\s*/g, "").replace(/[{}]/g, "").replace(/\u0001/g, "{").replace(/\u0002/g, "}");
 }
 function plainText(tex) {
   const parts = tex.replace(/\\\$/g, "").split(/(\$[^$]*\$)/);
-  return parts.map((part, index) => index % 2 ? part : words(part)).join("").replace(/\u0003/g, "$").replace(/\s+/g, " ").trim();
+  return parts.map((part, index) => index % 2 ? part : words2(part)).join("").replace(/\u0003/g, "$").replace(/\s+/g, " ").trim();
 }
 
 // src/bibtex.ts
@@ -4154,8 +4178,8 @@ function readPreamble(source, options = {}) {
       const start2 = space(i2);
       if (start2 >= n) throw new Skip2("an argument is missing");
       if (text[start2] === "{") {
-        const [inner, end2] = group(start2);
-        return [tidy3(inner), end2];
+        const [inner2, end2] = group(start2);
+        return [tidy3(inner2), end2];
       }
       if (text[start2] !== "\\") return [text[start2], start2 + 1];
       const [name, end] = control(start2);
@@ -4396,10 +4420,10 @@ function namesOf(field) {
       names.push({ family: plainText(parts[0]), given: plainText(parts[parts.length - 1]) });
       continue;
     }
-    const words2 = split(text, /[\s~]+/g).filter(Boolean);
-    const first2 = words2.slice(0, -1).findIndex(particle);
-    const cut = first2 < 0 ? words2.length - 1 : first2;
-    names.push({ family: plainText(words2.slice(cut).join(" ")), given: plainText(words2.slice(0, cut).join(" ")) });
+    const words3 = split(text, /[\s~]+/g).filter(Boolean);
+    const first2 = words3.slice(0, -1).findIndex(particle);
+    const cut = first2 < 0 ? words3.length - 1 : first2;
+    names.push({ family: plainText(words3.slice(cut).join(" ")), given: plainText(words3.slice(0, cut).join(" ")) });
   }
   return { names, others };
 }
