@@ -329,14 +329,15 @@ export function install(app: App): void {
     app.invalidate('content');
   }
 
-  // the undo of the browser, e.g. from its Edit menu, is taken by the history
+  // the undo of the browser, e.g. from its Edit menu, is taken by the command, which a session
+  // may refuse
   function onBeforeInput(ev: InputEvent): void {
     const host = app.hostOf(ev.target);
     if (!host) return;
     const type = ev.inputType;
     if (type === 'historyUndo' || type === 'historyRedo') {
       ev.preventDefault();
-      void (type === 'historyUndo' ? history.undo() : history.redo()).catch((e) => app.fail(e));
+      void app.commands.run(type === 'historyUndo' ? 'edit.undo' : 'edit.redo').catch((e) => app.fail(e));
       return;
     }
     // bold and italic are an entry of the history each
