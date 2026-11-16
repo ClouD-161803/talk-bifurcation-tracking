@@ -523,6 +523,77 @@ test('fine() of a chain of parts that charEdits() cannot diff costs no more than
   assert.ok(ratio < 4, `the chain costs ${ratio.toFixed(1)} times a paste of 3,194 characters`);
 });
 
+// a paste of a run of a is broken by a b at each end, so that neither side holds the other
+test('fine() of a paste into a paragraph of 32,000 units of a short period costs no more than a paste at the cap of anchored()', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+  const median = (f, t) => {
+    fine(f, t);
+    const times = [];
+    for (let i = 0; i < 7; i++) {
+      const t0 = performance.now();
+      fine(f, t);
+      times.push(performance.now() - t0);
+    }
+    return times.sort((a, b) => a - b)[3];
+  };
+  const cap = () => median(wrap(PARA), wrap(`${rep(PROSE, 3_194)}${PARA.replace('Earth', 'earth')}C`));
+  const m = 32_000;
+  for (const [unit, q] of [['a', `b${'a'.repeat(m - 2)}b`], ['- ', rep(' -', m)], ['&nbsp;', rep('nbsp;&', m)]]) {
+    const p = rep(unit, m);
+    const a = wrap(p), b = wrap('Z' + p.slice(0, m / 2) + q + p.slice(m / 2) + 'Y');
+    assert.equal(apply(a, fine(a, b)), b);
+    let ratio = Infinity, ms = 0;
+    for (let i = 0; i < 3 && ratio >= 4; i++) {
+      ms = median(a, b);
+      ratio = ms / cap();
+    }
+    assert.ok(ratio < 4, `${JSON.stringify(unit)}: ${ms.toFixed(1)} ms, ${ratio.toFixed(1)} times a paste of 3,194 characters`);
+  }
+});
+
+// the paste conflicts with the key, hence mergePatches() reads the patch of the paste finer, and
+// checks whether it keeps the letters that it replaces
+test('mergePatches() of a paste into a paragraph of 32,000 units of a short period and a key of another person costs no more than a paste at the cap of anchored()', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+  const median = (f) => {
+    f();
+    const times = [];
+    for (let i = 0; i < 7; i++) {
+      const t0 = performance.now();
+      f();
+      times.push(performance.now() - t0);
+    }
+    return times.sort((a, b) => a - b)[3];
+  };
+  const cap = () => median(() => fine(wrap(PARA), wrap(`${rep(PROSE, 3_194)}${PARA.replace('Earth', 'earth')}C`)));
+  const m = 32_000;
+  for (const [unit, q] of [['a', `b${'a'.repeat(m - 2)}b`], ['- ', rep(' -', m)]]) {
+    const p = rep(unit, m);
+    const a = wrap(p), b = wrap('Z' + p.slice(0, m / 2) + q + p.slice(m / 2) + 'Y'), c = wrap(p.slice(0, 10) + 'K' + p.slice(10));
+    const theirs = diff(a, b), ours = diff(a, c);
+    let ratio = Infinity, ms = 0;
+    for (let i = 0; i < 3 && ratio >= 4; i++) {
+      ms = median(() => mergePatches(theirs, ours, 'ours', a));
+      ratio = ms / cap();
+    }
+    assert.ok(ratio < 4, `${JSON.stringify(unit)}: ${ms.toFixed(1)} ms, ${ratio.toFixed(1)} times a paste of 3,194 characters`);
+  }
+});
+
+// the paragraph starts with a run of a, and the paste ends with one more a, hence the search of the
+// paragraph in the new text matches one unit early first
+test('fine() of a paste above the cells of anchored() that ends with the letter of a run at the start of the paragraph gives the paste as an insertion', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+  const p = 'a'.repeat(40) + 'b ' + rep(PROSE, 2400);
+  const a = wrap(p), b = wrap(rep(PROSE.toUpperCase(), 700) + 'a' + p + 'Y');
+  const found = fine(a, b);
+  assert.equal(apply(a, found), b);
+  assert.deepEqual(found.map((e) => [e.end - e.start, e.text.length]), [[0, 701], [0, 1]]);
+});
+
 test('with twice, the same letter typed at one point by two people is kept twice, and the same replacement of a word by two people once', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const twice = (p0, ps, pt) => {
