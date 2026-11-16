@@ -13,16 +13,6 @@ import { revert } from './merge.ts';
 // takes off the page with everything inside them. parents are the elements of touches whose
 // children alone its undo or redo changes, and orders are the elements whose children its undo or
 // redo puts back in an order
-// the caret put at the end of the last text of host, before the white space of the layout
-function caretAtEnd(host: Element): void {
-  const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
-  let last: Text | null = null;
-  for (let n = w.nextNode(); n; n = w.nextNode()) if ((n as Text).data.trim()) last = n as Text;
-  (host as HTMLElement).focus({ preventScroll: true });
-  if (last) getSelection()?.collapse(last, last.data.trimEnd().length);
-  else getSelection()?.collapse(host, 0);
-}
-
 export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; parents?: readonly Element[]; detaches?: readonly Element[]; orders?: readonly Element[]; selects?: 'undo' | 'redo' };
 
 type Page = { Beeson?: { refreshChrome?(): void } };
@@ -330,7 +320,6 @@ export class History {
       const moves = !!a && a !== host && a.matches('[contenteditable="true"]') && !!a.closest('.reveal .slides');
       await this.put(host, content);
       entry.selects = moves && host.isConnected ? way : undefined;
-      if (entry.selects) caretAtEnd(host);
     };
     // the change from one content to the other made over the changes of others in host since,
     // which a part of a transaction writes over when it cannot be made. in a session, the contents
