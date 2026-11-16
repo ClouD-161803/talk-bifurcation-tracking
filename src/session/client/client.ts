@@ -48,6 +48,8 @@ export type ClientEvents = {
   // the rev of the version history changed, and a restore was made
   history: [number];
   restored: [Restored];
+  // a change of index.html from outside replaced text that a person wrote in the session
+  overwritten: [];
 };
 
 // the parts of the offline path that the core calls, set by conflicts.ts and media.ts
@@ -736,6 +738,7 @@ export class Client {
     }
     if (answer.history !== undefined) this.emit('history', answer.history);
     if (answer.restored) this.emit('restored', answer.restored);
+    if (answer.overwritten) this.emit('overwritten');
     if (answer.ops === null) {
       this.sync!.lose();
       this.pump();

@@ -606,5 +606,6 @@ export function install(client: Client): void {
     if (r.by === client.person) return;
     toast([bdi(personOf(client, r.by)?.name ?? 'Someone'), ` restored the version of ${whenOf(r.time)}`]);
   });
+  client.on('overwritten', () => toast('A change of index.html from outside replaced text that was edited in this session. The text of the session is kept in Version History.', { label: 'Show', run: () => open() }));
   client.on('ended', () => close());
 }
