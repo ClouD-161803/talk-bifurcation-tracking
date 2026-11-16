@@ -74,6 +74,12 @@ A short text placed at a point of a backdrop or of a surface, such as the name o
 
 Avoid "lab", the class of a label in an old talk, which is `label`.
 
+## Late step
+
+An element shown a number of seconds after the click of its step, as an animation of PowerPoint with a delay. It is written as a fragment of the class `late`, with the seconds in the custom property `--delay` of its style.
+
+Avoid "delayed step", which is a step that starts After Previous, written with `data-autoslide` on the step before. The custom property `--late` of an old talk is `--delay`.
+
 ## Layer
 
 The place of an element in the stacking order of its slide, i.e. which elements it is drawn in front of and which behind.
