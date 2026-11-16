@@ -454,6 +454,28 @@ test('the bubble of a refusal for a text element on another slide names the slid
   clean(ben);
 });
 
+// One, a hidden slide Hid, and Two, on whose rows the navigator draws 1, no number, and 2
+const HIDDEN = [['<section>\n  <h2>Two</h2>', '<section data-visibility="hidden">\n  <h2>Hid</h2>\n  <p>Hidden words</p>\n</section>\n\n<section>\n  <h2>Two</h2>']];
+
+// a session of two pages, 140 s, two shows, 30 s, and a wait for the hold, 20 s, at most
+for (const [heading, place] of [['Two', ' on slide 2'], ['Hid', '']]) {
+  test(`the bubble of a refusal for a text element on ${heading}, in a deck with a hidden slide, names the slide by the number that the navigator draws, and a hidden slide by none`, { timeout: 240_000 }, async (t) => {
+    const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: HIDDEN });
+    const slide = `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent === ${JSON.stringify(heading)})`;
+    await show(ana, heading);
+    await show(ben, 'One');
+    await caretAtEnd(ana, `${slide}.querySelector('p')`);
+    await until(() => ben.evaluate(`${P}.holds.size === 1`), 'the paragraph that Ana is in to be held on the page of Ben');
+    await front(ben);
+    await ben.evaluate(`${C}.app.commands.run('slide.moveTo', { slides: [${slide}], gap: 0 })`);
+    const shown = await ben.evaluate(`(() => { const b = document.querySelector('.beeson-bubble'); if (!b) return null; const r = b.getBoundingClientRect(); return { text: b.textContent, center: r.left + r.width / 2, top: r.top, middle: innerWidth / 2 }; })()`);
+    assert.equal(shown?.text, `Ana is typing${place}. You can do this once they leave it or stop for 30 s.`);
+    assert.ok(Math.abs(shown.center - shown.middle) < 2 && shown.top < 100, `the bubble is at the top of the window, at ${JSON.stringify(shown)}`);
+    clean(ana);
+    clean(ben);
+  });
+}
+
 // the hidden status region of the bubbles, with its text
 const SAID = `(() => {
   const all = document.querySelectorAll('.beeson-bubble-said');

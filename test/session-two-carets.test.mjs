@@ -509,6 +509,37 @@ test('an undo of typing in the speaker notes that cannot be undone says why at t
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
+// One, a hidden slide Hid, and Two, on whose rows the navigator draws 1, no number, and 2
+const HIDDEN = [['<section>\n  <h2>Two</h2>', '<section data-visibility="hidden">\n  <h2>Hid</h2>\n  <p>Hidden words</p>\n</section>\n\n<section>\n  <h2>Two</h2>']];
+const inSlide = (heading, selector) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent === ${JSON.stringify(heading)}).querySelector(${JSON.stringify(selector)})`;
+
+// a session of two pages, 140 s, three shows, 45 s, and two converges, 40 s, at most
+for (const [heading, place] of [['Two', ' on slide 2'], ['Hid', '']]) {
+  test(`a refused undo of typing on ${heading}, in a deck with a hidden slide, names the slide by the number that the navigator draws, and a hidden slide by none, at the top of the window`, { timeout: 300_000 }, async (t) => {
+    const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: HIDDEN });
+    const [ana, ben] = pages;
+    for (const page of pages) {
+      await show(page, heading);
+      await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    }
+    const q = inSlide(heading, 'p');
+    await caretAtEnd(ana, q);
+    await typeKeys(ana, ' foo ');
+    await converge(server, pages);
+    await caretAtEnd(ben, q);
+    await typeKeys(ben, 'bar');
+    await converge(server, pages);
+    await leave(ben);
+    await show(ana, 'One');
+    await run(ana, 'edit.undo');
+    const shown = await ana.evaluate(BUBBLE_AT);
+    assert.equal(shown?.text, NOT_UNDONE.replace('typing', `typing${place}`));
+    assert.ok(Math.abs(shown.center - shown.middle) < 2 && shown.top < 100, `the bubble is at the top of the window, at ${JSON.stringify(shown)}`);
+    assert.deepEqual(await ana.evaluate(`[...document.querySelectorAll('.beeson-edit-nav .row')].map((r) => r.querySelector('.no')?.textContent ?? '')`), ['1', '', '2'], 'the numbers that the navigator draws');
+    assert.deepEqual([ana.errors, ben.errors], [[], []]);
+  });
+}
+
 // Ben makes the word slide bold or italic with a command
 const format = (id) => async (page) => {
   assert.ok(await selectIn(page, 7, 12));
