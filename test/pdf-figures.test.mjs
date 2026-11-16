@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { crc32 } from 'node:zlib';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { deckPdfFigures, pdfFigureProblems, renderPdfFigures } from '../scripts/pdf-figures.mjs';
@@ -55,6 +56,13 @@ test('the hash of a render is read back from its PNG, and it changes with the PD
   const broken = hashed.slice();
   broken[8 + 25 + 8 + 'beeson-pdf'.length + 1 + hash.length] ^= 1;
   assert.equal(hashOf(broken), null);
+  // a large text chunk of another program before the hash is skipped
+  const body = Buffer.concat([Buffer.from('tEXtComment\0'), Buffer.alloc(1 << 20, 'x')]);
+  const big = Buffer.alloc(body.length + 8);
+  big.writeUInt32BE(body.length - 4, 0);
+  body.copy(big, 4);
+  big.writeUInt32BE(crc32(body), body.length + 4);
+  assert.equal(hashOf(new Uint8Array(Buffer.concat([hashed.subarray(0, 33), big, hashed.subarray(33)]))), hash);
   const others = [renderHash(bytes.slice(1), 1, 'dark', TONES.dark), renderHash(bytes, 2, 'dark', TONES.dark), renderHash(bytes, 1, 'light', TONES.dark), renderHash(bytes, 1, null, null), renderHash(bytes, 1, 'dark', TONES.light)];
   assert.equal(new Set([hash, ...others]).size, 6);
 });
