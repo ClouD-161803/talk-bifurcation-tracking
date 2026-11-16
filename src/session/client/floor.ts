@@ -23,7 +23,7 @@ const BESIDE = new Set(['text.joinBackward', 'text.joinForward', 'text.indent'])
 // the commands of a selection that change nothing
 const READ = /^(view|zoom|go|help|window|file)\.|^edit\.copy$|^find\.(open|next|previous|close|useSelection)$/;
 
-export const refusal = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is typing here. You can move or delete it once they leave it or stop for 30 s.'];
+export const refusal = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is typing here. You can do this once they leave it or stop for 30 s.'];
 
 export function install(client: Client): void {
   const presence = presenceOf(client);
@@ -68,7 +68,7 @@ export function install(client: Client): void {
     // a text element on another slide is named by the number of its slide, at the top of the window
     const n = [...app.slides().children].filter((s) => s.tagName === 'SECTION').findIndex((s) => s.contains(el)) + 1;
     if (!n || app.current()?.contains(el)) bubble(el, refusal(by));
-    else bubble(null, [bdi(by.name), ` is typing${client.shell.onSlides([n])}. You can do this once they leave the text or stop for 30 s.`]);
+    else bubble(null, [bdi(by.name), ` is typing${client.shell.onSlides([n])}. You can do this once they leave it or stop for 30 s.`]);
     return true;
   });
 }
