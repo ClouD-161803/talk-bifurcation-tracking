@@ -444,19 +444,22 @@ test('a page asks before it unloads after a Redo that follows an offline Undo, o
 
 // the handler of the next write of the copy waits after window.__hold until window.__release(), and
 // the handler of every write while window.__holdAll. after window.__fail every write fails at once,
-// after the handlers that wait. a handler that waits is a write that ends late, e.g. on a slow disk
+// after the handlers that wait. a handler that waits is a write that ends late, e.g. on a slow disk.
+// window.__ended counts the handlers that ran without a wait
 const LATE_WRITES = `{
   const put = IDBObjectStore.prototype.put;
   const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
   const held = [];
+  window.__ended = 0;
   window.__release = () => (held.splice(0).forEach((go) => go()), true);
   Object.defineProperty(IDBTransaction.prototype, 'oncomplete', {
     configurable: true,
     get() { return complete.get.call(this); },
     set(fn) {
-      const hold = fn && (window.__hold || window.__holdAll) && this.mode === 'readwrite' && this.objectStoreNames.contains('copies');
+      const write = fn && this.mode === 'readwrite' && this.objectStoreNames.contains('copies');
+      const hold = write && (window.__hold || window.__holdAll);
       if (hold) window.__hold = false;
-      complete.set.call(this, hold ? (ev) => held.push(() => fn.call(this, ev)) : fn);
+      complete.set.call(this, hold ? (ev) => held.push(() => fn.call(this, ev)) : write ? (ev) => (fn.call(this, ev), window.__ended++) : fn);
     },
   });
   IDBObjectStore.prototype.put = function (...args) {
@@ -491,6 +494,30 @@ test('a page asks before it unloads after an Undo while its copy holds the undon
   await page.waitFor(`!${TEXT}.includes('One Two') && /cannot be kept/.test(${STATE})`);
   const after = await page.evaluate(ASKED(' Two'));
   assert.ok(after.asking || !after.copied, `the page asks while its copy holds the undone edit: ${JSON.stringify(after)}`);
+});
+
+test('a page asks before it unloads after a Redo that follows an offline Undo, also when the write of the edit ends after the write of the Undo', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${LATE_WRITES}` });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await page.evaluate('window.__hold = true');
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied)`);
+  const ended = await page.evaluate('window.__ended');
+  await press(page, 'Mod+Z');
+  await page.waitFor(`window.__ended > ${ended} && (${LACKS(' Zed')})`);
+  // the record of the edit, at the same version as the Undo, is no longer the copy of the page
+  await page.evaluate('window.__release()');
+  await page.evaluate(AT_REDO);
+  await press(page, REDO);
+  await page.waitFor('window.__asking !== undefined');
+  assert.equal(await page.evaluate('window.__asking'), true, 'the page asks once it read the Redo');
 });
 
 test('a page asks before it unloads after an Undo and a Redo of an acknowledged edit, also when its copy with the edit was written after the acknowledgment', { timeout: 240_000 }, async (t) => {
