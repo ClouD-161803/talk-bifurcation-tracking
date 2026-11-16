@@ -1314,7 +1314,7 @@ ${angles.map((deg, k) => `  <p style="position: absolute; left: ${60 + 370 * k}p
   });
 }
 
-test('at 390 px, the badges of a slide and of elements at its edges stay inside the window and do not overlap', { timeout: 300_000 }, async (t) => {
+test('at 390 px, the badges of a slide and of elements at its edges stay inside the window, and neither they nor the areas that take their taps overlap', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const places = [[0, 0], [1620, 0], [1620, 4], [0, 1040], [1620, 1040], [700, 500], [700, 504], [700, 508]];
@@ -1330,13 +1330,20 @@ ${places.map(([x, y], k) => `  <p style="position: absolute; left: ${x}px; top: 
   await post(a, 0, 'On the slide');
   await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, places.length + 1);
   const boxes = await a.evaluate(BADGE_RECTS);
+  // the area of each badge that takes a tap, i.e. its pseudo-element ::after placed around it
+  const taps = await a.evaluate(`[...document.querySelectorAll('.beeson-comment-badge')].map((b) => {
+    const r = b.getBoundingClientRect();
+    const s = getComputedStyle(b, '::after');
+    return { left: r.left + parseFloat(s.left), top: r.top + parseFloat(s.top), right: r.right - parseFloat(s.right), bottom: r.bottom - parseFloat(s.bottom) };
+  })`);
   const size = await a.evaluate(`[innerWidth, innerHeight]`);
   const pairs = (list) => list.flatMap((b, i) => list.slice(i + 1).filter((o) => meets(b, o))).length;
   const got = {
     overlaps: pairs(boxes),
+    taps: pairs(taps),
     outside: boxes.filter((b) => b.left < 0 || b.top < 0 || b.right > size[0] || b.bottom > size[1]).length,
   };
-  assert.deepEqual(got, { overlaps: 0, outside: 0 }, JSON.stringify(boxes));
+  assert.deepEqual(got, { overlaps: 0, taps: 0, outside: 0 }, JSON.stringify(boxes));
   clean(a);
 });
 
