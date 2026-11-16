@@ -7,7 +7,7 @@
 import { COMMENT_MAX, type Comment } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { Badges } from './comments-badges.ts';
-import { Comments, MENTION, itemsOf, stamp, type Item, type Place } from './comments.ts';
+import { Comments, MENTION, itemsOf, stamp, type Item, type Place, type Spot } from './comments.ts';
 import { bdi, make, style } from './dom.ts';
 import { stopFollowing } from './follow.ts';
 import { whenOf } from './labels.ts';
@@ -312,7 +312,7 @@ class Pane {
     for (const [id, k] of this.pending) if (this.comments.threads.has(id)) replies[id] = k;
     for (const [id, f] of this.replies) if (f.area.value.trim()) replies[id] = f.kept();
     const d = this.draft;
-    const draft = d?.field.area.value.trim() ? { ...d.field.kept(), slide: spotOf(d.slide), el: d.el ? spotOf(d.el) : null } : null;
+    const draft = d?.field.area.value.trim() ? { ...d.field.kept(), ...this.comments.spots(d.el, d.slide) } : null;
     try {
       sessionStorage.setItem(TEXTS, draft || Object.keys(replies).length ? JSON.stringify({ draft, replies }) : '');
     } catch {
@@ -340,8 +340,9 @@ class Pane {
     }
     const d = saved?.draft;
     if (!d?.text || this.draft?.field.area.value) return;
-    const el = d.el ? elementOf(d.el) : null;
-    const slide = el?.closest(SLIDES) ?? (d.slide ? elementOf(d.slide) : null) ?? this.shell.target().slide;
+    // an element that was changed or removed meanwhile is not found, and neither is its slide
+    const el = d.el ? this.comments.spotted(d.el) : null;
+    const slide = el?.closest(SLIDES) ?? (d.slide ? this.comments.spotted(d.slide) : null) ?? this.shell.target().slide;
     if (!slide) return;
     this.drafted(el, slide);
     this.draft?.field.load(d);
@@ -957,22 +958,7 @@ const named = (name: string, after: string): Node[] => [bdi(name), document.crea
 const SLIDES = '.reveal .slides section';
 const TEXTS = `beeson-session-comment-texts:${location.pathname}`;
 
-// an element of the deck as the index of its slide, its index in the slide, or -1 for the slide,
-// and its tag, which find it again after a reload of the same deck
-type Spot = { slide: number; at: number; tag: string };
 type Saved = { draft: (Kept & { slide: Spot | null; el: Spot | null }) | null; replies: Record<string, Kept> };
-
-function spotOf(el: Element): Spot | null {
-  const slide = el.closest(SLIDES);
-  if (!slide) return null;
-  return { slide: [...document.querySelectorAll(SLIDES)].indexOf(slide), at: el === slide ? -1 : [...slide.querySelectorAll('*')].indexOf(el), tag: el.localName };
-}
-
-function elementOf(s: Spot): Element | null {
-  const slide = document.querySelectorAll(SLIDES)[s.slide];
-  const el = !slide || s.at < 0 ? slide : slide.querySelectorAll('*')[s.at];
-  return el?.localName === s.tag ? el : null;
-}
 
 const nameOf = (client: Client, person: string): string =>
   person === client.person ? client.name || 'You' : client.known.find((k) => k.person === person)?.name ?? 'Someone';
