@@ -821,6 +821,26 @@ test('a page that loads again, or rejoins after a restart, while a person who ty
   clean(ben, lost);
 });
 
+test('a page that loads again after a caret move of a person into a paragraph, without a key, sees the paragraph held and refuses its delete', { timeout: 300_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await front(ana);
+  await caretAtEnd(ana, SECOND);
+  await until(() => ben.evaluate(`${HOLDER(SECOND)} === 'Ana'`), 'the paragraph to be held by Ana on the page of Ben');
+  await reload(ben);
+  await show(ben, 'Two');
+  await until(() => caretOf(ben, 'Ana', SECOND), 'the caret of Ana to be read on the new page of Ben');
+  assert.equal(await ben.evaluate(HOLDER(SECOND)), 'Ana', 'the paragraph is held on the new page');
+  await select(ben, SECOND);
+  await unbubble(ben);
+  await ben.evaluate(`${C}.app.commands.run('element.delete')`);
+  await frame(ben);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the delete is refused');
+  clean(ana);
+  clean(ben);
+});
+
 test('a page that joins while a person pauses ends the hold when the page of this person says that their 30 s passed', { timeout: 360_000 }, async (t) => {
   const { browser, server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
