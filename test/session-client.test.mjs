@@ -348,7 +348,7 @@ for (const [what, change] of [
   });
 }
 
-test('a name held by another person asks whether it is this person, says what Yes means, and Yes takes the person over', { timeout: 120_000 }, async (t) => {
+test('a name held by another person asks whether it is this person, says what continuing does, and Yes, continue takes the person over', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
