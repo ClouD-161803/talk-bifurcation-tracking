@@ -3,11 +3,12 @@
 // once it is committed, and the keys, deletions, and pastes of the others during the composition,
 // at its caret or around it, are kept with the word at its point. the keys of two people that come
 // in one answer on both sides of an unread key of the person are kept with it, also after a long
-// paste, and the same letter typed by both is kept twice. an unread key stays whole beside a key of
-// another person, and goes before an element that another person puts around the word after it.
-// two people who take turns at one point each keep a run of their own. an undo next to a space that
-// the browser writes as &nbsp; removes only the typing of the person, and an undo of a word whose
-// trailing space another browser took away is refused
+// paste, the same letter typed by both is kept twice, and the same replacement made by both is kept
+// once. an unread key stays whole beside a key of another person, and goes before an element that
+// another person puts around the word after it. two people who take turns at one point each keep a
+// run of their own. an undo next to a space that the browser writes as &nbsp; removes only the
+// typing of the person, and an undo of a word whose trailing space another browser took away is
+// refused
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -327,6 +328,26 @@ test('the same letter typed at one point by another person and as an unread key 
   });
   assert.equal(text, '<p>Secondee slide</p>');
 });
+
+// the diff of each page gives the change as a removal and an insertion, e.g. of sli and ck for
+// slide into deck, which are one change of each person
+for (const [words, a, b, word, want] of [
+  ['Second slide', 7, 12, 'deck', 'Second deck'],
+  ['Second teh slide', 7, 10, 'the', 'Second the slide'],
+]) {
+  test(`the same replacement of ${words.slice(a, b)} by ${word} made by another person and as an unread change of the person is kept once`, { timeout: 240_000 }, async (t) => {
+    const text = await race(t, {
+      edits: words === 'Second slide' ? [] : [['  <p>Second slide</p>', `  <p>${words}</p>`]],
+      ana: [a, b, word],
+      marker: want,
+      ben: async (ben) => {
+        assert.ok(await selectIn(ben, a, b));
+        await ben.evaluate(`document.execCommand('insertText', false, ${JSON.stringify(word)})`);
+      },
+    });
+    assert.equal(text, `<p>${want}</p>`);
+  });
+}
 
 // two pages in the paragraph, with the focus of each emulated, so that both hold a caret at once
 async function pair(t) {

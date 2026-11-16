@@ -321,6 +321,18 @@ test('the merge of an apply in a session gives the text of the authority for pai
   }
 });
 
+test('with twice, the same letter typed at one point by two people is kept twice, and the same replacement of a word by two people once', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const twice = (p0, ps, pt) => {
+    const f = wrap(p0), s = wrap(ps), t = wrap(pt);
+    return mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text;
+  };
+  assert.equal(twice('<p>Second slide</p>', '<p>Seconde slide</p>', '<p>Seconde slide</p>'), wrap('<p>Secondee slide</p>'));
+  // the diff turns slide into deck as a removal of sli and an insertion of ck, which are one change
+  assert.equal(twice('<p>Second slide</p>', '<p>Second deck</p>', '<p>Second deck</p>'), wrap('<p>Second deck</p>'));
+  assert.equal(twice('<p>Second teh slide</p>', '<p>Second the slide</p>', '<p>Second the slide</p>'), wrap('<p>Second the slide</p>'));
+});
+
 test('the merge of an apply in a session keeps a key of another person inside a word whose bold the person removes', () => {
   // the authority takes the removal of both tags as one patch over the word, which drops the key
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
