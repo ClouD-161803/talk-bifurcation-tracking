@@ -779,13 +779,33 @@ test('a page asks before it unloads once its copy is deleted under it and cannot
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Zed');
   await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
-  // as Clear site data does. the next heartbeat, BEAT of copy.ts (10 s) later, fails
+  // as Clear site data does, with each later write refused, e.g. on a full disk. the next
+  // heartbeat, BEAT of copy.ts (10 s) later, fails
   await page.send('Storage.clearDataForOrigin', { origin: await page.evaluate('location.origin'), storageTypes: 'indexeddb' });
+  await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
   await page.waitFor(`/cannot be kept/.test(${STATE})`, 30_000);
   assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: true, copied: false });
   await page.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
   await page.waitFor(`${C}.acked() && !${C}.asking`);
   await until(() => paragraph(server.read()) === 'First slide Zed' || null, 'the edit in index.html', 15_000);
+});
+
+test('a page whose copy is deleted with the data of the site writes its copy again, and then does not ask before it unloads', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  // as Clear site data does
+  await page.send('Storage.clearDataForOrigin', { origin: await page.evaluate('location.origin'), storageTypes: 'indexeddb' });
+  await type(page, ' More');
+  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`, 30_000);
 });
 
 // a script for open() that fails the next put once window.__failPut is set. Date.now() of the page
