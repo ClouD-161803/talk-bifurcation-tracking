@@ -1273,3 +1273,70 @@ test('a change of index.html from outside takes about as long at the end of a de
   t.diagnostic(`${late.toFixed(1)} ms at the end, ${early.toFixed(1)} ms at the start`);
   assert.ok(late <= 3 * early, `a change at the end of the deck takes ${late.toFixed(1)} ms, and one at its start ${early.toFixed(1)} ms`);
 });
+
+test('a change of index.html from outside is told where it replaces a word of a person after she made a word of the same version bold in one operation', { timeout: 60_000 }, (t) => {
+  const { authority, history } = open(sessionDir(t), DECK);
+  replace(authority, 'First slide', 'First moon', ANN);
+  history.close();
+  replace(authority, 'First moon', 'First moon of the third body', ANN);
+  // the two insertions of the bold, inside the text that the version wrote
+  const at = authority.text.indexOf('third');
+  authority.enter([{ start: at, end: at, text: '<b>' }, { start: at + 5, end: at + 5, text: '</b>' }], ANN);
+  history.close();
+  const before = authority.version;
+  replace(authority, 'First moon', 'First Mars', 'file');
+  assert.equal(history.overwrittenAfter(before), true);
+});
+
+test('a change of index.html from outside is told whenever it replaces a character that a person wrote, after operations of several patches inside the text of their version', { timeout: 120_000 }, (t) => {
+  // mulberry32
+  let seed = 38;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const int = (n) => Math.floor(rnd() * n);
+  const word = (letters, n) => Array.from({ length: n }, () => letters[int(letters.length)]).join('');
+  // the text as cells of a character and whether a person wrote it, with patches applied
+  const applied = (cells, patches, person) => {
+    const out = [];
+    let at = 0;
+    for (const p of patches) {
+      out.push(...cells.slice(at, p.start), ...[...p.text].map((ch) => ({ ch, person })));
+      at = p.end;
+    }
+    return [...out, ...cells.slice(at)];
+  };
+  let missed = 0;
+  for (let round = 0; round < 3000; round++) {
+    let text = '<body>\n';
+    for (let i = 0, n = 2 + int(3); i < n; i++) text += `<p>${word('ab ', 3 + int(10))}</p>\n`;
+    text += '</body>\n';
+    const { authority, history } = open(sessionDir(t), text);
+    let cells = [...text].map((ch) => ({ ch, person: false }));
+    for (let k = 0, n = 2 + int(5); k < n; k++) {
+      // up to five places close to each other, as of a Replace All or a bold, each with a removal,
+      // an insertion, or a replace of up to 9 letters, which the next place may fall into
+      const patches = [];
+      for (let at = 0, places = 1 + int(5); places > 0 && at <= authority.text.length; places--) {
+        const start = at + int(Math.min(12, authority.text.length + 1 - at));
+        const end = Math.min(authority.text.length, start + (rnd() < 0.6 ? 0 : 1 + int(3)));
+        patches.push({ start, end, text: rnd() < 0.2 && end > start ? '' : word('ab ', 1 + int(9)) });
+        at = end + 1;
+      }
+      assert.equal(authority.enter(patches, rnd() < 0.5 ? ANN : BO).answer.ok, true);
+      cells = applied(cells, patches, true);
+      if (rnd() < 0.3) history.close();
+    }
+    // a program replaces up to three characters with letters that the text does not hold
+    const start = int(authority.text.length);
+    const range = { start, end: Math.min(authority.text.length, start + 1 + int(3)), text: word('XYZ', 1 + int(3)) };
+    const before = authority.version;
+    enterText(authority, applied(cells, [range], false).map((c) => c.ch).join(''), 'file');
+    if (cells.slice(range.start, range.end).some((c) => c.person) && !history.overwrittenAfter(before)) missed++;
+    history.stopSync();
+  }
+  assert.equal(missed, 0, `${missed} changes from outside over the text of a person were not told`);
+});
