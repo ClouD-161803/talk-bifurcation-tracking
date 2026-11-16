@@ -48,7 +48,7 @@ Avoid "card". The heading over the scrubber of the progress line is not a card e
 
 ## Edit command
 
-The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` is written.
+The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` and `tex.js` are written.
 
 Avoid "server" and "daemon".
 
