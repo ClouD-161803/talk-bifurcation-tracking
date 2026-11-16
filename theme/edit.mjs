@@ -148,7 +148,7 @@ function markMoved(a, b) {
   });
   return [x, y];
 }
-function changes(base, theirs) {
+function changes(base, theirs, plain) {
   if (base === theirs) return [];
   const [head, tail] = shared(base, theirs);
   const end = base.length - tail;
@@ -163,7 +163,7 @@ function changes(base, theirs) {
   };
   trim();
   const slides = (l) => l.slice(pre, l.length - suf).join("").split(SECTION).length;
-  const moved2 = slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
+  const moved2 = !plain && slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
   if (moved2) {
     [x, y] = moved2;
     trim();
@@ -186,6 +186,10 @@ function changes(base, theirs) {
     text2 = text2.slice(p, text2.length - s);
     removed += end2 - start2;
     out.push({ start: start2, end: end2, text: text2 });
+  }
+  if (moved2) {
+    const m = moves(base, out, out, () => true);
+    if (hunks.some((h, i) => !m.includes(out[i]) && `${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`.includes("\0"))) return changes(base, theirs, true);
   }
   return removed > base.length / 2 && !moved2 ? null : out;
 }

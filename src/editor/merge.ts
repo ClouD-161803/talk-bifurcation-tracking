@@ -139,8 +139,8 @@ function markMoved(a: string[], b: string[]): [string[], string[]] | null {
 
 // the changes that turn base into theirs, as edits of base in the order of the file. null when
 // the texts are too far apart to be one file, i.e. when the diff is given up or the changes replace
-// more than half of base, e.g. for an empty file or another deck
-export function changes(base: string, theirs: string): Edit[] | null {
+// more than half of base, e.g. for an empty file or another deck. a plain diff skips moved slides
+export function changes(base: string, theirs: string, plain?: boolean): Edit[] | null {
   if (base === theirs) return [];
   // a change within one line is the part between the shared start and end, as the line diff
   // narrows it, and the lines of the whole text are not split
@@ -159,7 +159,7 @@ export function changes(base: string, theirs: string): Edit[] | null {
   // a slide is looked for as moved only when both hold as many slides where they differ, hence not
   // when a slide is copied and the slide copied is changed
   const slides = (l: string[]) => l.slice(pre, l.length - suf).join('').split(SECTION).length;
-  const moved = slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
+  const moved = !plain && slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
   if (moved) {
     [x, y] = moved;
     trim();
@@ -184,6 +184,12 @@ export function changes(base: string, theirs: string): Edit[] | null {
     text = text.slice(p, text.length - s);
     removed += end - start;
     out.push({ start, end, text });
+  }
+  // the marks count only when each of their hunks is the half of a move that moves() pairs, and the
+  // texts are diffed again without them otherwise
+  if (moved) {
+    const m = moves(base, out, out, () => true);
+    if (hunks.some((h, i) => !m.includes(out[i]) && `${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`.includes('\0'))) return changes(base, theirs, true);
   }
   // a moved slide is in both texts, which are thus one file
   return removed > base.length / 2 && !moved ? null : out;
