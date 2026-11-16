@@ -797,3 +797,22 @@ test('in the merge of the editor, a paragraph moved together with a long paste o
   assert.equal(text.split('Second slide').length - 1, 1);
   assert.equal(text.split('word89').length - 1, 1);
 });
+
+test('changes() gives a slide moved past another as the removal and the insertion of the whole slide, and the plain line diff when the slide that moved is also changed', () => {
+  const s = (h, ...ps) => `<section>\n  <h2>${h}</h2>\n${ps.map((p) => `  ${p}\n`).join('')}</section>\n`;
+  const a = s('A', '<p>Alpha</p>'), b = s('B', '<p>Beta</p>'), c = s('C', '<p>Gamma</p>');
+  for (const [base, theirs] of [[a + b + c, b + a + c], [a + b + c, c + a + b]]) {
+    const found = changes(base, theirs);
+    assert.equal(apply(base, found), theirs);
+    const cut = found.find((e) => !e.text), put = found.find((e) => e.start === e.end);
+    assert.ok(cut && put, 'a removal and an insertion');
+    assert.equal(base.slice(cut.start, cut.end), put.text, 'the removed text is inserted');
+    assert.match(put.text, /^<section>[^]*<\/section>\n$/, 'the text is a whole slide');
+  }
+  // the mover changes slide Two, hence markMoved() marks slide One, whose hunks are not a move
+  const one = s('One', '<p>First</p>', '<ul>', '  <li>Item</li>', '  <li></li>', '</ul>'), two = s('Two', '<p>Second</p>');
+  const three = s('Three', '<ul>', '  <li>Last item</li>', '</ul>', '<p>Third</p>'), four = s('Four', '<p>Fourth</p>');
+  const base = one + two + three + four, theirs = two.replace('Second', 'Second by Bob') + three + one + four;
+  assert.deepEqual(changes(base, theirs), changes(base, theirs, true));
+  assert.equal(apply(base, changes(base, theirs)), theirs);
+});
