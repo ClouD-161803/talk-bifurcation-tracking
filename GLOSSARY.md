@@ -106,9 +106,9 @@ Avoid "head" for the heading of a figure slide, since a head is the moving dot a
 
 ## Hold
 
-To be the one person of a session who can type in a text element. You hold a text element from the moment your caret is put into it until the caret leaves, your page is silent for 15 s, or someone else enters it after you have not typed for 30 s.
+To have your caret in a text element of a session, having typed or put the caret into it within the last 30 s. The others can type in an element that you hold and format its text, and they cannot move, restyle, split, join, or delete it until the hold ends.
 
-Avoid "lock", which is the command Lock of the Arrange menu. The class `beeson-locked` of an element held by another person is `beeson-held`.
+Avoid "lock", which is the command Lock of the Arrange menu.
 
 ## Host
 
