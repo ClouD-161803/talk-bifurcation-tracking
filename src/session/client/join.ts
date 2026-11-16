@@ -1,7 +1,7 @@
 // the join of a page: the name of the person, asked once per browser, and the person id, kept
 // in localStorage, which may be blocked or full in a private window
 
-import { changes, merge } from '../../editor/merge.ts';
+import { changes, mergeEdits } from '../../editor/merge.ts';
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
 import { accept, beforeJoin, retiring, type Copy } from './copy.ts';
@@ -145,7 +145,9 @@ export async function join(client: Client, text: string, v: string, copy: Copy |
     const own = changes(text, deck);
     if (own === null) return deck;
     if (!own.length) return copy.mine;
-    return merge(text, own, copy.mine, 'ours')?.text ?? deck;
+    // as the session merges, hence two insertions at one point are both kept
+    const all = changes(text, copy.mine);
+    return all ? mergeEdits(text, own, all, 'ours', true).text : deck;
   };
   // until hello is answered, copy.ts keeps the edits typed since the load, read again after a change
   let early: Copy | null | undefined;
