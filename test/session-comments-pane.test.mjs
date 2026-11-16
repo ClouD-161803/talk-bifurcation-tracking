@@ -959,3 +959,30 @@ test('Esc in a draft with text keeps the text and leaves the field, Cancel disca
   assert.deepEqual(await stored(a), []);
   clean(a);
 });
+
+test('a draft whose element another person deletes moves to its slide and is sent as a thread on the slide', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t);
+  const state = `(() => { const d = document.querySelector('${PANE} .draft'); return d && { label: d.querySelector('.anchor').textContent, text: d.querySelector('textarea').value }; })()`;
+  await show(a, 'Two');
+  await click(a, '.reveal .slides > section:nth-child(2) > p');
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await type(a, 'Draft on the paragraph');
+  assert.deepEqual(await a.evaluate(state), { label: 'On Paragraph: Second slide', text: 'Draft on the paragraph' });
+  // Ann leaves the paragraph, which ends her hold on it
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) > p');
+  await press(a, 'Escape');
+  await until(() => b.evaluate(`!document.querySelector('.reveal .slides > section:nth-child(2) > p').classList.contains('beeson-held')`), 'the paragraph that Ann left to be free on the page of Ben');
+  await show(b, 'Two');
+  await click(b, '.reveal section.present > p');
+  await press(b, 'Escape');
+  await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
+  await until(() => !server.read().includes('Second slide'), 'the removal to reach index.html');
+  await converge(server, [a, b]);
+  await sees(a, state, { label: 'On Slide 2', text: 'Draft on the paragraph' });
+  await click(a, `${PANE} .draft .actions .primary`);
+  await sees(a, `[${state}, ${THREADS}]`, [null, [{ anchor: 'On Slide 2', texts: ['Draft on the paragraph'] }]]);
+  clean(a);
+  clean(b);
+});
