@@ -544,7 +544,7 @@ test('the notes of File > Preamble… and File > Bibliography… in a session fi
   const server = await texTalk(t);
   // the system font of Linux and of Android is wider than the one of a Mac
   const wide = '.beeson-edit-menu { letter-spacing: 1px; }';
-  for (const [name, width, height, mobile, style] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false], ['Cy', 390, 844, true, wide]]) {
+  for (const [name, width, height, mobile, style] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false], ['Cy', 390, 844, true, wide], ['Dee', 320, 700, true, wide]]) {
     const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
     t.after(() => page.close());
     await converge(server, [page]);
@@ -553,7 +553,11 @@ test('the notes of File > Preamble… and File > Bibliography… in a session fi
     for (const id of ['file.preamble', 'file.bibliography']) {
       assert.ok(items[id], `the File menu does not have ${id}`);
       assert.ok(items[id].scroll <= items[id].client + 1, `the label of ${id} is wider than its box at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(items[id])}`);
+      // the row of a note on a second line has room above and below its text, as a row of one line
+      assert.ok(items[id].room >= 2.5, `the label of ${id} touches the edge of its row at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(items[id])}`);
     }
+    // e.g. the keys of Open… and the arrow of Open Recent, whose notes wrap at 320 px with wider letters
+    for (const [id, item] of Object.entries(items)) assert.ok(item.off <= 1.5, `the keys or the arrow of ${id} are not in line with its label at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(item)}`);
     clean(page, MISSING);
   }
 });
