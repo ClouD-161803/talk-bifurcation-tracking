@@ -151,6 +151,79 @@ test('a held paragraph refuses a paragraph style, a list style, and Enter, which
   clean(ben);
 });
 
+const FOURTH = LAST('Fourth');
+// the elements of slide Two before the paragraph Fifth, and those from it on
+const PART = (from) => `(() => { const c = [...${el(1, 'h2')}.parentElement.children]; const i = c.findIndex((e) => e.textContent.trim().startsWith('Fifth')); return c.slice(${from ? 'i' : '0, i'}).map((e) => e.outerHTML).join(''); })()`;
+const HEAD = PART(false);
+const TAIL = PART(true);
+
+// a text selection from offset at of the text element of expression up into the one before it
+async function spanUp(page, expression, at = 2) {
+  await front(page);
+  await leave(page);
+  await frame(page);
+  await page.evaluate(`(() => { const h = ${expression}; h.focus(); getSelection().collapse(h.firstChild, ${at}); })()`);
+  await press(page, 'Shift+ArrowUp');
+  await frame(page);
+}
+
+// the whole text of the text element of expression selected
+async function whole(page, expression) {
+  await front(page);
+  await leave(page);
+  await frame(page);
+  await page.evaluate(`(() => { const h = ${expression}; h.focus(); const r = document.createRange(); r.selectNodeContents(h); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
+  await frame(page);
+}
+
+test('a paragraph style, a list style, or Paste Style over a text selection from a held paragraph into the one before it is refused, and over two paragraphs that are not held it is taken', { timeout: 180_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p>Third</p>\n  <p>Fourth</p>\n  <p>Fifth</p>\n  <p>Sixth</p>']] });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, FOURTH, ' typed');
+  // a clock of Ben far behind keeps the hold for the whole test
+  await ben.evaluate(`${P}.skew = -1e8`);
+  const before = await ben.evaluate(HEAD);
+  // the style of a list item, which Paste Style sets with its list
+  await caretAtEnd(ben, ALPHA);
+  await ben.evaluate(`${C}.app.commands.run('text.copyStyle')`);
+  // each case: the command, and how its text selection is made from a text element. a text
+  // selection up from the held paragraph has its focus in the paragraph before it, and Paste Style
+  // sets the list and the style of a text selection whose part in the focus is its whole text
+  const fromStart = (page, expression) => spanUp(page, expression, 0);
+  const cases = [
+    ['text.list.ol', spanUp],
+    ['text.list.none', spanUp],
+    ['text.style.subheading', spanUp],
+    ['text.pasteStyle', fromStart],
+    ['text.pasteStyle', whole],
+  ];
+  for (const [id, put] of cases) {
+    const what = `${id} over ${put === whole ? 'the whole text' : 'a text selection up into the paragraph before'}`;
+    await put(ben, FOURTH);
+    await unbubble(ben);
+    await ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
+    await frame(ben);
+    assert.equal(await ben.evaluate(HEAD), before, `${what} of the held paragraph leaves it and the paragraph before as they were`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, `${what} of the held paragraph`);
+    const tail = await ben.evaluate(TAIL);
+    await put(ben, LAST('Sixth'));
+    await unbubble(ben);
+    await ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
+    await frame(ben);
+    assert.notEqual(await ben.evaluate(TAIL), tail, `${what} of paragraphs that are not held is taken`);
+    assert.equal(await ben.evaluate(BUBBLE), null, `${what} of paragraphs that are not held`);
+    assert.equal(await ben.evaluate(HEAD), before, `${what} of paragraphs that are not held leaves the held paragraph as it was`);
+  }
+  assert.ok(await caretOf(ben, 'Ana', FOURTH), 'the caret of Ana stays in her paragraph');
+  await caretAtEnd(ana, FOURTH);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<p>Third<\/p>\s*<p>Fourth typed more<\/p>/);
+  clean(ana);
+  clean(ben);
+});
+
 const STYLE = (expression) => `${expression}.getAttribute('style')`;
 
 test('a drag of the move handle, the rotate handle, or a grip of a held paragraph is refused, also by a touch on a phone, and the holder keeps typing', { timeout: 180_000 }, async (t) => {
