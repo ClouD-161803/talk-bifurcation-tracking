@@ -425,30 +425,29 @@ test('typing that ended inside a transaction is undone with the transaction afte
 });
 
 // a diff of the text before the redo against the text now may read a letter removed on one side of
-// the place of the typing and the same letter typed on its other side, or the other way round
-test('a redo of typing after another person typed a letter on one side of its place and removed one on the other side is placed right or refused', async () => {
+// the place of the typing and the same letter typed on its other side, or the other way round. the
+// redo is made where the two readings give one place, and refused where they give two
+test('a redo of typing after another person typed a letter on one side of its place and removed one on the other side is placed right, or refused where its place reads two ways', async () => {
   for (const c of [
-    { before: 'see', at: 2, typed: 'XYZ', first: 'seXYZde', undone: 'sede', keys: ['sdede', 'sdee'], want: 'sdeXYZe' },
-    { before: 'aaa', at: 2, typed: 'xxx', first: 'aaxxxRa', undone: 'aaRa', keys: ['aRaRa', 'aRaa'], want: 'aRaxxxa' },
-    { before: 'see', at: 2, typed: 'XYZ', first: null, undone: 'see', keys: ['sdee'], want: 'sdeXYZe' },
-    { before: 'sede', at: 2, typed: 'XYZ', first: null, undone: 'sede', keys: ['sdede', 'sdee'], want: 'sdeXYZe' },
+    { before: 'see', at: 2, typed: 'XYZ', first: 'seXYZde', undone: 'sede', keys: ['sdede', 'sdee'], redone: null },
+    { before: 'aaa', at: 2, typed: 'xxx', first: 'aaxxxRa', undone: 'aaRa', keys: ['aRaRa', 'aRaa'], redone: null },
+    { before: 'see', at: 2, typed: 'XYZ', first: null, undone: 'see', keys: ['sdee'], redone: 'sdeXYZe' },
+    { before: 'sede', at: 2, typed: 'XYZ', first: null, undone: 'sede', keys: ['sdede', 'sdee'], redone: null },
   ]) {
     const { h } = texts();
+    const told = [];
+    h.refused = (entry, way) => told.push(way);
     const el = textEl(c.before);
-    const other = (content) => {
-      el.content = content;
-      h.prune((x) => x === el, undefined, undefined, [el]);
-      h.carry(el);
-    };
     h.track(el);
     typeInto(h, el, c.before.slice(0, c.at) + c.typed + c.before.slice(c.at));
     h.break();
-    if (c.first) other(c.first);
+    if (c.first) edit(h, el, c.first);
     await h.undo();
     assert.equal(el.content, c.undone);
-    for (const k of c.keys) other(k);
+    edit(h, el, ...c.keys);
     await h.redo();
-    assert.ok(el.content === c.want || el.content === c.keys.at(-1), `${c.before}: ${el.content}`);
+    assert.equal(el.content, c.redone ?? c.keys.at(-1), c.before);
+    assert.deepEqual(told, c.redone ? [] : ['redo'], c.before);
   }
 });
 
