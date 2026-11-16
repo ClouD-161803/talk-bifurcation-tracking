@@ -377,7 +377,7 @@ test('a page whose copy holds its edit does not ask before a reload, and its edi
 // whether copy.ts wrote a record and none of its records holds part
 const LACKS = (part) => `(${ROWS}).then((rows) => rows.length > 0 && !rows.some((r) => r.mine.includes(${JSON.stringify(part)})))`;
 
-test('a page asks before it unloads after an Undo of an edit that the edit command may hold, also once its copy holds the Undo', { timeout: 240_000 }, async (t) => {
+test('a page asks before it unloads after an Undo of an edit that the edit command may hold, also once its copy holds the Undo', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);

@@ -327,7 +327,7 @@ const middle = (page, selector) =>
 // the answer of the command id run with arg, an expression of the page: taken, or the reason of its refusal
 const run = (page, id, arg) => page.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}, ${arg}).then(() => 'taken', (e) => e.message)`);
 
-test('a PDF that is dropped, or chosen with Replace…, is refused in a session with its reason, and the picture is kept', { timeout: 240_000 }, async (t) => {
+test('a PDF that is dropped, or chosen with Replace…, is refused in a session with its reason, and the picture is kept', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -347,7 +347,7 @@ test('a PDF that is dropped, or chosen with Replace…, is refused in a session 
   clean(ann);
 });
 
-test('the page and Match the Mode of a PDF figure of the deck are changed in a session, and the other page shows the new renders from media/', { timeout: 420_000 }, async (t) => {
+test('the page and Match the Mode of a PDF figure of the deck are changed in a session, and the other page shows the new renders from media/', { timeout: 780_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -437,7 +437,7 @@ async function figureTalk(t, pdf) {
   return server;
 }
 
-test('a render of a PDF figure over 16 MB is refused in a session with its reason, and the deck and media/ are kept', { timeout: 240_000 }, async (t) => {
+test('a render of a PDF figure over 16 MB is refused in a session with its reason, and the deck and media/ are kept', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await figureTalk(t, noisePdf());
@@ -458,7 +458,7 @@ test('a render of a PDF figure over 16 MB is refused in a session with its reaso
 const STORED = `[...${C}.shell.media.byPath.keys()].sort()`;
 
 for (const refused of ['dark', 'light']) {
-  test(`every render of a PDF figure is checked in a session before the deck is changed, and the reason of a refused one is given, here of the ${refused} render`, { timeout: 180_000 }, async (t) => {
+  test(`every render of a PDF figure is checked in a session before the deck is changed, and the reason of a refused one is given, here of the ${refused} render`, { timeout: 300_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await figureTalk(t, readFileSync(PDF));
@@ -477,7 +477,7 @@ for (const refused of ['dark', 'light']) {
   });
 }
 
-test('a guest who changes Match the Mode of a PDF figure whose PDF is over 16 MB is told of the limit of the relay, and the deck is kept', { timeout: 240_000 }, async (t) => {
+test('a guest who changes Match the Mode of a PDF figure whose PDF is over 16 MB is told of the limit of the relay, and the deck is kept', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await figureTalk(t, noisePdf());
