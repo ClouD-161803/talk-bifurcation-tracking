@@ -854,7 +854,7 @@ test('an element taken from its place and inserted at two places is followed to 
   assert.equal(item.anchor.start, nth(after, '<p>Moved', 1));
 });
 
-test('an inserting operation takes about as long with threads of removed elements as with threads on elements', () => {
+test('an inserting operation takes about as long with threads of removed elements, short or longer than 4 kB, as with threads on elements', () => {
   const slide = (k) => [`<h2>Slide ${k}</h2>`, ...Array.from({ length: 6 }, (_, i) => `<p style="left: ${i}px">Paragraph ${i} of slide ${k}, on the unstable manifold of the halo orbit.</p>`)];
   const before = deck(...Array.from({ length: 300 }, (_, k) => slide(k)));
   const slides = slidesOf(before);
@@ -863,11 +863,13 @@ test('an inserting operation takes about as long with threads of removed element
   const after = before.slice(0, at) + patches[0].text + before.slice(at);
   const live = [];
   const removed = [];
+  const long = [];
   for (let k = 0; k < 2000; k++) {
     const s = slides[(k * 7) % slides.length];
     const tag = { start: s.start, end: s.open, tag: 'section' };
     live.push(onElement(before.slice(0, s.end), `<p style="left: ${k % 6}px">Paragraph ${k % 6} of slide ${(k * 7) % slides.length},`));
     removed.push({ anchor: tag, slide: tag, removed: { text: `<p>Removed paragraph ${k}, which held a long text of its own about the transfer.</p>` } });
+    long.push({ anchor: tag, slide: tag, removed: { text: { tag: '<pre>', sum: checksum(`<pre>${String(k).repeat(5000)}</pre>`) } } });
   }
   const median = (items) => {
     const times = [];
@@ -879,9 +881,11 @@ test('an inserting operation takes about as long with threads of removed element
     return times.sort((x, y) => x - y)[3];
   };
   // measured again before the test fails, since another process may take the processor for a while
-  let ratio = Infinity;
-  for (let attempt = 0; attempt < 3 && ratio > 3; attempt++) ratio = median(removed) / median(live);
-  assert.ok(ratio <= 3, `the threads of removed elements took ${ratio.toFixed(1)} times as long`);
+  for (const [what, items] of [['short', removed], ['longer than 4 kB', long]]) {
+    let ratio = Infinity;
+    for (let attempt = 0; attempt < 3 && ratio > 3; attempt++) ratio = median(items) / median(live);
+    assert.ok(ratio <= 3, `the threads of removed elements ${what} took ${ratio.toFixed(1)} times as long`);
+  }
 });
 
 test('a removal reads each element longer than 4 kB once for all of its threads', () => {
@@ -903,6 +907,47 @@ test('a removal reads each element longer than 4 kB once for all of its threads'
     const each = (read(100) - read(1)) / 198;
     assert.ok(each < 20_000, `${what}: each thread after the first of its element read ${each} characters of an element of 200,000`);
   }
+});
+
+test('an Undo reads an element longer than 4 kB once for all of the threads that it attaches again', () => {
+  const big = `<div class="column">${'z'.repeat(200_000)}</div>`;
+  const v0 = deck(...Array.from({ length: 10 }, (_, k) => [`<h2>Slide ${k}</h2>`, `<p>${'x'.repeat(5000)}</p>`, ...(k === 5 ? [big] : [])]));
+  const v1 = v0.replace(`  ${big}\n`, '');
+  const read = (n) => {
+    const items = Array.from({ length: n }, () => onElement(v0, '<div class="column">'));
+    const removed = move(v0, v1, items).items;
+    const patches = diff(v1, v0);
+    return sliced(() => assert.deepEqual(moveAnchors(v1, patches, v0, removed).items, items));
+  };
+  const each = (read(200) - read(1)) / 199;
+  assert.ok(each < big.length / 10, `each thread after the first read ${each} characters of an element of ${big.length}`);
+});
+
+test('an Undo of a removal of two equal elements longer than 4 kB in two slides attaches each thread in its slide', () => {
+  const long = `<pre><code>${'y'.repeat(5000)}</code></pre>`;
+  const v0 = deck(['<h2>Alpha</h2>', long, '<p>A</p>'], ['<h2>Beta</h2>', long, '<p>B</p>']);
+  const at = [v0.indexOf(long), v0.lastIndexOf(long)];
+  const items = at.map((o) => ({ anchor: startTagAt(v0, o), slide: slideAround(v0, o) }));
+  const v1 = v0.replaceAll(`  ${long}\n`, '');
+  const r = move(v0, v1, items);
+  assert.ok(r.items.every((it) => it.removed), JSON.stringify(r.items));
+  assert.deepEqual(move(v1, v0, r.items).items, items);
+});
+
+test('a restore that brings back a removed element longer than 4 kB and removes 300 slides reads it about once for all of its threads', () => {
+  const big = `<div class="column">${'z'.repeat(200_000)}</div>`;
+  const v0 = deck(['<h2>Alpha</h2>', big], ['<h2>Omega</h2>']);
+  const v1 = v0.replace(`  ${big}\n`, '');
+  const v2 = deck(['<h2>Alpha</h2>'], ...Array.from({ length: 300 }, (_, i) => [`<h2>S${i}</h2>`, `<div class="column">${'s'.repeat(1000)}</div>`]), ['<h2>Omega</h2>']);
+  const patches = diff(v2, v0);
+  const read = (n) => {
+    const items = Array.from({ length: n }, () => onElement(v0, '<div class="column">'));
+    const removed = move(v1, v2, move(v0, v1, items).items).items;
+    return sliced(() => assert.deepEqual(moveAnchors(v2, patches, v0, removed).items, items));
+  };
+  const one = read(1);
+  const twenty = read(20);
+  assert.ok(twenty < 2 * one, `20 threads read ${twenty} characters, and one thread ${one}`);
 });
 
 test('an operation reads no other slide for the threads of removed elements longer than 4 kB, nor its own slide for a check longer than it', () => {
