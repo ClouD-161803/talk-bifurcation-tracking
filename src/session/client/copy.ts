@@ -154,6 +154,15 @@ function stateOf(client: Client): State {
 // top of the copy
 export const retiring = (client: Client): Token[] => stateOf(client).retire;
 
+// once the page has joined, its record names its own token, since the hello retired the others
+export function joined(client: Client): void {
+  const st = stateOf(client);
+  void run('readwrite', (s) => {
+    const r = s.get(st.id);
+    r.onsuccess = () => r.result && s.put({ ...r.result, tokens: [client.token] });
+  }).catch(() => {});
+}
+
 const tokensOf = (client: Client, st: State): Token[] => (client.snapshot() ? [client.token] : st.retire);
 
 // the copy of the page before the first answer of hello, or null once the session has begun

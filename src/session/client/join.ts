@@ -4,7 +4,7 @@
 import { changes, mergeEdits } from '../../editor/merge.ts';
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
-import { accept, beforeJoin, retiring, type Copy } from './copy.ts';
+import { accept, beforeJoin, joined, retiring, type Copy } from './copy.ts';
 import { bdi, fitClass, make, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
@@ -202,6 +202,7 @@ export async function join(client: Client, text: string, v: string, copy: Copy |
     store(PERSON, answer.person);
     if (copy) client.rewrite(onto);
     client.begin(answer, copy?.base ?? text, copy?.v ?? v);
+    joined(client);
     beforeJoin(client, null);
     return;
   }
