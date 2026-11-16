@@ -31,11 +31,13 @@ const CHAIN_TEXTS = 5000;
 const CHAIN_BYTES = 64 * 1024 * 1024;
 // the search for the base of a change of the file yields to the event loop after SLICE ms, ends
 // after BUDGET ms with the nearest text found so far, and gives up a line diff of more than
-// MAX_LINES lines, as changes() does. it keeps the lines of a text of the chain every few steps,
-// about KEPT_CHARS characters in all, so that a candidate is rebuilt from a kept text near it
+// MAX_LINES lines, as changes() does, and a character diff of more than MAX_EDITS characters. it
+// keeps the lines of a text of the chain every few steps, about KEPT_CHARS characters in all, so
+// that a candidate is rebuilt from a kept text near it
 const SLICE = 15;
 const BUDGET = 5000;
 const MAX_LINES = 2000;
+const MAX_EDITS = 1024;
 const KEPT_CHARS = 16 * 1024 * 1024;
 
 export class NotUtf8 extends Error {}
@@ -173,8 +175,9 @@ type Rank = { lines: number; chars: number; steps: number };
 const order = (r: Rank, s: Rank) => r.lines - s.lines || r.chars - s.chars || r.steps - s.steps;
 
 // the size of a line diff of the lines a and b, found with the Myers algorithm. a run of changed
-// lines counts the characters between the common start and end of its two sides. null when more
-// than cap lines differ
+// lines counts the characters that a diff of its two sides deletes and inserts, hence a text that
+// holds a word typed into a line that theirs changed around it is nearer than the text before the
+// word. null when more than cap lines differ
 function measure(a: string[], b: string[], cap: number): { lines: number; chars: number } | null {
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
@@ -222,13 +225,35 @@ function measure(a: string[], b: string[], cap: number): { lines: number; chars:
       chars += old.length + now.length + 1;
       continue;
     }
-    let p = 0;
-    while (p < old.length && p < now.length && old.charCodeAt(p) === now.charCodeAt(p)) p++;
-    let s = 0;
-    while (s < old.length - p && s < now.length - p && old.charCodeAt(old.length - 1 - s) === now.charCodeAt(now.length - 1 - s)) s++;
-    chars += old.length + now.length - 2 * (p + s);
+    chars += edits(old, now);
   }
   return { lines: found, chars };
+}
+
+// the characters that a diff of old and now deletes and inserts, found with the Myers algorithm.
+// a diff of more than MAX_EDITS characters counts every character between the common start and
+// end, which is more, hence a long rewrite is not measured for long
+function edits(old: string, now: string): number {
+  let p = 0;
+  while (p < old.length && p < now.length && old.charCodeAt(p) === now.charCodeAt(p)) p++;
+  let s = 0;
+  while (s < old.length - p && s < now.length - p && old.charCodeAt(old.length - 1 - s) === now.charCodeAt(now.length - 1 - s)) s++;
+  const n = old.length - p - s, m = now.length - p - s;
+  if (n === 0 || m === 0) return n + m;
+  const max = Math.min(n + m, MAX_EDITS), off = max + 1, v = new Int32Array(2 * max + 3);
+  for (let d = 0; d <= max; d++) {
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && old.charCodeAt(p + x) === now.charCodeAt(p + y)) {
+        x++;
+        y++;
+      }
+      v[off + k] = x;
+      if (x >= n && y >= m) return d;
+    }
+  }
+  return n + m;
 }
 
 function removeQuietly(file: string): void {

@@ -783,6 +783,7 @@ var CHAIN_BYTES = 64 * 1024 * 1024;
 var SLICE = 15;
 var BUDGET = 5e3;
 var MAX_LINES2 = 2e3;
+var MAX_EDITS = 1024;
 var KEPT_CHARS = 16 * 1024 * 1024;
 var NotUtf8 = class extends Error {
 };
@@ -925,13 +926,31 @@ function measure(a, b, cap2) {
       chars += old.length + now.length + 1;
       continue;
     }
-    let p = 0;
-    while (p < old.length && p < now.length && old.charCodeAt(p) === now.charCodeAt(p)) p++;
-    let s = 0;
-    while (s < old.length - p && s < now.length - p && old.charCodeAt(old.length - 1 - s) === now.charCodeAt(now.length - 1 - s)) s++;
-    chars += old.length + now.length - 2 * (p + s);
+    chars += edits(old, now);
   }
   return { lines: found, chars };
+}
+function edits(old, now) {
+  let p = 0;
+  while (p < old.length && p < now.length && old.charCodeAt(p) === now.charCodeAt(p)) p++;
+  let s = 0;
+  while (s < old.length - p && s < now.length - p && old.charCodeAt(old.length - 1 - s) === now.charCodeAt(now.length - 1 - s)) s++;
+  const n = old.length - p - s, m = now.length - p - s;
+  if (n === 0 || m === 0) return n + m;
+  const max = Math.min(n + m, MAX_EDITS), off = max + 1, v = new Int32Array(2 * max + 3);
+  for (let d = 0; d <= max; d++) {
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || k !== d && v[off + k - 1] < v[off + k + 1] ? v[off + k + 1] : v[off + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && old.charCodeAt(p + x) === now.charCodeAt(p + y)) {
+        x++;
+        y++;
+      }
+      v[off + k] = x;
+      if (x >= n && y >= m) return d;
+    }
+  }
+  return n + m;
 }
 function removeQuietly(file) {
   try {
