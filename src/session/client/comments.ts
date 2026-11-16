@@ -64,6 +64,9 @@ export class Comments {
   private rereading = false;
   // the id of each request whose answer may have been lost, by its text, sent again with it
   private unsent = new Map<string, { id: string; on: unknown[] }>();
+  // the read times that did not reach the edit command, by thread and '' for seen, sent again once
+  // the page is online
+  private late = new Map<string, number>();
 
   constructor(client: Client) {
     this.client = client;
@@ -82,6 +85,10 @@ export class Comments {
     });
     client.on('state', () => {
       if (this.wanted && client.connection === 'online') void this.fetch();
+      if (client.connection !== 'online') return;
+      const late = [...this.late];
+      this.late.clear();
+      for (const [thread, time] of late) this.sendSeen(time, thread);
     });
   }
 
@@ -439,13 +446,17 @@ export class Comments {
     const time = oldest === Infinity ? newest : oldest - 1;
     this.changed();
     const read = this.read.get(id)!;
-    const bodies = [...(time > this.seen ? [{ time }] : []), ...(time < read ? [{ time: read, thread: id }] : [])];
-    for (const body of bodies) {
-      void this.client.transport.post<SeenAnswer>('comments/seen', { token: this.client.token, ...body }).then(
-        (a) => this.times(a.seen, a.read) && this.changed(),
-        () => {},
-      );
-    }
+    if (time > this.seen) this.sendSeen(time, '');
+    if (time < read) this.sendSeen(read, id);
+  }
+
+  // seen up to time, or the thread read up to time when thread is not ''
+  private sendSeen(time: number, thread: string): void {
+    void this.client.transport.post<SeenAnswer>('comments/seen', { token: this.client.token, time, ...(thread ? { thread } : {}) }).then(
+      (a) => this.times(a.seen, a.read) && this.changed(),
+      // a time that the edit command refuses is not sent again
+      (e) => (e instanceof Failure && (e.status === 0 || e.status >= 500) ? this.late.set(thread, Math.max(this.late.get(thread) ?? 0, time)) : null),
+    );
   }
 
   // the number of a slide of the deck in the status bar, or null
