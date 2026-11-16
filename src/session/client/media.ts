@@ -217,15 +217,20 @@ export function install(client: Client): void {
     client.rewrite(renamed ? rename : undefined);
   }
 
+  // the save state set to the line of the first file given up among named, the files of the store
+  // that the text names
+  const lose = (named: MediaFile[]): void => {
+    const lost = named.find((f) => given.has(f));
+    const line = lost ? `${lost.path} is not in the talk folder, since ${given.get(lost)}. Delete it from the deck, or add the file to media/ by hand.` : null;
+    if (line === st.lost) return;
+    st.lost = line;
+    client.refresh();
+  };
+
   client.hooks.ready = (text) => {
     if (client.ended) return true;
     const named = store.unsaved(text);
-    const lost = named.find((f) => given.has(f));
-    const line = lost ? `${lost.path} is not in the talk folder, since ${given.get(lost)}. Delete it from the deck, or add the file to media/ by hand.` : null;
-    if (line !== st.lost) {
-      st.lost = line;
-      client.refresh();
-    }
+    lose(named);
     const files = named.filter((f) => !given.has(f));
     if (files.length) {
       if (!st.busy && !st.failed) void upload(files);
@@ -246,6 +251,10 @@ export function install(client: Client): void {
   // an upload that failed on the network is tried again once the page is online again, or once its
   // hello is answered, since a 404 may come while the page reads online
   client.on('me', () => st.failed && st.network && retry(client));
+  // a change applied from another page or from outside may take out the last element of a file
+  client.on('applied', () => {
+    if (given.size && !client.ended) lose(store.unsaved(client.port.text()));
+  });
   let was = client.connection;
   client.on('state', () => {
     const now = client.connection;
