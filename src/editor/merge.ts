@@ -75,8 +75,8 @@ function diff(a: string[], b: string[], max: number): Hunk[] | null {
   return hunks;
 }
 
-// a line that opens or closes a slide
-const SECTION = /^[ \t]*<\/?section[\s>]/m;
+// a line that opens a slide
+const SECTION = /^[ \t]*<section[\s>]/m;
 
 // the first line and the number of lines of each multiline slide of lines by its text, with the
 // first line -1 for a text that occurs more than once

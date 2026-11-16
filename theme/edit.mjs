@@ -102,7 +102,7 @@ function diff(a, b, max) {
   }
   return hunks;
 }
-var SECTION = /^[ \t]*<\/?section[\s>]/m;
+var SECTION = /^[ \t]*<section[\s>]/m;
 function slidesOf(lines) {
   const out = /* @__PURE__ */ new Map(), open2 = [];
   lines.forEach((line, i) => {
