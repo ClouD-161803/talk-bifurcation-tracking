@@ -24,8 +24,10 @@ const OF_SPAN = new Set(['text.flow.delete', 'text.flow.newParagraph']);
 // the commands of a caret that also change the text element before it, or with joinForward after
 // it, unless the caret is in a nested item
 const BESIDE = new Set(['text.joinBackward', 'text.joinForward', 'text.indent']);
-// the commands of a selection that change nothing
-const READ = /^(view|zoom|go|help|window|file)\.|^edit\.copy$|^find\.(open|next|previous|close|useSelection)$/;
+// the commands of a selection that change none of the selected elements, e.g. a change of the
+// selection, a new slide, a preview, or a pane. any other command is refused on a selection of
+// elements that holds a held element
+const PASS = /^(view|zoom|go|help|window|file|navigate|selection|shell|toolbar)\.|^edit\.(copy|spelling|startSpeaking|stopSpeaking)$|^find\.(open|next|previous|close|useSelection)$|^slide\.(new|newAfter|newSection|copy|selectAll|previewTransition|guides\.copy)$|^slide\.new\.|^(preview\.(slide|steps|backdrop|selectBackdrop)|steps\.(preview|playFrom)|backdrop\.preview)$|^play\.presenter$|^insert\.(text|comment)$|^text\.copyStyle$|^table\.(selectRow|selectColumn|selectTable|editCell)$/;
 
 export const refusal = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is typing here. You can do this once they leave it or stop for 30 s.'];
 
@@ -147,7 +149,7 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
   // a selection of elements that contains a held element takes no command that changes it, and a
   // caret or a text selection in one takes the commands of the text that keep the element
   const retags = (c.id.startsWith('text.style.') || c.id.startsWith('text.list.')) && c.id !== 'text.list.start';
-  if (READ.test(c.id) || (sel.kind !== 'elements' && (sel.kind !== 'text' || !(OF_TEXT.has(c.id) || retags || c.id.startsWith('arrange.'))))) return null;
+  if (PASS.test(c.id) || (sel.kind !== 'elements' && (sel.kind !== 'text' || !(OF_TEXT.has(c.id) || retags || c.id.startsWith('arrange.'))))) return null;
   for (const el of sel.items) {
     const by = presence.holderOf(el);
     if (by) return by;
