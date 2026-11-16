@@ -104,6 +104,26 @@ test('a word typed right before the page is closed without the question reaches 
   clean(next);
 });
 
+test('a word typed right before the page is hidden and frozen reaches index.html', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const net = await proxy(t, server.edit);
+  const page = await open(browser, net.url);
+  await converge(server, [page]);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  net.hold();
+  await canary(page, net);
+  await still(page);
+  await type(page, ' hidden');
+  // Chrome hides the page before it freezes it
+  await page.send('Page.setWebLifecycleState', { state: 'frozen' });
+  await until(() => net.held.some((r) => r.body.includes('hidden')), 'the frozen page to have sent the word');
+  await closed(page, net);
+  await until(() => server.read() === TALK.replace('<p>First slide</p>', '<p>First slide hidden</p>'), 'the word to reach index.html');
+});
+
 // a script for open() that records in window.__kept whether each operation was sent with keepalive,
 // and the size of its body in bytes
 const KEPT = `{
