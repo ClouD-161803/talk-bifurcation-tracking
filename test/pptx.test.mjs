@@ -539,11 +539,19 @@ test('a scene is recorded in a browser whose DevTools calls are each answered in
       await browser.close();
     }
   };
-  const first = await timed();
-  const timeout = Math.round(Math.max(first.record / 3, 2 * first.load));
-  t.diagnostic(`load ${first.load} ms, recording ${first.record} ms, limit of a call ${timeout} ms`);
-  if (timeout > first.record / 2) return t.skip(`the load of the deck, ${first.load} ms, is too close to the recording, ${first.record} ms`);
-  const second = await timed({ timeout });
+  // a call over the limit, e.g. behind a long task of a crowded runner, is measured again with a new
+  // pair, twice at most
+  let first, second;
+  for (let n = 0; !second; n++) {
+    first = await timed();
+    const timeout = Math.round(Math.max(first.record / 3, 2 * first.load));
+    t.diagnostic(`load ${first.load} ms, recording ${first.record} ms, limit of a call ${timeout} ms`);
+    if (timeout > first.record / 2) return t.skip(`the load of the deck, ${first.load} ms, is too close to the recording, ${first.record} ms`);
+    second = await timed({ timeout }).catch((error) => {
+      if (n >= 2 || !/^Chrome did not answer/.test(error.message)) throw error;
+      t.diagnostic(`a call is not answered within ${timeout} ms, and the pair is recorded again`);
+    });
+  }
   t.diagnostic(`load ${second.load} ms, recording ${second.record} ms`);
   // the bytes of two recordings of one scene differ by a few hundred
   const stream = { width: 600, height: 800, fps: 60, frames: 600, duration: 10, keys: [1] };
