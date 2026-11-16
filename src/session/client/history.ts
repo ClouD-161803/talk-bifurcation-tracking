@@ -291,7 +291,7 @@ export function install(client: Client): void {
   function anchorOf(): { el: Element; top: number } | null {
     if (!pane || pane.scrollTop <= 0) return null;
     const top = pane.getBoundingClientRect().top;
-    for (const el of pane.querySelectorAll('.rows > *, .folded > *')) {
+    for (const el of pane.querySelectorAll('.rows > :not(.folded), .folded > *')) {
       const r = el.getBoundingClientRect();
       if (r.height && r.bottom > top) return { el, top: r.top };
     }
