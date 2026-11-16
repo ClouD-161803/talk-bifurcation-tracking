@@ -10,14 +10,17 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
+import { startRelay } from '../scripts/relay.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { C, clean, converge, open, sessionUrl, talk, TEXT } from './helpers/client.mjs';
+import { C, clean, converge, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
 import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 import { click } from './helpers/editor.mjs';
 import { edit } from './helpers/offline.mjs';
+import { post } from './helpers/session.mjs';
 
 const MB = 1024 * 1024;
 const DIALOG = 'dialog.beeson-edit-dialog.deck-folder';
+const SECRET = 'a secret of the relay of the tests';
 const ORIGIN = (text) => JSON.parse(text.match(/<!--beeson-origin (.*?)-->/s)[1]);
 // a paste asks the edit command for each path of a pasted file, and for each path under media/ that
 // it would take, which are answered with 404
@@ -178,3 +181,33 @@ test('a copy from a deck whose address has session, which no edit command serves
   const { message } = await status(b);
   assert.ok(!message.includes('not copied'), message);
 });
+
+// another page of the talk folder, which the edit command serves without a session, through the
+// edit command and through the relay for a guest
+for (const through of ['the edit command', 'the relay']) {
+  test(`a page of the talk folder other than index.html, opened with session through ${through}, names its deck by a hash of the key`, { timeout: 120_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    writeFileSync(join(server.talk, 'other.html'), TALK);
+    const { key } = server.edit;
+    let url = `${server.edit.url}other.html?edit&session`;
+    if (through === 'the relay') {
+      const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+      t.after(() => relay.close());
+      const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: relay.url, secret: SECRET });
+      assert.equal(shared.status, 200, shared.text);
+      url = shared.json().link.replace('index.html', 'other.html');
+      assert.ok(url.startsWith(relay.url), url);
+    }
+    const page = await open(browser, url, { wait: false, ready: false });
+    await page.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not served by an edit command')`, 20_000);
+    await page.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
+    await page.waitFor(`!document.querySelector('dialog[open]') && window.BeesonEditor && window.BeesonEditor.ready.then(() => true)`);
+    const text = await copySlide(page, 'One');
+    assert.ok(!text.includes(key), text.slice(0, 300));
+    const origin = ORIGIN(text);
+    assert.match(origin.deck, /\/session-[0-9a-z]+\/other\.html$/);
+    assert.equal(origin.session, true);
+  });
+}
