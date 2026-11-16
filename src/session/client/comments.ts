@@ -8,7 +8,7 @@
 // or under On the deck. a mention is written @{person id} in the text of a comment
 
 import { allChecked, checkOf, moveAnchors, slideAt, startTagAt, type Anchored, type Check } from '../anchor.ts';
-import { apply, checksum, diff, type Patch } from '../patch.ts';
+import { apply, checksum, diff, invert, size, type Patch } from '../patch.ts';
 import { slidesOf, type Slide } from '../slides.ts';
 import { parseVersion, type Anchor, type AppliedOp, type Comment, type CommentsAnswer, type CommentsEvent, type SeenAnswer, type Version } from '../protocol.ts';
 import type { Client } from './client.ts';
@@ -53,11 +53,15 @@ function checked(text: string, s: Spot | undefined): Anchor | null {
 
 export type Item = { id: string; author: string; time: number; text: string; edited?: number };
 
-// the count of operations kept to move the anchors of an answer of an earlier version
+// the operations kept to move the anchors of an answer of an earlier version: at most KEPT, with
+// at most KEPT_SIZE characters in their patches, since a slide with a scene is of several MB
 const KEPT = 64;
+const KEPT_SIZE = 8 * 2 ** 20;
 export const MENTION = /@\{([A-Za-z0-9_-]{22,64})\}/g;
 
-type Step = { v: Version; text: string; patches: Patch[]; after: string };
+// an operation of the text at version v, with the patches that undo it. the texts before and after
+// it are not kept, since each is of the size of the deck. they are built back from the held text
+type Step = { v: Version; patches: Patch[]; back: Patch[] };
 type Pending = { at: Version; snapshot: CommentsAnswer | null; event: CommentsEvent | null };
 
 const anchored = (t: Comment): Anchored => ({ anchor: t.anchor, slide: t.slide, ...(t.removed ? { removed: t.removed } : {}) });
@@ -250,7 +254,19 @@ export class Comments {
     if (a.epoch !== b.epoch || a.n > b.n) return 'wait';
     const from = this.steps.findIndex((s) => s.v === at);
     if (from < 0) return 'gone';
-    for (const s of this.steps.slice(from)) items = moveAnchors(s.text, s.patches, s.after, items).items;
+    let text = held.text;
+    for (let i = this.steps.length; i-- > from; ) text = apply(text, this.steps[i].back);
+    return this.walk(text, this.steps.slice(from), items);
+  }
+
+  // items moved by steps, the first of which is of text. two texts are held at a time
+  private walk(text: string, steps: Step[], items: Anchored[]): Anchored[] {
+    let slides: Slide[] | null = null;
+    for (const s of steps) {
+      const after = apply(text, s.patches);
+      ({ items, slides } = moveAnchors(text, s.patches, after, items, slides));
+      text = after;
+    }
     return items;
   }
 
@@ -263,10 +279,12 @@ export class Comments {
     let items = threads.map(anchored);
     const steps = held.v === v && ops ? this.rebuild(text, v, ops, now) : null;
     if (steps) {
-      let slides: Slide[] | null = null;
-      for (const s of steps) ({ items, slides } = moveAnchors(s.text, s.patches, s.after, items, slides));
+      items = this.walk(text, steps, items);
       this.steps.push(...steps);
-      this.steps.splice(0, this.steps.length - KEPT);
+      // the newest steps are kept, as many as KEPT and KEPT_SIZE allow
+      let k = this.steps.length;
+      for (let n = 0; k > 0 && this.steps.length - k < KEPT && (n += size(this.steps[k - 1].patches)) <= KEPT_SIZE; ) k--;
+      this.steps.splice(0, k);
     } else {
       // a resync, or operations that do not give the base. the anchors are moved by the difference
       // of the texts until GET comments gives them
@@ -289,9 +307,8 @@ export class Comments {
         const at = parseVersion(op.v);
         if (!at || at.n <= n) continue;
         if (at.n !== n + 1) return null;
-        const after = apply(text, op.patches);
-        steps.push({ v, text, patches: op.patches, after });
-        text = after;
+        steps.push({ v, patches: op.patches, back: invert(text, op.patches) });
+        text = apply(text, op.patches);
         v = op.v;
         n = at.n;
         if (v === now.v) break;
