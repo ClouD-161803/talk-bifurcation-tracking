@@ -414,9 +414,30 @@ test('a long reason in a narrow title bar scrolls inside its line, and the curre
     return w.height > 0 && w.top >= r.top - 1 && w.bottom <= r.bottom + 1 && w.bottom <= innerHeight;
   })()`;
   assert.equal(await ann.evaluate(LAST), false);
-  const at = await ann.evaluate(`(() => { const r = ${NAME}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await ann.send('Input.synthesizeScrollGesture', { x: at.x, y: at.y, yDistance: -2000, gestureSourceType: 'touch', speed: 4000 });
-  await ann.waitFor(LAST, 10_000).catch(async () => assert.fail(`the last word is not reached by a scroll of the line, which is scrolled by ${await ann.evaluate(`${NAME}.scrollTop`)} px`));
+  // a finger drags from the last line of the box up to its first line, again and again. the touch
+  // events are sent one by one, as in the other tests of a touch, since a synthesized scroll
+  // gesture did not move the line in the Chrome of the Linux and Windows runners
+  const box = await ann.evaluate(`(() => { const r = ${NAME}.getBoundingClientRect(); return { x: r.left + r.width / 2, top: r.top + 6, bottom: r.bottom - 6 }; })()`);
+  const touch = (type, y) => ann.send('Input.dispatchTouchEvent', { type, touchPoints: y === undefined ? [] : [{ x: box.x, y }] });
+  await ann.evaluate(`(() => {
+    window.__touches = {};
+    for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) addEventListener(type, (ev) => { const k = type + (${NAME}.contains(ev.target) ? ' in the line' : ' outside'); window.__touches[k] = (window.__touches[k] ?? 0) + 1; }, { capture: true, passive: true });
+  })()`);
+  // what a failure needs to be read without the page: the box, what the finger hits, and the events
+  const STUCK = `JSON.stringify((() => {
+    const el = ${NAME};
+    const cs = getComputedStyle(el);
+    const hit = document.elementFromPoint(${box.x}, ${box.bottom});
+    return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, overflowY: cs.overflowY, maxHeight: cs.maxHeight, hit: hit ? hit.tagName + '.' + hit.className : null, touches: window.__touches };
+  })())`;
+  for (let drags = 0; !(await ann.evaluate(LAST)); drags++) {
+    assert.ok(drags < 60, `the last word is not reached after 60 drags of the line: ${await ann.evaluate(STUCK)}`);
+    const top = await ann.evaluate(`${NAME}.scrollTop`);
+    await touch('touchStart', box.bottom);
+    for (let i = 1; i <= 8; i++) await touch('touchMove', box.bottom + ((box.top - box.bottom) * i) / 8);
+    await touch('touchEnd');
+    await ann.waitFor(`${NAME}.scrollTop > ${top}`, 10_000).catch(async () => assert.fail(`a drag of a finger does not scroll the line: ${await ann.evaluate(STUCK)}`));
+  }
   clean(ann);
 });
 
