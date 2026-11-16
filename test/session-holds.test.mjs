@@ -707,6 +707,44 @@ test('a held paragraph selected as an element takes a new shape, table, or slide
   clean(ben);
 });
 
+test('Insert Backdrop and a drawing of the backdrop are refused on a slide whose backdrop has a held label, and taken on a slide whose backdrop does not', { timeout: 120_000 }, async (t) => {
+  const edits = [['  <p>First slide</p>', '  <p>First slide</p>\n  <div class="backdrop" data-backdrop="wideRibbon"><span class="label" data-at="earth">Earth</span></div>'], ['  <p>Second slide</p>', '  <p>Second slide</p>\n  <div class="backdrop" data-backdrop="wideRibbon"></div>']];
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  const label = el(0, '.label');
+  await holding(ana, ben, label, ' typed');
+  await ben.evaluate(`${P}.skew = -1e8`);
+  const gallery = `!!document.querySelector('.beeson-backdrop-gallery')`;
+  // the drawing of a file, which takes the labels off a backdrop, and a built-in drawing
+  for (const [slide, n, drawing] of [['One', 0, 'logo'], ['Two', 1, 'tubes']]) {
+    const backdrop = el(n, '.backdrop');
+    const before = await ben.evaluate(`${C}.app.doc.elementText(${backdrop})`);
+    for (const [id, arg] of [['insert.backdrop'], ['backdrop.builtIn', { value: drawing }]]) {
+      await show(ben, slide);
+      await leave(ben);
+      await ben.evaluate(`${C}.app.selection.clear()`);
+      await unbubble(ben);
+      await ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}, ${JSON.stringify(arg ?? null)} ?? undefined)`);
+      await frame(ben);
+      if (slide === 'One') {
+        assert.equal(await ben.evaluate(BUBBLE), REFUSED, `${id} is refused over the held label`);
+        assert.equal(await ben.evaluate(gallery), false, `${id} leaves the gallery closed`);
+        assert.equal(await ben.evaluate(`${C}.app.doc.elementText(${backdrop})`), before, `${id} leaves the backdrop and its label`);
+      } else {
+        assert.equal(await ben.evaluate(BUBBLE), null, `${id} is not refused on a backdrop without a held label`);
+        if (id === 'insert.backdrop') {
+          await until(() => ben.evaluate(gallery), 'the gallery to open', 10_000);
+          await press(ben, 'Escape');
+        } else assert.equal(await ben.evaluate(`${backdrop}.dataset.backdrop`), 'tubes', `${id} draws the backdrop anew`);
+      }
+    }
+  }
+  clean(ana);
+  // the gallery looks for the file of the Broucke drawing, which the talk does not have
+  clean(ben, [/status of 404 .*demo\/broucke-sample\.js/]);
+});
+
 test('a page that loads after a person stopped typing does not see the text element of their caret as held', { timeout: 120_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
