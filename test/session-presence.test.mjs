@@ -1,8 +1,8 @@
 // the presence of the pages of a session in Chrome, on the edit command started on a temporary
 // talk folder: the frame and the name flag of the selection of another page and its caret, read
 // at the right element after the edits of others, the highlight of a selection, the lock of a text
-// element that another page types in, which never reaches the text, a tap on a chip in a phone
-// window, and the reads of layout of a pointer move and a scroll over frames
+// element that another page types in, which never reaches the text, a tap on a chip and into a
+// text element in a phone window, and the reads of layout of a pointer move and a scroll over frames
 
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
@@ -504,6 +504,33 @@ test('in a touch window of 390 px, a tap on a chip shows the name', { timeout: 1
   assert.equal(await ben.evaluate(`${C}.app.selection.kind`), 'none', 'the tap does not reach the canvas');
   // and it collapses again
   await until_(ben, (d) => d.flags[0]?.chip, 'the flag to collapse again');
+  clean(ana);
+  clean(ben);
+});
+
+test('in a touch window of 390 px, a tap puts the caret into a text element that another person types in, and both texts are kept', { timeout: 120_000 }, async (t) => {
+  const { browser, server, pages: [ana] } = await session(t, ['Ana']);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', width: 390, height: 844, mobile: true });
+  await converge(server, [ana, ben]);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' typed');
+  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana', 'the paragraph that Ana types in to be locked on the page of Ben');
+  await front(ben);
+  const b = await boxOf(ben, p);
+  const point = { x: b.x + 2, y: b.y + b.h / 2 };
+  await ben.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+  await ben.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await until(() => ben.evaluate(`document.activeElement === ${p} && ${p}.contains(getSelection().focusNode)`), 'the caret of Ben in the paragraph');
+  assert.equal(await ben.evaluate(BUBBLE), null);
+  await ben.evaluate(`getSelection().collapse(${p}.firstChild, 0)`);
+  await typeKeys(ben, 'Ben: ');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' and more');
+  const text = await converge(server, [ana, ben]);
+  assert.ok(text.includes('<p>Ben: Second slide typed and more</p>'), 'both texts reach index.html');
   clean(ana);
   clean(ben);
 });

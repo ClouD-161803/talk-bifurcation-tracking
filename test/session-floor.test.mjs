@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, show } from './helpers/client.mjs';
-import { center, click, drag, press, typeKeys } from './helpers/editor.mjs';
+import { center, click, drag, press, type, typeKeys } from './helpers/editor.mjs';
 import { BUBBLE, el, leave, LOCKER, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -84,6 +84,68 @@ test('a locked list item refuses Backspace and Delete from the item beside it, a
   clean(ben);
 });
 
+// the paragraph of slide Two that Ana types in, after a paragraph that a join reaches
+const INTRO = [['  <p>Second slide</p>', '  <p>Intro</p>\n  <p>Second slide</p>']];
+const SECOND = el(1, 'p:nth-of-type(2)');
+
+test('a text element that another page types in refuses Delete, Arrange, a join, and Move Section, and takes Bold and Replace', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: INTRO });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = SECOND;
+  const text = `${p}.textContent`;
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' typed');
+  await until(async () => (await ben.evaluate(`${LOCKER(p)} === 'Ana' && ${text} === 'Second slide typed'`)), 'the paragraph that Ana types in, with her text, to be locked on the page of Ben');
+  // Delete of the paragraph selected as an element
+  await unbubble(ben);
+  await select(ben, p);
+  await ben.evaluate(`${C}.app.commands.run('element.delete')`);
+  assert.equal(await ben.evaluate(`${p}?.textContent`), 'Second slide typed', 'element.delete');
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'element.delete');
+  // a command of Arrange and a join of the caret in it
+  await caretAtEnd(ben, p);
+  await unbubble(ben);
+  assert.ok(await ben.evaluate(`${C}.app.commands.enabled('arrange.align.center')`));
+  await ben.evaluate(`${C}.app.commands.run('arrange.align.center')`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'arrange.align.center');
+  await ben.evaluate(`getSelection().collapse(${p}.firstChild, 0)`);
+  await unbubble(ben);
+  await press(ben, 'Backspace');
+  assert.equal(await ben.evaluate(text), 'Second slide typed', 'the join leaves the paragraph as it was');
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'text.joinBackward');
+  // a move of a section, whose slides are not read
+  await unbubble(ben);
+  await ben.evaluate(`${C}.app.commands.run('slide.moveSection', { head: document.querySelectorAll('.reveal .slides > section')[0], gap: 2 })`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'slide.moveSection');
+  assert.equal(await ben.evaluate(`Reveal.getCurrentSlide().querySelector('h2').textContent`), 'Two');
+  // Replace and Bold change its text
+  await unbubble(ben);
+  await ben.evaluate(`window.BeesonEditor.exec('find.replace', 'Second')`);
+  await ben.evaluate(`document.querySelector('.beeson-find .replace input').focus()`);
+  await type(ben, 'Third');
+  await ben.evaluate(`window.BeesonEditor.exec('find.replaceOne')`);
+  await ben.evaluate(`window.BeesonEditor.exec('find.close')`);
+  assert.equal(await ben.evaluate(text), 'Third slide typed');
+  await front(ben);
+  await ben.evaluate(`(() => { const p = ${p}; p.focus(); const t = p.firstChild; getSelection().setBaseAndExtent(t, 0, t, 'Third'.length); })()`);
+  await ben.evaluate(`${C}.app.commands.run('text.bold')`);
+  assert.equal(await ben.evaluate(BUBBLE), null, 'Replace and Bold are not refused');
+  let saved = await converge(server, [ana, ben]);
+  assert.match(saved, /<p><(b|strong)>Third<\/\1> slide typed<\/p>/);
+  // the paragraph is deleted once Ana leaves it
+  await front(ana);
+  await leave(ana);
+  await until(() => ben.evaluate(`${P}.locks.size === 0`), 'the lock to go when Ana leaves the paragraph');
+  await select(ben, p);
+  await ben.evaluate(`${C}.app.commands.run('element.delete')`);
+  assert.equal(await ben.evaluate(BUBBLE), null);
+  saved = await converge(server, [ana, ben]);
+  assert.ok(!saved.includes('slide typed'), 'the paragraph is deleted');
+  clean(ana);
+  clean(ben);
+});
+
 test('an undo of typing in a text element that another page types in is taken, and an undo that moves it or a transaction that names it is refused', { timeout: 120_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
@@ -143,6 +205,26 @@ test('an undo of typing in a text element that another page types in is taken, a
   assert.equal(await ben.evaluate(`${C}.app.history.undoLabel`), 'Bigger', 'the entry of the undo is kept');
   text = await converge(server, [ana, ben]);
   assert.match(text, /<h3>Second slide by Ana<\/h3>/);
+  clean(ana);
+  clean(ben);
+});
+
+test('an undo of a person who typed in a text element together with another person keeps the text of the other person', { timeout: 120_000, todo: 'needs part A' }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' by Ana');
+  await converge(server, [ana, ben]);
+  await front(ben);
+  await ben.evaluate(`(() => { const p = ${p}; p.focus(); getSelection().collapse(p.firstChild, 0); })()`);
+  await typeKeys(ben, 'Ben: ');
+  await converge(server, [ana, ben]);
+  await front(ana);
+  await ana.evaluate(`${C}.app.commands.run('edit.undo')`);
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<p>Ben: Second slide<\/p>/);
   clean(ana);
   clean(ben);
 });
