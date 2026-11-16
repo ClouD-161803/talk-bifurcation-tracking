@@ -906,3 +906,35 @@ test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or mo
   clean(b);
   clean(c);
 });
+
+test('Mod+Enter in the field of a comment or of a reply sends it, and in another field starts the slide show', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  const SHOW = `!!document.querySelector('.beeson-edit-show')`;
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'h2'));
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await type(a, 'Sent by its key');
+  await press(a, 'Mod+Enter');
+  await sees(a, `[!!document.querySelector('${PANE} .draft'), ${SHOW}]`, [false, false], 'the draft and the slide show after Mod+Enter');
+  assert.deepEqual(await stored(a), [{ text: 'Sent by its key', mentions: [], replies: [] }]);
+
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await type(a, 'A reply by its key');
+  await press(a, 'Mod+Enter');
+  await sees(a, `[document.querySelector('${ARTICLE(id)} .reply textarea').value, ${SHOW}]`, ['', false], 'the reply and the slide show after Mod+Enter');
+  assert.deepEqual(await stored(a), [{ text: 'Sent by its key', mentions: [], replies: ['A reply by its key'] }]);
+
+  // the field of Go to Slide
+  await click(a, '.reveal .slides > section:nth-child(1)');
+  await press(a, 'Escape');
+  await press(a, 'G');
+  await a.waitFor(`document.activeElement?.matches('.beeson-edit-goto input')`);
+  await press(a, 'Mod+Enter');
+  // Esc reaches the show once reveal.js is ready in its frame, which is of the origin of the page
+  await a.waitFor(`!!document.querySelector('.beeson-edit-show iframe')?.contentWindow?.Reveal?.isReady?.()`, 30_000);
+  await press(a, 'Escape');
+  await a.waitFor(`!${SHOW}`);
+  clean(a);
+});
