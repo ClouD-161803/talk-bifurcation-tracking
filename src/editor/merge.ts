@@ -4,6 +4,8 @@
 // that differ. an edit of the page is a conflict when it overlaps a change of the file. every
 // range is in base
 
+import { widen } from '../session/patch.ts';
+
 export type Edit = { start: number; end: number; text: string };
 export type Merge = { text: string; conflicts: Edit[] };
 
@@ -200,6 +202,28 @@ export function charEdits(a: string, b: string, max: number): Edit[] | null {
   if (!x || !y) return x === y ? [] : [{ start: head, end: a.length - tail, text: y }];
   const hunks = diff(x, y, max);
   return hunks && hunks.map((h) => ({ start: head + h.a0, end: head + h.a1, text: y.slice(h.b0, h.b1) }));
+}
+
+// the edits that turn a into b for a merge of a session, one per run of changed characters, or
+// one per changed line past 500 changed units. an edit is widened so that it cuts neither a tag nor
+// a character reference of b, nor one of a, as the authority widens a patch, hence a merge never
+// writes into a tag that neither side wrote, e.g. a key before a word that another person makes bold
+export function fine(a: string, b: string): Edit[] {
+  const found = charEdits(a, b, 500) ?? edits(a, b);
+  if (!found.length) return found;
+  // the edits as patches of b back to a, widened to the tokens of b, and turned around again
+  let d = 0;
+  const back = widen(b, found.map((e) => {
+    const start = e.start + d;
+    d += e.text.length - (e.end - e.start);
+    return { start, end: start + e.text.length, text: a.slice(e.start, e.end) };
+  }));
+  d = 0;
+  return widen(a, back.map((p) => {
+    const start = p.start - d;
+    d += p.end - p.start - p.text.length;
+    return { start, end: start + p.text.length, text: b.slice(p.start, p.end) };
+  }));
 }
 
 // the most units in which another person may have changed a text that revert() is given
