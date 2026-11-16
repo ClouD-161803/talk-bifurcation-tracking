@@ -732,6 +732,27 @@ test('a page asks before it unloads after a Redo of an Undo that the edit comman
   await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
 });
 
+test('a page asks before it unloads once its copy is deleted under it and cannot be written again, until its edit is acknowledged', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  // as Clear site data does. the next heartbeat, BEAT of copy.ts (10 s) later, fails
+  await page.send('Storage.clearDataForOrigin', { origin: await page.evaluate('location.origin'), storageTypes: 'indexeddb' });
+  await page.waitFor(`/cannot be kept/.test(${STATE})`, 30_000);
+  assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: true, copied: false });
+  await page.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
+  await page.waitFor(`${C}.acked() && !${C}.asking`);
+  await until(() => paragraph(server.read()) === 'First slide Zed' || null, 'the edit in index.html', 15_000);
+});
+
 // the time in ms that each listener of beforeunload was on window before its removal, in
 // window.__unload
 const UNLOAD = `{
