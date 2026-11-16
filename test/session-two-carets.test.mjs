@@ -18,7 +18,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
 import { press, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
-import { BUBBLE, el, select, session, unbubble } from './helpers/presence.mjs';
+import { BUBBLE, el, leave, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
 const p = el(1, 'p');
@@ -360,6 +360,48 @@ for (const [what, keys, made] of [
     const labels = await undoAll(ana);
     const text = await converge(server, pages);
     assert.equal(para(text), '<p>QSecond slide</p>', `the paragraph after the undos ${JSON.stringify(labels)}`);
+    assert.deepEqual([ana.errors, ben.errors], [[], []]);
+  });
+}
+
+const NOTES = el(1, 'aside.notes');
+const ASIDE = '<aside class="notes">Notes of two<br>x</aside>';
+const aside = (text) => text.match(/<aside class="notes">.*?<\/aside>/s)?.[0] ?? null;
+const notesAt = (page, node) => page.evaluate(`(() => { const q = ${NOTES}; q.focus(); getSelection().collapse(q.${node}, 0); return document.activeElement === q; })()`);
+
+for (const other of [false, true]) {
+  test(`a dash item typed at the start of a line of the speaker notes is taken back by the undos of the person${other ? ' after another person typed at the start of the notes' : ''}, and given back by the redos`, { timeout: 240_000 }, async (t) => {
+    const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', `  <p>Second slide</p>\n  ${ASIDE}`]] });
+    const [ana, ben] = pages;
+    for (const page of pages) {
+      await show(page, 'Two');
+      await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+      if (!(await page.evaluate(`${C}.app.notes.shown()`))) await page.evaluate(`${C}.app.commands.run('view.notes')`);
+    }
+    await leave(ben);
+    assert.ok(await notesAt(ana, 'lastChild'));
+    await typeKeys(ana, '- one ');
+    await ana.waitFor(`${NOTES}.innerHTML === 'Notes of two<ul><li>one x</li></ul>'`);
+    await converge(server, pages);
+    const q = other ? 'Q' : '';
+    if (other) {
+      await leave(ana);
+      assert.ok(await notesAt(ben, 'firstChild'));
+      await typeKeys(ben, 'Q');
+      await ben.waitFor(`${NOTES}.innerHTML.startsWith('QNotes')`);
+      await converge(server, pages);
+      await leave(ben);
+    }
+    const steps = [];
+    for (let label = await ana.evaluate(`${C}.app.history.undoLabel`); label !== null && steps.length < 8; label = await ana.evaluate(`${C}.app.history.undoLabel`)) {
+      await run(ana, 'edit.undo');
+      steps.push([label, aside(await converge(server, pages))]);
+    }
+    assert.equal(aside(server.read()), ASIDE.replace('Notes', `${q}Notes`), `the notes after the undos ${JSON.stringify(steps)}`);
+    assert.deepEqual(steps.map(([label]) => label), ['typing', 'Arrows', 'typing']);
+    for (const [i, [label, notes]] of steps.entries()) assert.notEqual(notes, steps[i - 1]?.[1], `undo ${i + 1} (${label}) changed the notes: ${JSON.stringify(steps)}`);
+    for (let i = 0; i < steps.length; i++) await run(ana, 'edit.redo');
+    assert.equal(aside(await converge(server, pages)), `<aside class="notes">${q}Notes of two<ul><li>one x</li></ul></aside>`);
     assert.deepEqual([ana.errors, ben.errors], [[], []]);
   });
 }
