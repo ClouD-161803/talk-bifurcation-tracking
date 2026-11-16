@@ -2753,6 +2753,8 @@ var TexWriter = class {
     // the derivations and the polls run one at a time
     this.chain = Promise.resolve();
     this.due = false;
+    // whether the derivation that is due follows a stable change of a source
+    this.changed = false;
     this.polling = false;
     this.stopped = false;
     this.dir = dir;
@@ -2800,7 +2802,8 @@ var TexWriter = class {
   run(task) {
     return this.chain = this.chain.then(task).catch((e) => this.log(`tex.js: ${e.message}`));
   }
-  derive() {
+  derive(changed = false) {
+    this.changed ||= changed;
     if (this.due) return;
     this.due = true;
     void this.run(() => {
@@ -2815,7 +2818,7 @@ var TexWriter = class {
 ${sig}`).join("\n");
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
       if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
-      else if (now - this.sourcesSeen.at >= this.stable) this.derive();
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive(true);
     } else this.sourcesSeen = null;
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
@@ -2829,6 +2832,8 @@ ${sig}`).join("\n");
   }
   async write() {
     const html = this.html;
+    const changed = this.changed;
+    this.changed = false;
     const derived = deriveTex(this.dir, html);
     this.keys = keysOf(html);
     this.watched = derived.files;
@@ -2839,7 +2844,10 @@ ${sig}`).join("\n");
       return;
     }
     const old = await readFile2(this.file, "utf8").catch(() => null);
-    if (old === derived.text) return;
+    if (old === derived.text) {
+      if (changed) this.onChange();
+      return;
+    }
     const tmp = join4(this.dir, `.tex.js.${randomBytes4(6).toString("hex")}.tmp`);
     try {
       await writeFile4(tmp, derived.text);

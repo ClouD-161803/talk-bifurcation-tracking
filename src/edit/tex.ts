@@ -4,7 +4,9 @@
 // that the preamble reads, once the change is stable. it is written only when its text changes,
 // and never in a folder without preamble.tex and references.bib, whose tex.js may be shared with
 // another deck. every change of tex.js on disk, by the edit command or by another program, is
-// counted, and the pages draw the deck again with it
+// counted, and the pages draw the deck again with it. so is a stable change of a source that
+// leaves the text of tex.js as it is, after which the pages read the sources again, e.g. for a
+// paper added to references.bib that the deck does not cite yet
 
 import { readFileSync, statSync, type Stats } from 'node:fs';
 import { readFile, stat, unlink, writeFile } from 'node:fs/promises';
@@ -73,7 +75,8 @@ export function deriveTex(dir: string, html: string): DerivedTex {
   return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread };
 }
 
-// onChange is called at each change of tex.js on disk. stable is the time in ms that a changed file
+// onChange is called at each change of tex.js on disk, and after a stable change of a source that
+// leaves tex.js as it is. stable is the time in ms that a changed file
 // must not change before it is taken, shorter in the tests
 export type TexOptions = {
   log?: (message: string) => void;
@@ -102,6 +105,8 @@ export class TexWriter {
   // the derivations and the polls run one at a time
   private chain: Promise<void> = Promise.resolve();
   private due = false;
+  // whether the derivation that is due follows a stable change of a source
+  private changed = false;
   private polling = false;
   private stopped = false;
 
@@ -156,7 +161,8 @@ export class TexWriter {
     return (this.chain = this.chain.then(task).catch((e) => this.log(`tex.js: ${(e as Error).message}`)));
   }
 
-  private derive(): void {
+  private derive(changed = false): void {
+    this.changed ||= changed;
     if (this.due) return;
     this.due = true;
     void this.run(() => {
@@ -171,7 +177,7 @@ export class TexWriter {
     const sources = sigs.map(([name, sig]) => `${name}\n${sig}`).join('\n');
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
       if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
-      else if (now - this.sourcesSeen.at >= this.stable) this.derive();
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive(true);
     } else this.sourcesSeen = null;
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
@@ -186,6 +192,8 @@ export class TexWriter {
 
   private async write(): Promise<void> {
     const html = this.html;
+    const changed = this.changed;
+    this.changed = false;
     const derived = deriveTex(this.dir, html);
     this.keys = keysOf(html);
     this.watched = derived.files;
@@ -197,7 +205,10 @@ export class TexWriter {
       return;
     }
     const old = await readFile(this.file, 'utf8').catch(() => null);
-    if (old === derived.text) return;
+    if (old === derived.text) {
+      if (changed) this.onChange();
+      return;
+    }
     const tmp = join(this.dir, `.tex.js.${randomBytes(6).toString('hex')}.tmp`);
     try {
       await writeFile(tmp, derived.text);
