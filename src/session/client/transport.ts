@@ -28,7 +28,7 @@ export class Transport {
   private readonly base: URL;
   // told the record of the end that the relay answers to any request after End session
   private readonly onEnded: (ended: Ended) => void;
-  // the last operation whose request failed
+  // the last operation whose request with keepalive failed
   private failed: OpPost | null = null;
 
   constructor(page: string, onEnded: (ended: Ended) => void = () => {}) {
@@ -48,12 +48,12 @@ export class Transport {
 
   // an operation with keepalive reaches the edit command also when its page is closed. the browsers
   // refuse such a request while 64 KiB of these bodies are in flight, and an operation that failed
-  // with it is sent again without it
+  // with keepalive is sent again without it
   op(post: OpPost): Promise<OpAnswer> {
     const body = JSON.stringify(post);
     const keepalive = post !== this.failed && new Blob([body]).size < 60_000;
     return this.send<OpAnswer>(this.url('op'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive }, POST_WAIT).catch((e: unknown) => {
-      this.failed = post;
+      if (keepalive) this.failed = post;
       throw e;
     });
   }
