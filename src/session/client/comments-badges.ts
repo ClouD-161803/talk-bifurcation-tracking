@@ -157,6 +157,7 @@ export class Badges {
     if (!this.boxes.length) return;
     const stage = this.comments.client.app.stage;
     const { origin: o, scale: s, viewport: v } = stage;
+    const bottom = v.bottom - H - 2;
     const at = this.boxes.map((b) => {
       const gap = b.selected ? 18 : 4;
       let left = b.slide ? o.x + b.x * s - b.w - 6 : o.x + b.x * s + gap;
@@ -169,20 +170,20 @@ export class Badges {
         left = o.x + b.x * s + dx * far - b.w / 2;
         top = o.y + b.y * s + dy * far - H / 2;
       }
-      return { b, left, top };
+      // moved into the viewport first, so that the overlaps are read on the places drawn
+      return { b, left: Math.max(v.left + 2, Math.min(left, v.right - b.w - 2)), top: Math.max(v.top + 2, Math.min(top, bottom)) };
     });
-    // a badge that meets one placed above it is pushed down below it
+    // a badge that meets one placed above it is pushed down below it, and not past the bottom of
+    // the viewport, where it may then meet another
     at.sort((p, q) => p.top - q.top);
     for (let k = 0; k < at.length; k++) {
-      const { b } = at[k];
-      let { left, top } = at[k];
+      const { b, left } = at[k];
+      let { top } = at[k];
       for (let j = 0; j < k; j++) {
         const p = at[j];
         if (left < p.left + p.b.w && p.left < left + b.w && top < p.top + H + 2) top = p.top + H + 2;
       }
-      at[k].top = top;
-      left = Math.max(v.left + 2, Math.min(left, v.right - b.w - 2));
-      top = Math.max(v.top + 2, Math.min(top, v.bottom - H - 2));
+      at[k].top = top = Math.min(top, bottom);
       b.badge.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
     }
   }
