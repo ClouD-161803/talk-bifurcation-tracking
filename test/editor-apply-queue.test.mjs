@@ -288,6 +288,36 @@ test('during a composition, the changes before and after the composing text are 
   assert.deepEqual(b.errors, []);
 });
 
+test('during a composition, an apply that inserts a text right before or after the reading keeps this text when the reading is committed', async (t) => {
+  for (const [where, see] of [['before', ' see X.nih'], ['after', 'nih see X.']]) {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    await showSlide(b, 'Show your steps');
+    await caretAtEnd(b, P1);
+    await compose(b, 'compositionstart');
+    await b.evaluate(`document.execCommand('insertText', false, 'nih')`);
+    await b.waitFor(`${E}.session.text().includes('attention.nih</p>')`);
+    const read = await sessionText(b);
+    const text = once(read, 'attention.nih</p>', `attention.${see}</p>`);
+    await start(b, where, text);
+    await b.waitFor(resolved(where));
+    assert.equal(await b.evaluate(`window.__results[${JSON.stringify(where)}]`), false);
+    // the input method replaces the reading by the word that the person chose
+    await b.evaluate(`(() => {
+      const node = [...${P1}.childNodes].reverse().find((n) => n.nodeType === 3 && n.data.endsWith('nih'));
+      getSelection().setBaseAndExtent(node, node.data.length - 3, node, node.data.length);
+      document.execCommand('insertText', false, '你好');
+    })()`);
+    const want = once(text, `attention.${see}</p>`, `attention.${see.replace('nih', '你好')}</p>`);
+    assert.equal(await sessionText(b), want, `the text read during the composition, ${where}`);
+    await compose(b, 'compositionend');
+    await b.waitFor(`${P1}?.textContent.includes('see X')`);
+    assert.equal(await render(b), want, where);
+    assert.equal(await sessionText(b), want, where);
+    assert.deepEqual(b.errors, []);
+  }
+});
+
 test('a composing text that loses the focus without the end of its composition takes the change held back', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());

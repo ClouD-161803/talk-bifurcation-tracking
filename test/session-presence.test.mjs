@@ -935,7 +935,7 @@ test('a name with markup is shown as text in the flag', { timeout: 120_000 }, as
 });
 
 test('after a restart, a page that rejoins second is read by the other page', { timeout: 120_000 }, async (t) => {
-  const { server, pages: [ana, ben] } = await session(t);
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { script: NET });
   const { port } = server.edit;
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -943,13 +943,15 @@ test('after a restart, a page that rejoins second is read by the other page', { 
   await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben');
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
+  // Ana also retries by her own timer. her hello is held, hence she rejoins after Ben is read alone
+  await ana.evaluate(`__net.rule('/.session/hello', 'hold')`);
   await until(() => ana.evaluate(`${C}.connection !== 'online'`), 'Ana offline');
   await until(() => ben.evaluate(`${C}.connection !== 'online'`), 'Ben offline');
   await server.start(['--port', String(port)]);
   await ben.evaluate(`${C}.tryNow(); true`);
   await ben.waitFor(ONLINE, 20_000);
   await until(() => ben.evaluate(`${C}.people.length === 1`), 'Ben alone at the edit command');
-  await ana.evaluate(`${C}.tryNow(); true`);
+  await ana.evaluate(`(__net.clear(), __net.release('/.session/hello'), ${C}.tryNow(), true)`);
   await ana.waitFor(ONLINE, 20_000);
   await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben after the restart', 10_000);
   // the requests to the edit command that stopped, the polls with the tokens of before, and the

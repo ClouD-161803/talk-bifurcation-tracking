@@ -27,10 +27,13 @@ const CSS = `
 .beeson-edit-titlebar .right button.beeson-session-state.warn svg { color: var(--ed-guide); }
 .beeson-edit-titlebar .right button.beeson-session-action { border: 1px solid var(--ed-control-line); background: var(--ed-control); }
 .beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state.warn { order: 1; flex: 1 0 100%; align-items: flex-start; height: auto; padding: 4px 8px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; text-align: start; }
+.beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state.warn .name { position: relative; z-index: 1; max-height: 5lh; overflow-y: auto; }
 `;
 
 type Action = 'retry' | 'reload' | 'upload' | null;
-type View = { text: string; icon: string; warn: boolean; action: Action; note?: boolean };
+// note is a warning of the editor, e.g. why a file is not added, which follows text until the next
+// edit. the title shows it in place of the status, hence text is the status
+type View = { text: string; icon: string; warn: boolean; action: Action; note?: string };
 
 function view(client: Client): View {
   const retry: Action = client.retryAt === null ? null : 'retry';
@@ -49,15 +52,15 @@ function view(client: Client): View {
     case 'no-host':
       return { text: "The host's edit command is not running", icon: 'warning', warn: true, action: retry };
     default:
+      // a line that asks the person to act is not hidden behind a note
+      const note = client.app.note?.warn ? client.app.note.text : undefined;
       // the one place for a warning of the edit command, e.g. that it cannot write index.html
-      if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null };
+      if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null, note };
       const failed = failedLine(client);
-      if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload' };
+      if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload', note };
       const lost = lostLine(client);
-      if (lost) return { text: lost, icon: 'warning', warn: true, action: null };
-      // a warning of the editor, e.g. why a file is not added, shown by the title in place of the
-      // status, until the next edit
-      if (client.app.note?.warn) return { text: client.app.note.text, icon: 'warning', warn: true, action: null, note: true };
+      if (lost) return { text: lost, icon: 'warning', warn: true, action: null, note };
+      if (note) return { text: '', icon: 'warning', warn: true, action: null, note };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
       const restored = restoredLine(client);
       if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
@@ -97,12 +100,13 @@ export function install(client: Client): void {
     action.hidden = !v.action;
     if (v.action && v.action !== doing) [label.textContent, action.title] = ACTIONS[v.action];
     doing = v.action;
-    if (v.text === shown) return;
-    shown = v.text;
-    name.textContent = v.text;
-    button.setAttribute('aria-label', v.text);
-    button.title = v.text;
-    client.port.setStatus(v.note ? null : v.text);
+    const text = v.text && v.note ? `${v.text.replace(/\.$/, '')}. ${v.note}` : v.text || v.note!;
+    if (text === shown) return;
+    shown = text;
+    name.textContent = text;
+    button.setAttribute('aria-label', text);
+    button.title = text;
+    client.port.setStatus(v.text || null);
   };
   button.setAttribute('aria-haspopup', 'menu');
   let menu: OpenMenu | null = null;
