@@ -555,6 +555,21 @@ test('the notes of File > Preamble… and File > Bibliography… in a session fi
   }
 });
 
+test('the notes of File > Preamble… and File > Bibliography… in a session are shown in full on a phone of 390 px with letters wider than those of this system', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const page = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  t.after(() => page.close());
+  await converge(server, [page]);
+  // the system font of Linux and of Android is wider than the one of a Mac
+  await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: '.beeson-edit-menu { letter-spacing: 1px; }' })), true`);
+  const items = await fileMenu(page);
+  for (const id of ['file.preamble', 'file.bibliography']) {
+    assert.ok(items[id], `the File menu does not have ${id}`);
+    assert.ok(items[id].scroll <= items[id].client + 1, `the label of ${id} is wider than its box: ${JSON.stringify(items[id])}`);
+  }
+  clean(page, MISSING);
+});
+
 test('a slide pasted in a session with macros that preamble.tex does not have opens the dialog that says the host pastes their lines into preamble.tex', { timeout: 300_000 }, async (t) => {
   const deck = await serve('.');
   t.after(() => deck.close());
