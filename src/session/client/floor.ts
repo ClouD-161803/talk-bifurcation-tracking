@@ -26,9 +26,11 @@ const OF_SPAN = new Set(['text.flow.delete', 'text.flow.newParagraph']);
 // it, unless the caret is in a nested item
 const BESIDE = new Set(['text.joinBackward', 'text.joinForward', 'text.indent']);
 // the commands of a selection that change none of the selected elements, e.g. a change of the
-// selection, a new slide, a preview, or a pane. any other command is refused on a selection of
-// elements that holds a held element
-const PASS = /^(view|zoom|go|help|window|file|navigate|selection|shell|toolbar)\.|^edit\.(copy|spelling|startSpeaking|stopSpeaking)$|^find\.(open|next|previous|close|useSelection)$|^slide\.(new|newAfter|newSection|copy|selectAll|previewTransition|guides\.copy)$|^slide\.new\.|^(preview\.(slide|steps|backdrop|selectBackdrop)|steps\.(preview|playFrom)|backdrop\.preview)$|^play\.presenter$|^insert\.(text|comment)$|^text\.copyStyle$|^table\.(selectRow|selectColumn|selectTable|editCell)$/;
+// selection, a new element or slide, a preview, a pane, the options of Find, a transition, or the
+// timings, and the formats of text that a caret in a held element may set. any other command is
+// refused on a selection of elements that holds a held element. a citation goes into the
+// selected element
+const PASS = /^(view|zoom|go|help|window|file|navigate|selection|shell|toolbar)\.|^edit\.(copy|spelling|startSpeaking|stopSpeaking)$|^find\.(open|next|previous|close|useSelection|matchCase|wholeWords|tex|scope\w+)$|^slide\.(new|newAfter|newSection|copy|selectAll|previewTransition|guides\.copy|duplicate|gallery)$|^slide\.(new|transition)\.|^notes\.zoom|^(preview\.(slide|steps|backdrop|selectBackdrop)|steps\.(preview|playFrom)|backdrop\.preview)$|^play(\.(presenter|customizePresenter|rehearse|useTimings|clearTimings))?$|^insert\.(?!citation$)|^text\.(copyStyle|bold|italic|code|strike|superscript|subscript|tone\.[\w-]+|link|removeLink|clear)$|^table\.(selectRow|selectColumn|selectTable|editCell)$/;
 
 export const refusal = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is typing here. You can do this once they leave it or stop for 30 s.'];
 
