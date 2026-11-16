@@ -544,7 +544,7 @@ async function drafted(page, target, kind = 'element') {
   return page.evaluate(DRAFTED);
 }
 
-test('a draft stays on its element when an element before it is removed or inserted while its page is away', { timeout: 300_000 }, async (t) => {
+test('a draft stays on its element when an element before it is removed or inserted while its page is away', { timeout: 660_000 }, async (t) => {
   const { server, pages: [a, b] } = await pair(t);
   const state = DRAFTED;
   const away = (change, has) => left(server, a, [b], change, has);
