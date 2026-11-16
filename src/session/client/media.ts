@@ -221,7 +221,7 @@ export function install(client: Client): void {
   // that the text names
   const lose = (named: MediaFile[]): void => {
     const lost = named.find((f) => given.has(f));
-    const line = lost ? `${lost.path} is not in the talk folder, since ${given.get(lost)}. Delete it from the deck, or add the file to media/ by hand.` : null;
+    const line = lost ? `${lost.path} is not in the talk folder, since ${given.get(lost)}. Delete it from the deck, or ${client.host ? 'add the file to media/ by hand and load the page again' : 'ask the host to add the file to media/, then load the page again'}.` : null;
     if (line === st.lost) return;
     st.lost = line;
     client.refresh();
