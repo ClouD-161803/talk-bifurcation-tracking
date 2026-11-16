@@ -310,6 +310,31 @@ test('an undo or a redo of a move of the slide of a held text element, or of a n
   clean(ben);
 });
 
+test('an undo of typing in a text element that the person left keeps the text that another person typed in it since', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' by Ana');
+  await converge(server, [ana, ben]);
+  // the typing of Ana in the heading ends her typing in the paragraph, hence the keys of Ben after
+  // it are not added to her entry
+  await caretAtEnd(ana, el(1, 'h2'));
+  await typeKeys(ana, ' 2');
+  await converge(server, [ana, ben]);
+  await front(ben);
+  await ben.evaluate(`(() => { const p = ${p}; p.focus(); getSelection().collapse(p.firstChild, 0); })()`);
+  await typeKeys(ben, 'Ben: ');
+  await converge(server, [ana, ben]);
+  await front(ana);
+  for (let i = 0; i < 2; i++) await ana.evaluate(`${C}.app.commands.run('edit.undo')`);
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<h2>Two<\/h2>\s*<p>Ben: Second slide<\/p>/);
+  clean(ana);
+  clean(ben);
+});
+
 test('the bubble of a refusal for a text element on another slide names the slide, at the top of the window', { timeout: 120_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
