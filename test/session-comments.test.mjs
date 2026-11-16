@@ -567,3 +567,16 @@ test('the three tabs of the inspector and the keys of the pane, text that looks 
   clean(a);
   clean(b);
 });
+
+test('a badge, its label, and the count of its slide in the navigator read the number of open threads', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'The first thread');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'The second thread');
+  await badge(b, 'One', 'p', '2*');
+  await sees(b, `[document.querySelector('.beeson-comment-badge').getAttribute('aria-label'), document.querySelector('.beeson-edit-nav .row:nth-of-type(1) .beeson-comment-count')?.textContent ?? null]`, ['2 threads, unread', '2']);
+  clean(a);
+  clean(b);
+});
