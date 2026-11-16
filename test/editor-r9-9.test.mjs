@@ -509,6 +509,49 @@ for (const platform of PLATFORMS) {
   });
 }
 
+// captured waits for the poster captured by a click on the Poster Frame slider, i.e. for a file
+// other than before, and fails with the message of a capture that fails
+async function captured(page, before) {
+  const failed = `window.BeesonEditor.status().message.includes('video')`;
+  await page.waitFor(`window.BeesonEditor.render() !== ${js(before)} || ${failed}`, 150000);
+  const message = (await page.evaluate('window.BeesonEditor.status()')).message;
+  assert.ok((await render(page)) !== before, `the poster is not captured: ${message}`);
+}
+
+// LATE_SEEKS delays each listener of the event seeked of a video by ms, and records in
+// window.__lateSeeks the time of each delayed call. a seek of a crowded runner ends this late,
+// since the frames from the key frame before its time are decoded in software. the video that a
+// poster is captured from is not in the document, hence its listeners are delayed, not its events
+const LATE_SEEKS = (ms) => `(() => {
+  window.__lateSeeks = [];
+  const add = EventTarget.prototype.addEventListener;
+  const remove = EventTarget.prototype.removeEventListener;
+  const late = new WeakMap();
+  const slowed = (target, type, f) => target instanceof HTMLVideoElement && type === 'seeked' && typeof f === 'function';
+  const of = (f) => {
+    if (!late.has(f)) late.set(f, function (e) { setTimeout(() => { window.__lateSeeks.push(performance.now()); f.call(this, e); }, ${ms}); });
+    return late.get(f);
+  };
+  EventTarget.prototype.addEventListener = function (type, f, o) { return add.call(this, type, slowed(this, type, f) ? of(f) : f, o); };
+  EventTarget.prototype.removeEventListener = function (type, f, o) { return remove.call(this, type, slowed(this, type, f) ? of(f) : f, o); };
+  return true;
+})()`;
+
+// the frame at 0.6 of the demo clip is 6 s after a key frame, and the capture of its poster took
+// more than 20 s on an Ubuntu runner in a round of the workflow check
+test('other: a poster is captured from the Poster Frame slider when each seek of the video ends 20 s late', async (t) => {
+  const page = await load(t, 'other', { n: VIDEO });
+  await selectVideo(page);
+  await page.evaluate(LATE_SEEKS(20000));
+  const before = await render(page);
+  const r = await rectOf(page, `${PANEL} input[name=poster-frame]`);
+  await click(page, { x: r.left + r.width * 0.6, y: r.top + r.height / 2 });
+  await captured(page, before);
+  assert.ok(await page.evaluate('window.__lateSeeks.length > 0'), 'no seek of the capture is delayed');
+  assert.match(await render(page), /poster="media\/clip-light\.png"/);
+  assert.deepEqual(errors(page), []);
+});
+
 // the box of the new element of the current slide in px of the window, and the boxes of the texts
 // and the chrome it lies over: a heading, a paragraph, a list, a code box, a formula, a caption,
 // the running head, the footnote line, and the slide number
