@@ -298,8 +298,9 @@ const real = (text: string, at: number): number => {
 // before it or after it where the span then reads as in base. the span may also be rotated over
 // equal letters at its ends, e.g. " big" or "big " before a space, and each rotation must give the
 // same text. null when an edit of others overlaps the span otherwise, when the span or an
-// insertion of others beside it can be read in two places that give different texts, or when the
-// edits of others are too many to diff
+// insertion of others beside it can be read in two places that give different texts, when an edit
+// of others at an end of the span can be slid over equal letters into it, or when the edits of
+// others are too many to diff
 export function revert(base: string, target: string, now: string): string | null {
   if (now === base) return target;
   const b = base.replaceAll('&nbsp;', ' '), t = target.replaceAll('&nbsp;', ' '), n = now.replaceAll('&nbsp;', ' ');
@@ -309,6 +310,7 @@ export function revert(base: string, target: string, now: string): string | null
   const [head, tail] = shared(b, t);
   let all = tail;
   while (all < b.length && all < t.length && b[b.length - 1 - all] === t[t.length - 1 - all]) all++;
+  if (slides(others, b, head - Math.min(head, all - tail), b.length - tail)) return null;
   let got: string | null = null;
   for (let k = 0; k <= Math.min(head, all - tail); k++) {
     const s = head - k, e = b.length - tail - k;
@@ -329,6 +331,24 @@ export function revert(base: string, target: string, now: string): string | null
     else if (out.replaceAll('&nbsp;', ' ') !== got.replaceAll('&nbsp;', ' ')) return null;
   }
   return got;
+}
+
+// whether an edit of others at an end of the widest span [lo, hi) of b can be slid over equal
+// letters into it, where the diff could have placed it as well, e.g. the removal of an s after
+// "this", which is also the removal of the s of "this"
+function slides(others: Edit[], b: string, lo: number, hi: number): boolean {
+  return others.some((o) => {
+    if (o.start !== hi && o.end !== lo) return false;
+    let l = o.start, r = o.end;
+    if (o.start === o.end) {
+      for (let x = o.text; l > 0 && b[l - 1] === x.at(-1); l--) x = b[l - 1] + x.slice(0, -1);
+      for (let x = o.text; r < b.length && b[r] === x[0]; r++) x = x.slice(1) + b[r];
+    } else {
+      while (l > 0 && b[l - 1] === b[o.end - 1 - (o.start - l)]) l--;
+      while (r < b.length && b[r] === b[o.start + (r - o.end)]) r++;
+    }
+    return o.start === hi ? l < hi : r > lo;
+  });
 }
 
 // the start in n of the span [s, e) of b, where n is b with the edits others, or -1 when one of
