@@ -1,4 +1,4 @@
-// helpers of the browser tests of presence and the floor rule, test/session-floor.test.mjs and
+// helpers of the browser tests of presence and the locks, test/session-floor.test.mjs and
 // test/session-layer.test.mjs: a session of pages on the edit command, the elements of its deck,
 // what the layer of presence draws, and the bubble of a refusal
 
@@ -14,8 +14,9 @@ export const P = 'window.BeesonSession.presence()';
 export const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 
 export const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
-export const REFUSED = 'Ana is typing here. You can edit this text once they leave it or stop for 30 s.';
-export const LOCKED = (expression) => `${expression}.classList.contains('beeson-held')`;
+export const REFUSED = 'Ana is typing here. You can move or delete it once they leave it or stop for 30 s.';
+// the name of the person whose caret locks the element of expression, or null
+export const LOCKER = (expression) => `(${P}.lockOf(${expression})?.name ?? null)`;
 // the bubble of page cleared, so that the next one can be told from it
 export const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
 

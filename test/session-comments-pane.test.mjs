@@ -29,7 +29,8 @@ const THREADS = `[...document.querySelectorAll('${PANE} article')].map((a) => ({
 const TOASTS = `[...document.querySelectorAll('.beeson-session-toast > span')].map((s) => s.textContent)`;
 const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('aria-label')`;
 const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
-const LOCKED = (expression) => `${expression}.classList.contains('beeson-held')`;
+// the name of the person whose caret locks the element of expression, or null
+const LOCKER = (expression) => `(window.BeesonSession.presence().lockOf(${expression})?.name ?? null)`;
 // the id of the thread of the focus, or the tag of the focused element outside a thread
 const ACTIVE = `document.activeElement?.closest('article')?.dataset.id ?? document.activeElement?.localName ?? null`;
 const DRAFT = `${PANE} .draft textarea`;
@@ -210,9 +211,9 @@ test('a held text element takes a comment from the context menu, and its thread 
 
   await show(b, 'One');
   // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
-  await until(async () => !(await b.evaluate(LOCKED(p))), 'the paragraph that Ann left to be free on the page of Ben');
+  await until(async () => (await b.evaluate(LOCKER(p))) === null, 'the paragraph that Ann left to be free on the page of Ben');
   await caretAtEnd(b, p);
-  await until(() => a.evaluate(LOCKED(p)), 'the paragraph that Ben holds to be locked on the page of Ann');
+  await until(async () => (await a.evaluate(LOCKER(p))) === 'Ben', 'the paragraph that Ben holds to be locked on the page of Ann');
 
   await t.test('the item Comment of the context menu of a held element anchors the draft on it', async () => {
     await front(a);
@@ -986,7 +987,7 @@ test('a draft whose element another person deletes moves to its slide and is sen
   await show(a, 'One');
   await click(a, '.reveal .slides > section:nth-child(1) > p');
   await press(a, 'Escape');
-  await until(() => b.evaluate(`!document.querySelector('.reveal .slides > section:nth-child(2) > p').classList.contains('beeson-held')`), 'the paragraph that Ann left to be free on the page of Ben');
+  await until(async () => (await b.evaluate(LOCKER(`document.querySelector('.reveal .slides > section:nth-child(2) > p')`))) === null, 'the paragraph that Ann left to be free on the page of Ben');
   await show(b, 'Two');
   await click(b, '.reveal section.present > p');
   await press(b, 'Escape');

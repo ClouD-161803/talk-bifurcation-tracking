@@ -1,8 +1,8 @@
-// the presence of each page of a session: its slide, its selected elements, its caret, and the
-// text element that it holds, sent as offsets of the text of the authority at a version, and read
-// back by every other page as its own elements, for layer.ts, the avatars, and the navigator. the
-// floor rule, which lets one person at a time type in a text element, is decided here, and
-// floor.ts refuses the actions on a held element.
+// the presence of each page of a session: its slide, its selected elements, and its caret, sent as
+// offsets of the text of the authority at a version, and read back by every other page as its own
+// elements, for layer.ts, the avatars, and the navigator. a text element is locked against this
+// page while the caret of another person who was active in the last IDLE ms is in it, and floor.ts
+// refuses the commands that would move or delete a locked element.
 //
 // an offset is carried twice. the sender carries it from the source of its port, which offsetOf
 // refers to, to the text of the authority at v. the receiver carries it through the operations
@@ -27,15 +27,11 @@ export type PresenceState = {
   typing: boolean;
   following: string | null;
   mode: 'edit' | 'present' | 'history';
-  held: number | null;
   // the page is hidden, e.g. in a tab behind another
   away: boolean;
-  // counts the heartbeats of a hold, since the edit command relays a state without a time, and a
-  // state sent again unchanged cannot be told from the last one
-  beat: number;
 };
 
-export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret' | 'held'> & {
+export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret'> & {
   client: string;
   person: string;
   name: string;
@@ -43,7 +39,6 @@ export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret' | 'hel
   slide: Element | null;
   selected: Element[];
   caret: Caret | null;
-  held: Element | null;
 };
 
 // in ms: the shortest gap between two states sent for a change of offsets alone, the rest of the
@@ -55,10 +50,8 @@ const TYPING = 2000;
 // just before or just after its bye, and a state that reaches the edit command after the bye
 // brings the page back
 const HIDING = 1000;
-// in ms, the floor rule of UI.md section 3: the heartbeat of a hold, the silence after which a hold
-// is lost, and the time without typing after which another person may take the element
-const BEAT = 5000;
-const STALE = 15000;
+// in ms, the time after which a person who neither typed nor moved the caret to another element
+// does not lock the element of the caret
 const IDLE = 30000;
 // the operations kept for carrying an offset, and the farthest that a change is slid
 const LOG = 256;
@@ -209,7 +202,7 @@ class Changes {
 }
 
 // the state of another page as this page last heard it, with the times of this page at which it
-// was heard, and at which the page was last seen typing or began its hold
+// was heard, and at which the page was last seen typing or moving its caret to another element
 type Other = {
   raw: string;
   // the offsets and their version, whose change reads the elements again
@@ -242,25 +235,21 @@ function parseState(raw: unknown): PresenceState | null {
     typing: s.typing === true,
     following: typeof s.following === 'string' ? s.following : null,
     mode,
-    held: isInt(s.held) ? s.held : null,
-    beat: isInt(s.beat) ? s.beat : 0,
     away: s.away === true,
   };
 }
 
-const keyOf = (s: PresenceState): string => JSON.stringify([s.v, s.slide, s.selected, s.caret?.el ?? null, s.held]);
+const keyOf = (s: PresenceState): string => JSON.stringify([s.v, s.slide, s.selected, s.caret?.el ?? null]);
 
 export class Presence {
   readonly client: Client;
-  // added to performance.now(), e.g. by a test that moves the clock of the floor rule. the clock of
-  // the machine is not read, since it can be set back
+  // added to performance.now(), e.g. by a test that moves the clock of the locks. the clock of the
+  // machine is not read, since it can be set back
   skew = 0;
   private readonly log = new Log();
   private readonly changes = new Changes();
   private readonly others = new Map<string, Other>();
   private list: Resolved[] = [];
-  private locked = new Map<Element, Resolved>();
-  private readonly lockListeners = new Set<(why: { yielded: Resolved | null; refused: Resolved | null }) => void>();
 
   // what this page sends
   private fields: { following: string | null; mode: PresenceState['mode'] } = { following: null, mode: 'edit' };
@@ -276,11 +265,6 @@ export class Presence {
   private typedAt = -Infinity;
   private caretHost: Element | null = null;
   private selection: Omit<Caret, 'el'> = { at: 0, from: 0, pre: '', post: '' };
-  private holding: Element | null = null;
-  private holdAt = 0;
-  private beat = 0;
-  private beatAt = 0;
-  private ticker = 0;
   // the source and the version of the base after the last time that the port read the deck into
   // its source for an offset, and whether it reads it now
   private refreshed: { source: string | null; v: Version | undefined } | null = null;
@@ -300,7 +284,6 @@ export class Presence {
     client.on('presence', () => this.hear());
     const based = () => {
       if (!this.log.seeded || (client.base && this.log.behind(client.base.v))) this.seedLog();
-      this.lost();
       this.reread();
       this.due(false);
     };
@@ -341,10 +324,9 @@ export class Presence {
       }
       joined = true;
     });
-    // after the end of the session nothing is held or locked, and no timer runs
+    // after the end of the session nothing is locked, and no timer runs
     client.on('ended', () => {
       this.others.clear();
-      this.holding = null;
       this.caretHost = null;
       clearTimeout(this.timer);
       clearTimeout(this.restTimer);
@@ -375,30 +357,21 @@ export class Presence {
     return this.list;
   }
 
-  // the page that holds el against this page, while el is locked
-  holder(el: Element): Resolved | null {
-    return this.locked.get(el) ?? null;
-  }
-
-  // the page that holds a locked element that el is or lies in, or with containing, that el holds
-  lockOf(el: Element, containing = true): Resolved | null {
-    for (const [held, by] of this.locked) if (held.contains(el) || (containing && el.contains(held))) return by;
-    return null;
-  }
-
+  // the caret elements of the other people who were active in the last IDLE ms, read now
   get locks(): ReadonlyMap<Element, Resolved> {
-    return this.locked;
+    const t = this.now();
+    const locks = new Map<Element, Resolved>();
+    for (const o of this.others.values()) {
+      const el = o.resolved?.caret?.el;
+      if (el?.isConnected && t - o.activeAt < IDLE && !locks.has(el)) locks.set(el, o.resolved!);
+    }
+    return locks;
   }
 
-  // the text element that this page holds
-  get held(): Element | null {
-    return this.holding;
-  }
-
-  // called after the locks changed, with the page that this page yielded a text element to, or
-  // that it lost a tie to
-  onLocks(fn: (why: { yielded: Resolved | null; refused: Resolved | null }) => void): void {
-    this.lockListeners.add(fn);
+  // the person whose caret element is el or holds it, or with containing, lies in el
+  lockOf(el: Element, containing = true): Resolved | null {
+    for (const [at, by] of this.locks) if (at.contains(el) || (containing && el.contains(at))) return by;
+    return null;
   }
 
   // e.g. by the part that follows a person
@@ -407,26 +380,6 @@ export class Presence {
     // the selection is read now, since its selectionchange comes after this state
     this.moved();
     this.due(true);
-  }
-
-  // a hold of an element that left the page ends, e.g. after another person deleted it
-  private lost(): void {
-    if (!this.holding || this.holding.isConnected) return;
-    this.caretHost = null;
-    this.hold(null);
-    this.due(true);
-  }
-
-  // the deadlines of the floor rule taken now, e.g. by a test after it moved skew
-  check(): void {
-    this.lost();
-    const t = this.now();
-    if (this.holding && t - this.beatAt >= BEAT) {
-      this.beat++;
-      this.beatAt = t;
-      this.due(true);
-    }
-    this.floor();
   }
 
   private seedLog(): void {
@@ -450,7 +403,6 @@ export class Presence {
     this.restTimer = 0;
     if (!same) {
       this.caretHost = host;
-      this.hold(host);
       this.due(true);
     } else if (host) this.restTimer = window.setTimeout(() => this.due(true), REST);
   }
@@ -463,18 +415,6 @@ export class Presence {
     clearTimeout(this.typingTimer);
     this.typingTimer = window.setTimeout(() => this.due(true), TYPING);
     this.due(!was);
-  }
-
-  // the hold of host begins, or the hold ends when host is null. a locked host is not held, since
-  // floor.ts takes the caret out of it
-  private hold(host: Element | null): void {
-    if (host && this.locked.has(host)) host = null;
-    if (host === this.holding) return;
-    this.holding = host;
-    const t = this.now();
-    this.holdAt = t;
-    this.beatAt = t;
-    this.tick();
   }
 
   // a state is sent now, or for a change of offsets alone at most every THROTTLE ms
@@ -511,7 +451,7 @@ export class Presence {
     const was = this.sentV;
     const carried = (o: number | null): boolean => o === null || (!!was && this.log.carry(o, was, v.n) === o);
     const last = this.sent;
-    if (key === this.sentKey && was && was.epoch === v.epoch && v.n - was.n < BEHIND && last && [last.slide, ...last.selected, last.caret?.el ?? null, last.held].every(carried)) return;
+    if (key === this.sentKey && was && was.epoch === v.epoch && v.n - was.n < BEHIND && last && [last.slide, ...last.selected, last.caret?.el ?? null].every(carried)) return;
     this.sentKey = key;
     this.sentV = v;
     this.sent = state;
@@ -548,8 +488,6 @@ export class Presence {
       typing,
       following: this.fields.following,
       mode: this.fields.mode,
-      held: this.holding && this.holding === host ? caretEl : null,
-      beat: this.beat,
       away: document.visibilityState === 'hidden',
     };
   }
@@ -595,12 +533,11 @@ export class Presence {
       }
       if (o.raw !== raw) o.heardAt = t;
       if (state.typing || o.state.typing) o.activeAt = t;
-      const heldBefore = o.resolved?.held ?? null;
+      const caretBefore = o.resolved?.caret?.el ?? null;
       o.raw = raw;
       o.state = state;
       this.resolve(o, p.client, p.name, p.color);
-      // a hold begins when the page holds another element, or one after none
-      if ((o.resolved?.held ?? null) !== heldBefore) o.activeAt = t;
+      if ((o.resolved?.caret?.el ?? null) !== caretBefore) o.activeAt = t;
       changed = true;
     }
     for (const id of [...this.others.keys()]) {
@@ -620,7 +557,7 @@ export class Presence {
     let changed = false;
     for (const [id, o] of this.others) {
       const r = o.resolved;
-      const gone = !!r && (r.selected.some((el) => !el.isConnected) || (r.slide && !r.slide.isConnected) || (r.caret && !r.caret.el.isConnected) || (r.held && !r.held.isConnected));
+      const gone = !!r && (r.selected.some((el) => !el.isConnected) || (r.slide && !r.slide.isConnected) || (r.caret && !r.caret.el.isConnected));
       if (!gone && !o.ahead) continue;
       this.resolve(o, id, r?.name ?? '', r?.color ?? 0);
       changed = true;
@@ -636,13 +573,13 @@ export class Presence {
     const s = o.state;
     const key = keyOf(s);
     o.key = key;
-    const offsets = [s.slide, s.held, s.caret?.el ?? null, ...s.selected];
+    const offsets = [s.slide, s.caret?.el ?? null, ...s.selected];
     const els = this.read(offsets, s.v);
     o.ahead = els === 'ahead';
     const prev = o.resolvedKey === key || o.ahead || els === null ? o.resolved : null;
     if (!o.ahead) o.resolvedKey = key;
     if (o.ahead && prev) {
-      o.resolved = { ...prev, name, color, typing: s.typing, following: s.following, mode: s.mode, beat: s.beat, away: s.away };
+      o.resolved = { ...prev, name, color, typing: s.typing, following: s.following, mode: s.mode, away: s.away };
       return;
     }
     const at = (i: number, before: Element | null | undefined): Element | null => {
@@ -652,10 +589,10 @@ export class Presence {
     };
     const selected: Element[] = [];
     s.selected.forEach((_, i) => {
-      const el = at(3 + i, prev?.selected[i]);
+      const el = at(2 + i, prev?.selected[i]);
       if (el && !selected.includes(el)) selected.push(el);
     });
-    const caretEl = at(2, prev?.caret?.el);
+    const caretEl = at(1, prev?.caret?.el);
     o.resolved = {
       client: id,
       person: client.people.find((p) => p.client === id)?.person ?? '',
@@ -668,8 +605,6 @@ export class Presence {
       typing: s.typing,
       following: s.following,
       mode: s.mode,
-      held: at(1, prev?.held),
-      beat: s.beat,
       away: s.away,
     };
   }
@@ -696,52 +631,8 @@ export class Presence {
     return found.map((el, i) => (mapped[i] === null ? null : el));
   }
 
-  // the floor rule: the locks of this page, and whether it yields the text element that it holds
-  private floor(): void {
-    const t = this.now();
-    const locked = new Map<Element, Resolved>();
-    let yielded: Resolved | null = null;
-    let refused: Resolved | null = null;
-    const ids = [...this.others.keys()].sort();
-    for (const id of ids) {
-      const o = this.others.get(id)!;
-      const r = o.resolved;
-      if (!r?.held || !r.held.isConnected || t - o.heardAt >= STALE) continue;
-      const theirIdle = t - o.activeAt >= IDLE;
-      if (this.holding === r.held) {
-        if (theirIdle) continue;
-        const mine = Math.max(this.holdAt, this.typedAt);
-        // both pages hold it. this page yields it after IDLE ms without typing, and else the
-        // smaller client id keeps it, which both pages agree on however late they hear each other
-        if (t - mine >= IDLE) yielded = r;
-        else if (id < this.client.client) refused = r;
-        else continue;
-        locked.set(r.held, r);
-      } else if (!theirIdle && !locked.has(r.held)) locked.set(r.held, r);
-    }
-    const before = this.locked;
-    this.locked = locked;
-    for (const el of before.keys()) if (!locked.has(el)) el.classList.remove('beeson-held');
-    for (const el of locked.keys()) el.classList.add('beeson-held');
-    if (yielded || refused) this.hold(null);
-    const same = before.size === locked.size && [...locked].every(([el, r]) => before.get(el) === r);
-    if (!same || yielded || refused) for (const fn of [...this.lockListeners]) fn({ yielded, refused });
-    this.tick();
-  }
-
-  // the heartbeat and the deadlines run while a hold or a claim of another page is known
-  private tick(): void {
-    const needed = !!this.holding || [...this.others.values()].some((o) => o.resolved?.held);
-    if (needed && !this.ticker) this.ticker = window.setInterval(() => this.check(), 1000);
-    else if (!needed && this.ticker) {
-      clearInterval(this.ticker);
-      this.ticker = 0;
-    }
-  }
-
   private publish(): void {
     this.list = [...this.others.values()].map((o) => o.resolved).filter((r): r is Resolved => !!r);
-    this.floor();
     this.client.emit('resolved');
   }
 }

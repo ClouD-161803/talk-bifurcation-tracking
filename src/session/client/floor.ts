@@ -1,70 +1,35 @@
-// the refusals of the floor rule of presence.ts on a text element that another person holds, with
-// one check per kind of action: focusin for a caret put into it, pointerdown for a press that would
-// select or drag it, and commands.refuse of the editor for a command. the selection of this page
-// drops a locked element, so that a command of the selection does not reach it. an apply of the
-// port, e.g. a restore or a change of index.html from outside, is not refused
+// the refusals of the commands of this page that would move or delete a text element that another
+// person types in, which presence.ts locks, or change the slide or the table around it, checked by
+// commands.refuse of the editor. a caret, a selection, and typing in a locked element are not
+// refused, and neither is an apply of the port, e.g. a restore or a change of index.html from outside
 
 import type { App } from '../../editor/app.ts';
 import type { Command } from '../../editor/commands.ts';
 import { bubble, ready } from './bubble.ts';
 import type { Client } from './client.ts';
-import { bdi, style } from './dom.ts';
+import { bdi } from './dom.ts';
 import { presenceOf, type Presence, type Resolved } from './presence.ts';
 
 // the commands that change a slide as a whole, refused when the slide holds a locked element, and
 // the commands of the selection that change slides while slides are selected
 const SLIDE = new Set(['slide.cut', 'slide.delete', 'slide.hide', 'slide.layoutChooser', 'slide.moveDown', 'slide.moveUp', 'slide.moveTo', 'slide.moveSection', 'slide.reset']);
 const OF_SLIDES = new Set(['edit.cut', 'element.delete']);
-// the commands that change text anywhere in the deck, refused while any text element is held. a
-// section is moved by its head, whose slides are not read here
-const ANYWHERE = new Set(['find.replaceOne', 'find.replaceAndFind', 'find.replaceAll', 'slide.moveSection']);
+// the commands of a caret or a text selection that delete or resize its text element, or merge it
+// with the element beside it, refused in a locked element together with arrange.*
+const OF_TEXT = new Set(['element.delete', 'text.bigger', 'text.smaller', 'text.indent', 'text.outdent', 'text.joinBackward', 'text.joinForward']);
 // the commands of a caret that also change the text element before it, or with joinForward after
 // it, unless the caret is in a nested item
 const BESIDE = new Set(['text.joinBackward', 'text.joinForward', 'text.indent']);
 // the commands of a selection that change nothing
 const READ = /^(view|zoom|go|help|window|file)\.|^edit\.copy$|^find\.(open|next|previous|close|useSelection)$/;
 
-export const refusal = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is typing here. You can edit this text once they leave it or stop for 30 s.'];
-export const taken = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is editing this text now.'];
+export const refusal = (by: Resolved): (string | Node)[] => [bdi(by.name), ' is typing here. You can move or delete it once they leave it or stop for 30 s.'];
 
 export function install(client: Client): void {
   const presence = presenceOf(client);
   if (!presence) return;
   const { app } = client;
-  style('floor', '.beeson-held, .beeson-held * { cursor: not-allowed !important; }');
   ready();
-  // the selection is changed by this file, which is not an action of the person
-  let filtering = false;
-  // a composition of an input method is ended by a blur in Chrome and kept through it in Safari,
-  // hence the caret and the selection are left alone until it ends
-  let composing = false;
-  let after: (() => void) | null = null;
-  document.addEventListener('compositionstart', () => (composing = true), true);
-  document.addEventListener('compositionend', () => {
-    composing = false;
-    const f = after;
-    after = null;
-    if (f) setTimeout(f);
-  }, true);
-
-  const out = (host: Element | null): void => {
-    const active = document.activeElement as HTMLElement | null;
-    if (active && (!host || host.contains(active) || active.contains(host))) active.blur();
-    getSelection()?.removeAllRanges();
-  };
-
-  document.addEventListener('focusin', (ev) => {
-    const host = app.hostOf(ev.target);
-    const by = host && presence.holder(host);
-    if (!by) return;
-    out(host);
-    bubble(host, refusal(by));
-  }, true);
-  // an input that reaches a locked text element in spite of focusin, e.g. by a script
-  document.addEventListener('beforeinput', (ev) => {
-    const host = app.hostOf(ev.target);
-    if (host && presence.holder(host)) ev.preventDefault();
-  }, true);
 
   // a plain press in a container of several objects around a locked element, e.g. a plate with a
   // held caption, selects the object under the pointer first, as a second click on the container
@@ -90,68 +55,30 @@ export function install(client: Client): void {
   };
   const pressed = (ev: Event): void => {
     const target = ev.target instanceof Element ? ev.target : null;
-    const by = target ? presence.lockOf(target, false) : null;
     if (ev.type === 'pointerdown') picked = null;
     if (ev.type === 'click') unpick();
-    if (!by && target && ev.type === 'pointerdown') pickInside(ev as PointerEvent, target);
-    if (!by || !target || target.closest('.beeson-edit-titlebar, .beeson-edit-toolbar, .beeson-inspector, dialog')) return;
-    ev.preventDefault();
-    ev.stopImmediatePropagation();
-    if (ev.type === 'pointerdown') bubble(target, refusal(by));
+    if (target && ev.type === 'pointerdown') pickInside(ev as PointerEvent, target);
   };
-  for (const type of ['pointerdown', 'mousedown', 'click', 'dblclick']) window.addEventListener(type, pressed, true);
-
-  app.selection.listen(() => {
-    if (!filtering && !composing) drop(app, presence, true, (f) => (filtering = f));
-  });
+  for (const type of ['pointerdown', 'click']) window.addEventListener(type, pressed, true);
 
   app.commands.refuse((a: App, c: Command, arg?: unknown) => {
     const by = refused(a, presence, c, arg);
-    if (!by) return false;
+    const el = by?.caret?.el;
+    if (!by || !el) return false;
     // a text element on another slide is named by the number of its slide, at the top of the window
-    const n = [...app.slides().children].filter((s) => s.tagName === 'SECTION').findIndex((s) => s.contains(by.held)) + 1;
-    if (!n || app.current()?.contains(by.held)) bubble(by.held, refusal(by));
+    const n = [...app.slides().children].filter((s) => s.tagName === 'SECTION').findIndex((s) => s.contains(el)) + 1;
+    if (!n || app.current()?.contains(el)) bubble(el, refusal(by));
     else bubble(null, [bdi(by.name), ` is typing${client.shell.onSlides([n])}. You can do this once they leave the text or stop for 30 s.`]);
     return true;
   });
-
-  presence.onLocks(({ yielded, refused: lost }) => {
-    const by = yielded ?? lost;
-    const leave = (): void => {
-      drop(app, presence, false, (f) => (filtering = f));
-      if (!by?.held || !presence.lockOf(by.held)) return;
-      out(by.held);
-      if (app.selection.kind === 'text') app.selection.clear();
-    };
-    if (composing) after = leave;
-    else leave();
-    if (by) bubble(by.held, yielded ? taken(by) : refusal(by));
-  });
-}
-
-// the locked elements taken out of the selection, with a bubble when the person selected one
-function drop(app: App, presence: Presence, acted: boolean, filtering: (on: boolean) => void): void {
-  const sel = app.selection;
-  if (!presence.locks.size || (sel.kind !== 'elements' && sel.kind !== 'text')) return;
-  const items = [...sel.items];
-  const kept = items.filter((el) => !presence.lockOf(el));
-  if (kept.length === items.length) return;
-  const by = presence.lockOf(items.find((el) => !kept.includes(el))!);
-  filtering(true);
-  try {
-    if (kept.length && sel.kind === 'elements') sel.set('elements', kept);
-    else sel.clear();
-  } finally {
-    filtering(false);
-  }
-  if (acted && by) bubble(by.held, refusal(by));
 }
 
 // the page that holds an element that command c would change, or null
 function refused(app: App, presence: Presence, c: Command, arg: unknown): Resolved | null {
   const locks = presence.locks;
   if (!locks.size) return null;
-  if (ANYWHERE.has(c.id)) return locks.values().next().value ?? null;
+  // a section is moved by its head, whose slides are not read here
+  if (c.id === 'slide.moveSection') return locks.values().next().value ?? null;
   const sel = app.selection;
   const holding = (slides: readonly Element[]): Resolved | null => {
     for (const [el, by] of locks) if (slides.some((s) => s.contains(el))) return by;
@@ -164,10 +91,19 @@ function refused(app: App, presence: Presence, c: Command, arg: unknown): Resolv
     const current = app.current();
     return holding(sel.kind === 'slides' ? sel.items : current ? [current] : []);
   }
+  // an undo or a redo that moves, deletes, or restructures a locked element, i.e. a part that
+  // touches or detaches it, or a transaction that names it. typing, a top-level entry with els
+  // alone, is undone in a locked element
   if (c.id === 'edit.undo' || c.id === 'edit.redo') {
     const entry = c.id === 'edit.undo' ? app.history.last : app.history.next;
-    for (const part of entry ? app.history.partsOf(entry) : []) {
-      for (const el of [...(part.els ?? []), ...(part.touches ?? []), ...(part.detaches ?? [])]) {
+    const parts = entry ? app.history.partsOf(entry) : [];
+    const transaction = parts.length !== 1 || parts[0] !== entry;
+    for (const part of parts) {
+      for (const el of [...(transaction ? (part.els ?? []) : []), ...(part.touches ?? [])]) {
+        const by = presence.lockOf(el, false);
+        if (by) return by;
+      }
+      for (const el of part.detaches ?? []) {
         const by = presence.lockOf(el);
         if (by) return by;
       }
@@ -187,7 +123,9 @@ function refused(app: App, presence: Presence, c: Command, arg: unknown): Resolv
     const by = beside && presence.lockOf(beside);
     if (by) return by;
   }
-  if (READ.test(c.id) || (sel.kind !== 'elements' && sel.kind !== 'text')) return null;
+  // a selection of elements that holds a locked element takes no command that changes it, and a
+  // caret or a text selection in one takes the commands of the text
+  if (READ.test(c.id) || (sel.kind !== 'elements' && (sel.kind !== 'text' || !(OF_TEXT.has(c.id) || c.id.startsWith('arrange.'))))) return null;
   for (const el of sel.items) {
     const by = presence.lockOf(el);
     if (by) return by;
