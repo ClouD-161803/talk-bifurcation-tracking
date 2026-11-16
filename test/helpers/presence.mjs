@@ -14,7 +14,7 @@ export const P = 'window.BeesonSession.presence()';
 export const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 
 export const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
-export const REFUSED = 'Ana is typing here. You can move or delete it once they leave it or stop for 30 s.';
+export const REFUSED = 'Ana is typing here. You can do this once they leave it or stop for 30 s.';
 // the name of the person who holds the element of expression, or null
 export const HOLDER = (expression) => `(${P}.holderOf(${expression})?.name ?? null)`;
 // the bubble of page cleared, so that the next one can be told from it

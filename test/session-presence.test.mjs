@@ -195,7 +195,7 @@ test('the flag of a person who types reads that the person is typing, and the ca
 });
 
 const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
-const REFUSED = 'Ana is typing here. You can move or delete it once they leave it or stop for 30 s.';
+const REFUSED = 'Ana is typing here. You can do this once they leave it or stop for 30 s.';
 // the name of the person who holds the element of expression, or null
 const HOLDER = (expression) => `${P}.holderOf(${expression})?.name ?? null`;
 // the bubble of page cleared, so that the next one can be told from it

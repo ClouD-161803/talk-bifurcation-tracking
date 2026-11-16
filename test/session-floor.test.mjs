@@ -238,7 +238,7 @@ test('the bubble of a refusal for a text element on another slide names the slid
   await front(ben);
   await ben.evaluate(`${C}.app.commands.run('slide.moveTo', { slides: [document.querySelectorAll('.reveal .slides > section')[1]], gap: 0 })`);
   const shown = await ben.evaluate(`(() => { const b = document.querySelector('.beeson-bubble'); if (!b) return null; const r = b.getBoundingClientRect(); return { text: b.textContent, center: r.left + r.width / 2, top: r.top, middle: innerWidth / 2 }; })()`);
-  assert.equal(shown?.text, 'Ana is typing on slide 2. You can do this once they leave the text or stop for 30 s.');
+  assert.equal(shown?.text, 'Ana is typing on slide 2. You can do this once they leave it or stop for 30 s.');
   assert.ok(Math.abs(shown.center - shown.middle) < 2 && shown.top < 100, `the bubble is at the top of the window, at ${JSON.stringify(shown)}`);
   clean(ana);
   clean(ben);
