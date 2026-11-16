@@ -95,9 +95,9 @@ export async function pdfBytes(path: string): Promise<Uint8Array | null> {
     const response = await fetch(url);
     // a page behind the relay is answered 413 by the edit command for a file over the 16 MB of the
     // relay, also without a session
-    if (response.status === 413 && response.headers.has('x-edit-command')) throw new Error(`${path} cannot be read on this page, since it is larger than 16 MB, the limit of the relay of the session`);
+    if (response.status === 413 && response.headers.has('x-edit-command')) throw new Error(`${path} is over the 16 MB limit of the relay`);
     // e.g. 502 to 504 of the relay while the edit command cannot be reached
-    if (response.status >= 500) throw new Error(`${path} cannot be read now, since its request was answered with status ${response.status}, and you can try again later`);
+    if (response.status >= 500) throw new Error(`${path} cannot be read now (status ${response.status}). Try again later`);
     if (!response.ok) throw new Error(`${path} is not found next to the deck`);
     return new Uint8Array(await response.arrayBuffer());
   }
