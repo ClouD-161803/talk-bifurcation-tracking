@@ -1055,3 +1055,148 @@ test('every page is told when a change of index.html from outside replaces text 
   assert.equal(events.ops.length, 1);
   assert.equal(events.overwritten, undefined);
 });
+
+test('an operation of a person late in a long run takes about as long as one early in it', { timeout: 300_000 }, (t) => {
+  let seed = 12345;
+  const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff;
+  const words = 'alpha beta gamma delta orbit halo moon earth transfer manifold'.split(' ');
+  let deck = '<!doctype html><html><body><div class="reveal"><div class="slides">\n';
+  for (let i = 0; deck.length < 200_000; i++) deck += `<section>\n  <h2>Slide ${i}</h2>\n  <p>${Array.from({ length: 30 }, () => words[Math.floor(rnd() * words.length)]).join(' ')}</p>\n</section>\n`;
+  deck += '</div></div></body></html>\n';
+  let now = 0;
+  const { authority, history } = open(sessionDir(t), deck, { quiet: 60_000, longest: 300_000, clock: () => now, now: () => 1e12 + now });
+  t.after(() => history.stopSync());
+  const people = [ANN, BO, 'CyCyCyCyCyCyCyCyCyCyCy'];
+  // the mean time in ms of n operations of one character at random places, one second apart
+  const run = (n) => {
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      now += 1000;
+      const at = Math.floor(rnd() * (authority.text.length - 10)) + 1;
+      const patch = rnd() < 0.6 ? { start: at, end: at, text: 'e' } : { start: at, end: at + 1, text: '' };
+      const author = people[Math.floor(rnd() * people.length)];
+      const start = performance.now();
+      authority.enter([patch], author);
+      sum += performance.now() - start;
+    }
+    return sum / n;
+  };
+  run(1000);
+  const early = Math.min(run(1000), run(1000));
+  run(30_000);
+  let late = run(1000);
+  if (late > 2 * early) late = Math.min(late, run(1000));
+  assert.ok(late <= 2 * early, `an operation takes ${late.toFixed(3)} ms after 33,000 operations, and ${early.toFixed(3)} ms early in the run`);
+});
+
+test('a change of index.html from outside is told by the characters that people wrote, and not by a word that a person typed and removed', { timeout: 60_000 }, (t) => {
+  const { authority, history } = open(sessionDir(t), DECK);
+  const told = (from, to, author = 'file') => {
+    const before = authority.version;
+    replace(authority, from, to, author);
+    return history.overwrittenAfter(before);
+  };
+  replace(authority, 'First slide', 'First great slide', ANN);
+  replace(authority, 'First great slide', 'First slide', ANN);
+  assert.equal(told('First slide', 'First Slide'), false, 'a word typed and removed in one version');
+  // a removal that the diff of a later version places at the word of Ann, which stays
+  replace(authority, '<h2>One</h2>', '<h2>One One</h2>', ANN);
+  history.close();
+  const at = authority.text.indexOf('One One');
+  authority.enter([{ start: at, end: at + 4, text: '' }], BO);
+  history.close();
+  assert.equal(told('<h2>One', '<h2>Une'), true, 'the first letter of the word of Ann, after Bo removed the word before it');
+  // a word that Ann removed and typed again in one version, which reads as before
+  replace(authority, 'Second slide', 'Second', ANN);
+  replace(authority, 'Second<', 'Second slide<', ANN);
+  assert.equal(told('slide<', 'page<'), true, 'a word that Ann typed again');
+  // a word of Ann before two changes from outside in one version, and an operation of Bo after them
+  replace(authority, '</body>', '<p>Ann wrote this</p>\n</body>', ANN);
+  replace(authority, 'Une', 'Une and a long title of a program', 'file');
+  replace(authority, '<h2>Two', '<h2>Two and a long title of a program', 'file');
+  replace(authority, 'Second page', 'Second page by Bo', BO);
+  assert.equal(told('Ann wrote', 'A program wrote'), true, 'a word of Ann after two changes from outside in one version');
+  // two words of Ann in one version, the second one before the first one in the deck
+  replace(authority, '</body>', '<p>late</p>\n</body>', ANN);
+  replace(authority, '<h2>Une', '<h2>Early Une', ANN);
+  assert.equal(told('<p>late', '<p>Late'), true, 'the first of two words of Ann in one version');
+});
+
+test('a change of index.html from outside is told whenever it replaces or removes a character that a person wrote, over random edits of people', { timeout: 120_000 }, (t) => {
+  // mulberry32
+  let seed = 38;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+  const int = (n) => Math.floor(rnd() * n);
+  const word = (letters, n) => Array.from({ length: n }, () => letters[int(letters.length)]).join('');
+  // the text as cells of a character and whether a person wrote it, with patches applied
+  const applied = (cells, patches, person) => {
+    const out = [];
+    let at = 0;
+    for (const p of patches) {
+      out.push(...cells.slice(at, p.start), ...[...p.text].map((ch) => ({ ch, person })));
+      at = p.end;
+    }
+    return [...out, ...cells.slice(at)];
+  };
+  let missed = 0;
+  for (let round = 0; round < 3000; round++) {
+    let text = '<body>\n';
+    for (let i = 0, n = 3 + int(5); i < n; i++) text += `<p>${word('ab ', 3 + int(14))}</p>\n`;
+    text += '</body>\n';
+    const { authority, history } = open(sessionDir(t), text);
+    let cells = [...text].map((ch) => ({ ch, person: false }));
+    let undo = null;
+    for (let k = 0, n = 1 + int(8); k < n; k++) {
+      const author = rnd() < 0.5 ? ANN : BO;
+      let patches = [];
+      if (undo && undo.author === author && undo.n === authority.n && rnd() < 0.3) patches = undo.patches;
+      else {
+        for (let at = 0, places = rnd() < 0.2 ? 2 : 1; places > 0 && at <= authority.text.length; places--) {
+          const start = at + int(authority.text.length + 1 - at);
+          const end = Math.min(authority.text.length, start + (rnd() < 0.5 ? 0 : 1 + int(4)));
+          const ins = rnd() < 0.3 && end > start ? '' : word('ab \n', 1 + int(4));
+          if (start === end && !ins) continue;
+          patches.push({ start, end, text: ins });
+          at = end + 1;
+        }
+        if (!patches.length) continue;
+      }
+      let delta = 0;
+      const inverse = patches.map((p) => {
+        const start = p.start + delta;
+        delta += p.text.length - (p.end - p.start);
+        return { start, end: start + p.text.length, text: authority.text.slice(p.start, p.end) };
+      });
+      assert.equal(authority.enter(patches, author).answer.ok, true);
+      cells = applied(cells, patches, true);
+      undo = { author, n: authority.n, patches: inverse };
+      if (rnd() < 0.25) history.close();
+    }
+    // a program replaces one or two ranges with letters that the text does not hold, or removes
+    // them where the removal cannot be placed at another equal text
+    const now = authority.text;
+    const ranges = [];
+    for (let at = 0, places = rnd() < 0.4 ? 2 : 1; places > 0 && at < now.length; places--) {
+      const start = at + int(now.length - at);
+      const end = Math.min(now.length, start + int(6));
+      const ins = rnd() < 0.3 ? '' : word('XYZ', 1 + int(3));
+      const slides = !ins && ((start > 0 && now[start - 1] === now[end - 1]) || (end < now.length && now[start] === now[end]));
+      if (start === end ? !ins : slides) continue;
+      ranges.push({ start, end, text: ins });
+      at = end + 2;
+    }
+    if (!ranges.length) continue;
+    const wrote = ranges.some((r) => cells.slice(r.start, r.end).some((c) => c.person));
+    const before = authority.version;
+    enterText(authority, applied(cells, ranges, false).map((c) => c.ch).join(''), 'file');
+    assert.equal(authority.text, applied(cells, ranges, false).map((c) => c.ch).join(''));
+    if (wrote && !history.overwrittenAfter(before)) missed++;
+    history.stopSync();
+  }
+  assert.equal(missed, 0, `${missed} changes from outside over the text of a person were not told`);
+});
