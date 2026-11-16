@@ -1600,25 +1600,52 @@ test('a change of index.html from outside over a text that Ann typed is told on 
   clean(cy);
 });
 
-test('the Slide Sorter and the Objects pane open when Version History is opened are inert and dimmed until Version History is left, and Lock does not change the deck', { timeout: 300_000 }, async (t) => {
+// whether the element of expression takes the pointer at its center, and its center
+const HIT = (expression) => `(() => { const el = ${expression}; const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); })()`;
+const centerOf = (page, expression) => page.evaluate(`(() => { const r = (${expression}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+// the inert and the opacity of each part that is shown
+const PARTS = (parts) => `${JSON.stringify(parts)}.map((s) => { const el = document.querySelector(s + ':not([hidden])'); return el && [el.inert, getComputedStyle(el).opacity]; })`;
+
+test('the Slide Sorter open when Version History is opened is inert, dimmed, and does not take the pointer until Version History is left', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
-  const PARTS = ['.beeson-edit-sorter', '.beeson-edit-objects'];
-  for (const id of ['view.lightTable', 'view.objects']) await ann.evaluate(`window.BeesonEditor.exec('${id}').then(() => true)`);
-  const state = `${JSON.stringify(PARTS)}.map((s) => { const el = document.querySelector(s + ':not([hidden])'); return el && [el.inert, getComputedStyle(el).opacity]; })`;
+  const state = PARTS(['.beeson-edit-sorter']);
+  await ann.evaluate(`window.BeesonEditor.exec('view.lightTable').then(() => true)`);
   await ann.waitFor(`${state}.every(Boolean)`);
-  assert.deepEqual(await ann.evaluate(state), [[false, '1'], [false, '1']]);
+  const sorter = `document.querySelector('.beeson-edit-sorter')`;
+  assert.deepEqual([await ann.evaluate(state), await ann.evaluate(HIT(sorter))], [[[false, '1']], true]);
   await openPane(ann);
-  assert.deepEqual(await ann.evaluate(state), [[true, '0.45'], [true, '0.45']]);
-  // a click on Lock, which an inert pane does not take
-  const before = await ann.evaluate(TEXT);
-  await click(ann, await ann.evaluate(`(() => { const r = document.querySelector('.beeson-edit-objects button[aria-label="Lock"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
-  await ann.waitFor(`!document.querySelector('.beeson-edit-objects button[aria-label="Unlock"]')`);
-  assert.equal(await ann.evaluate(TEXT), before);
+  assert.deepEqual([await ann.evaluate(state), await ann.evaluate(HIT(sorter))], [[[true, '0.45']], false]);
   await press(ann, 'Escape');
   await ann.waitFor(`!(${SHOWN})`);
-  assert.deepEqual(await ann.evaluate(state), [[false, '1'], [false, '1']]);
+  assert.deepEqual([await ann.evaluate(state), await ann.evaluate(HIT(sorter))], [[[false, '1']], true]);
+  clean(ann);
+});
+
+// the Slide Sorter is not open, since it covers the Objects pane
+test('the Objects pane open when Version History is opened is inert and dimmed until Version History is left, and a click on Lock changes the deck only after it', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const state = PARTS(['.beeson-edit-objects']);
+  const LOCK = `document.querySelector('.beeson-edit-objects button[aria-label="Lock"]')`;
+  await ann.evaluate(`window.BeesonEditor.exec('view.objects').then(() => true)`);
+  await ann.waitFor(`${state}.every(Boolean) && !!${LOCK}`);
+  assert.deepEqual([await ann.evaluate(state), await ann.evaluate(HIT(LOCK))], [[[false, '1']], true]);
+  await openPane(ann);
+  assert.deepEqual([await ann.evaluate(state), await ann.evaluate(HIT(LOCK))], [[[true, '0.45']], false]);
+  const before = await ann.evaluate(TEXT);
+  const at = await centerOf(ann, LOCK);
+  await click(ann, at);
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  assert.deepEqual([await ann.evaluate(state), await ann.evaluate(TEXT)], [[[false, '1']], before]);
+  // the same click once the mode is left locks the element
+  await click(ann, at);
+  await ann.waitFor(`${TEXT} !== ${JSON.stringify(before)}`);
+  assert.equal((await ann.evaluate(TEXT)).split('data-locked').length, before.split('data-locked').length + 1);
   clean(ann);
 });
