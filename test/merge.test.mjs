@@ -1,11 +1,13 @@
 // the merge of the edits of the page with a file changed since it was read: the changes of the
 // file turn the text that was read into the file, edits and changes in different places are both
-// kept, an overlap is a conflict settled by prefer, and another file is not merged. revert()
-// makes the change of an entry of typing again over the edits of other people
+// kept, an overlap is a conflict settled by prefer, and another file is not merged. the merge of a
+// session keeps two insertions at one point as the authority does, and revert() makes the change
+// of an entry of typing again over the edits of other people
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, changes, merge, revert } from '../src/editor/merge.ts';
+import { apply, changes, clash, merge, mergeEdits, revert } from '../src/editor/merge.ts';
+import { apply as applyPatches, conflict, shift } from '../src/session/patch.ts';
 
 const base = ['<section>', '  <h2>One</h2>', '  <p>First slide</p>', '</section>', '<section>', '  <h2>Two</h2>', '  <p>Second slide</p>', '</section>', ''].join('\n');
 const at = (text, s) => {
@@ -133,4 +135,58 @@ test('revert in the direction of a redo puts the text of the person back after a
   assert.equal(revert('The slide.', 'The complete slide.', 'The slide. More.'), 'The complete slide. More.');
   assert.equal(revert('The slide.', 'The complete slide.', 'The side.'), 'The complete side.');
   assert.equal(revert('The slide.', 'The complete slide.', 'Thlide.'), null, 'a removal across the point of the insertion');
+});
+
+test('with apart, two insertions at one point are both kept with theirs first, and an insertion strictly inside a replaced range is still a conflict', () => {
+  const base = 'The slide.';
+  const ins = (at, text) => ({ start: at, end: at, text });
+  const at = base.indexOf('slide');
+  const kept = mergeEdits(base, [ins(at, 'ours ')], [ins(at, 'theirs ')], 'ours', true);
+  assert.deepEqual(kept, { text: 'The theirs ours slide.', conflicts: [] });
+  // an insertion at the end and at the start of a range that the other side replaces
+  const range = { start: at, end: at + 5, text: 'deck' };
+  assert.deepEqual(mergeEdits(base, [ins(at + 5, '!')], [range], 'ours', true), { text: 'The deck!.', conflicts: [] });
+  assert.deepEqual(mergeEdits(base, [ins(at, 'new ')], [range], 'theirs', true), { text: 'The new deck.', conflicts: [] });
+  const inside = ins(at + 2, 'X');
+  assert.deepEqual(mergeEdits(base, [inside], [range], 'ours', true), { text: 'The slXide.', conflicts: [inside] });
+  // without apart, an insertion at one point or at an end of a range is a conflict, as before
+  assert.deepEqual(mergeEdits(base, [ins(at, 'ours ')], [ins(at, 'theirs ')], 'ours'), { text: 'The ours slide.', conflicts: [ins(at, 'ours ')] });
+  assert.deepEqual(mergeEdits(base, [ins(at + 5, '!')], [range], 'theirs'), { text: 'The deck.', conflicts: [ins(at + 5, '!')] });
+});
+
+test('with apart, the merge of the page gives the text of the authority, which applies the patches in the order of their arrival', () => {
+  let seed = 38;
+  const random = (n) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed % n;
+  };
+  // an operation of base, i.e. sorted patches that neither overlap nor touch, with texts of letters
+  // that the other side does not use, so that no two patches are equal
+  const operation = (base, letters, near) => {
+    const out = [];
+    let at = 0;
+    for (let k = 1 + random(3); k > 0 && at <= base.length; k--) {
+      const start = near.length && random(2) ? Math.max(at, near[random(near.length)]) : at + random(Math.max(1, base.length - at + 1));
+      if (start > base.length) break;
+      const end = Math.min(base.length, start + (random(2) ? 0 : random(4)));
+      out.push({ start, end, text: Array.from({ length: random(3) + (end === start ? 1 : 0) }, () => letters[random(letters.length)]).join('') });
+      at = end + 1;
+    }
+    return out;
+  };
+  let cases = 0;
+  for (let round = 0; round < 3000; round++) {
+    const base = Array.from({ length: 4 + random(12) }, () => 'xyz'[random(3)]).join('');
+    const theirs = operation(base, 'AB', []);
+    // the patches of ours start at the points and the ends of the patches of theirs as often as not
+    const ours = operation(base, 'cd', theirs.flatMap((p) => [p.start, p.end]));
+    for (const o of ours) for (const h of theirs) assert.equal(clash(o, h), conflict(o, h), `clash and conflict of ${JSON.stringify(o)} and ${JSON.stringify(h)}`);
+    const moved = shift(ours, theirs, true);
+    if (!moved) continue;
+    cases += 1;
+    const authority = applyPatches(applyPatches(base, theirs), moved);
+    const page = mergeEdits(base, ours, theirs, 'ours', true);
+    assert.deepEqual(page, { text: authority, conflicts: [] }, `base ${JSON.stringify(base)}, ours ${JSON.stringify(ours)}, theirs ${JSON.stringify(theirs)}`);
+  }
+  assert.ok(cases > 1000, `${cases} pairs of operations that the authority accepts`);
 });
