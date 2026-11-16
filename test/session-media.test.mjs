@@ -471,6 +471,22 @@ test('every render of a PDF figure is checked in a session before the deck is ch
   clean(ann);
 });
 
+test('a guest who changes Match the Mode of a PDF figure whose PDF is over 16 MB is told of the limit of the relay, and the deck is kept', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await figureTalk(t, noisePdf());
+  const { url } = await relayed(t, server);
+  const ann = await tab(browser, sessionUrl(server.edit));
+  const gus = await open(browser, `${url}index.html?edit&session`, { name: 'Gus' });
+  const before = await converge(server, [ann, gus]);
+  await show(gus, 'Two');
+  await click(gus, await middle(gus, '.reveal .slides img[data-pdf]'));
+  assert.equal(await run(gus, 'media.matchMode', 'undefined'), 'media/figure.pdf cannot be read on this page, since it is larger than 16 MB, the limit of the relay of the session');
+  assert.equal(await converge(server, [ann, gus]), before);
+  clean(ann);
+  clean(gus, [/status of 413 .*media\/figure\.pdf$/]);
+});
+
 test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px, and once in the title of a screen of 1440 px', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
