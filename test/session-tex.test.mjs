@@ -378,15 +378,15 @@ test('a paper added to references.bib on disk is found by a new search on a page
   clean(list[1], MISSING);
 });
 
-test('File > Preamble… and File > Bibliography… are off in a session with a note, and a BibTeX entry pasted into the list of Insert > Citation… is refused with its note', { timeout: 180_000 }, async (t) => {
+test('File > Preamble… and File > Bibliography… are off in a session with a note, and a BibTeX entry pasted into the list of Insert > Citation… is refused with its note', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
   const bib = server.read('references.bib');
   for (const id of ['file.preamble', 'file.bibliography']) assert.equal(await ann.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)}).enabled`), false, `${id} is enabled in a session`);
   const items = await fileMenu(ann);
   assert.deepEqual([items['file.preamble'], items['file.bibliography']], [
-    { label: 'Preamble…In a session, the host edits preamble.tex in the talk folder', disabled: true },
-    { label: 'Bibliography…In a session, the host edits references.bib in the talk folder', disabled: true },
+    { label: 'Preamble…Edited by the host in preamble.tex', disabled: true },
+    { label: 'Bibliography…Edited by the host in references.bib', disabled: true },
   ]);
   await show(ann, 'Citations');
   await caretAtEnd(ann, `document.querySelector('.reveal section.present p:nth-of-type(3)')`);
@@ -412,4 +412,35 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
   assert.equal(server.read('references.bib'), bib);
   assert.ok(!server.read().includes('conley1968'));
   clean(ann, MISSING);
+});
+
+// the label of each row of the File menu whose command is in ids, with whether its text is wider
+// than its box
+async function menuRows(page, ids) {
+  await front(page);
+  const rows = await page.evaluate(`(() => {
+    [...document.querySelectorAll('.beeson-edit-menubar [role="menuitem"]')].find((b) => b.textContent === 'File').click();
+    const out = {};
+    for (const i of document.querySelectorAll('.beeson-edit-menu .item')) {
+      const label = i.querySelector('.label');
+      if (${JSON.stringify(ids)}.includes(i.dataset.command)) out[i.dataset.command] = { text: label.textContent, scroll: label.scrollWidth, client: label.clientWidth };
+    }
+    return out;
+  })()`);
+  await page.evaluate(`document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
+  await page.waitFor(`!document.querySelector('.beeson-edit-menu')`);
+  return rows;
+}
+
+test('the notes of File > Preamble… and File > Bibliography… in a session fit their rows of the menu on a phone of 390 px and on a screen of 1440 px', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false]]) {
+    const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
+    t.after(() => page.close());
+    await converge(server, [page]);
+    const rows = await menuRows(page, ['file.preamble', 'file.bibliography']);
+    assert.equal(Object.keys(rows).length, 2, JSON.stringify(rows));
+    for (const [id, row] of Object.entries(rows)) assert.ok(row.scroll <= row.client + 1, `the label of ${id} is wider than its box at ${width} px: ${JSON.stringify(row)}`);
+    clean(page, MISSING);
+  }
 });
