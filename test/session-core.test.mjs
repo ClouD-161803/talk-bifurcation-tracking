@@ -1174,6 +1174,34 @@ test('a replica keeps a format with a key of its own in the word, the removal of
 
 // the edits that fine() finds in the two words interleave without a conflict, e.g. near to plane
 // as ne to pl and r to ne, and near to large as n to l and e to rg
+// the patch of a browser on a line spans from its first change to its last, hence the patches of
+// two fixes of one word conflict, and the finer edits of both are taken
+test('two fixes of letters of one word by two browsers at once are both kept, with the other keys of both operations', () => {
+  for (const [base, theirs, mine, want] of [
+    ['<p>It is definatley here</p>', '<p>It is definitley here.</p>', '<p>It is definately here</p>', '<p>It is definitely here.</p>'],
+    ['<p>a mispelld word</p>', '<p>a Mispelld word.</p>', '<p>a mispelle word</p>', '<p>a Mispelle word.</p>'],
+    // a key of each browser in another paragraph
+    ['<p>a mispelld word</p>\n<p>one two three</p>', '<p>a Mispelld word</p>\n<p>One two three!</p>', '<p>a mispelle word</p>\n<p>one twoo three</p>', '<p>a Mispelle word</p>\n<p>One twoo three!</p>'],
+    // a sentence without spaces
+    ['<p>今日は良い天気です。</p>', '<p>今日は悪い天気です。!</p>', '<p>今日は良い景色です。</p>', '<p>今日は悪い景色です。!</p>'],
+  ]) {
+    const t = diff(base, theirs), o = diff(base, mine);
+    assert.equal(apply(base, mergePatches(t, o, 'ours', base).patches), want, `${theirs} and ${mine}`);
+    assert.equal(apply(base, mergePatches(o, t, 'ours', base).patches), want, `${mine} and ${theirs}`);
+    // the operation of the other browser reaches the authority first, and the replica sends its
+    // merged text again after the refusal of its own
+    const a = new Authority(base, { epoch: 'E' });
+    const r = new Replica('me', base, 'E.0');
+    r.edit(mine);
+    const sent = r.outgoing();
+    const { op } = a.submit({ client: 'other', seq: 1, base: 'E.0', patches: t }, 'O');
+    r.answer(sent, a.submit(sent, 'me').answer);
+    r.receive(op);
+    a.submit(r.outgoing(), 'me');
+    assert.equal(a.text, want, `${theirs} first, then ${mine}`);
+  }
+});
+
 test('one word replaced by two browsers at once is the word of one of them at the authority, and not a mix of their letters', () => {
   const at = (w) => `<section>\n  <h2>Two</h2>\n  <p>The ${w} point</p>\n</section>\n`;
   for (const [start, theirs, mine] of [['near', 'plane', 'large'], ['near', 'final', 'lower'], ['halo', 'slow', 'phase'], ['model', 'moon', 'delta'], ['slow', 'second', 'lower']]) {
