@@ -21,6 +21,7 @@ const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const TAB_KEY = (n) => (process.platform === 'darwin' ? `Ctrl+Mod+${n}` : `Ctrl+Shift+${n}`);
 const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments can be sent once you are back online';
+const ENDED = 'The session has ended';
 
 // the text of the badge of the element of expression, found at its place 4 px outside the upper
 // right corner of the element, or 18 px while the element is selected, or inside the upper right
@@ -433,21 +434,21 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
   clean(b, [/status of 403/]);
 });
 
-test('offline, the Comment command is disabled, and a draft is kept until the page is back online', { timeout: 300_000 }, async (t) => {
+test('offline, the Comment command opens a draft, which is kept until the page is back online', { timeout: 300_000 }, async (t) => {
   const { server, pages: [a] } = await pair(t, ['Ann']);
   const { port } = server.edit;
   await show(a, 'One');
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await comment(a, 'Before the stop');
-  await caretAtEnd(a, el(0, 'h2'));
-  await press(a, COMMENT_KEY);
-  await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
   // the edit command writes a comment before it answers it, hence the kill below does not lose it
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
   await a.waitFor(`/^Offline/.test(${STATE})`);
+  await caretAtEnd(a, el(0, 'h2'));
+  assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: true, checked: null });
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
   await type(a, 'Written offline');
-  assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: OFFLINE });
   await sees(a, `(() => { const b = document.querySelector('${PANE} .draft .actions .primary'); return [b.disabled, b.title, document.querySelector('${PANE} .draft textarea').value]; })()`, [true, OFFLINE, 'Written offline']);
   await sees(a, THREADS, [{ anchor: 'On Paragraph: First slide', texts: ['Before the stop'] }]);
 
@@ -462,6 +463,16 @@ test('offline, the Comment command is disabled, and a draft is kept until the pa
   await sees(a, THREADS, [{ anchor: 'On Heading: One', texts: ['Written offline'] }, { anchor: 'On Paragraph: First slide', texts: ['Before the stop'] }]);
   assert.equal(await converge(server, [a]), TALK);
   clean(a, REFUSED);
+});
+
+test('once the session has ended, the Comment command is disabled', { timeout: 120_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'h2'));
+  await a.evaluate(`${C}.leave()`);
+  await a.waitFor(`${C}.connection === 'ended'`);
+  assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: ENDED });
+  clean(a);
 });
 
 test('the three tabs of the inspector and the keys of the pane, text that looks like HTML, and a phone of 390 px', { timeout: 300_000 }, async (t) => {
