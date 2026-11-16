@@ -1,9 +1,10 @@
 // the clipboard keys ⌘C, ⌘X, and ⌘V, or Ctrl with the letter, act on the selected elements as Cut,
 // Copy, and Paste of the Edit menu do, wherever the focus is left by a click: on a tab of the Format
-// pane (#70), on a display framed with Esc before another element is selected (#70, #71), and in the
-// TeX field of a display as a click opens it (#71). a text and a field keep the keys of the browser.
-// a key is sent with the editing command that Chrome runs for it, since a key alone over the
-// DevTools protocol does not fire the event copy, cut, or paste
+// pane or in the Object List (#70), on a display framed with Esc before another element is selected
+// or the slide is clicked (#70, #71), and in the TeX field of a display as a click opens it (#71). a
+// text and a field keep the keys of the browser. a key is sent with the editing command that Chrome
+// runs for it, since a key alone over the DevTools protocol does not fire the event copy, cut, or
+// paste
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -107,6 +108,21 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`Reveal.getCurrentSlide().querySelectorAll('figure').length === 1`);
     assert.equal(await undoLabel(page), 'Undo Cut');
     assert.deepEqual(errors(page), []);
+  });
+
+  test(`the clipboard keys copy and paste a figure selected in the Object List (${platform})`, async (t) => {
+    const page = await load(t, platform);
+    await page.evaluate(`window.BeesonEditor.exec('view.objects')`);
+    const row = `[...document.querySelectorAll('.beeson-edit-objects .row')].find((r) => r.dataset.kind === 'Figure')`;
+    await page.waitFor(`!!${row}?.getBoundingClientRect().width`);
+    await click(page, await page.evaluate(`(() => { const r = ${row}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+    await page.waitFor(`(() => { const s = window.BeesonEditor.selection(); return s.length === 1 && s[0].localName === 'figure' && !!document.activeElement?.closest('.beeson-edit-objects'); })()`);
+    await clipKey(page, 'copy');
+    await page.waitFor(`navigator.clipboard.readText().then((t) => t.startsWith(${js(MARK)}))`);
+    await clipKey(page, 'paste');
+    await page.waitFor(`Reveal.getCurrentSlide().querySelectorAll('figure').length === 2`);
+    assert.equal(await undoLabel(page), 'Undo Paste');
+    assert.equal(await page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`), 2, 'a slide is pasted');
   });
 
   test(`the clipboard keys copy and paste a figure selected after a display was framed with Esc (${platform})`, async (t) => {
