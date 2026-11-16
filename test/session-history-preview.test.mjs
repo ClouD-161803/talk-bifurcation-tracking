@@ -16,6 +16,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type } from './helpers/editor.mjs';
+import { post, raw } from './helpers/session.mjs';
 
 // a version is closed only when the current state is named
 const HELD = { SLIDES_HISTORY: JSON.stringify({ quiet: 3_600_000, longest: 3_600_000 }) };
@@ -289,6 +290,81 @@ test('on a phone of 390 px, the bar of the preview shows a short name and the ti
     }
   }
   clean(ann);
+});
+
+// a deck of 4 slides with notes, and the versions of the bar test below: the name of each length,
+// one or two authors, one or three slide buttons, and the line of the notes or none
+const NOTED = HEAD + [1, 2, 3, 4].map((k) => `\n<section>\n  <h2>Slide ${k}</h2>\n  <p>Text ${k}</p>\n  <aside class="notes">Note ${k}</aside>\n</section>\n`).join('') + TAIL;
+const BARS = [10, 26, 60].flatMap((length) => [1, 2].flatMap((authors) => [1, 3].flatMap((slides) => [false, true].map((notes) => ({ length, authors, slides, notes })))));
+
+// what the bar shows of the name, the authors, and the row of the slide buttons, whose items are
+// the buttons and the lines of the notes and of what was removed
+const VIEW = `(() => {
+  const q = (s) => document.querySelector('${BAR} ' + s);
+  const box = (el) => el.getBoundingClientRect();
+  const strip = q('.slides');
+  const items = [...strip.children].filter((c) => c.getClientRects().length && box(c).width > 0);
+  return {
+    cut: q('.date').scrollWidth > q('.date').clientWidth,
+    date: Math.round(box(q('.date')).width),
+    who: box(q('.who')).right <= box(q('.info')).right + 0.5,
+    items: items.length,
+    strip: Math.round(box(strip).width),
+    first: Math.round(box(items[0]).width),
+    second: items[1] ? Math.round(Math.min(box(strip).right, box(items[1]).right) - box(items[1]).left) : null,
+    gap: Math.round(box(strip).left - box(q('.who')).right),
+  };
+})()`;
+
+test('on a phone of 390, 360, and 320 px, the bar of the preview shows the name as far as one slide button allows, and the start of the second item of the row of the slide buttons next to a cut name', { timeout: 1_000_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const { port, base } = server.edit;
+  const api = (route) => `${base}.session/${route}`;
+  const hello = async (name) => ({ ...(await post(port, api('hello'), { name })).json(), seq: 0 });
+  // an operation of person p with the patches of the current text
+  const op = async (p, patches) => {
+    const r = await raw(port, 'GET', `${base}index.html`);
+    assert.equal((await post(port, api('op'), { token: p.token, seq: ++p.seq, base: r.headers['x-session-version'], patches: patches(r.text) })).json().ok, true);
+  };
+  const after = (p, from, to) => op(p, (text) => [{ start: text.indexOf(from) + from.length, end: text.indexOf(from) + from.length, text: to }]);
+  const cy = await open(browser, sessionUrl(server.edit), { name: 'Cy', width: 390, height: 844, mobile: true });
+  const [ann, ben] = [await hello('Ann'), await hello('Ben')];
+  await op(ann, (text) => [{ start: 0, end: text.length, text: NOTED }]);
+  await nameNow(cy, 'Deck');
+  const names = BARS.map((v, i) => `V${i + 1} Draft of the talk for the review of the bar on a phone, with notes`.slice(0, v.length).trimEnd().padEnd(v.length, 'x'));
+  for (const [i, v] of BARS.entries()) {
+    for (const [j, k] of (v.slides === 1 ? [2] : [1, 2, 3]).entries()) await after(v.authors === 2 && j % 2 ? ben : ann, `<h2>Slide ${k}`, ` v${i}`);
+    if (v.authors === 2 && v.slides === 1) await after(ben, '<p>Text 2', ` v${i}`);
+    if (v.notes) await after(ann, '>Note 2', ` v${i}`);
+    await nameNow(cy, names[i]);
+  }
+  await tapOrClick(cy, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(cy, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await cy.waitFor(SHOWN);
+  await cy.waitFor(`!!(${rowByTitle(names.at(-1))})`);
+  const rows = [];
+  const wrong = [];
+  for (const [i, v] of BARS.entries()) {
+    // the rows that the sheet of a phone hides take a click as well
+    await cy.evaluate(`${rowByTitle(names[i])}.click(), true`);
+    const notes = v.notes ? `document.querySelector('${BAR} .notes').textContent === 'Notes of Slide 2 changed'` : 'true';
+    await cy.waitFor(`document.querySelector('${BAR} .date').textContent.startsWith(${JSON.stringify(names[i] + ',')}) && document.querySelectorAll('${BAR} button.slide').length === ${v.slides} && ${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0 && ${notes}`, 20_000);
+    for (const width of [390, 360, 320]) {
+      await cy.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+      await cy.waitFor(`innerWidth === ${width} && Math.round(document.querySelector('${BAR}').getBoundingClientRect().width) === ${width}`, 3000);
+      const m = { ...(await cy.evaluate(VIEW)), rows: (await cy.evaluate(MEASURE)).rows };
+      rows.push({ width, ...v, ...m });
+      const at = `${v.length} characters, ${v.authors} authors, ${v.slides} slides${v.notes ? ', notes' : ''} at ${width} px: ${JSON.stringify(m)}`;
+      // with one slide button the name is cut only where the row holds no more than the button
+      const shown = m.items === 1 ? !m.cut || m.strip <= m.first + 12 : m.second >= 16 && m.date >= 48;
+      if (!(m.rows <= 2 && m.who && m.gap <= 12 && m.items === v.slides + (v.notes ? 1 : 0) && shown)) wrong.push(at);
+    }
+  }
+  for (const r of rows) t.diagnostic(`${r.width} px, ${r.length} characters, ${r.authors} authors, ${r.slides} slides, ${r.notes ? 'notes' : 'no notes'}: name ${r.cut ? 'cut' : 'in full'} in ${r.date} px, row of the slide buttons ${r.strip} px, second item ${r.second ?? '-'} px, ${r.rows} rows`);
+  assert.deepEqual(wrong, []);
+  clean(cy);
 });
 
 test('a version that changes only the start tag of a slide outlines the slide itself', { timeout: 180_000 }, async (t) => {
