@@ -4886,8 +4886,10 @@ void main() {
       for (const name of steps[i].highlight) lit.set(name, steps[i].tone);
     }
     const named = new Set(steps.filter((s) => s.visible && s.index === current).flatMap((s) => s.highlight));
+    const focused = steps.some((s) => s.visible && s.focus);
     const held = steps.map((s) => {
       if (!s.visible || s.index === current) return false;
+      if (focused) return true;
       const through = s.keep === "next" ? indices.find((k) => k > s.index) ?? s.index : s.keep;
       if (through !== null && current <= through) return true;
       return s.holds.some((name) => named.has(name));
@@ -4923,7 +4925,7 @@ void main() {
     const frags = [...slide.querySelectorAll(".fragment")];
     if (!slide.querySelector("section")) slide.toggleAttribute("data-complete", !slide.hasAttribute(MOVES_ON) && frags.every((f) => f.classList.contains("visible")));
     const names = [...new Set(frags.flatMap((f) => words2(f.dataset.highlight)))];
-    if (!names.length && !frags.some((f) => f.hasAttribute("data-keep"))) return;
+    if (!names.length && !frags.some((f) => f.hasAttribute("data-keep") || f.hasAttribute("data-focus"))) return;
     const select2 = (name) => `.${CSS.escape(name)}`;
     const steps = frags.map((f) => {
       const keep = f.getAttribute("data-keep");
@@ -4934,7 +4936,8 @@ void main() {
         highlight: words2(f.dataset.highlight),
         unhighlight: words2(f.dataset.unhighlight),
         tone: TONES2.find((t) => t !== "accent" && t === f.dataset.tone) ?? "accent",
-        holds: names.filter((name) => f.matches(select2(name)) || f.querySelector(select2(name)))
+        holds: names.filter((name) => f.matches(select2(name)) || f.querySelector(select2(name))),
+        focus: f.hasAttribute("data-focus")
       };
     });
     const current = Math.max(-1, ...steps.filter((s) => s.visible).map((s) => s.index));

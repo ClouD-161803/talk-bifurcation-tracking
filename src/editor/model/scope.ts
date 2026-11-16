@@ -23,7 +23,7 @@ const STEP_CLASSES = ['play'];
 // theorem and the key of a citation
 export const DATA_ATTRS = [
   'data-at', 'data-auto', 'data-auto-animate', 'data-autoplay', 'data-azimuth', 'data-cx', 'data-cy', 'data-duration',
-  'data-dx', 'data-dy', 'data-elevation', 'data-final', 'data-fragment-index', 'data-function', 'data-half',
+  'data-dx', 'data-dy', 'data-elevation', 'data-final', 'data-focus', 'data-fragment-index', 'data-function', 'data-half',
   'data-heads', 'data-highlight', 'data-id', 'data-keep', 'data-keep-theme', 'data-line-numbers', 'data-live',
   'data-loop', 'data-mu', 'data-plot', 'data-plot-frame', 'data-plot-panels', 'data-plot-paused', 'data-plot-play',
   'data-plot-show', 'data-plot-tab', 'data-plot-tabs', 'data-qr', 'data-run', 'data-backdrop',
