@@ -191,10 +191,16 @@ export function install(app: App): Port {
       if (r.reload) for (const fn of [...reloaders]) fn();
     });
   };
-  document.addEventListener('compositionstart', (ev) => void (composing = app.hostOf(ev.target)), true);
+  // Safari sends the input of the committed text after compositionend, hence the end waits a task
+  // for it, unless a new composition starts first
+  let release = 0;
+  document.addEventListener('compositionstart', (ev) => {
+    clearTimeout(release);
+    composing = app.hostOf(ev.target);
+  }, true);
   document.addEventListener('compositionend', () => {
     composing = null;
-    ended();
+    release = window.setTimeout(ended, 0);
   }, true);
   document.addEventListener('focusout', () => {
     if (behind && composing) setTimeout(ended);
