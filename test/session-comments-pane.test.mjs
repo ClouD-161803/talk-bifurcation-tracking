@@ -1035,3 +1035,32 @@ test('a draft on a theorem is labeled by its kind, on a cell as a table cell, an
   assert.deepEqual([await label('p.theorem'), await label('td'), await label('cite')], ['On Lemma: Every orbit is closed.', 'On Table cell: A1', `On Citation: ${n}`]);
   clean(a);
 });
+
+test('one Backspace behind a picked mention takes out the whole mention, also from a keyboard that does not name its keys', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const field = `(() => { const d = document.querySelector('${DRAFT}'); return [d.value, d.selectionStart]; })()`;
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(a, 'Hi @Be');
+  await sees(a, `document.querySelectorAll('${PANE} .draft .people li').length`, 1);
+  await press(a, 'Enter');
+  await press(a, 'Backspace');
+  await sees(a, field, ['Hi @Ben', 7]);
+  await press(a, 'Backspace');
+  await sees(a, field, ['Hi ', 3]);
+  // a phone keyboard sends only the input events of a delete, as execCommand does
+  await typeKeys(a, '@Be');
+  await sees(a, `document.querySelectorAll('${PANE} .draft .people li').length`, 1);
+  await press(a, 'Enter');
+  await a.evaluate(`document.execCommand('delete')`);
+  await a.evaluate(`document.execCommand('delete')`);
+  await sees(a, field, ['Hi ', 3]);
+  await typeKeys(a, 'there');
+  await click(a, `${PANE} .draft .actions .primary`);
+  await a.waitFor(`!document.querySelector('${PANE} .draft')`);
+  assert.deepEqual((await stored(a)).map((c) => [c.text, c.mentions]), [['Hi there', []]]);
+  clean(a);
+  clean(b);
+});
