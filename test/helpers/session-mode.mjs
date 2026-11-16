@@ -98,7 +98,7 @@ export async function keepOldDraft(page, text = deckText.replace('Thank you', 'T
 
 export const draftText = `JSON.parse(localStorage.getItem('beeson-draft:' + location.href.split(/[?#]/)[0]) ?? 'null')?.text ?? null`;
 
-/** The items of the File menu by command id, each with its label, whether it is dimmed, and the scroll and client widths of its label. */
+/** The items of the File menu by command id, each with its label, whether it is dimmed, the scroll and client widths of its label, the least room in px between its label and the top or bottom of its row, and the largest distance in px of the middle of its keys, check, or arrow from the middle of the first line of its label. */
 export async function fileMenu(page) {
   const items = await page.evaluate(`(() => {
     const title = [...document.querySelectorAll('.beeson-edit-menubar [role="menuitem"]')].find((b) => b.textContent === 'File');
@@ -107,7 +107,13 @@ export async function fileMenu(page) {
     const out = {};
     for (const i of document.querySelectorAll('.beeson-edit-menu .item')) {
       const label = i.querySelector('.label');
-      out[i.dataset.command ?? label.firstChild?.textContent ?? ''] = { label: label.textContent, disabled: i.getAttribute('aria-disabled') === 'true', scroll: label.scrollWidth, client: label.clientWidth };
+      const row = i.getBoundingClientRect();
+      const text = label.getBoundingClientRect();
+      // the middle of the first line of the label, and the parts of the row beside the label
+      const middle = text.top + parseFloat(getComputedStyle(label).lineHeight) / 2;
+      const parts = [i.querySelector('.keys'), i.querySelector('.check svg'), i.querySelector('.arrow svg')].filter((e) => e?.textContent || e?.tagName === 'svg');
+      const off = Math.max(0, ...parts.map((e) => { const r = e.getBoundingClientRect(); return Math.abs(r.top + r.height / 2 - middle); }));
+      out[i.dataset.command ?? label.firstChild?.textContent ?? ''] = { label: label.textContent, disabled: i.getAttribute('aria-disabled') === 'true', scroll: label.scrollWidth, client: label.clientWidth, room: Math.min(text.top - row.top, row.bottom - text.bottom), off };
     }
     return out;
   })()`);

@@ -186,8 +186,12 @@ export class Client {
     });
     port.onChange(() => this.onChange());
     port.onSave(() => this.flush());
-    // the port found that the page does not read as its text after an apply
-    port.onReload(() => this.freeze(null));
+    // the port found that the page does not read as its text after an apply. the edits of the person
+    // that were not read are taken from the text that the deck was meant to read, when it is known
+    port.onReload((target) => {
+      if (target !== undefined && !this.frozen) this.capture(target);
+      this.freeze(null);
+    });
   }
 
   on<K extends keyof ClientEvents>(event: K, fn: (...args: ClientEvents[K]) => void): () => void {

@@ -540,34 +540,26 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
   clean(ann, MISSING);
 });
 
-test('the notes of File > Preamble… and File > Bibliography… in a session fit their rows of the menu on a phone of 390 px and on a screen of 1440 px', { timeout: 300_000 }, async (t) => {
+test('the notes of File > Preamble… and File > Bibliography… in a session fit their rows of the menu on a phone of 390 px and on a screen of 1440 px, also with wider letters', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
-  for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false]]) {
+  // the system font of Linux and of Android is wider than the one of a Mac
+  const wide = '.beeson-edit-menu { letter-spacing: 1px; }';
+  for (const [name, width, height, mobile, style] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false], ['Cy', 390, 844, true, wide], ['Dee', 320, 700, true, wide]]) {
     const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
     t.after(() => page.close());
     await converge(server, [page]);
+    if (style) await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: ${JSON.stringify(style)} })), true`);
     const items = await fileMenu(page);
     for (const id of ['file.preamble', 'file.bibliography']) {
       assert.ok(items[id], `the File menu does not have ${id}`);
-      assert.ok(items[id].scroll <= items[id].client + 1, `the label of ${id} is wider than its box at ${width} px: ${JSON.stringify(items[id])}`);
+      assert.ok(items[id].scroll <= items[id].client + 1, `the label of ${id} is wider than its box at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(items[id])}`);
+      // the row of a note on a second line has room above and below its text, as a row of one line
+      assert.ok(items[id].room >= 2.5, `the label of ${id} touches the edge of its row at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(items[id])}`);
     }
+    // e.g. the keys of Open… and the arrow of Open Recent, whose notes wrap at 320 px with wider letters
+    for (const [id, item] of Object.entries(items)) assert.ok(item.off <= 1.5, `the keys or the arrow of ${id} are not in line with its label at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(item)}`);
     clean(page, MISSING);
   }
-});
-
-test('the notes of File > Preamble… and File > Bibliography… in a session are shown in full on a phone of 390 px with letters wider than those of this system', { timeout: 300_000 }, async (t) => {
-  const server = await texTalk(t);
-  const page = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
-  t.after(() => page.close());
-  await converge(server, [page]);
-  // the system font of Linux and of Android is wider than the one of a Mac
-  await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: '.beeson-edit-menu { letter-spacing: 1px; }' })), true`);
-  const items = await fileMenu(page);
-  for (const id of ['file.preamble', 'file.bibliography']) {
-    assert.ok(items[id], `the File menu does not have ${id}`);
-    assert.ok(items[id].scroll <= items[id].client + 1, `the label of ${id} is wider than its box: ${JSON.stringify(items[id])}`);
-  }
-  clean(page, MISSING);
 });
 
 test('a slide pasted in a session with macros that preamble.tex does not have opens the dialog that says the host pastes their lines into preamble.tex', { timeout: 300_000 }, async (t) => {

@@ -1,0 +1,41 @@
+% the CR3BP in the synodic frame: the axes, the primary m1, the secondary m2, a third body m, and
+% the distances rho1 and rho2 of the third body from the two. each of the five is a part
+\begin{tikzpicture}
+  \begin{axis}[
+    axis equal image,
+    hide axis,
+    width=10cm,
+    height=12cm,
+    clip=false,
+    ticks=none,
+    xmin=-0.6, xmax=0.85,
+    ymin=-0.55, ymax=0.65
+  ]
+  \begin{scope}[part=axes]
+    \draw[->, >=stealth, thick] (axis cs:-0.55, 0) -- (axis cs:0.8, 0) node[below] {$x$};
+    \draw[->, >=stealth, thick] (axis cs:0, -0.5) -- (axis cs:0, 0.6) node[left] {$y$};
+    \draw[->, >=stealth, thick] (axis cs:0.15, 0.15) -- (axis cs:-0.25, -0.25) node[below right] {$z$};
+  \end{scope}
+  \begin{scope}[part=primary]
+    \fill[blue] (axis cs:-0.13, 0) circle[radius=6pt];
+    \node at (axis cs:-0.2, 0.06) {$m_1$};
+    \node at (axis cs:-0.4, -0.1) {$(-\mu, 0, 0)$};
+    \draw (axis cs:-0.3, -0.05) -- (axis cs:-0.17, -0.02);
+  \end{scope}
+  \begin{scope}[part=secondary]
+    \fill[subtle] (axis cs:0.41, 0) circle[radius=4pt];
+    \node at (axis cs:0.47, 0.04) {$m_2$};
+    \node at (axis cs:0.41, -0.075) {$(1-\mu, 0, 0)$};
+  \end{scope}
+  \begin{scope}[part=body]
+    \fill[ink] (axis cs:0.25, 0.275) circle[radius=1.5pt];
+    \node at (axis cs:0.25, 0.315) {$m$};
+  \end{scope}
+  \begin{scope}[part=distances]
+    \draw[<->, >=stealth] (axis cs:0.24, 0.27) -- (axis cs:-0.10, 0.025);
+    \draw[<->, >=stealth] (axis cs:0.258, 0.265) -- (axis cs:0.4, 0.025);
+    \node at (axis cs:0.07, 0.2) {$\rho_1$};
+    \node at (axis cs:0.35, 0.2) {$\rho_2$};
+  \end{scope}
+  \end{axis}
+\end{tikzpicture}

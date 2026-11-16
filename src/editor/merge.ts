@@ -148,11 +148,14 @@ export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours'
   return all && mergeEdits(base, ours, all, prefer);
 }
 
-// the same merge with the changes of the file, all, given as edits of base
-export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs'): Merge {
+// the same merge with the changes of the file, all, given as edits of base. with shared set, only
+// edits that share a character conflict, as in a session, see src/session/patch.ts. at an insertion
+// of both sides at one point the change of the file comes first
+export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs', shared = false): Merge {
+  const hit = shared ? (a: Edit, b: Edit) => a.start < b.end && b.start < a.end : overlaps;
   const others = all.filter((h) => !ours.some((o) => equal(o, h)));
-  const conflicts = ours.filter((o) => others.some((h) => overlaps(o, h)));
-  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => overlaps(o, h)));
+  const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
+  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => equal(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
 }

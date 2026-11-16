@@ -3629,6 +3629,10 @@ var TexWriter = class {
     this.watched = derived.files;
     this.texts = derived.key;
     this.texSig = sigOf(this.file);
+    if (derived.sources && !derived.unread.length) {
+      this.skipped = derived.skipped.join("\n");
+      for (const line of derived.skipped) this.log(line);
+    }
   }
   // index.html holds html on disk. tex.js is derived again when it cites other keys
   written(html) {
@@ -3741,6 +3745,9 @@ ${sig}`).join("\n");
     } catch (e) {
       await unlink3(tmp).catch(() => {
       });
+      this.keys = keysOf(html);
+      this.watched = derived.files;
+      this.sourcesSeen = null;
       this.failures++;
       this.retryAt = performance.now() + Math.min(5e3, this.retry * 2 ** (this.failures - 1));
       const reason = e.code ?? e.message;
