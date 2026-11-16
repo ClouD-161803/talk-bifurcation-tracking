@@ -22,7 +22,7 @@ const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 // the key of the tab n of the inspector, as PANE_KEYS of src/editor/commands/view.ts binds it
 const TAB_KEY = (n) => (process.platform === 'darwin' ? `Ctrl+Mod+${n}` : `Ctrl+Shift+${n}`);
 const PANE = '.beeson-edit-inspector .panel.comments';
-const OFFLINE = 'Comments are sent once you are back online';
+const OFFLINE = 'Comments can be sent once you are back online';
 
 // the text of the badge of the element of expression, found at its place 4 px outside the upper
 // right corner of the element, or 18 px while the element is selected, or inside the upper right
