@@ -840,6 +840,8 @@ class Pane {
   open(id: string): void {
     const t = this.comments.threads.get(id);
     if (!t || inHistory()) return;
+    // a Show on the slide that following shows changes neither the slide nor the selection
+    stopFollowing();
     this.shell.tab.set(true);
     if (!this.visible(t)) this.filter = t.resolved ? 'resolved' : 'open';
     this.focus(id, true);
