@@ -305,7 +305,9 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
     const ours = diff(copy.base, copy.mine);
     const into = (now: string, side: Side) => {
       const theirs = diff(copy.base, now).filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-      const m = mergePatches(theirs, ours, side);
+      // the side is decided by the dialog, hence a move of the side that wins is kept, and a move of
+      // the other side that conflicts is left out whole
+      const m = mergePatches(theirs, ours, side, copy.base, side);
       return { text: apply(copy.base, m.patches), conflicts: m.conflicts };
     };
     const side: Side = into(s.mine, 'ours').conflicts.length ? await ask(client, copy.base, copy.mine, s.mine) : 'ours';
