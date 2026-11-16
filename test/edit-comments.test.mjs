@@ -1,8 +1,9 @@
 // the comments of the edit command: a thread anchored on the text that a page read, its replies,
 // edits, deletes, resolve, and reopen within their limits, the changes told to the pages but not a
-// shift of an anchor, the file .session/comments.json written at most once in a given time and at a
-// stop, read again at a start with its anchors moved by the patches that the history found, or set
-// aside when it cannot be read, and the requests of a session
+// shift of an anchor, the file .session/comments.json written before a change of a thread is
+// answered, and else at most once in a given time and at a stop, read again at a start with its
+// anchors moved by the patches that the history found, or set aside when it cannot be read, and
+// the requests of a session
 
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -216,41 +217,105 @@ test('the new threads since a version are listed in the order in which they were
   assert.deepEqual(comments.since(v0).changed.map((c) => c.id), [x.id, y.id]);
 });
 
-test('the file is written at most once in the given time, and at a stop', { timeout: 60_000 }, async (t) => {
+test('a read time is written after the given time since the last write, and at a stop', { timeout: 60_000 }, async (t) => {
   const dir = sessionDir(t);
   const file = join(dir, 'comments.json');
-  const read = () => {
-    try {
-      return JSON.parse(readFileSync(file, 'utf8'));
-    } catch {
-      return null;
-    }
+  const { authority, comments } = open(dir, DECK, { every: 600_000 });
+  // the same changes in a store without an interval, which bounds the time that the first one waits
+  const quick = sessionDir(t);
+  const fast = open(quick, DECK, { every: 0 }).comments;
+  let writes = 0;
+  const write = comments.write;
+  comments.write = function () {
+    writes++;
+    return write.call(this);
   };
-  const { authority, comments } = open(dir, DECK, { every: 300 });
   comments.add(ANN, onDeck(authority, 'first'));
-  await until(() => read()?.comments.length === 1, 'the first write');
-  const firstWrite = statSync(file).mtimeMs;
-  comments.add(ANN, onDeck(authority, 'second'));
-  assert.equal(read().comments.length, 1);
-  await until(() => read()?.comments.length === 2, 'the second write');
-  assert.ok(statSync(file).mtimeMs - firstWrite >= 250, `written again after ${statSync(file).mtimeMs - firstWrite} ms`);
-  comments.add(ANN, onDeck(authority, 'third'));
-  assert.equal(comments.seen(BO, Date.now() - 5) > 0, true);
-  assert.equal(comments.seen(BO, 1), comments.list(BO).seen, 'the time of reading does not go back');
+  assert.deepEqual(readJson(file).comments.map((c) => c.text), ['first']);
+  const read = comments.seen(BO, Date.now() - 5);
+  await until(() => readJson(file).seen[BO] === read, 'the first read time');
+  await comments.idle();
+  const late = comments.seen(BO, Date.now());
+  fast.seen(BO, 1);
+  await until(() => readJson(join(quick, 'comments.json'))?.seen[BO] === 1, 'the read time in the store without an interval');
+  await fast.idle();
+  assert.equal(readJson(file).seen[BO], read, 'the second read time waits for the interval');
+  assert.equal(writes, 1);
+  assert.equal(comments.seen(BO, 1), late, 'the time of reading does not go back');
   comments.stopSync();
-  const saved = read();
-  assert.deepEqual(saved.comments.map((c) => c.text), ['first', 'second', 'third']);
+  const saved = readJson(file);
+  assert.equal(saved.seen[BO], late);
   assert.equal(saved.sum, checksum(DECK));
   await comments.idle();
   assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.tmp')), []);
   const again = open(dir, DECK);
-  assert.deepEqual(again.comments.list(BO).comments.map((c) => c.text), ['first', 'second', 'third']);
-  assert.equal(again.comments.list(BO).seen, saved.seen[BO]);
+  assert.deepEqual(again.comments.list(BO).comments.map((c) => c.text), ['first']);
+  assert.equal(again.comments.list(BO).seen, late);
   assert.equal(again.comments.list(ANN).seen, 0);
   assert.deepEqual(again.logged, []);
 });
 
-test('a stop while a write waits for its temporary file keeps the text of the stop', { timeout: 60_000 }, async (t) => {
+test('a change of a thread is in the file before it is answered', (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'comments.json');
+  const { authority, comments } = open(dir, DECK);
+  const saved = () => readJson(file)?.comments ?? [];
+  const thread = comments.add(ANN, onDeck(authority, 'Question'));
+  assert.deepEqual(saved().map((c) => c.text), ['Question']);
+  const reply = comments.reply(thread.id, BO, { text: 'Answer' }).replies[0];
+  assert.deepEqual(saved()[0].replies.map((r) => r.text), ['Answer']);
+  comments.edit(thread.id, ANN, { text: 'Question, edited' });
+  assert.equal(saved()[0].text, 'Question, edited');
+  comments.resolve(thread.id, BO, true);
+  assert.equal(saved()[0].resolved.by, BO);
+  comments.resolve(thread.id, ANN, false);
+  assert.equal(saved()[0].resolved, undefined);
+  comments.remove(thread.id, BO, { reply: reply.id });
+  assert.deepEqual(saved()[0].replies, []);
+  comments.remove(thread.id, ANN, {});
+  assert.deepEqual(saved(), []);
+});
+
+test('a change of a thread that cannot be written is taken back and refused', (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'comments.json');
+  const { authority, comments, logged } = open(dir, DECK);
+  const thread = comments.add(ANN, onDeck(authority, 'Question'));
+  const reply = comments.reply(thread.id, BO, { text: 'Answer', mentions: [ANN] }).replies[0];
+  const before = structuredClone(comments.list(ANN));
+  const bytes = comments.bytes;
+  let told = 0;
+  comments.onChange(() => told++);
+  fs.chmodSync(dir, 0o555);
+  // the folder is made writable again before the hook of sessionDir removes it
+  try {
+    try {
+      writeFileSync(join(dir, 'probe'), '');
+      return t.skip('the folder cannot be made read only here, e.g. on Windows');
+    } catch {}
+    const refused = (x, error) => assert.deepEqual(x, { status: 503, error });
+    refused(comments.add(ANN, onDeck(authority, 'Lost')), 'The host could not save the comment');
+    refused(comments.reply(thread.id, ANN, { text: 'Lost', mentions: [BO] }), 'The host could not save the comment');
+    refused(comments.edit(thread.id, ANN, { text: 'Lost', mentions: [BO] }), 'The host could not save the comment');
+    refused(comments.edit(thread.id, BO, { reply: reply.id, text: 'Lost, and a longer text' }), 'The host could not save the comment');
+    refused(comments.remove(thread.id, BO, { reply: reply.id }), 'The host could not delete the comment');
+    refused(comments.remove(thread.id, ANN, {}), 'The host could not delete the comment');
+    refused(comments.resolve(thread.id, BO, true), 'The host could not resolve the thread');
+    assert.deepEqual(comments.list(ANN), before);
+    assert.equal(comments.bytes, bytes, 'the bytes counted for the limit');
+    assert.equal(told, 0);
+    assert.match(logged.join('\n'), /could not write/);
+    fs.chmodSync(dir, 0o755);
+    assert.equal(comments.resolve(thread.id, BO, true).resolved.by, BO);
+    fs.chmodSync(dir, 0o555);
+    refused(comments.resolve(thread.id, BO, false), 'The host could not reopen the thread');
+  } finally {
+    fs.chmodSync(dir, 0o755);
+  }
+  assert.deepEqual(readJson(file).comments.map((c) => [c.text, c.replies.length, !!c.resolved]), [['Question', 1, true]]);
+});
+
+test('a stop or a change of a thread while a write waits for its temporary file keeps its text', { timeout: 60_000 }, async (t) => {
   const dir = sessionDir(t);
   const { authority, comments } = open(dir, DECK, { every: 0 });
   // begun resolves in the turn in which the timer of comments calls write, hence before any file
@@ -264,13 +329,19 @@ test('a stop while a write waits for its temporary file keeps the text of the st
     };
   });
   comments.add(ANN, onDeck(authority, 'first'));
+  const read = comments.seen(BO, Date.now() - 5);
   await begun;
   assert.ok(comments.writing, 'a write is in progress');
   comments.add(ANN, onDeck(authority, 'second'));
+  await comments.idle();
+  const file = join(dir, 'comments.json');
+  assert.deepEqual(readJson(file).comments.map((c) => c.text), ['first', 'second'], 'the older text of the write is not renamed over the file');
+  const late = comments.seen(ANN, Date.now());
   comments.stopSync();
   await comments.idle();
-  const saved = JSON.parse(readFileSync(join(dir, 'comments.json'), 'utf8'));
+  const saved = readJson(file);
   assert.deepEqual(saved.comments.map((c) => c.text), ['first', 'second']);
+  assert.deepEqual([saved.seen[BO], saved.seen[ANN]], [read, late]);
   assert.deepEqual(readdirSync(dir).filter((n) => n.endsWith('.tmp')), []);
 });
 
@@ -670,6 +741,21 @@ test('the comments are kept over a restart, and follow a change of index.html ma
   assert.deepEqual(comments.map((c) => c.text), ['Look']);
   reads(now.text, comments[0].anchor, '<p>Second slide</p>');
   reads(now.text, comments[0].slide, '<section>\n  <h2>Two');
+});
+
+test('a thread and a reply answered 200 are kept when the edit command is killed right after', { timeout: 120_000 }, async (t) => {
+  const folder = talkFolder(t);
+  const first = await session(t, folder, true);
+  const ann = await first.hello('Ann');
+  const { base } = await first.deck();
+  const created = await first.call('comments', ann, { base, anchor: null, slide: null, text: 'Kept?' });
+  assert.equal(created.status, 200);
+  assert.equal((await first.call(`comments/${created.json().id}/reply`, ann, { text: 'Kept too?' })).status, 200);
+  first.edit.child.kill('SIGKILL');
+  await first.edit.exited;
+  const second = await session(t, folder);
+  const bo = await second.hello('Bo');
+  assert.deepEqual((await second.get(bo)).comments.map((c) => [c.text, c.replies.map((r) => r.text)]), [['Kept?', ['Kept too?']]]);
 });
 
 test('a thread or a reply sent again with the id that its page made is made once', { timeout: 120_000 }, async (t) => {
