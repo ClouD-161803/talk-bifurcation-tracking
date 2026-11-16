@@ -452,6 +452,54 @@ test('the copies of two closed tabs that changed the same text are both sent, th
   clean(c);
 });
 
+// the copy of the tab closed first is sent at the join, since it is the older one, and the other
+// copy is merged into it with the dialog of the conflicts
+for (const older of ['key', 'move']) {
+  for (const choice of ['Keep mine', 'Keep theirs']) {
+    test(`a slide moved in one closed tab and typed in by the other is in the deck once after ${choice}, when the copy with the ${older} is the older one`, { timeout: 360_000 }, async (t) => {
+      const browser = await launch({ offline: false });
+      t.after(() => browser.close());
+      const server = await talk(t);
+      writeFileSync(server.file, server.read().replace('</ul>\n</section>\n', '</ul>\n</section>\n\n<section>\n  <h2>Three</h2>\n  <p>Third slide</p>\n</section>\n'));
+      await until(() => server.read().includes('Third slide'), 'the third slide');
+      const url = sessionUrl(server.edit);
+      const a = await tab(browser, url);
+      const b = await tab(browser, url);
+      const probe = await probeOf(browser, server);
+      await converge(server, [a, b]);
+      await goOffline(a);
+      await goOffline(b);
+      const key = async () => {
+        await edit(a, 0, 'p', ' by A');
+        const id = await copied(a, 'First slide by A');
+        await a.close();
+        await released(probe, id);
+      };
+      const move = async () => {
+        await front(b);
+        await b.evaluate(`${C}.app.commands.run('slide.moveTo', { slides: [${el(0, 'h2')}.parentElement], gap: 3 })`);
+        await b.waitFor(`(${ROWS}).then((rows) => rows.some((r) => r.mine.indexOf('<h2>One') > r.mine.indexOf('<h2>Three')))`);
+        const id = (await rows(b)).find((r) => r.mine.indexOf('<h2>One') > r.mine.indexOf('<h2>Three')).id;
+        await b.close();
+        await released(probe, id);
+      };
+      for (const step of older === 'key' ? [key, move] : [move, key]) await step();
+
+      const c = await tab(browser, url);
+      await front(c);
+      await c.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`);
+      await press(c, choice);
+      const text = await converge(server, [c]);
+      const slides = text.slice(text.indexOf('<div class="slides">'));
+      const typed = (older === 'key') === (choice === 'Keep theirs');
+      assert.deepEqual([...slides.matchAll(/<h2>(\w+)<\/h2>/g)].map((m) => m[1]), typed ? ['One', 'Two', 'Three'] : ['Two', 'Three', 'One'], 'the order of the slides');
+      assert.equal(slides.split('First slide').length - 1, 1, 'the paragraph of slide One is in the deck once');
+      assert.equal(slides.includes('First slide by A'), typed, 'the key is in the deck with the copy that wins');
+      clean(c);
+    });
+  }
+}
+
 // the copies of the origin of a page in IndexedDB, as { id, key }
 const ALL = `new Promise((done) => {
   const r = indexedDB.open('beeson-session', 1);
