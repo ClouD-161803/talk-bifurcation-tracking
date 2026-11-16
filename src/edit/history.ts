@@ -46,7 +46,8 @@ export type HistoryOptions = {
 type Version = VersionInfo & { patches: Patch[]; marks: Mark[] };
 
 // first and last are times of clock, since and time of now
-type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string };
+// ops are the patches of the operations of the version as one operation of the text of the version before
+type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string; ops: Patch[] };
 
 type Range = { start: number; end: number };
 
@@ -145,6 +146,36 @@ export function moveMarks(marks: Mark[], patches: Patch[], author: string): Mark
     reach = Math.max(reach, r.end);
   }
   return tidy(out);
+}
+
+// a and then b as one operation of the text before a, where b is an operation of the text after a.
+// a character is kept unless an operation wrote over it or removed it, whereas the diff of the two
+// texts may place a change at another equal text
+function compose(a: Patch[], b: Patch[]): Patch[] {
+  const out: Patch[] = [];
+  let i = 0;
+  // the length that the patches of a before i add
+  let delta = 0;
+  const next = () => {
+    const p = a[i++];
+    delta += p.text.length - (p.end - p.start);
+    return p;
+  };
+  for (const q of b) {
+    while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
+    // low and high are the ends of the text after a that q and the patches of a that meet it
+    // replace
+    const before = delta;
+    let [low, high, text] = [q.start, q.end, q.text];
+    while (i < a.length && a[i].start + delta <= q.end) {
+      const at = a[i].start + delta;
+      const p = next();
+      if (at < low) [low, text] = [at, p.text.slice(0, q.start - at) + text];
+      if (at + p.text.length > high) [high, text] = [at + p.text.length, text + p.text.slice(q.end - at)];
+    }
+    if (low - before < high - delta || text) out.push({ start: low - before, end: high - delta, text });
+  }
+  return out.concat(a.slice(i));
 }
 
 // whether the patches of a change from outside replace text of marks that a person wrote, or write
@@ -298,7 +329,7 @@ export class History {
   private asides: AsideInfo[] = [];
   // the last restore, with the n of the version of the authority that it made
   private restored: { n: number; told: Restored } | null = null;
-  // the marks of every operation of this run, as the marks of an open version
+  // the marks of the closed versions of people of this run, in the text before an open one
   private typed: Mark[] = [];
   private listeners = new Set<() => void>();
 
@@ -475,6 +506,10 @@ export class History {
     this.timer = null;
     const open = this.open;
     this.open = null;
+    // typed takes in a version of people when it closes, which a change from outside does first. the
+    // characters of the version are given to its last author, since overwrites() does not tell
+    // people apart. typed is moved over a change from outside at each operation
+    if (open && open.author !== AUTHOR) this.typed = moveMarks(this.typed, open.ops, open.author);
     if (text === this.lastText && !empty) {
       // the lines of the open version are taken out of the file, so that a later start does not
       // give its authors to a change from outside
@@ -563,10 +598,12 @@ export class History {
     // the timer is late after a sleep, hence a version that is due is closed on the text before op.
     // a change from outside is a version of its own, so that the text that it replaces is kept
     if (this.open && (this.due(this.open, t, w) || (op.author === AUTHOR) !== (this.open.author === AUTHOR))) this.close(false, undefined, this.held);
-    if (op.author === AUTHOR && overwrites(this.typed, op.patches)) this.overwritten = this.authority.n;
-    this.typed = moveMarks(this.typed, op.patches, op.author);
+    if (op.author === AUTHOR) {
+      if (overwrites(this.typed, op.patches)) this.overwritten = this.authority.n;
+      this.typed = moveMarks(this.typed, op.patches, AUTHOR);
+    }
     this.held = text;
-    const open = (this.open ??= { first: t, last: t, since: w, time: w, authors: new Set(), marks: [], author: op.author });
+    const open = (this.open ??= { first: t, last: t, since: w, time: w, authors: new Set(), marks: [], author: op.author, ops: [] });
     open.last = t;
     open.time = w;
     open.author = op.author;
@@ -575,6 +612,7 @@ export class History {
       this.append({ kind: 'open', author: op.author });
     }
     open.marks = moveMarks(open.marks, op.patches, op.author);
+    open.ops = compose(open.ops, op.patches);
     this.arm();
   }
 

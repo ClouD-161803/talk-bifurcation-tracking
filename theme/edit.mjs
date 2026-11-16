@@ -1656,6 +1656,29 @@ function moveMarks(marks, patches, author) {
   }
   return tidy(out);
 }
+function compose(a, b) {
+  const out = [];
+  let i = 0;
+  let delta = 0;
+  const next = () => {
+    const p = a[i++];
+    delta += p.text.length - (p.end - p.start);
+    return p;
+  };
+  for (const q of b) {
+    while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
+    const before2 = delta;
+    let [low, high, text] = [q.start, q.end, q.text];
+    while (i < a.length && a[i].start + delta <= q.end) {
+      const at = a[i].start + delta;
+      const p = next();
+      if (at < low) [low, text] = [at, p.text.slice(0, q.start - at) + text];
+      if (at + p.text.length > high) [high, text] = [at + p.text.length, text + p.text.slice(q.end - at)];
+    }
+    if (low - before2 < high - delta || text) out.push({ start: low - before2, end: high - delta, text });
+  }
+  return out.concat(a.slice(i));
+}
 function overwrites(marks, patches) {
   for (const p of patches) {
     for (let k = first(marks.length, (i) => marks[i].end >= p.start); k < marks.length && marks[k].start <= p.end; k++) {
@@ -1764,7 +1787,7 @@ var History = class {
     this.asides = [];
     // the last restore, with the n of the version of the authority that it made
     this.restored = null;
-    // the marks of every operation of this run, as the marks of an open version
+    // the marks of the closed versions of people of this run, in the text before an open one
     this.typed = [];
     this.listeners = /* @__PURE__ */ new Set();
     this.dir = dir;
@@ -1926,6 +1949,7 @@ var History = class {
     this.timer = null;
     const open2 = this.open;
     this.open = null;
+    if (open2 && open2.author !== AUTHOR) this.typed = moveMarks(this.typed, open2.ops, open2.author);
     if (text === this.lastText && !empty) {
       if (open2) this.writeAll();
       return null;
@@ -2001,10 +2025,12 @@ var History = class {
     const t = this.clock();
     const w = this.now();
     if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
-    if (op.author === AUTHOR && overwrites(this.typed, op.patches)) this.overwritten = this.authority.n;
-    this.typed = moveMarks(this.typed, op.patches, op.author);
+    if (op.author === AUTHOR) {
+      if (overwrites(this.typed, op.patches)) this.overwritten = this.authority.n;
+      this.typed = moveMarks(this.typed, op.patches, AUTHOR);
+    }
     this.held = text;
-    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author };
+    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author, ops: [] };
     open2.last = t;
     open2.time = w;
     open2.author = op.author;
@@ -2013,6 +2039,7 @@ var History = class {
       this.append({ kind: "open", author: op.author });
     }
     open2.marks = moveMarks(open2.marks, op.patches, op.author);
+    open2.ops = compose(open2.ops, op.patches);
     this.arm();
   }
   // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
