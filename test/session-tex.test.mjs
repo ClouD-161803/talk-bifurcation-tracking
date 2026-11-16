@@ -4,14 +4,14 @@
 // among them. a start, a join, and a talk folder without the sources leave every file as it is
 
 import assert from 'node:assert/strict';
-import { cpSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { deckTex } from '../scripts/tex.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, loads, ONLINE, open, sessionUrl, show } from './helpers/client.mjs';
+import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE } from './helpers/client.mjs';
 import { press, type, typeKeys } from './helpers/editor.mjs';
 import { goOffline, goOnline, tab } from './helpers/offline.mjs';
 import { fileMenu } from './helpers/session-mode.mjs';
@@ -209,6 +209,26 @@ test('a page that stays open across a kill and a start of the edit command draws
     throw new Error(`the page holds the count ${await page.evaluate(`${C}.tex`)}, and the edit command ${hello.tex}: ${e.message}`);
   });
   assert.equal(await page.evaluate('window.__kept'), true, 'the page is not loaded again');
+});
+
+test('a page shows that tex.js cannot be written on the host machine, until a write succeeds', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  // a folder in place of tex.js, which a rename does not replace on any system
+  rmSync(join(server.talk, 'tex.js'));
+  mkdirSync(join(server.talk, 'tex.js'));
+  const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
+  const { port, base } = server.edit;
+  // a citation of a paper that tex.js does not have, sent by another page
+  const bo = (await post(port, `${base}.session/hello`, { name: 'Bo' })).json();
+  const at = bo.text.indexOf('low-energy transfer</p>') + 'low-energy transfer'.length;
+  const op = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at, text: '<cite data-key="szebehely1967"></cite>' }] })).json();
+  assert.equal(op.ok, true);
+  await ann.waitFor(`${STATE}?.startsWith("tex.js cannot be written on the host's machine: ")`, 30_000);
+  rmSync(join(server.talk, 'tex.js'), { recursive: true });
+  await until(() => existsSync(join(server.talk, 'tex.js')) && server.read('tex.js').includes('"szebehely1967"'), 'the reference of szebehely1967 in tex.js', 30_000);
+  assert.equal(server.read('tex.js'), deckTex(server.file).text, 'tex.js is the one of npm run tex');
+  await ann.waitFor(`${STATE} === 'Saved to index.html'`, 30_000);
+  clean(ann, MISSING);
 });
 
 test('a start of the edit command and a join of two pages do not write any file of the talk folder', { timeout: 180_000 }, async (t) => {

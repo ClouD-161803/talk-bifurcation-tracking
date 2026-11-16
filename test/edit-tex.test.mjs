@@ -24,10 +24,11 @@ function folder(t, names = SOURCES) {
   return { dir, read, at, write: (name, text) => writeFileSync(join(dir, name), text) };
 }
 
-// a writer on the folder f, with the changes it counted and the lines it logged
+// a writer on the folder f, with the changes it counted, the lines it logged, and the failed writes
+// it reported
 function writer(f, html = DECK) {
-  const seen = { changes: 0, log: [] };
-  const w = new TexWriter(f.dir, html, { stable: 0, log: (m) => seen.log.push(m), onChange: () => seen.changes++ });
+  const seen = { changes: 0, log: [], errors: [] };
+  const w = new TexWriter(f.dir, html, { stable: 0, log: (m) => seen.log.push(m), onChange: () => seen.changes++, onWriteError: (m) => seen.errors.push(m) });
   return { w, seen };
 }
 
@@ -143,4 +144,32 @@ test('a source that cannot be read is reported once for each change, and tex.js 
   assert.equal(seen.log.length, 2);
   assert.equal(f.read('tex.js'), before);
   assert.equal(seen.changes, 0);
+});
+
+test('a write of tex.js that fails is logged and reported once, and is tried again at the next polls until it succeeds', async (t) => {
+  const f = folder(t);
+  const { w, seen } = writer(f);
+  // a folder in place of tex.js, which a rename does not replace on any system
+  rmSync(join(f.dir, 'tex.js'));
+  mkdirSync(join(f.dir, 'tex.js'));
+  await twoPolls(w);
+  const changes = seen.changes;
+  f.write('index.html', CITED);
+  w.written(CITED);
+  await w.idle();
+  for (let i = 0; i < 4; i++) {
+    w.poll();
+    await w.idle();
+  }
+  assert.equal(seen.log.length, 1, seen.log.join('\n'));
+  assert.match(seen.log[0], /^could not write .*tex\.js: /);
+  assert.equal(seen.changes, changes);
+  rmSync(join(f.dir, 'tex.js'), { recursive: true });
+  await twoPolls(w);
+  assert.equal(f.read('tex.js'), deckTex(join(f.dir, 'index.html')).text, 'tex.js is written once the write can succeed');
+  assert.equal(seen.errors.length, 2);
+  assert.match(seen.errors[0], /tex\.js/);
+  assert.equal(seen.errors[1], null);
+  assert.equal(seen.changes, changes + 1);
+  assert.equal(seen.log.length, 1);
 });
