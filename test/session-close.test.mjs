@@ -577,6 +577,46 @@ test('a page takes over the copies of closed pages only while it names at most 1
   clean(next);
 });
 
+test('a word in the copy of a closed page reaches index.html once when the page that takes over the copy crashes after its join, before its next write of the copy', { timeout: 360_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const net = await proxy(t, server.edit);
+  const { probe, op } = await closedWithWord(browser, server, net);
+  net.hold();
+  // the second page runs no interval, hence it does not write its copy again within the test
+  const second = await tab(browser, net.url, { script: 'window.setInterval = () => 0;' });
+  const token = await second.evaluate(`${C}.token`);
+  await until(() => net.held.some((r) => r.body.includes(token) && r.body.includes('both')), 'the operation of the second page to be held');
+  const opB = net.held.find((r) => r.body.includes(token));
+  // a transaction that commits after every write that the second page started before it
+  await second.evaluate(`new Promise((done) => {
+    const r = indexedDB.open('beeson-session', 1);
+    r.onsuccess = () => {
+      const t = r.result.transaction('copies', 'readwrite');
+      t.objectStore('copies').get('none');
+      t.oncomplete = () => (r.result.close(), done(true));
+    };
+  })`);
+  delete net.parked.canary;
+  await canary(second, net);
+  // Page.crash is never answered, and a crash does not fire pagehide
+  void second.send('Page.crash').catch(() => {});
+  await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the second page');
+  await released(probe, (await rows(probe)).find((r) => r.mine.includes(' both')).id);
+  net.holding = null;
+  const third = await tab(browser, net.url);
+  await converge(server, [third]);
+  net.release();
+  // the crash may cancel the keepalive request in a shared renderer, hence it is sent by hand
+  if (opB.gone) await post(server.edit.port, `${server.edit.base}.session/op`, opB.body);
+  else await until(() => opB.answered, 'the answer of the operation of the second page');
+  await until(() => op.answered, 'the answer of the operation of the first page');
+  assert.equal(count(await served(server), ' both'), 1);
+  assert.equal(await converge(server, [third]), TALK.replace('<p>First slide</p>', '<p>First slide both</p>'));
+  clean(third);
+});
+
 /**
  * A proxy on the TCP level in front of the edit command edit. Once token is set, the first
  * operation that carries it is never sent on, as on a connection that a mobile network dropped
