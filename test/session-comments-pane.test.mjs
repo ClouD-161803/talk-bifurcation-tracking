@@ -1421,13 +1421,16 @@ test('the label of a thread on a citation shows its new number as soon as the ci
 });
 
 for (const [width, height] of [[1440, 900], [390, 844]]) {
-  test(`at ${width} px, the count of comments on a thumbnail of the navigator is clear of the dots of the people and of the steps`, { timeout: 300_000 }, async (t) => {
+  test(`at ${width} px, the count of comments on a thumbnail of the navigator is clear of the dots of the people and of the steps, of the mark of a transition, and of the number of the slide`, { timeout: 300_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talkWith(t, `<section>
   <h2>One</h2>
   <p>First slide</p>
   <p class="fragment" data-fragment-index="1">A step</p>
+</section>
+<section data-transition="zoom">
+  <h2>Two</h2>
 </section>
 `);
     const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
@@ -1437,7 +1440,8 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
     if (!(await a.evaluate(`window.BeesonEditor.state('view.navigator').checked`))) await a.evaluate(`window.BeesonEditor.exec('view.navigator')`);
     await post(a, 0, 'A thread');
     const frame = `document.querySelector('.beeson-edit-nav .row .frame')`;
-    // the rectangles of the count, of each dot of a person, and of each dot of the steps
+    // the rectangles of the count, of each dot of a person, of each dot of the steps, of the mark of
+    // the transition to the next slide, and of the number of the slide
     const rects = `(() => {
       const f = ${frame};
       const r = (e) => e.getBoundingClientRect().toJSON();
@@ -1446,12 +1450,14 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
         count: [...f.querySelectorAll('.beeson-comment-count')].filter(shown).map(r),
         people: [...f.querySelectorAll('.beeson-session-dots i')].filter(shown).map(r),
         steps: [...f.querySelectorAll('.dots i')].filter(shown).map(r),
+        mark: [...f.querySelectorAll('.trans')].filter(shown).map(r),
+        number: [...f.parentElement.querySelectorAll('.no')].filter(shown).map(r),
       };
     })()`;
-    await sees(a, `(() => { const g = ${rects}; return [g.count.length, g.people.length, g.steps.length]; })()`, [1, 2, 3], 'the count, the dots of Ben and Cy, and the dots of the steps');
+    await sees(a, `(() => { const g = ${rects}; return [g.count.length, g.people.length, g.steps.length, g.mark.length, g.number.length]; })()`, [1, 2, 3, 1, 1], 'the count, the dots of Ben and Cy, the dots of the steps, the mark, and the number');
     const got = await a.evaluate(rects);
     const hits = [];
-    for (const [x, y] of [['count', 'people'], ['count', 'steps'], ['people', 'steps']]) for (const p of got[x]) for (const q of got[y]) if (meets(p, q)) hits.push(`${x} meets ${y}`);
+    for (const [x, y] of [['count', 'people'], ['count', 'steps'], ['count', 'mark'], ['count', 'number'], ['people', 'steps']]) for (const p of got[x]) for (const q of got[y]) if (meets(p, q)) hits.push(`${x} meets ${y}`);
     assert.deepEqual(hits, [], JSON.stringify(got));
     clean(a);
   });
