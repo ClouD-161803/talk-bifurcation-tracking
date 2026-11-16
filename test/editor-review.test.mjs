@@ -144,11 +144,13 @@ for (const platform of PLATFORMS) {
 
   test(`a rehearsal writes data-timing on each slide shown, as one entry of the history, on ${platform}`, async () => {
     const page = await reviewPage(platform, 4);
-    // the start of the rehearsal and each key are recorded with a clock in the page, since on a slow
-    // machine a key may reach the page late, and the slide is shown until it does
+    // each key is recorded with a clock in the page, since on a slow machine a key may reach the page
+    // late, and the slide is shown until it does. the presenter starts its clock while it opens,
+    // hence the open is between two records, and the time of the first slide is between two times
     await page.evaluate(`(() => {
       window.__keys = [];
       window.addEventListener('keydown', (ev) => window.__keys.push({ key: ev.key, at: performance.now() }), true);
+      window.__before = performance.now();
       window.BeesonEditor.exec('play.rehearse');
       window.__start = performance.now();
     })()`);
@@ -164,12 +166,12 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`!document.querySelector('dialog.beeson-edit-presenter[open]')`);
     const times = await page.evaluate(`[4, 5].map((i) => document.querySelectorAll('.reveal .slides > section')[i].getAttribute('data-timing'))`);
     // slide 5 is shown until the first ArrowRight, and slide 6 until Escape
-    const at = await page.evaluate(`[window.__start, ...['ArrowRight', 'Escape'].map((key) => window.__keys.find((k) => k.key === key).at)]`);
-    for (const [i, t] of times.entries()) {
-      const ms = at[i + 1] - at[i];
-      assert.match(t ?? '', /^\d+$/);
-      assert.ok([seconds(ms - 50), seconds(ms + 50)].includes(Number(t)), `slide ${i + 5} is shown for ${Math.round(ms)} ms, and its data-timing is ${t}`);
-    }
+    const [before, after, arrow, escape] = await page.evaluate(`[window.__before, window.__start, ...['ArrowRight', 'Escape'].map((key) => window.__keys.find((k) => k.key === key).at)]`);
+    const ok = (t, lo, hi) => Number(t) >= seconds(lo - 50) && Number(t) <= seconds(hi + 50);
+    assert.match(times[0] ?? '', /^\d+$/);
+    assert.ok(ok(times[0], arrow - after, arrow - before), `slide 5 is shown for ${Math.round(arrow - after)} to ${Math.round(arrow - before)} ms, and its data-timing is ${times[0]}`);
+    assert.match(times[1] ?? '', /^\d+$/);
+    assert.ok(ok(times[1], escape - arrow, escape - arrow), `slide 6 is shown for ${Math.round(escape - arrow)} ms, and its data-timing is ${times[1]}`);
     const edits = [[NARROW, `<section class="narrow" data-timing="${times[0]}">`], [WIDE, `<section class="wide" data-timing="${times[1]}">`]];
     await roundTrip(page, edits);
     assert.equal((await state(page, 'play.clearTimings')).enabled, true);
