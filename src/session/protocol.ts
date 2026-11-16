@@ -49,7 +49,7 @@ export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise.
 // applied is the seq of the last operation of the client id was that the text holds, left out when
 // this client id is not known, e.g. after its operations left the table of the edit command. tex is
-// the number of changes of tex.js on disk since the start of the edit command
+// the count of the changes of tex.js on disk, from the time of the start of the edit command in ms
 export type HelloAnswer = {
   client: string;
   token: Token;

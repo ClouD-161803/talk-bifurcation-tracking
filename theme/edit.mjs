@@ -1523,8 +1523,9 @@ var People = class {
     // the write of index.html that failed last, or null once a write succeeded, and its revision
     this.writeError = null;
     this.writeRev = 0;
-    // the changes of tex.js on disk, by the edit command or by another program
-    this.texRev = 0;
+    // the changes of tex.js on disk, by the edit command or by another program, counted from the time
+    // of the start in ms, which a later run does not repeat
+    this.texRev = Date.now();
     this.ended = null;
     this.saveTimer = null;
     this.savedAt = 0;

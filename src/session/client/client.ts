@@ -113,8 +113,9 @@ export class Client {
 
   // the version after the operations taken from the last answer, which the next poll asks after
   private since: Version = '';
-  // the count of the changes of tex.js of the last answer. a count that differs, also after a
-  // restart of the edit command, draws the deck again with tex.js
+  // the count of the changes of tex.js of the last answer. a count that differs draws the deck again
+  // with tex.js. each run of the edit command counts from the time of its start, hence a page draws
+  // it once when it joins, and once after a restart
   private tex = 0;
   // counts the hellos after the first, so that a poll sent before one is not taken
   private generation = 0;
