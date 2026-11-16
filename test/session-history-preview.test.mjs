@@ -24,7 +24,8 @@ const PANE = '.beeson-session-history';
 const SHOWN = `!!document.querySelector('${PANE}:not([hidden])')`;
 const BAR = '.beeson-session-preview .bar';
 const FRAME = `document.querySelector('.beeson-session-preview iframe')`;
-const CURRENT = `${FRAME}?.contentWindow?.Reveal?.getCurrentSlide()?.querySelector('h2')?.textContent`;
+// before reveal.js is started in the page of the preview, window.Reveal is there without getCurrentSlide
+const CURRENT = `${FRAME}?.contentWindow?.Reveal?.getCurrentSlide?.()?.querySelector('h2')?.textContent`;
 const button = (scope, text) => `[...document.querySelectorAll('${scope} button')].find((b) => b.textContent === ${JSON.stringify(text)} && b.getClientRects().length)`;
 const rowByTitle = (title) => `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === ${JSON.stringify(title)})`;
 
