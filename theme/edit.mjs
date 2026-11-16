@@ -1477,12 +1477,12 @@ function childrenOf(html) {
   const stack = [];
   for (const t of tokenize(html)) {
     if (t.type === "start") {
-      if (stack.length === 1 && (VOID.has(t.name) || t.selfClosing)) out.push({ start: t.start, end: t.end });
-      if (!VOID.has(t.name) && !t.selfClosing) stack.push({ name: t.name, start: t.start });
+      if (stack.length === 1 && (VOID.has(t.name) || t.selfClosing)) out.push({ start: t.start, end: t.end, name: t.name, open: t.end });
+      if (!VOID.has(t.name) && !t.selfClosing) stack.push({ name: t.name, start: t.start, open: t.end });
     } else if (t.type === "end") {
       const at = stack.map((s) => s.name).lastIndexOf(t.name);
       if (at < 0) continue;
-      if (at === 1) out.push({ start: stack[1].start, end: t.end });
+      if (at === 1) out.push({ start: stack[1].start, end: t.end, name: t.name, open: stack[1].open });
       stack.length = at;
     }
   }
@@ -1567,43 +1567,78 @@ function closePairs(a, b) {
   }
   return out;
 }
-function sameSlide(x, y) {
-  if (!words(x) || !words(y)) return true;
-  const first2 = (t) => {
-    const c = childrenOf(t)[0];
-    return c ? words(t.slice(c.start, c.end)) : "";
-  };
-  const f = first2(x);
-  return f !== "" && f === first2(y);
+function keyOf(x) {
+  const kids = childrenOf(x);
+  const c = kids[0];
+  const first2 = c ? words(x.slice(c.start, c.end)) : "";
+  return { bare: !words(x), tags: kids.map((k) => k.name).join(" "), first: first2, tag: c && !first2 ? x.slice(c.start, c.open) : "" };
+}
+var sameSlide = (x, y) => x.bare || y.bare ? x.tags === y.tags : x.first ? x.first === y.first : !y.first && x.tag !== "" && x.tag === y.tag;
+function pairInPlace(to, m, textA, textB) {
+  const n = to.length;
+  const used = new Uint8Array(m);
+  let free = 0;
+  for (let i = 0; i < n; i++) {
+    if (to[i] >= 0) used[to[i]] = 1;
+    else free++;
+  }
+  if (!free || n - free === m) return;
+  const keysB = /* @__PURE__ */ new Map();
+  const keyB = (j) => keysB.get(j) ?? keysB.set(j, keyOf(textB(j))).get(j);
+  let prev = -1;
+  let after = -1;
+  for (let i = 0; i < n; i++) {
+    if (to[i] >= 0) {
+      prev = to[i];
+      after = -1;
+      continue;
+    }
+    if (after <= i) for (after = i + 1; after < n && !(to[after] > prev); ) after++;
+    const end = after < n ? to[after] : m;
+    let key = null;
+    for (let j = prev + 1; j < end; j++) {
+      if (used[j]) continue;
+      key ??= keyOf(textA(i));
+      if (!sameSlide(key, keyB(j))) continue;
+      to[i] = j;
+      used[j] = 1;
+      prev = j;
+      break;
+    }
+  }
 }
 function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const a = beforeSlides.map((s) => before2.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
   const matched = pairs(a, b, true);
-  let pi = -1, pj = -1;
-  for (const p of [...matched, { i: a.length, j: b.length }]) {
-    if (p.i === pi + 2 && p.j === pj + 2 && sameSlide(a[pi + 1], b[pj + 1])) matched.push({ i: pi + 1, j: pj + 1, same: false });
-    pi = p.i;
-    pj = p.j;
-  }
+  const to = new Int32Array(a.length).fill(-1);
+  for (const p of matched) to[p.i] = p.j;
+  const free = /* @__PURE__ */ new Map();
+  const paired = new Set(matched.map((p) => p.j));
+  b.forEach((t, j) => {
+    if (paired.has(j)) return;
+    const list = free.get(t);
+    if (list) list.push(j);
+    else free.set(t, [j]);
+  });
+  a.forEach((t, i) => {
+    const list = to[i] < 0 ? free.get(t) : void 0;
+    if (!list?.length) return;
+    let k = 0;
+    for (let x = 1; x < list.length; x++) if (Math.abs(list[x] - i) < Math.abs(list[k] - i)) k = x;
+    to[i] = list.splice(k, 1)[0];
+  });
+  const moved2 = Int32Array.from(to);
+  pairInPlace(to, b.length, (i) => a[i], (j) => b[j]);
+  to.forEach((j, i) => {
+    if (j >= 0 && moved2[i] < 0) matched.push({ i, j, same: false });
+  });
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = /* @__PURE__ */ new Set();
   afterSlides.forEach((s, j) => {
     if (!same.has(j) && marks.some((m) => m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end)) slides.add(s.number);
   });
-  const kept = new Set(matched.map((p) => p.i));
-  const paired = new Set(matched.map((p) => p.j));
-  const free = /* @__PURE__ */ new Map();
-  b.forEach((t, j) => {
-    if (!paired.has(j)) free.set(t, (free.get(t) ?? 0) + 1);
-  });
-  a.forEach((t, i) => {
-    const n = free.get(t);
-    if (kept.has(i) || !n) return;
-    free.set(t, n - 1);
-    kept.add(i);
-  });
-  const gone = beforeSlides.filter((_, i) => !kept.has(i)).map((s) => s.number);
+  const gone = beforeSlides.filter((_, i) => to[i] < 0).map((s) => s.number);
   let elements = 0;
   for (const p of matched) {
     if (p.same) continue;
@@ -1768,14 +1803,7 @@ function matchSlides(before2, s0, after, s1, patches) {
     to[restA[p.i]] = left[p.j];
     used[left[p.j]] = 1;
   }
-  for (const i of restA) {
-    const j = i === 0 ? 0 : to[i - 1] + 1;
-    if (to[i] >= 0 || i > 0 && to[i - 1] < 0 || j >= s1.length || used[j]) continue;
-    if (i === s0.length - 1 ? j !== s1.length - 1 : to[i + 1] !== j + 1) continue;
-    if (!sameSlide(textA(i), after.slice(s1[j].start, s1[j].end))) continue;
-    to[i] = j;
-    used[j] = 1;
-  }
+  pairInPlace(to, s1.length, textA, (j) => after.slice(s1[j].start, s1[j].end));
   return { to, kept };
 }
 function wholeTag(text, start2, end) {
@@ -4887,7 +4915,7 @@ function keepUnwritten(root, text) {
   }
   return null;
 }
-function keyOf(root) {
+function keyOf2(root) {
   const dir = join7(root, ".session");
   mkdirSync4(dir, { recursive: true });
   try {
@@ -4965,7 +4993,7 @@ async function start(options = {}) {
   const root = realpathSync2.native(resolve(options.folder ?? "."));
   const index = join7(root, "index.html");
   const { text, bom } = readText(index);
-  const key = keyOf(root);
+  const key = keyOf2(root);
   const lockFile = join7(root, ".session", "lock");
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);

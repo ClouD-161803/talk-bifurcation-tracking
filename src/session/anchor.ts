@@ -11,7 +11,7 @@
 import { tokenize } from '../editor/tokens.ts';
 import { checksum, shiftOffset } from './patch.ts';
 import type { Anchor, Patch } from './protocol.ts';
-import { pairs, sameSlide, shared, slidesOf, VOID, type Slide } from './slides.ts';
+import { pairInPlace, pairs, shared, slidesOf, VOID, type Slide } from './slides.ts';
 
 export type Anchored = { anchor: Anchor | null; slide: Anchor | null; removed?: { text: string | null; slide?: string } };
 // the items in the order given, true in changed for an item moved otherwise than by a shift, and
@@ -155,7 +155,8 @@ function findInserted(after: string, text: string, inserted: Span[], near: numbe
 // the slides of before matched to those of after. a slide that no patch touches is the same slide at
 // its shifted place. of the others, a slide of equal text is matched first, the nearest between
 // several, and then the rest in order, two slides only when they share at least half of the shorter
-// text without tags. a slide left out is removed
+// text without tags. of the slides left out on both sides, pairInPlace of slides.ts pairs those
+// edited in place, as slideChanges does for the version history. a slide left out is removed
 function matchSlides(before: string, s0: Slide[], after: string, s1: Slide[], patches: Patch[]): { to: Int32Array; kept: Uint8Array } {
   const to = new Int32Array(s0.length).fill(-1);
   const kept = new Uint8Array(s0.length);
@@ -202,15 +203,7 @@ function matchSlides(before: string, s0: Slide[], after: string, s1: Slide[], pa
     to[restA[p.i]] = left[p.j];
     used[left[p.j]] = 1;
   }
-  // a slide left out alone between the same two paired neighbors on both sides, edited in place
-  for (const i of restA) {
-    const j = i === 0 ? 0 : to[i - 1] + 1;
-    if (to[i] >= 0 || (i > 0 && to[i - 1] < 0) || j >= s1.length || used[j]) continue;
-    if (i === s0.length - 1 ? j !== s1.length - 1 : to[i + 1] !== j + 1) continue;
-    if (!sameSlide(textA(i), after.slice(s1[j].start, s1[j].end))) continue;
-    to[i] = j;
-    used[j] = 1;
-  }
+  pairInPlace(to, s1.length, textA, (j) => after.slice(s1[j].start, s1[j].end));
   return { to, kept };
 }
 
