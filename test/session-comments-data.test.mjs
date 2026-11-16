@@ -431,3 +431,21 @@ test('an answer of GET comments older than the base is moved through the operati
   clean(a);
   clean(b);
 });
+
+test('a comment written on one page of a person is not unread on another page of the person', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  // tab() shares localStorage between the pages, which are thus one person
+  const a = await tab(browser, url);
+  const other = await tab(browser, url);
+  await converge(server, [a, other]);
+  await openPane(other);
+  // sent with the transport, hence without the read that the pane sends after its own comment
+  await a.evaluate(`${C}.transport.post('comments', { token: ${C}.token, anchor: null, slide: null, base: ${C}.base.v, text: 'Written by Ann', mentions: [] })`);
+  await sees(other, `[...document.querySelectorAll('${PANE} article')].map((a) => a.classList.contains('unread'))`, [false]);
+  await sees(other, COUNT, 'Comments');
+  clean(a);
+  clean(other);
+});
