@@ -54,7 +54,7 @@ const encode = (text: string, bom: boolean) => Buffer.from(bom ? `﻿${text}` : 
 const endsHtml = (text: string | Buffer) => /<\/html>\s*$/i.test(typeof text === 'string' ? text.slice(-256) : text.subarray(-256).toString('latin1'));
 
 // the change time is left out, since a rename changes it on some systems
-const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
+export const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 
 // the mode of a file, given to the temporary file that replaces it. a file on Windows has no mode
 // but the read-only flag, and a read-only file is not replaced by a rename there anyway

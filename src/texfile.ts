@@ -4,8 +4,8 @@
 // deck opened from a file cannot read the text of a file next to it. it is written by scripts/tex.mjs
 // and by a save in the editor, with the same text
 
-import type { Bibliography } from './bibtex.ts';
-import type { EnvironmentDef, Kind, MacroDef, Preamble } from './preamble.ts';
+import { readBibtex, type Bibliography } from './bibtex.ts';
+import { readPreamble, type EnvironmentDef, type Kind, type MacroDef, type Preamble, type Resolve } from './preamble.ts';
 import { referenceOf, type Reference } from './reference.ts';
 
 /** The content of tex.js, i.e. the value of window.beesonTex in a deck. */
@@ -43,6 +43,27 @@ export function texOf(preamble: Preamble, bibliography: Bibliography, html: stri
   }
   const { macros, environments, packages, theorems } = preamble;
   return { tex: { macros, environments, packages, theorems, references }, missing };
+}
+
+/** The preamble, the bibliography, the content of tex.js, and the keys cited without an entry, for the deck html and the files of its folder, which read gives, null for a file that is not there. */
+export function folderTex(read: (name: string) => string | null, html: string): { preamble: Preamble; bibliography: Bibliography; tex: Tex; missing: string[] } {
+  // as in TeX, a file is looked up from the folder of the preamble, and \input adds .tex to a name
+  // without an extension
+  const names = {
+    input: (name: string) => (/\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name]),
+    package: (name: string) => [`${name}.sty`],
+    class: (name: string) => [`${name}.cls`],
+  };
+  const find: Resolve = (name, kind) => {
+    for (const file of names[kind](name)) {
+      const found = read(file);
+      if (found !== null) return { file, text: found };
+    }
+    return null;
+  };
+  const preamble = readPreamble(read('preamble.tex') ?? '', { file: 'preamble.tex', resolve: find });
+  const bibliography = readBibtex(read('references.bib') ?? '');
+  return { preamble, bibliography, ...texOf(preamble, bibliography, html) };
 }
 
 /** The lines that npm run tex prints for the skipped lines of the sources, and for the keys that the deck of the file deck cites without an entry. */

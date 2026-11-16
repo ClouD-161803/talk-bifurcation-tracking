@@ -2706,6 +2706,23 @@ function texOf(preamble, bibliography, html) {
   const { macros, environments, packages, theorems } = preamble;
   return { tex: { macros, environments, packages, theorems, references }, missing: missing2 };
 }
+function folderTex(read, html) {
+  const names = {
+    input: (name) => /\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name],
+    package: (name) => [`${name}.sty`],
+    class: (name) => [`${name}.cls`]
+  };
+  const find = (name, kind) => {
+    for (const file of names[kind](name)) {
+      const found = read(file);
+      if (found !== null) return { file, text: found };
+    }
+    return null;
+  };
+  const preamble = readPreamble(read("preamble.tex") ?? "", { file: "preamble.tex", resolve: find });
+  const bibliography = readBibtex(read("references.bib") ?? "");
+  return { preamble, bibliography, ...texOf(preamble, bibliography, html) };
+}
 function skippedLines(preamble, bibliography, missing2, deck) {
   const short = (statement) => statement.length > 100 ? `${statement.slice(0, 99)}\u2026` : statement;
   return [
@@ -2729,7 +2746,6 @@ function texScript(tex) {
 
 // src/edit/tex.ts
 var STABLE2 = 300;
-var signature2 = (s) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 var keysOf = (html) => citedKeys(html).sort().join(",");
 function deriveTex(dir, html) {
   const files = /* @__PURE__ */ new Map();
@@ -2737,7 +2753,7 @@ function deriveTex(dir, html) {
   const text = (name) => {
     const file = join4(dir, name);
     try {
-      files.set(name, signature2(statSync2(file)));
+      files.set(name, signature(statSync2(file)));
       return readFileSync5(file, "utf8");
     } catch (e) {
       const code = e.code;
@@ -2746,21 +2762,7 @@ function deriveTex(dir, html) {
       return null;
     }
   };
-  const names = {
-    input: (name) => /\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name],
-    package: (name) => [`${name}.sty`],
-    class: (name) => [`${name}.cls`]
-  };
-  const find = (name, kind) => {
-    for (const file of names[kind](name)) {
-      const found = text(file);
-      if (found !== null) return { file, text: found };
-    }
-    return null;
-  };
-  const preamble = readPreamble(text("preamble.tex") ?? "", { file: "preamble.tex", resolve: find });
-  const bibliography = readBibtex(text("references.bib") ?? "");
-  const { tex, missing: missing2 } = texOf(preamble, bibliography, html);
+  const { preamble, bibliography, tex, missing: missing2 } = folderTex(text, html);
   return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread, skipped: skippedLines(preamble, bibliography, missing2, "index.html") };
 }
 var TexWriter = class {
@@ -2896,7 +2898,7 @@ ${sig}`).join("\n");
       const made = await stat3(tmp);
       await renameRetried(tmp, this.file);
       settle();
-      this.texSig = signature2(made);
+      this.texSig = signature(made);
       this.texSeen = null;
       this.onChange();
     } catch (e) {
@@ -2912,12 +2914,12 @@ ${sig}`).join("\n");
 };
 function sigOf(file) {
   try {
-    return signature2(statSync2(file));
+    return signature(statSync2(file));
   } catch {
     return "";
   }
 }
-var statSig = (file) => stat3(file).then(signature2, () => "");
+var statSig = (file) => stat3(file).then(signature, () => "");
 
 // src/edit/command.ts
 var DEFAULT_PORT = 8765;

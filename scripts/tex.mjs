@@ -14,7 +14,7 @@ import { compileFigures } from './figures.mjs';
 // the readers of src/ are TypeScript, which Node reads without a flag from version 22.18 on. under
 // an older Node they are bundled by esbuild, which is installed by npm ci
 async function readers() {
-  const names = ['bibtex', 'preamble', 'texfile'];
+  const names = ['texfile'];
   try {
     return Object.assign({}, ...(await Promise.all(names.map((name) => import(`../src/${name}.ts`)))));
   } catch (error) {
@@ -32,7 +32,7 @@ async function readers() {
   });
   return import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
 }
-const { readBibtex, readPreamble, preambleOf, skippedLines, texOf, texScript } = await readers();
+const { folderTex, preambleOf, skippedLines, texScript } = await readers();
 
 /** What npm run tex writes for a deck, with the lines that are skipped and the keys without an entry. Nothing is written. */
 export function deckTex(deck) {
@@ -44,23 +44,7 @@ export function deckTex(deck) {
       return null;
     }
   };
-  // as in TeX, a file is looked up from the folder of the preamble, and \input adds .tex to a name
-  // without an extension
-  const names = {
-    input: (name) => (/\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name]),
-    package: (name) => [`${name}.sty`],
-    class: (name) => [`${name}.cls`],
-  };
-  const find = (name, kind) => {
-    for (const file of names[kind](name)) {
-      const found = text(file);
-      if (found !== null) return { file, text: found };
-    }
-    return null;
-  };
-  const preamble = readPreamble(text('preamble.tex') ?? '', { file: 'preamble.tex', resolve: find });
-  const bibliography = readBibtex(text('references.bib') ?? '');
-  const { tex, missing } = texOf(preamble, bibliography, readFileSync(deck, 'utf8'));
+  const { tex, preamble, bibliography, missing } = folderTex(text, readFileSync(deck, 'utf8'));
   return { file: join(dir, 'tex.js'), text: texScript(tex), tex, preamble, bibliography, missing };
 }
 

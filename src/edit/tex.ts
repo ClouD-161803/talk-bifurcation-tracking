@@ -8,19 +8,14 @@
 // leaves the text of tex.js as it is, after which the pages read the sources again, e.g. for a
 // paper added to references.bib that the deck does not cite yet
 
-import { readFileSync, statSync, type Stats } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { readBibtex } from '../bibtex.ts';
-import { readPreamble, type Resolve } from '../preamble.ts';
-import { citedKeys, skippedLines, texOf, texScript } from '../texfile.ts';
-import { renameRetried } from './disk.ts';
+import { citedKeys, folderTex, skippedLines, texScript } from '../texfile.ts';
+import { renameRetried, signature } from './disk.ts';
 
 const STABLE = 300;
-
-// the change time is left out, as in disk.ts, since a rename changes it on some systems
-const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 
 // the cited keys of a deck in one order, since a citation moved in the deck does not change tex.js
 const keysOf = (html: string) => citedKeys(html).sort().join(',');
@@ -38,7 +33,7 @@ export type DerivedTex = {
 };
 
 /**
- * The text of tex.js for the deck html in the folder dir, as deckTex of scripts/tex.mjs derives it
+ * The text of tex.js for the deck html in the folder dir, as npm run tex derives it
  * from the files of the folder, with the signature of each file that was read or looked up.
  */
 export function deriveTex(dir: string, html: string): DerivedTex {
@@ -57,23 +52,7 @@ export function deriveTex(dir: string, html: string): DerivedTex {
       return null;
     }
   };
-  // as in TeX, a file is looked up from the folder of the preamble, and \input adds .tex to a name
-  // without an extension
-  const names = {
-    input: (name: string) => (/\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name]),
-    package: (name: string) => [`${name}.sty`],
-    class: (name: string) => [`${name}.cls`],
-  };
-  const find: Resolve = (name, kind) => {
-    for (const file of names[kind](name)) {
-      const found = text(file);
-      if (found !== null) return { file, text: found };
-    }
-    return null;
-  };
-  const preamble = readPreamble(text('preamble.tex') ?? '', { file: 'preamble.tex', resolve: find });
-  const bibliography = readBibtex(text('references.bib') ?? '');
-  const { tex, missing } = texOf(preamble, bibliography, html);
+  const { preamble, bibliography, tex, missing } = folderTex(text, html);
   return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread, skipped: skippedLines(preamble, bibliography, missing, 'index.html') };
 }
 
