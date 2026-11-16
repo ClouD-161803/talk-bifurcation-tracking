@@ -312,3 +312,15 @@ test('a paste of more than 500 characters and a key of a third person on the oth
   });
   assert.equal(text, `<p>${paste}SecondA slideC</p>`);
 });
+
+test('the same letter typed at one point by another person and as an unread key of the person is kept twice', { timeout: 240_000 }, async (t) => {
+  const text = await race(t, {
+    ana: [6, 6, 'e'],
+    marker: 'Seconde',
+    ben: async (ben) => {
+      assert.ok(await caretAt(ben, 6));
+      await typeKeys(ben, 'e');
+    },
+  });
+  assert.equal(text, '<p>Secondee slide</p>');
+});
