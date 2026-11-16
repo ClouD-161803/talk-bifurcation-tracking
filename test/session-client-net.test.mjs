@@ -515,14 +515,19 @@ test('a reconnect while an operation is unanswered waits for its answer, and a h
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' held');
   await page.waitFor(`__net.held.length === 1`);
-  // the hello of the reconnect gets the whole text, as when the log no longer reaches since
-  await page.evaluate(`__net.rule('/.session/hello', 'edit', { edit: ({ v, ...rest }) => rest, times: 1 }) && __net.drop('/.session/events')`);
+  // the hello of the reconnect gets the whole text, as when the log no longer reaches since. every
+  // poll fails until the rules are cleared, hence a reconnect is ahead whenever the test looks
+  await page.evaluate(`__net.rule('/.session/hello', 'edit', { edit: ({ v, ...rest }) => rest, times: 1 }) && __net.rule('/.session/events', 'cut') && __net.drop('/.session/events')`);
   await page.waitFor(`/^Offline/.test(${STATE}) && ${C}.retryAt !== null`);
-  const hellos = await page.evaluate(`__net.count('/.session/hello')`);
+  const HELLOS = `[__net.count('/.session/hello'), __net.count('/.session/hello', 'POST', 200)]`;
+  const [sent, answered] = await page.evaluate(HELLOS);
   await page.evaluate(`${C}.tryNow(), new Promise((done) => setTimeout(done))`);
   // a hello sent before the answer of the operation is answered before the edit command applies it
-  await page.waitFor(`__net.count('/.session/hello') === ${hellos} || ${ONLINE}`);
+  assert.equal((await page.evaluate(HELLOS))[0], sent, 'a hello is sent while the operation is unanswered');
   await page.evaluate(`__net.release('/.session/op')`);
+  // the next reconnect says hello, and reads the whole text with the edit in it
+  await page.waitFor(`__net.count('/.session/hello', 'POST', 200) > ${answered}`);
+  await page.evaluate(`__net.clear()`);
   assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide held</p>'));
   assert.equal(await page.evaluate(el(0, 'p') + '.textContent'), 'First slide held');
   clean(page, REFUSED);
@@ -640,8 +645,9 @@ test('a second outage starts the reconnect again at 1 s', { timeout: 120_000 }, 
   }
   await page.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
   await page.waitFor(ONLINE, 10_000);
-  await page.evaluate(`window.__first = null, ${OFFLINE}`);
-  await page.waitFor(`${C}.retryAt !== null && !!(window.__first ??= [${C}.retryAt - Date.now(), ${STATE}])`);
+  // read in the page at the change of the state, since the first wait is over after 1 s
+  await page.evaluate(`window.__first = null, ${C}.on('state', () => (window.__first ??= ${C}.retryAt === null ? null : [${C}.retryAt - Date.now(), ${STATE}])), ${OFFLINE}`);
+  await page.waitFor(`!!window.__first`);
   const [delay, state] = await page.evaluate(`window.__first`);
   assert.ok(delay <= 1000, `the first wait of the second outage is ${delay} ms`);
   assert.equal(state, 'Offline. Reconnecting in 1 s');
