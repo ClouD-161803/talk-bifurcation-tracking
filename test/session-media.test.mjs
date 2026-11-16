@@ -493,6 +493,31 @@ test('a guest who changes Match the Mode of a PDF figure whose PDF is over 16 MB
   clean(gus, [/status of 413 .*media\/figure\.pdf$/]);
 });
 
+// a page behind the relay without a session is answered 413 by the edit command as well
+for (const how of ['left the session', 'edits another deck of the talk folder']) {
+  test(`a guest who ${how} and changes Match the Mode of a PDF figure whose PDF is over 16 MB is told of the limit of the relay`, { timeout: 360_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await figureTalk(t, noisePdf());
+    writeFileSync(join(server.talk, 'other.html'), server.read());
+    const { url } = await relayed(t, server);
+    const gus = await open(browser, `${url}${how.startsWith('left') ? 'index' : 'other'}.html?edit&session`, { name: 'Gus', wait: false });
+    if (how.startsWith('left')) {
+      await converge(server, [gus]);
+      await gus.evaluate(`${C}.leave(), true`);
+      await gus.waitFor(`${C}.connection === 'ended'`);
+    } else {
+      await gus.waitFor(`/not the deck of the session/.test(document.querySelector('dialog[open]')?.textContent ?? '')`);
+      await gus.evaluate(`document.querySelector('dialog[open] button').click(), true`);
+    }
+    await show(gus, 'Two');
+    await gus.waitFor(`[...document.querySelectorAll('.reveal .slides img[data-pdf]')].some((e) => e.getBoundingClientRect().width > 0)`);
+    await click(gus, await middle(gus, '.reveal .slides img[data-pdf]'));
+    const answer = await gus.evaluate(`window.BeesonEditor.exec('media.matchMode').then(() => 'taken', (e) => e.message)`);
+    assert.equal(answer, 'media/figure.pdf cannot be read on this page, since it is larger than 16 MB, the limit of the relay of the session');
+  });
+}
+
 test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px, and once in the title of a screen of 1440 px', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
