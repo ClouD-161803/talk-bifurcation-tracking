@@ -327,6 +327,43 @@ test('a redo of typing that cannot be redone says why at the top of the window w
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
+// Mod+Z pressed on page until its history is empty, with the label of each undo
+async function undoAll(page) {
+  const labels = [];
+  for (let label = await page.evaluate(`${C}.app.history.undoLabel`); label !== null && labels.length < 12; label = await page.evaluate(`${C}.app.history.undoLabel`)) {
+    labels.push(label);
+    await front(page);
+    await press(page, 'Mod+Z');
+    await page.evaluate(`${C}.app.history.idle().then(() => true)`);
+  }
+  return labels;
+}
+
+for (const [what, keys, made] of [
+  ['a smart dash', ' it -- is', 'it — is'],
+  ['smart quotes', ' say "hi"', 'say “hi”'],
+  ['two smart quotes and a smart dash in one word', ' "a--b"', '“a—b”'],
+  ['a span of Markdown', ' **bold** x', '<strong>bold</strong>'],
+  ['a smart link', ' https://example.org x', '<a href="https://example.org">'],
+]) {
+  test(`${what} typed in a session, then a key of another person in the same paragraph, is taken out by the undos of the person`, { timeout: 240_000 }, async (t) => {
+    const { server, pages } = await session(t, ['Ana', 'Ben']);
+    const [ana, ben] = pages;
+    for (const page of pages) await show(page, 'Two');
+    for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await caretAtEnd(ana, p);
+    await typeKeys(ana, keys);
+    assert.ok(para(await converge(server, pages)).includes(made), 'the editor made the substitution');
+    assert.ok(await caretAt(ben, 0));
+    await typeKeys(ben, 'Q');
+    await converge(server, pages);
+    const labels = await undoAll(ana);
+    const text = await converge(server, pages);
+    assert.equal(para(text), '<p>QSecond slide</p>', `the paragraph after the undos ${JSON.stringify(labels)}`);
+    assert.deepEqual([ana.errors, ben.errors], [[], []]);
+  });
+}
+
 // Ben makes the word slide bold or italic with a command
 const format = (id) => async (page) => {
   assert.ok(await selectIn(page, 7, 12));

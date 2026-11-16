@@ -420,6 +420,20 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(errors(again), []);
   });
 
+  test(`an insert of a script right after a smart quote is an undo of its own on ${platform}`, async () => {
+    const page = await textPage(platform);
+    const at = (text) => [PARAGRAPH, PARAGRAPH.replace('A paragraph', `A ${text}paragraph`)];
+    await select(page, P, 'A paragraph', 2);
+    await typeKeys(page, '"');
+    await page.evaluate(`document.execCommand('insertText', false, 'x')`);
+    await byteExact(page, [at('“x')]);
+    assert.equal((await state(page, 'edit.undo')).label, 'Undo Typing');
+    await undo(page);
+    await byteExact(page, [at('“')]);
+    assert.equal((await state(page, 'edit.undo')).label, 'Undo Smart Quote');
+    assert.deepEqual(errors(page), []);
+  });
+
   test(`a link to an email with a subject and to a phone number is written from the popover on ${platform}`, async () => {
     const page = await textPage(platform);
     await select(page, P, 'A paragraph', 2, 11);
