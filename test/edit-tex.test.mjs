@@ -252,6 +252,60 @@ test('a write of tex.js that fails is derived again only once its retry is due, 
   assert.deepEqual(seen.errors.slice(1), [null]);
 });
 
+test('a source saved while tex.js cannot be written is derived once, and again at once only at a new change of a source', async (t) => {
+  // a folder in place of tex.js, and a talk folder that cannot be written
+  const causes = [['a folder at tex.js', (f) => (rmSync(join(f.dir, 'tex.js')), mkdirSync(join(f.dir, 'tex.js'))), () => {}]];
+  if (!noChmod) causes.push(['a talk folder of mode 555', (f) => chmodSync(f.dir, 0o555), (f) => chmodSync(f.dir, 0o755)]);
+  for (const [cause, fail, undo] of causes)
+    await t.test(cause, async (t) => {
+      const f = folder(t);
+      // a retry is not due during the test
+      const { w, seen } = writer(f, DECK, { retry: 600_000 });
+      const preamble = f.read('preamble.tex');
+      const derived = reads(t, f, 'preamble.tex');
+      const polls = async () => {
+        for (let i = 0; i < 12; i++) {
+          w.poll();
+          await w.idle();
+        }
+      };
+      fail(f);
+      // the mode is set back before the folder is removed
+      try {
+        f.write('preamble.tex', `${preamble}\\newcommand{\\Q}{\\mathbb{Q}}\n`);
+        await polls();
+        assert.equal(seen.errors.length, 1);
+        assert.equal(derived.n, 1, 'a poll before the retry is due does not derive tex.js again');
+        f.write('preamble.tex', `${preamble}\\newcommand{\\Q}{\\mathbb{Q}}\n\\newcommand{\\R}{\\mathbb{R}}\n`);
+        await polls();
+        assert.equal(derived.n, 2, 'a new change of a source is derived at once');
+      } finally {
+        undo(f);
+      }
+    });
+});
+
+test('a citation while tex.js cannot be written is derived once over later writes of other words, and a new citation is derived at once', async (t) => {
+  const f = folder(t);
+  const { w, seen } = writer(f, DECK, { retry: 600_000 });
+  rmSync(join(f.dir, 'tex.js'));
+  mkdirSync(join(f.dir, 'tex.js'));
+  const derived = reads(t, f, 'preamble.tex');
+  w.written(CITED);
+  await w.idle();
+  for (let i = 0; i < 10; i++) {
+    w.written(CITED.replace('Citations', `Citations ${i}`));
+    await w.idle();
+    w.poll();
+    await w.idle();
+  }
+  assert.equal(seen.errors.length, 1);
+  assert.equal(derived.n, 1, 'a write of other words before the retry is due does not derive tex.js again');
+  w.written(CITED.replace('low-energy transfer<cite', 'low-energy transfer<cite data-key="nobody2020"></cite><cite'));
+  await w.idle();
+  assert.equal(derived.n, 2, 'a new citation is derived at once');
+});
+
 test('a write of index.html while preamble.tex is being saved does not write tex.js without its macros, and tex.js is written once preamble.tex is stable', async (t) => {
   const f = folder(t);
   const { w, seen } = writer(f);
