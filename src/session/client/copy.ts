@@ -393,6 +393,8 @@ export function install(client: Client): void {
         client.refresh();
       },
       () => {
+        // the next tick writes the same copy again, rather than at the heartbeat
+        st.wroteAt = 0;
         if (st.unavailable) return;
         st.unavailable = true;
         client.refresh();
