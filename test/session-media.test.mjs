@@ -454,22 +454,28 @@ test('a render of a PDF figure over 16 MB is refused in a session with its reaso
   clean(ann);
 });
 
-test('every render of a PDF figure is checked in a session before the deck is changed, and the reason of a refused one is given', { timeout: 180_000 }, async (t) => {
-  const browser = await launch({ offline: false });
-  t.after(() => browser.close());
-  const server = await figureTalk(t, readFileSync(PDF));
-  const ann = await tab(browser, sessionUrl(server.edit));
-  const before = await converge(server, [ann]);
-  const files = media(server);
-  await show(ann, 'Two');
-  await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
-  // the session refuses the second render of the pair
-  await ann.evaluate(`${C}.shell.media.refuse = (file) => (file.name.endsWith('-light.png') ? 'refused by the test' : null), true`);
-  assert.equal(await run(ann, 'media.pdfPage', '{ page: 2 }'), 'refused by the test');
-  assert.equal(await converge(server, [ann]), before);
-  assert.deepEqual(media(server), files);
-  clean(ann);
-});
+// the paths of the files in the store of media of a page
+const STORED = `[...${C}.shell.media.byPath.keys()].sort()`;
+
+for (const refused of ['dark', 'light']) {
+  test(`every render of a PDF figure is checked in a session before the deck is changed, and the reason of a refused one is given, here of the ${refused} render`, { timeout: 180_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await figureTalk(t, readFileSync(PDF));
+    const ann = await tab(browser, sessionUrl(server.edit));
+    const before = await converge(server, [ann]);
+    const files = media(server);
+    await show(ann, 'Two');
+    await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
+    const stored = await ann.evaluate(STORED);
+    await ann.evaluate(`${C}.shell.media.refuse = (file) => (file.name.endsWith(${JSON.stringify(`-${refused}.png`)}) ? 'refused by the test' : null), true`);
+    assert.equal(await run(ann, 'media.pdfPage', '{ page: 2 }'), 'refused by the test');
+    assert.deepEqual(await ann.evaluate(STORED), stored);
+    assert.equal(await converge(server, [ann]), before);
+    assert.deepEqual(media(server), files);
+    clean(ann);
+  });
+}
 
 test('a guest who changes Match the Mode of a PDF figure whose PDF is over 16 MB is told of the limit of the relay, and the deck is kept', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
