@@ -363,39 +363,89 @@ const TABLE = `  <p>First slide</p>
   <table>
     <tr><th>A1</th><th>B1</th></tr>
     <tr><td>A2</td><td>B2</td></tr>
+    <tr><td>A3</td><td>B3</td></tr>
   </table>`;
+const OTHER = `  <p>Second slide</p>
+  <table>
+    <tr><th>C1</th><th>D1</th></tr>
+    <tr><td>C2</td><td>D2</td></tr>
+    <tr><td>C3</td><td>D3</td></tr>
+  </table>`;
+// the classes that a drag of a table puts on the page while it runs
+const GESTURES = ['beeson-column-resizing', 'beeson-resizing', 'beeson-line-moving', 'beeson-line-refused', 'beeson-autofilling'];
 
-test('a drag of the grip of a column, or of the edge of a table, whose cell is held is refused, and the holder keeps typing', { timeout: 120_000 }, async (t) => {
-  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', TABLE]] });
+test('a drag of the grip of a column, of the edge of a table, of the bar of a row, or of the fill handle, in a table whose cell is held, is refused at its first move, the same drag in a table that is not held is taken, and the holder keeps typing', { timeout: 180_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', TABLE], ['  <p>Second slide</p>', OTHER]] });
   await show(ana, 'One');
   await show(ben, 'One');
   const a2 = el(0, 'td');
-  const table = el(0, 'table');
   await holding(ana, ben, a2, ' typed');
-  // each case: how Ben shows the grip, and the grip. the grip of the last column sets its width,
-  // and the grip at the right edge of the table selected as an object sets the widths of all
+  // a clock of Ben far behind keeps the hold for the whole test
+  await ben.evaluate(`${P}.skew = -1e8`);
+  const rows = (n) => ben.evaluate(`[...${el(n, 'table')}.rows].map((r) => { const b = r.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; })`);
+  const run = (id) => ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
+  // each case: how Ben shows the grip on the slide of index n, the grip or its point, and how far it
+  // is dragged.
+  // the grip of the last column sets its width, the grip at the right edge of the table selected as
+  // an object sets the widths of all, the bar of the third row moves it above the second, and the
+  // fill handle of the first row fills the second
   const cases = [
-    [() => click(ben, 'section.present th:nth-child(2)'), '.beeson-table-bars .grip[data-grip="1"]'],
-    [async () => {
+    ['the grip of a column', () => click(ben, 'section.present th:nth-child(2)'), '.beeson-table-bars .grip[data-grip="1"]', async () => ({ dx: 40 })],
+    ['the edge of the table', async () => {
       await click(ben, 'section.present th:nth-child(2)');
       await press(ben, 'Escape');
       await press(ben, 'Escape');
-    }, '.beeson-table-bars .beeson-grip[data-handle="e"]'],
+    }, '.beeson-table-bars .beeson-grip[data-handle="e"]', async () => ({ dx: 40 })],
+    ['the bar of a row', async () => {
+      await click(ben, 'section.present tr:nth-child(3) td');
+      await run('table.selectRow');
+      // the segment of the third row is pressed at its top, which no other control covers
+    }, () => ben.evaluate(`(() => { const r = document.querySelector('.beeson-table-bars .bar.rows > [data-index="2"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + 4 }; })()`), async (n, from) => ({ dy: (await rows(n))[1].top + 4 - from.y })],
+    ['the fill handle', async () => {
+      await click(ben, 'section.present th');
+      await run('table.selectRow');
+    }, '.beeson-table-bars .fill', async (n, from) => ({ dy: (await rows(n))[1].bottom - 4 - from.y })],
   ];
-  for (const [put, grip] of cases) {
-    await put();
-    await frame(ben);
-    await unbubble(ben);
-    await drag(ben, grip, { dx: 40 });
-    await frame(ben);
-    assert.ok(!(await ben.evaluate(`${table}.outerHTML`)).includes('width'), `a drag of ${grip} leaves the widths of the columns as they were`);
-    assert.equal(await ben.evaluate(BUBBLE), REFUSED, grip);
+  for (const [what, put, grip, far] of cases) {
+    for (const [n, heading] of [[0, 'One'], [1, 'Two']]) {
+      const table = el(n, 'table');
+      await show(ben, heading);
+      await leave(ben);
+      await ben.evaluate(`${C}.app.selection.clear()`);
+      await put();
+      await frame(ben);
+      const before = await ben.evaluate(`${C}.app.doc.elementText(${table})`);
+      await unbubble(ben);
+      const from = typeof grip === 'string' ? await center(ben, grip) : await grip();
+      const { dx = 0, dy = 0 } = await far(n, from);
+      await drag(ben, from, { dx, dy, steps: 12, hold: true });
+      if (n === 0) {
+        assert.equal(await ben.evaluate(BUBBLE), REFUSED, `a drag of ${what} is refused before its release`);
+        assert.deepEqual(await ben.evaluate(`${JSON.stringify(GESTURES)}.filter((c) => document.documentElement.classList.contains(c))`), [], `a refused drag of ${what} ends at its first move`);
+        assert.ok(!(await ben.evaluate(`${table}.outerHTML`)).includes('style'), `a refused drag of ${what} does not change the table on the page`);
+        assert.equal(await ben.evaluate(`!!document.querySelector('.beeson-table-bars .spread:not([hidden])')`), false, `a refused drag of ${what} does not mark cells to fill`);
+      }
+      await unbubble(ben);
+      await ben.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from.x + dx, y: from.y + dy, button: 'left', clickCount: 1 });
+      await frame(ben);
+      const after = await ben.evaluate(`${C}.app.doc.elementText(${table})`);
+      if (n === 0) {
+        assert.equal(after, before, `a refused drag of ${what} leaves the table as it was`);
+        assert.ok(!(await ben.evaluate(`${table}.outerHTML`)).includes('style'), `a refused drag of ${what} leaves no style on the page`);
+        assert.equal(await ben.evaluate(BUBBLE), null, `the release of a refused drag of ${what} is not refused again`);
+        continue;
+      }
+      assert.notEqual(after, before, `a drag of ${what} in a table that is not held is taken`);
+      assert.equal(await ben.evaluate(BUBBLE), null, `a drag of ${what} in a table that is not held`);
+      await run('edit.undo');
+      assert.equal(await ben.evaluate(`${C}.app.doc.elementText(${table})`), before, `a drag of ${what} in a table that is not held is undone`);
+    }
   }
   assert.ok(await caretOf(ben, 'Ana', a2), 'the caret of Ana stays in her cell');
   await caretAtEnd(ana, a2);
   await typeKeys(ana, ' more');
   const text = await converge(server, [ana, ben]);
-  assert.match(text, /<td>A2 typed more<\/td><td>B2<\/td>/);
+  assert.match(text, /<tr><th>A1<\/th><th>B1<\/th><\/tr>\s*<tr><td>A2 typed more<\/td><td>B2<\/td><\/tr>\s*<tr><td>A3<\/td><td>B3<\/td><\/tr>/);
   assert.ok(!text.match(/<table>[\s\S]*?<\/table>/)[0].includes('width'), 'the widths are not saved');
   clean(ana);
   clean(ben);
