@@ -81,6 +81,9 @@ export function install(client: Client): void {
     else bubble(null, [bdi(by.name), ` is typing${client.shell.onSlides([n])}. You can do this once they leave it or stop for 30 s.`]);
     return true;
   });
+  // an undo or a redo of typing that the history refused, beside its text element on the slide
+  // shown, and at the top of the window otherwise
+  app.history.refused = (entry, way) => bubble(entry.els?.find((el) => app.current()?.contains(el)) ?? null, `Your typing cannot be ${way === 'undo' ? 'undone' : 'redone'} without changing the letters of another person.`);
 }
 
 // the page that holds an element that command c would change, or null
