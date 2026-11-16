@@ -183,13 +183,14 @@ test('a source that cannot be read is reported once for each change, and tex.js 
   mkdirSync(join(f.dir, 'preamble.tex'));
   const before = f.read('tex.js');
   const { w, seen } = writer(f);
+  // the reason is logged at the start as well
   w.written(CITED);
   await twoPolls(w);
-  assert.equal(seen.log.length, 1);
-  assert.match(seen.log[0], /^tex\.js is not written, since preamble\.tex is not read: /);
+  assert.equal(seen.log.length, 2);
+  assert.match(seen.log[1], /^tex\.js is not written, since preamble\.tex is not read: /);
   w.written(DECK);
   await twoPolls(w);
-  assert.equal(seen.log.length, 2);
+  assert.equal(seen.log.length, 3);
   assert.equal(f.read('tex.js'), before);
   assert.equal(seen.changes, 0);
 });
@@ -319,6 +320,16 @@ test('the skipped lines of preamble.tex are logged at the start of the writer, a
   clean.write('preamble.tex', clean.read('preamble.tex').replace('\\usepackage{tikz}\n', ''));
   assert.deepEqual(writer(clean).seen.log, []);
   assert.deepEqual(writer(folder(t, ['references.bib', 'tex.js'])).seen.log, []);
+});
+
+test('the reason why tex.js is not written is logged at the start of the writer while a file that preamble.tex inputs cannot be read', { skip: noChmod }, async (t) => {
+  const f = folder(t);
+  chmodSync(join(f.dir, 'defs.tex'), 0o000);
+  const { w, seen } = writer(f);
+  assert.equal(seen.log.length, 1, seen.log.join('\n'));
+  assert.match(seen.log[0], /^tex\.js is not written, since defs\.tex is not read: /);
+  await twoPolls(w);
+  assert.equal(seen.log.length, 1, 'the reason is not logged again without a change');
 });
 
 test('a write of index.html while preamble.tex is being saved does not write tex.js without its macros, and tex.js is written once preamble.tex is stable', async (t) => {

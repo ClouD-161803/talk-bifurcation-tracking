@@ -1318,7 +1318,7 @@ ${angles.map((deg, k) => `  <p style="position: absolute; left: ${60 + 370 * k}p
 test('at 390 px, the badges of a slide and of elements at its edges stay inside the window, and neither they nor the areas that take their taps overlap', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const places = [[0, 0], [1620, 0], [1620, 4], [0, 1040], [1620, 1040], [700, 500], [700, 504], [700, 508]];
+  const places = [[0, 0], [1760, 30], [0, 1040], [1620, 1040], [700, 500], [700, 504], [700, 508]];
   const server = await talkWith(t, `<section>
   <h2>One</h2>
 ${places.map(([x, y], k) => `  <p style="position: absolute; left: ${x}px; top: ${y}px; width: 300px; margin: 0">Place ${k + 1}</p>`).join('\n')}

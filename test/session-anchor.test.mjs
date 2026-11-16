@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkAnchors, diff, moveAnchors, REMOVED_MAX, slidesOf, startTagAt } from '../theme/edit.mjs';
+import { checkAnchors, diff, moveAnchors, REMOVED_MAX, slideChanges, slidesOf, startTagAt } from '../theme/edit.mjs';
 
 // a deck of slides, each given as its lines
 const deck = (...slides) => ['<!doctype html>', '<body>', ...slides.flatMap((lines) => ['<section>', ...lines.map((l) => `  ${l}`), '</section>']), '</body>', ''].join('\n');
@@ -628,4 +628,197 @@ test('an inserting operation takes about as long with threads of removed element
   let ratio = Infinity;
   for (let attempt = 0; attempt < 3 && ratio > 3; attempt++) ratio = median(removed) / median(live);
   assert.ok(ratio <= 3, `the threads of removed elements took ${ratio.toFixed(1)} times as long`);
+});
+
+const INTRO = ['<h2>Introduction</h2>', '<p>Why transfers matter.</p>'];
+const INTRO2 = ['<h2>Introduction</h2>', '<p>Why transfers matter so much.</p>'];
+const MOTIVATION = ['<h2>Motivation</h2>', '<p>Transfers cost fuel.</p>'];
+const RESULTS = ['<h2>Results</h2>', '<p>Lower cost by a third.</p>'];
+const RESULTS2 = ['<h2>Results</h2>', '<p>Fuel use drops sharply.</p>'];
+const OUTLOOK = ['<h2>Outlook</h2>', '<p>Next we try NRHOs.</p>'];
+const OUTLOOK2 = ['<h2>Outlook</h2>', '<p>Next we try NRHOs and DROs.</p>'];
+const METHOD = ['<h2>Method</h2>', '<p>We use a shooting method.</p>'];
+const QUESTIONS = ['<h2>Questions?</h2>'];
+
+test('a slide edited in place keeps its threads next to slides inserted, removed, moved, or edited in place in the same operation', async (t) => {
+  const BACKDROP = '<div class="backdrop" data-backdrop="orbits"></div>';
+  // the items are the thread of the slide that holds inside, then those of its elements in order.
+  // an element given by its text keeps its thread, and one given as null stays on the slide
+  const stays = (after, r, inside, ...elements) => {
+    const slide = slideAround(after, after.indexOf(inside));
+    assert.ok(slide, `${inside} is on a slide`);
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+    elements.forEach((what, k) => {
+      const it = r.items[k + 1];
+      assert.deepEqual(it.slide, slide, JSON.stringify(it));
+      if (what) {
+        reads(after, it.anchor, what);
+        assert.equal(it.removed, undefined);
+      } else assert.ok(it.anchor && it.anchor.start >= slide.start, JSON.stringify(it));
+    });
+  };
+  const cases = {
+    'two neighbors rewritten under their headings, and another slide edited': [
+      deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS),
+      deck(INTRO2, ['<h2>Motivation</h2>', '<p>Fuel is expensive.</p>'], RESULTS2, OUTLOOK, QUESTIONS),
+    ],
+    'a new slide inserted after it': [deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS), deck(INTRO, MOTIVATION, RESULTS2, METHOD, OUTLOOK, QUESTIONS)],
+    'a new slide inserted before it': [deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS), deck(INTRO, MOTIVATION, METHOD, RESULTS2, OUTLOOK, QUESTIONS)],
+    'the slide after it removed': [deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS), deck(INTRO, MOTIVATION, RESULTS2, QUESTIONS)],
+    'another slide moved to the front': [deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS), deck(OUTLOOK, INTRO, MOTIVATION, RESULTS2, QUESTIONS)],
+  };
+  for (const [name, [before, after]] of Object.entries(cases)) {
+    await t.test(name, () => {
+      const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<h2>Results'), onElement(before, '<p>Lower')]);
+      stays(after, r, 'Fuel use drops', '<h2>Results</h2>', null);
+    });
+  }
+  await t.test('a slide of a picture first, its text rewritten, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<img src="a.png">', '<p>Lower cost by a third.</p>'], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO2, MOTIVATION, ['<img src="a.png">', '<p>Fuel use drops sharply.</p>'], OUTLOOK, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<img'), onElement(before, '<p>Lower')]);
+    stays(after, r, 'Fuel use drops', '<img src="a.png">', null);
+  });
+  await t.test('a slide of a backdrop first, its text rewritten, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, [BACKDROP, ...RESULTS], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO2, MOTIVATION, [BACKDROP, ...RESULTS2], OUTLOOK, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<div class="backdrop"'), onElement(before, '<h2>Results'), onElement(before, '<p>Lower')]);
+    stays(after, r, 'Fuel use drops', BACKDROP, '<h2>Results</h2>', null);
+  });
+  await t.test('of three slides of one heading, one removed and one rewritten, the first in order keeps its threads on the rewritten slide', () => {
+    const r1 = ['<h2>Results</h2>', '<p>Cost.</p>'];
+    const before = deck(INTRO, r1, ['<h2>Results</h2>', '<p>Cost and time.</p>'], ['<h2>Results</h2>', '<p>Cost, time, and risk.</p>'], QUESTIONS);
+    const after = deck(INTRO2, r1, ['<h2>Results</h2>', '<p>We also found a family of orbits.</p>'], QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Cost and time'), onElement(before, '<p>Cost and time'), onSlide(before, 'Cost, time')]);
+    const slide = slideAround(after, after.indexOf('We also found'));
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+    assert.deepEqual(r.items[1].slide, slide);
+    assert.equal(r.items[2].anchor, null);
+    assert.ok(r.items[2].removed, JSON.stringify(r.items[2]));
+  });
+});
+
+test('a slide replaced by another without words in one operation hands its threads to the deck, unless the two start with the same kind of element', async (t) => {
+  const gone = (before, inside, r, k) => {
+    const s = slideAround(before, before.indexOf(inside));
+    const whole = before.slice(s.start, before.indexOf('</section>', s.start) + 10);
+    assert.deepEqual(r.items[k], { anchor: null, slide: null, removed: { text: whole } });
+  };
+  await t.test('a slide of text replaced by a slide of a picture, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<img src="orbit.png">'], OUTLOOK2, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<h2>Results'), onElement(before, '<p>Lower')]);
+    gone(before, 'Lower cost', r, 0);
+    for (const k of [1, 2]) assert.equal(r.items[k].anchor, null, JSON.stringify(r.items[k]));
+  });
+  await t.test('an empty slide replaced by a slide of other elements without words, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<h2></h2>'], OUTLOOK2, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<p></p>', '<img src="x.png">'], OUTLOOK, QUESTIONS);
+    const r = move(before, after, [onSlide(before, '<h2></h2>'), onElement(before, '<h2></h2>')]);
+    gone(before, '<h2></h2>', r, 0);
+    assert.equal(r.items[1].anchor, null, JSON.stringify(r.items[1]));
+  });
+  await t.test('a slide emptied into the same elements, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<h2></h2>', '<p></p>'], OUTLOOK2, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Lower cost')]);
+    const slide = slideAround(after, after.indexOf('<h2></h2>'));
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+  });
+  await t.test('a slide of a picture that gains a caption, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<img src="orbit.png">'], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<img src="orbit.png">', '<p>The orbit of the probe.</p>'], OUTLOOK2, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'orbit.png')]);
+    const slide = slideAround(after, after.indexOf('orbit.png'));
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+  });
+  await t.test('an empty slide that is filled with other elements under its heading, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<h2></h2>', '<p></p>'], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<h2>Method</h2>', '<ul><li>Shoot from the halo orbit.</li></ul>', '<img src="x.png">'], OUTLOOK2, QUESTIONS);
+    const r = move(before, after, [onSlide(before, '<h2></h2>')]);
+    const slide = slideAround(after, after.indexOf('Method'));
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+  });
+});
+
+test('a slide whose first element is rewritten in an operation that edits another slide is removed, although its picture is kept', () => {
+  const before = deck(INTRO, MOTIVATION, ['<p>Lower cost by a third.</p>', '<img src="a.png">'], OUTLOOK, QUESTIONS);
+  const after = deck(INTRO2, MOTIVATION, ['<p>Fuel use drops sharply.</p>', '<img src="a.png">'], OUTLOOK, QUESTIONS);
+  const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<img')]);
+  assert.equal(r.items[0].anchor, null);
+  assert.equal(r.items[1].anchor, null);
+});
+
+test('the slides that lose their threads in an operation of several slides are those that the version history calls removed', () => {
+  // a seeded generator, so that a failure is found again
+  const random = (seed) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const HEADINGS = ['Results', 'Outlook', 'Method', 'Motivation'];
+  const FIRST = ['<img src="a.png">', '<img src="b.png">', '<div class="backdrop" data-backdrop="orbits"></div>'];
+  const WORDS = ['orbit', 'halo', 'transfer', 'manifold', 'burn', 'cost', 'fuel', 'moon', 'flight', 'family', 'period', 'energy', 'capture', 'escape', 'window', 'phase'];
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const next = random(seed);
+    const pick = (list) => list[Math.floor(next() * list.length)];
+    // a sentence opens and ends with a word of its own. two slides that share half of their text
+    // across slides paired by place are thus left out, since matchSlides pairs them and slideChanges
+    // does not
+    const name = () => Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(next() * 26))).join('');
+    const sentence = () => [name(), ...Array.from({ length: 2 + Math.floor(next() * 3) }, () => pick(WORDS)), name()].join(' ');
+    const fresh = () => {
+      const lines = [];
+      if (next() < 0.3) lines.push(pick(FIRST));
+      if (next() < 0.7 || !lines.length) lines.push(`<h2>${pick(HEADINGS)}</h2>`);
+      lines.push(`<p>${sentence()}</p>`);
+      return lines;
+    };
+    const rewrite = (lines) => lines.map((l) => (l.startsWith('<p>') ? `<p>${sentence()}</p>` : l));
+    for (let step = 0; step < 150; step++) {
+      // one slide rewritten, replaced by a picture, or emptied, and one or two others inserted,
+      // removed, moved alone or in a run, or rewritten
+      const slides = Array.from({ length: 4 + Math.floor(next() * 6) }, fresh);
+      const now = slides.map((lines) => ({ lines }));
+      const target = pick(now);
+      const kind = pick(['rewrite', 'replace', 'empty']);
+      if (kind === 'rewrite') target.lines = rewrite(target.lines);
+      else if (kind === 'replace') target.lines = [pick(FIRST)];
+      else target.lines = target.lines.map((l) => l.replace(/>[^<]*</, '><'));
+      for (let k = 0, n = 1 + Math.floor(next() * 2); k < n; k++) {
+        const rest = now.filter((x) => x !== target);
+        const what = pick(['insert', 'remove', 'move', 'run', 'rewrite']);
+        if (what === 'insert') now.splice(Math.floor(next() * (now.length + 1)), 0, { lines: fresh() });
+        else if (what === 'remove' && rest.length > 1) now.splice(now.indexOf(pick(rest)), 1);
+        else if (what === 'move') {
+          const x = pick(rest);
+          now.splice(now.indexOf(x), 1);
+          now.splice(Math.floor(next() * (now.length + 1)), 0, x);
+        } else if (what === 'run' && now.length > 3) {
+          const run = now.splice(Math.floor(next() * (now.length - 2)), 2 + Math.floor(next() * 2));
+          now.splice(Math.floor(next() * (now.length + 1)), 0, ...run);
+        } else if (what === 'rewrite') {
+          const x = pick(rest);
+          x.lines = rewrite(x.lines);
+        }
+      }
+      const before = deck(...slides);
+      const after = deck(...now.map((x) => x.lines));
+      const patches = diff(before, after);
+      const s0 = slidesOf(before);
+      // an operation inside one slide is shifted rather than matched
+      if (!patches.length || s0.some((s) => patches.every((p) => p.start >= s.open && p.end <= before.lastIndexOf('</', s.end - 1)))) continue;
+      const tags = s0.map((s) => ({ start: s.start, end: s.open, tag: 'section' }));
+      const r = moveAnchors(before, patches, after, tags.map((tag) => ({ anchor: tag, slide: tag })));
+      const lost = s0.filter((_, i) => !r.items[i].anchor).map((s) => s.number);
+      let delta = 0;
+      const marks = patches.map((p) => {
+        const start = p.start + delta;
+        delta += p.text.length - (p.end - p.start);
+        return { start, end: start + p.text.length };
+      });
+      assert.deepEqual(slideChanges(before, s0, after, slidesOf(after), marks).removed?.slides ?? [], lost, `seed ${seed}, step ${step}\n${before}\n${after}`);
+    }
+  }
 });

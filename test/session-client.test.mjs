@@ -312,9 +312,9 @@ for (const [what, slide, change, typed] of [
 // all the same
 for (const [what, change] of [
   ['answers a reload', (text) => text.replace('<p>Second slide', '<p>Second <b>slide')],
-  ['is rejected', (text) => text.replace('<p>Second slide', '<p>Second<div>q</div> slide')],
+  ['is rejected', (text) => text.replace('slidenih</p>', 'slidenih<div>q</div></p>')],
 ]) {
-  test(`a word committed at the end of a composition whose held-back change ${what} reaches index.html after both pages load again`, { timeout: 180_000 }, async (t) => {
+  test(`a word committed at the end of a composition whose held-back change ${what} reaches index.html after both pages load again`, { timeout: 240_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talk(t);

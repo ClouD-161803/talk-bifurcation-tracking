@@ -149,6 +149,8 @@ export class Comments {
   private edits = 0;
   private saved = 0;
   private stopped = false;
+  // true from a failed delayed write to the next one that succeeds, which log once each
+  private failing = false;
 
   // dir is the .session folder of the talk, and found the patches from the text of the last version
   // of the history to index.html at this start
@@ -678,8 +680,11 @@ export class Comments {
       }
       renameRetriedSync(tmp, this.file, 1);
       this.saved = Math.max(this.saved, edits);
+      if (this.failing) this.log(`wrote ${this.file} again`);
+      this.failing = false;
     } catch (e) {
-      if (!this.stopped) this.log(`could not write ${this.file}, trying again: ${(e as Error).message}`);
+      if (!this.stopped && !this.failing) this.log(`could not write ${this.file}, trying again: ${(e as Error).message}`);
+      this.failing = true;
       await unlink(tmp).catch(() => {});
     }
   }
