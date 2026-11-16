@@ -931,6 +931,25 @@ test('a move that also adds a paragraph keeps this paragraph when another replic
   }
 });
 
+test('a move made offline and a key of another person in the moved paragraph are merged after the break by the choice of the dialog', () => {
+  const [base, moved] = MOVES['inside its slide'];
+  const typed = base.replace('Second slide', 'Second slide by Bea');
+  for (const [wins, want] of [['ours', moved], ['theirs', typed]]) {
+    for (const whole of [false, true]) {
+      const a = new Authority(base, { epoch: 'E' });
+      const op = a.submit({ client: 'beaxxxxx', seq: 1, base: 'E.0', patches: diff(base, typed) }, 'B').op;
+      const r = new Replica('maxxxxxx', base, 'E.0');
+      r.edit(moved);
+      assert.equal(r.conflictsOf([op]).length, 1, `${wins}: the dialog shows a conflict`);
+      if (whole) r.resync(a.text, 'E.1', undefined, wins);
+      else r.catchUp([op], wins);
+      const request = r.outgoing();
+      if (request) r.answer(request, a.submit(request, r.client).answer);
+      assert.equal(a.text, want, `Keep ${wins === 'ours' ? 'mine' : 'theirs'}, ${whole ? 'a resync' : 'the operations'}`);
+    }
+  }
+});
+
 test('a replace in every paragraph and a word typed at once in one of them are both in the text at the end', () => {
   // changes() gives up beyond 2000 changed lines, and gives one hunk for one long line
   for (const join of ['\n', '']) {
