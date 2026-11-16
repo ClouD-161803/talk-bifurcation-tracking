@@ -8,7 +8,7 @@
 // address of a copy made in a session does not name a folder, and its files are asked for at once
 
 import type { App } from '../app.ts';
-import type { Arrival } from '../commands/origin.ts';
+import { deckAddress, type Arrival } from '../commands/origin.ts';
 import { tokenize } from '../tokens.ts';
 import { Dialog, host } from '../ui/dialog.ts';
 import { injectStyle, make, touchOnly } from '../ui/dom.ts';
@@ -189,7 +189,8 @@ export const listed = (n: string[]) => (n.length < 3 ? n.join(' and ') : `${n.sl
 export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   const refs = arrival.texts.map(refsIn);
   const paths = [...new Set(refs.flat().map((r) => r.path))];
-  if (!paths.length) return;
+  // each path of a copy made in a session in this same folder is the file that it names here
+  if (!paths.length || (arrival.origin.session && new URL('.', arrival.origin.deck).href === new URL('.', deckAddress()).href)) return;
   stop = new AbortController();
   injectStyle('paste-busy', BUSY);
   busy ??= new Dialog({ title: 'Copying the files of the paste…', buttons: [{ label: 'Stop', value: 'stop' }], className: 'paste-busy', dismissable: false, stay: ['stop'], onButton: () => performance.now() - opened >= DELAY && stop.abort() });
@@ -234,7 +235,7 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
     // e.g. a file over the limit of a session, or of a type that it does not take
     const why = fresh ? media.refuse?.(new File([blob], path.slice(FOLDER.length + 1), { type: blob.type })) : null;
     if (why) {
-      arrival.notes.push(`${p} was not copied: ${why}.`);
+      arrival.notes.push(`${p} was not copied: ${why}${why.endsWith('.') ? '' : '.'}`);
       continue;
     }
     to.set(p, fresh ? media.add(blob, path.slice(FOLDER.length + 1), isTaken).path : path);

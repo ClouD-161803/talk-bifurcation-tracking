@@ -93,7 +93,10 @@ export function install(client: Client): void {
   let settling = false;
 
   store.refuse = (file) => {
-    if (!TAKEN.test(file.name)) return `${file.name} cannot be sent to the others, since a session takes only PNG, JPEG, GIF, WebP, AVIF, SVG, BMP, MP4, M4V, WebM, MOV, and OGV files`;
+    if (!TAKEN.test(file.name)) {
+      const ext = /\.[^./]+$/.exec(file.name)?.[0].toLowerCase();
+      return `${file.name} cannot be sent to the others, since a session does not take ${ext ? `${ext} files` : 'files without an extension'}. Save it as ${file.type.startsWith('video/') ? 'an MP4 or a WebM' : 'a PNG or a JPEG'}.`;
+    }
     // a guest reaches the edit command through the relay, which also limits what a guest loads
     const video = file.type.startsWith('video/') || (!file.type && VIDEO.test(file.name));
     const max = client.host && video ? HOST_MAX : GUEST_MAX;

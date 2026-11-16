@@ -83,11 +83,15 @@ async function start(given: Handover): Promise<boolean> {
   }
   const v = response.headers.get('x-session-version');
   if (!response.ok) return loadAgain(handover, 'This page cannot join the session', `The edit command answered ${response.status}. Load the page again, or open the address that the host shared.`);
-  port.served(!!v || response.headers.has('x-edit-command'));
+  const served = response.headers.has('x-edit-command');
+  port.served(served);
+  // e.g. another page of the talk folder, which the edit command serves without a session
   if (!v) {
     const dialog = handover.dialog({
-      title: 'This page is not served by an edit command',
-      text: 'The deck is edited without a session. Double-click Edit.command (macOS), Edit.cmd (Windows), or Edit.sh (Linux) in the talk folder, or run npm run edit there, and open the address that it prints.',
+      title: served ? 'This page is not the deck of the session' : 'This page is not served by an edit command',
+      text: served
+        ? 'A session edits index.html of the talk folder. This deck is edited without a session.'
+        : 'The deck is edited without a session. Double-click Edit.command (macOS), Edit.cmd (Windows), or Edit.sh (Linux) in the talk folder, or run npm run edit there, and open the address that it prints.',
       buttons: [{ label: 'OK', value: 'ok', primary: true }],
     });
     void dialog.open().then(() => dialog.el.remove());
