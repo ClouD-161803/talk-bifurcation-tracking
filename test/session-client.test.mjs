@@ -348,7 +348,7 @@ for (const [what, change] of [
   });
 }
 
-test('a name held by another person asks whether it is this person, and Yes takes the person over', { timeout: 120_000 }, async (t) => {
+test('a name held by another person asks whether it is this person, says what Yes means, and Yes takes the person over', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -359,6 +359,10 @@ test('a name held by another person asks whether it is this person, and Yes take
   // the name is isolated from the text around it, which a name in a right-to-left script would reorder
   assert.equal(await b.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] h3 bdi')?.textContent`), 'Ann');
   assert.deepEqual(await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].map((x) => x.textContent)`), ['Use another name', 'Yes, continue']);
+  assert.equal(
+    await b.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p')?.textContent`),
+    'If you are not this person, choose Use another name. With Yes, continue, you join as this person, and you can edit and delete the comments of this person.',
+  );
   await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].find((x) => x.textContent === 'Use another name').click()`);
   await b.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
   await b.evaluate(`document.querySelector('dialog.beeson-session-join input').value = 'Ann'`);
