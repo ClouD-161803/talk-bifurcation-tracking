@@ -1055,7 +1055,7 @@ export function install(client: Client): void {
   shell.define({
     id: 'insert.comment',
     label: 'Comment',
-    keys: { mac: ['Mod+Alt+M'], other: ['Alt+Shift+C'] },
+    keys: { mac: ['Mod+Alt+M'], other: ['Shift+F2'] },
     in: ['canvas', 'text', 'navigator', 'inspector'],
     inText: true,
     menu: { bar: 'Insert', group: 'comment', order: 40 },
