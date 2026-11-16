@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkAnchors, diff, moveAnchors, REMOVED_MAX, slidesOf, startTagAt } from '../theme/edit.mjs';
+import { checkAnchors, diff, moveAnchors, REMOVED_MAX, slideChanges, slidesOf, startTagAt } from '../theme/edit.mjs';
 
 // a deck of slides, each given as its lines
 const deck = (...slides) => ['<!doctype html>', '<body>', ...slides.flatMap((lines) => ['<section>', ...lines.map((l) => `  ${l}`), '</section>']), '</body>', ''].join('\n');
@@ -733,4 +733,78 @@ test('a slide whose first element is rewritten in an operation that edits anothe
   const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<img')]);
   assert.equal(r.items[0].anchor, null);
   assert.equal(r.items[1].anchor, null);
+});
+
+test('the slides that lose their threads in an operation of several slides are those that the version history calls removed', () => {
+  // a seeded generator, so that a failure is found again
+  const random = (seed) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const HEADINGS = ['Results', 'Outlook', 'Method', 'Motivation'];
+  const FIRST = ['<img src="a.png">', '<img src="b.png">', '<div class="backdrop" data-backdrop="orbits"></div>'];
+  const WORDS = ['orbit', 'halo', 'transfer', 'manifold', 'burn', 'cost', 'fuel', 'moon', 'flight', 'family', 'period', 'energy', 'capture', 'escape', 'window', 'phase'];
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const next = random(seed);
+    const pick = (list) => list[Math.floor(next() * list.length)];
+    // a sentence opens and ends with a word of its own. two slides that share half of their text
+    // across slides paired by place are thus left out, since matchSlides pairs them and slideChanges
+    // does not
+    const name = () => Array.from({ length: 6 }, () => String.fromCharCode(97 + Math.floor(next() * 26))).join('');
+    const sentence = () => [name(), ...Array.from({ length: 2 + Math.floor(next() * 3) }, () => pick(WORDS)), name()].join(' ');
+    const fresh = () => {
+      const lines = [];
+      if (next() < 0.3) lines.push(pick(FIRST));
+      if (next() < 0.7 || !lines.length) lines.push(`<h2>${pick(HEADINGS)}</h2>`);
+      lines.push(`<p>${sentence()}</p>`);
+      return lines;
+    };
+    const rewrite = (lines) => lines.map((l) => (l.startsWith('<p>') ? `<p>${sentence()}</p>` : l));
+    for (let step = 0; step < 150; step++) {
+      // one slide rewritten, replaced by a picture, or emptied, and one or two others inserted,
+      // removed, moved alone or in a run, or rewritten
+      const slides = Array.from({ length: 4 + Math.floor(next() * 6) }, fresh);
+      const now = slides.map((lines) => ({ lines }));
+      const target = pick(now);
+      const kind = pick(['rewrite', 'replace', 'empty']);
+      if (kind === 'rewrite') target.lines = rewrite(target.lines);
+      else if (kind === 'replace') target.lines = [pick(FIRST)];
+      else target.lines = target.lines.map((l) => l.replace(/>[^<]*</, '><'));
+      for (let k = 0, n = 1 + Math.floor(next() * 2); k < n; k++) {
+        const rest = now.filter((x) => x !== target);
+        const what = pick(['insert', 'remove', 'move', 'run', 'rewrite']);
+        if (what === 'insert') now.splice(Math.floor(next() * (now.length + 1)), 0, { lines: fresh() });
+        else if (what === 'remove' && rest.length > 1) now.splice(now.indexOf(pick(rest)), 1);
+        else if (what === 'move') {
+          const x = pick(rest);
+          now.splice(now.indexOf(x), 1);
+          now.splice(Math.floor(next() * (now.length + 1)), 0, x);
+        } else if (what === 'run' && now.length > 3) {
+          const run = now.splice(Math.floor(next() * (now.length - 2)), 2 + Math.floor(next() * 2));
+          now.splice(Math.floor(next() * (now.length + 1)), 0, ...run);
+        } else if (what === 'rewrite') {
+          const x = pick(rest);
+          x.lines = rewrite(x.lines);
+        }
+      }
+      const before = deck(...slides);
+      const after = deck(...now.map((x) => x.lines));
+      const patches = diff(before, after);
+      const s0 = slidesOf(before);
+      // an operation inside one slide is shifted rather than matched
+      if (!patches.length || s0.some((s) => patches.every((p) => p.start >= s.open && p.end <= before.lastIndexOf('</', s.end - 1)))) continue;
+      const tags = s0.map((s) => ({ start: s.start, end: s.open, tag: 'section' }));
+      const r = moveAnchors(before, patches, after, tags.map((tag) => ({ anchor: tag, slide: tag })));
+      const lost = s0.filter((_, i) => !r.items[i].anchor).map((s) => s.number);
+      let delta = 0;
+      const marks = patches.map((p) => {
+        const start = p.start + delta;
+        delta += p.text.length - (p.end - p.start);
+        return { start, end: start + p.text.length };
+      });
+      assert.deepEqual(slideChanges(before, s0, after, slidesOf(after), marks).removed?.slides ?? [], lost, `seed ${seed}, step ${step}\n${before}\n${after}`);
+    }
+  }
 });
