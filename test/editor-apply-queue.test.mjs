@@ -5,7 +5,8 @@
 // applies, a box inserted, a content set, and slides duplicated while an apply waits, and an edit
 // next to an apply that replaces most of the text. a key and a remote insertion at one point are
 // both kept, the insertion first. an open composition holds back the change of its own slide only,
-// and a page that does not read as its text after an apply asks for a reload
+// until after the input that Safari sends after its end, and a page that does not read as its
+// text after an apply asks for a reload
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -244,6 +245,38 @@ test('during a composition, the changes before and after the composing text are 
   await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
   assert.equal(await b.evaluate('window.__results.all'), false);
   assert.equal(await render(b), text);
+  assert.deepEqual((await b.evaluate(`${E}.status()`)).problems, []);
+  assert.deepEqual(b.errors, []);
+});
+
+// Safari sends compositionend before the input of the committed text, in one task with the
+// microtasks run between the two events, which the awaits of resolved promises stand for
+const SAFARI_COMMIT = (key) => `(async () => {
+  const p = ${P1};
+  const node = p.lastChild;
+  p.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: ${JSON.stringify(key)} }));
+  for (let i = 0; i < 100; i++) await null;
+  node.appendData(${JSON.stringify(key)});
+  getSelection().collapse(node, node.length);
+  p.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromComposition', data: ${JSON.stringify(key)} }));
+  return true;
+})()`;
+
+test('a change held back across a tag is applied after the input that Safari sends after the end of the composition, and the committed text is kept', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  const text = once(b.source, 'Design the complete slide', 'Design the <b>complete</b> slide');
+  await start(b, 'held', text);
+  await b.waitFor(resolved('held'));
+  assert.equal(await b.evaluate(`!!${P1}.querySelector('b')`), false, 'the change is held back');
+  await b.evaluate(SAFARI_COMMIT('q'));
+  await b.waitFor(`!!${P1}?.querySelector('b')`);
+  const want = once(text, 'viewer\'s attention.</p>', 'viewer\'s attention.q</p>');
+  assert.equal(await b.evaluate(`${P1}.textContent.endsWith('attention.q')`), true, 'the committed text is kept');
+  assert.equal(await render(b), want);
   assert.deepEqual((await b.evaluate(`${E}.status()`)).problems, []);
   assert.deepEqual(b.errors, []);
 });
