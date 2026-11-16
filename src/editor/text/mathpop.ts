@@ -476,9 +476,17 @@ export function install(app: App): void {
     const fresh = !info.tex.trim();
     // the text element is taken now, since a commit draws the formula again in a new container
     const textEl = textElementOf(container);
-    // so does a redraw of tex.js while the field is open, after which the formula is found by its place
+    // so does a redraw of tex.js while the field is open, after which the formula is found by its place,
+    // as long as its text element holds as many formulas and this one has its TeX
+    const count = textEl.querySelectorAll('mjx-container').length;
     const at = [...textEl.querySelectorAll('mjx-container')].indexOf(container);
-    const now = (): Element => (container.isConnected ? container : textEl.querySelectorAll('mjx-container')[at] ?? container);
+    const now = (): Element => {
+      if (container.isConnected) return container;
+      const all = textEl.isConnected ? textEl.querySelectorAll('mjx-container') : [];
+      const candidate = all[at];
+      if (candidate && all.length === count && mathLookup()(candidate)?.tex === info.tex) return candidate;
+      throw new Error('Another person changed the formulas of this text. Copy your TeX, close the field, and open the formula again.');
+    };
     openSheet({
       title: fresh ? 'Insert Formula' : 'Edit Formula',
       tex: info.tex,
