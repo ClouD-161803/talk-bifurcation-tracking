@@ -65,6 +65,9 @@ export class History {
   // the entries of typing that are not part of a transaction, whose undo and redo change only the
   // typing of the person, and which a change of their text element by others does not drop
   private readonly typed = new WeakSet<Entry>();
+  // the entries of typing whose carry was refused. their texts do not hold the changes of the
+  // others, hence their undo and redo are refused
+  private readonly dead = new WeakSet<Entry>();
   private readonly snapshot: (host: Element) => string;
   private readonly restore: (host: Element, content: string) => Promise<void>;
   private readonly onChange: () => void;
@@ -281,15 +284,18 @@ export class History {
 
   // track() after other people changed host, where the typing in progress goes on. its content
   // before is given the changes of the others too, hence the keys after them are added to its
-  // entry and its undo keeps the changes. it ends when the changes overlap its keys
+  // entry and its undo keeps the changes. it ends when the changes overlap its keys, and its undo
+  // and redo are then refused
   carry(host: Element): void {
     const now = this.snapshot(host);
     this.known.set(host, now);
     const t = this.typing;
     if (t?.host !== host) return;
     const before = revert(t.state.after, t.state.before, now);
-    if (before === null) this.typing = null;
-    else {
+    if (before === null) {
+      this.dead.add(t.entry);
+      this.typing = null;
+    } else {
       t.state.before = before;
       t.state.after = now;
     }
@@ -319,7 +325,7 @@ export class History {
     // the change from one content to the other made over the changes of others in host since,
     // which a part of a transaction writes over when it cannot be made
     const write = (from: string, to: string, way: 'undo' | 'redo') => {
-      const t = revert(from, to, this.snapshot(host)) ?? (this.typed.has(entry) ? null : to);
+      const t = this.dead.has(entry) ? null : (revert(from, to, this.snapshot(host)) ?? (this.typed.has(entry) ? null : to));
       if (t === null) throw REFUSED;
       return restore(t, way);
     };
