@@ -346,6 +346,9 @@ test('the merge of an apply in a session keeps a long paste of one person and a 
     ['今天 我们 讨论 轨道', 5, rep('天地玄黄宇宙洪荒', 600)],
     // the largest paste into a paragraph of 300 characters below the cap of anchored()
     [PARA, 150, rep(PROSE, 3194)],
+    // pastes over this cap, around the paragraph whole
+    [PARA, 150, rep(PROSE, 4000)],
+    [rep(PARA, 1000), 500, rep(PROSE, 1000)],
     // the paste starts with the first word of the paragraph and holds its next letter o long before
     // the longest run "orbit is stable"
     ['The orbit is stable', 13, rep(PROSE, 1200)],
@@ -357,6 +360,16 @@ test('the merge of an apply in a session keeps a long paste of one person and a 
     return mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text !== wrap(`<p>${paste}${para.slice(0, at)}A${para.slice(at)}C</p>`);
   });
   assert.deepEqual(lost.map(([para, , paste]) => `${paste.slice(0, 8)}… of ${paste.length} into ${para}`), []);
+});
+
+test('the merge of an apply in a session keeps a long deletion of one person before the paragraph and one of a third person after it around an unread key of the person', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+  const para = rep(PARA, 1000), before = rep(PROSE, 1100), after = rep('Another sentence that a third person deletes. ', 1100);
+  const f = wrap(`<p>${before}${para}${after}</p>`), t = wrap(`<p>${para}</p>`);
+  const s = wrap(`<p>${before}${para.slice(0, 500)}A${para.slice(500)}${after}</p>`), want = wrap(`<p>${para.slice(0, 500)}A${para.slice(500)}</p>`);
+  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, want);
+  assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, want);
 });
 
 // the longest runs in common of the paragraph and the new text are "econd " of the paste and
