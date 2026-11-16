@@ -173,10 +173,11 @@ test('the keys of a remote during the delay of the last step go on to the next s
 });
 
 test('the key A pauses the delays, which stay paused through the steps of the keys, and A again plays them', async (t) => {
-  const page = await open(t);
-  await press(page, 'ArrowRight');
-  await press(page, 'ArrowRight');
-  await press(page, 'A');
+  const page = await inDelay(t, async (page) => {
+    await press(page, 'ArrowRight');
+    await press(page, 'ArrowRight');
+    await press(page, 'A');
+  }, { slide: 1, shown: ['Click'] });
   assert.deepEqual(await settled(page), { slide: 1, shown: ['Click'] });
   await press(page, 'ArrowRight');
   assert.deepEqual(await settled(page), { slide: 1, shown: ['Click', 'Timed one'] });
