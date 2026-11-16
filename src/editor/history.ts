@@ -10,8 +10,9 @@ import { revert } from './merge.ts';
 // els are the elements that the entry changes, and selects is the step at which a part of a
 // transaction puts a selection back. touches are further elements that its undo or redo changes,
 // which do not take the selection after it, and detaches are the elements that its undo or its redo
-// takes off the page with everything inside them. orders are the elements whose children its undo
-// or redo puts back in an order
+// takes off the page with everything inside them. parents are the elements of touches whose
+// children alone its undo or redo changes, and orders are the elements whose children its undo or
+// redo puts back in an order
 // the caret put at the end of the last text of host, before the white space of the layout
 function caretAtEnd(host: Element): void {
   const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
@@ -22,7 +23,7 @@ function caretAtEnd(host: Element): void {
   else getSelection()?.collapse(host, 0);
 }
 
-export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; detaches?: readonly Element[]; orders?: readonly Element[]; selects?: 'undo' | 'redo' };
+export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; parents?: readonly Element[]; detaches?: readonly Element[]; orders?: readonly Element[]; selects?: 'undo' | 'redo' };
 
 type Page = { Beeson?: { refreshChrome?(): void } };
 

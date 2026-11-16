@@ -281,6 +281,7 @@ export class Doc {
           await this.after(parent);
         },
         touches: [...nodes, parent],
+        parents: [parent],
         detaches: nodes,
       });
       return nodes;
@@ -325,6 +326,7 @@ export class Doc {
           await this.after(rec.parent);
         },
         touches: [el, rec.parent],
+        parents: [rec.parent],
         detaches: [el],
       });
     } finally {
@@ -349,7 +351,7 @@ export class Doc {
     } finally {
       done();
     }
-    this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before), touches: [el, from.parent, parent], orders: [from.parent, parent] });
+    this.host.record({ label, undo: () => put(from.parent, from.next), redo: () => put(parent, before), touches: [el, from.parent, parent], parents: [from.parent, parent], orders: [from.parent, parent] });
   }
 
   // el replaced by an element of the tag with the same attributes and content, and with the edit
@@ -393,6 +395,7 @@ export class Doc {
           await this.after(parent);
         },
         touches: [el, node, parent],
+        parents: [parent],
         detaches: [el, node],
       });
       return node;
