@@ -49,6 +49,8 @@ export class History {
   private undone: Entry[] = [];
   // the typing in progress: the text element, its content before and after, and the time of the last key
   private typing: { host: Element; state: { before: string; after: string }; entry: Entry; at: number } | null = null;
+  // the last typing of each text element, which carry() takes also after it ended
+  private readonly latest = new WeakMap<Element, NonNullable<History['typing']>>();
   private busy = false;
   private still = false;
   // the undos and redos asked for, run one after the other
@@ -296,12 +298,13 @@ export class History {
   carry(host: Element): void {
     const now = this.snapshot(host);
     this.known.set(host, now);
-    const t = this.typing;
-    if (t?.host !== host) return;
+    // a typing that ended is carried while its entry is in done
+    const t = this.latest.get(host);
+    if (!t || (t !== this.typing && !this.done.includes(t.entry))) return;
     const before = revert(t.state.after, t.state.before, now);
     if (before === null) {
       this.dead.add(t.entry);
-      this.typing = null;
+      if (t === this.typing) this.typing = null;
     } else {
       t.state.before = before;
       t.state.after = now;
@@ -349,6 +352,7 @@ export class History {
     };
     this.typed.add(entry);
     this.typing = { host, state, entry, at };
+    this.latest.set(host, this.typing);
     this.known.set(host, before);
   }
 
