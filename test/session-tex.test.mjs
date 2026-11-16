@@ -280,6 +280,35 @@ test('Apply in an open Edit Formula field writes the formula after another perso
   clean(ben, MISSING);
 });
 
+test('a new formula whose commit at a click away is refused, since another person changed it, keeps its Insert Formula field open with the typed TeX and the message', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  await show(ben, 'Macros');
+  await show(ann, 'Citations');
+  await front(ann);
+  await ann.evaluate(`(() => {
+    document.activeElement?.blur();
+    window.__before = new Set(document.querySelectorAll('.reveal .slides mjx-container'));
+    window.BeesonEditor.exec('insert.formula');
+    return true;
+  })()`);
+  await ann.waitFor(`!!document.querySelector('.beeson-math textarea') && document.activeElement === document.querySelector('.beeson-math textarea')`);
+  await ann.evaluate(`(window.__made = [...document.querySelectorAll('.reveal .slides mjx-container')].find((c) => !window.__before.has(c)), true)`);
+  await typeKeys(ann, 'y');
+  await ann.waitFor(`document.querySelector('.beeson-math textarea').value === 'y'`);
+  await converge(server, [ann, ben]);
+  await other(server, '\\[\\]', '\\[x\\]');
+  await ann.waitFor(`!window.__made.isConnected`, 30_000);
+  await front(ann);
+  await ann.evaluate(`document.querySelector('.reveal section.present h2').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })), true`);
+  await ann.waitFor(`!document.querySelector('.beeson-math') || document.querySelector('.beeson-math .error')?.textContent === ${JSON.stringify(CHANGED)}`, 30_000);
+  await converge(server, [ann, ben]);
+  assert.ok(server.read().includes('\\[x\\]'), `index.html keeps the formula of the other person, and holds ${server.read().match(/\\\[.*?\\\]/g)}`);
+  assert.deepEqual(JSON.parse(await ann.evaluate(FIELD)), { open: true, tex: 'y', message: CHANGED });
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
 test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);
