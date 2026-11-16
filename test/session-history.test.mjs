@@ -429,6 +429,32 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
   clean(ben);
 });
 
+// the waits are 60 s for the edit command to start, 15 s each for the page, the shape, the pane, and
+// the end of the mode, and 20 s for each of two converges
+test('a letter typed in Version History is not written into the shape that was selected before the mode, nor into index.html', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const shape = `document.querySelector('.reveal .slides > section .shape')`;
+  await ann.evaluate(`window.BeesonEditor.exec('insert.shape.rectangle', { box: { left: 200, top: 600, width: 400, height: 200 } }).then(() => true)`);
+  await ann.waitFor(`!!${shape}`);
+  await ann.evaluate(`${C}.app.selection.set('elements', []), true`);
+  await click(ann, await ann.evaluate(`(() => { const r = ${shape}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+  await ann.waitFor(`${C}.app.selection.only() === ${shape}`);
+  await converge(server, [ann]);
+  const before = await ann.evaluate(TEXT);
+  const file = server.read();
+  await press(ann, HISTORY_KEY);
+  await ann.waitFor(`!!document.querySelector('${PANE}:not([hidden])') && document.documentElement.classList.contains('beeson-history')`);
+  await typeKeys(ann, 'z');
+  await press(ann, 'Escape');
+  await ann.waitFor(`!document.querySelector('${PANE}:not([hidden])')`);
+  await converge(server, [ann]);
+  assert.deepEqual({ deck: (await ann.evaluate(TEXT)) === before, file: server.read() === file }, { deck: true, file: true });
+  clean(ann);
+});
+
 test('the mode ends at the time limit of a restore whose operation does not reach the deck', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
