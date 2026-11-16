@@ -495,3 +495,39 @@ test('a click and a tap on a figure of a plate select the figure while the capti
   clean(ben);
   clean(cy);
 });
+
+test('a text element that a page moved, or moved back with Undo, is held on this page when another person puts the caret in it', { timeout: 240_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  const last = `${p}.parentElement.lastElementChild === ${p}`;
+  // the source of the page of Ben does not read as the deck after his move, and a change of another
+  // page, from which his page would read the deck again, does not follow
+  await front(ben);
+  await ben.evaluate(`(() => { const p = ${p}; return ${C}.app.doc.move(p, p.parentElement, null).then(() => true); })()`);
+  await converge(server, [ana, ben]);
+  await caretAtEnd(ana, p);
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the moved paragraph that Ana is in to be held on the page of Ben');
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the undo of the move');
+  assert.equal(await ben.evaluate(last), true, 'the paragraph stays at the end of its slide');
+  await unbubble(ben);
+  // the same after the undo of the move, taken once Ana left the paragraph
+  await front(ana);
+  await leave(ana);
+  await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  assert.equal(await ben.evaluate(last), false, 'the undo of the move is taken');
+  await converge(server, [ana, ben]);
+  await caretAtEnd(ana, p);
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in again to be held on the page of Ben');
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.redo')`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the redo of the move');
+  assert.equal(await ben.evaluate(last), false, 'the paragraph stays where the undo put it');
+  clean(ana);
+  clean(ben);
+});
