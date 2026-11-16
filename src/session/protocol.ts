@@ -162,14 +162,16 @@ export type CommentReply = { id: string; author: string; time: number; text: str
 // deck. slide is the start tag of the slide that holds the element, or null. a removed element
 // falls back to its slide, and a removed slide to the deck, and removed is then set, holding the
 // text of what was removed, or null when it was larger than 4 kB or is not known. a re-insertion of
-// this text attaches the thread to it again. author, by, and mentions are person ids, time and
+// this text attaches the thread to it again. a thread of an element of a removed slide holds the
+// text of the slide as well in removed.slide, and is attached again only inside a re-insertion of
+// it. a removed slide is itself such a text. author, by, and mentions are person ids, time and
 // edited are times in ms. the offsets are of the text at the version that the answer or the events
 // answer carrying the thread is of, and a page moves them itself with every later operation
 export type Comment = {
   id: string;
   anchor: Anchor | null;
   slide: Anchor | null;
-  removed?: { text: string | null };
+  removed?: { text: string | null; slide?: string };
   author: string;
   time: number;
   text: string;

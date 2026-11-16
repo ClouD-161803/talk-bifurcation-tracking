@@ -1795,7 +1795,7 @@ function keepsTag(after, a, patches) {
   const t = startTagAt(after, shiftOffset(a.start, patches, true));
   return !!t && t.tag === a.tag && t.end === shiftOffset(a.end, patches, false);
 }
-var changedFrom = (it, next, patches) => !sameAnchor(next.anchor, it.anchor && shiftTag(it.anchor, patches)) || !sameAnchor(next.slide, it.slide && shiftTag(it.slide, patches)) || !!next.removed !== !!it.removed || next.removed?.text !== it.removed?.text;
+var changedFrom = (it, next, patches) => !sameAnchor(next.anchor, it.anchor && shiftTag(it.anchor, patches)) || !sameAnchor(next.slide, it.slide && shiftTag(it.slide, patches)) || !!next.removed !== !!it.removed || next.removed?.text !== it.removed?.text || next.removed?.slide !== it.removed?.slide;
 function betweenTags(text, p) {
   if (p.start > 0 && text.lastIndexOf("<", p.start - 1) > text.lastIndexOf(">", p.start - 1)) return false;
   const gt = text.indexOf(">", p.end);
@@ -1904,15 +1904,25 @@ function slow(before2, patches, after, items, given) {
     return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
   };
   const reattach = (it, text) => {
+    const took = (x) => patches.some((p) => p.end - p.start >= x.length && before2.slice(p.start, p.end).includes(x));
     let within = null;
     if (it.slide) {
       const i = index.get(it.slide.start) ?? -1;
       if (i < 0 || to[i] < 0) return null;
       within = s1[to[i]];
+    } else {
+      const whole = it.removed?.slide ?? (startTagAt(text, 0)?.tag === "section" ? text : null);
+      const s = whole ? findInserted(after, whole, inserted, 0) : -1;
+      if (s < 0 || took(whole)) return null;
+      within = { start: s, end: s + whole.length };
+      if (!whole.includes(text)) {
+        const slide2 = slideAt(s1, s);
+        return slide2?.start === s ? { anchor: tagOf(slide2), slide: tagOf(slide2), removed: { text } } : null;
+      }
     }
-    const o = findInserted(after, text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : 0, within);
+    const o = findInserted(after, text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : within ? within.start : 0, within);
     const t = o >= 0 ? startTagAt(after, o) : null;
-    if (!t || patches.some((p) => p.end - p.start >= text.length && before2.slice(p.start, p.end).includes(text))) return null;
+    if (!t || took(text)) return null;
     const slide = slideAt(s1, o);
     return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
   };
@@ -1929,7 +1939,9 @@ function slow(before2, patches, after, items, given) {
     const j = i >= 0 ? to[i] : -1;
     if (it.slide && a.start === it.slide.start) {
       if (j >= 0) return withRemoved(tagOf(s1[j]), tagOf(s1[j]), it.removed);
-      return { anchor: null, slide: null, removed: it.removed ?? { text: i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null } };
+      const whole = i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null;
+      if (!it.removed) return { anchor: null, slide: null, removed: { text: whole } };
+      return { anchor: null, slide: null, removed: whole && it.removed.text ? { text: it.removed.text, slide: whole } : it.removed };
     }
     if (j >= 0 && kept[i]) {
       const d = s1[j].start - s0[i].start;
@@ -1941,7 +1953,9 @@ function slow(before2, patches, after, items, given) {
       const text = e < 0 ? null : before2.slice(a.start, e);
       const o = text ? findInserted(after, text, inserted, shiftOffset(a.start, patches)) : -1;
       if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, slide: slideAnchorAt(s1, o) };
-      return { anchor: null, slide: null, removed: { text: text !== null && text.length <= REMOVED_MAX ? text : null } };
+      const kept2 = text !== null && text.length <= REMOVED_MAX ? text : null;
+      const whole = kept2 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null;
+      return { anchor: null, slide: null, removed: whole ? { text: kept2, slide: whole } : { text: kept2 } };
     }
     const found = locate(a, i >= 0 ? s0[i].end : before2.length);
     const at = found.anchor && slideAnchorAt(s1, found.anchor.start);
@@ -2342,6 +2356,7 @@ var bytesOf = (x) => Buffer.byteLength(JSON.stringify(x));
 var headBytes = (t) => bytesOf({ ...t, replies: [] }) + 1;
 var replyBytes = (r) => bytesOf(r) + 1;
 var tooLarge = () => fail(413, "the comments of the deck are too large");
+var copyRemoved = (r) => r.slide === void 0 ? { text: r.text && copy(r.text) } : { text: r.text && copy(r.text), slide: copy(r.slide) };
 var readOnly = () => fail(503, "the comments could not be read at the start, hence they are read only until the edit command is started again");
 function cleanText(raw) {
   if (typeof raw !== "string" || !raw.trim()) return fail(400, "the text is empty");
@@ -2368,9 +2383,9 @@ function readThread(t) {
   if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
   if (c.edited !== void 0 && !isNumber(c.edited)) return null;
   if (c.resolved !== void 0 && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
-  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || typeof c.removed.text === "string"))) return null;
+  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || typeof c.removed.text === "string") && (c.removed.slide === void 0 || typeof c.removed.slide === "string"))) return null;
   const out = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
-  if (c.removed) out.removed = { text: c.removed.text };
+  if (c.removed) out.removed = c.removed.slide === void 0 ? { text: c.removed.text } : { text: c.removed.text, slide: c.removed.slide };
   if (c.edited !== void 0) out.edited = c.edited;
   if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
   return out;
@@ -2472,7 +2487,7 @@ var Comments = class {
     if (isFailure(at)) return at;
     const item = this.toCurrent(n, at);
     const thread = { id: body.id ?? newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
-    if (item.removed) thread.removed = { text: item.removed.text && copy(item.removed.text) };
+    if (item.removed) thread.removed = copyRemoved(item.removed);
     if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
     const head = headBytes(thread);
     if (this.bytes + head > this.maxBytes) return tooLarge();
@@ -2736,7 +2751,7 @@ var Comments = class {
     t.anchor = item.anchor;
     t.slide = item.slide;
     if (item.removed === t.removed) return;
-    if (item.removed) t.removed = { text: item.removed.text && copy(item.removed.text) };
+    if (item.removed) t.removed = copyRemoved(item.removed);
     else delete t.removed;
     this.recount(t);
     if (t.removed?.text && this.bytes > this.maxBytes) {

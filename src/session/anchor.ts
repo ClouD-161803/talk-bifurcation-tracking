@@ -5,14 +5,15 @@
 // tag in place, and an element whose text the patches take from its place is followed to where
 // they insert it. a removed element falls back to its slide, and a removed slide to the deck, with
 // the removed text kept up to 4 kB, by which a re-insertion of it unchanged attaches the anchor
-// again. pure, for the edit command and the browser
+// again. an element of a removed slide keeps the text of the slide as well, and is looked for only
+// inside a re-insertion of the whole slide. pure, for the edit command and the browser
 
 import { tokenize } from '../editor/tokens.ts';
 import { checksum, shiftOffset } from './patch.ts';
 import type { Anchor, Patch } from './protocol.ts';
 import { pairs, shared, slidesOf, VOID, type Slide } from './slides.ts';
 
-export type Anchored = { anchor: Anchor | null; slide: Anchor | null; removed?: { text: string | null } };
+export type Anchored = { anchor: Anchor | null; slide: Anchor | null; removed?: { text: string | null; slide?: string } };
 // the items in the order given, true in changed for an item moved otherwise than by a shift, and
 // the slides of the text after, or null when they were neither given nor needed. a shift keeps the
 // numbers of the slides, which only their offsets are kept for
@@ -32,7 +33,7 @@ const sameAnchor = (a: Anchor | null, b: Anchor | null) => a === b || (!!a && !!
 const shiftTag = (a: Anchor, patches: Patch[]): Anchor => ({ start: shiftOffset(a.start, patches, true), end: shiftOffset(a.end, patches, false), tag: a.tag });
 // true when p changes a character of [s, e) or inserts strictly inside it
 const touches = (p: Patch, s: number, e: number) => (p.start < p.end ? p.start < e && s < p.end : s < p.start && p.start < e);
-const withRemoved = (anchor: Anchor | null, slide: Anchor | null, removed?: { text: string | null }): Anchored => (removed ? { anchor, slide, removed } : { anchor, slide });
+const withRemoved = (anchor: Anchor | null, slide: Anchor | null, removed?: Anchored['removed']): Anchored => (removed ? { anchor, slide, removed } : { anchor, slide });
 
 // the start tag that begins at offset i of text, or null
 export function startTagAt(text: string, i: number): Anchor | null {
@@ -260,7 +261,8 @@ const changedFrom = (it: Anchored, next: Anchored, patches: Patch[]) =>
   !sameAnchor(next.anchor, it.anchor && shiftTag(it.anchor, patches)) ||
   !sameAnchor(next.slide, it.slide && shiftTag(it.slide, patches)) ||
   !!next.removed !== !!it.removed ||
-  next.removed?.text !== it.removed?.text;
+  next.removed?.text !== it.removed?.text ||
+  next.removed?.slide !== it.removed?.slide;
 
 // true when the nearest < or > before p is a > or there is none, and the nearest at or after its end
 // is a < or there is none
@@ -410,15 +412,27 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
   // the element of a removed text that the patches inserted again into the slide of it, or anywhere
   // for a thread of the deck, unless the same operation took the text from elsewhere
   const reattach = (it: Anchored, text: string): Anchored | null => {
+    const took = (x: string) => patches.some((p) => p.end - p.start >= x.length && before.slice(p.start, p.end).includes(x));
     let within: Span | null = null;
     if (it.slide) {
       const i = index.get(it.slide.start) ?? -1;
       if (i < 0 || to[i] < 0) return null;
       within = s1[to[i]];
+    } else {
+      // a thread of the deck is of a removed slide, whose whole text has to be inserted again
+      const whole = it.removed?.slide ?? (startTagAt(text, 0)?.tag === 'section' ? text : null);
+      const s = whole ? findInserted(after, whole, inserted, 0) : -1;
+      if (s < 0 || took(whole!)) return null;
+      within = { start: s, end: s + whole!.length };
+      // an element that had fallen back to the slide before its removal falls back to it again
+      if (!whole!.includes(text)) {
+        const slide = slideAt(s1, s);
+        return slide?.start === s ? { anchor: tagOf(slide), slide: tagOf(slide), removed: { text } } : null;
+      }
     }
-    const o = findInserted(after, text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : 0, within);
+    const o = findInserted(after, text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : within ? within.start : 0, within);
     const t = o >= 0 ? startTagAt(after, o) : null;
-    if (!t || patches.some((p) => p.end - p.start >= text.length && before.slice(p.start, p.end).includes(text))) return null;
+    if (!t || took(text)) return null;
     const slide = slideAt(s1, o);
     return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
   };
@@ -437,7 +451,9 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     // a comment on a slide, or one fallen back to it
     if (it.slide && a.start === it.slide.start) {
       if (j >= 0) return withRemoved(tagOf(s1[j]), tagOf(s1[j]), it.removed);
-      return { anchor: null, slide: null, removed: it.removed ?? { text: i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before.slice(s0[i].start, s0[i].end) : null } };
+      const whole = i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before.slice(s0[i].start, s0[i].end) : null;
+      if (!it.removed) return { anchor: null, slide: null, removed: { text: whole } };
+      return { anchor: null, slide: null, removed: whole && it.removed.text ? { text: it.removed.text, slide: whole } : it.removed };
     }
     // an element of a slide whose text is unchanged, wherever the slide went
     if (j >= 0 && kept[i]) {
@@ -452,7 +468,9 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
       const text = e < 0 ? null : before.slice(a.start, e);
       const o = text ? findInserted(after, text, inserted, shiftOffset(a.start, patches)) : -1;
       if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, slide: slideAnchorAt(s1, o) };
-      return { anchor: null, slide: null, removed: { text: text !== null && text.length <= REMOVED_MAX ? text : null } };
+      const kept = text !== null && text.length <= REMOVED_MAX ? text : null;
+      const whole = kept && s0[i].end - s0[i].start <= REMOVED_MAX ? before.slice(s0[i].start, s0[i].end) : null;
+      return { anchor: null, slide: null, removed: whole ? { text: kept, slide: whole } : { text: kept } };
     }
     const found = locate(a, i >= 0 ? s0[i].end : before.length);
     const at = found.anchor && slideAnchorAt(s1, found.anchor.start);

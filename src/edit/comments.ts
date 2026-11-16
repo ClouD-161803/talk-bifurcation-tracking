@@ -56,6 +56,9 @@ const bytesOf = (x: unknown) => Buffer.byteLength(JSON.stringify(x));
 const headBytes = (t: Comment) => bytesOf({ ...t, replies: [] }) + 1;
 const replyBytes = (r: CommentReply) => bytesOf(r) + 1;
 const tooLarge = () => fail(413, 'the comments of the deck are too large');
+// the texts of a removed element are cut from a whole earlier text of the deck, which a copy does not
+// keep alive
+const copyRemoved = (r: NonNullable<Anchored['removed']>) => (r.slide === undefined ? { text: r.text && copy(r.text) } : { text: r.text && copy(r.text), slide: copy(r.slide) });
 const readOnly = () => fail(503, 'the comments could not be read at the start, hence they are read only until the edit command is started again');
 
 // a text of a comment, or a failure
@@ -93,9 +96,9 @@ function readThread(t: unknown): Comment | null {
   if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
   if (c.edited !== undefined && !isNumber(c.edited)) return null;
   if (c.resolved !== undefined && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
-  if (c.removed !== undefined && !(c.removed && (c.removed.text === null || typeof c.removed.text === 'string'))) return null;
+  if (c.removed !== undefined && !(c.removed && (c.removed.text === null || typeof c.removed.text === 'string') && (c.removed.slide === undefined || typeof c.removed.slide === 'string'))) return null;
   const out: Comment = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
-  if (c.removed) out.removed = { text: c.removed.text };
+  if (c.removed) out.removed = c.removed.slide === undefined ? { text: c.removed.text } : { text: c.removed.text, slide: c.removed.slide };
   if (c.edited !== undefined) out.edited = c.edited;
   if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
   return out;
@@ -213,7 +216,7 @@ export class Comments {
     if (isFailure(at)) return at;
     const item = this.toCurrent(n, at);
     const thread: Comment = { id: (body.id as string | undefined) ?? newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
-    if (item.removed) thread.removed = { text: item.removed.text && copy(item.removed.text) };
+    if (item.removed) thread.removed = copyRemoved(item.removed);
     if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
     const head = headBytes(thread);
     if (this.bytes + head > this.maxBytes) return tooLarge();
@@ -497,8 +500,7 @@ export class Comments {
     t.anchor = item.anchor;
     t.slide = item.slide;
     if (item.removed === t.removed) return;
-    // a removed text is cut from a whole earlier text of the deck, which a copy does not keep alive
-    if (item.removed) t.removed = { text: item.removed.text && copy(item.removed.text) };
+    if (item.removed) t.removed = copyRemoved(item.removed);
     else delete t.removed;
     this.recount(t);
     // a removed text is left out when it would pass the limit, since a deletion is never refused
