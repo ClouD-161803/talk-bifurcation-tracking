@@ -76,7 +76,7 @@ export function findTools(env = process.env) {
   return { latex: find('latex'), dvisvgm: find('dvisvgm') };
 }
 
-const attributes = (tag) => {
+export const attributes = (tag) => {
   const values = {};
   for (const [, name, double, single, bare] of tag.replace(/^<\w+/, '').matchAll(/([^\s=>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g)) {
     values[name.toLowerCase()] = double ?? single ?? bare ?? '';

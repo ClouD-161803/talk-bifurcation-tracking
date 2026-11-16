@@ -88,6 +88,12 @@ A named scope or curve of a TikZ figure that a slide shows as a step.
 
 Avoid "part" for an element of a slide or for a mark of an animated plot. A part is written with the key `part` in the source and with `data-part` on its span in the deck.
 
+## PDF figure
+
+A page of a PDF on a slide, shown as the image of its render for each mode, or as one render in the colors of the PDF. Its PDF is named in `data-pdf` and its page in `data-page`.
+
+Avoid "PDF image" and "embedded PDF".
+
 ## Plate
 
 The figure box over the whole of a figure slide, behind its heading and its caption.
@@ -111,6 +117,12 @@ Avoid "macros file", "header", and "style file". The `theme/macros.js` of an old
 The short entry of a cited paper in the footnote line of its slide, e.g. Koon et al., Chaos 10 (2000).
 
 Avoid "footnote" and "citation".
+
+## Render
+
+The PNG of the page of a PDF figure, written by the editor or by `npm run tex`, in the colors of a mode or in those of the PDF.
+
+Avoid "rasterization" and "preview".
 
 ## Sheet
 

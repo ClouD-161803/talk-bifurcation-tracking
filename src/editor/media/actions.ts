@@ -15,11 +15,13 @@ import { checkOverlaps } from '../overflow.ts';
 import { overShapes } from '../commands/order.ts';
 import { twinOf } from '../canvas/hit.ts';
 import { kindOf, media, type Kind, type MediaFile } from './store.ts';
+import { isPdf, pageOfFigure, pdfBytes, renderPdf } from './pdf.ts';
+import type { Mode } from '../../pdffigure.ts';
 
 export const ACCEPT: Record<Kind | 'any', string> = {
-  image: 'image/*',
+  image: 'image/*,application/pdf,.pdf',
   video: 'video/*,.mp4,.m4v,.webm,.mov',
-  any: 'image/*,video/*,.mp4,.m4v,.webm,.mov',
+  any: 'image/*,application/pdf,.pdf,video/*,.mp4,.m4v,.webm,.mov',
 };
 
 // a box of the layout that takes a figure, i.e. a figure box, a plate, or a figure, other than a plot,
@@ -103,15 +105,32 @@ export function taken(app: App): (path: string) => boolean {
   return (path) => text.includes(path);
 }
 
-type Ready = { kind: Kind; file: MediaFile; poster: MediaFile | null; problem: string | null };
+// a PDF is kept with its renders, one for each mode, or one in the colors of the PDF
+type Pdf = { path: string; page: number; renders: { mode: Mode; file: MediaFile }[] };
+type Ready = { kind: Kind; file: MediaFile; poster: MediaFile | null; problem: string | null; pdf?: Pdf };
+
+// a PDF kept in the store with the renders of page in each of modes
+// a PDF of the deck at path, or else a new file of the store, with the renders of page in each of modes
+export async function preparePdf(app: App, bytes: Uint8Array, page: number, modes: Mode[], at: { path: string } | { name: string }): Promise<Pdf> {
+  const path = 'path' in at ? at.path : media.add(new Blob([bytes as BlobPart], { type: 'application/pdf' }), at.name, taken(app), 'figure').path;
+  const { files } = await renderPdf(bytes, path, page, modes, taken(app));
+  return { path, page, renders: files };
+}
+
+const BOTH: Mode[] = ['dark', 'light'];
 
 // the files kept in the store, each video with the poster of its first frame
 async function prepare(app: App, files: File[]): Promise<Ready[]> {
   const usable = files.filter((f) => kindOf(f));
-  if (!usable.length && files.length) throw new Error(`${files[0].name} is not an image or a video`);
+  if (!usable.length && files.length) throw new Error(`${files[0].name} is not an image, a PDF, or a video`);
   const out: Ready[] = [];
   for (const blob of usable) {
     const kind = kindOf(blob)!;
+    if (isPdf(blob)) {
+      const pdf = await preparePdf(app, new Uint8Array(await blob.arrayBuffer()), 1, BOTH, { name: blob.name });
+      out.push({ kind, file: pdf.renders[0].file, poster: null, problem: null, pdf });
+      continue;
+    }
     const file = media.add(blob, blob.name, taken(app), kind);
     let poster: MediaFile | null = null;
     let problem: string | null = null;
@@ -125,6 +144,30 @@ async function prepare(app: App, files: File[]): Promise<Ready[]> {
     out.push({ kind, file, poster, problem });
   }
   return out;
+}
+
+// the attributes of an image of a PDF figure that shows the render file
+export const pdfAttrs = (pdf: Pdf, file: MediaFile): Record<string, string | null> => ({ src: file.path, 'data-pdf': pdf.path, 'data-page': pdf.page > 1 ? String(pdf.page) : null });
+
+// the tags of the renders of a PDF figure, each with the class of its mode before classes
+export const pdfText = (pdf: Pdf, attrs: Record<string, string> = {}, classes: string[] = []): string[] =>
+  pdf.renders.map(({ mode, file }) => {
+    const a = { ...attrs, ...Object.fromEntries(Object.entries(pdfAttrs(pdf, file)).filter(([, v]) => v !== null) as [string, string][]) };
+    const more = Object.entries(a).filter(([k]) => k !== 'src').map(([k, v]) => ` ${k}="${attr(v)}"`).join('');
+    const cls = [...(mode ? [`for-${mode}`] : []), ...classes];
+    return `<img${cls.length ? ` class="${cls.join(' ')}"` : ''} src="${attr(file.path)}"${more}>`;
+  });
+
+// the classes of an image of a pair that name or recolor its file, which its twin does not share
+const OWN_CLASSES = ['for-dark', 'for-light', 'white-figure', 'invert'];
+
+// the tag of the twin of el for mode, with the file src, and with every attribute, class, and
+// declaration of el that the two images share
+function twinText(app: App, el: Element, mode: 'dark' | 'light', src: string): string {
+  const state = app.doc.tagState(el);
+  const attrs: Record<string, string> = { ...state.attrs, class: [`for-${mode}`, ...state.classes.filter((c) => !OWN_CLASSES.includes(c))].join(' '), src };
+  delete attrs.srcset;
+  return `<img${Object.entries(attrs).map(([k, v]) => (v ? ` ${k}="${attr(v)}"` : ` ${k}`)).join('')}>`;
 }
 
 function mediaText(r: Ready, classes: string[] = [], attrs: Record<string, string> = {}): string {
@@ -147,23 +190,25 @@ function watch(app: App, root: Element): void {
 // which is not on the disk yet, since app.doc puts the new element on the page before its first
 // pause
 async function fill(app: App, slot: Element, r: Ready, label: string): Promise<Element> {
-  const pending = app.doc.insert(mediaText(r), slot, null, label);
+  const pending = app.doc.insert(r.pdf ? pdfText(r.pdf) : mediaText(r), slot, null, label);
   media.resolve(slot);
-  const [node] = await pending;
-  media.resolve(node);
-  watch(app, node);
+  for (const node of await pending) {
+    media.resolve(node);
+    watch(app, node);
+  }
   return slot;
 }
 
 // a new figure box with the element of r, before the footnote and the notes of the slide
 async function addFigureBox(app: App, slide: Element, r: Ready): Promise<Element> {
   const before = slide.querySelector(':scope > .foot, :scope > aside.notes');
-  const pending = app.doc.insertElement(r.kind, slide, before, r.kind === 'image' ? { src: r.file.path, alt: '' } : { src: r.file.path, poster: r.poster?.path ?? '' });
+  const options = r.pdf ? { pictures: pdfText(r.pdf) } : r.kind === 'image' ? { src: r.file.path, alt: '' } : { src: r.file.path, poster: r.poster?.path ?? '' };
+  const pending = app.doc.insertElement(r.kind, slide, before, options);
   media.resolve(slide);
   const [figureBox] = await pending;
   const el = figureBox.querySelector('img, video');
   // the template writes an empty alt, i.e. a decorative image, and a poster named after the video
-  if (el?.localName === 'img') app.doc.setTag(el, { attrs: { alt: null } }, 'alt');
+  if (el?.localName === 'img' && !r.pdf) app.doc.setTag(el, { attrs: { alt: null } }, 'alt');
   else if (el && !r.poster) app.doc.setTag(el, { attrs: { poster: null } }, 'poster');
   media.resolve(figureBox);
   watch(app, figureBox);
@@ -209,10 +254,53 @@ export async function insertFiles(app: App, files: File[], into: Element | null 
   return nodes;
 }
 
-function setFiles(app: App, el: Element, attrs: Record<string, string | null>, label: string): void {
+function setFiles(app: App, el: Element, attrs: Record<string, string | null>, label: string, classes?: Record<string, boolean>): void {
   media.resolve(el);
-  app.doc.setTag(el, { attrs }, label.toLowerCase());
+  app.doc.setTag(el, { attrs, ...(classes ? { classes } : {}) }, label.toLowerCase());
   watch(app, el);
+}
+
+// the renders of pdf put on the image el and its twin, as part of the entry label of the history.
+// with one render in the colors of the PDF, el is shown in both modes and its twin is taken off.
+// with a render for each mode, el keeps its mode, or takes the dark mode, and a twin is added for the
+// other mode where it is missing. invert and white-figure are taken off a render for a mode, which
+// is already in the colors of its mode
+export async function setPdf(app: App, el: HTMLImageElement, pdf: Pdf, label: string): Promise<void> {
+  const twin = twinOf(app, el);
+  const shared = { 'data-pdf': pdf.path, 'data-page': pdf.page > 1 ? String(pdf.page) : null };
+  const own = pdf.renders.find((r) => r.mode === null);
+  const plain = { invert: false, 'white-figure': false };
+  if (own) {
+    setFiles(app, el, { ...shared, src: own.file.path }, label, { 'for-dark': false, 'for-light': false });
+    if (twin) await app.doc.remove(twin, label);
+    return;
+  }
+  const mode: 'dark' | 'light' = el.classList.contains('for-light') ? 'light' : 'dark';
+  const other = mode === 'dark' ? 'light' : 'dark';
+  const file = (m: Mode) => pdf.renders.find((r) => r.mode === m)!.file;
+  setFiles(app, el, { ...shared, src: file(mode).path }, label, { ...plain, 'for-dark': mode === 'dark', 'for-light': mode === 'light' });
+  if (twin) return setFiles(app, twin, { src: file(other).path }, label, plain);
+  const pending = app.doc.insert(twinText(app, el, other, file(other).path), el.parentElement!, el.nextElementSibling, label);
+  media.resolve(el.parentElement!);
+  for (const node of await pending) {
+    media.resolve(node);
+    watch(app, node);
+  }
+}
+
+// a PDF figure in the colors of the PDF, i.e. an image with data-pdf and without a mode
+export const ownColors = (el: Element): boolean => el.hasAttribute('data-pdf') && !el.classList.contains('for-dark') && !el.classList.contains('for-light');
+
+// a PDF figure rendered again from its PDF, at another page or with Match the Mode turned over, as
+// one entry label of the history
+export async function rerenderPdf(app: App, el: HTMLImageElement, change: { page?: number; own?: boolean }, label: string): Promise<void> {
+  const path = el.getAttribute('data-pdf');
+  const bytes = path ? await pdfBytes(path) : null;
+  if (!path || !bytes) return;
+  const own = change.own ?? ownColors(el);
+  const pdf = await preparePdf(app, bytes, change.page ?? pageOfFigure(el), own ? [null] : BOTH, { path });
+  await app.history.selecting(label, () => setPdf(app, el, pdf, label));
+  app.invalidate('content');
 }
 
 // the file of the image or the video el replaced, as one entry of the history. a video gets the
@@ -220,7 +308,13 @@ function setFiles(app: App, el: Element, attrs: Record<string, string | null>, l
 // keeps the mode, the step, the id, the group, the lock, and the place of el. the new picture is
 // selected, unless its figure is
 export async function replaceFile(app: App, el: HTMLImageElement | HTMLVideoElement, file: File): Promise<void> {
-  if (!kindOf(file)) throw new Error(`${file.name} is not an image or a video`);
+  if (!kindOf(file)) throw new Error(`${file.name} is not an image, a PDF, or a video`);
+  if (isPdf(file) && el instanceof HTMLImageElement) {
+    const pdf = await preparePdf(app, new Uint8Array(await file.arrayBuffer()), 1, ownColors(el) ? [null] : BOTH, { name: file.name });
+    await app.history.selecting('Replace Image', () => setPdf(app, el, pdf, 'Replace Image'));
+    app.invalidate('content');
+    return;
+  }
   const [r] = await prepare(app, [file]);
   const pair = r.kind === kindOfElement(el) ? pairMode(app, el) : null;
   const label = pair ? `Add ${kindName(r.kind)} for ${pair === 'dark' ? 'Dark' : 'Light'} Mode` : `Replace ${kindName(kindOfElement(el))}`;
@@ -245,7 +339,7 @@ export async function replaceFile(app: App, el: HTMLImageElement | HTMLVideoElem
       return;
     }
     if (r.kind === kindOfElement(el)) {
-      setFiles(app, el, r.kind === 'image' ? { src: r.file.path } : { src: r.file.path, poster: r.poster?.path ?? null }, label);
+      setFiles(app, el, r.kind === 'image' ? { src: r.file.path, ...(el.hasAttribute('data-pdf') ? { 'data-pdf': null, 'data-page': null } : {}) } : { src: r.file.path, poster: r.poster?.path ?? null }, label);
       select(el);
       return;
     }
@@ -257,12 +351,18 @@ export async function replaceFile(app: App, el: HTMLImageElement | HTMLVideoElem
     const kept = Object.fromEntries(Object.entries(own.attrs).filter(([k]) => KEPT.includes(k)));
     const place = Object.entries(own.style).filter(([k]) => PLACE.includes(k)).map(([k, v]) => `${k}: ${v}`).join('; ');
     if (place) kept.style = place;
-    const pending = app.doc.insert(mediaText(r, classes, kept), parent, el, label);
+    // the renders of a PDF are shown in both modes, hence the picture of the other mode is taken off
+    const twin = r.pdf ? twinOf(app, el) : null;
+    const pending = app.doc.insert(r.pdf ? pdfText(r.pdf, kept, classes.filter((c) => !OWN_CLASSES.includes(c))) : mediaText(r, classes, kept), parent, el, label);
     media.resolve(parent);
-    const [node] = await pending;
-    media.resolve(node);
-    watch(app, node);
+    const nodes = await pending;
+    for (const node of nodes) {
+      media.resolve(node);
+      watch(app, node);
+    }
+    const node = nodes[0];
     await app.doc.remove(el, label);
+    if (twin) await app.doc.remove(twin, label);
     select(node);
   });
   app.invalidate('content');
@@ -281,13 +381,15 @@ export const unreadable = (el: HTMLVideoElement): boolean => {
   return location.protocol === 'file:' && !!url && !/^(blob|data):/.test(url) && !chosen.has(url);
 };
 
-// the copy of the video file chosen by the person, or null after a cancel
-async function videoFile(url: string): Promise<string | null> {
+// the copy of the file at url chosen by the person, e.g. a video or a PDF, or null after a cancel
+export async function askForFile(url: string, noun: string, accept: string): Promise<string | null> {
+  const kept = chosen.get(url);
+  if (kept) return kept;
   const name = fileName(url);
   let picked: Promise<File[]> | null = null;
   await ask({
-    title: 'Choose the Video File',
-    text: `The browser does not let a deck opened from a file read the frames of its videos. Choose ${name} once in the file chooser, and its frames can be read until the deck is closed.`,
+    title: `Choose the ${noun} File`,
+    text: `The browser does not let a deck opened from a file read the files next to it. Choose ${name} once in the file chooser, and it can be read until the deck is closed.`,
     buttons: [
       { label: 'Cancel', value: 'cancel' },
       { label: `Choose ${name}…`, value: 'choose', primary: true },
@@ -295,12 +397,12 @@ async function videoFile(url: string): Promise<string | null> {
     className: 'beeson-poster-ask',
     // the chooser is opened in the click on the button, which a browser requires of a file chooser
     onButton: (value) => {
-      if (value === 'choose') picked = chooseFiles(ACCEPT.video);
+      if (value === 'choose') picked = chooseFiles(accept);
     },
   }, 'choose');
   const files = await (picked ?? Promise.resolve([] as File[]));
   if (!files.length) return null;
-  if (files[0].name !== name) throw new Error(`the chosen file ${files[0].name} is not the file of the video, ${name}`);
+  if (files[0].name !== name) throw new Error(`the chosen file ${files[0].name} is not ${name}`);
   const copy = URL.createObjectURL(files[0]);
   chosen.set(url, copy);
   return copy;
@@ -315,7 +417,7 @@ export const setPosterTime = (el: HTMLVideoElement, time: number): void => void 
 export async function capturePoster(app: App, el: HTMLVideoElement): Promise<void> {
   const url = el.currentSrc || el.src;
   if (!url) throw new Error('the video does not have a file');
-  const source = chosen.get(url) ?? (unreadable(el) ? await videoFile(url) : url);
+  const source = chosen.get(url) ?? (unreadable(el) ? await askForFile(url, 'Video', ACCEPT.video) : url);
   if (!source) return;
   const blob = await firstFrame(source, posterTime(el));
   const name = stemOf(media.pathOf(el.getAttribute('src')) ?? 'video');

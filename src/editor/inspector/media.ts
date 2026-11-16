@@ -1,5 +1,5 @@
 // the Image, Video, and QR panes of the Format tab. the Image pane has the file, the description
-// read by a screen reader, i.e. the alt of the image, the classes white-figure and invert, its mask, and
+// read by a screen reader, i.e. the alt of the image, the page and Match the Mode of a PDF figure, the classes white-figure and invert, its mask, and
 // the mode in which the image is shown, as the Image tab of Keynote. the Video pane has the file, the poster,
 // and the switches of playback, and the QR pane the text of the code with the count of its bytes.
 // the file of an image or a video is shown in a well with Replace…, and the poster of a video in a
@@ -15,7 +15,8 @@ import { posterTime, setPosterTime, unreadable } from '../media/actions.ts';
 import { media } from '../media/store.ts';
 import { make, injectStyle } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
-import { button, checkbox, note, row, section, segmented, textField, type Control, type Run } from './controls.ts';
+import { button, checkbox, note, numberField, row, section, segmented, textField, type Control, type Run } from './controls.ts';
+import { pageOfFigure } from '../media/pdf.ts';
 
 const CSS = `
 .beeson-edit-inspector .ed-well { display: grid; grid-template-columns: 56px 1fr; gap: 4px 10px; align-items: center; }
@@ -88,6 +89,14 @@ const modes = (app: App, run: Run, what: string): Control =>
     note(() => `A pair of ${what}s, one for each mode of the deck, is marked Dark and Light. On a pair, Dark or Light swaps the two, and Both keeps this ${what} alone.`),
   ]);
 
+// the page of a PDF figure and Match the Mode, which render the PDF again
+const pdfSection = (app: App, run: Run, img: HTMLImageElement): Control =>
+  section('PDF', [
+    row([numberField(app, { label: 'Page', unit: '', min: 1, step: 1, refuse: true, value: () => pageOfFigure(img), enabled: () => img.isConnected, commit: (page) => run('media.pdfPage', { el: img, page }) })]),
+    checkbox(app, run, 'media.matchMode', 'Match the Mode, with an image for each mode'),
+    note(() => `Page ${pageOfFigure(img)} of ${fileName(img.getAttribute('data-pdf'))}. With Match the Mode, the black of the PDF is drawn in the color of the text, and its white in the color of the slide.`),
+  ]);
+
 export function imagePane(app: App, run: Run): Control[] {
   injectStyle('inspector-media', CSS);
   const img = paneImageOf(app);
@@ -107,6 +116,7 @@ export function imagePane(app: App, run: Run): Control[] {
       keptNote(() => img?.getAttribute('src') ?? null),
     ]),
     section(null, [alt, checkbox(app, run, 'figure.decorative', 'Decorative')]),
+    ...(img?.hasAttribute('data-pdf') ? [pdfSection(app, run, img)] : []),
     section('Appearance', [
       checkbox(app, run, 'figure.caption', 'Caption'),
       checkbox(app, run, 'figure.whiteFigure', 'White Figure, framed in white'),
