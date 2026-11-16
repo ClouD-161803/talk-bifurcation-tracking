@@ -151,6 +151,18 @@ test('a slide replaced by another is removed, and slides moved or edited in plac
     assert.deepEqual(changes(one, two), { slides: [2], removed: { slides: [2], elements: 0 } });
     assert.deepEqual(changes(two, one), { slides: [2], removed: { slides: [2], elements: 0 } });
   });
+  await t.test('a slide of a short heading replaced by one that holds the two short words of its middle', () => {
+    const one = deck(INTRO, slide('End of the talk'), QUESTIONS);
+    const two = deck(INTRO, slide('Results', '<p>The transfer costs a third less than a direct one of the same duration.</p>'), QUESTIONS);
+    assert.deepEqual(paired(one, two), [[0, 0], [2, 2]]);
+    assert.deepEqual(changes(one, two), { slides: [2], removed: { slides: [2], elements: 0 } });
+  });
+  await t.test('a slide of a short heading and a picture replaced by one that shares two short words with it', () => {
+    const one = deck(INTRO, slide('Shape of the orbit', '<img src="media/shape.png">'), QUESTIONS);
+    const two = deck(INTRO, slide('Goal of the talk', '<img src="media/goal.png">'), QUESTIONS);
+    assert.deepEqual(paired(one, two), [[0, 0], [2, 2]]);
+    assert.deepEqual(changes(one, two), { slides: [2], removed: { slides: [2], elements: 0 } });
+  });
   await t.test('a slide moved past others', () => {
     const one = deck(INTRO, METHOD, RESULTS, BETA, QUESTIONS);
     const two = deck(METHOD, RESULTS, BETA, INTRO, QUESTIONS);
