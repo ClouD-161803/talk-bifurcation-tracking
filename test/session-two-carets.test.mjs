@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, STATE, TEXT, converge, show } from './helpers/client.mjs';
+import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
 import { typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { el, session } from './helpers/presence.mjs';
@@ -155,6 +155,44 @@ test('the keys of two other people that come in one answer on both sides of an u
   assert.deepEqual([ana.errors, ben.errors, cleo.errors], [[], [], []]);
 });
 
+// the selection of a page put on the offsets a to b of the first text node of the paragraph
+const selectIn = (page, a, b) => page.evaluate(`(() => { const q = ${p}; q.focus(); getSelection().setBaseAndExtent(q.firstChild, ${a}, q.firstChild, ${b}); return document.activeElement === q; })()`);
+
+/**
+ * Ana types key at her selection a to b inside the apply whose text holds marker, i.e. after her
+ * client read the deck, while her poll is held until the change of the others is in index.html, so
+ * that all of it comes in one answer. Returns the paragraph that the pages and index.html agree on.
+ */
+async function race(t, { names = ['Ana', 'Ben'], edits = [], ana: [a, b, key], marker, ben }) {
+  const { server, pages } = await session(t, names, { edits, pages: [{ script: NET }] });
+  const [ana, ...others] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  assert.ok(await selectIn(ana, a, b));
+  await ana.evaluate(`(() => {
+    const port = window.BeesonEditor.session;
+    const apply = port.apply;
+    window.__armed = true;
+    port.apply = function (text) {
+      if (window.__armed && text.includes(${JSON.stringify(marker)})) {
+        window.__armed = false;
+        document.execCommand('insertText', false, ${JSON.stringify(key)});
+      }
+      return apply.call(this, text);
+    };
+    return true;
+  })()`);
+  await ana.evaluate(`__net.rule('/.session/events', 'hold') && __net.drop('/.session/events')`);
+  await until(() => ana.evaluate('__net.held.length > 0'), 'a held poll of Ana');
+  await ben(...others);
+  await until(() => para(server.read()).includes(marker), 'the change of the others in index.html');
+  await ana.evaluate(`__net.clear() && __net.release('/.session/events')`);
+  await until(() => ana.evaluate('window.__armed === false'), 'the key of Ana at the apply');
+  const text = para(await converge(server, pages));
+  assert.deepEqual(pages.map((page) => page.errors), pages.map(() => []));
+  return text;
+}
+
 // the history of page settled after a command of it
 const run = async (page, id) => {
   await front(page);
@@ -204,4 +242,52 @@ test('an undo of a word whose trailing space the browser of another person took 
   assert.equal(para(text), '<p>Second slide foobar</p>');
   assert.equal(await ana.evaluate(`${C}.app.history.undoLabel`), null, 'the refused entry is dropped');
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+// Ben makes the word slide bold or italic with a command
+const format = (id) => async (page) => {
+  assert.ok(await selectIn(page, 7, 12));
+  await run(page, id);
+};
+
+test('an unread less-than sign that replaces a letter stays one character reference beside the key of another person after the letter', { timeout: 240_000 }, async (t) => {
+  const text = await race(t, {
+    ana: [8, 9, '<'],
+    marker: 'slZide',
+    ben: async (page) => {
+      assert.ok(await selectIn(page, 9, 9));
+      await typeKeys(page, 'Z');
+    },
+  });
+  assert.equal(text, '<p>Second s&lt;Zide</p>');
+});
+
+test('an unread ampersand that replaces a letter stays one character reference beside the key of another person after the letter', { timeout: 240_000 }, async (t) => {
+  const text = await race(t, {
+    edits: [['  <p>Second slide</p>', '  <p>Second cat</p>']],
+    ana: [8, 9, '&'],
+    marker: 'caZt',
+    ben: async (page) => {
+      assert.ok(await selectIn(page, 9, 9));
+      await typeKeys(page, 'Z');
+    },
+  });
+  assert.equal(text, '<p>Second c&amp;Zt</p>');
+});
+
+test('a word composed at the start of a word that another person makes bold during the composition goes before the new element', { timeout: 240_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben']);
+  const [ana, ben] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  assert.ok(await caretAt(ana, 7));
+  for (const s of ['n', 'ni']) await ana.send('Input.imeSetComposition', { text: s, selectionStart: s.length, selectionEnd: s.length });
+  await format('text.bold')(ben);
+  await until(() => para(server.read()).includes('<strong>'), 'the bold of Ben in index.html');
+  await until(async () => (await ana.evaluate(TEXT)).includes('<strong>'), 'the bold of Ben in the text that Ana reads');
+  await ana.send('Input.imeSetComposition', { text: 'nih', selectionStart: 3, selectionEnd: 3 });
+  await ana.send('Input.insertText', { text: '你好' });
+  const text = para(await converge(server, pages));
+  assert.equal(text, '<p>Second 你好<strong>slide</strong></p>');
+  assert.deepEqual([await loads(ana), ana.errors, ben.errors], [1, [], []], 'the page of Ana is not loaded again');
 });
