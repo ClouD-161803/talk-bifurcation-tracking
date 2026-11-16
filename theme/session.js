@@ -195,7 +195,8 @@ html.beeson-history .beeson-comment-badges, html.beeson-history .beeson-edit-nav
 .beeson-comments .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .beeson-comments .mention { color: var(--ed-text); font-weight: 600; text-decoration-line: underline; text-decoration-color: var(--ed-select); text-decoration-thickness: 2px; text-underline-offset: 2px; }
 .beeson-comments button.icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ed-muted); }
-.beeson-comments button.icon:hover { background: var(--ed-hover); color: var(--ed-text); }
+.beeson-comments button.icon:not(:disabled):hover { background: var(--ed-hover); color: var(--ed-text); }
+.beeson-comments :is(button.icon, button.text-button):disabled { color: var(--ed-faint); }
 .beeson-comments button.text-button, .beeson-comments .actions button { min-height: 32px; padding: 0 10px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); color: var(--ed-text); font: inherit; }
 .beeson-comments .actions button.primary { border-color: transparent; background: var(--ed-select); color: var(--ed-on-select); }
 .beeson-comments .actions button:disabled { opacity: 0.5; }
