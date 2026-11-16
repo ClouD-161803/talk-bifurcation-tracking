@@ -143,6 +143,13 @@ test('revert removes a word typed with a leading space before a space, and refus
   assert.equal(typed(after.indexOf('ig')), null);
 });
 
+test('revert refuses when an insertion of another person beside the span can be read as the letters of the person', () => {
+  // the person typed "go", and another person typed "go " before it, whose "go" the texts also
+  // give as the letters of the person
+  assert.equal(revert('<p>Second goslide</p>', '<p>Second slide</p>', '<p>Second go goslide</p>'), null);
+  assert.equal(revert('ba', 'a', 'b ba'), null);
+});
+
 test('revert refuses when an edit of another person at an end of the span can be read on the other side of it', () => {
   // the person typed "this", and another person removed an s after it, which the texts also give
   // as the s of the person
