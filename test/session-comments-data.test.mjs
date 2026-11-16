@@ -449,3 +449,18 @@ test('a comment written on one page of a person is not unread on another page of
   clean(a);
   clean(other);
 });
+
+test('a draft whose element is not found in the source says so and is not sent', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
+  await type(a, 'On a paragraph without an offset');
+  // the port does not find the paragraph in the source, as for an element that no edit has reached
+  await a.evaluate(`(() => { const port = ${C}.port; const find = port.offsetOf.bind(port); port.offsetOf = (x) => (x.localName === 'p' ? null : find(x)); })()`);
+  await click(a, `${PANE} .draft .actions .primary`);
+  await sees(a, `document.querySelector('${PANE} .draft .error:not([hidden])')?.textContent ?? null`, 'The element is not found in the deck. Try again.');
+  assert.deepEqual(await a.evaluate(`${C}.transport.comments(${C}.token).then((r) => r.comments.length)`), 0);
+  clean(a);
+});
