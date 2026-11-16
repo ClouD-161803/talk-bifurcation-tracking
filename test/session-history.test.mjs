@@ -550,6 +550,41 @@ test('on a phone of 390 px the slide of the canvas is above the sheet, and the p
   clean(ann);
 });
 
+test('on a phone with the notes open, the slide of the canvas and the preview of a version are drawn above the sheet', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await converge(server, [ann]);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Notes')`);
+  await ann.waitFor(`document.documentElement.classList.contains('beeson-notes')`);
+  await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await ann.waitFor(SHOWN);
+  // the notes are below the sheet, hence the slide has the room between the toolbar and the sheet
+  const room = `(() => {
+    const slide = document.querySelector('.reveal:not(.beeson-peek)').getBoundingClientRect();
+    const sheet = document.querySelector('${PANE}').getBoundingClientRect();
+    return { above: slide.bottom <= sheet.top + 0.5, shown: slide.height >= 100 };
+  })()`;
+  await ann.waitFor(`Object.values(${room}).every(Boolean)`).catch(() => {});
+  assert.deepEqual(await ann.evaluate(room), { above: true, shown: true });
+  // a version previewed with the whole list shown again
+  await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
+  await ann.waitFor(`${FRAME}?.contentDocument?.readyState === 'complete'`, 30_000);
+  await press$(ann, PANE, 'Versions');
+  const frame = `(() => {
+    const frame = ${FRAME}.getBoundingClientRect();
+    const sheet = document.querySelector('${PANE}').getBoundingClientRect();
+    return { above: frame.bottom <= sheet.top + 0.5, shown: frame.height >= 100 };
+  })()`;
+  await ann.waitFor(`Object.values(${frame}).every(Boolean)`).catch(() => {});
+  assert.deepEqual(await ann.evaluate(frame), { above: true, shown: true });
+  await press$(ann, PANE, 'Back to editor');
+  await ann.waitFor(`!(${SHOWN})`);
+  clean(ann);
+});
+
 const AFTER = TALK.indexOf('First slide') + 'First slide'.length;
 
 // a history written by hand: versions are { time, name?, id?, start? }, oldest first, each of which
