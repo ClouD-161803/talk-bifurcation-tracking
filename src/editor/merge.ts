@@ -210,6 +210,34 @@ export function charEdits(a: string, b: string, max: number): Edit[] | null {
   return hunks && hunks.map((h) => ({ start: head + h.a0, end: head + h.a1, text: y.slice(h.b0, h.b1) }));
 }
 
+// the most pairs of units that anchored() compares, which take it about 4 ms on a laptop
+const CELLS = 1 << 20;
+
+// the edits that turn a into b around the longest run of units that the parts between their shared
+// start and end have in common, with the parts before and after the run diffed by charEdits(), e.g.
+// for the old text of a paragraph after a long paste and a key at its end. null when the parts are
+// too long to compare, have no unit in common, or differ in more than 500 units on a side
+function anchored(a: string, b: string): Edit[] | null {
+  const [head, tail] = shared(a, b);
+  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
+  if (x.length * y.length > CELLS) return null;
+  let best = 0, bx = 0, by = 0;
+  let prev = new Uint32Array(y.length + 1), row = new Uint32Array(y.length + 1);
+  for (let i = 1; i <= x.length; i++) {
+    for (let j = 1; j <= y.length; j++) {
+      const v = x.charCodeAt(i - 1) === y.charCodeAt(j - 1) ? prev[j - 1] + 1 : 0;
+      row[j] = v;
+      if (v > best) [best, bx, by] = [v, i - v, j - v];
+    }
+    [prev, row] = [row, prev];
+  }
+  if (!best) return null;
+  const left = charEdits(x.slice(0, bx), y.slice(0, by), 500);
+  const right = charEdits(x.slice(bx + best), y.slice(by + best), 500);
+  const at = (es: Edit[], d: number) => es.map((e) => ({ start: e.start + d, end: e.end + d, text: e.text }));
+  return left && right && [...at(left, head), ...at(right, head + bx + best)];
+}
+
 const WORDS = /\w+|\s+|[^\w\s]+/g;
 
 // the edits that turn a into b, one per run of changed words, each narrowed to the characters that
@@ -229,14 +257,15 @@ function wordEdits(a: string, b: string, max: number): Edit[] | null {
   });
 }
 
-// the edits that turn a into b for a merge of a session, one per run of changed characters, or of
-// changed words past 500 changed units, e.g. for a paste, or of changed lines past 250 changed
+// the edits that turn a into b for a merge of a session, one per run of changed characters, also
+// around the longest run in common past 500 changed units, e.g. for a paste, or one per run of
+// changed words where the parts are too long for anchored(), or of changed lines past 250 changed
 // words. an edit is widened so that it cuts neither a tag nor a character reference of b, nor one
 // of a, as the authority widens a patch, and a start tag and its end tag that b puts around a run
 // are one edit over the run. a merge thus never writes into a tag that neither side wrote, and a
 // key before a word that another person makes bold stays before the new element
 export function fine(a: string, b: string): Edit[] {
-  const found = charEdits(a, b, 500) ?? wordEdits(a, b, 250) ?? edits(a, b);
+  const found = charEdits(a, b, 500) ?? anchored(a, b) ?? wordEdits(a, b, 250) ?? edits(a, b);
   if (!found.length) return found;
   // the edits as patches of b back to a, widened to the tokens of b, and turned around again
   let d = 0;

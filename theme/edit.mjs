@@ -150,6 +150,7 @@ function changes(base, theirs) {
   }
   return removed > base.length / 2 ? null : out;
 }
+var CELLS = 1 << 20;
 
 // src/editor/tokens.ts
 var RAW_TEXT = /* @__PURE__ */ new Set(["script", "style", "xmp", "iframe", "noembed", "noframes"]);
