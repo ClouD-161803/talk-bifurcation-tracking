@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, captured, click, press, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -107,11 +107,11 @@ for (const platform of PLATFORMS) {
     await page.evaluate(SLOW_SEEK);
     const r = await boxOf(page, SLIDER);
     await click(page, { x: r.left + 8 + (r.width - 16) * 0.5, y: r.top + r.height / 2 });
-    await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}.png"')`, 10000);
+    await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}.png"')`);
     const half = await posterBytes(page, video);
     await page.evaluate(`document.querySelector(${js(SLIDER)}).focus()`);
     await press(page, 'Home');
-    await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}-2.png"')`, 10000);
+    await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}-2.png"')`);
     const first = await posterBytes(page, video);
     assert.notEqual(half, first, 'the poster at the middle of the video is its first frame');
     await page.evaluate('window.showDirectoryPicker = () => navigator.storage.getDirectory()');

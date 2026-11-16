@@ -10,7 +10,7 @@ import * as textElements from './elements.ts';
 import { FORMATS, around, inlineTargets, isTone, setTone, toggle, type FormatName, type Tone } from './inline.ts';
 
 type Caret = { host: Element; node: Node; offset: number; pending: boolean };
-type Carry = Caret & { formats: Partial<Record<FormatName, boolean>>; tone?: Tone | null; style?: textElements.ParagraphStyle; list?: textElements.ListKind; small?: boolean };
+type Carry = Caret & { formats: Partial<Record<FormatName, boolean>>; tone?: Tone | null; style?: textElements.ParagraphStyle; list?: textElements.ListKind; small?: boolean; nbsp?: boolean };
 
 const SMALL_CODE = '18px';
 let carry: Carry | null = null;
@@ -154,7 +154,8 @@ export function sizeCode(app: App, up: boolean): void {
   app.invalidate('content');
 }
 
-// the caret at the end of the last text of the selection, inside the formats around it
+// the caret at the end of the last text of the selection, inside the formats around it. the
+// selection may end inside this text, once the text after it has been joined to it
 function caretAtLastText(): void {
   const sel = window.getSelection();
   if (!sel?.rangeCount) return;
@@ -163,8 +164,24 @@ function caretAtLastText(): void {
   let last: Text | null = root instanceof Text ? root : null;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) if (range.intersectsNode(n) && !n.parentElement?.closest('mjx-container')) last = n;
-  if (last) sel.collapse(last, last.length);
+  if (last) sel.collapse(last, last === range.endContainer ? range.endOffset : last.length);
   else sel.collapseToEnd();
+}
+
+// the outermost element of a format that k takes off, around the caret and ending at it, e.g. the
+// sup of a reference number after Superscript is turned off. Chrome types a space at this caret
+// into the element, where it is drawn at the size of a superscript
+function ending(k: Carry): Element | null {
+  const off = (Object.keys(k.formats) as FormatName[]).filter((name) => k.formats[name] === false);
+  let out: Element | null = null;
+  for (let el = k.node instanceof Element ? k.node : k.node.parentElement; el && el !== k.host && k.host.contains(el); el = el.parentElement) {
+    if (!off.some((name) => FORMATS[name].match(el))) continue;
+    const rest = document.createRange();
+    rest.setStart(k.node, k.offset);
+    rest.setEnd(el, el.childNodes.length);
+    if (!rest.toString()) out = el;
+  }
+  return out;
 }
 
 // the first text of the selection that is not in a formula
@@ -229,7 +246,8 @@ export async function applyPending(app: App, from: Element, to: Element): Promis
 
 export function install(app: App): void {
   // the first character typed at the caret of a carry is typed with it. a space alone is typed as
-  // it is and keeps the carry, since a format is not set on a run of white space
+  // it is and keeps the carry, since a format is not set on a run of white space. at the end of a
+  // format that the carry takes off, the space is typed after the element of the format by hand
   let follow: Carry | null = null;
   document.addEventListener('beforeinput', (ev) => {
     follow = null;
@@ -237,7 +255,26 @@ export function install(app: App): void {
     const k = current(app);
     if (!k || k.pending) return;
     if (!ev.data.trim()) {
-      follow = k;
+      const out = ending(k);
+      if (!out) {
+        follow = k;
+        return;
+      }
+      ev.preventDefault();
+      app.history.beforeTyping(k.host);
+      // a space before white space or at the end of the text is typed as a no-break space, as
+      // Chrome types it, since a plain space there is not drawn
+      const next = out.nextSibling;
+      const drawn = next instanceof Text ? /^\S/.test(next.data) : !!next;
+      const text = document.createTextNode(drawn ? ev.data : ev.data.replace(/ $/, '\u00a0'));
+      out.after(text);
+      const sel = window.getSelection()!;
+      sel.collapse(text, text.length);
+      k.host.normalize();
+      app.history.afterTyping(k.host);
+      app.markDirty();
+      app.invalidate('content');
+      carry = { ...k, node: text, offset: sel.anchorOffset, nbsp: !drawn };
       return;
     }
     ev.preventDefault();
@@ -245,6 +282,12 @@ export function install(app: App): void {
     const host = k.host;
     app.history.beforeTyping(host);
     const sel = window.getSelection()!;
+    // the no-break space typed above is a plain space once a character follows it, as the file
+    // writes it. a no-break space of Latin Modern Roman is half as wide again as a space
+    if (k.nbsp && k.node instanceof Text && k.node.data[k.offset - 1] === '\u00a0') {
+      k.node.replaceData(k.offset - 1, 1, ' ');
+      sel.collapse(k.node, k.offset);
+    }
     const range = sel.getRangeAt(0);
     const text = document.createTextNode(ev.data);
     range.insertNode(text);
