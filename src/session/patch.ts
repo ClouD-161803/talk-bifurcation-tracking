@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes, find, fine, nest, sameWord } from '../editor/merge.ts';
+import { changes, find, fine, moves, nest, sameWord } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -155,11 +155,12 @@ const TAG = /<\/?[A-Za-z](?:[^<>"']|"[^"]*"|'[^']*')*>/g;
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
-// conflict with a patch of theirs. with base, the text of both operations, a format of one side
-// and the edits of plain text of the other side inside its run do not conflict, and both are kept,
-// see nest()
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string): { patches: Patch[]; conflicts: Patch[] } {
-  if (base !== undefined) {
+// conflict with a patch of theirs. with base, the text of both operations, a move of either side
+// that conflicts is left out whole, see mergeEdits(), apart from a move of the side keep, which the
+// dialog after a break decides, and with nested as well, a format of one side and the edits of plain
+// text of the other side inside its run do not conflict, and both are kept, see nest()
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false): { patches: Patch[]; conflicts: Patch[] } {
+  if (base !== undefined && nested) {
     // the finer edits are taken only when none of them conflicts, since the letters of one word
     // replaced on both sides would be mixed
     const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
@@ -187,6 +188,8 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
+  const gone = new Set(!base ? [] : ([[ours, theirs, 'ours'], [theirs, ours, 'theirs']] as const).flatMap(([a, b, s]) => (keep === s ? [] : moves(base, a, b, conflict))));
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, false, keep).patches, conflicts };
   const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };

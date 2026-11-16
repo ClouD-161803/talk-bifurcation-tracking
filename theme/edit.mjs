@@ -694,8 +694,8 @@ function finer(base, patches, other) {
   return patches.flatMap((p) => other.some((o) => conflict(p, o)) ? fine(base, apply2(base, [p])) : [p]);
 }
 var TAG = /<\/?[A-Za-z](?:[^<>"']|"[^"]*"|'[^']*')*>/g;
-function mergePatches(theirs, ours, wins = "ours", base) {
-  if (base !== void 0) {
+function mergePatches(theirs, ours, wins = "ours", base, nested = true, keep) {
+  if (base !== void 0 && nested) {
     const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
     const cuts = (p) => {
       const was = base.slice(p.start, p.end).replace(TAG, "");
@@ -716,6 +716,8 @@ function mergePatches(theirs, ours, wins = "ours", base) {
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
+  const gone = new Set(!base ? [] : [[ours, theirs, "ours"], [theirs, ours, "theirs"]].flatMap(([a, b, s]) => keep === s ? [] : moves(base, a, b, conflict)));
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, false, keep).patches, conflicts };
   const keptTheirs = wins === "ours" ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === "ours" ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
@@ -5903,7 +5905,7 @@ var Replica = class _Replica {
   // of the last operation of sender that the text holds, as hello answers it. the edits of this
   // browser are merged into it, where the side wins at a conflict. conflicts gets the patches of
   // mine that conflicted
-  resync(text, v, applied, wins = "ours", conflicts = []) {
+  resync(text, v, applied, wins, conflicts = []) {
     const parsed = parseVersion(v);
     if (!parsed) throw new Error(`${v} is not a version`);
     const before2 = this.mine;
@@ -5911,7 +5913,7 @@ var Replica = class _Replica {
     const theirs = diff2(from, text);
     const ours = diff2(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-    const both = mergePatches(kept, ours, wins);
+    const both = mergePatches(kept, ours, wins, from, false, wins);
     conflicts.push(...both.conflicts);
     const merged = apply2(from, both.patches);
     this.base = text;
@@ -5972,7 +5974,7 @@ var Replica = class _Replica {
   merge(text, theirs, wins, conflicts, dedupe) {
     const ours = diff2(text, this.mine);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
-    const merged = mergePatches(kept, ours, wins, dedupe ? void 0 : text);
+    const merged = mergePatches(kept, ours, wins, text, !dedupe, dedupe && wins);
     conflicts.push(...merged.conflicts);
     return apply2(text, merged.patches);
   }
