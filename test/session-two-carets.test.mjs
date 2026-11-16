@@ -8,7 +8,8 @@
 // another person puts around the word after it. two people who take turns at one point each keep a
 // run of their own. an undo next to a space that the browser writes as &nbsp; removes only the
 // typing of the person, and an undo of a word whose trailing space another browser took away is
-// refused
+// refused. the keys of the person before a composition that starts while the history is busy are
+// kept
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -446,3 +447,37 @@ test('a key typed right before a composition that starts while an apply waits re
   await until(() => para(server.read()) === '<p>BSecondx slide</p>', 'the key of Ana in index.html during the composition');
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
+
+const first = (text) => text.match(/<p>[^\n]*<\/p>/g)[0];
+
+// Ana types MN in the paragraph of slide One, which her client reads, and starts a composition in
+// the paragraph of slide Two while a transaction of her history is open, as an undo with a TeX
+// restore, a paste of a picture, or an inline formula keeps one open. the test ends the transaction
+// during the composition
+for (const between of [false, true]) {
+  test(`the keys of the person before a composition that starts while the history is busy stay in index.html${between ? ', also with a key of another person during the composition' : ''}`, { timeout: 240_000 }, async (t) => {
+    const { server, pages } = await pair(t);
+    const [ana, ben] = pages;
+    await show(ana, 'One');
+    await caretAtEnd(ana, el(0, 'p'));
+    await typeKeys(ana, 'MN');
+    await until(async () => first(server.read()) === '<p>First slideMN</p>' && (await ana.evaluate(`${C}.acked()`)), 'MN in index.html');
+    await show(ana, 'Two');
+    assert.ok(await caretAt(ana, 6));
+    await ana.evaluate(`(() => { ${C}.app.history.transact('Wait', () => new Promise((end) => (window.__end = end))); return true; })()`);
+    await ana.send('Input.imeSetComposition', { text: 'K', selectionStart: 1, selectionEnd: 1 });
+    await ana.evaluate(`(window.__end(), ${C}.app.history.settle().then(() => true))`);
+    await ana.send('Input.imeSetComposition', { text: 'KJ', selectionStart: 2, selectionEnd: 2 });
+    if (between) {
+      await caretAtEnd(ben, el(1, 'h2'));
+      await typeKeys(ben, 'Z');
+      await until(async () => (await ana.evaluate(TEXT)).includes('TwoZ'), 'the key of Ben in the text that Ana reads');
+    }
+    await until(async () => (await ana.evaluate(`${C}.acked()`)) && (await ana.evaluate(TEXT)) === server.read(), 'the text that Ana reads during the composition in index.html');
+    assert.equal(first(server.read()), '<p>First slideMN</p>', 'index.html keeps MN during the composition');
+    await ana.send('Input.insertText', { text: '你好' });
+    const text = await converge(server, pages);
+    assert.equal(`${first(text)} ${para(text)}`, '<p>First slideMN</p> <p>Second你好 slide</p>');
+    assert.deepEqual([ana.errors, ben.errors], [[], []]);
+  });
+}
