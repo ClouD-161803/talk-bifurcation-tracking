@@ -46,7 +46,7 @@ export type HistoryOptions = {
 type Version = VersionInfo & { patches: Patch[]; marks: Mark[] };
 
 // first and last are times of clock, since and time of now
-// ops are the patches of the operations of the version as one operation of the text of the version before
+// ops are the patches of the operations of a version of people as one operation of the text of the version before
 type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string; ops: Patch[] };
 
 type Range = { start: number; end: number };
@@ -194,6 +194,13 @@ function overwrites(marks: Mark[], p: Patch): boolean {
     const m = marks[k];
     if (m.author !== AUTHOR && (m.start === m.end ? m.start >= p.start : p.start < p.end && p.start < m.end && m.start < p.end)) return true;
   }
+  return false;
+}
+
+// whether a mark of a person lies in p or touches its ends, walked as in overwrites(). the words
+// of a patch that touches none are not aligned, since they cannot keep a word of a person
+function touches(marks: Mark[], p: Patch): boolean {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) if (marks[k].author !== AUTHOR && marks[k].end >= p.start) return true;
   return false;
 }
 
@@ -608,7 +615,7 @@ export class History {
     if (op.author === AUTHOR) {
       // a patch of diff() over a line or a run of cap() keeps words, hence the patches are aligned
       // again by words, and the words that they keep stay with the people who wrote them
-      const patches = op.patches.flatMap((p) => byWords(this.held, p));
+      const patches = op.patches.flatMap((p) => (touches(this.typed, p) ? byWords(this.held, p) : [p]));
       if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
       this.typed = moveMarks(this.typed, patches, AUTHOR);
     }
@@ -622,7 +629,7 @@ export class History {
       this.append({ kind: 'open', author: op.author });
     }
     open.marks = moveMarks(open.marks, op.patches, op.author);
-    open.ops = compose(open.ops, op.patches);
+    if (op.author !== AUTHOR) open.ops = compose(open.ops, op.patches);
     this.arm();
   }
 

@@ -1693,6 +1693,10 @@ function overwrites(marks, p) {
   }
   return false;
 }
+function touches(marks, p) {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) if (marks[k].author !== AUTHOR && marks[k].end >= p.start) return true;
+  return false;
+}
 function clip(marks, patches, author) {
   const ranges = rangesOf(patches);
   const out = [];
@@ -2031,7 +2035,7 @@ var History = class {
     const w = this.now();
     if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
     if (op.author === AUTHOR) {
-      const patches = op.patches.flatMap((p) => byWords(this.held, p));
+      const patches = op.patches.flatMap((p) => touches(this.typed, p) ? byWords(this.held, p) : [p]);
       if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
       this.typed = moveMarks(this.typed, patches, AUTHOR);
     }
@@ -2045,7 +2049,7 @@ var History = class {
       this.append({ kind: "open", author: op.author });
     }
     open2.marks = moveMarks(open2.marks, op.patches, op.author);
-    open2.ops = compose(open2.ops, op.patches);
+    if (op.author !== AUTHOR) open2.ops = compose(open2.ops, op.patches);
     this.arm();
   }
   // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
