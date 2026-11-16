@@ -429,6 +429,50 @@ test('the copies of two closed tabs that changed the same text are both sent, th
   clean(c);
 });
 
+// the copy of the tab closed first is sent first, and the other is merged into the deck with the dialog
+for (const [older, choice] of [['key', 'Keep theirs'], ['move', 'Keep mine']]) {
+  test(`a slide moved in one closed tab and typed in by the other is in the deck once with the key when the ${older} is sent first and the page keeps ${choice === 'Keep mine' ? 'the other copy' : 'it'}`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    writeFileSync(server.file, server.read().replace('</ul>\n</section>\n', '</ul>\n</section>\n\n<section>\n  <h2>Three</h2>\n  <p>Third slide</p>\n</section>\n'));
+    await until(() => server.read().includes('Third slide'), 'the third slide');
+    const url = sessionUrl(server.edit);
+    const a = await tab(browser, url);
+    const b = await tab(browser, url);
+    const probe = await probeOf(browser, server);
+    await converge(server, [a, b]);
+    await goOffline(a);
+    await goOffline(b);
+    const key = async () => {
+      await edit(a, 0, 'p', ' by A');
+      return [a, await copied(a, 'First slide by A')];
+    };
+    const move = async () => {
+      await front(b);
+      assert.ok(await b.evaluate(`${C}.app.commands.run('slide.moveTo', { slides: [document.querySelectorAll('.reveal .slides > section')[0]], gap: 3 }).then(() => true)`));
+      await b.waitFor(`(${ROWS}).then((rows) => rows.some((r) => r.mine.indexOf('<h2>One') > r.mine.indexOf('<h2>Three')))`, 15_000);
+      return [b, (await rows(b)).find((r) => r.mine.indexOf('<h2>One') > r.mine.indexOf('<h2>Three')).id];
+    };
+    for (const step of older === 'key' ? [key, move] : [move, key]) {
+      const [page, id] = await step();
+      await page.close();
+      await released(probe, id);
+    }
+
+    const c = await tab(browser, url);
+    await until(() => (older === 'key' ? server.read().includes('First slide by A') : server.read().indexOf('<h2>One') > server.read().indexOf('<h2>Three')), 'the older copy to reach the file');
+    await front(c);
+    await c.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`, 20_000);
+    await press(c, choice);
+    const text = await converge(server, [c], 'the page and index.html to agree', 40_000);
+    const s = text.slice(text.indexOf('<div class="slides">'));
+    const count = (part) => s.split(part).length - 1;
+    assert.deepEqual({ one: count('<h2>One'), key: count('First slide by A'), slides: count('<section') }, { one: 1, key: 1, slides: 3 });
+    clean(c);
+  });
+}
+
 // the copies of the origin of a page in IndexedDB, as { id, key }
 const ALL = `new Promise((done) => {
   const r = indexedDB.open('beeson-session', 1);
