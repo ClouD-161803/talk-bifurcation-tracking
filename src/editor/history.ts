@@ -330,11 +330,16 @@ export class History {
       if (entry.selects) caretAtEnd(host);
     };
     // the change from one content to the other made over the changes of others in host since,
-    // which a part of a transaction writes over when it cannot be made
-    const write = (from: string, to: string, way: 'undo' | 'redo') => {
-      const t = this.alone() ? to : this.dead.has(entry) ? null : (revert(from, to, this.snapshot(host)) ?? (this.typed.has(entry) ? null : to));
+    // which a part of a transaction writes over when it cannot be made. in a session, the contents
+    // before and after are then the ones met and written, hence the next step starts from them
+    const write = async (from: string, to: string, way: 'undo' | 'redo') => {
+      if (this.alone()) return restore(to, way);
+      const now = this.snapshot(host);
+      const t = this.dead.has(entry) ? null : (revert(from, to, now) ?? (this.typed.has(entry) ? null : to));
       if (t === null) throw REFUSED;
-      return restore(t, way);
+      await restore(t, way);
+      state[way === 'undo' ? 'after' : 'before'] = now;
+      state[way === 'undo' ? 'before' : 'after'] = this.snapshot(host);
     };
     const entry: Entry = {
       label,
