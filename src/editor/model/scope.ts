@@ -100,6 +100,8 @@ export function declarationProblem(tag: string, classes: string[], name: string,
   // the height of a row is written in px on its tr by Distribute Rows Evenly
   if (name === 'height' && tag === 'tr') return PX.test(value.trim()) ? null : `height ${value} on a tr`;
   if (name === 'height') return STRETCHED_TAGS.has(tag) && PX.test(value.trim()) ? null : `height ${value} on a ${tag}`;
+  // the delay of a late step of theme/beeson.css, in seconds
+  if (name === '--delay') return classes.includes('late') && /^\d+(\.\d+)?s$/.test(value.trim()) ? null : `--delay ${value} on a ${tag}`;
   if (name === 'font-size') return tag === 'pre' && /^(22|18)px$/.test(value.trim()) ? null : `font-size ${value} on a ${tag}`;
   if (name === 'text-align') return (tag === 'td' || tag === 'th') && value.trim() === 'right' ? null : `text-align ${value} on a ${tag}`;
   if (MASK_DECLARATIONS[name]) return tag === 'img' && MASK_DECLARATIONS[name].test(value.trim()) ? null : `${name} ${value} on a ${tag}`;
