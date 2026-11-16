@@ -267,6 +267,33 @@ test('a page that is hidden without a key that it has not read does not read the
   clean(page);
 });
 
+test('a page hidden right after a key reads the deck once for this key', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit));
+  await converge(server, [page]);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await page.evaluate(`(() => {
+    const port = ${C}.port;
+    const text = port.text.bind(port);
+    window.__reads = 0;
+    port.text = () => (window.__reads++, text());
+    return true;
+  })()`);
+  await still(page);
+  await type(page, ' once');
+  const other = await browser.newPage({ width: 1280, height: 800 });
+  await front(other);
+  await page.waitFor('document.hidden');
+  // the timer of the frame of the key runs, and a later one shows that it ran
+  await page.evaluate('setTimeout(() => (window.__later = true), 2000), true');
+  await page.send('Emulation.setVirtualTimePolicy', { policy: 'advance', budget: 10_000 });
+  await page.waitFor('window.__later === true');
+  assert.equal(await page.evaluate('window.__reads'), 1);
+});
+
 const count = (text, word) => text.split(word).length - 1;
 // the text of the edit command, which it serves before the debounced write of index.html
 const served = async (server) => (await raw(server.edit.port, 'GET', `${server.edit.base}index.html`)).text;
