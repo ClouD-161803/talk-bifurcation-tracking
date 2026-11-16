@@ -168,6 +168,31 @@ test('a macro added to preamble.tex on disk is written into tex.js, and is drawn
   clean(guest, MISSING);
 });
 
+test('a formula of an open Edit Formula field is applied after the macro that it uses is added to preamble.tex on disk, which draws the formula again', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
+  await show(ann, 'Macros');
+  await front(ann);
+  await ann.evaluate(`(() => {
+    const c = document.querySelector('tr[data-case="a macro that is not defined yet"] mjx-container');
+    window.__formula = c;
+    c.focus();
+    c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    return true;
+  })()`);
+  await ann.waitFor(`document.querySelector('.beeson-math textarea')?.value === '\\\\Q'`);
+  server.write('preamble.tex', `${server.read('preamble.tex')}\\newcommand{\\Q}{\\mathbb{Q}}\n`);
+  await ann.waitFor(`!!window.beesonTex.macros.Q && !window.__formula.isConnected`);
+  await front(ann);
+  await press(ann, 'End');
+  await typeKeys(ann, '^n');
+  await press(ann, 'Mod+Enter');
+  await until(() => server.read().includes('<td>\\(\\Q^n\\)</td>'), 'the formula applied in index.html', 30_000).catch(async (e) => {
+    throw new Error(`the field reads ${JSON.stringify(await ann.evaluate(`document.querySelector('.beeson-math')?.innerText ?? null`))}: ${e.message}`);
+  });
+  clean(ann, MISSING);
+});
+
 test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 180_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);
