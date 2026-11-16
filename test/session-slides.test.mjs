@@ -1,5 +1,6 @@
 // the slides of a deck and the slides that differ between two texts, as the version history reads
-// them: a moved slide is not a removed one, and a slide removed while another is added is
+// them: a moved slide is not a removed one, and a slide removed while another is added is reported
+// as removed, however short the slides
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
