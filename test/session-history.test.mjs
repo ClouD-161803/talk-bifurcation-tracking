@@ -894,6 +894,43 @@ test('with many versions a new version writes only its own row, and the rows in 
   clean(ben);
 });
 
+test('the rows of an open fold in view stay in place when a newer version joins the fold', { timeout: 300_000 }, async (t) => {
+  const now = Date.now();
+  const midnight = new Date(now).setHours(0, 0, 0, 0);
+  // 24 unnamed versions 100 ms apart, on the day of the new version, which fold under the newest
+  const first = Math.max(now - 3 * MIN, midnight + 1000);
+  const server = await crafted(t, craft(Array.from({ length: 24 }, (_, i) => ({ time: first + i * 100 }))), QUICK);
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  await openPane(ann);
+  await press$(ann, PANE, 'Show 23 more');
+  const FOLDED = `document.querySelectorAll('${PANE} .folded .row.version')`;
+  await ann.waitFor(`${FOLDED}.length === 23`);
+  // the first row of the fold in view, its place under the top of the pane in px, and whether the
+  // top of the fold is above the top of the pane
+  const view = `(() => {
+    const top = document.querySelector('${PANE}').getBoundingClientRect().top;
+    const row = [...${FOLDED}].find((r) => r.getBoundingClientRect().bottom > top + 1);
+    return { id: row.dataset.id, top: Math.round(row.getBoundingClientRect().top - top), above: document.querySelector('${PANE} .folded').getBoundingClientRect().top < top };
+  })()`;
+  await ann.evaluate(`(() => { const pane = document.querySelector('${PANE}'); pane.scrollTop = pane.scrollHeight; return true; })()`);
+  const before = await ann.evaluate(view);
+  assert.equal(before.above, true, 'the pane is too short to scroll the top of the fold out of view');
+  // Bo writes over HTTP, and the version of Bo becomes the head of the fold
+  const { port, base } = server.edit;
+  const bo = (await post(port, `${base}.session/hello`, { name: 'Bo' })).json();
+  const at = bo.text.indexOf('Second slide') + 'Second slide'.length;
+  const answer = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at, text: ' a' }] })).json();
+  assert.equal(answer.ok, true);
+  await ann.waitFor(`${FOLDED}.length === 24`, 20_000);
+  const after = await ann.evaluate(view);
+  assert.equal(after.id, before.id);
+  assert.ok(Math.abs(after.top - before.top) <= 1, `the first row of the fold in view moved from ${before.top} px to ${after.top} px`);
+  clean(ann);
+});
+
 test('a compaction that drops the version in the preview closes the preview, selects Current version, and says so', { timeout: 300_000 }, async (t) => {
   const now = Date.now();
   const versions = [{ time: now - 200 * MIN }, { time: now - 150 * MIN }, { time: now - 100 * MIN }];
