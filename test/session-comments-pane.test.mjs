@@ -1010,3 +1010,28 @@ test('the badge of the text element of the caret is clear of its grips, and its 
   await sees(a, `${p}.getBoundingClientRect().width > ${width + 20}`, true, 'the paragraph made wider by its grip');
   clean(a);
 });
+
+test('a draft on a theorem is labeled by its kind, on a cell as a table cell, and on a citation by its number or else its key', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, `<section>
+  <h2>One</h2>
+  <p class="theorem" data-kind="lemma">Every orbit is closed.</p>
+  <table><tr><td>A1</td><td>B1</td></tr></table>
+  <p>Cited words<cite data-key="koon2000"></cite></p>
+</section>
+`);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await show(a, 'One');
+  const label = async (selector) => {
+    await a.evaluate(`window.BeesonEditor.exec('insert.comment', { kind: 'element', target: ${el(0, selector)} })`);
+    await a.waitFor(`!!document.querySelector('${PANE} .draft')`);
+    const got = await a.evaluate(`document.querySelector('${PANE} .draft .anchor').textContent`);
+    await click(a, `${PANE} .draft .actions button:not(.primary)`);
+    await a.waitFor(`!document.querySelector('${PANE} .draft')`);
+    return got;
+  };
+  const n = await a.evaluate(`${el(0, 'cite')}.dataset.n || 'koon2000'`);
+  assert.deepEqual([await label('p.theorem'), await label('td'), await label('cite')], ['On Lemma: Every orbit is closed.', 'On Table cell: A1', `On Citation: ${n}`]);
+  clean(a);
+});
