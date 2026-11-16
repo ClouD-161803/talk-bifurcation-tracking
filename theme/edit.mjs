@@ -382,8 +382,12 @@ function fine(a, b) {
   let found = chars ?? anchored(a, b) ?? wordEdits(a, b, 250) ?? edits(a, b);
   if (chars?.some((e) => e.end > e.start) && (chars.length > 1 || (chars[0].text + a.slice(chars[0].start, chars[0].end)).includes("\n"))) {
     const lines = changes(a, b) ?? [];
-    const moved2 = new Set(moves(a, lines, lines, () => true));
-    if (moved2.size) found = lines.flatMap((e) => moved2.has(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ start: x.start + e.start, end: x.end + e.start, text: x.text })) ?? [e]);
+    const moved2 = moves(a, lines, lines, () => true);
+    if (moved2.length) {
+      const out2 = lines.flatMap((e) => moved2.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ start: x.start + e.start, end: x.end + e.start, text: x.text })) ?? [e]);
+      const read = moves(a, out2, lines, () => true);
+      if (moved2.every((e) => read.includes(e))) found = out2;
+    }
   }
   if (!found.length) return found;
   let d = 0;

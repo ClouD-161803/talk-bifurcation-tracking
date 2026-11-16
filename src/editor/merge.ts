@@ -493,11 +493,15 @@ export function fine(a: string, b: string): Edit[] {
   // a move, which mergeEdits() tells apart, as the removal and the insertion of its lines. it is
   // looked for only when the character edits remove some text and are several or cross a line, and
   // every other change stays as its runs of characters, hence a key between two of them is apart
-  // from both
+  // from both. the edits are kept only when mergeEdits() reads each move in them as a move as well
   if (chars?.some((e) => e.end > e.start) && (chars.length > 1 || (chars[0].text + a.slice(chars[0].start, chars[0].end)).includes('\n'))) {
     const lines = changes(a, b) ?? [];
-    const moved = new Set(moves(a, lines, lines, () => true));
-    if (moved.size) found = lines.flatMap((e) => (moved.has(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ start: x.start + e.start, end: x.end + e.start, text: x.text })) ?? [e]));
+    const moved = moves(a, lines, lines, () => true);
+    if (moved.length) {
+      const out = lines.flatMap((e) => (moved.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ start: x.start + e.start, end: x.end + e.start, text: x.text })) ?? [e]));
+      const read = moves(a, out, lines, () => true);
+      if (moved.every((e) => read.includes(e))) found = out;
+    }
   }
   if (!found.length) return found;
   // the edits as patches of b back to a, widened to the tokens of b, and turned around again
