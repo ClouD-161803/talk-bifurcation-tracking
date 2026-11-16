@@ -62,7 +62,7 @@ type State = {
   // the time of the last change of mine in a record, and this mine
   made: number;
   madeOf: string | null;
-  // the tokens of the records taken over at the join, which the first hello retires
+  // the tokens of the records taken over at the join or left for rest(), which the first hello retires
   retire: Token[];
 };
 
@@ -149,8 +149,9 @@ function stateOf(client: Client): State {
   return st;
 }
 
-// the tokens of the closed pages whose records this page took over, which its first hello names, so
-// that an operation of such a page that arrives later is not applied on top of the copy
+// the tokens of the closed pages whose records this page took over or merges after its join, which
+// its first hello names, so that an operation of such a page that arrives later is not applied on
+// top of the copy
 export const retiring = (client: Client): Token[] => stateOf(client).retire;
 
 const tokensOf = (client: Client, st: State): Token[] => (client.snapshot() ? [client.token] : st.retire);
