@@ -691,6 +691,35 @@ test('a guest offline while the host ends the session is shown the end once onli
   clean(guest, REFUSED);
 });
 
+// Ctrl+C in the terminal of the host reaches the same handler as SIGTERM. the relay kept a record
+// of the end only after End session, hence a guest who missed the end read that the edit command
+// of the host is not running, at every reconnect
+test('a guest offline while the host stops the edit command is shown the end once online', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET } });
+  const { key } = server.edit;
+  await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
+  const host = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const guest = await tab(browser, `${relay.url}/${key}/index.html?edit&session`, { name: 'Lea' });
+  await converge(server, [host, guest]);
+
+  await goOffline(guest);
+  await guest.waitFor(`${C}.connection === 'offline'`);
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await goOnline(guest);
+  await front(guest);
+  await guest.waitFor(`${C}.connection === 'ended' || ${C}.connection === 'no-host'`, 20_000);
+  assert.equal(await guest.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent ?? ${STATE}`), 'Ann ended the session');
+  assert.equal(await guest.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), "Your changes up to now are in Ann's deck.");
+  clean(host, REFUSED);
+  clean(guest, REFUSED);
+});
+
 test('the end of the session closes the dialog of the conflicts, keeps the version of the person, and names the slides that did not reach the host', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
