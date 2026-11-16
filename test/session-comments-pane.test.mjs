@@ -815,7 +815,7 @@ test('the accessibility tree of Chrome holds the field of a mention as a combobo
   const id = await post(b, 0, 'Described by its text');
   await openPane(a);
   await sees(a, `!!document.querySelector('${ARTICLE(id)}')`, true);
-  await axIs(a, ARTICLE(id), { name: 'Comment by Ben, unread', description: 'Described by its text' }, 'the thread');
+  await axIs(a, ARTICLE(id), { name: 'Thread by Ben, unread', description: 'Described by its text' }, 'the thread');
   // a div without a role, which Chrome reads as generic or leaves out of the tree
   await until(async () => ['generic', 'none'].includes((await ax(a, `${PANE} .list`))?.role), 'the list of threads to be without a role', 5000);
   await show(a, 'One');

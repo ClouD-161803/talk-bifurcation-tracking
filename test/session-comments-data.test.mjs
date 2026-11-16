@@ -285,7 +285,7 @@ test('what a person read of a thread is kept over a reload', { timeout: 300_000 
   await click(a, `${PANE} article[data-id="${y}"] .text`);
   await sees(a, COUNT, 'Comments, 1 unread');
   await sees(a, UNREAD, [`${x}*`, y]);
-  await sees(a, `document.querySelector('${PANE} article[data-id="${y}"]').getAttribute('aria-label')`, 'Comment by Ben');
+  await sees(a, `document.querySelector('${PANE} article[data-id="${y}"]').getAttribute('aria-label')`, 'Thread by Ben');
 
   await reload(a);
   await openPane(a);
