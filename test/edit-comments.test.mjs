@@ -336,7 +336,10 @@ test('a stop or a change of a thread while a write waits for its temporary file 
   });
   comments.add(ANN, onDeck(authority, 'first'));
   const read = comments.seen(BO, Date.now() - 5);
-  await begun;
+  // the timer of comments does not keep the process alive, and Node 22 ends a test that waits
+  // while the event loop is empty
+  const alive = setInterval(() => {}, 1000);
+  await begun.finally(() => clearInterval(alive));
   assert.ok(comments.writing, 'a write is in progress');
   comments.add(ANN, onDeck(authority, 'second'));
   await comments.idle();
