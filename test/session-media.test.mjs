@@ -304,7 +304,9 @@ test('a picture over 16 MB is refused on the host as well, a video of the host u
   assert.equal(await refuse('big.mp4', 'video/mp4', 65), 'big.mp4 is larger than 64 MB, the largest file that can be sent to the others');
   assert.equal(await refuse('IMG_2041.heic', 'image/heic', 1), 'IMG_2041.heic cannot be sent to the others, since a session does not take .heic files. Save it as a PNG or a JPEG.');
   assert.equal(await refuse('clip.MKV', 'video/x-matroska', 1), 'clip.MKV cannot be sent to the others, since a session does not take .mkv files. Save it as an MP4 or a WebM.');
-  assert.equal(await refuse('scan', '', 1), 'scan cannot be sent to the others, since a session does not take files without an extension. Save it as a PNG or a JPEG.');
+  // a paste of slides gives a file the type that the edit command serves it with
+  assert.equal(await refuse('clip.mkv', 'application/octet-stream', 1), 'clip.mkv cannot be sent to the others, since a session does not take .mkv files. Save a picture as a PNG or a JPEG, and a video as an MP4 or a WebM.');
+  assert.equal(await refuse('scan', '', 1), 'scan cannot be sent to the others, since a session does not take files without an extension. Save a picture as a PNG or a JPEG, and a video as an MP4 or a WebM.');
   clean(ann);
 });
 
