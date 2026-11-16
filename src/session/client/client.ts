@@ -714,8 +714,12 @@ export class Client {
 
   private texCount(count: number): void {
     if (typeof count !== 'number' || count === this.tex) return;
+    const was = this.tex;
     this.tex = count;
-    void this.port.redrawTex();
+    // a redraw that failed, e.g. at a fetch of tex.js, is tried again at the next answer
+    this.port.redrawTex().catch(() => {
+      if (this.tex === count) this.tex = was;
+    });
   }
 
   private receive(ops: AppliedOp[]): void {

@@ -69,10 +69,13 @@ export function citationPane(app: App): Control[] {
 // whether the deck loads the tex.js next to it, rather than the tex.js of another folder
 const ownTex = (): boolean => [...document.scripts].some((s) => s.src === new URL('tex.js', location.href).href);
 
-/** The deck drawn again with the tex.js next to it, after the edit command of a session counted a change of it. */
+/** The deck drawn again with the tex.js next to it, after the edit command of a session counted a change of it. Rejects when it fails. */
 export function redrawTex(app: App): Promise<void> {
   if (!ownTex()) return Promise.resolve();
-  return load().then((s) => s.redraw()).catch((e) => app.fail(e));
+  return load().then((s) => s.redraw()).catch((e) => {
+    app.fail(e);
+    throw e;
+  });
 }
 
 // the text of a slide with the caret, which a citation can be put into
