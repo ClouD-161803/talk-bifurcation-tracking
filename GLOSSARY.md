@@ -20,6 +20,13 @@ The drawing of orbits behind the words of a slide, or in its figure box, chosen 
 
 Avoid "background", and avoid "scene", which means only a TyCHO scene. The attribute `data-scene` of an old talk is `data-backdrop`.
 
+## Badge
+
+The count of the open threads of an element or a slide in a session, drawn at its upper right corner on the canvas, and filled violet while one of them is unread.
+
+Avoid "pin" and "marker", and avoid "bubble", which is the message shown at a refused edit of a held element.
+
+
 ## Bibliography
 
 The file `references.bib` next to the deck, from which the references of its citations are written into `tex.js`.
@@ -36,9 +43,21 @@ The empty `cite` after the cited words of a slide, with the key of a paper of th
 
 Avoid "footnote", which is the `foot` line of a slide, and "reference", which is the short entry of the cited paper.
 
+## Comment
+
+A text that a person of a session writes on an element or a slide, kept in `.session/comments.json` and never in `index.html`.
+
+Avoid "note", which is a speaker note, and "annotation". Write "HTML comment" for a comment `<!-- -->` in the source of a deck.
+
+
 ## Convention
 
 A rule of slides that is followed by default and may be argued with, as opposed to a hard invariant.
+
+## data-own-keys
+
+The attribute of a field of the editor in which the keys of commands that the field takes for itself are named, separated by spaces. In the field of a comment, it is `Mod+Enter`, i.e. Cmd+Enter on a Mac and Ctrl+Enter elsewhere, which then sends the comment and does not start Present. A key named there is taken with the other of these two modifiers as well, e.g. Ctrl+Enter on a Mac.
+
 
 ## Dialog
 
@@ -48,7 +67,7 @@ Avoid "card". The heading over the scrubber of the progress line is not a card e
 
 ## Edit command
 
-The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` is written.
+The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` and `tex.js` are written.
 
 Avoid "server" and "daemon".
 
@@ -63,6 +82,11 @@ Avoid "zone", the class of a figure box in an old talk, which is `figure-box`.
 To keep your view of the editor on the slide and the selection of another person of a session, from a click on the avatar of this person until you stop.
 
 Avoid "spotlight" and "watch".
+
+## For You
+
+The filter of the Comments pane under which the open threads that you wrote, replied to, or are mentioned in are listed.
+
 
 ## Guest
 
@@ -84,7 +108,7 @@ Avoid "head" for the heading of a figure slide, since a head is the moving dot a
 
 To be the one person of a session who can type in a text element. You hold a text element from the moment your caret is put into it until the caret leaves, your page is silent for 15 s, or someone else enters it after you have not typed for 30 s.
 
-Avoid "lock", which is the command Lock of the Arrange menu.
+Avoid "lock", which is the command Lock of the Arrange menu. The class `beeson-locked` of an element held by another person is `beeson-held`.
 
 ## Host
 
@@ -119,6 +143,13 @@ Avoid "layer" for the steps of a slide that the editor shows at once, which do n
 A drawn element of an animated plot, such as a curve or a trace.
 
 Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" or "trademark" for a file in `brand/`, "surface point" for a point of a surface, and "Markdown syntax" for the signs that format a text.
+
+## Mention
+
+A name of a person picked from the list after an @ in a comment, with which the thread is listed under For You for this person. A name typed by hand is not a mention.
+
+Avoid "tag" and "ping".
+
 
 ## Name flag
 
@@ -186,7 +217,7 @@ The version of the deck of a person that is kept apart from the deck when this p
 
 A panel of the editor in which a source is edited with a live preview, i.e. the Preamble sheet and the Bibliography sheet, and the sheet of a formula.
 
-Avoid "window", "dialog", and "pane".
+Avoid "window", "dialog", and "pane". A dialog of a session that is fitted to the visible part of the page is not a sheet either, and its class is `beeson-session-fit`, not `beeson-session-sheet`.
 
 ## Slide Sorter
 
@@ -243,6 +274,13 @@ Avoid "block". The class `block` of the words of a title or closing slide in an 
 A paragraph of the class `theorem`, headed by the title of its kind, its number, and its name, as a theorem, a lemma, or a proof in amsthm. The head of a theorem is this title, number, and name, which is not the head of a trajectory.
 
 Avoid "statement", "block", "card", "box", and "environment".
+
+## Thread
+
+A comment together with its replies, on one element or slide, which is resolved and reopened as one.
+
+Avoid "conversation" and "discussion".
+
 
 ## TikZ figure
 

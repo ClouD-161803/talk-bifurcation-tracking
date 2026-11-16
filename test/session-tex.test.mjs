@@ -44,8 +44,8 @@ after(() => browser?.close());
 // returns them, and copies of theme/ and brand/, with the edit command started on it with the
 // variables of env. snapshot() returns the text and the modification time of index.html and of
 // each file of names
-async function texTalk(t, { names = SOURCES, change = (name, text) => text, env = {} } = {}) {
-  const folder = talkFolder(t, DECK);
+async function texTalk(t, { names = SOURCES, change = (name, text) => text, env = {}, deck = DECK } = {}) {
+  const folder = talkFolder(t, deck);
   for (const name of names) writeFileSync(join(folder.talk, name), change(name, readFileSync(join(DIR, name), 'utf8')));
   for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
   const server = {
@@ -196,6 +196,119 @@ test('a formula of an open Edit Formula field is applied after the macro that it
   clean(ann, MISSING);
 });
 
+const CELL = 'tr[data-case="a macro that is not defined yet"] td';
+const CHANGED = 'Another person changed the formulas of this text. Copy your TeX, press Cancel, and open the formula again.';
+const FIELD = `JSON.stringify({ open: !!document.querySelector('.beeson-math'), tex: document.querySelector('.beeson-math textarea')?.value ?? null, message: document.querySelector('.beeson-math .error')?.textContent ?? null })`;
+const cellOf = (server) => server.read().match(/<tr data-case="a macro that is not defined yet"><td>(.*?)<\/td><\/tr>/)[1];
+
+// a session of two pages on a deck whose cell of \Q holds cell, with the Edit Formula field of the
+// formula at index of the cell open on the first page, and ^n typed into it
+async function fieldOpen(t, cell, index) {
+  const server = await texTalk(t, { deck: DECK.replace('<td>\\(\\Q\\)</td>', `<td>${cell}</td>`) });
+  const [ann, ben] = await pages(t, server);
+  await show(ben, 'Theorems');
+  await show(ann, 'Macros');
+  await front(ann);
+  await ann.evaluate(`(() => {
+    const c = document.querySelectorAll('${CELL} mjx-container')[${index}];
+    c.focus();
+    c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    return true;
+  })()`);
+  await ann.waitFor(`!!document.querySelector('.beeson-math textarea')`);
+  await press(ann, 'End');
+  await typeKeys(ann, '^n');
+  await ann.waitFor(`document.querySelector('.beeson-math textarea').value.endsWith('^n')`);
+  return { server, ann, ben };
+}
+
+// an operation of a third person, who replaces from with to in the text of index.html
+async function other(server, from, to) {
+  const { port, base } = server.edit;
+  const bo = (await post(port, `${base}.session/hello`, { name: 'Bo' })).json();
+  const at = bo.text.indexOf(from);
+  assert.ok(at >= 0, from);
+  const op = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at + from.length, text: to }] })).json();
+  assert.equal(op.ok, true, JSON.stringify(op));
+}
+
+// Apply of the field of ann, refused with the message of a formula that another person changed
+async function refused(server, ann, ben, cell, tex) {
+  await front(ann);
+  await ann.evaluate(`document.querySelector('.beeson-math textarea').focus(), true`);
+  await press(ann, 'Mod+Enter');
+  await ann.waitFor(`document.querySelector('.beeson-math .error')?.textContent === ${JSON.stringify(CHANGED)}`, 30_000).catch(async (e) => {
+    throw new Error(`the field reads ${await ann.evaluate(FIELD)}, and the cell in index.html ${cellOf(server)}: ${e.message}`);
+  });
+  await converge(server, [ann, ben]);
+  assert.equal(cellOf(server), cell);
+  assert.deepEqual(JSON.parse(await ann.evaluate(FIELD)), { open: true, tex, message: CHANGED });
+}
+
+test('Apply in an open Edit Formula field is refused with a message after another person adds a formula before the edited one in the same text element', { timeout: 300_000 }, async (t) => {
+  const { server, ann, ben } = await fieldOpen(t, '\\(\\half\\) and \\(\\Q\\)', 1);
+  await other(server, '<td>\\(\\half\\) and', '<td>\\(\\vb{y}\\), \\(\\half\\) and');
+  await ann.waitFor(`document.querySelectorAll('${CELL} mjx-container').length === 3`, 30_000);
+  await refused(server, ann, ben, '\\(\\vb{y}\\), \\(\\half\\) and \\(\\Q\\)', '\\Q^n');
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('Apply in an open Edit Formula field is refused with a message after another person removes the edited formula, which leaves another one at its place', { timeout: 300_000 }, async (t) => {
+  const { server, ann, ben } = await fieldOpen(t, '\\(\\Q\\) and \\(\\half\\)', 0);
+  await other(server, '<td>\\(\\Q\\) and ', '<td>');
+  await ann.waitFor(`document.querySelectorAll('${CELL} mjx-container').length === 1`, 30_000);
+  await refused(server, ann, ben, '\\(\\half\\)', '\\Q^n');
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('Apply in an open Edit Formula field writes the formula after another person changes a different text element', { timeout: 300_000 }, async (t) => {
+  const { server, ann, ben } = await fieldOpen(t, '\\(\\half\\) and \\(\\Q\\)', 1);
+  await other(server, '<td>\\(\\dist\\)</td>', '<td>\\(\\dist\\) and \\(\\vb{y}\\)</td>');
+  await ann.waitFor(`document.querySelectorAll('tr[data-case="a macro of a local package"] mjx-container').length === 2`, 30_000);
+  await front(ann);
+  await ann.evaluate(`document.querySelector('.beeson-math textarea').focus(), true`);
+  await press(ann, 'Mod+Enter');
+  await until(() => cellOf(server) === '\\(\\half\\) and \\(\\Q^n\\)', 'the formula applied in index.html', 30_000).catch(async (e) => {
+    throw new Error(`the field reads ${await ann.evaluate(FIELD)}, and the cell in index.html ${cellOf(server)}: ${e.message}`);
+  });
+  await converge(server, [ann, ben]);
+  assert.ok(server.read().includes('<td>\\(\\dist\\) and \\(\\vb{y}\\)</td>'));
+  assert.equal(await ann.evaluate(`!!document.querySelector('.beeson-math')`), false);
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('a new formula whose commit at a click away is refused, since another person changed it, keeps its Insert Formula field open with the typed TeX and the message', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  await show(ben, 'Macros');
+  await show(ann, 'Citations');
+  await front(ann);
+  await ann.evaluate(`(() => {
+    document.activeElement?.blur();
+    window.__before = new Set(document.querySelectorAll('.reveal .slides mjx-container'));
+    window.BeesonEditor.exec('insert.formula');
+    return true;
+  })()`);
+  await ann.waitFor(`!!document.querySelector('.beeson-math textarea') && document.activeElement === document.querySelector('.beeson-math textarea')`);
+  await ann.evaluate(`(window.__made = [...document.querySelectorAll('.reveal .slides mjx-container')].find((c) => !window.__before.has(c)), true)`);
+  await typeKeys(ann, 'y');
+  await ann.waitFor(`document.querySelector('.beeson-math textarea').value === 'y'`);
+  await converge(server, [ann, ben]);
+  await other(server, '\\[\\]', '\\[x\\]');
+  await ann.waitFor(`!window.__made.isConnected`, 30_000);
+  await front(ann);
+  await ann.evaluate(`document.querySelector('.reveal section.present h2').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })), true`);
+  await ann.waitFor(`!document.querySelector('.beeson-math') || document.querySelector('.beeson-math .error')?.textContent === ${JSON.stringify(CHANGED)}`, 30_000);
+  await converge(server, [ann, ben]);
+  assert.ok(server.read().includes('\\[x\\]'), `index.html keeps the formula of the other person, and holds ${server.read().match(/\\\[.*?\\\]/g)}`);
+  assert.deepEqual(JSON.parse(await ann.evaluate(FIELD)), { open: true, tex: 'y', message: CHANGED });
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
 test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);
@@ -326,7 +439,8 @@ test('tex.js is not written in a talk folder without preamble.tex and references
 // query typed into it
 async function search(page, n, query) {
   await show(page, 'Citations');
-  // the caret is put again until the paragraph takes it, since a redraw of the deck may be running
+  // the caret is put again until the paragraph takes it, since a page that held it a moment ago may
+  // still hold it on this page
   await page.waitFor(`(() => {
     const host = document.querySelector('.reveal section.present p:nth-of-type(${n})');
     host?.focus();
@@ -358,15 +472,17 @@ test('a paper added to references.bib on disk is found by a new search on a page
   assert.equal(shared.status, 200, shared.text);
   const list = await pages(t, server, [sessionUrl(server.edit), shared.json().link]);
   const tex = server.read('tex.js');
-  for (const page of list) {
-    await search(page, 3, 'conley');
+  // each page searches in a paragraph of its own, since the caret of a page in a paragraph holds it,
+  // which takes the caret away from the other page
+  for (const [i, page] of list.entries()) {
+    await search(page, 3 - i, 'conley');
     await page.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(`No entry of references.bib matches conley. ${HOST_BIB}`)}`);
     await press(page, 'Escape');
     await page.waitFor(`!document.querySelector('${LIST}')`);
   }
   server.write('references.bib', `${server.read('references.bib')}\n@article{conley1968,\n  author = {Conley, Charles},\n  title = {Low energy transit orbits in the restricted three-body problem},\n  year = {1968},\n}\n`);
-  for (const page of list) {
-    await search(page, 3, 'conley');
+  for (const [i, page] of list.entries()) {
+    await search(page, 3 - i, 'conley');
     // the search is typed again until the list finds the paper, as a person would
     await page.waitFor(`(() => {
       document.querySelector('${LIST} input').dispatchEvent(new Event('input', { bubbles: true }));
@@ -386,7 +502,7 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
   const bib = server.read('references.bib');
   for (const id of ['file.preamble', 'file.bibliography']) assert.equal(await ann.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)}).enabled`), false, `${id} is enabled in a session`);
   const items = await fileMenu(ann);
-  assert.deepEqual([items['file.preamble'], items['file.bibliography']], [
+  assert.deepEqual(['file.preamble', 'file.bibliography'].map((id) => ({ label: items[id].label, disabled: items[id].disabled })), [
     { label: 'Preamble…Edited by the host in preamble.tex', disabled: true },
     { label: 'Bibliography…Edited by the host in references.bib', disabled: true },
   ]);
@@ -424,33 +540,24 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
   clean(ann, MISSING);
 });
 
-// the label of each row of the File menu whose command is in ids, with whether its text is wider
-// than its box
-async function menuRows(page, ids) {
-  await front(page);
-  const rows = await page.evaluate(`(() => {
-    [...document.querySelectorAll('.beeson-edit-menubar [role="menuitem"]')].find((b) => b.textContent === 'File').click();
-    const out = {};
-    for (const i of document.querySelectorAll('.beeson-edit-menu .item')) {
-      const label = i.querySelector('.label');
-      if (${JSON.stringify(ids)}.includes(i.dataset.command)) out[i.dataset.command] = { text: label.textContent, scroll: label.scrollWidth, client: label.clientWidth };
-    }
-    return out;
-  })()`);
-  await page.evaluate(`document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
-  await page.waitFor(`!document.querySelector('.beeson-edit-menu')`);
-  return rows;
-}
-
-test('the notes of File > Preamble… and File > Bibliography… in a session fit their rows of the menu on a phone of 390 px and on a screen of 1440 px', { timeout: 300_000 }, async (t) => {
+test('the notes of File > Preamble… and File > Bibliography… in a session fit their rows of the menu on a phone of 390 px and on a screen of 1440 px, also with wider letters', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
-  for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false]]) {
+  // the system font of Linux and of Android is wider than the one of a Mac
+  const wide = '.beeson-edit-menu { letter-spacing: 1px; }';
+  for (const [name, width, height, mobile, style] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false], ['Cy', 390, 844, true, wide], ['Dee', 320, 700, true, wide]]) {
     const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
     t.after(() => page.close());
     await converge(server, [page]);
-    const rows = await menuRows(page, ['file.preamble', 'file.bibliography']);
-    assert.equal(Object.keys(rows).length, 2, JSON.stringify(rows));
-    for (const [id, row] of Object.entries(rows)) assert.ok(row.scroll <= row.client + 1, `the label of ${id} is wider than its box at ${width} px: ${JSON.stringify(row)}`);
+    if (style) await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: ${JSON.stringify(style)} })), true`);
+    const items = await fileMenu(page);
+    for (const id of ['file.preamble', 'file.bibliography']) {
+      assert.ok(items[id], `the File menu does not have ${id}`);
+      assert.ok(items[id].scroll <= items[id].client + 1, `the label of ${id} is wider than its box at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(items[id])}`);
+      // the row of a note on a second line has room above and below its text, as a row of one line
+      assert.ok(items[id].room >= 2.5, `the label of ${id} touches the edge of its row at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(items[id])}`);
+    }
+    // e.g. the keys of Open… and the arrow of Open Recent, whose notes wrap at 320 px with wider letters
+    for (const [id, item] of Object.entries(items)) assert.ok(item.off <= 1.5, `the keys or the arrow of ${id} are not in line with its label at ${width} px${style ? ` with ${style}` : ''}: ${JSON.stringify(item)}`);
     clean(page, MISSING);
   }
 });

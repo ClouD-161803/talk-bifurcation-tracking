@@ -187,12 +187,31 @@ function closePairs(a: string[], b: string[]): [number, number][] {
   return out;
 }
 
+// true when slides x and y, given as their text, left out on both sides between the same two
+// paired neighbors, are one slide edited in place: either is without words, or the words of their
+// first child are equal and not empty
+export function sameSlide(x: string, y: string): boolean {
+  if (!words(x) || !words(y)) return true;
+  const first = (t: string) => {
+    const c = childrenOf(t)[0];
+    return c ? words(t.slice(c.start, c.end)) : '';
+  };
+  const f = first(x);
+  return f !== '' && f === first(y);
+}
+
 // the numbers of the slides of after that hold a mark, and what is gone from before. an empty
 // mark, where text was removed, is on a slide when it falls strictly inside it
 export function slideChanges(before: string, beforeSlides: Slide[], after: string, afterSlides: Slide[], marks: Range[]): SlideChanges {
   const a = beforeSlides.map((s) => before.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
   const matched = pairs(a, b, true);
+  let pi = -1, pj = -1;
+  for (const p of [...matched, { i: a.length, j: b.length }]) {
+    if (p.i === pi + 2 && p.j === pj + 2 && sameSlide(a[pi + 1], b[pj + 1])) matched.push({ i: pi + 1, j: pj + 1, same: false });
+    pi = p.i;
+    pj = p.j;
+  }
   // a slide that reads as before is not changed, although a line diff may have marked its start tag
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = new Set<number>();

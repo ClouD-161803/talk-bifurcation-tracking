@@ -22,9 +22,11 @@ export type Applied = { reload: boolean; changed: Element[] };
 // the client reads text() inside a listener of onChange or after an apply has resolved, and writes
 // the text of each apply against the text last handed to it, i.e. the text it last read or passed
 // to apply. at a reload, apply leaves the deck as it was, and it rejects when it changed the deck in
-// part. an edit of the person that the client has not read is kept through every apply, and
-// onChange is called after it. the listeners of onReload are called when the page does not read as
-// its text after the applies, after which the client loads the page again. copy() reads the deck
+// part, with an error whose target is the text of the apply with the edits of the person that the
+// client has not read. an edit of the person that the client has not read is kept through every
+// apply, and onChange is called after it. the listeners of onReload are called when the page does not read as
+// its text after the applies, after which the client loads the page again. they get the text that
+// the deck was meant to read, with these edits, when it is known. copy() reads the deck
 // with the edits of the person at any time, and leaves the text handed to the client as it is.
 // rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
 // into the source, e.g. so that offsetOf knows an element made since the last apply. redrawTex()
@@ -37,7 +39,7 @@ export type Port = {
   apply(text: string): Promise<Applied>;
   rebase(): Promise<Applied>;
   onChange(fn: () => void): () => void;
-  onReload(fn: () => void): () => void;
+  onReload(fn: (target?: string) => void): () => void;
   offsetOf(el: Element): number | null;
   elementAt(offset: number): Element | null;
   begin(): void;
@@ -102,7 +104,7 @@ export function install(app: App): Port {
   let saver: () => Promise<void> | void = () => {};
   let active = false;
   const listeners = new Set<() => void>();
-  const reloaders = new Set<() => void>();
+  const reloaders = new Set<(target?: string) => void>();
   let pending = false;
   let flushing: Promise<void> | null = null;
   let net = 0;
@@ -185,11 +187,17 @@ export function install(app: App): Port {
 
   // the changes held back are applied once the composition ends. a browser may not send its end
   // when the text loses the focus, e.g. Safari on a click, or when the page is hidden, and the
-  // focusout waits a task for the end that Firefox sends after it
+  // focusout waits a task for the end that Firefox sends after it. the page is loaded again when
+  // the changes held back cannot be applied, also when they change the deck in part
+  const reloadAll = (target?: string): void => {
+    for (const fn of [...reloaders]) fn(target);
+  };
+  // at a reload the deck is as it was, and reads with the changes still held back as the text that
+  // it was meant to read
   const ended = (): void => {
     if (behind) void run(null).then((r) => {
-      if (r.reload) for (const fn of [...reloaders]) fn();
-    });
+      if (r.reload) reloadAll(ready() ? virtual(current()) : undefined);
+    }, (e) => reloadAll((e as { target?: string } | null)?.target));
   };
   // Safari sends the input of the committed text after compositionend, hence the end waits a task
   // for it, unless a new composition starts first
@@ -392,7 +400,7 @@ export function install(app: App): Port {
     if (text !== null && from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours', true).text;
     if (text !== null) handed = text;
     // a rebase that fails has read the source again from the page, which then renders otherwise
-    if (rendered && !rebase(rendered, math)) partial();
+    if (rendered && !rebase(rendered, math)) partial(target);
     const changed: Element[] = [];
     const typesets: Promise<void>[] = [];
     // the deck made to read as next by one apply: false when the page is loaded again, and null
@@ -410,7 +418,7 @@ export function install(app: App): Port {
         done = applyAt(app, next, w, spot);
       } catch (e) {
         clean = false;
-        throw e;
+        throw Object.assign(e as Error, { target });
       } finally {
         mine = false;
       }
@@ -453,7 +461,7 @@ export function install(app: App): Port {
     if (first === false) return reload();
     // around() may apply edits before one that it cannot apply, after which the deck reads as neither
     // text
-    if (first === null && !around(edits(app.source!.text, target))) return app.source!.text === was ? reload() : partial();
+    if (first === null && !around(edits(app.source!.text, target))) return app.source!.text === was ? reload() : partial(target);
     const shown = app.source!.text;
     app.saved = shown;
     behind = shown === target ? null : { shown, want: target };
@@ -471,7 +479,7 @@ export function install(app: App): Port {
           applying = true;
           try {
             const r = await turn(text);
-            if (r.reload) behind = null;
+            if (r.reload && text !== null) behind = null;
             resolve(r);
           } catch (e) {
             reject(e);

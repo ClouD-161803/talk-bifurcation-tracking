@@ -37,6 +37,8 @@ export type ClientEvents = {
   resolved: [];
   // an apply changed the deck, with the elements that it changed
   applied: [Element[]];
+  // the deck was drawn again with a new tex.js, e.g. with new numbers of its citations
+  tex: [];
   // a drive ended, with whether the base moved on after the last applied without an apply, e.g. at
   // the broadcast of an operation of this page
   settled: [moved: boolean];
@@ -191,8 +193,12 @@ export class Client {
     });
     port.onChange(() => this.onChange());
     port.onSave(() => this.flush());
-    // the port found that the page does not read as its text after an apply
-    port.onReload(() => this.freeze(null));
+    // the port found that the page does not read as its text after an apply. the edits of the person
+    // that were not read are taken from the text that the deck was meant to read, when it is known
+    port.onReload((target) => {
+      if (target !== undefined && !this.frozen) this.capture(target);
+      this.freeze(null);
+    });
   }
 
   on<K extends keyof ClientEvents>(event: K, fn: (...args: ClientEvents[K]) => void): () => void {
@@ -507,8 +513,14 @@ export class Client {
     let applied: Applied;
     try {
       applied = await this.port.apply(text);
-    } catch {
-      // the deck may be changed in part, hence it is not read again
+    } catch (e) {
+      // the deck may be changed in part, hence it is not read again. the edits of the person that
+      // were not read are taken from the text that the deck was to read
+      const target = (e as { target?: unknown } | null)?.target;
+      if (typeof target === 'string') {
+        this.handed = text;
+        this.capture(target);
+      }
       this.freeze(null);
       return false;
     }
@@ -561,11 +573,12 @@ export class Client {
   }
 
   // the edits of the person since the deck read as handed, merged into mine, where they win at a
-  // conflict. false while the port gives unshown, as it does until a change of the person settles
-  private capture(): boolean {
+  // conflict. false while the port gives unshown, as it does until a change of the person settles.
+  // given is read in place of the deck, e.g. the text that an apply rejected in part was to read
+  private capture(given?: string): boolean {
     const sync = this.sync, handed = this.handed;
     if (!sync || handed === null) return true;
-    const deck = this.read();
+    const deck = given ?? this.read();
     if (deck === null || deck === this.unshown) return false;
     if (deck === handed) return true;
     const theirs = diff(handed, sync.mine);
@@ -768,7 +781,7 @@ export class Client {
     const was = this.tex;
     this.tex = count;
     // a redraw that failed, e.g. at a fetch of tex.js, is tried again at the next answer
-    this.port.redrawTex().catch(() => {
+    this.port.redrawTex().then(() => this.emit('tex'), () => {
       if (this.tex === count) this.tex = was;
     });
   }

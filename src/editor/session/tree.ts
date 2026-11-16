@@ -128,9 +128,8 @@ export function startTag(source: Source, el: SrcEl, text: string): StartTag | nu
 }
 
 // the start tag of el read again from text as startTag() reads it, with the ranges after it moved.
-// false, with nothing changed, when startTag() is null
-export function retag(source: Source, el: SrcEl, text: string): boolean {
-  const t = startTag(source, el, text);
+// false, with nothing changed, when startTag() is null. t is this tag when the caller has read it
+export function retag(source: Source, el: SrcEl, text: string, t = startTag(source, el, text)): boolean {
   const open = el.open;
   if (!t || !open || !el.parent) return false;
   const d = text.length - source.text.length;

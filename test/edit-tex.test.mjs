@@ -3,12 +3,14 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { deckTex } from '../scripts/tex.mjs';
 import { deriveTex, TexWriter } from '../theme/edit.mjs';
+import { until } from './helpers/session.mjs';
 
 const DIR = 'test/pages/tex-sheets';
 const SOURCES = ['preamble.tex', 'references.bib', 'tex.js', 'defs.tex', 'mymath.sty'];
@@ -25,12 +27,33 @@ function folder(t, names = SOURCES) {
   return { dir, read, at, write: (name, text) => writeFileSync(join(dir, name), text) };
 }
 
+// a mode set by chmod refuses neither a read nor a write on Windows or to root
+const noChmod = process.platform === 'win32' || process.getuid?.() === 0 ? 'chmod does not refuse a read or a write on Windows or to root' : false;
+
 // a writer on the folder f, with the changes it counted, the lines it logged, and the failed writes
 // it reported
-function writer(f, html = DECK) {
+function writer(f, html = DECK, options = {}) {
   const seen = { changes: 0, log: [], errors: [] };
-  const w = new TexWriter(f.dir, html, { stable: 0, log: (m) => seen.log.push(m), onChange: () => seen.changes++, onWriteError: (m) => seen.errors.push(m) });
+  const w = new TexWriter(f.dir, html, { stable: 0, log: (m) => seen.log.push(m), onChange: () => seen.changes++, onWriteError: (m) => seen.errors.push(m), ...options });
   return { w, seen };
+}
+
+// the reads of name in the folder f by the edit command, i.e. its derivations of tex.js for a
+// source, counted through the live bindings of node:fs until the end of the test
+function reads(t, f, name) {
+  const read = fs.readFileSync;
+  const file = join(f.dir, name);
+  const count = { n: 0 };
+  fs.readFileSync = function (path, ...rest) {
+    if (path === file) count.n++;
+    return read.call(this, path, ...rest);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.readFileSync = read;
+    syncBuiltinESMExports();
+  });
+  return count;
 }
 
 // two polls, i.e. a change seen and then taken, since it did not change between them
@@ -72,11 +95,13 @@ test('a write of index.html that cites another paper writes tex.js, and one that
   const at = f.at('tex.js');
   // a references.bib that cannot be read, with the signature that it had, which a derivation would log
   const lines = seen.log.length;
-  chmodSync(join(f.dir, 'references.bib'), 0o000);
+  if (!noChmod) chmodSync(join(f.dir, 'references.bib'), 0o000);
   w.written(CITED.replace('Citations', 'The citations'));
   await w.idle();
-  chmodSync(join(f.dir, 'references.bib'), 0o644);
-  assert.deepEqual(seen.log.slice(lines), [], 'a write of index.html that cites the same papers does not derive tex.js');
+  if (!noChmod) {
+    chmodSync(join(f.dir, 'references.bib'), 0o644);
+    assert.deepEqual(seen.log.slice(lines), [], 'a write of index.html that cites the same papers does not derive tex.js');
+  }
   assert.equal(f.at('tex.js'), at);
   assert.equal(seen.changes, 1);
 });
@@ -136,6 +161,23 @@ test('a tex.js changed by another program is counted once it is stable, and is n
   assert.equal(f.read('tex.js'), changed);
 });
 
+test('a touch of preamble.tex or of references.bib that leaves its text as it is is not counted, and a paper added to references.bib is counted although tex.js keeps its text', async (t) => {
+  const f = folder(t);
+  const { w, seen } = writer(f);
+  await twoPolls(w);
+  const later = new Date(Date.now() + 5000);
+  for (const name of ['preamble.tex', 'references.bib']) {
+    utimesSync(join(f.dir, name), later, later);
+    await twoPolls(w);
+    assert.equal(seen.changes, 0, `a touch of ${name} is counted`);
+  }
+  const tex = f.read('tex.js');
+  f.write('references.bib', `${f.read('references.bib')}\n@article{conley1968,\n  author = {Conley, Charles},\n  title = {Low energy transit orbits},\n  year = {1968},\n}\n`);
+  await twoPolls(w);
+  assert.equal(seen.changes, 1);
+  assert.equal(f.read('tex.js'), tex);
+});
+
 test('a source that cannot be read is reported once for each change, and tex.js is not written', async (t) => {
   const f = folder(t, ['references.bib', 'tex.js']);
   mkdirSync(join(f.dir, 'preamble.tex'));
@@ -154,7 +196,8 @@ test('a source that cannot be read is reported once for each change, and tex.js 
 
 test('a write of tex.js that fails is logged and reported once, and is tried again at the next polls until it succeeds', async (t) => {
   const f = folder(t);
-  const { w, seen } = writer(f);
+  // each poll is a retry
+  const { w, seen } = writer(f, DECK, { retry: 0 });
   // a folder in place of tex.js, which a rename does not replace on any system
   rmSync(join(f.dir, 'tex.js'));
   mkdirSync(join(f.dir, 'tex.js'));
@@ -179,6 +222,103 @@ test('a write of tex.js that fails is logged and reported once, and is tried aga
   assert.equal(seen.errors[1], null);
   assert.equal(seen.changes, changes + 1);
   assert.equal(failed().length, 1);
+});
+
+test('a write of tex.js that fails is derived again only once its retry is due, and is written at the first retry after the cause is gone', async (t) => {
+  const f = folder(t);
+  // the first retry is due 2 s after the failure
+  const { w, seen } = writer(f, DECK, { retry: 2000 });
+  rmSync(join(f.dir, 'tex.js'));
+  mkdirSync(join(f.dir, 'tex.js'));
+  const derived = reads(t, f, 'preamble.tex');
+  f.write('index.html', CITED);
+  w.written(CITED);
+  await w.idle();
+  assert.equal(derived.n, 1);
+  assert.equal(seen.errors.length, 1);
+  for (let i = 0; i < 10; i++) {
+    w.poll();
+    await w.idle();
+  }
+  assert.equal(derived.n, 1, 'a poll before the retry is due does not derive tex.js again');
+  rmSync(join(f.dir, 'tex.js'), { recursive: true });
+  await until(async () => {
+    w.poll();
+    await w.idle();
+    return existsSync(join(f.dir, 'tex.js'));
+  }, 'the retry of the write of tex.js', 30_000);
+  assert.equal(derived.n, 2);
+  assert.equal(f.read('tex.js'), deckTex(join(f.dir, 'index.html')).text);
+  assert.deepEqual(seen.errors.slice(1), [null]);
+});
+
+test('a source saved while tex.js cannot be written is derived once, and again at once only at a new change of a source', async (t) => {
+  // a folder in place of tex.js, and a talk folder that cannot be written
+  const causes = [['a folder at tex.js', (f) => (rmSync(join(f.dir, 'tex.js')), mkdirSync(join(f.dir, 'tex.js'))), () => {}]];
+  if (!noChmod) causes.push(['a talk folder of mode 555', (f) => chmodSync(f.dir, 0o555), (f) => chmodSync(f.dir, 0o755)]);
+  for (const [cause, fail, undo] of causes)
+    await t.test(cause, async (t) => {
+      const f = folder(t);
+      // a retry is not due during the test
+      const { w, seen } = writer(f, DECK, { retry: 600_000 });
+      const preamble = f.read('preamble.tex');
+      const derived = reads(t, f, 'preamble.tex');
+      const polls = async () => {
+        for (let i = 0; i < 12; i++) {
+          w.poll();
+          await w.idle();
+        }
+      };
+      fail(f);
+      // the mode is set back before the folder is removed
+      try {
+        f.write('preamble.tex', `${preamble}\\newcommand{\\Q}{\\mathbb{Q}}\n`);
+        await polls();
+        assert.equal(seen.errors.length, 1);
+        assert.equal(derived.n, 1, 'a poll before the retry is due does not derive tex.js again');
+        f.write('preamble.tex', `${preamble}\\newcommand{\\Q}{\\mathbb{Q}}\n\\newcommand{\\R}{\\mathbb{R}}\n`);
+        await polls();
+        assert.equal(derived.n, 2, 'a new change of a source is derived at once');
+      } finally {
+        undo(f);
+      }
+    });
+});
+
+test('a citation while tex.js cannot be written is derived once over later writes of other words, and a new citation is derived at once', async (t) => {
+  const f = folder(t);
+  const { w, seen } = writer(f, DECK, { retry: 600_000 });
+  rmSync(join(f.dir, 'tex.js'));
+  mkdirSync(join(f.dir, 'tex.js'));
+  const derived = reads(t, f, 'preamble.tex');
+  w.written(CITED);
+  await w.idle();
+  for (let i = 0; i < 10; i++) {
+    w.written(CITED.replace('Citations', `Citations ${i}`));
+    await w.idle();
+    w.poll();
+    await w.idle();
+  }
+  assert.equal(seen.errors.length, 1);
+  assert.equal(derived.n, 1, 'a write of other words before the retry is due does not derive tex.js again');
+  w.written(CITED.replace('low-energy transfer<cite', 'low-energy transfer<cite data-key="nobody2020"></cite><cite'));
+  await w.idle();
+  assert.equal(derived.n, 2, 'a new citation is derived at once');
+});
+
+test('the skipped lines of preamble.tex are logged at the start of the writer, and nothing is logged at its start without a skipped line or without preamble.tex', async (t) => {
+  const f = folder(t);
+  assert.match(f.read('preamble.tex'), /^\\usepackage\{tikz\}$/m);
+  const printed = execFileSync(process.execPath, ['scripts/tex.mjs', join(f.dir, 'index.html')], { encoding: 'utf8' }).split('\n').filter((line) => line.startsWith('preamble.tex:'));
+  assert.equal(printed.length, 1, printed.join('\n'));
+  const { w, seen } = writer(f);
+  assert.deepEqual(seen.log, printed);
+  await twoPolls(w);
+  assert.deepEqual(seen.log, printed, 'the same lines are not logged again');
+  const clean = folder(t);
+  clean.write('preamble.tex', clean.read('preamble.tex').replace('\\usepackage{tikz}\n', ''));
+  assert.deepEqual(writer(clean).seen.log, []);
+  assert.deepEqual(writer(folder(t, ['references.bib', 'tex.js'])).seen.log, []);
 });
 
 test('a write of index.html while preamble.tex is being saved does not write tex.js without its macros, and tex.js is written once preamble.tex is stable', async (t) => {
@@ -212,12 +352,14 @@ test('the skipped lines of the sources and the cited keys without an entry are l
   assert.equal(printed.length, 4, printed.join('\n'));
   const f = folder(t);
   const { w, seen } = writer(f);
+  // the skipped line of the preamble before the change, logged at the start
+  const start = seen.log.length;
   change(f);
   w.written(html);
   await twoPolls(w);
-  assert.deepEqual(seen.log, printed);
+  assert.deepEqual(seen.log.slice(start), printed);
   f.write('defs.tex', `${f.read('defs.tex')}\\newcommand{\\R}{\\mathbb{R}}\n`);
   await twoPolls(w);
   assert.ok(f.read('tex.js').includes('"R"'));
-  assert.deepEqual(seen.log, printed);
+  assert.deepEqual(seen.log.slice(start), printed);
 });

@@ -16,7 +16,8 @@ export type Origin = { deck: string; version: string; macros: OriginMacro[]; ses
 const OPEN = '<!--beeson-origin ';
 
 // whether an edit command serves the page, told by the session port once the client has read the
-// answer of the edit command, and kept after the session ends, since the address still has the key.
+// answer of the edit command, or at the load of the editor for a page at file:, and kept after the
+// session ends, since the address still has the key.
 // until then an address with session is taken as one of a session, whose key is not written
 let served: boolean | null = null;
 export const setServed = (on: boolean): void => void (served = on);
@@ -30,13 +31,14 @@ function hash(s: string): string {
   return (h >>> 0).toString(36);
 }
 
-// the address of this deck, without its query and its slide. the folder of a page of a session is
-// the key of the session, with which anyone can join it, hence a hash of the key takes its place
+// the address of this deck, without its query and its slide. the first folder of the path of a page
+// of a session, also in a subfolder, is the key of the session, with which anyone can join it,
+// hence a hash of the key takes its place
 export function deckAddress(): string {
   const address = location.href.split(/[?#]/)[0];
-  if (!keyed()) return address;
-  const end = address.lastIndexOf('/');
-  const start = address.lastIndexOf('/', end - 1) + 1;
+  const start = address.indexOf('/', address.indexOf('//') + 2) + 1;
+  const end = address.indexOf('/', start);
+  if (!keyed() || !start || end < 0) return address;
   return `${address.slice(0, start)}session-${hash(address.slice(start, end))}${address.slice(end)}`;
 }
 

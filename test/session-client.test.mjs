@@ -2,7 +2,10 @@
 // join, the edits of two pages that reach each other and index.html byte for byte, a structural
 // change, an undo, a change of the file from outside, a change of the head that loads the page
 // again, a change from outside of a tag that the theme reads at a mount, which loads both pages
-// again, and the guard that never sends a text that the deck did not take as an edit
+// again, an apply that changes the deck in part, after which the keys that the client has not read
+// reach index.html, as does a word that an input method commits at the end of a composition whose
+// held-back change cannot be made, and the guard that never sends a text that the deck did not take
+// as an edit
 
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -243,6 +246,105 @@ for (const [what, from, to, shown] of [
     assert.ok(text.includes(to) && text.includes('<p>First slide, later</p>') && text.includes('<p>Second slide early</p>'), text);
     clean(a);
     clean(b);
+  });
+}
+
+// keys typed at the end of the text element of host as the client of the page hands the next text
+// to port.apply, i.e. after the last read of the deck by the client and before the apply reads it,
+// in a composition of an input method when compose is set
+const typeAtApply = (page, host, keys, compose) => page.evaluate(`(() => {
+  const port = window.BeesonEditor.session;
+  const apply = port.apply;
+  port.apply = (text) => {
+    port.apply = apply;
+    const host = ${host};
+    host.focus();
+    const r = document.createRange();
+    r.selectNodeContents(host);
+    r.collapse(false);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    if (${compose}) host.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+    document.execCommand('insertText', false, ${JSON.stringify(keys)});
+    return apply(text);
+  };
+})()`);
+
+// an apply that changes the deck in part rejects, and the edits that the client has not read reach
+// index.html before the page loads again. around a composition, the word after it is changed before
+// the backdrop is reached, whose class taken off is a reload
+for (const [what, slide, change, typed] of [
+  ['a block element inside a paragraph', '', (text) => text.replace('<p>First slide</p>', '<p>First slide, see <div class="math">\\[x^2\\]</div></p>'), [[1, 'p', 'QQQ', false]]],
+  [
+    'a composition between a class backdrop taken off and a word changed after it',
+    '  <div id="bd" class="backdrop"></div>\n',
+    (text) => text.replace('class="backdrop"', 'class="later"').replace('<li>Alpha</li>', '<li>Alfa</li>'),
+    [[0, 'h2', 'RRR', true], [1, 'p', 'QQQ', true]],
+  ],
+]) {
+  test(`keys typed as an apply begins that cannot be made in full, with ${what}, reach index.html after both pages load again`, { timeout: 180_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    writeFileSync(server.file, TALK.replace('  <p>First slide</p>\n', `  <p>First slide</p>\n${slide}`));
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+    const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+    const pages = [a, b];
+    await converge(server, pages);
+    await show(a, 'Two');
+    await show(b, 'Two');
+    await caretAtEnd(b, el(1, 'p'));
+    await typeKeys(b, ' early');
+    const before = await converge(server, pages);
+    for (const [page, selector, keys, compose] of typed) await typeAtApply(pages[page], el(1, selector), keys, compose);
+    const counts = [await loads(a), await loads(b)];
+    writeFileSync(server.file, change(before));
+    await reloaded(pages, counts);
+    const text = await converge(server, pages);
+    assert.ok(text.includes('<p>Second slide earlyQQQ</p>'), text);
+    if (typed.length > 1) assert.ok(text.includes('<h2>TwoRRR</h2>'), text);
+  });
+}
+
+// a change from outside into the paragraph of an open composition is held back until it ends, and
+// then cannot be made, with a reload answer or with a rejection. the word that the input method
+// commits at the end is an edit of the person all the same
+for (const [what, change] of [
+  ['answers a reload', (text) => text.replace('<p>Second slide', '<p>Second <b>slide')],
+  ['is rejected', (text) => text.replace('<p>Second slide', '<p>Second<div>q</div> slide')],
+]) {
+  test(`a word committed at the end of a composition whose held-back change ${what} reaches index.html after both pages load again`, { timeout: 180_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+    const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+    const pages = [a, b];
+    await converge(server, pages);
+    await show(a, 'Two');
+    await show(b, 'Two');
+    await front(b);
+    await caretAtEnd(b, el(1, 'p'));
+    await b.send('Input.imeSetComposition', { text: 'ni', selectionStart: 2, selectionEnd: 2 });
+    await b.send('Input.imeSetComposition', { text: 'nih', selectionStart: 3, selectionEnd: 3 });
+    await until(() => server.read().includes('<p>Second slidenih</p>'), 'the composing text in index.html');
+    // the text of each apply that resolved, to wait for the one that holds the change back
+    await b.evaluate(`(() => {
+      const port = window.BeesonEditor.session;
+      const apply = port.apply;
+      port.apply = (text) => apply(text).then((r) => ((window.__resolved = text), r));
+    })()`);
+    const counts = [await loads(a), await loads(b)];
+    const changed = change(server.read());
+    writeFileSync(server.file, changed);
+    const marker = changed.match(/<p>Second[^\n]*/)[0];
+    await until(() => b.evaluate(`!!window.__resolved?.includes(${JSON.stringify(marker)})`), 'the apply that holds the change back');
+    assert.ok((await b.evaluate('window.BeesonEditor.render()')).includes('<p>Second slidenih</p>'));
+    await b.send('Input.insertText', { text: '你好' });
+    await reloaded(pages, counts);
+    const text = await converge(server, pages, 'the pages and index.html to agree', 30_000);
+    // the change from outside is kept as well
+    assert.equal(text.match(/<p>Second[^\n]*/)[0], marker.replace('nih', '你好'));
   });
 }
 

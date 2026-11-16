@@ -3,22 +3,30 @@
 // later edits of the page still reach index.html. a copy in a session names its deck by a hash of
 // the key of the session, also after the session ends, and a plain deck asks for the talk folder of
 // the session that it was copied from. a deck whose address has session, which no edit command
-// serves, names its own address
+// serves, names its own address, also at file://, and another page of the talk folder names its deck
+// by a hash of the key, also in a subfolder. a copy between two pages in one folder of a session
+// is pasted without a question
 
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
-import { launch } from '../scripts/chrome.mjs';
+import { deckSettled, launch } from '../scripts/chrome.mjs';
+import { startRelay } from '../scripts/relay.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { C, clean, converge, open, sessionUrl, talk, TEXT } from './helpers/client.mjs';
-import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { C, clean, converge, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
+import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, render, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 import { click } from './helpers/editor.mjs';
 import { edit } from './helpers/offline.mjs';
+import { post } from './helpers/session.mjs';
 
 const MB = 1024 * 1024;
 const DIALOG = 'dialog.beeson-edit-dialog.deck-folder';
+const SECRET = 'a secret of the relay of the tests';
 const ORIGIN = (text) => JSON.parse(text.match(/<!--beeson-origin (.*?)-->/s)[1]);
+// the text and the buttons of the dialog that is open
+const DIALOG_SHOWN = `(() => { const d = document.querySelector('dialog[open]'); return { text: d.querySelector('p').textContent, buttons: [...d.querySelectorAll('button')].map((b) => b.textContent) }; })()`;
 // a paste asks the edit command for each path of a pasted file, and for each path under media/ that
 // it would take, which are answered with 404
 const PROBED = /status of 404 .*\/(data|figs|media)\//;
@@ -62,7 +70,8 @@ test('a slide pasted into a session comes without the file of trajectories of it
   assert.match(after, /<p>First slide typed<\/p>/);
   assert.match(after, /data-trajectories="data\/path\.js"/);
   assert.deepEqual(media(server), []);
-  assert.ok(message.includes('data/path.js was not copied: path.js cannot be sent to the others, since a session takes only PNG, JPEG, GIF, WebP, AVIF, SVG, MP4, and WebM files.'), message);
+  assert.ok(message.includes('data/path.js was not copied: path.js cannot be sent to the others, since a session does not take .js files. Save it as a PNG or a JPEG.'), message);
+  assert.ok(!message.includes('..'), message);
   clean(ann, [PROBED]);
 });
 
@@ -164,6 +173,10 @@ test('a copy from a deck whose address has session, which no edit command serves
   t.after(() => stat.close());
   const a = await openDeck(browser, `${stat.origin}/${A}?${QUERY}&session`, A);
   await a.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not served by an edit command')`);
+  assert.deepEqual(await a.evaluate(DIALOG_SHOWN), {
+    text: 'The deck is edited without a session. Double-click Edit.command (macOS), Edit.cmd (Windows), or Edit.sh (Linux) in the talk folder, or run npm run edit there, and open the address that it prints.',
+    buttons: ['OK'],
+  });
   await a.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
   await a.waitFor(`!document.querySelector('dialog[open]')`);
   const text = await copySlide(a, FILES);
@@ -177,4 +190,122 @@ test('a copy from a deck whose address has session, which no edit command serves
   await pasted(b);
   const { message } = await status(b);
   assert.ok(!message.includes('not copied'), message);
+});
+
+// a page of the talk folder that the session does not edit, opened with session at url, once OK of
+// its dialog is clicked
+async function plainPage(browser, url) {
+  const page = await open(browser, url, { wait: false, ready: false });
+  await page.waitFor(`!!document.querySelector('dialog[open] h3')`, 20_000);
+  await page.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
+  await page.waitFor(`!document.querySelector('dialog[open]') && window.BeesonEditor && window.BeesonEditor.ready.then(() => true)`);
+  return page;
+}
+
+// a paste whose end or folder dialog is waited for, which asserts that the dialog is not shown and
+// that the note of the paste does not name a file that was not copied
+async function pastedWithoutQuestion(page) {
+  await page.waitFor(`!!document.querySelector('${DIALOG}[open]') || window.__pasted !== false`, 30_000);
+  assert.equal(await page.evaluate(`document.querySelector('${DIALOG}[open]')?.textContent ?? null`), null);
+  await pasted(page);
+  const { message } = await status(page);
+  assert.ok(!message?.includes('not copied'), message);
+}
+
+test('a copy from another page of the talk folder of a session', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  mkdirSync(join(server.talk, 'media'));
+  writeFileSync(join(server.talk, 'media/fig.png'), readFileSync(resolve('demo/figure-light.png')));
+  const figure = (text) => text.replace('<p>First slide</p>', '<p>First slide</p>\n  <img src="media/fig.png" alt="A figure">');
+  writeFileSync(server.file, figure(server.read()));
+  writeFileSync(join(server.talk, 'other.html'), figure(TALK));
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  const other = await plainPage(browser, `${server.edit.url}other.html?edit&session`);
+
+  await t.test('is pasted into index.html of the session without a question, since each path is the same file', async () => {
+    await pasteSlides(ann, 'One', await copySlide(other, 'One'));
+    await pastedWithoutQuestion(ann);
+    const after = await converge(server, [ann]);
+    assert.equal(after.match(/<img src="media\/fig\.png" alt="A figure">/g).length, 2);
+  });
+
+  await t.test('from index.html is pasted into the other page without a question', async () => {
+    await pasteSlides(other, 'Two', await copySlide(ann, 'One'));
+    await pastedWithoutQuestion(other);
+    assert.equal((await render(other)).match(/<img src="media\/fig\.png" alt="A figure">/g).length, 2);
+  });
+
+  await t.test('from a page in a subfolder asks for the talk folder, since each path names another file', async () => {
+    mkdirSync(join(server.talk, 'old'));
+    writeFileSync(join(server.talk, 'old/deck.html'), figure(TALK).replaceAll('"theme/', '"../theme/').replaceAll('"brand/', '"../brand/'));
+    const old = await plainPage(browser, `${server.edit.url}old/deck.html?edit&session`);
+    await pasteSlides(ann, 'Two', await copySlide(old, 'One'));
+    const asked = await answer(ann, 'Paste Without Files');
+    assert.ok(asked.includes('files in the talk folder of the session that you copied from'), asked);
+    await pasted(ann);
+  });
+});
+
+// another page of the talk folder, which the edit command serves without a session, through the
+// edit command and through the relay for a guest. the key is the first folder of the address
+for (const [which, path] of [['a page of the talk folder other than index.html', 'other.html'], ['a page in a subfolder of the talk folder', 'old/deck.html']])
+for (const through of ['the edit command', 'the relay']) {
+  test(`${which}, opened with session through ${through}, names its deck by a hash of the key`, { timeout: 120_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    mkdirSync(join(server.talk, 'old'));
+    writeFileSync(join(server.talk, path), path === 'other.html' ? TALK : TALK.replaceAll('"theme/', '"../theme/').replaceAll('"brand/', '"../brand/'));
+    const { key } = server.edit;
+    let url = `${server.edit.url}${path}?edit&session`;
+    if (through === 'the relay') {
+      const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+      t.after(() => relay.close());
+      const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: relay.url, secret: SECRET });
+      assert.equal(shared.status, 200, shared.text);
+      url = shared.json().link.replace('index.html', path);
+      assert.ok(url.startsWith(relay.url), url);
+    }
+    const page = await open(browser, url, { wait: false, ready: false });
+    await page.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not the deck of the session')`, 20_000);
+    assert.deepEqual(await page.evaluate(DIALOG_SHOWN), { text: 'A session edits index.html of the talk folder. This deck is edited without a session.', buttons: ['OK'] });
+    await page.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
+    await page.waitFor(`!document.querySelector('dialog[open]') && window.BeesonEditor && window.BeesonEditor.ready.then(() => true)`);
+    const text = await copySlide(page, 'One');
+    assert.ok(!text.includes(key) && !text.includes(key.replaceAll('-', '\\u002d')), text.slice(0, 300));
+    const origin = ORIGIN(text);
+    assert.equal(origin.deck, `${new URL(url).origin}/${origin.deck.split('/')[3]}/${path}`);
+    assert.match(origin.deck.split('/')[3], /^session-[0-9a-z]+$/);
+    assert.equal(origin.session, true);
+  });
+}
+
+// the editor on the deck of file at file://, in a fresh browser, whose storage is empty, since
+// openDeck() of cross-deck.mjs clears the storage of the origin, which file:// does not have
+async function fileDeck(browser, file, query) {
+  const page = await browser.newPage({ width: 1600, height: 1000 });
+  await page.goto(`${pathToFileURL(resolve(file)).href}?${query}`);
+  await page.waitFor(deckSettled, 60000);
+  await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)', 60000);
+  const state = await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(readFileSync(file, 'utf8'))})`);
+  assert.deepEqual(state.problems, []);
+  return page;
+}
+
+test('a copy from a deck at file:// whose address has session names its own address, and a paste of it does not name a session', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const a = await fileDeck(browser, A, `${QUERY}&session`);
+  const text = await copySlide(a, FILES);
+  const origin = ORIGIN(text);
+  assert.equal(origin.deck, pathToFileURL(resolve(A)).href);
+  assert.equal(origin.session, undefined);
+  const b = await withMacrosOfA(await fileDeck(browser, B, QUERY));
+  await pasteSlides(b, FIRST_B, text);
+  await b.waitFor(`!!document.querySelector('${DIALOG}[open]')`, 30000);
+  const asked = await b.evaluate(`document.querySelector('${DIALOG}[open]').textContent`);
+  assert.ok(!asked.includes('session'), asked);
 });

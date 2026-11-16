@@ -46,11 +46,11 @@ const CSS = `
 .beeson-edit-titlebar .right button.beeson-session-avatar.more[data-fit="narrow"] { display: none; }
 .beeson-edit-titlebar.narrow .right button.beeson-session-avatar.more[data-fit="wide"], .beeson-edit-titlebar.narrow .right button.beeson-session-avatar.extra { display: none; }
 .beeson-edit-titlebar.narrow .right button.beeson-session-avatar.more[data-fit="narrow"] { display: inline-flex; }
-.beeson-edit-titlebar.beeson-session-bar.narrow { grid-template-columns: minmax(0, 1fr); grid-template-rows: 28px 36px; height: auto; overflow: visible; }
+.beeson-edit-titlebar.beeson-session-bar.narrow { grid-template-columns: minmax(0, 1fr); grid-template-rows: 28px auto; height: auto; overflow: visible; }
 .beeson-edit-titlebar.beeson-session-bar.narrow .doc { display: none; }
 .beeson-edit-titlebar.beeson-session-bar.narrow .beeson-edit-menubar { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .beeson-edit-titlebar.beeson-session-bar.narrow .beeson-edit-menubar::-webkit-scrollbar { display: none; }
-.beeson-edit-titlebar.beeson-session-bar.narrow .right { grid-row: 2; min-width: 0; }
+.beeson-edit-titlebar.beeson-session-bar.narrow .right { grid-row: 2; min-width: 0; flex-wrap: wrap; padding: 7px 0; }
 .beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state { flex: 0 1 auto; min-width: 32px; }
 .beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state .name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .beeson-session-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

@@ -7,7 +7,7 @@
 // uploaded the same way. a file that the edit command would refuse is refused when it is added.
 // a file refused anyway with a status that another try cannot change is given up, i.e. sent to the
 // others only as its path, and named in the save state while the text names it, until the page
-// loads again, after which nothing names the missing file
+// loads again, after which the save state does not name it while the deck still does
 
 import type { MediaFile } from '../../editor/media/store.ts';
 import type { SrcEl } from '../../editor/source.ts';
@@ -93,7 +93,10 @@ export function install(client: Client): void {
   let settling = false;
 
   store.refuse = (file) => {
-    if (!TAKEN.test(file.name)) return `${file.name} cannot be sent to the others, since a session takes only PNG, JPEG, GIF, WebP, AVIF, SVG, MP4, and WebM files`;
+    if (!TAKEN.test(file.name)) {
+      const ext = /\.[^./]+$/.exec(file.name)?.[0].toLowerCase();
+      return `${file.name} cannot be sent to the others, since a session does not take ${ext ? `${ext} files` : 'files without an extension'}. Save it as ${file.type.startsWith('video/') ? 'an MP4 or a WebM' : 'a PNG or a JPEG'}.`;
+    }
     // a guest reaches the edit command through the relay, which also limits what a guest loads
     const video = file.type.startsWith('video/') || (!file.type && VIDEO.test(file.name));
     const max = client.host && video ? HOST_MAX : GUEST_MAX;
@@ -221,7 +224,7 @@ export function install(client: Client): void {
   // that the text names
   const lose = (named: MediaFile[]): void => {
     const lost = named.find((f) => given.has(f));
-    const line = lost ? `${lost.path} is not in the talk folder, since ${given.get(lost)}. Delete it from the deck, or add the file to media/ by hand.` : null;
+    const line = lost ? `${lost.path} is not in the talk folder, since ${given.get(lost)}. Delete it from the deck, or ${client.host ? 'add the file to media/ by hand and load the page again' : 'ask the host to add the file to media/, then load the page again'}.` : null;
     if (line === st.lost) return;
     st.lost = line;
     client.refresh();

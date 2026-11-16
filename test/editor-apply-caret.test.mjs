@@ -2,7 +2,8 @@
 // src/editor/session/session.ts. a caret that the person moves while the formulas of an apply are
 // typeset is left where the person put it, and a caret whose paragraph another person moves to a
 // slide that is not shown stays in the paragraph: the person stays on the slide, and the first key
-// that types shows the slide of the paragraph and goes into it
+// that types shows the slide of the paragraph and goes into it. a selection is kept through a run
+// between two code elements that becomes a space
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -320,5 +321,32 @@ test('on a clean page, a character typed by another person in a paragraph with a
   }
   assert.equal(await b.evaluate('window.__whole'), 0, 'the formulas are looked up in the paragraph alone');
   assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.deepEqual(b.errors, []);
+});
+
+// a blank run inside a p or an li cannot end the text element, see isTextElement(), hence it is set
+// in place, as any other run
+test('a run between two code elements that becomes a space keeps the selection of the person and both code elements', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  const LI = `[...document.querySelectorAll('.reveal li')].find((li) => li.textContent.startsWith('Each step is'))`;
+  const chosen = await b.evaluate(`(() => {
+    const li = ${LI};
+    li.focus();
+    const r = document.createRange();
+    r.setStart(li.lastChild, 2);
+    r.setEnd(li.lastChild, 6);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    window.__codes = [...li.querySelectorAll('code')];
+    return getSelection().toString();
+  })()`);
+  assert.equal(chosen, 'f ap');
+  const text = once(b.source, '</code>, with a <code>data-fragment-index', '</code> <code>data-fragment-index');
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.equal(await b.evaluate('getSelection().toString()'), 'f ap', 'the selection is kept');
+  assert.deepEqual(await b.evaluate(`window.__codes.map((c) => c.isConnected && ${LI}.contains(c))`), [true, true], 'the code elements are kept');
   assert.deepEqual(b.errors, []);
 });

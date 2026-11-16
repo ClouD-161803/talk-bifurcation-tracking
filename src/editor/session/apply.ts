@@ -118,7 +118,7 @@ const shiftPiece = (p: Piece, d: number): Piece =>
 // a change inside one text node of the text element, outside its formulas, written into the text
 // node of the page with replaceData, which keeps the caret and the selection of the person. false,
 // with nothing changed, when the change is not one of plain characters in a run of text, or leaves
-// the run blank, which may end a text element, see isTextElement()
+// blank a run of a div or a span, which may then end the text element, see isTextElement()
 function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const at = textAt(textEl.src, w.start, w.endA);
   if (!at) return false;
@@ -126,7 +126,7 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const decoded = decodedIn(at.parent, at.index, ctx.text, d);
   const math = mathIn(textEl.live);
   const host = decoded === null ? null : liveIn(textEl, at.parent, math);
-  if (decoded === null || !/\S/.test(decoded) || !host) return false;
+  if (decoded === null || (!/\S/.test(decoded) && at.parent === textEl.src && (textEl.src.tag === 'div' || textEl.src.tag === 'span')) || !host) return false;
   const k = at.parent.children[at.index] as SrcText;
   const items = virtualChildren(host, math);
   const item = items[at.index];
@@ -353,9 +353,10 @@ function makeCtx(app: App, text: string): Ctx {
 }
 
 // a deck changed by an apply that then does not read as the text, i.e. neither as before nor as the
-// text. it throws, since a reload is answered only with the deck as it was
-export function partial(): never {
-  throw new Error('the deck does not read as the text after an apply');
+// text. it throws, since a reload is answered only with the deck as it was. target is the text that
+// the deck was to read, with the edits of the person that the client has not read, see turn()
+export function partial(target?: string): never {
+  throw Object.assign(new Error('the deck does not read as the text after an apply'), { target });
 }
 
 // the deck made to read as text, which differs from the text of the source in w, at spot. null when
@@ -389,7 +390,7 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
     // a reload is answered before retag() sets the source, since the deck reads as before at a reload
     const t = startTag(ctx.source, spot.el, text);
     if (t && (redrawn(spot.live, from, t.attrs) || backdropOf(from) !== backdropOf(t.attrs))) return null;
-    if (!retag(ctx.source, spot.el, text)) return within(ctx, spot.el, spot.live);
+    if (!t || !retag(ctx.source, spot.el, text, t)) return within(ctx, spot.el, spot.live);
     // a class or an attribute may be read by the theme or by reveal.js, e.g. a step, where a place
     // or a size in the style is not
     if (setTag(ctx, spot.live, from, spot.el.attrs)) {

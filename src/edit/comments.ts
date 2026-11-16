@@ -71,7 +71,8 @@ function cleanText(raw: unknown): string | Failure {
 
 function cleanMentions(raw: unknown): string[] | Failure {
   if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw) || raw.length > MENTIONS_MAX || !raw.every(isPersonId)) return fail(400, 'mentions must be person ids');
+  if (Array.isArray(raw) && raw.length > MENTIONS_MAX) return fail(413, `the comment has more than ${MENTIONS_MAX} mentions`);
+  if (!Array.isArray(raw) || !raw.every(isPersonId)) return fail(400, 'mentions must be person ids');
   return [...new Set(raw as string[])];
 }
 
@@ -229,6 +230,8 @@ export class Comments {
     const undo = () => {
       this.threads.delete(thread.id);
       this.heads.delete(thread.id);
+      // the check that the failed write took, which a thread sent again with this id would keep
+      this.checks.delete(thread.id);
       this.bytes -= head;
     };
     return this.commit([thread.id], undo, NOT_SAVED) ?? thread;
@@ -396,12 +399,13 @@ export class Comments {
     return this.saved === this.edits || this.locked;
   }
 
-  // the file written at once, or false when it could not be
-  private writeNow(): boolean {
+  // the file written at once, or false when it could not be. a change of a thread tries the rename 3
+  // times, which holds the edit command for 30 ms at most, and a stop as often as other files
+  private writeNow(tries?: number): boolean {
     const tmp = this.tmpName();
     try {
       writeFileSync(tmp, this.serialize());
-      renameRetriedSync(tmp, this.file);
+      renameRetriedSync(tmp, this.file, tries);
       this.saved = this.edits;
       this.writesNow++;
       return true;
@@ -417,7 +421,7 @@ export class Comments {
   // a change of the threads written before it is told and answered, since a page drops a comment
   // that the host answered and then lost, or else taken back by undo and refused with error
   private commit(ids: string[], undo: () => void, error: string, gone = false): Failure | null {
-    if (!this.writeNow()) {
+    if (!this.writeNow(3)) {
       undo();
       return fail(503, error);
     }
@@ -666,12 +670,13 @@ export class Comments {
     try {
       await writeFile(tmp, this.serialize());
       // a stop or a change of a thread writes the file at once, hence this older text is not renamed
-      // over it. the rename is made at once as well, so that such a write cannot come between
+      // over it. the rename is made at once as well, so that such a write cannot come between, and
+      // tried once, since a rename that fails is tried again at the next turn
       if (this.stopped || this.writesNow !== writesNow) {
         await unlink(tmp).catch(() => {});
         return;
       }
-      renameRetriedSync(tmp, this.file);
+      renameRetriedSync(tmp, this.file, 1);
       this.saved = Math.max(this.saved, edits);
     } catch (e) {
       if (!this.stopped) this.log(`could not write ${this.file}, trying again: ${(e as Error).message}`);

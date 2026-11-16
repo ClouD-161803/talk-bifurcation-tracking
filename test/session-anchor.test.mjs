@@ -480,6 +480,51 @@ test('a short slide removed while others are added or edited in one operation ha
   });
 });
 
+test('a slide edited in place in an operation that edits another slide keeps its threads when its heading is kept or it was empty', async (t) => {
+  const MOT = ['<h2>Motivation</h2>', '<p>Transfers cost fuel.</p>'];
+  const FIG = ['<img src="figures/orbit.png">'];
+  const RES = ['<h2>Results</h2>', '<p>Lower cost by a third.</p>'];
+  const OUT = ['<h2>Outlook</h2>', '<p>Next we try NRHOs.</p>'];
+  const OUT2 = ['<h2>Outlook</h2>', '<p>Next we try NRHOs and DROs.</p>'];
+  const Q = ['<h2>Questions?</h2>'];
+  const kept = (after, r, inside, ...elements) => {
+    const slide = slideAround(after, after.indexOf(inside));
+    assert.ok(slide, `${inside} is on a slide`);
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+    elements.forEach((what, k) => {
+      reads(after, r.items[k + 1].anchor, what);
+      assert.deepEqual(r.items[k + 1].slide, slide);
+      assert.equal(r.items[k + 1].removed, undefined);
+    });
+  };
+  await t.test('the sentence of a short slide rewritten under its heading', () => {
+    const before = deck(MOT, RES, OUT, Q);
+    const after = deck(MOT, ['<h2>Results</h2>', '<p>Fuel use drops sharply.</p>'], OUT2, Q);
+    const r = move(before, after, [onSlide(before, 'Results'), onElement(before, '<h2>Results'), onElement(before, '<p>Lower')]);
+    kept(after, r, 'Fuel use', '<h2>Results</h2>', '<p>Fuel use drops sharply.</p>');
+  });
+  await t.test('an empty slide of a layout filled', () => {
+    const before = deck(MOT, ['<h2></h2>', '<p></p>'], OUT, Q);
+    const after = deck(MOT, RES, OUT2, Q);
+    const r = move(before, after, [onSlide(before, '<h2></h2>'), onElement(before, '<h2></h2>')]);
+    kept(after, r, 'Lower cost', '<h2>Results</h2>');
+  });
+  await t.test('every word of a slide rewritten, its heading too, which removes it', () => {
+    const before = deck(MOT, FIG, RES, OUT, Q);
+    const after = deck(MOT, FIG, ['<h2>Findings</h2>', '<p>Fuel use drops sharply.</p>'], OUT2, Q);
+    const items = [onSlide(before, 'Results'), onElement(before, '<h2>Results'), onElement(before, '<p>Lower'), onSlide(before, 'Outlook'), onElement(before, '<p>Next')];
+    const r = move(before, after, items);
+    const whole = `<section>\n  ${RES.join('\n  ')}\n</section>`;
+    assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: whole } });
+    assert.deepEqual(r.items[1], { anchor: null, slide: null, removed: { text: RES[0], slide: whole } });
+    assert.deepEqual(r.items[2], { anchor: null, slide: null, removed: { text: RES[1], slide: whole } });
+    const outlook = slideAround(after, after.indexOf('Outlook'));
+    assert.deepEqual(r.items[3], { anchor: outlook, slide: outlook });
+    reads(after, r.items[4].anchor, OUT2[1]);
+    assert.deepEqual(r.items[4].slide, outlook);
+  });
+});
+
 test('of two slides of equal text, the one that the operation removes loses its threads', async (t) => {
   const Q = ['<h2>Questions?</h2>'];
   const before = deck(['<h2>Alpha</h2>'], Q, ['<h2>Beta</h2>'], Q);

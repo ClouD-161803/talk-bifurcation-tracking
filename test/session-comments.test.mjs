@@ -6,8 +6,6 @@
 // the three tabs of the inspector, text that looks like HTML, and a phone
 
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
@@ -443,10 +441,7 @@ test('offline, the Comment command is disabled, and a draft is kept until the pa
   await caretAtEnd(a, el(0, 'h2'));
   await press(a, COMMENT_KEY);
   await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
-  // the edit command writes its comments at most once a second, and a kill does not wait for it
-  const file = join(server.talk, '.session', 'comments.json');
-  await until(() => existsSync(file) && readFileSync(file, 'utf8').includes('Before the stop'), 'the edit command to write the comment');
-
+  // the edit command writes a comment before it answers it, hence the kill below does not lose it
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
   await a.waitFor(`/^Offline/.test(${STATE})`);

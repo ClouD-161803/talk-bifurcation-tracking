@@ -6,15 +6,16 @@
 // a phone of 390 px
 
 import assert from 'node:assert/strict';
-import { cpSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
+import { caretAtEnd, frame, front } from './helpers/apply.mjs';
+import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
-import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
+import { goOffline, tab } from './helpers/offline.mjs';
+import { post as request, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
@@ -134,9 +135,12 @@ async function pair(t, names = ['Ann', 'Ben']) {
   return { browser, server, pages };
 }
 
-// a talk folder with the slides of slides in place of those of TALK, and the edit command on it
-async function talkWith(t, slides) {
-  const folder = talkFolder(t, TALK.replace(/<section>[\s\S]*<\/section>\n/, slides));
+// a talk folder with the slides of slides in place of those of TALK, and with tex next to it as
+// tex.js, which the deck loads, when it is given, and the edit command on it
+async function talkWith(t, slides, tex = null) {
+  const deck = TALK.replace(/<section>[\s\S]*<\/section>\n/, slides);
+  const folder = talkFolder(t, tex === null ? deck : deck.replace('<script src="theme/beeson.js">', '<script src="tex.js"></script>\n<script src="theme/beeson.js">'));
+  if (tex !== null) writeFileSync(join(folder.talk, 'tex.js'), tex);
   for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
   const file = join(folder.talk, 'index.html');
   const server = { ...folder, file, read: () => readFileSync(file, 'utf8'), edit: await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config } }) };
@@ -557,6 +561,25 @@ test('only a name picked from the list is a mention, and a name typed by hand is
   clean(b);
 });
 
+test('the list of people at an @ stays open while the field loses the focus and has it again, and closes once the focus leaves', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const LIST = `!document.querySelector('${PANE} .draft .people').hidden`;
+  await show(b, 'One');
+  await click(b, '.reveal .slides > section:nth-child(1) p');
+  await press(b, COMMENT_KEY);
+  await b.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(b, '@An');
+  await sees(b, LIST, true);
+  // as at a click on a scroll bar, or when the window loses the focus and has it again
+  await b.evaluate(`(() => { const d = document.querySelector('${DRAFT}'); d.blur(); d.focus(); return true; })()`);
+  await elapse(b, 1000);
+  assert.deepEqual(await b.evaluate(`[${LIST}, document.activeElement?.matches('${DRAFT}')]`), [true, true], 'the list and the focus after the field had the focus again');
+  await b.evaluate(`document.querySelector('${DRAFT}').blur()`);
+  await sees(b, LIST, false, 'the list after the focus left the field');
+  clean(a);
+  clean(b);
+});
+
 test('an edit of a comment keeps two mentions with one shown name apart', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   // two people that never joined, whose names are thus shown as Someone
@@ -842,6 +865,54 @@ test('the accessibility tree of Chrome holds the field of a mention as a combobo
   clean(b);
 });
 
+test('the button of the actions of a comment is drawn as the ellipsis of More in the bar of Version History', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  const id = await post(a, 0, 'A thread');
+  await openPane(a);
+  await sees(a, `(() => {
+    const b = document.querySelector('${ARTICLE(id)} .head button[aria-haspopup="menu"]');
+    return b && { text: b.textContent, icon: !!b.querySelector('svg'), name: b.getAttribute('aria-label') };
+  })()`, { text: '⋯', icon: false, name: 'Thread actions' });
+  clean(a);
+});
+
+for (const scheme of ['dark', 'light']) {
+  test(`in ${scheme} mode, a button of a thread that is disabled offline is drawn dimmer than when it is enabled`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const a = await tab(browser, sessionUrl(server.edit), { name: 'Ann' });
+    await converge(server, [a]);
+    const open = await post(a, 0, 'An open thread');
+    const done = await post(a, 1, 'A resolved thread');
+    await act(a, done, 'resolve');
+    await a.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await openPane(a);
+    await sees(a, `!!document.querySelector('${ARTICLE(open)}')`, true);
+    // the buttons of the head of each thread, as their names, whether they are disabled, and how
+    // they are drawn
+    const look = async () => {
+      const read = (id) => a.evaluate(`[...document.querySelectorAll('${ARTICLE(id)} .head button')].map((b) => { const s = getComputedStyle(b); return [b.getAttribute('aria-label') || b.textContent, b.disabled, s.color, s.opacity]; })`);
+      const out = await read(open);
+      await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="resolved"]').click()`);
+      await sees(a, `!!document.querySelector('${ARTICLE(done)}')`, true);
+      out.push(...(await read(done)));
+      await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="open"]').click()`);
+      await sees(a, `!!document.querySelector('${ARTICLE(open)}')`, true);
+      return out;
+    };
+    await front(a);
+    const on = await look();
+    await goOffline(a);
+    await a.waitFor(`/^Offline/.test(${STATE})`);
+    await sees(a, `document.querySelector('${ARTICLE(open)} .resolve').disabled`, true);
+    const off = await look();
+    assert.deepEqual(on.map(([name, disabled]) => [name, disabled]), [['Resolve', false], ['Thread actions', false], ['Reopen', false], ['Thread actions', false]]);
+    assert.deepEqual(off.map(([name, disabled, color, opacity], k) => [name, disabled, color !== on[k][2] || opacity !== on[k][3]]), on.map(([name]) => [name, true, true]), JSON.stringify({ on, off }));
+    clean(a, REFUSED);
+  });
+}
+
 test('the initials and the tone of a person in the pane are those of the avatar', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t, ['Ann 🇮🇹', 'Ben']);
   await post(a, 0, 'With a flag');
@@ -924,36 +995,48 @@ test('on a phone of 390 px, a toast and its buttons take a tap, with 32 px or mo
 test('Mod+Enter in the field of a comment or of a reply sends it, and in another field starts the slide show', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   const SHOW = `!!document.querySelector('.beeson-edit-show')`;
+  // the field sends with the other modifier too, i.e. Control on a Mac and Meta elsewhere
+  const OTHER = process.platform === 'darwin' ? 'Ctrl+Enter' : 'Meta+Enter';
   await show(a, 'One');
-  await caretAtEnd(a, el(0, 'h2'));
-  await press(a, COMMENT_KEY);
-  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
-  await type(a, 'Sent by its key');
-  await press(a, 'Mod+Enter');
-  await sees(a, `[!!document.querySelector('${PANE} .draft'), ${SHOW}]`, [false, false], 'the draft and the slide show after Mod+Enter');
-  assert.deepEqual(await stored(a), [{ text: 'Sent by its key', mentions: [], replies: [] }]);
+  const sent = [];
+  for (const key of ['Mod+Enter', OTHER]) {
+    await caretAtEnd(a, el(0, 'h2'));
+    await press(a, COMMENT_KEY);
+    await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+    await type(a, `Sent by ${key}`);
+    await press(a, key);
+    await sees(a, `[!!document.querySelector('${PANE} .draft'), ${SHOW}]`, [false, false], `the draft and the slide show after ${key}`);
+    sent.push({ text: `Sent by ${key}`, mentions: [], replies: [] });
+    assert.deepEqual(await stored(a), sent);
+  }
 
   const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
-  await click(a, `${ARTICLE(id)} .reply textarea`);
-  await type(a, 'A reply by its key');
-  await press(a, 'Mod+Enter');
-  await sees(a, `[document.querySelector('${ARTICLE(id)} .reply textarea').value, ${SHOW}]`, ['', false], 'the reply and the slide show after Mod+Enter');
-  assert.deepEqual(await stored(a), [{ text: 'Sent by its key', mentions: [], replies: ['A reply by its key'] }]);
+  for (const [k, key] of ['Mod+Enter', OTHER].entries()) {
+    // a reply is drawn a frame after its field is emptied, and moves the field down
+    await a.waitFor(`document.querySelectorAll('${ARTICLE(id)} .item').length === ${k + 1}`);
+    await click(a, `${ARTICLE(id)} .reply textarea`);
+    await type(a, `A reply by ${key}`);
+    await press(a, key);
+    await sees(a, `[document.querySelector('${ARTICLE(id)} .reply textarea').value, ${SHOW}]`, ['', false], `the reply and the slide show after ${key}`);
+  }
+  assert.deepEqual((await stored(a)).map((c) => c.replies).flat(), ['A reply by Mod+Enter', `A reply by ${OTHER}`]);
 
   // the field of Go to Slide
-  await click(a, '.reveal .slides > section:nth-child(1)');
-  await press(a, 'Escape');
-  await press(a, 'G');
-  await a.waitFor(`document.activeElement?.matches('.beeson-edit-goto input')`);
-  await press(a, 'Mod+Enter');
-  // Esc reaches the show once reveal.js is ready in its frame, which is of the origin of the page
-  await a.waitFor(`!!document.querySelector('.beeson-edit-show iframe')?.contentWindow?.Reveal?.isReady?.()`, 30_000);
-  await press(a, 'Escape');
-  await a.waitFor(`!${SHOW}`);
+  for (const key of ['Mod+Enter', OTHER]) {
+    await click(a, '.reveal .slides > section:nth-child(1)');
+    await press(a, 'Escape');
+    await press(a, 'G');
+    await a.waitFor(`document.activeElement?.matches('.beeson-edit-goto input')`);
+    await press(a, key);
+    // Esc reaches the show once reveal.js is ready in its frame, which is of the origin of the page
+    await a.waitFor(`!!document.querySelector('.beeson-edit-show iframe')?.contentWindow?.Reveal?.isReady?.()`, 30_000);
+    await press(a, 'Escape');
+    await a.waitFor(`!${SHOW}`);
+  }
   clean(a);
 });
 
-test('Esc in a draft with text keeps the text and leaves the field, Cancel discards it, and Esc closes an empty draft', { timeout: 300_000 }, async (t) => {
+test('Esc in a draft or a reply with text keeps the text and leaves the field, Cancel discards it also through a reload, and Esc closes an empty draft', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   const state = `(() => { const d = document.querySelector('${DRAFT}'); return d && { value: d.value, focused: document.activeElement === d }; })()`;
   await show(a, 'One');
@@ -971,6 +1054,26 @@ test('Esc in a draft with text keeps the text and leaves the field, Cancel disca
   await press(a, 'Escape');
   await sees(a, state, null);
   assert.deepEqual(await stored(a), []);
+
+  const id = await post(a, 0, 'A thread');
+  await openPane(a);
+  await sees(a, `!!document.querySelector('${ARTICLE(id)}')`, true, 'the thread in the pane');
+  const reply = `(() => { const r = document.querySelector('${ARTICLE(id)} .reply textarea'); return r && { value: r.value, focused: document.activeElement === r }; })()`;
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await type(a, 'Kept by Esc');
+  await press(a, 'Escape');
+  await sees(a, reply, { value: 'Kept by Esc', focused: false });
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await click(a, `${ARTICLE(id)} .reply .actions button:not(.primary)`);
+  await sees(a, reply, { value: '', focused: false });
+  const count = await loads(a);
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again');
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await openPane(a);
+  await sees(a, reply, { value: '', focused: false }, 'the reply after a reload');
+  assert.deepEqual(await stored(a), [{ text: 'A thread', mentions: [], replies: [] }]);
   clean(a);
 });
 
@@ -1028,13 +1131,15 @@ test('the badge of the text element of the caret is clear of its grips, and its 
 test('a draft on a theorem is labeled by its kind, on a cell as a table cell, and on a citation by its number or else its key', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
+  // tex.js has the paper of the first citation, which is thus numbered, and not the one of the second
   const server = await talkWith(t, `<section>
   <h2>One</h2>
   <p class="theorem" data-kind="lemma">Every orbit is closed.</p>
   <table><tr><td>A1</td><td>B1</td></tr></table>
   <p>Cited words<cite data-key="koon2000"></cite></p>
+  <p>Other words<cite data-key="nobody1999"></cite></p>
 </section>
-`);
+`, 'window.beesonTex = { "macros": {}, "environments": {}, "packages": [], "theorems": {}, "references": { "koon2000": { "authors": "Koon et al.", "title": "Heteroclinic connections", "venue": "Chaos", "volume": "10", "year": "2000" } } };\n');
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   await show(a, 'One');
   const label = async (selector) => {
@@ -1045,8 +1150,8 @@ test('a draft on a theorem is labeled by its kind, on a cell as a table cell, an
     await a.waitFor(`!document.querySelector('${PANE} .draft')`);
     return got;
   };
-  const n = await a.evaluate(`${el(0, 'cite')}.dataset.n || 'koon2000'`);
-  assert.deepEqual([await label('p.theorem'), await label('td'), await label('cite')], ['On Lemma: Every orbit is closed.', 'On Table cell: A1', `On Citation: ${n}`]);
+  await sees(a, `[...document.querySelectorAll('.reveal .slides cite')].map((c) => c.dataset.n ?? null)`, ['1', 'nobody1999'], 'the labels of the citations on the slide');
+  assert.deepEqual([await label('p.theorem'), await label('td'), await label('cite'), await label('p:last-of-type cite')], ['On Lemma: Every orbit is closed.', 'On Table cell: A1', 'On Citation: 1', 'On Citation: nobody1999']);
   clean(a);
 });
 
@@ -1144,34 +1249,217 @@ const postOn = (page, slide, tag, n, text) => page.evaluate(`(async () => {
 })()`);
 
 for (const [width, height] of [[1440, 900], [390, 844]]) {
-  test(`at ${width} px, the badges of two near elements do not overlap, and the badge of a turned element is at its own upper right corner`, { timeout: 300_000 }, async (t) => {
+  test(`at ${width} px, the badges of two near elements do not overlap`, { timeout: 300_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talkWith(t, `<section>
   <h2>One</h2>
   <p style="position: absolute; left: 300px; top: 250px; width: 300px; margin: 0">Upper paragraph</p>
   <p style="position: absolute; left: 300px; top: 260px; width: 300px; margin: 0">Lower paragraph</p>
-  <p style="position: absolute; left: 1100px; top: 500px; width: 300px; height: 80px; margin: 0; rotate: 30deg">Turned paragraph</p>
 </section>
 `);
     const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
     // a phone shows the slide without the Format inspector, which takes most of its width
     if (width < 600) await a.evaluate(`window.BeesonEditor.exec('view.slideOnly')`);
     await show(a, 'One');
-    for (const n of [0, 1, 2]) await postOn(a, 0, 'p', n, `On paragraph ${n + 1}`);
-    await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 3);
-    // the boxes of the badges, in the order of the paragraphs
-    const boxes = await a.evaluate(`[...document.querySelectorAll('.beeson-comment-badge')].map((b) => b.getBoundingClientRect().toJSON()).sort((x, y) => x.top - y.top)`);
-    const [upper, lower, turned] = boxes;
-    // a point 6 px along the top edge of the turned paragraph and 4 px into it from its upper right
-    // corner, which is 4 px left of and 4 px below the lower left corner of its badge
-    const a30 = Math.PI / 6;
-    const probe = { x: turned.left - 4 - 6 * Math.cos(a30) - 4 * Math.sin(a30), y: turned.bottom + 4 - 6 * Math.sin(a30) + 4 * Math.cos(a30) };
-    const got = {
-      apart: upper.bottom <= lower.top || upper.right <= lower.left || lower.right <= upper.left,
-      corner: await a.evaluate(`document.elementsFromPoint(${probe.x}, ${probe.y}).some((e) => e.textContent === 'Turned paragraph')`),
-    };
-    assert.deepEqual(got, { apart: true, corner: true }, JSON.stringify(boxes));
+    for (const n of [0, 1]) await postOn(a, 0, 'p', n, `On paragraph ${n + 1}`);
+    await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 2);
+    const [upper, lower] = await a.evaluate(BADGE_RECTS);
+    assert.equal(meets(upper, lower), false, JSON.stringify([upper, lower]));
+    clean(a);
+  });
+}
+
+// the badges as rectangles of the window
+const BADGE_RECTS = `[...document.querySelectorAll('.beeson-comment-badge')].map((b) => b.getBoundingClientRect().toJSON())`;
+const meets = (x, y) => x.left < y.right && y.left < x.right && x.top < y.bottom && y.top < x.bottom;
+
+for (const [width, height] of [[1440, 900], [390, 844]]) {
+  test(`at ${width} px, the badge of an element turned by any angle is beside its own upper right corner and clear of its text`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const angles = [0, 90, 180, 270, 135];
+    const server = await talkWith(t, `<section>
+  <h2>One</h2>
+${angles.map((deg, k) => `  <p style="position: absolute; left: ${60 + 370 * k}px; top: 500px; margin: 0; rotate: ${deg}deg">Turned ${deg}</p>`).join('\n')}
+</section>
+`);
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
+    if (width < 600) await a.evaluate(`window.BeesonEditor.exec('view.slideOnly')`);
+    await show(a, 'One');
+    for (const k of angles.keys()) await postOn(a, 0, 'p', k, `On paragraph ${k + 1}`);
+    await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, angles.length);
+    // for each paragraph, the badge nearest to its own upper right corner, the distance of this
+    // corner to the badge, and whether the badge meets the text of the paragraph
+    const got = await a.evaluate(`(() => {
+      const s = ${C}.app.stage.scale;
+      const badges = ${BADGE_RECTS};
+      const meets = ${meets.toString()};
+      return [...Reveal.getCurrentSlide().querySelectorAll('p')].map((p) => {
+        const r = p.getBoundingClientRect();
+        const deg = parseFloat(p.style.rotate) || 0;
+        const a = (deg * Math.PI) / 180;
+        const w = (p.offsetWidth * s) / 2;
+        const h = (p.offsetHeight * s) / 2;
+        const x = (r.left + r.right) / 2 + w * Math.cos(a) + h * Math.sin(a);
+        const y = (r.top + r.bottom) / 2 + w * Math.sin(a) - h * Math.cos(a);
+        const away = (b) => Math.hypot(Math.max(b.left - x, 0, x - b.right), Math.max(b.top - y, 0, y - b.bottom));
+        const badge = badges.reduce((m, b) => (away(b) < away(m) ? b : m));
+        const range = document.createRange();
+        range.selectNodeContents(p);
+        return { deg, near: away(badge) < 12, clear: ![...range.getClientRects()].some((q) => meets(badge, q)) };
+      });
+    })()`);
+    assert.deepEqual(got, angles.map((deg) => ({ deg, near: true, clear: true })), JSON.stringify(await a.evaluate(BADGE_RECTS)));
+    clean(a);
+  });
+}
+
+test('at 390 px, the badges of a slide and of elements at its edges stay inside the window, and neither they nor the areas that take their taps overlap', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const places = [[0, 0], [1620, 0], [1620, 4], [0, 1040], [1620, 1040], [700, 500], [700, 504], [700, 508]];
+  const server = await talkWith(t, `<section>
+  <h2>One</h2>
+${places.map(([x, y], k) => `  <p style="position: absolute; left: ${x}px; top: ${y}px; width: 300px; margin: 0">Place ${k + 1}</p>`).join('\n')}
+</section>
+`);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await a.evaluate(`window.BeesonEditor.exec('view.slideOnly')`);
+  await show(a, 'One');
+  for (const k of places.keys()) await postOn(a, 0, 'p', k, `On paragraph ${k + 1}`);
+  await post(a, 0, 'On the slide');
+  await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, places.length + 1);
+  const boxes = await a.evaluate(BADGE_RECTS);
+  // the area of each badge that takes a tap, i.e. its pseudo-element ::after placed around it
+  const taps = await a.evaluate(`[...document.querySelectorAll('.beeson-comment-badge')].map((b) => {
+    const r = b.getBoundingClientRect();
+    const s = getComputedStyle(b, '::after');
+    return { left: r.left + parseFloat(s.left), top: r.top + parseFloat(s.top), right: r.right - parseFloat(s.right), bottom: r.bottom - parseFloat(s.bottom) };
+  })`);
+  const size = await a.evaluate(`[innerWidth, innerHeight]`);
+  const pairs = (list) => list.flatMap((b, i) => list.slice(i + 1).filter((o) => meets(b, o))).length;
+  const got = {
+    overlaps: pairs(boxes),
+    taps: pairs(taps),
+    outside: boxes.filter((b) => b.left < 0 || b.top < 0 || b.right > size[0] || b.bottom > size[1]).length,
+  };
+  assert.deepEqual(got, { overlaps: 0, taps: 0, outside: 0 }, JSON.stringify(boxes));
+  clean(a);
+});
+
+test('a letter typed by another person before the anchors of many threads does not draw the open pane again', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, Array.from({ length: 20 }, (_, k) => `<section>
+  <h2>Slide ${k + 1}</h2>
+  <p>First point of slide ${k + 1}</p>
+  <p>Second point of slide ${k + 1}</p>
+</section>
+`).join('\n'));
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  await openPane(a);
+  await a.evaluate(`(() => {
+    window.__changes = 0;
+    new MutationObserver((list) => (window.__changes += list.length)).observe(document.querySelector('${PANE}'), { subtree: true, childList: true, attributes: true, characterData: true });
+    return true;
+  })()`);
+  await show(b, 'Slide 1');
+  // the changes of the pane over ten operations of one letter each, typed by Ben on the first slide,
+  // each drawn by the page of Ann in front. a page brought behind loses its caret
+  const changes = async () => {
+    const was = await a.evaluate('window.__changes');
+    for (let k = 0; k < 10; k++) {
+      await front(b);
+      await caretAtEnd(b, el(0, 'p'));
+      await typeKeys(b, 'x');
+      await front(a);
+      await until(async () => (await b.evaluate(`${C}.acked()`)) && (await a.evaluate(TEXT)) === (await b.evaluate(TEXT)), 'the letter of Ben on the page of Ann');
+      await frame(a);
+      await frame(a);
+    }
+    return (await a.evaluate('window.__changes')) - was;
+  };
+  const none = await changes();
+  for (let k = 0; k < 60; k++) await postOn(a, 1 + (k % 19), 'p', k % 2, `Thread ${k}`);
+  await sees(a, `document.querySelectorAll('${PANE} article').length`, 60);
+  await frame(a);
+  assert.ok((await changes()) <= none, 'the changes of the pane with 60 threads are not more than with none');
+  clean(a);
+  clean(b);
+});
+
+test('the label of a thread on a citation shows its new number as soon as the citation on the slide does', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const dir = 'test/pages/tex-sheets';
+  const folder = talkFolder(t, readFileSync(`${dir}/index.html`, 'utf8').replaceAll('../../../theme/', 'theme/'));
+  for (const name of ['preamble.tex', 'references.bib', 'tex.js', 'defs.tex', 'mymath.sty']) cpSync(join(dir, name), join(folder.talk, name));
+  for (const name of ['theme', 'brand']) cpSync(resolve(name), join(folder.talk, name), { recursive: true });
+  const edit = await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config } });
+  t.after(async () => {
+    await stopEdit(edit);
+    rmSync(folder.root, { recursive: true, force: true });
+  });
+  const a = await open(browser, sessionUrl(edit), { name: 'Ann' });
+  await openPane(a);
+  await show(a, 'Citations');
+  const cite = `document.querySelector('.reveal .slides cite[data-key="gomez2004"]')`;
+  await a.evaluate(`window.BeesonEditor.exec('insert.comment', { kind: 'element', target: ${cite} })`);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await type(a, 'On the paper of Gomez');
+  await click(a, `${PANE} .draft .actions .primary`);
+  await sees(a, THREADS, [{ anchor: 'On Citation: 2', texts: ['On the paper of Gomez'] }]);
+  // another person cites a paper before it, after which the edit command writes tex.js again
+  const bo = (await request(edit.port, `${edit.base}.session/hello`, { name: 'Bo' })).json();
+  const at = bo.text.indexOf('<p>A heteroclinic') + 3;
+  assert.equal((await request(edit.port, `${edit.base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at, text: 'First<cite data-key="szebehely1967"></cite> ' }] })).status, 200);
+  await sees(a, `${cite}.dataset.n`, '3', 'the number of the citation on the slide', 30_000);
+  await sees(a, THREADS, [{ anchor: 'On Citation: 3', texts: ['On the paper of Gomez'] }], 'the thread in the pane', 1500);
+  clean(a, [/404/]);
+});
+
+for (const [width, height] of [[1440, 900], [390, 844]]) {
+  test(`at ${width} px, the count of comments on a thumbnail of the navigator is clear of the dots of the people and of the steps, of the mark of a transition, and of the number of the slide`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talkWith(t, `<section>
+  <h2>One</h2>
+  <p>First slide</p>
+  <p class="fragment" data-fragment-index="1">A step</p>
+</section>
+<section data-transition="zoom">
+  <h2>Two</h2>
+</section>
+`);
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
+    const others = [await open(browser, sessionUrl(server.edit), { name: 'Ben' }), await open(browser, sessionUrl(server.edit), { name: 'Cy' })];
+    await converge(server, [a, ...others]);
+    for (const p of others) await show(p, 'One');
+    if (!(await a.evaluate(`window.BeesonEditor.state('view.navigator').checked`))) await a.evaluate(`window.BeesonEditor.exec('view.navigator')`);
+    await post(a, 0, 'A thread');
+    const frame = `document.querySelector('.beeson-edit-nav .row .frame')`;
+    // the rectangles of the count, of each dot of a person, of each dot of the steps, of the mark of
+    // the transition to the next slide, and of the number of the slide
+    const rects = `(() => {
+      const f = ${frame};
+      const r = (e) => e.getBoundingClientRect().toJSON();
+      const shown = (e) => e.getClientRects().length > 0;
+      return {
+        count: [...f.querySelectorAll('.beeson-comment-count')].filter(shown).map(r),
+        people: [...f.querySelectorAll('.beeson-session-dots i')].filter(shown).map(r),
+        steps: [...f.querySelectorAll('.dots i')].filter(shown).map(r),
+        mark: [...f.querySelectorAll('.trans')].filter(shown).map(r),
+        number: [...f.parentElement.querySelectorAll('.no')].filter(shown).map(r),
+      };
+    })()`;
+    await sees(a, `(() => { const g = ${rects}; return [g.count.length, g.people.length, g.steps.length, g.mark.length, g.number.length]; })()`, [1, 2, 3, 1, 1], 'the count, the dots of Ben and Cy, the dots of the steps, the mark, and the number');
+    const got = await a.evaluate(rects);
+    const hits = [];
+    for (const [x, y] of [['count', 'people'], ['count', 'steps'], ['count', 'mark'], ['count', 'number'], ['people', 'steps']]) for (const p of got[x]) for (const q of got[y]) if (meets(p, q)) hits.push(`${x} meets ${y}`);
+    assert.deepEqual(hits, [], JSON.stringify(got));
     clean(a);
   });
 }

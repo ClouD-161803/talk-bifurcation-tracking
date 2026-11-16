@@ -1,38 +1,43 @@
 // the keys of every command in a page of a session, on both platforms: two commands that take one
 // key in one region are a fault, since the key runs only the first of them that is enabled. the
-// pairs of the editor that share a key in disjoint states are listed in KNOWN
+// commands of the editor that share a key in disjoint states are listed in KNOWN, with
+// the region and the key
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { open, sessionUrl, talk } from './helpers/client.mjs';
 
-// the commands of the editor that share a key in one region, each with why the key reaches each of
-// them. a range of cells is a range selected in a table, whose keys RANGE_KEYS of commands/table.ts
-// takes in a listener before the keys of the editor. in a text, the commands of text/flow.ts are
-// defined first, those of commands/text.ts next, and those of commands/table.ts last
+// the commands of the editor that share a key in one region, keyed by the commands, the region, and
+// the chord, each with why the key reaches each of them. a range of cells is a range selected in a
+// table, whose keys RANGE_KEYS of commands/table.ts takes in a listener before the keys of the
+// editor. in a text, the commands of text/flow.ts are defined first, those of commands/text.ts
+// next, and those of commands/table.ts last
 const NUDGE = 'a nudge needs a selected element, an arrow changes the slide without one, and a range of cells takes it first';
+const DELETE = 'a range of cells takes the key first, and the selected elements are deleted otherwise';
+const FLOW = 'the caret goes on into the next text element where there is one, and into the next cell otherwise';
 const KNOWN = {
-  'arrange.nudge.down navigate.nextArrow table.selectDown': NUDGE,
-  'arrange.nudge.left navigate.previousArrow table.selectLeft': NUDGE,
-  'arrange.nudge.right navigate.nextArrow table.selectRight': NUDGE,
-  'arrange.nudge.up navigate.previousArrow table.selectUp': NUDGE,
-  'arrange.nudge.down.far table.extendDown': NUDGE,
-  'arrange.nudge.left.far table.extendLeft': NUDGE,
-  'arrange.nudge.right.far table.extendRight': NUDGE,
-  'arrange.nudge.up.far table.extendUp': NUDGE,
-  'element.delete table.clearCells': 'a range of cells takes the key first, and the selected elements are deleted otherwise',
-  'selection.clear table.selectTable': 'a range of cells takes Esc first and leaves its table selected, as Keynote does',
-  'selection.editText selection.selectMedia shape.editWords table.editCell': 'Return acts on the one selected object: a text, a figure without text, an empty shape, or a range of cells first',
-  'table.cell.down text.flow.down': 'the caret goes on into the next text element where there is one, and into the next cell otherwise',
-  'table.cell.left text.flow.left': 'the caret goes on into the next text element where there is one, and into the next cell otherwise',
-  'table.cell.right text.flow.right': 'the caret goes on into the next text element where there is one, and into the next cell otherwise',
-  'table.cell.up text.flow.up': 'the caret goes on into the next text element where there is one, and into the next cell otherwise',
-  'table.nextCell text.indent text.tab': 'Tab indents an item of a list, moves to the next cell in a table, and types a tab elsewhere, which is off in a cell',
-  'table.previousCell text.outdent text.tabBack': 'Shift+Tab outdents an item of a list, moves to the cell before in a table, and is a tab elsewhere, which is off in a cell',
-  'text.flow.delete text.joinBackward': 'a selection over several text elements is deleted first, and Backspace joins two paragraphs otherwise',
-  'text.flow.delete text.joinForward': 'a selection over several text elements is deleted first, and Delete joins two paragraphs otherwise',
-  'text.flow.newParagraph text.newParagraph': 'a selection over several text elements is replaced by a new paragraph first, and Return splits the text element otherwise',
+  'arrange.nudge.down navigate.nextArrow table.selectDown | canvas ArrowDown': NUDGE,
+  'arrange.nudge.left navigate.previousArrow table.selectLeft | canvas ArrowLeft': NUDGE,
+  'arrange.nudge.right navigate.nextArrow table.selectRight | canvas ArrowRight': NUDGE,
+  'arrange.nudge.up navigate.previousArrow table.selectUp | canvas ArrowUp': NUDGE,
+  'arrange.nudge.down.far table.extendDown | canvas Shift+ArrowDown': NUDGE,
+  'arrange.nudge.left.far table.extendLeft | canvas Shift+ArrowLeft': NUDGE,
+  'arrange.nudge.right.far table.extendRight | canvas Shift+ArrowRight': NUDGE,
+  'arrange.nudge.up.far table.extendUp | canvas Shift+ArrowUp': NUDGE,
+  'element.delete table.clearCells | canvas Backspace': DELETE,
+  'element.delete table.clearCells | canvas Delete': DELETE,
+  'selection.clear table.selectTable | canvas Escape': 'a range of cells takes Esc first and leaves its table selected, as Keynote does',
+  'selection.editText selection.selectMedia shape.editWords table.editCell | canvas Enter': 'Return acts on the one selected object: a text, a figure without text, an empty shape, or a range of cells first',
+  'table.cell.down text.flow.down | text ArrowDown': FLOW,
+  'table.cell.left text.flow.left | text ArrowLeft': FLOW,
+  'table.cell.right text.flow.right | text ArrowRight': FLOW,
+  'table.cell.up text.flow.up | text ArrowUp': FLOW,
+  'table.nextCell text.indent text.tab | text Tab': 'Tab indents an item of a list, moves to the next cell in a table, and types a tab elsewhere, which is off in a cell',
+  'table.previousCell text.outdent text.tabBack | text Shift+Tab': 'Shift+Tab outdents an item of a list, moves to the cell before in a table, and is a tab elsewhere, which is off in a cell',
+  'text.flow.delete text.joinBackward | text Backspace': 'a selection over several text elements is deleted first, and Backspace joins two paragraphs otherwise',
+  'text.flow.delete text.joinForward | text Delete': 'a selection over several text elements is deleted first, and Delete joins two paragraphs otherwise',
+  'text.flow.newParagraph text.newParagraph | text Enter': 'a selection over several text elements is replaced by a new paragraph first, and Return splits the text element otherwise',
 };
 
 // each command with its keys on the platform of the page and the regions that take them, as
@@ -91,8 +96,9 @@ for (const platform of ['mac', 'other']) {
         owners.set(at, [...new Set([...(owners.get(at) ?? []), c.id])]);
       }
     }
-    const shared = new Map();
-    for (const [at, ids] of owners) if (ids.length > 1) shared.set(ids.sort().join(' '), at);
-    assert.deepEqual([...shared].filter(([p]) => !(p in KNOWN)).sort(), [], 'the commands that share a key in one region');
+    const shared = new Set();
+    for (const [at, ids] of owners) if (ids.length > 1) shared.add(`${ids.sort().join(' ')} | ${at}`);
+    assert.deepEqual([...shared].filter((k) => !(k in KNOWN)).sort(), [], 'the commands that share a key in one region');
+    assert.deepEqual(Object.keys(KNOWN).filter((k) => !shared.has(k)).sort(), [], 'the entries of KNOWN that do not share their key any more');
   });
 }

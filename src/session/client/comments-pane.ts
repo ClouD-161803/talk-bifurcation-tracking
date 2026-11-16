@@ -39,7 +39,8 @@ const CSS = `
 .beeson-comments .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .beeson-comments .mention { color: var(--ed-text); font-weight: 600; text-decoration-line: underline; text-decoration-color: var(--ed-select); text-decoration-thickness: 2px; text-underline-offset: 2px; }
 .beeson-comments button.icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ed-muted); }
-.beeson-comments button.icon:hover { background: var(--ed-hover); color: var(--ed-text); }
+.beeson-comments button.icon:not(:disabled):hover { background: var(--ed-hover); color: var(--ed-text); }
+.beeson-comments :is(button.icon, button.text-button):disabled { color: var(--ed-faint); }
 .beeson-comments button.text-button, .beeson-comments .actions button { min-height: 32px; padding: 0 10px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); color: var(--ed-text); font: inherit; }
 .beeson-comments .actions button.primary { border-color: transparent; background: var(--ed-select); color: var(--ed-on-select); }
 .beeson-comments .actions button:disabled { opacity: 0.5; }
@@ -423,7 +424,7 @@ class Pane {
         { label: 'Delete', run: () => void this.remove(t, root ? null : i.id) },
       ];
       // a second press closes the menu
-      const more = this.button('', root ? 'Thread actions' : 'Reply actions', (ev) => {
+      const more = this.button('⋯', root ? 'Thread actions' : 'Reply actions', (ev) => {
         if (this.menu) return this.menu.close();
         const m = this.client.shell.menu(items, {
           anchor: more.getBoundingClientRect(),
@@ -436,7 +437,7 @@ class Pane {
           },
         });
         this.menu = m;
-      }, 'icon more', 'more');
+      }, 'icon more');
       more.setAttribute('aria-haspopup', 'menu');
       head.append(offline(more));
     }
@@ -480,16 +481,21 @@ class Pane {
     if (!f) {
       const kept = this.pending.get(t.id);
       this.pending.delete(t.id);
+      const leave = () => {
+        f!.box.classList.remove('open');
+        this.keep();
+        this.nodes.get(t.id)?.focus();
+      };
+      // Cancel discards the text, and Esc keeps it, as in a draft
       f = this.field('Reply', 'Reply', async (text, mentions) => {
         await this.comments.act(t.id, 'reply', { text, mentions });
         // a reply to a thread that another person resolved while it was typed reopens it
         if (this.comments.threads.get(t.id)?.resolved) await this.comments.act(t.id, 'reopen', {});
         this.comments.markRead(t.id);
       }, () => {
-        f!.box.classList.remove('open');
-        this.keep();
-        this.nodes.get(t.id)?.focus();
-      }, kept);
+        f!.reset();
+        leave();
+      }, kept, leave);
       f.box.classList.add('reply');
       if (kept?.text) f.box.classList.add('open');
       const field = f;
@@ -699,7 +705,10 @@ class Pane {
       this.keep();
     });
     area.addEventListener('click', update);
-    area.addEventListener('blur', () => setTimeout(close, 150));
+    // the field may have the focus again by then, e.g. after a click on a scroll bar
+    area.addEventListener('blur', () => setTimeout(() => {
+      if (document.activeElement !== area && !people.contains(document.activeElement)) close();
+    }, 150));
     area.addEventListener('keydown', (ev) => {
       // a key of an input method that composes a text is its own
       if (ev.isComposing || ev.keyCode === 229) {
@@ -1070,7 +1079,7 @@ export function install(client: Client): void {
     }
     if (first) pane.restore();
   });
-  for (const e of ['known', 'people', 'state', 'applied', 'me'] as const) client.on(e, schedule);
+  for (const e of ['known', 'people', 'state', 'applied', 'me', 'tex'] as const) client.on(e, schedule);
   client.app.onRefresh(['structure', 'content'], () => shell.tab.shown() && schedule());
   // the pane is shown again when the page loads again, e.g. for a change of the deck that it does
   // not take

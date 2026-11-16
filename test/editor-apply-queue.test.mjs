@@ -6,7 +6,8 @@
 // next to an apply that replaces most of the text. a key and a remote insertion at one point are
 // both kept, the insertion first. an open composition holds back the change of its own slide only,
 // until after the input that Safari sends after its end, and a page that does not read as its
-// text after an apply asks for a reload
+// text after an apply asks for a reload, also after a change held back that cannot be made in full
+// at the end of the composition
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -79,6 +80,45 @@ test('an edit typed between two queued applies is kept through both, and told th
   assert.equal(await sessionText(b), want);
   assert.deepEqual(b.errors, []);
 });
+
+// the apply inserts at the point of a key that the client has not read, which does not conflict
+// with it, or replaces the word that the key replaced, which does. the caret stays after the key
+for (const [what, select, from, to, want] of [
+  ['an insertion of the apply at the point of the key keeps both, the apply first', false, 'attention.</p>', 'attention. See more.</p>', 'attention. See more.QQQ</p>'],
+  ['a change of the apply to the characters that the key replaced keeps the key', true, "viewer's attention.", "viewer's focus.", "viewer's QQQ."],
+]) {
+  test(`a key that the client has not read and ${what}`, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    await showSlide(b, 'Show your steps');
+    await caretAtEnd(b, P1);
+    const told = await changes(b);
+    const result = await b.evaluate(`(() => {
+      const p = ${P1};
+      if (${select}) {
+        const node = p.firstChild;
+        const at = node.data.indexOf('attention');
+        getSelection().setBaseAndExtent(node, at, node, at + 'attention'.length);
+      }
+      document.execCommand('insertText', false, 'QQQ');
+      return ${E}.apply(${JSON.stringify(once(b.source, from, to))}).then((r) => r.reload);
+    })()`);
+    assert.equal(result, false);
+    assert.equal(await render(b), once(b.source, from, want));
+    const caret = await b.evaluate(`(() => {
+      const p = ${P1};
+      const s = getSelection();
+      const r = document.createRange();
+      r.setStart(p, 0);
+      r.setEnd(s.anchorNode, s.anchorOffset);
+      return { focused: document.activeElement === p, collapsed: s.isCollapsed, before: r.toString().slice(-12) };
+    })()`);
+    assert.deepEqual(caret, { focused: true, collapsed: true, before: select ? "viewer's QQQ" : 'See more.QQQ' });
+    await b.waitFor(`window.__changes > ${told}`);
+    assert.equal(await sessionText(b), await render(b));
+    assert.deepEqual(b.errors, []);
+  });
+}
 
 test('a box that the document model inserts while two applies arrive is kept, with its entry of the history', async (t) => {
   const b = await sessionPage(browser);
@@ -349,6 +389,28 @@ test('a composing text on a page that is hidden without the end of its compositi
   await b.waitFor('document.hidden');
   await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
   assert.equal(await render(b), text);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a change held back during a composition that cannot be made in full at its end loads the page again through onReload', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await b.evaluate(`(() => {
+    window.__reloads = 0;
+    ${E}.session.onReload(() => window.__reloads++);
+    return true;
+  })()`);
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  // a block element inside a paragraph, which the apply cannot make in full
+  const text = once(b.source, "viewer's attention.</p>", "viewer's attention. <div>q</div></p>");
+  await start(b, 'first', text);
+  await b.waitFor(resolved('first'));
+  assert.equal(await b.evaluate('window.__results.first'), false);
+  assert.equal(await render(b), b.source, 'the change is held back');
+  await compose(b, 'compositionend');
+  await b.waitFor('window.__reloads > 0');
   assert.deepEqual(b.errors, []);
 });
 
