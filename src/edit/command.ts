@@ -553,8 +553,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');
         }
         written(unwritten);
-        // a share in progress sees closed and stops its link, hence the stop waits behind it
-        await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
+        // a share in progress sees closed and stops its link, hence the stop waits behind it. the relay
+        // keeps the record of the end for a guest who was not waiting at the edit command
+        await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
         // a poll that arrives in this time is answered with ended, rather than reset by the close
         await new Promise((done) => setTimeout(done, 200));
         await new Promise<void>((done) => {

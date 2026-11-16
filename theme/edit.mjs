@@ -3466,7 +3466,7 @@ async function start(options = {}) {
         log(kept ? `the text of the session is kept in ${kept}` : "the text of the session could not be kept in any file");
       }
       written(unwritten2);
-      await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
+      await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
       await new Promise((done) => setTimeout(done, 200));
       await new Promise((done) => {
         server.close(() => done());
