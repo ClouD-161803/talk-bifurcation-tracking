@@ -302,22 +302,25 @@ export function slideChanges(before: string, beforeSlides: Slide[], after: strin
     if (list) list.push(j);
     else free.set(t, [j]);
   });
+  const past = new Set<number>();
   a.forEach((t, i) => {
     const list = to[i] < 0 ? free.get(t) : undefined;
     if (!list?.length) return;
     let k = 0;
     for (let x = 1; x < list.length; x++) if (Math.abs(list[x] - i) < Math.abs(list[k] - i)) k = x;
-    to[i] = list.splice(k, 1)[0];
+    past.add((to[i] = list.splice(k, 1)[0]));
   });
   const moved = Int32Array.from(to);
   pairInPlace(to, b.length, (i) => a[i], (j) => b[j]);
   to.forEach((j, i) => {
     if (j >= 0 && moved[i] < 0) matched.push({ i, j, same: false });
   });
-  // a slide that reads as before is not changed, although a line diff may have marked its start tag
+  // a slide that reads as before is not changed, although a line diff may have marked its start tag.
+  // a slide moved past others is changed at its new place, also when the diff moved the others
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = new Set<number>();
   afterSlides.forEach((s, j) => {
+    if (past.has(j)) slides.add(s.number);
     if (!same.has(j) && marks.some((m) => (m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end))) slides.add(s.number);
   });
   const gone = beforeSlides.filter((_, i) => to[i] < 0).map((s) => s.number);

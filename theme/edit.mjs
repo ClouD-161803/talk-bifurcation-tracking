@@ -1717,12 +1717,13 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
     if (list) list.push(j);
     else free.set(t, [j]);
   });
+  const past = /* @__PURE__ */ new Set();
   a.forEach((t, i) => {
     const list = to[i] < 0 ? free.get(t) : void 0;
     if (!list?.length) return;
     let k = 0;
     for (let x = 1; x < list.length; x++) if (Math.abs(list[x] - i) < Math.abs(list[k] - i)) k = x;
-    to[i] = list.splice(k, 1)[0];
+    past.add(to[i] = list.splice(k, 1)[0]);
   });
   const moved2 = Int32Array.from(to);
   pairInPlace(to, b.length, (i) => a[i], (j) => b[j]);
@@ -1732,6 +1733,7 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = /* @__PURE__ */ new Set();
   afterSlides.forEach((s, j) => {
+    if (past.has(j)) slides.add(s.number);
     if (!same.has(j) && marks.some((m) => m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end)) slides.add(s.number);
   });
   const gone = beforeSlides.filter((_, i) => to[i] < 0).map((s) => s.number);
