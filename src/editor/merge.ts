@@ -137,6 +137,18 @@ export function edits(base: string, theirs: string): Edit[] {
   return [{ start: s, end: base.length - t, text: theirs.slice(s, theirs.length - t) }];
 }
 
+// e and the edit of list that make a move of the line of base at offset at, i.e. e removes the line
+// and the other edit inserts it elsewhere. null when e is not a part of such a move
+export function moveOf(base: string, list: Edit[], e: Edit, at: number): Edit[] | null {
+  if (e.start === e.end) return null;
+  const p = Math.min(Math.max(at, e.start), e.end - 1);
+  const end = base.indexOf('\n', p);
+  const line = base.slice(Math.max(e.start, base.lastIndexOf('\n', p - 1) + 1), Math.min(e.end, end < 0 ? base.length : end)).trim();
+  if (!line || e.text.includes(line)) return null;
+  const f = list.find((x) => x !== e && x.text.split('\n').some((l) => l.trim() === line));
+  return f ? [e, f] : null;
+}
+
 const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.text === b.text;
 
 // the edits of the page, ours, written into theirs. a change of the file equal to an edit of the
@@ -155,6 +167,11 @@ export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'our
   const hit = shared ? (a: Edit, b: Edit) => a.start < b.end && b.start < a.end : overlaps;
   const others = all.filter((h) => !ours.some((o) => equal(o, h)));
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
+  // a move in a session that a change inside the moved element conflicts with is left out whole,
+  // hence the element is neither doubled nor its change lost
+  const moves = new Set<Edit>();
+  if (shared) for (const o of conflicts) for (const h of others) if (hit(o, h)) for (const e of moveOf(base, ours, o, h.start) ?? moveOf(base, all, h, o.start) ?? []) moves.add(e);
+  if (moves.size) return { text: mergeEdits(base, ours.filter((e) => !moves.has(e)), all.filter((e) => !moves.has(e)), prefer, shared).text, conflicts };
   const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => equal(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
