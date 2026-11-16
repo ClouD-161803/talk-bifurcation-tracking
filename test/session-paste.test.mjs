@@ -3,13 +3,15 @@
 // later edits of the page still reach index.html. a copy in a session names its deck by a hash of
 // the key of the session, also after the session ends, and a plain deck asks for the talk folder of
 // the session that it was copied from. a deck whose address has session, which no edit command
-// serves, names its own address
+// serves, names its own address, also at file://, and another page of the talk folder names its deck
+// by a hash of the key
 
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
-import { launch } from '../scripts/chrome.mjs';
+import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { C, clean, converge, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
@@ -211,3 +213,30 @@ for (const through of ['the edit command', 'the relay']) {
     assert.equal(origin.session, true);
   });
 }
+
+// the editor on the deck of file at file://, in a fresh browser, whose storage is empty, since
+// openDeck() of cross-deck.mjs clears the storage of the origin, which file:// does not have
+async function fileDeck(browser, file, query) {
+  const page = await browser.newPage({ width: 1600, height: 1000 });
+  await page.goto(`${pathToFileURL(resolve(file)).href}?${query}`);
+  await page.waitFor(deckSettled, 60000);
+  await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)', 60000);
+  const state = await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(readFileSync(file, 'utf8'))})`);
+  assert.deepEqual(state.problems, []);
+  return page;
+}
+
+test('a copy from a deck at file:// whose address has session names its own address, and a paste of it does not name a session', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const a = await fileDeck(browser, A, `${QUERY}&session`);
+  const text = await copySlide(a, FILES);
+  const origin = ORIGIN(text);
+  assert.equal(origin.deck, pathToFileURL(resolve(A)).href);
+  assert.equal(origin.session, undefined);
+  const b = await withMacrosOfA(await fileDeck(browser, B, QUERY));
+  await pasteSlides(b, FIRST_B, text);
+  await b.waitFor(`!!document.querySelector('${DIALOG}[open]')`, 30000);
+  const asked = await b.evaluate(`document.querySelector('${DIALOG}[open]').textContent`);
+  assert.ok(!asked.includes('session'), asked);
+});
