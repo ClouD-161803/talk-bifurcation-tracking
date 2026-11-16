@@ -406,6 +406,40 @@ test('fine() of a paste far over the cap of anchored() costs no more than a past
   assert.ok(ratio < 4, `a paste of 55,000 characters costs ${ratio.toFixed(1)} times one of 3,194`);
 });
 
+// the diff reads the deletion of 'le stab' in 'unstable stable' as a deletion of 'stable ', which
+// holds the insertion two letters after it
+test('the merge of an apply in a session keeps an insertion of another person two letters after an unread deletion of the person whose letters repeat after it', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  const f = wrap('toward unstable stable point'), s = wrap('toward unstable point'), t = wrap('toward unstable stablexyz point');
+  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap('toward unstablexyz point'));
+  assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, wrap('toward unstablexyz point'));
+});
+
+// each deletion of the person holds an insertion X of another person. it is moved over letters
+// that repeat to the left or to the right of X, unless the letters differ or the move would hold
+// another edit, and a replacement or a deletion of the other side stays a conflict
+test('the merge of an apply in a session moves a deletion off an insertion of another person to a side where the letters repeat and no other edit is held, and leaves other conflicts as they are', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  for (const [p, mine, others, want, unread] of [
+    ['go go go', [[0, 3, '']], [[1, 1, 'X']], 'gXo go'],
+    ['go gut', [[0, 3, '']], [[1, 1, 'X']], 'gXut'],
+    ['go go go', [[5, 8, '']], [[7, 7, 'X']], 'go gXo'],
+    ['go go go', [[5, 8, '']], [[6, 6, 'X']], 'go Xgo'],
+    ['go go go', [[0, 3, '']], [[0, 0, 'X'], [1, 1, 'Y']], 'XgYo go'],
+    ['go go go', [[3, 6, '']], [[2, 2, 'Y'], [4, 4, 'X']], 'goY gXo'],
+    ['xo go', [[2, 5, '']], [[3, 3, 'X']], 'xo', 'xo Xgo'],
+    ['go go go', [[0, 3, '']], [[1, 1, 'X'], [2, 2, 'Y']], 'go go', 'gXoY go go'],
+    ['go go go', [[0, 3, ''], [4, 4, 'Z']], [[2, 2, 'X']], 'gZo go', 'goX gZo go'],
+    ['go go go', [[5, 8, ' to']], [[7, 7, 'X']], 'go go to', 'go go gXo'],
+    ['go go go', [[5, 8, '']], [[7, 8, '']], 'go go', 'go go g'],
+  ]) {
+    const f = wrap(p), at = f.indexOf(p);
+    const edits = (list) => list.map(([start, end, text]) => ({ start: at + start, end: at + end, text }));
+    assert.equal(mergeEdits(f, edits(mine), edits(others), 'ours', true, true).text, wrap(want), `${p} ${JSON.stringify(mine)}`);
+    assert.equal(mergeEdits(f, edits(others), edits(mine), 'ours', true, true).text, wrap(unread ?? want), `${p} ${JSON.stringify(mine)} unread`);
+  }
+});
+
 test('with twice, the same letter typed at one point by two people is kept twice, and the same replacement of a word by two people once', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const twice = (p0, ps, pt) => {
