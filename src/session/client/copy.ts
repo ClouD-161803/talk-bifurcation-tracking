@@ -36,7 +36,8 @@ type State = {
   unavailable: boolean;
   // a record of this page may be in IndexedDB
   stored: boolean;
-  // the last copy with edits that wait written into IndexedDB, whose slides the save state names
+  // the last copy with edits that wait written into IndexedDB, or this copy with the operations of
+  // others merged since, whose slides the save state names
   kept: Copy | null;
   last: Copy | null;
   wroteAt: number;
@@ -413,6 +414,10 @@ export function install(client: Client): void {
   };
 
   client.on('state', update);
+  // operations of others move mine, and the record of the mine before them keeps the same edits
+  client.on('rebased', (before) => {
+    if (st.kept?.mine === before) st.kept = client.snapshot();
+  });
   client.port.onChange(() => {
     if (st.note) {
       st.note = null;

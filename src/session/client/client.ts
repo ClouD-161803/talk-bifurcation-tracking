@@ -40,6 +40,8 @@ export type ClientEvents = {
   // a drive ended, with whether the base moved on after the last applied without an apply, e.g. at
   // the broadcast of an operation of this page
   settled: [moved: boolean];
+  // operations of others were merged into the edits of this page, whose text was before
+  rebased: [before: string];
   // connection, saving, retryAt, blocked, or warning changed
   state: [];
   ended: [Ended];
@@ -417,7 +419,7 @@ export class Client {
           for (const fn of this.rewrites.splice(0)) sync.edit(fn(sync.mine));
           if (this.fresh) sync.resync(this.fresh.text, this.fresh.v);
           this.fresh = null;
-          if (this.inbox.length) sync.receive(this.inbox.splice(0));
+          if (this.inbox.length) this.merge(this.inbox.splice(0));
           break;
         }
         let stale = false;
@@ -450,7 +452,7 @@ export class Client {
           this.fresh = null;
           if (sync.resync(text, v) !== null) stale = true;
         }
-        if (this.inbox.length && sync.receive(this.inbox.splice(0)) !== null) stale = true;
+        if (this.inbox.length && this.merge(this.inbox.splice(0)) !== null) stale = true;
         if (!stale) break;
         read = sync.version;
         if (!(await this.applyMine())) break;
@@ -462,6 +464,15 @@ export class Client {
     this.emit('settled', sync.version !== read);
     this.pump();
     this.check();
+  }
+
+  // the operations that waited are taken into the replica, and rebased tells copy.ts what moved
+  private merge(ops: AppliedOp[]): string | null {
+    const sync = this.sync!;
+    const before = sync.mine;
+    const out = sync.receive(ops);
+    this.emit('rebased', before);
+    return out;
   }
 
   private async applyMine(): Promise<boolean> {
