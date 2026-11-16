@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
-import { center, click, contrast, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
+import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
 import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
@@ -985,4 +985,28 @@ test('a draft whose element another person deletes moves to its slide and is sen
   await sees(a, `[${state}, ${THREADS}]`, [null, [{ anchor: 'On Slide 2', texts: ['Draft on the paragraph'] }]]);
   clean(a);
   clean(b);
+});
+
+test('the badge of the text element of the caret is clear of its grips, and its upper right grip takes the press', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  const p = el(0, 'p');
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'On the paragraph');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await sees(a, `${C}.app.selection.kind === 'text' && ${C}.app.selection.has(${p})`, true);
+  await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 1);
+  const grip = `[...document.querySelectorAll('.beeson-grip[data-handle="ne"]')].find((g) => g.getClientRects().length)`;
+  await sees(a, `(() => {
+    const g = ${grip};
+    if (!g) return 'no grip';
+    const r = g.getBoundingClientRect();
+    const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return at === g ? null : at?.className ?? null;
+  })()`, null, 'the element at the center of the upper right grip');
+  const width = await a.evaluate(`${p}.getBoundingClientRect().width`);
+  const at = await a.evaluate(`(() => { const r = ${grip}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  await drag(a, at, { dx: 60, steps: 8 });
+  await sees(a, `${p}.getBoundingClientRect().width > ${width + 20}`, true, 'the paragraph made wider by its grip');
+  clean(a);
 });
