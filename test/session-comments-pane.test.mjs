@@ -799,6 +799,45 @@ test('a draft stays on its element when an element is added right before it, and
   clean(b);
 });
 
+// the draft kept by the page in sessionStorage, as its text and the fields of the spot of its element
+const KEPT = `(() => { const d = JSON.parse(sessionStorage.getItem('beeson-session-comment-texts:' + location.pathname) || 'null')?.draft; return d && { text: d.text, fields: Object.keys(d.el ?? {}).sort() }; })()`;
+
+test('a draft that a browser kept without the text before its element is found by its index among the elements that read the same', { timeout: 660_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, TWINS);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  await show(a, 'Two');
+  const item = { label: 'On Item: TBD', text: 'Half a draft' };
+  assert.deepEqual(await drafted(a, el(1, 'li')), item);
+  await a.waitFor(`${KEPT}?.text === 'Half a draft'`);
+  assert.ok((await a.evaluate(KEPT)).fields.includes('left'), 'the page keeps the text before the element');
+  // from now on the page keeps its draft as a client before the field left did
+  await a.evaluate(`(() => {
+    const set = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      if (String(k).startsWith('beeson-session-comment-texts:') && v) {
+        const s = JSON.parse(v);
+        for (const x of [s.draft?.el, s.draft?.el?.own, s.draft?.slide]) if (x) delete x.left;
+        v = JSON.stringify(s);
+      }
+      return set.call(this, k, v);
+    };
+    return true;
+  })()`);
+  await typeKeys(a, '!');
+  await a.waitFor(`${KEPT}?.text === 'Half a draft!'`);
+  assert.ok(!(await a.evaluate(KEPT)).fields.includes('left'), 'the page keeps its draft without the text before the element');
+  // a paragraph above the list changes the text before the item of the draft, and keeps its index
+  await left(server, a, [b], () => writeFileSync(server.file, server.read().replace('<h2>Two</h2>\n  <ul>\n', '<h2>Two</h2>\n  <p>Above</p>\n  <ul>\n')), (text) => text.includes('<p>Above</p>'));
+  await sees(a, DRAFTED, { ...item, text: 'Half a draft!' }, 'the draft kept without the text before its element');
+  assert.deepEqual(await sentAt(a, server), [{ near: ' <ul>\n    <li>TBD</l', slide: 'Two' }], 'the comment is on the item of slide Two');
+  clean(a);
+  clean(b);
+});
+
 test('a draft on a slide that reads as another slide, and a draft on a stack, stay on it when it is changed while the page is away', { timeout: 660_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
