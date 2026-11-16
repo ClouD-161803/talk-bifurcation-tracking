@@ -499,8 +499,8 @@ test('a draft and a reply being typed are kept through a reload of the page, and
 
   await click(a, `${ARTICLE(id)} .reply .actions .primary`);
   await sees(a, THREADS, [{ anchor: 'On Paragraph: First slide', texts: ['A thread', 'Half a reply'] }]);
-  await a.evaluate(`document.querySelector('${DRAFT}').focus()`);
-  await press(a, 'Escape');
+  // Cancel discards a draft with text, which Esc keeps
+  await click(a, `${PANE} .draft .actions button:not(.primary)`);
   await a.waitFor(`!document.querySelector('${PANE} .draft')`);
   await sees(a, `Object.keys(sessionStorage).filter((k) => /comment/.test(k) && /Half/.test(sessionStorage.getItem(k)))`, []);
   assert.equal(await converge(server, [a]), TALK);
@@ -936,5 +936,26 @@ test('Mod+Enter in the field of a comment or of a reply sends it, and in another
   await a.waitFor(`!!document.querySelector('.beeson-edit-show iframe')?.contentWindow?.Reveal?.isReady?.()`, 30_000);
   await press(a, 'Escape');
   await a.waitFor(`!${SHOW}`);
+  clean(a);
+});
+
+test('Esc in a draft with text keeps the text and leaves the field, Cancel discards it, and Esc closes an empty draft', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  const state = `(() => { const d = document.querySelector('${DRAFT}'); return d && { value: d.value, focused: document.activeElement === d }; })()`;
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'h2'));
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await type(a, 'Kept by Esc');
+  await press(a, 'Escape');
+  await sees(a, state, { value: 'Kept by Esc', focused: false });
+  await click(a, `${PANE} .draft .actions button:not(.primary)`);
+  await sees(a, state, null);
+  await caretAtEnd(a, el(0, 'h2'));
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await press(a, 'Escape');
+  await sees(a, state, null);
+  assert.deepEqual(await stored(a), []);
   clean(a);
 });
