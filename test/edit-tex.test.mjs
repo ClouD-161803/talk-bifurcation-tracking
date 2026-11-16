@@ -173,3 +173,21 @@ test('a write of tex.js that fails is logged and reported once, and is tried aga
   assert.equal(seen.changes, changes + 1);
   assert.equal(seen.log.length, 1);
 });
+
+test('a write of index.html while preamble.tex is being saved does not write tex.js without its macros, and tex.js is written once preamble.tex is stable', async (t) => {
+  const f = folder(t);
+  const { w, seen } = writer(f);
+  // an editor that deletes preamble.tex and writes it again
+  const preamble = f.read('preamble.tex');
+  rmSync(join(f.dir, 'preamble.tex'));
+  f.write('index.html', CITED);
+  w.written(CITED);
+  await w.idle();
+  assert.ok(f.read('tex.js').includes('"half"'), 'tex.js keeps the macros of preamble.tex');
+  assert.equal(seen.changes, 0);
+  f.write('preamble.tex', preamble);
+  await twoPolls(w);
+  assert.equal(f.read('tex.js'), deckTex(join(f.dir, 'index.html')).text);
+  assert.ok(f.read('tex.js').includes('"szebehely1967"'));
+  assert.equal(seen.changes, 1);
+});
