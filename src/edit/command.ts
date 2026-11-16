@@ -593,6 +593,13 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if (restored) answer.restored = restored;
     },
   });
+  // a change from outside that replaced text of a person is told in the same way
+  people.feed({
+    rev: () => history.overwritten,
+    write: (answer, _seen, since) => {
+      if (history.overwrittenAfter(since)) answer.overwritten = true;
+    },
+  });
   disk.start();
 
   if (options.relay) {

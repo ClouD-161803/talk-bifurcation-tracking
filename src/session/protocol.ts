@@ -95,7 +95,8 @@ export type WriteError = { message: string; unwritten: number; file?: 'tex.js' }
 // restored is the latest restore, sent once to each page whose version since is before it, also to
 // a page that was dropped meanwhile. a page reads the history again after each hello, since what
 // changed before is not sent to it. tex is as in HelloAnswer, and a page draws the deck again with
-// tex.js when it changed
+// tex.js when it changed. overwritten is sent as restored is, after a change of index.html from
+// outside that replaced text that a person wrote in the session
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
@@ -107,6 +108,7 @@ export type EventsAnswer = {
   ended?: Ended;
   history?: number;
   restored?: Restored;
+  overwritten?: true;
 };
 
 // a range of the text of a version that was changed since the version before, with the person id

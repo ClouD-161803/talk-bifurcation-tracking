@@ -4292,6 +4292,12 @@ async function start(options = {}) {
       if (restored) answer.restored = restored;
     }
   });
+  people.feed({
+    rev: () => history.overwritten,
+    write: (answer, _seen, since) => {
+      if (history.overwrittenAfter(since)) answer.overwritten = true;
+    }
+  });
   disk.start();
   if (options.relay) {
     const address = relayAddress(options.relay);
