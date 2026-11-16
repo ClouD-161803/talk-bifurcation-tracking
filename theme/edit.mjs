@@ -2764,8 +2764,9 @@ var TexWriter = class {
     // the derivations and the polls run one at a time
     this.chain = Promise.resolve();
     this.due = false;
-    // whether the derivation that is due follows a stable change of a source
-    this.changed = false;
+    // the signatures of the sources after a stable change of them, which the derivation that is due
+    // follows, or null
+    this.settled = null;
     this.polling = false;
     this.stopped = false;
     // the reason of the write of tex.js that failed last, which is tried again at each poll
@@ -2817,8 +2818,8 @@ var TexWriter = class {
   run(task) {
     return this.chain = this.chain.then(task).catch((e) => this.log(`tex.js: ${e.message}`));
   }
-  derive(changed = false) {
-    this.changed ||= changed;
+  derive(settled = null) {
+    this.settled = settled ?? this.settled;
     if (this.due) return;
     this.due = true;
     void this.run(() => {
@@ -2833,7 +2834,7 @@ var TexWriter = class {
 ${sig}`).join("\n");
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
       if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
-      else if (now - this.sourcesSeen.at >= this.stable) this.derive(true);
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive(new Map(sigs));
     } else {
       this.sourcesSeen = null;
       if (this.failure !== null) this.derive();
@@ -2850,9 +2851,11 @@ ${sig}`).join("\n");
   }
   async write() {
     const html = this.html;
-    const changed = this.changed;
-    this.changed = false;
+    const settled = this.settled;
+    this.settled = null;
     const derived = deriveTex(this.dir, html);
+    const base = settled ?? this.watched;
+    if ([...derived.files].some(([name, sig]) => base.has(name) && base.get(name) !== sig)) return;
     const settle = () => {
       this.keys = keysOf(html);
       this.watched = derived.files;
@@ -2870,7 +2873,7 @@ ${sig}`).join("\n");
     const old = await readFile2(this.file, "utf8").catch(() => null);
     if (old === derived.text) {
       settle();
-      if (changed) this.onChange();
+      if (settled) this.onChange();
       return;
     }
     const tmp = join4(this.dir, `.tex.js.${randomBytes4(6).toString("hex")}.tmp`);

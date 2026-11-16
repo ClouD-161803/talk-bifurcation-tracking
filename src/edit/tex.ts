@@ -108,8 +108,9 @@ export class TexWriter {
   // the derivations and the polls run one at a time
   private chain: Promise<void> = Promise.resolve();
   private due = false;
-  // whether the derivation that is due follows a stable change of a source
-  private changed = false;
+  // the signatures of the sources after a stable change of them, which the derivation that is due
+  // follows, or null
+  private settled: Map<string, string> | null = null;
   private polling = false;
   private stopped = false;
   // the reason of the write of tex.js that failed last, which is tried again at each poll
@@ -167,8 +168,8 @@ export class TexWriter {
     return (this.chain = this.chain.then(task).catch((e) => this.log(`tex.js: ${(e as Error).message}`)));
   }
 
-  private derive(changed = false): void {
-    this.changed ||= changed;
+  private derive(settled: Map<string, string> | null = null): void {
+    this.settled = settled ?? this.settled;
     if (this.due) return;
     this.due = true;
     void this.run(() => {
@@ -183,7 +184,7 @@ export class TexWriter {
     const sources = sigs.map(([name, sig]) => `${name}\n${sig}`).join('\n');
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
       if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
-      else if (now - this.sourcesSeen.at >= this.stable) this.derive(true);
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive(new Map(sigs));
     } else {
       this.sourcesSeen = null;
       if (this.failure !== null) this.derive();
@@ -201,9 +202,13 @@ export class TexWriter {
 
   private async write(): Promise<void> {
     const html = this.html;
-    const changed = this.changed;
-    this.changed = false;
+    const settled = this.settled;
+    this.settled = null;
     const derived = deriveTex(this.dir, html);
+    // a source that changed since it was found stable, or since the last derivation, e.g. one that an
+    // editor is saving now, is taken at a later poll, once it is stable
+    const base = settled ?? this.watched;
+    if ([...derived.files].some(([name, sig]) => base.has(name) && base.get(name) !== sig)) return;
     // the keys and the files of the derivation are kept once a write is not owed for them, hence a
     // write that failed is tried again at the next poll
     const settle = () => {
@@ -224,7 +229,7 @@ export class TexWriter {
     const old = await readFile(this.file, 'utf8').catch(() => null);
     if (old === derived.text) {
       settle();
-      if (changed) this.onChange();
+      if (settled) this.onChange();
       return;
     }
     const tmp = join(this.dir, `.tex.js.${randomBytes(6).toString('hex')}.tmp`);
