@@ -184,11 +184,15 @@ export function install(app: App): Port {
 
   // the changes held back are applied once the composition ends. a browser may not send its end
   // when the text loses the focus, e.g. Safari on a click, or when the page is hidden, and the
-  // focusout waits a task for the end that Firefox sends after it
+  // focusout waits a task for the end that Firefox sends after it. the page is loaded again when
+  // the changes held back cannot be applied, also when they change the deck in part
+  const reloadAll = (): void => {
+    for (const fn of [...reloaders]) fn();
+  };
   const ended = (): void => {
     if (behind) void run(null).then((r) => {
-      if (r.reload) for (const fn of [...reloaders]) fn();
-    });
+      if (r.reload) reloadAll();
+    }, reloadAll);
   };
   document.addEventListener('compositionstart', (ev) => void (composing = app.hostOf(ev.target)), true);
   document.addEventListener('compositionend', () => {
