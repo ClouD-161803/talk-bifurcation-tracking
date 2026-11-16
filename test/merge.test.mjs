@@ -461,3 +461,43 @@ test('the merge of an apply in a session keeps a format that one person puts aro
     assert.deepEqual(both('<em>slide</em>', other), [wrap('<p>Second <em>slide</em></p>'), wrap(`<p>Second ${other}</p>`)], `<em>slide</em> and ${other}`);
   }
 });
+
+test('the merge of an apply in a session keeps a format with keys of its own side in or beside its word, the removal of a format, and the keys of another person inside the word', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>Second ${p}</p>\n</section>\n`;
+  const merged = (before, mine, others) => {
+    const f = wrap(before);
+    return mergeEdits(f, fine(f, wrap(mine)), fine(f, wrap(others)), 'ours', true, true).text;
+  };
+  // the unread key Z of the page, and a format of the others with a key of theirs in the word,
+  // after it, or before it
+  for (const [others, want] of [
+    ['<em>sYlide</em>', '<em>sYlZide</em>'],
+    ['<em>slYide</em>', '<em>slYZide</em>'],
+    ['<em>slide</em>s', '<em>slZide</em>s'],
+    ['<em>slides</em>', '<em>slZides</em>'],
+    ['<a href="https://example.org">slide</a>C', '<a href="https://example.org">slZide</a>C'],
+    ['Q<strong>slide</strong>', 'Q<strong>slZide</strong>'],
+  ]) {
+    assert.equal(merged('slide', 'slZide', others), wrap(want), others);
+    assert.equal(merged('slide', others, 'slZide'), wrap(want.replace('YZ', 'ZY')), `${others} unread`);
+  }
+  // the removal of a format and a key of another person inside its word
+  assert.equal(merged('<em>slide</em>', 'slide', '<em>slZide</em>'), wrap('slZide'));
+  assert.equal(merged('<em>slide</em>', '<em>slZide</em>', 'slide'), wrap('slZide'));
+  // a word in italic typed over, and a key of another person at the start of the word
+  for (const [typed, want] of [['XY', 'ZXY'], ['deck', 'Zdeck']]) {
+    assert.equal(merged('<em>slide</em>', typed, '<em>Zslide</em>'), wrap(want), typed);
+    assert.equal(merged('<em>slide</em>', '<em>Zslide</em>', typed), wrap(want), `${typed} unread`);
+  }
+  // a link with > in its address put around a run that holds a tag, and a key of another person in the run
+  const link = '<a href="https://x.org/?q=a>b">';
+  assert.equal(merged('s<strong>li</strong>de', `${link}s<strong>li</strong>de</a>`, 'sZ<strong>li</strong>de'), wrap(`${link}sZ<strong>li</strong>de</a>`));
+  assert.equal(merged('s<strong>li</strong>de', 'sZ<strong>li</strong>de', `${link}s<strong>li</strong>de</a>`), wrap(`${link}sZ<strong>li</strong>de</a>`));
+  // a removal that crosses the start or the end of the word stays a conflict, which the page wins
+  const here = (p) => `<section>\n  <p>${p}</p>\n</section>\n`;
+  for (const other of ['Secondlide here', 'Second slidhere']) {
+    const f = here('Second slide here'), em = here('Second <em>slide</em> here');
+    assert.equal(mergeEdits(f, fine(f, em), fine(f, here(other)), 'ours', true, true).text, em, other);
+    assert.equal(mergeEdits(f, fine(f, here(other)), fine(f, em), 'ours', true, true).text, here(other), `${other} unread`);
+  }
+});
