@@ -293,12 +293,13 @@ test('in a deck opened from a file, the PDF of a figure is chosen once and read 
   }
 });
 
-test('outside a session, a PDF figure whose PDF the server answers with 413 is said to be not found next to the deck', { timeout: 300_000 }, async () => {
+// the messages of a new page and of Match the Mode of the PDF figure outside a session, whose PDF is
+// answered with status
+async function refused(status) {
   writeDeck();
   const page = await browser.newPage();
-  // a 413 is the limit of the relay only for a guest of a session
   await page.send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `{ const fetched = window.fetch; window.fetch = function (input, init) { return String(input instanceof Request ? input.url : input).endsWith('.pdf') ? Promise.resolve(new Response('', { status: 413 })) : fetched.call(this, input, init); }; }`,
+    source: `{ const fetched = window.fetch; window.fetch = function (input, init) { return String(input instanceof Request ? input.url : input).endsWith('.pdf') ? Promise.resolve(new Response('', { status: ${status} })) : fetched.call(this, input, init); }; }`,
   });
   try {
     await page.goto(`${server.origin}/${DECK}?edit&still&edit-platform=mac`);
@@ -310,10 +311,21 @@ test('outside a session, a PDF figure whose PDF the server answers with 413 is s
     await showSlide(page, 'A PDF figure');
     await click(page, await centerOf(page, '.reveal section.present figure img'));
     await frames(page);
-    await assert.rejects(exec(page, 'media.pdfPage', { page: 2 }), /figure\.pdf is not found next to the deck/);
-    await assert.rejects(exec(page, 'media.matchMode'), /figure\.pdf is not found next to the deck/);
+    const message = (id, arg) => page.evaluate(`window.BeesonEditor.exec(${JSON.stringify(id)}${arg ? `, ${JSON.stringify(arg)}` : ''}).then(() => 'taken', (e) => e.message)`);
+    return [await message('media.pdfPage', { page: 2 }), await message('media.matchMode')];
   } finally {
     await page.close();
+  }
+}
+
+// a 413 without the header of the edit command is not the limit of the relay
+test('a PDF figure whose PDF is answered with 404, or with 413 by a server other than the edit command, is said to be not found next to the deck', { timeout: 300_000 }, async () => {
+  for (const status of [404, 413]) assert.deepEqual(await refused(status), Array(2).fill('figure.pdf is not found next to the deck'), `status ${status}`);
+});
+
+test('a PDF figure whose PDF is answered with a status of 500 or more cannot be read now, and the message names the status', { timeout: 300_000 }, async () => {
+  for (const status of [500, 502, 503, 504]) {
+    assert.deepEqual(await refused(status), Array(2).fill(`figure.pdf cannot be read now, since its request was answered with status ${status}, and you can try again later`), `status ${status}`);
   }
 });
 
