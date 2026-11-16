@@ -621,6 +621,62 @@ test('a page that waits for the answer of its hello asks before it unloads from 
   assert.equal(await page.evaluate(`${C}.asking`), false, 'the page does not ask once its copy holds the newest edit');
 });
 
+// on the first load, the handler of the first read of the copies, i.e. of restore() of copy.ts,
+// waits until window.__restored(), as on a slow disk
+const SLOW_RESTORE = `{
+  window.__holdRestore = sessionStorage.getItem('__loads') === '1';
+  const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
+  let held = null;
+  window.__restored = () => (held?.(), true);
+  Object.defineProperty(IDBTransaction.prototype, 'oncomplete', {
+    configurable: true,
+    get() { return complete.get.call(this); },
+    set(fn) {
+      const hold = fn && window.__holdRestore && this.mode === 'readonly' && this.objectStoreNames.contains('copies');
+      if (hold) window.__holdRestore = !(window.__restoreHeld = true);
+      complete.set.call(this, hold ? (ev) => (held = () => fn.call(this, ev)) : fn);
+    },
+  });
+}`;
+// the asking of the client once the port has told it of the next change, and the number of hellos
+// that the page has sent by then, i.e. 0 before join.ts has given its copy, in window.__told
+const TOLD = `window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done({ asking: ${C}.asking, hellos: __net.count('/.session/hello') }); }); }); true`;
+
+test('a page asks before it unloads for an edit typed while it reads its copies, until its copy holds the edit', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n__net.rule('/.session/', 'cut');\n${SLOW_RESTORE}`, wait: false });
+  await page.waitFor('window.__restoreHeld === true');
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await page.evaluate(TOLD);
+  await type(page, ' Early');
+  assert.deepEqual(await page.evaluate('window.__told'), { asking: true, hellos: 0 });
+  await page.evaluate('window.__restored()');
+  await page.waitFor(`(${ASKED(' Early')}).then((x) => x.copied && !x.asking)`);
+});
+
+test('a page asks before it unloads for an edit typed while IndexedDB does not answer, also once its copy cannot be kept', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // the open of the database of the copies never answers, as for a database blocked by another tab
+  const silent = `{
+    const opened = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (name, ...rest) { return name === 'beeson-session' ? {} : opened.call(this, name, ...rest); };
+  }`;
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n__net.rule('/.session/', 'cut');\n${silent}`, wait: false });
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await page.evaluate(TOLD);
+  await type(page, ' Early');
+  // restore() of copy.ts waits OPEN_WAIT (3 s) for IndexedDB, hence the edit is typed before the hello
+  assert.deepEqual(await page.evaluate('window.__told'), { asking: true, hellos: 0 });
+  await page.waitFor(`/cannot be kept/.test(${STATE}) && ${C}.connection === 'offline'`);
+  assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks while its copy cannot be kept');
+});
+
 // the time in ms that each listener of beforeunload was on window before its removal, in
 // window.__unload
 const UNLOAD = `{
