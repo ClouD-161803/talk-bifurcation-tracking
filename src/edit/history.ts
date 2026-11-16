@@ -537,8 +537,9 @@ export class History {
     if (this.stopped) return;
     const t = this.clock();
     const w = this.now();
-    // the timer is late after a sleep, hence a version that is due is closed on the text before op
-    if (this.open && this.due(this.open, t, w)) this.close(false, undefined, this.held);
+    // the timer is late after a sleep, hence a version that is due is closed on the text before op.
+    // a change from outside is a version of its own, so that the text that it replaces is kept
+    if (this.open && (this.due(this.open, t, w) || (op.author === AUTHOR) !== (this.open.author === AUTHOR))) this.close(false, undefined, this.held);
     this.held = text;
     const open = (this.open ??= { first: t, last: t, since: w, time: w, authors: new Set(), marks: [], author: op.author });
     open.last = t;

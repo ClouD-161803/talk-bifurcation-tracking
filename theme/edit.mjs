@@ -1981,7 +1981,7 @@ var History = class {
     if (this.stopped) return;
     const t = this.clock();
     const w = this.now();
-    if (this.open && this.due(this.open, t, w)) this.close(false, void 0, this.held);
+    if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
     this.held = text;
     const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author };
     open2.last = t;
