@@ -213,6 +213,8 @@ type Other = {
   key: string;
   state: PresenceState;
   activeAt: number;
+  // the time of this page at which the page was last heard typing
+  typedAt: number;
   resolved: Resolved | null;
   // the key under which the elements of resolved were read, which an offset in doubt keeps
   resolvedKey: string;
@@ -548,18 +550,21 @@ export class Presence {
       if (o && o.raw === raw && o.resolved?.name === p.name && o.resolved?.color === p.color) continue;
       const known = !!o;
       if (!o) {
-        o = { raw, key: '', state, activeAt: state.active || state.typing ? t : -Infinity, resolved: null, resolvedKey: '', ahead: false };
+        o = { raw, key: '', state, activeAt: state.active || state.typing ? t : -Infinity, typedAt: -Infinity, resolved: null, resolvedKey: '', ahead: false };
         this.others.set(p.client, o);
       }
-      if (state.typing || o.state.typing) o.activeAt = t;
+      // the last key of a person who stopped typing is at most TYPING ms older than their state
+      if (state.typing || (o.state.typing && state.active)) o.typedAt = o.activeAt = t;
       const caretBefore = o.resolved?.caret?.el ?? null;
       o.raw = raw;
       o.state = state;
       this.resolve(o, p.client, p.name, p.color);
       if (known && (o.resolved?.caret?.el ?? null) !== caretBefore) o.activeAt = t;
       // a page that first heard the person during a pause holds from its own first hearing, hence
-      // a state that says idle ends the hold
-      if (!state.active && !state.typing) o.activeAt = -Infinity;
+      // a state that says idle ends the hold. a hold of a key that this page heard lasts its IDLE
+      // ms by the clock of this page, since an older state can reach the edit command after a
+      // newer one
+      if (!state.active && !state.typing) o.activeAt = o.typedAt;
       changed = true;
     }
     for (const id of [...this.others.keys()]) {
