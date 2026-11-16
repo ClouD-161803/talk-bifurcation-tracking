@@ -120,10 +120,12 @@ export function targetsOf(text: string, slides: Slide[], marks: Mark[]): Target[
 
 // the ranges of the text nodes of el that the marks add, by author. the text tokens of the range
 // [start, end) of the element in text are put one to one on its text nodes, in order, hence an
-// element with math or a script is left out, and so is one whose text nodes do not read as its
-// text tokens, e.g. with a character reference or a carriage return
+// element with a script or with math is left out, and so is one whose text nodes do not read as its
+// text tokens, e.g. with a character reference or a carriage return. math is what MathJax finds
+// with theme/mathjax-config.js after the page is drawn: \( and \[, the escapes \\ and \$, an
+// environment, and \ref or \eqref. a dollar or a backslash before a letter is left as written
 function addedIn(el: Element, text: string, tokens: Token[], start: number, end: number, marks: Mark[], out: Map<string, Range[]>): void {
-  if (/[\\$]|<(script|math)\b/i.test(text.slice(start, end))) return;
+  if (/\\[([\\$]|\\(?:begin|(?:eq)?ref)\b|<(script|math)\b/i.test(text.slice(start, end))) return;
   let lo = 0;
   for (let hi = tokens.length; lo < hi; ) {
     const mid = (lo + hi) >> 1;
