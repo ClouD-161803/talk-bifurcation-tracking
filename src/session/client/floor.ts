@@ -14,9 +14,10 @@ import { presenceOf, type Presence, type Resolved } from './presence.ts';
 // the commands of the selection that change slides while slides are selected
 const SLIDE = new Set(['slide.cut', 'slide.delete', 'slide.hide', 'slide.layoutChooser', 'slide.moveDown', 'slide.moveUp', 'slide.moveTo', 'slide.moveSection', 'slide.reset']);
 const OF_SLIDES = new Set(['edit.cut', 'element.delete']);
-// the commands of a caret or a text selection that delete or resize its text element, or merge it
-// with the element beside it, refused in a held element together with arrange.*
-const OF_TEXT = new Set(['element.delete', 'text.bigger', 'text.smaller', 'text.indent', 'text.outdent', 'text.joinBackward', 'text.joinForward']);
+// the commands of a caret or a text selection that delete, resize, split, or retag its text
+// element, or merge it with the element beside it, refused in a held element together with
+// arrange.*, text.style.*, and text.list.* apart from Start At
+const OF_TEXT = new Set(['element.delete', 'text.bigger', 'text.smaller', 'text.indent', 'text.outdent', 'text.joinBackward', 'text.joinForward', 'text.newParagraph']);
 // the commands of a text selection over several text elements, which replace its text and remove
 // each text element after the first
 const OF_SPAN = new Set(['text.flow.delete', 'text.flow.newParagraph']);
@@ -134,8 +135,9 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
     if (by) return by;
   }
   // a selection of elements that contains a held element takes no command that changes it, and a
-  // caret or a text selection in one takes the commands of the text
-  if (READ.test(c.id) || (sel.kind !== 'elements' && (sel.kind !== 'text' || !(OF_TEXT.has(c.id) || c.id.startsWith('arrange.'))))) return null;
+  // caret or a text selection in one takes the commands of the text that keep the element
+  const retags = (c.id.startsWith('text.style.') || c.id.startsWith('text.list.')) && c.id !== 'text.list.start';
+  if (READ.test(c.id) || (sel.kind !== 'elements' && (sel.kind !== 'text' || !(OF_TEXT.has(c.id) || retags || c.id.startsWith('arrange.'))))) return null;
   for (const el of sel.items) {
     const by = presence.holderOf(el);
     if (by) return by;
