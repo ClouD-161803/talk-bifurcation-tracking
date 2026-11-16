@@ -1,10 +1,11 @@
 // the badges of the comments on the canvas and the counts on the rows of the navigator. a badge holds
 // the count of the open threads of an element, 4 px outside its upper right corner, or 18 px while
 // the element is selected or holds the caret, so that the grips of its frame stay free, or of a
-// slide, inside its upper right corner, and it is filled violet while one of them is unread. the
-// boxes of the elements are read in one requestAnimationFrame after a change of the deck, of the
-// slide, or of the threads, and they are kept in px of the slide. a scroll or a zoom then moves the
-// badges by the origin and the scale of the stage alone, without reading the box of any element
+// slide, inside its upper right corner, and it is filled violet while one of them is unread. a badge
+// that would meet one above it is drawn below it. the boxes of the elements are read in one
+// requestAnimationFrame after a change of the deck, of the slide, or of the threads, and they are
+// kept in px of the slide. a scroll or a zoom then moves the badges by the origin and the scale of
+// the stage alone, without reading the box of any element
 
 import type { Comments } from './comments.ts';
 import { make, style } from './dom.ts';
@@ -141,9 +142,21 @@ export class Badges {
     if (!this.boxes.length) return;
     const stage = this.comments.client.app.stage;
     const { origin: o, scale: s, viewport: v } = stage;
-    for (const b of this.boxes) {
-      let left = b.slide ? o.x + b.x * s - b.w - 6 : o.x + b.x * s + (b.selected ? 18 : 4);
-      let top = b.slide ? o.y + b.y * s + 6 : o.y + b.y * s - 4 - H;
+    const at = this.boxes.map((b) => ({
+      b,
+      left: b.slide ? o.x + b.x * s - b.w - 6 : o.x + b.x * s + (b.selected ? 18 : 4),
+      top: b.slide ? o.y + b.y * s + 6 : o.y + b.y * s - 4 - H,
+    }));
+    // a badge that meets one placed above it is pushed down below it
+    at.sort((p, q) => p.top - q.top);
+    for (let k = 0; k < at.length; k++) {
+      const { b } = at[k];
+      let { left, top } = at[k];
+      for (let j = 0; j < k; j++) {
+        const p = at[j];
+        if (left < p.left + p.b.w && p.left < left + b.w && top < p.top + H + 2) top = p.top + H + 2;
+      }
+      at[k].top = top;
       left = Math.max(v.left + 2, Math.min(left, v.right - b.w - 2));
       top = Math.max(v.top + 2, Math.min(top, v.bottom - H - 2));
       b.badge.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
