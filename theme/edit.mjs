@@ -1936,10 +1936,16 @@ function slow(before2, patches, after, items, given) {
     if (k === void 0) slideKept.set(i, k = keep(before2.slice(s0[i].start, s0[i].end), s0[i].open - s0[i].start));
     return k;
   };
-  const keptOf = (a, limit) => {
+  const stored = /* @__PURE__ */ new Map();
+  const once = (key, f) => {
+    let v = stored.get(key);
+    if (v === void 0) stored.set(key, v = f());
+    return v;
+  };
+  const keptOf = (a, limit) => once(`${a.start}`, () => {
     const e = elementEnd(before2, a, limit);
     return e < 0 ? null : keep(before2.slice(a.start, e), a.end - a.start);
-  };
+  });
   const stays = (a, close, end) => {
     const q = patches.find((p) => touches(p, close, end));
     if (!q || q.text) return true;
@@ -1990,13 +1996,7 @@ function slow(before2, patches, after, items, given) {
     const k = old.findIndex((t) => t.start === a.start - from.start);
     return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
   };
-  const placed = /* @__PURE__ */ new Map();
-  const slideOf = (whole) => {
-    if (typeof whole === "string") return findInserted(after, whole, inserted, 0);
-    let s = placed.get(whole.sum + whole.tag);
-    if (s === void 0) placed.set(whole.sum + whole.tag, s = s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
-    return s;
-  };
+  const slideOf = (whole) => typeof whole === "string" ? findInserted(after, whole, inserted, 0) : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
   const removal = (p, cap3) => {
     let l = 0;
     let r = 0;

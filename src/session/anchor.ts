@@ -363,12 +363,22 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     if (k === undefined) slideKept.set(i, (k = keep(before.slice(s0[i].start, s0[i].end), s0[i].open - s0[i].start)));
     return k;
   };
-  // the text of the element of a in before as kept when it is removed, or null when it does not end
-  // before limit. read only at a removal, since the element may be longer than cap
-  const keptOf = (a: Anchor, limit: number): Kept | null => {
-    const e = elementEnd(before, a, limit);
-    return e < 0 ? null : keep(before.slice(a.start, e), a.end - a.start);
+  // a result stored for all of the threads, by its key: the start of an element for its kept text, and
+  // a check for its slide
+  const stored = new Map<string, unknown>();
+  const once = <T>(key: string, f: () => T): T => {
+    let v = stored.get(key) as T | undefined;
+    if (v === undefined) stored.set(key, (v = f()));
+    return v;
   };
+  // the text of the element of a in before as kept when it is removed, or null when it does not end
+  // before limit, the end of its slide. read only at a removal, since the element may be longer than
+  // cap
+  const keptOf = (a: Anchor, limit: number): Kept | null =>
+    once(`${a.start}`, () => {
+      const e = elementEnd(before, a, limit);
+      return e < 0 ? null : keep(before.slice(a.start, e), a.end - a.start);
+    });
 
   // false when the patches removed the element of a, whose text in before ends at end and whose end
   // tag starts at close: a removal of its end tag that may as well start at a.start, where it then
@@ -440,13 +450,10 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
 
   // the start of the first slide that the patches inserted again as whole, or -1. a check is read only
   // at the slides of its length, once for all of its threads
-  const placed = new Map<string, number>();
-  const slideOf = (whole: Kept): number => {
-    if (typeof whole === 'string') return findInserted(after, whole, inserted, 0);
-    let s = placed.get(whole.sum + whole.tag);
-    if (s === undefined) placed.set(whole.sum + whole.tag, (s = s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1));
-    return s;
-  };
+  const slideOf = (whole: Kept): number =>
+    typeof whole === 'string'
+      ? findInserted(after, whole, inserted, 0)
+      : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
 
   // the span of before that a removal may stand for, up to cap characters on each side: a line diff
   // may move it by the characters that it starts with and that follow it, or the reverse
