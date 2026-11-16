@@ -1656,6 +1656,15 @@ function moveMarks(marks, patches, author) {
   }
   return tidy(out);
 }
+function overwrites(marks, patches) {
+  for (const p of patches) {
+    for (let k = first(marks.length, (i) => marks[i].end >= p.start); k < marks.length && marks[k].start <= p.end; k++) {
+      const m = marks[k];
+      if (m.author !== AUTHOR && (m.start === m.end || p.start < p.end && p.start < m.end && m.start < p.end)) return true;
+    }
+  }
+  return false;
+}
 function clip(marks, patches, author) {
   const ranges = rangesOf(patches);
   const out = [];
@@ -1729,6 +1738,9 @@ var History = class {
     this.rev = 0;
     // the count of restores
     this.restores = 0;
+    // the n of the version of the authority made by the last change from outside that replaced text
+    // that a person wrote in this run, or 0
+    this.overwritten = 0;
     // the patches from the text of the last version to index.html at the start, or null when the
     // history began at this start
     this.found = null;
@@ -1752,6 +1764,8 @@ var History = class {
     this.asides = [];
     // the last restore, with the n of the version of the authority that it made
     this.restored = null;
+    // the marks of every operation of this run, as the marks of an open version
+    this.typed = [];
     this.listeners = /* @__PURE__ */ new Set();
     this.dir = dir;
     this.file = join2(dir, "history.jsonl");
@@ -1869,6 +1883,11 @@ var History = class {
     if (!at || !this.restored) return null;
     return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
   }
+  // whether a change from outside replaced text of a person after the version since of a page
+  overwrittenAfter(since) {
+    const at = parseVersion(since);
+    return !!at && at.epoch === this.authority.epoch && at.n < this.overwritten;
+  }
   // a text that a person set aside, or null when it is too large
   setAside(text, author) {
     const bytes = Buffer.from(text, "utf8");
@@ -1982,6 +2001,8 @@ var History = class {
     const t = this.clock();
     const w = this.now();
     if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
+    if (op.author === AUTHOR && overwrites(this.typed, op.patches)) this.overwritten = this.authority.n;
+    this.typed = moveMarks(this.typed, op.patches, op.author);
     this.held = text;
     const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author };
     open2.last = t;

@@ -147,6 +147,18 @@ export function moveMarks(marks: Mark[], patches: Patch[], author: string): Mark
   return tidy(out);
 }
 
+// whether the patches of a change from outside replace text of marks that a person wrote, or write
+// where a person removed text. the marks are sorted and do not overlap
+function overwrites(marks: Mark[], patches: Patch[]): boolean {
+  for (const p of patches) {
+    for (let k = first(marks.length, (i) => marks[i].end >= p.start); k < marks.length && marks[k].start <= p.end; k++) {
+      const m = marks[k];
+      if (m.author !== AUTHOR && (m.start === m.end || (p.start < p.end && p.start < m.end && m.start < p.end))) return true;
+    }
+  }
+  return false;
+}
+
 // the marks of a version kept to the ranges that the version changed, since a change made and
 // undone in one version is not a change of it. a range without a mark is given to the author of
 // the nearest mark that was left out, as when the diff of the version places a change at another
@@ -244,6 +256,9 @@ export class History {
   rev = 0;
   // the count of restores
   restores = 0;
+  // the n of the version of the authority made by the last change from outside that replaced text
+  // that a person wrote in this run, or 0
+  overwritten = 0;
   // the patches from the text of the last version to index.html at the start, or null when the
   // history began at this start
   readonly found: { before: string; patches: Patch[] } | null = null;
@@ -283,6 +298,8 @@ export class History {
   private asides: AsideInfo[] = [];
   // the last restore, with the n of the version of the authority that it made
   private restored: { n: number; told: Restored } | null = null;
+  // the marks of every operation of this run, as the marks of an open version
+  private typed: Mark[] = [];
   private listeners = new Set<() => void>();
 
   // dir is the .session folder of the talk
@@ -413,6 +430,12 @@ export class History {
     return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
   }
 
+  // whether a change from outside replaced text of a person after the version since of a page
+  overwrittenAfter(since: unknown): boolean {
+    const at = parseVersion(since);
+    return !!at && at.epoch === this.authority.epoch && at.n < this.overwritten;
+  }
+
   // a text that a person set aside, or null when it is too large
   setAside(text: string, author: string): AsideInfo | null {
     const bytes = Buffer.from(text, 'utf8');
@@ -540,6 +563,8 @@ export class History {
     // the timer is late after a sleep, hence a version that is due is closed on the text before op.
     // a change from outside is a version of its own, so that the text that it replaces is kept
     if (this.open && (this.due(this.open, t, w) || (op.author === AUTHOR) !== (this.open.author === AUTHOR))) this.close(false, undefined, this.held);
+    if (op.author === AUTHOR && overwrites(this.typed, op.patches)) this.overwritten = this.authority.n;
+    this.typed = moveMarks(this.typed, op.patches, op.author);
     this.held = text;
     const open = (this.open ??= { first: t, last: t, since: w, time: w, authors: new Set(), marks: [], author: op.author });
     open.last = t;
