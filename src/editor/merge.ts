@@ -97,6 +97,12 @@ function diff(a: ArrayLike<string>, b: ArrayLike<string>, max: number): Hunk[] |
 // more than half of base, e.g. for an empty file or another deck
 export function changes(base: string, theirs: string): Edit[] | null {
   if (base === theirs) return [];
+  // a change within one line is the part between the shared start and end, as the line diff
+  // narrows it, and the lines of the whole text are not split
+  const [head, tail] = shared(base, theirs);
+  const end = base.length - tail;
+  const text = theirs.slice(head, theirs.length - tail);
+  if (!base.slice(head, end).includes('\n') && !text.includes('\n')) return end - head > base.length / 2 ? null : [{ start: head, end, text }];
   const a = linesOf(base), b = linesOf(theirs);
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;

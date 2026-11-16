@@ -55,6 +55,18 @@ function offsets(lines) {
   for (const line of lines) out.push(out[out.length - 1] + line.length);
   return out;
 }
+var CHUNK = 2048;
+function shared(a, b) {
+  const n = Math.min(a.length, b.length);
+  let s = 0;
+  while (s + CHUNK <= n && a.slice(s, s + CHUNK) === b.slice(s, s + CHUNK)) s += CHUNK;
+  while (s < n && a.charCodeAt(s) === b.charCodeAt(s)) s += 1;
+  const most = n - s;
+  let t = 0;
+  while (t + CHUNK <= most && a.slice(a.length - t - CHUNK, a.length - t) === b.slice(b.length - t - CHUNK, b.length - t)) t += CHUNK;
+  while (t < most && a.charCodeAt(a.length - 1 - t) === b.charCodeAt(b.length - 1 - t)) t += 1;
+  return [s, t];
+}
 function diff(a, b, max) {
   const n = a.length, m = b.length;
   const limit = Math.min(n + m, max);
@@ -108,6 +120,10 @@ function diff(a, b, max) {
 }
 function changes(base, theirs) {
   if (base === theirs) return [];
+  const [head, tail] = shared(base, theirs);
+  const end = base.length - tail;
+  const text = theirs.slice(head, theirs.length - tail);
+  if (!base.slice(head, end).includes("\n") && !text.includes("\n")) return end - head > base.length / 2 ? null : [{ start: head, end, text }];
   const a = linesOf(base), b = linesOf(theirs);
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
@@ -119,18 +135,18 @@ function changes(base, theirs) {
   const out = [];
   let removed = 0;
   for (const h of hunks) {
-    let start2 = oa[pre + h.a0], end = oa[pre + h.a1];
-    let text = theirs.slice(ob[pre + h.b0], ob[pre + h.b1]);
-    const old = base.slice(start2, end);
+    let start2 = oa[pre + h.a0], end2 = oa[pre + h.a1];
+    let text2 = theirs.slice(ob[pre + h.b0], ob[pre + h.b1]);
+    const old = base.slice(start2, end2);
     let p = 0;
-    while (p < old.length && p < text.length && old[p] === text[p]) p++;
+    while (p < old.length && p < text2.length && old[p] === text2[p]) p++;
     let s = 0;
-    while (s < old.length - p && s < text.length - p && old[old.length - 1 - s] === text[text.length - 1 - s]) s++;
+    while (s < old.length - p && s < text2.length - p && old[old.length - 1 - s] === text2[text2.length - 1 - s]) s++;
     start2 += p;
-    end -= s;
-    text = text.slice(p, text.length - s);
-    removed += end - start2;
-    out.push({ start: start2, end, text });
+    end2 -= s;
+    text2 = text2.slice(p, text2.length - s);
+    removed += end2 - start2;
+    out.push({ start: start2, end: end2, text: text2 });
   }
   return removed > base.length / 2 ? null : out;
 }
@@ -1514,7 +1530,7 @@ function pairs(a, b, half = false) {
   for (let k = suf; k > 0; k--) out.push({ i: a.length - k, j: b.length - k, same: true });
   return out;
 }
-var shared = (x, y) => {
+var shared2 = (x, y) => {
   let p = 0;
   while (p < x.length && p < y.length && x[p] === y[p]) p++;
   let s = 0;
@@ -1530,7 +1546,7 @@ function bestPairs(a, b, half) {
   const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
   const score = Array.from({ length: k + 1 }, () => new Array(long.length + 1).fill(-Infinity));
   for (let j = 0; j <= long.length; j++) score[0][j] = 0;
-  for (let i = 1; i <= k; i++) for (let j = i; j <= long.length; j++) score[i][j] = Math.max(score[i][j - 1], score[i - 1][j - 1] + shared(short[i - 1], long[j - 1]));
+  for (let i = 1; i <= k; i++) for (let j = i; j <= long.length; j++) score[i][j] = Math.max(score[i][j - 1], score[i - 1][j - 1] + shared2(short[i - 1], long[j - 1]));
   const out = [];
   for (let i = k, j = long.length; i > 0; j--) {
     if (score[i][j] !== score[i][j - 1]) {
@@ -1548,7 +1564,7 @@ function closePairs(a, b) {
   const ia = a.map(inner), ib = b.map(inner);
   const gain = (i, j) => {
     const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
-    const s = shared(x, y);
+    const s = shared2(x, y);
     return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
@@ -1876,7 +1892,7 @@ function slow(before2, patches, after, items, given) {
     const s = slideAt(s1, found.start);
     const c = elementClose(after, found, s ? s.end : after.length).close;
     const old = before2.slice(a.end, close);
-    return shared(old, c > found.end ? after.slice(found.end, c) : "") < old.length ? { start: o, end: o + a.end - a.start, tag: a.tag } : null;
+    return shared2(old, c > found.end ? after.slice(found.end, c) : "") < old.length ? { start: o, end: o + a.end - a.start, tag: a.tag } : null;
   };
   const locate = (a, limit) => {
     const found = byPatches(a, before2, patches, after, regions);
@@ -4413,15 +4429,15 @@ function readPreamble(source, options = {}) {
         case "newtheorem": {
           const [named, a] = group(space(starred ? i2 + 1 : i2));
           const kind = named.trim();
-          const shared2 = bracket(a);
-          const [title, b] = group(space(shared2?.[1] ?? a));
+          const shared3 = bracket(a);
+          const [title, b] = group(space(shared3?.[1] ?? a));
           const within = bracket(b);
           const end = within?.[1] ?? b;
           let counter = starred ? null : kind;
-          if (!starred && shared2) {
-            const other = theorems[shared2[0].trim()]?.counter;
+          if (!starred && shared3) {
+            const other = theorems[shared3[0].trim()]?.counter;
             if (other) counter = other;
-            else note(end, `the counter ${shared2[0].trim()} is not the counter of a kind, hence ${kind} is numbered by itself`);
+            else note(end, `the counter ${shared3[0].trim()} is not the counter of a kind, hence ${kind} is numbered by itself`);
           } else if (!starred && within) note(end, `a number within ${within[0].trim()} is not read, hence ${kind} is numbered through the deck`);
           theorems[kind] = { title: plainText(title), style, counter };
           return end;
