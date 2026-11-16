@@ -345,6 +345,9 @@ test('the merge of an apply in a session keeps a long paste of one person and a 
     ['今天 我们 讨论 轨道', 5, rep('天地玄黄宇宙洪荒', 600)],
     // the largest paste into a paragraph of 300 characters below the cap of anchored()
     [PARA, 150, rep(PROSE, 3194)],
+    // the paste starts with the first word of the paragraph and holds its next letter o long before
+    // the longest run "orbit is stable"
+    ['The orbit is stable', 13, rep(PROSE, 1200)],
   ];
   const lost = CASES.filter(([para, at, paste]) => {
     const f = wrap(`<p>${para}</p>`);
@@ -362,6 +365,25 @@ test('the merge of an apply in a session keeps a paste of prose over the first w
   const paste = PROSE.repeat(6).slice(0, 600);
   const f = wrap('<p>Second slide</p>'), s = wrap('<p>Second slAide</p>'), t = wrap(`<p>${paste} slideC</p>`);
   assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(`<p>${paste} slAideC</p>`));
+});
+
+test('the merge of an apply in a session keeps a long paste and a phrase of a third person that replaces the last word around an unread key of the person', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const phrase = ' leaves the orbit of the halo near the Moon on the stable manifold of the halo orbit at L2 for good';
+  const paste = PROSE.repeat(11).slice(0, 1200);
+  const f = wrap('<p>Second slide</p>'), s = wrap('<p>SecAond slide</p>'), t = wrap(`<p>${paste}Second${phrase}</p>`);
+  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(`<p>${paste}SecAond${phrase}</p>`));
+});
+
+// the paste leaves few cells to the parts after the run in common, and the part around the key
+// differs in more than 50 units
+test('the merge of an apply in a session keeps a long paste and two phrases of a third person replaced on both sides of an unread key of the person', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+  const paste = rep(PROSE, 3194), rest = PARA.slice('A low energy transfer from the Earth to the Moon uses the manifolds of'.length);
+  const f = wrap(`<p>${PARA}</p>`), s = wrap(`<p>${PARA.replace(' to ', ' tAo ')}</p>`);
+  const t = wrap(`<p>${paste}A low energy the spacecraft on the stable manifold to the unstable manifold${rest}</p>`);
+  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(`<p>${paste}A low energy the spacecraft on the stable manifold tAo the unstable manifold${rest}</p>`));
 });
 
 test('fine() of a paste far over the cap of anchored() costs no more than a paste at the cap', () => {
@@ -393,6 +415,8 @@ test('with twice, the same letter typed at one point by two people is kept twice
   // the diff turns slide into deck as a removal of sli and an insertion of ck, which are one change
   assert.equal(twice('<p>Second slide</p>', '<p>Second deck</p>', '<p>Second deck</p>'), wrap('<p>Second deck</p>'));
   assert.equal(twice('<p>Second teh slide</p>', '<p>Second the slide</p>', '<p>Second the slide</p>'), wrap('<p>Second the slide</p>'));
+  // two equal insertions, of which the first is not a removal
+  assert.equal(twice('<p>Second slide</p>', '<p>(Second slide)</p>', '<p>(Second slide)</p>'), wrap('<p>(Second slide)</p>'));
 });
 
 test('the merge of an apply in a session keeps a key of another person inside a word whose bold the person removes', () => {
