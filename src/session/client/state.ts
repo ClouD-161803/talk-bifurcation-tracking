@@ -21,6 +21,7 @@ const CSS = `
 .beeson-edit-titlebar .right button.beeson-session-state.warn svg { color: var(--ed-guide); }
 .beeson-edit-titlebar .right button.beeson-session-action { border: 1px solid var(--ed-control-line); background: var(--ed-control); }
 .beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state.warn { order: 1; flex: 1 0 100%; align-items: flex-start; height: auto; padding: 4px 8px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; text-align: start; }
+.beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state.warn .name { position: relative; z-index: 1; max-height: 5lh; overflow-y: auto; }
 `;
 
 type Action = 'retry' | 'reload' | 'upload' | null;
