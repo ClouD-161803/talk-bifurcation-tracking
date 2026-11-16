@@ -131,7 +131,10 @@ export function changes(base: string, theirs: string): Edit[] | null {
     while (suf < x.length - pre && suf < y.length - pre && x[x.length - 1 - suf] === y[y.length - 1 - suf]) suf++;
   };
   trim();
-  const moved = SECTION.test(a.slice(pre, a.length - suf).join('') + b.slice(pre, b.length - suf).join('')) && markMoved(a, b);
+  // a slide is looked for as moved only when both hold as many slides where they differ, hence not
+  // when a slide is copied and the slide copied is changed
+  const slides = (l: string[]) => l.slice(pre, l.length - suf).join('').split(SECTION).length;
+  const moved = slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
   if (moved) {
     [x, y] = moved;
     trim();
@@ -189,16 +192,30 @@ export function edits(base: string, theirs: string): Edit[] {
   return [{ start: s, end: base.length - t, text: theirs.slice(s, theirs.length - t) }];
 }
 
-// e and the edit of list that make a move of the line of base at offset at, i.e. e removes the line
-// and the other edit inserts it elsewhere. null when e is not a part of such a move
-export function moveOf(base: string, list: Edit[], e: Edit, at: number): Edit[] | null {
-  if (e.start === e.end) return null;
-  const p = Math.min(Math.max(at, e.start), e.end - 1);
-  const end = base.indexOf('\n', p);
-  const line = base.slice(Math.max(e.start, base.lastIndexOf('\n', p - 1) + 1), Math.min(e.end, end < 0 ? base.length : end)).trim();
-  if (!line || e.text.includes(line)) return null;
-  const f = list.find((x) => x !== e && x.text.split('\n').some((l) => l.trim() === line));
-  return f ? [e, f] : null;
+// the edits of each move of list that an edit of others clashes with. a move is an insertion of
+// the lines of one or more removals of whole lines of base, in their order, with the lines trimmed
+// and without blank lines. lines without text outside tags, e.g. an empty list item, and lines that
+// two removals or two insertions hold are never moved, since they are not told from an edit of
+// someone else
+export function moves(base: string, list: Edit[], others: Edit[], hit: (a: Edit, b: Edit) => boolean): Edit[] {
+  const out: [string, Edit[]][] = [], cut = new Map<string, Edit | null>(), put = new Map(cut);
+  let n = 0;
+  for (const e of list) {
+    const w = !e.text && (base[e.start - 1] ?? '\n') + base[e.end - 1] === '\n\n', by = w ? cut : put;
+    const t = (w ? base.slice(e.start, e.end) : e.start === e.end ? e.text : '').replace(/\s*\n\s*/g, '\n').trim();
+    if (/(^|>)[^<]*[^\s<]/.test(t)) by.set(t, by.has(t) ? null : e);
+  }
+  for (const [t, f] of put) {
+    // the group g of the insertion and the removals whose lines come next in it, in their order, with
+    // r the lines left. n counts the edits of every move
+    let r = t + '\n';
+    const g = [f!];
+    for (const [k, e] of cut) if (e && r.startsWith(k + '\n')) r = r.slice(g.push(e) && k.length + 1);
+    if (f && !r && (n += g.length) && g.some((x) => others.some((o) => hit(x, o)))) out.push([t, g]);
+  }
+  // lines are a move only in a list without another change, since a diff can align a copied paragraph
+  // as a removal and an insertion, unlike whole slides, see markMoved()
+  return out.flatMap(([t, g]) => (n === list.length || /^<section[\s>][^]*\/section>$/.test(t) ? g : []));
 }
 
 const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.text === b.text;
@@ -221,9 +238,8 @@ export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'our
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
   // a move in a session that a change inside the moved element conflicts with is left out whole,
   // hence the element is neither doubled nor its change lost
-  const moves = new Set<Edit>();
-  if (shared) for (const o of conflicts) for (const h of others) if (hit(o, h)) for (const e of moveOf(base, ours, o, h.start) ?? moveOf(base, all, h, o.start) ?? []) moves.add(e);
-  if (moves.size) return { text: mergeEdits(base, ours.filter((e) => !moves.has(e)), all.filter((e) => !moves.has(e)), prefer, shared).text, conflicts };
+  const moved = new Set(shared && conflicts.length ? [...moves(base, ours, others, hit), ...moves(base, others, ours, hit)] : []);
+  if (moved.size) return { text: mergeEdits(base, ours.filter((e) => !moved.has(e)), all.filter((e) => !moved.has(e)), prefer, shared).text, conflicts };
   const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => equal(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };

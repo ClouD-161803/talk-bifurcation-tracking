@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes, moveOf } from '../editor/merge.ts';
+import { changes, moves } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -163,9 +163,8 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
-  const moves = new Set<Patch>();
-  if (base !== undefined) for (const o of conflicts) for (const t of theirs) if (conflict(o, t)) for (const p of moveOf(base, ours, o, t.start) ?? moveOf(base, theirs, t, o.start) ?? []) moves.add(p);
-  if (moves.size) return { patches: mergePatches(theirs.filter((p) => !moves.has(p)), ours.filter((p) => !moves.has(p)), wins, base).patches, conflicts };
+  const gone = new Set(!base ? [] : [...moves(base, ours, theirs, conflict), ...moves(base, theirs, ours, conflict)]);
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base).patches, conflicts };
   const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };

@@ -142,7 +142,8 @@ function changes(base, theirs) {
     while (suf < x.length - pre && suf < y.length - pre && x[x.length - 1 - suf] === y[y.length - 1 - suf]) suf++;
   };
   trim();
-  const moved2 = SECTION.test(a.slice(pre, a.length - suf).join("") + b.slice(pre, b.length - suf).join("")) && markMoved(a, b);
+  const slides = (l) => l.slice(pre, l.length - suf).join("").split(SECTION).length;
+  const moved2 = slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
   if (moved2) {
     [x, y] = moved2;
     trim();
@@ -168,14 +169,21 @@ function changes(base, theirs) {
   }
   return removed > base.length / 2 && !moved2 ? null : out;
 }
-function moveOf(base, list, e, at) {
-  if (e.start === e.end) return null;
-  const p = Math.min(Math.max(at, e.start), e.end - 1);
-  const end = base.indexOf("\n", p);
-  const line = base.slice(Math.max(e.start, base.lastIndexOf("\n", p - 1) + 1), Math.min(e.end, end < 0 ? base.length : end)).trim();
-  if (!line || e.text.includes(line)) return null;
-  const f = list.find((x) => x !== e && x.text.split("\n").some((l) => l.trim() === line));
-  return f ? [e, f] : null;
+function moves(base, list, others, hit) {
+  const out = [], cut = /* @__PURE__ */ new Map(), put = new Map(cut);
+  let n = 0;
+  for (const e of list) {
+    const w = !e.text && (base[e.start - 1] ?? "\n") + base[e.end - 1] === "\n\n", by = w ? cut : put;
+    const t = (w ? base.slice(e.start, e.end) : e.start === e.end ? e.text : "").replace(/\s*\n\s*/g, "\n").trim();
+    if (/(^|>)[^<]*[^\s<]/.test(t)) by.set(t, by.has(t) ? null : e);
+  }
+  for (const [t, f] of put) {
+    let r = t + "\n";
+    const g = [f];
+    for (const [k, e] of cut) if (e && r.startsWith(k + "\n")) r = r.slice(g.push(e) && k.length + 1);
+    if (f && !r && (n += g.length) && g.some((x) => others.some((o) => hit(x, o)))) out.push([t, g]);
+  }
+  return out.flatMap(([t, g]) => n === list.length || /^<section[\s>][^]*\/section>$/.test(t) ? g : []);
 }
 
 // src/editor/tokens.ts
@@ -401,11 +409,8 @@ function mergePatches(theirs, ours, wins = "ours", base) {
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
-  const moves = /* @__PURE__ */ new Set();
-  if (base !== void 0) {
-    for (const o of conflicts) for (const t of theirs) if (conflict(o, t)) for (const p of moveOf(base, ours, o, t.start) ?? moveOf(base, theirs, t, o.start) ?? []) moves.add(p);
-  }
-  if (moves.size) return { patches: mergePatches(theirs.filter((p) => !moves.has(p)), ours.filter((p) => !moves.has(p)), wins, base).patches, conflicts };
+  const gone = new Set(!base ? [] : [...moves(base, ours, theirs, conflict), ...moves(base, theirs, ours, conflict)]);
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base).patches, conflicts };
   const keptTheirs = wins === "ours" ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === "ours" ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
