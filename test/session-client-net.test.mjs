@@ -879,7 +879,7 @@ test('a page whose edits are acknowledged at once does not ask before it unloads
 test('the operations of the answer that ends the session are taken before its dialog, which then holds every acknowledged edit', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const server = await talk(t);
+  const server = await talk(t, { env: { SLIDES_CLOSE_WAIT_MS: '120000' } });
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
   await converge(server, [ann, ben]);
@@ -897,14 +897,17 @@ test('the operations of the answer that ends the session are taken before its di
   await front(ann);
   await type(ann, ' by Ann');
   await until(() => server.read().includes('<p>Second slide first by Ann</p>'), 'the edit of Ann to reach index.html');
-  // the edit command answers every poll with ended for at least 200 ms after it answered the poll of Ann
+  // the poll of Ben is released once Ann is told of the end, which takes two reads of a page by this
+  // test. the edit command of this test therefore answers a poll with ended for 2 min after it was
+  // stopped, in place of 200 ms, and it is killed once Ben has his answer
   server.edit.child.kill('SIGTERM');
   await ann.waitFor(`${C}.connection === 'ended'`);
   await ben.evaluate(`__net.clear() && __net.release('/.session/events')`);
-  await server.edit.exited;
-  server.edit = null;
   await front(ben);
   await ben.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'The session has ended'`);
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  server.edit = null;
   assert.equal(await ben.evaluate(`${DIALOG}.querySelector('p').textContent`), 'Your changes up to now are in index.html.');
   await ben.evaluate(`(${C}.shell.download = (text) => (window.__copy = text), true)`);
   await ben.evaluate(`${button('Download a copy')}.click()`);

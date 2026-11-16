@@ -29,6 +29,8 @@ const MEDIA_TYPES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg',
 const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
 // the time in ms for which End session waits for the polls of the guests, shorter in the tests
 const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
+// the time in ms for which a stopped edit command still answers a poll with ended, longer in the tests
+const CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
 
 export type StartOptions = {
   folder?: string;
@@ -558,7 +560,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         // keeps the record of the end for a guest who was not waiting at the edit command
         await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
         // a poll that arrives in this time is answered with ended, rather than reset by the close
-        await new Promise((done) => setTimeout(done, 200));
+        await new Promise((done) => setTimeout(done, CLOSE_WAIT));
         await new Promise<void>((done) => {
           server.close(() => done());
           setTimeout(() => {

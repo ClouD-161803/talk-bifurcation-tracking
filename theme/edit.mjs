@@ -3036,6 +3036,7 @@ var GUEST_MEDIA_MAX = 16 * 1024 * 1024;
 var MEDIA_TYPES = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "bmp", "mp4", "m4v", "webm", "mov", "ogv", "json"]);
 var LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2e3;
 var END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1e3;
+var CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
 var AlreadyRunning = class extends Error {
   constructor(found) {
     super(`the edit command already runs for this folder at ${found.url}`);
@@ -3479,7 +3480,7 @@ async function start(options = {}) {
       }
       written(unwritten2);
       await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
-      await new Promise((done) => setTimeout(done, 200));
+      await new Promise((done) => setTimeout(done, CLOSE_WAIT));
       await new Promise((done) => {
         server.close(() => done());
         setTimeout(() => {
