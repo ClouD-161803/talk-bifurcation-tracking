@@ -106,6 +106,10 @@ test('a slide edited in place next to slides inserted, removed, moved, or edited
       deck(INTRO2, MOTIVATION, ['<img src="a.png">', '<p>Fuel use drops sharply.</p>'], OUTLOOK, QUESTIONS),
     ],
     'a slide of a backdrop first, its text rewritten, and another slide edited': [deck(INTRO, MOTIVATION, [BACKDROP, ...RESULTS], OUTLOOK, QUESTIONS), deck(INTRO2, MOTIVATION, [BACKDROP, ...RESULTS2], OUTLOOK, QUESTIONS)],
+    'three slides moved as a block past three others, the middle one rewritten': [
+      deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, slide('A'), slide('B'), slide('C')),
+      deck(INTRO, slide('A'), slide('B'), slide('C'), MOTIVATION, RESULTS2, OUTLOOK),
+    ],
   };
   for (const [name, [before, after]] of Object.entries(cases)) {
     await t.test(name, () => {
