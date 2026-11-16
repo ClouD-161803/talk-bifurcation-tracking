@@ -18,7 +18,7 @@ const TABLE = `  <p>First slide</p>
   </table>`;
 const tableOf = (text) => text.match(/<table>[\s\S]*?<\/table>/)?.[0];
 
-test('a held table cell refuses Delete Column, Delete Row, and a paste of cells from another cell of its table', { timeout: 120_000 }, async (t) => {
+test('a held table cell refuses Delete Column, Delete Row, and a paste of cells from another cell of its table, by the menu or by the key, and takes a paste of plain text', { timeout: 120_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', TABLE]] });
   await show(ana, 'One');
   await show(ben, 'One');
@@ -36,8 +36,22 @@ test('a held table cell refuses Delete Column, Delete Row, and a paste of cells 
     assert.equal(await ben.evaluate(`${el(0, 'table')}.outerHTML`), before, `${id} leaves the table as it was`);
     assert.equal(await ben.evaluate(BUBBLE), REFUSED, id);
   }
+  // the paste of cells by the key, which the code of the table reads from the event of the paste
+  await unbubble(ben);
+  await caretAtEnd(ben, el(0, 'th'));
+  await ben.evaluate(`(() => { const d = new DataTransfer(); d.setData('text/plain', 'p\\tq\\nr\\ts'); document.activeElement.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: d })); })()`);
+  await frame(ben);
+  assert.equal(await ben.evaluate(`${el(0, 'table')}.outerHTML`), before, 'the paste of cells by the key leaves the table as it was');
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the paste of cells by the key');
+  // a paste of plain text into one cell is taken, as in a paragraph
+  await unbubble(ben);
+  await caretAtEnd(ben, el(0, 'th'));
+  await ben.evaluate(`${C}.app.commands.run('edit.paste', 'word')`);
+  assert.equal(await ben.evaluate(BUBBLE), null, 'a paste of plain text is not refused');
+  assert.equal(await ben.evaluate(`${el(0, 'th')}.textContent`), 'A1word');
   await leave(ben);
   const text = await converge(server, [ana, ben]);
+  assert.match(tableOf(text), /<th>A1word<\/th>/);
   assert.match(tableOf(text), /<td>A2 typed<\/td><td>B2<\/td>/);
   assert.equal(await ben.evaluate(HOLDER(a2)), 'Ana', 'the cell is still held');
   clean(ana);
