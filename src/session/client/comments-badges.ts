@@ -2,14 +2,17 @@
 // the count of the open threads of an element, 4 px outside its upper right corner, or 18 px while
 // the element is selected or holds the caret, so that the grips of its frame stay free, or of a
 // slide, inside its upper right corner, and it is filled violet while one of them is unread. a badge
-// that would meet one above it is drawn below it, and the badge of a turned element is outside its
-// own upper right corner. the boxes of the elements are read in one requestAnimationFrame after a
-// change of the deck, of the slide, or of the threads, and they are kept in px of the slide. a
-// scroll or a zoom then moves the badges by the origin and the scale of the stage alone, without
-// reading the box of any element
+// whose area of a tap would meet the one of a badge above it is drawn below it, and the badge of a
+// turned element is outside its own upper right corner. the boxes of the elements are read in one
+// requestAnimationFrame after a change of the deck, of the slide, or of the threads, and they are
+// kept in px of the slide. a scroll or a zoom then moves the badges by the origin and the scale of
+// the stage alone, without reading the box of any element
 
 import type { Comments } from './comments.ts';
 import { make, style } from './dom.ts';
+
+// the reach in px of the area around a badge that takes a tap, which two badges do not share
+const TAP = 7;
 
 const CSS = `
 .beeson-comment-badges { visibility: visible; }
@@ -17,7 +20,7 @@ const CSS = `
 .beeson-comment-badge { position: absolute; left: 0; top: 0; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border: 1.5px solid var(--ed-select, #8a2be2); border-radius: 10px 10px 10px 2px; background: var(--ed-panel, #fff); color: var(--ed-text, #1d1d1f); font: 600 11px/17px var(--ed-font, system-ui); text-align: center; pointer-events: auto; cursor: pointer; }
 .beeson-comment-badge.slide { border-radius: 10px 10px 2px 10px; }
 .beeson-comment-badge.unread { background: var(--ed-select, #8a2be2); color: var(--ed-on-select, #fff); }
-.beeson-comment-badge::after { content: ''; position: absolute; inset: -7px; }
+.beeson-comment-badge::after { content: ''; position: absolute; inset: -${TAP}px; }
 .beeson-comment-badge:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 2px; }
 .beeson-edit-nav .row .frame .beeson-comment-count { position: absolute; right: -6px; bottom: -6px; z-index: 1; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--ed-panel); color: var(--ed-text); box-shadow: 0 0 0 1.5px var(--ed-select); font: 600 10px/16px var(--ed-font); text-align: center; pointer-events: none; }
 .beeson-edit-nav .row .frame .beeson-comment-count.unread { background: var(--ed-select); color: var(--ed-on-select); }
@@ -174,15 +177,16 @@ export class Badges {
       // moved into the viewport first, so that the overlaps are read on the places drawn
       return { b, left: Math.max(v.left + 2, Math.min(left, v.right - b.w - 2)), top: Math.max(v.top + 2, Math.min(top, bottom)) };
     });
-    // a badge that meets one placed above it is pushed down below it, and not past the bottom of
-    // the viewport, where it may then meet another
+    // a badge whose area of a tap meets the one of a badge placed above it is pushed down below
+    // it, and not past the bottom of the viewport, where it may then meet another
+    const gap = 2 * TAP;
     at.sort((p, q) => p.top - q.top);
     for (let k = 0; k < at.length; k++) {
       const { b, left } = at[k];
       let { top } = at[k];
       for (let j = 0; j < k; j++) {
         const p = at[j];
-        if (left < p.left + p.b.w && p.left < left + b.w && top < p.top + H + 2) top = p.top + H + 2;
+        if (left < p.left + p.b.w + gap && p.left < left + b.w + gap && top < p.top + H + gap) top = p.top + H + gap;
       }
       at[k].top = top = Math.min(top, bottom);
       b.badge.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
