@@ -525,3 +525,30 @@ test('a thread refused for a base that left the log is sent again on a new base'
   assert.deepEqual(await a.evaluate(`${C}.transport.comments(${C}.token).then((r) => r.comments.map((c) => c.text))`), ['Sent on a new base']);
   clean(a);
 });
+
+test('the keys typed in a deck of 2 MB add less than 30 texts of the deck to the memory of a page', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // the text of a scene, as a talk holds it in a script next to its slides
+  const scene = `<script type="application/json">${JSON.stringify('x'.repeat(2 * 2 ** 20))}</script>`;
+  const server = await talkOf(t, TALK.replace('<script src="theme/vendor', `${scene}\n<script src="theme/vendor`));
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const deck = (await converge(server, [a])).length;
+  // the bytes of the heap of the page that a collection leaves
+  const held = async () => {
+    await a.send('HeapProfiler.collectGarbage');
+    return (await a.send('Runtime.getHeapUsage')).usedSize;
+  };
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'h2'));
+  const before = await held();
+  // each key is answered before the next one, hence it is an operation of its own
+  for (let i = 0; i < 80; i++) {
+    await type(a, 'k');
+    await a.waitFor(`${C}.acked()`);
+  }
+  await converge(server, [a]);
+  const texts = ((await held()) - before) / deck;
+  assert.ok(texts < 30, `80 keys added ${texts.toFixed(1)} texts of the deck of ${deck} characters to the heap of the page`);
+  clean(a);
+});
