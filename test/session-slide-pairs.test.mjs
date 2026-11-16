@@ -202,6 +202,35 @@ test('a slide whose start and end are edited in an operation that edits another 
   }
 });
 
+// a slide of a picture, with a credit that every such slide repeats between its heading and notes
+const picture = (name, note) => [`<h2>${name}</h2>`, `<img src="media/${name.toLowerCase()}.jpg">`, '<p class="caption">Image credit: NASA/JPL-Caltech/SETI Institute</p>', `<aside class="notes">${note}</aside>`];
+const OCEAN = slide('Ocean worlds', '<p>Three moons hold water under their ice.</p>');
+const EUROPA = picture('Europa', 'Mention the ice shell.');
+const TITAN = picture('Titan', 'Lakes of methane.');
+const ENCELADUS = picture('Enceladus', 'Plumes at the south pole.');
+
+// the headings of the slides on which the threads of the slide of name and of its heading are
+// after the operation from before to after, null for a thread taken off its slide
+function threadsOf(before, after, name) {
+  const s = slidesOf(before).find((x) => before.slice(x.start, x.end).includes(`<h2>${name}`));
+  const tag = { start: s.start, end: s.open, tag: 'section' };
+  const items = [{ anchor: tag, slide: tag }, { anchor: startTagAt(before, before.indexOf(`<h2>${name}`)), slide: tag }];
+  return moveAnchors(before, diff(before, after), after, items).items.map((it) => it.slide && /<h2>([^<]*)/.exec(after.slice(it.slide.start))[1]);
+}
+
+test('the threads of a slide are not handed to another slide that repeats the text of its middle', async (t) => {
+  await t.test('a slide deleted and another added at its place, in an operation that edits another slide', () => {
+    const before = deck(OCEAN, EUROPA, TITAN, QUESTIONS);
+    const after = deck(slide('Ocean worlds', '<p>Four moons hold water under their ice.</p>'), ENCELADUS, TITAN, QUESTIONS);
+    assert.deepEqual(threadsOf(before, after, 'Europa'), [null, null]);
+  });
+  await t.test('a slide deleted and another added at the end of the deck, as a Restore of the version before does it', () => {
+    const before = deck(OCEAN, TITAN, QUESTIONS, ENCELADUS);
+    const after = deck(OCEAN, EUROPA, TITAN, QUESTIONS);
+    assert.deepEqual(threadsOf(before, after, 'Enceladus'), [null, null]);
+  });
+});
+
 // the fastest of five runs of f, in ms
 function fastest(f) {
   let best = Infinity;
