@@ -109,7 +109,7 @@ async function start(given: Handover): Promise<boolean> {
   return true;
 }
 
-// presence() and follow() are read by the tests, e.g. to move the clock of the floor rule, and
+// presence() and follow() are read by the tests, e.g. to move the clock of the holds, and
 // toasts.shown is set by the tests
 const entry: Entry & { client(): Client | null; rename: typeof rename; presence(): ReturnType<typeof presenceOf> | null; follow: typeof followOf; toasts: typeof timing } = {
   start,

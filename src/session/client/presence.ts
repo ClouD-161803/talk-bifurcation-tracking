@@ -2,7 +2,7 @@
 // offsets of the text of the authority at a version, and read back by every other page as its own
 // elements, for layer.ts, the avatars, and the navigator. another person holds a text element
 // while their caret is in it and they were active in the last IDLE ms, and floor.ts refuses the
-// commands of this page that would move or delete a held element.
+// commands of this page that would move, delete, split, retag, or replace a held element.
 //
 // an offset is carried twice. the sender carries it from the source of its port, which offsetOf
 // refers to, to the text of the authority at v. the receiver carries it through the operations

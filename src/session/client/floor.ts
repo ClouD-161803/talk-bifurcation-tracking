@@ -1,7 +1,8 @@
-// the refusals of the commands of this page that would move or delete a text element that another
-// person holds (see presence.ts), or change the slide or the table around it, checked by
-// commands.refuse of the editor. a caret, a selection, and typing in a held element are not
-// refused, and neither is an apply of the port, e.g. a restore or a change of index.html from outside
+// the refusals of the commands of this page that would move, delete, split, retag, or replace a
+// text element that another person holds (see presence.ts), or change the slide or the table
+// around it, checked by commands.refuse of the editor. a caret, a selection, and typing and
+// formatting in a held element are not refused, and neither is an apply of the port, e.g. a
+// restore or a change of index.html from outside
 
 import type { App } from '../../editor/app.ts';
 import type { Command } from '../../editor/commands.ts';

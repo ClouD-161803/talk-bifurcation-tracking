@@ -1,4 +1,4 @@
-// a short message beside an element, e.g. why a text element cannot be edited now, hidden after
+// a short message beside an element, e.g. why a command on a held element is refused, hidden after
 // SHOWN ms. one bubble is shown at a time, and a new one takes the place of the last
 
 import { make, style } from './dom.ts';
