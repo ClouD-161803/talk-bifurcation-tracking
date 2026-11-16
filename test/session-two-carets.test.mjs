@@ -1,10 +1,13 @@
 // two and three people who type in one paragraph of a session in Chrome, on the edit command
 // started on a temporary talk folder: a word that an input method composes reaches the others only
-// once it is committed, and the keys that the others type during the composition, at its caret or
-// on both sides of it, are kept. the keys of two people that come in one answer on both sides of an
-// unread key of the person are kept with it. the letters of two people who type at one point stay
-// together. an undo next to a space that the browser writes as &nbsp; removes only the typing of
-// the person, and an undo of a word whose trailing space another browser took away is refused
+// once it is committed, and the keys, deletions, and pastes of the others during the composition,
+// at its caret or around it, are kept with the word at its point. the keys of two people that come
+// in one answer on both sides of an unread key of the person are kept with it, also after a long
+// paste, and the same letter typed by both is kept twice. an unread key stays whole beside a key of
+// another person, and goes before an element that another person puts around the word after it.
+// two people who take turns at one point each keep a run of their own. an undo next to a space that
+// the browser writes as &nbsp; removes only the typing of the person, and an undo of a word whose
+// trailing space another browser took away is refused
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -104,7 +107,7 @@ test('a word composed with an input method between the keys of two other people,
   assert.deepEqual([ana.errors, ben.errors, cleo.errors], [[], [], []]);
 });
 
-test('the letters of two people who type at one point stay together', { timeout: 120_000 }, async (t) => {
+test('the letters of two people who take turns at one point each stay in a run of their own', { timeout: 120_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
