@@ -160,6 +160,10 @@ export function beforeJoin(client: Client, fn: (() => Copy | null) | null): void
   stateOf(client).early = fn;
 }
 
+// whether join.ts has given the copy of the page before the join, which reads each change, hence
+// before it a change that the client has not read counts as not kept
+export const early = (client: Client): boolean => !!states.get(client)?.early;
+
 // the copy for a record: the state of the replica, or before the join the copy of early
 const current = (client: Client, st: State): Copy | null => client.snapshot() ?? st.early?.() ?? null;
 

@@ -10,7 +10,7 @@
 import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
-import { keeps } from './copy.ts';
+import { early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
 import { FULL, type AppliedOp, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
@@ -336,9 +336,10 @@ export class Client {
   }
 
   private unkept(): boolean {
-    // a change that is not read yet is in neither the replica nor the copy. before the join, the copy
-    // is read from the deck, and join.ts checks again after each change
-    return !this.acked() && !this.ended && ((this.dirty && !!this.sync) || !keeps(this));
+    // a change that is not read yet is in neither the replica nor the copy. once join.ts has given
+    // the copy before the join, this copy is read from the deck, and join.ts checks again after each
+    // change
+    return !this.acked() && !this.ended && ((this.dirty && (!!this.sync || !early(this))) || !keeps(this));
   }
 
   // resolves once every edit of this page is acknowledged, which is a save in a session
