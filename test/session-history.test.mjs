@@ -1220,7 +1220,7 @@ test('Version History takes the caret out of the text, hence another person can 
   await show(ann, 'One');
   await caretAtEnd(ann, el(0, 'h2'));
   await typeKeys(ann, ' typed');
-  await press(ann, 'Mod+Alt+Shift+H');
+  await press(ann, HISTORY_KEY);
   await ann.waitFor(SHOWN);
   // the presence state of Ann as the page of Ben reads it
   const of = `${C}.presence.find((p) => p.name === 'Ann')?.state`;
