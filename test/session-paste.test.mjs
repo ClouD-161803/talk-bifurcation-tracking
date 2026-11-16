@@ -1,7 +1,9 @@
 // slides pasted from a plain deck into a page of a session, and slides copied in a session. a file
 // that the session does not take is not added by the paste, which names it with the reason, and the
-// later edits of the page still reach index.html. a copy in a session names its deck by a tag in
-// place of the key of the session, and a plain deck asks for the talk folder of the session
+// later edits of the page still reach index.html. a copy in a session names its deck by a hash of
+// the key of the session, also after the session ends, and a plain deck asks for the talk folder of
+// the session that it was copied from. a deck whose address has session, which no edit command
+// serves, names its own address
 
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -100,12 +102,12 @@ test('a copy in a session', { timeout: 180_000 }, async (t) => {
   await converge(server, [ann, ben]);
   const text = await copySlide(ann, 'One');
 
-  await t.test('names the deck by a tag in place of the key of the session', async () => {
+  await t.test('names the deck by a hash of the key of the session', async () => {
     assert.ok(!text.includes(server.edit.key), text.slice(0, 300));
     const origin = ORIGIN(text);
     assert.match(origin.deck, /^http:\/\/127\.0\.0\.1:\d+\/session-[0-9a-z]+\/index\.html$/);
     assert.equal(origin.session, true);
-    // another page of the session derives the same tag from the key
+    // another page of the session derives the same hash from the key
     assert.equal(ORIGIN(await copySlide(ben, 'Two')).deck, origin.deck);
   });
 

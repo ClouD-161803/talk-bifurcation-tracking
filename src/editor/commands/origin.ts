@@ -24,20 +24,20 @@ const keyed = (): boolean => served ?? new URLSearchParams(location.search).has(
 
 // the 32-bit FNV-1a hash of s in base 36, which works also where crypto.subtle is missing, i.e.
 // outside a secure context
-function tag(s: string): string {
+function hash(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
   return (h >>> 0).toString(36);
 }
 
 // the address of this deck, without its query and its slide. the folder of a page of a session is
-// the key of the session, with which anyone can join it, hence a tag of the key takes its place
+// the key of the session, with which anyone can join it, hence a hash of the key takes its place
 export function deckAddress(): string {
   const address = location.href.split(/[?#]/)[0];
   if (!keyed()) return address;
   const end = address.lastIndexOf('/');
   const start = address.lastIndexOf('/', end - 1) + 1;
-  return `${address.slice(0, start)}session-${tag(address.slice(start, end))}${address.slice(end)}`;
+  return `${address.slice(0, start)}session-${hash(address.slice(start, end))}${address.slice(end)}`;
 }
 
 // the macros of the deck that text uses, with the macros that their bodies use
