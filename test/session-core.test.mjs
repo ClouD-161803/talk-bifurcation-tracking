@@ -952,6 +952,29 @@ test('a move made offline and a key of another person in the moved paragraph are
   }
 });
 
+test('a word typed in a slide that nobody moves is kept with every slide when another person moves the first slide past it and types in the slide before it, in both orders, in the merge of the editor, and after a break', () => {
+  const s = (h, ...ps) => `<section>\n  <h2>${h}</h2>\n${ps.map((p) => `  ${p}\n`).join('')}</section>\n`;
+  const one = s('One', '<p>First</p>', '<ul>', '  <li>Item</li>', '  <li></li>', '</ul>'), two = s('Two', '<p>Second</p>');
+  const three = s('Three', '<ul>', '  <li>Last item</li>', '</ul>', '<p>Third</p>'), four = s('Four', '<p>Fourth</p>');
+  const base = one + two + three + four;
+  const ann = base.replace('Last item', 'Last item by Ann');
+  for (const bob of [two.replace('Second', 'Second by Bob') + three + one + four, two + three + one + four]) {
+    const texts = { ...merges(base, bob, ann) };
+    for (const wins of [undefined, 'ours', 'theirs']) {
+      const r = new Replica('bobxxxxx', base, 'E.0');
+      r.edit(bob);
+      r.resync(ann, 'E.1', undefined, wins);
+      texts[`a resync, ${wins ?? 'without a side'}`] = r.mine;
+    }
+    for (const [how, text] of Object.entries(texts)) {
+      const what = `${bob.includes('by Bob') ? 'with' : 'without'} the word of Bob, ${how}`;
+      assert.equal(times(text, 'Last item by Ann'), 1, `${what}: the word of Ann is in the text`);
+      if (bob.includes('by Bob')) assert.equal(times(text, 'Second by Bob'), 1, `${what}: the word of Bob is in the text`);
+      for (const h of ['One', 'Two', 'Three', 'Four']) assert.ok(times(text, `<h2>${h}</h2>`) >= 1, `${what}: the slide ${h} is in the text`);
+    }
+  }
+});
+
 test('a replace in every paragraph and a word typed at once in one of them are both in the text at the end', () => {
   // changes() gives up beyond 2000 changed lines, and gives one hunk for one long line
   for (const join of ['\n', '']) {
