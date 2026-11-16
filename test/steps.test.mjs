@@ -34,6 +34,13 @@ test('a fragment is held while the current step highlights a class in it', () =>
   assert.deepEqual(resolve(steps, 4).held, [false, false, false, false]);
 });
 
+test('from the step of a fragment with data-focus on, every shown fragment is held', () => {
+  const steps = (current) => [1, 2, 3, 4].map((i) => step(i, i <= current, { focus: i === 3 }));
+  assert.deepEqual(resolve(steps(2), 2).held, [false, false, false, false]);
+  assert.deepEqual(resolve(steps(3), 3).held, [true, true, false, false]);
+  assert.deepEqual(resolve(steps(4), 4).held, [true, true, true, false]);
+});
+
 test('a class is colored once its step is shown, in the tone of the last step that names it', () => {
   const steps = [step(1, true, { highlight: ['a'] }), step(2, true, { highlight: ['a', 'b'], tone: 'violet' }), step(3, false, { highlight: ['c'] })];
   assert.deepEqual([...resolve(steps, 2).lit], [['a', 'violet'], ['b', 'violet']]);
