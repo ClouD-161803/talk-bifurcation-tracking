@@ -2,7 +2,8 @@
 // join, the edits of two pages that reach each other and index.html byte for byte, a structural
 // change, an undo, a change of the file from outside, a change of the head that loads the page
 // again, a change from outside of a tag that the theme reads at a mount, which loads both pages
-// again, and the guard that never sends a text that the deck did not take as an edit
+// again, an apply that changes the deck in part, after which the keys that the client has not read
+// reach index.html, and the guard that never sends a text that the deck did not take as an edit
 
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -243,6 +244,63 @@ for (const [what, from, to, shown] of [
     assert.ok(text.includes(to) && text.includes('<p>First slide, later</p>') && text.includes('<p>Second slide early</p>'), text);
     clean(a);
     clean(b);
+  });
+}
+
+// keys typed at the end of the text element of host as the client of the page hands the next text
+// to port.apply, i.e. after the last read of the deck by the client and before the apply reads it,
+// in a composition of an input method when compose is set
+const typeAtApply = (page, host, keys, compose) => page.evaluate(`(() => {
+  const port = window.BeesonEditor.session;
+  const apply = port.apply;
+  port.apply = (text) => {
+    port.apply = apply;
+    const host = ${host};
+    host.focus();
+    const r = document.createRange();
+    r.selectNodeContents(host);
+    r.collapse(false);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    if (${compose}) host.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+    document.execCommand('insertText', false, ${JSON.stringify(keys)});
+    return apply(text);
+  };
+})()`);
+
+// an apply that changes the deck in part rejects, and the edits that the client has not read reach
+// index.html before the page loads again. around a composition, the word after it is changed before
+// the backdrop is reached, whose class taken off is a reload
+for (const [what, slide, change, typed] of [
+  ['a block element inside a paragraph', '', (text) => text.replace('<p>First slide</p>', '<p>First slide, see <div class="math">\\[x^2\\]</div></p>'), [[1, 'p', 'QQQ', false]]],
+  [
+    'a composition between a class backdrop taken off and a word changed after it',
+    '  <div id="bd" class="backdrop"></div>\n',
+    (text) => text.replace('class="backdrop"', 'class="later"').replace('<li>Alpha</li>', '<li>Alfa</li>'),
+    [[0, 'h2', 'RRR', true], [1, 'p', 'QQQ', true]],
+  ],
+]) {
+  test(`keys typed as an apply begins that cannot be made in full, with ${what}, reach index.html after both pages load again`, { timeout: 180_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    writeFileSync(server.file, TALK.replace('  <p>First slide</p>\n', `  <p>First slide</p>\n${slide}`));
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+    const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+    const pages = [a, b];
+    await converge(server, pages);
+    await show(a, 'Two');
+    await show(b, 'Two');
+    await caretAtEnd(b, el(1, 'p'));
+    await typeKeys(b, ' early');
+    const before = await converge(server, pages);
+    for (const [page, selector, keys, compose] of typed) await typeAtApply(pages[page], el(1, selector), keys, compose);
+    const counts = [await loads(a), await loads(b)];
+    writeFileSync(server.file, change(before));
+    await reloaded(pages, counts);
+    const text = await converge(server, pages);
+    assert.ok(text.includes('<p>Second slide earlyQQQ</p>'), text);
+    if (typed.length > 1) assert.ok(text.includes('<h2>TwoRRR</h2>'), text);
   });
 }
 
