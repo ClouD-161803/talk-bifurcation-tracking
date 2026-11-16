@@ -1573,9 +1573,9 @@ function core(x, y) {
     k -= r - l;
     while (++l < r && x[l] !== " ") ;
     while (--r > l && x[r] !== " ") ;
-    let s = r;
-    while (--s > l && x[s] !== " ") ;
-    if (s > l) b = Math.max(b, r - l + 1);
+    let s = r, w = 2;
+    while (w && --s > l) if (x[s] === " ") w--;
+    if (!w) b = Math.max(b, r - l + 1);
   }
   return b;
 }

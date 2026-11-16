@@ -159,7 +159,7 @@ function bestPairs(a: string[], b: string[], half: boolean): [number, number][] 
 const inner = (x: string) => x.slice(x.indexOf('>') + 1, x.lastIndexOf('<')).replace(/\s+/g, ' ').trim();
 const words = (x: string) => x.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 
-// the characters of the longest stretch of two or more whole words through the middle of the
+// the characters of the longest stretch of three or more whole words through the middle of the
 // shorter of x and y that the other holds as well, with the spaces around it, where the shorter is
 // read with a space at each end. the middle of the shorter is read, since it is kept more often,
 // e.g. when a long paragraph is added. the stretches are read for about as many characters as the
@@ -179,14 +179,15 @@ function core(x: string, y: string) {
     while (x[++r] === y[r + p - h]);
     // the reads are counted, and l and r become the spaces around the whole words read, found
     // inside the stretch read, since a search to the next space is not counted and is long in a
-    // run without spaces, e.g. the data of a plot. one word is often shared by chance, e.g. by two
-    // short slides at one place
+    // run without spaces, e.g. the data of a plot. one word, or two short ones such as "of the",
+    // are often shared by chance by two short slides at one place, hence w, the spaces still to
+    // find between l and r, starts at two
     k -= r - l;
     while (++l < r && x[l] !== ' ');
     while (--r > l && x[r] !== ' ');
-    let s = r;
-    while (--s > l && x[s] !== ' ');
-    if (s > l) b = Math.max(b, r - l + 1);
+    let s = r, w = 2;
+    while (w && --s > l) if (x[s] === ' ') w--;
+    if (!w) b = Math.max(b, r - l + 1);
   }
   return b;
 }
