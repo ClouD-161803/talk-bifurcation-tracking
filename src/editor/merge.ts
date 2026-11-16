@@ -261,6 +261,11 @@ function slid(base: string, d: Edit, own: Edit[], others: Edit[]): Edit {
   return right && fits(r) ? r : d;
 }
 
+// whether only letters and digits of base lie between a and b, e.g. two edits of one word
+export function sameWord(base: string, a: Edit, b: Edit): boolean {
+  return !/[^\p{L}\p{N}]/u.test(base.slice(Math.min(a.end, b.end), Math.max(a.start, b.start)));
+}
+
 // the same merge with the changes of the file, all, given as edits of base. with apart, an edit
 // and a change conflict only when they clash, and of two insertions at one point the change comes
 // first, as the authority of a session orders the operation that arrived first. a format and the

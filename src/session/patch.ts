@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes, fine, nest } from '../editor/merge.ts';
+import { changes, fine, nest, sameWord } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -150,6 +150,8 @@ function finer(base: string, patches: Patch[], other: Patch[]): Patch[] {
   return patches.flatMap((p) => (other.some((o) => conflict(p, o)) ? fine(base, apply(base, [p])) : [p]));
 }
 
+const TAG = /<\/?[A-Za-z](?:[^<>"']|"[^"]*"|'[^']*')*>/g;
+
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
@@ -161,7 +163,15 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
     // the finer edits are taken only when none of them conflicts, since the letters of one word
     // replaced on both sides would be mixed
     const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
-    [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours) : [t, o];
+    // so would they be when an edit of each side removes letters of one word, since the edits
+    // interleave without a conflict, e.g. near replaced by plane and by large. a format put on or
+    // taken off, and a key, do not remove letters
+    const cuts = (p: Patch) => {
+      const was = base.slice(p.start, p.end).replace(TAG, '');
+      return !p.text.replace(TAG, '').includes(was);
+    };
+    const ct = t.map(cuts), co = o.map(cuts);
+    [theirs, ours] = t.some((p, i) => o.some((q, j) => conflict(p, q) || (ct[i] && co[j] && sameWord(base, p, q)))) ? nest(base, theirs, ours, true) : [t, o];
   }
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
