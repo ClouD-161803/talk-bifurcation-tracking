@@ -745,12 +745,15 @@ test('Insert Backdrop and a drawing of the backdrop are refused on a slide whose
   clean(ben, [/status of 404 .*demo\/broucke-sample\.js/]);
 });
 
+// the state of Ana that page last heard was sent after her last key of the paragraph of slide Two
+const PAUSED = `${P}.resolved().some((r) => r.name === 'Ana' && r.caret?.at === 'Second slide typed'.length && !r.typing)`;
+
 test('a page that loads after a person stopped typing does not see the text element of their caret as held', { timeout: 120_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
   await holding(ana, ben, SECOND, ' typed');
-  await until(() => ben.evaluate(`${P}.resolved().some((r) => r.name === 'Ana' && r.caret && !r.typing)`), 'Ana to stop typing on the page of Ben');
+  await until(() => ben.evaluate(PAUSED), 'Ana to stop typing on the page of Ben');
   // the 30 s of the hold pass on the clock of Ben
   await ben.evaluate(`${P}.skew = 31000`);
   assert.equal(await ben.evaluate(`${P}.holds.size`), 0, 'the hold ends after 30 s');
