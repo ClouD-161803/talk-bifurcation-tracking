@@ -1104,11 +1104,13 @@ export function install(app: App): void {
     view.readout = null;
     const copying = ghosts.shown();
     ghosts.show(p, false);
-    if (p.kind === 'move' && ev && p.moved && copying && copyHeld(ev)) {
+    const els = [...new Set([...p.els, ...(p.sized ?? []), ...(p.followers ?? []).flatMap((m) => m.sized)])];
+    // a refusal that began during the drag, e.g. a hold, puts the elements back at the release
+    const refused = !!ev && p.moved && p.kind !== 'marquee' && app.commands.refused(ARRANGE[p.kind], { els });
+    if (p.kind === 'move' && ev && p.moved && !refused && copying && copyHeld(ev)) {
       void copyAt(p).catch((e) => app.fail(e));
     } else if (p.kind !== 'marquee') {
-      const els = [...new Set([...p.els, ...(p.sized ?? []), ...(p.followers ?? []).flatMap((m) => m.sized)])];
-      if (ev && p.moved) {
+      if (ev && p.moved && !refused) {
         const changes = els.map((el) => {
           const to = placeOf(el);
           writePlace(app, el, to);
