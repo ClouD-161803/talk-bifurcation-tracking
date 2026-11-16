@@ -110,9 +110,12 @@ export function install(app: App): Port {
   let net = 0;
 
   // the text element of an open composition of an input method. the changes of its text are held
-  // back until the composition ends, while behind holds the text shown and the text wanted
+  // back until the composition ends, while behind holds the text shown and the text wanted. the
+  // client reads prior during the composition, the deck as it was before it with the applies since,
+  // hence the composing word is read once it is committed
   let composing: Element | null = null;
   let behind: { shown: string; want: string } | null = null;
+  let prior: string | null = null;
 
   // the caret of a text element that an apply moved to a slide that is not shown, as an offset into
   // the text of the element, see park
@@ -134,6 +137,7 @@ export function install(app: App): Port {
     clean = ready();
     handed = clean ? app.source!.text : null;
     behind = null;
+    prior = null;
     parked = null;
   });
 
@@ -198,6 +202,13 @@ export function install(app: App): Port {
   // at a reload the deck is as it was, and reads with the changes still held back as the text that
   // it was meant to read
   const ended = (): void => {
+    if (prior !== null) {
+      prior = null;
+      if (listeners.size) {
+        pending = true;
+        void flush();
+      }
+    }
     if (behind) void run(null).then((r) => {
       if (r.reload) reloadAll(ready() ? virtual(current()) : undefined);
     }, (e) => reloadAll((e as { target?: string } | null)?.target));
@@ -208,13 +219,14 @@ export function install(app: App): Port {
   document.addEventListener('compositionstart', (ev) => {
     clearTimeout(release);
     composing = app.hostOf(ev.target);
+    prior = composing && ready() ? (handed !== null && (busy() || applying || queued) ? handed : virtual(current())) : null;
   }, true);
   document.addEventListener('compositionend', () => {
     composing = null;
     release = window.setTimeout(ended, 0);
   }, true);
   document.addEventListener('focusout', () => {
-    if (behind && composing) setTimeout(ended);
+    if (composing) setTimeout(ended);
   }, true);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden || !composing) return;
@@ -401,6 +413,7 @@ export function install(app: App): Port {
     // an edit of the person that the client has not read is kept, and wins at a conflict. the
     // authority orders it after the text, which arrived first
     if (text !== null && from !== seen) target = mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true).text;
+    if (text !== null && prior !== null) prior = prior === from ? text : mergeEdits(from, fine(from, prior), fine(from, text), 'ours', true).text;
     if (text !== null) handed = text;
     // a rebase that fails has read the source again from the page, which then renders otherwise
     if (rendered && !rebase(rendered, math)) partial(target);
@@ -540,7 +553,8 @@ export function install(app: App): Port {
     text: () => {
       if (!ready()) throw new Error('no file is open');
       if (handed !== null && (busy() || applying || queued)) return handed;
-      return (handed = virtual(current()));
+      if (prior !== null && !composition()) prior = null;
+      return (handed = prior ?? virtual(current()));
     },
     copy: () => {
       if (!ready()) throw new Error('no file is open');
