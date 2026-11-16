@@ -17,7 +17,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
-import { BUBBLE, LOCKER, select, session } from './helpers/presence.mjs';
+import { BUBBLE, HOLDER, select, session } from './helpers/presence.mjs';
 import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -1232,7 +1232,7 @@ test('Version History takes the caret out of the text, hence another person can 
   await ben.waitFor(`${of}?.mode === 'history'`);
   assert.equal(await ben.evaluate(`${of}.caret`), null);
   const focused = await ben.evaluate(`(() => { const h = ${el(0, 'h2')}; h.focus(); return document.activeElement === h; })()`);
-  assert.deepEqual([focused, await ben.evaluate(LOCKER(el(0, 'h2'))), await ben.evaluate(BUBBLE)], [true, null, null]);
+  assert.deepEqual([focused, await ben.evaluate(HOLDER(el(0, 'h2'))), await ben.evaluate(BUBBLE)], [true, null, null]);
   clean(ann);
   clean(ben);
 });

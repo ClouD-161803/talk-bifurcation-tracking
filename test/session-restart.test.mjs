@@ -62,7 +62,7 @@ test('a page whose applied operation lost its answer, and that missed the end of
   // is answered at the next news, here a third person who joins, and the polls after it are lost.
   // the state of Ann does not reach the edit command at all. it would be sent only when the caret
   // of Ann is in the paragraph before the first lost poll, and the paragraph, which Ben changes
-  // below, would then be locked on the page of Ben
+  // below, would then be held on the page of Ben
   await ann.evaluate(`(() => {
     const fetched = window.fetch;
     window.__polls = 0;

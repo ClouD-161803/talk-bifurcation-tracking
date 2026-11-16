@@ -1,6 +1,6 @@
 // the presence of the pages of a session in Chrome, on the edit command started on a temporary
 // talk folder: the frame and the name flag of the selection of another page and its caret, read
-// at the right element after the edits of others, the highlight of a selection, the lock of a text
+// at the right element after the edits of others, the highlight of a selection, the hold of a text
 // element that another page types in, which never reaches the text, a tap on a chip and into a
 // text element in a phone window, and the reads of layout of a pointer move and a scroll over frames
 
@@ -196,8 +196,8 @@ test('the flag of a person who types reads that the person is typing, and the ca
 
 const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
 const REFUSED = 'Ana is typing here. You can move or delete it once they leave it or stop for 30 s.';
-// the name of the person whose caret locks the element of expression, or null
-const LOCKER = (expression) => `${P}.lockOf(${expression})?.name ?? null`;
+// the name of the person who holds the element of expression, or null
+const HOLDER = (expression) => `${P}.holderOf(${expression})?.name ?? null`;
 // the bubble of page cleared, so that the next one can be told from it
 const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
 
@@ -208,8 +208,8 @@ test('a text element that another page types in takes a caret, a selection, and 
   const p = el(1, 'p');
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' typed');
-  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana', 'the paragraph that Ana types in to be locked on the page of Ben');
-  assert.equal(await ana.evaluate(LOCKER(p)), null, 'the page that types in the paragraph does not lock it');
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana types in to be held on the page of Ben');
+  assert.equal(await ana.evaluate(HOLDER(p)), null, 'the paragraph is not held on the page that types in it');
 
   // a click into the text puts the caret there, and a selection in it is kept
   await front(ben);
@@ -226,7 +226,7 @@ test('a text element that another page types in takes a caret, a selection, and 
   await typeKeys(ana, ' and more');
   let text = await converge(server, [ana, ben]);
   assert.ok(text.includes('<p>Ben slide typed and more</p>'), `both texts reach index.html: ${text.match(/<p>.*slide.*<\/p>/g)}`);
-  assert.equal(await ben.evaluate(LOCKER(p)), 'Ana');
+  assert.equal(await ben.evaluate(HOLDER(p)), 'Ana');
 
   // the commands that change its slide, on the shown slide or on the slide selected as in the
   // navigator
@@ -247,33 +247,33 @@ test('a text element that another page types in takes a caret, a selection, and 
   await ben.evaluate(`${C}.app.commands.run('slide.hide')`);
   await until(() => ben.evaluate(`document.querySelectorAll('.reveal .slides > section')[0].hasAttribute('data-visibility')`), 'slide One to be hidden');
 
-  // a copy of the slide with the locked paragraph in it
+  // a copy of the slide with the held paragraph in it
   await show(ben, 'Two');
   await ben.evaluate(`${C}.app.commands.run('slide.duplicate')`);
   text = await converge(server, [ana, ben]);
   assert.equal(text.split('<p>Ben slide typed and more</p>').length, 3, 'the copy of the slide is in index.html');
-  // Ana moves the caret into the copy, and of the two paragraphs only the copy is locked on the page
+  // Ana moves the caret into the copy, and of the two paragraphs only the copy is held on the page
   // of Ben
   const at = 2;
   await ana.evaluate(`Reveal.slide(${at})`);
   await caretAtEnd(ana, el(at, 'p'));
   const held = el(at, 'p');
-  const lockedAt = `[...document.querySelectorAll('.reveal .slides > section')].flatMap((s, i) => [...s.querySelectorAll('p')].some((e) => ${P}.lockOf(e)) ? [i] : [])`;
-  await until(async () => JSON.stringify(await ben.evaluate(lockedAt)) === `[${at}]`, 'only the copy that Ana is in to be locked on the page of Ben');
-  // the lock is not written into the page, the text of the port, a render, or index.html
+  const heldAt = `[...document.querySelectorAll('.reveal .slides > section')].flatMap((s, i) => [...s.querySelectorAll('p')].some((e) => ${P}.holderOf(e)) ? [i] : [])`;
+  await until(async () => JSON.stringify(await ben.evaluate(heldAt)) === `[${at}]`, 'only the copy that Ana is in to be held on the page of Ben');
+  // the hold is not written into the page, the text of the port, a render, or index.html
   for (const page of [ana, ben]) assert.equal(await page.evaluate(`document.querySelector('.beeson-held')`), null);
   for (const read of [TEXT, 'window.BeesonEditor.render()', `${C}.app.files.render()`]) assert.ok(!(await ben.evaluate(read)).includes('beeson-held'), read);
   assert.ok(!server.read().includes('beeson-held'));
 
-  // a change of index.html from outside still reaches the locked element
+  // a change of index.html from outside still reaches the held element
   let k = 0;
   writeFileSync(server.file, server.read().replace(/<p>Ben slide typed and more<\/p>/g, (m) => (++k === at ? '<p>Second slide, from outside</p>' : m)));
   for (const page of [ana, ben]) await until(() => page.evaluate(`${held}.textContent === 'Second slide, from outside'`), 'the change from outside on each page');
 
-  // the caret that leaves takes the lock away
+  // the caret that leaves takes the hold away
   await front(ana);
   await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
-  await until(async () => (await ben.evaluate(LOCKER(held))) === null, 'the lock to go when Ana leaves the paragraph');
+  await until(async () => (await ben.evaluate(HOLDER(held))) === null, 'the hold to go when Ana leaves the paragraph');
   clean(ana);
   clean(ben);
 });
@@ -353,7 +353,7 @@ test('a page sends its state again at a new version when another page could not 
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await caretAtEnd(ana, el(1, 'p'));
-  await until(async () => (await ben.evaluate(LOCKER(el(1, 'p')))) === 'Ana', 'the paragraph that Ana is in to be locked on the page of Ben');
+  await until(async () => (await ben.evaluate(HOLDER(el(1, 'p')))) === 'Ana', 'the paragraph that Ana is in to be held on the page of Ben');
   const sendsWhen = (carry) => ana.evaluate(`(() => {
     const p = ${P}, c = ${C}, send = c.sendPresence;
     // a change of the state that waits for its throttle is sent first
@@ -374,7 +374,7 @@ test('a page sends its state again at a new version when another page could not 
   clean(ben);
 });
 
-test('the speaker notes that another page types in are locked, and not framed', { timeout: 120_000 }, async (t) => {
+test('the speaker notes that another page types in are held, and not framed', { timeout: 120_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   writeFileSync(server.file, server.read().replace('<p>First slide</p>', '<p>First slide</p>\n  <aside class="notes">Notes of one</aside>'));
   await converge(server, [ana, ben]);
@@ -386,9 +386,9 @@ test('the speaker notes that another page types in are locked, and not framed', 
   }
   // the Notes pane opens with the caret in the notes, which Ben leaves before Ana enters them
   await ben.evaluate(`(() => { document.activeElement?.blur(); getSelection().removeAllRanges(); })()`);
-  await until(() => ana.evaluate(`${P}.locks.size === 0`), 'the notes to be free on the page of Ana');
+  await until(() => ana.evaluate(`${P}.holds.size === 0`), 'the notes to be free on the page of Ana');
   await caretAtEnd(ana, notes);
-  await until(async () => (await ben.evaluate(LOCKER(notes))) === 'Ana', 'the notes that Ana is in to be locked on the page of Ben');
+  await until(async () => (await ben.evaluate(HOLDER(notes))) === 'Ana', 'the notes that Ana is in to be held on the page of Ben');
   assert.deepEqual((await drawn(ben)).frames, [], 'the notes are not framed');
   // Ben puts a caret into them as well
   await caretAtEnd(ben, notes);
@@ -397,35 +397,35 @@ test('the speaker notes that another page types in are locked, and not framed', 
   clean(ben);
 });
 
-// the clock of the locks of page moved by ms
+// the clock of the holds of page moved by ms
 const later = (page, ms) => page.evaluate(`(() => { ${P}.skew += ${ms}; return true; })()`);
 
-test('a text element is locked while the caret of another person is in it and this person was active in the last 30 s', { timeout: 120_000 }, async (t) => {
+test('a text element is held while the caret of another person is in it and this person was active in the last 30 s', { timeout: 120_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
   const p = el(1, 'p');
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' typed');
-  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana', 'the lock of Ana on the page of Ben');
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the hold of Ana on the page of Ben');
   // the end of the typing of Ana is her last activity
   await until(() => ben.evaluate(`${C}.resolved()[0]?.typing === false`), 'Ana to stop typing');
   await later(ben, 29_000);
-  assert.equal(await ben.evaluate(LOCKER(p)), 'Ana', 'still locked at 29 s');
+  assert.equal(await ben.evaluate(HOLDER(p)), 'Ana', 'still held at 29 s');
   await later(ben, 1000);
-  assert.equal(await ben.evaluate(LOCKER(p)), null, 'not locked after 30 s without typing');
-  assert.equal(await ben.evaluate(`${P}.locks.size`), 0);
-  // typing locks it again
+  assert.equal(await ben.evaluate(HOLDER(p)), null, 'not held after 30 s without typing');
+  assert.equal(await ben.evaluate(`${P}.holds.size`), 0);
+  // Ana holds it again when she types
   await front(ana);
   await typeKeys(ana, '!');
-  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana', 'the lock of Ana after she types again');
-  // a caret moved to another element is an activity, and the lock goes with it
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the hold of Ana after she types again');
+  // a caret moved to another element is an activity, and the hold goes with it
   await later(ben, 30_000);
   await caretAtEnd(ana, el(1, 'h2'));
-  await until(async () => (await ben.evaluate(`(${LOCKER(el(1, 'h2'))}) === 'Ana' && (${LOCKER(p)}) === null`)), 'the lock to move with the caret of Ana');
-  // a caret that leaves takes the lock away
+  await until(async () => (await ben.evaluate(`(${HOLDER(el(1, 'h2'))}) === 'Ana' && (${HOLDER(p)}) === null`)), 'the hold to move with the caret of Ana');
+  // a caret that leaves takes the hold away
   await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
-  await until(() => ben.evaluate(`${P}.locks.size === 0`), 'the lock to go when Ana leaves the heading');
+  await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the heading');
   clean(ana);
   clean(ben);
 });
@@ -517,7 +517,7 @@ test('in a touch window of 390 px, a tap puts the caret into a text element that
   const p = el(1, 'p');
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' typed');
-  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana', 'the paragraph that Ana types in to be locked on the page of Ben');
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana types in to be held on the page of Ben');
   await front(ben);
   const b = await boxOf(ben, p);
   const point = { x: b.x + 2, y: b.y + b.h / 2 };
@@ -867,18 +867,18 @@ test('a caret at the start of a line after a line break is drawn at the start of
   clean(ben);
 });
 
-test('a person idle for 30 s does not lock the element of the caret on a page whose clock was set back', { timeout: 120_000 }, async (t) => {
+test('a person idle for 30 s does not hold the element of the caret on a page whose clock was set back', { timeout: 120_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
   const p = el(1, 'p');
   await caretAtEnd(ana, p);
-  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana', 'the paragraph locked on the page of Ben');
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph held on the page of Ben');
   // the clock of Ben goes back 9 min, e.g. at a correction of the time of the machine, and 30 s pass
   // without typing
   await ben.evaluate(`(() => { const real = Date.now; Date.now = () => real.call(Date) - 540_000; return true; })()`);
   await later(ben, 30_000);
-  assert.equal(await ben.evaluate(LOCKER(p)), null);
+  assert.equal(await ben.evaluate(HOLDER(p)), null);
   clean(ana);
   clean(ben);
 });
@@ -902,7 +902,7 @@ test('a listener of the client that throws is reported, and the page goes on pol
 // the end of typing
 const TIMERS = `(() => { const p = ${P}; return [p.timer, p.restTimer, p.typingTimer].filter((id) => id !== 0).length; })()`;
 
-test('after Leave Session and after the end of the session, no element stays locked, and no timer of presence runs', { timeout: 120_000 }, async (t) => {
+test('after Leave Session and after the end of the session, no element stays held, and no timer of presence runs', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered soon
@@ -916,7 +916,7 @@ test('after Leave Session and after the end of the session, no element stays loc
   await caretAtEnd(ana, p);
   await typeKeys(ana, 'x');
   await until(() => server.read().includes('<p>Second slidex</p>'), 'the letter of Ana in index.html');
-  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana' && (await cy.evaluate(LOCKER(p))) === 'Ana', 'the paragraph locked on the pages of Ben and Cy');
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana' && (await cy.evaluate(HOLDER(p))) === 'Ana', 'the paragraph held on the pages of Ben and Cy');
   await front(ben);
   // Ben leaves while a poll of his is in flight, and its answer, which his client drops, arrives after
   await ben.waitFor(`(() => {
@@ -927,7 +927,7 @@ test('after Leave Session and after the end of the session, no element stays loc
   })()`);
   await until(() => ben.evaluate(`${C}.connection === 'ended'`), 'Ben to leave');
   await ben.waitFor(`window.__answers > window.__before`);
-  assert.deepEqual(await ben.evaluate(`({ locked: ${LOCKER(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { locked: null, resolved: 0, timers: 0 });
+  assert.deepEqual(await ben.evaluate(`({ held: ${HOLDER(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { held: null, resolved: 0, timers: 0 });
   // a caret and keys after the end set no timer
   await ben.evaluate(`document.querySelectorAll('dialog[open]').forEach((d) => d.close())`);
   await caretAtEnd(ben, el(1, 'h2'));
@@ -939,7 +939,7 @@ test('after Leave Session and after the end of the session, no element stays loc
     await server.edit.exited;
     server.edit = null;
     for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
-    assert.deepEqual(await cy.evaluate(`({ locked: ${LOCKER(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { locked: null, resolved: 0, timers: 0 });
+    assert.deepEqual(await cy.evaluate(`({ held: ${HOLDER(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { held: null, resolved: 0, timers: 0 });
     assert.equal(await ana.evaluate(TIMERS), 0);
   }
   clean(ana);

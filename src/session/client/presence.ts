@@ -1,8 +1,8 @@
 // the presence of each page of a session: its slide, its selected elements, and its caret, sent as
 // offsets of the text of the authority at a version, and read back by every other page as its own
-// elements, for layer.ts, the avatars, and the navigator. a text element is locked against this
-// page while the caret of another person who was active in the last IDLE ms is in it, and floor.ts
-// refuses the commands that would move or delete a locked element.
+// elements, for layer.ts, the avatars, and the navigator. another person holds a text element
+// while their caret is in it and they were active in the last IDLE ms, and floor.ts refuses the
+// commands of this page that would move or delete a held element.
 //
 // an offset is carried twice. the sender carries it from the source of its port, which offsetOf
 // refers to, to the text of the authority at v. the receiver carries it through the operations
@@ -51,7 +51,7 @@ const TYPING = 2000;
 // brings the page back
 const HIDING = 1000;
 // in ms, the time after which a person who neither typed nor moved the caret to another element
-// does not lock the element of the caret
+// does not hold the element of the caret
 const IDLE = 30000;
 // the operations kept for carrying an offset, and the farthest that a change is slid
 const LOG = 256;
@@ -243,7 +243,7 @@ const keyOf = (s: PresenceState): string => JSON.stringify([s.v, s.slide, s.sele
 
 export class Presence {
   readonly client: Client;
-  // added to performance.now(), e.g. by a test that moves the clock of the locks. the clock of the
+  // added to performance.now(), e.g. by a test that moves the clock of the holds. the clock of the
   // machine is not read, since it can be set back
   skew = 0;
   private readonly log = new Log();
@@ -324,7 +324,7 @@ export class Presence {
       }
       joined = true;
     });
-    // after the end of the session nothing is locked, and no timer runs
+    // after the end of the session nothing is held, and no timer runs
     client.on('ended', () => {
       this.others.clear();
       this.caretHost = null;
@@ -357,20 +357,21 @@ export class Presence {
     return this.list;
   }
 
-  // the caret elements of the other people who were active in the last IDLE ms, read now
-  get locks(): ReadonlyMap<Element, Resolved> {
+  // the elements that other people hold, i.e. their caret elements while they were active in the
+  // last IDLE ms, read now
+  get holds(): ReadonlyMap<Element, Resolved> {
     const t = this.now();
-    const locks = new Map<Element, Resolved>();
+    const holds = new Map<Element, Resolved>();
     for (const o of this.others.values()) {
       const el = o.resolved?.caret?.el;
-      if (el?.isConnected && t - o.activeAt < IDLE && !locks.has(el)) locks.set(el, o.resolved!);
+      if (el?.isConnected && t - o.activeAt < IDLE && !holds.has(el)) holds.set(el, o.resolved!);
     }
-    return locks;
+    return holds;
   }
 
-  // the person whose caret element is el or holds it, or with containing, lies in el
-  lockOf(el: Element, containing = true): Resolved | null {
-    for (const [at, by] of this.locks) if (at.contains(el) || (containing && el.contains(at))) return by;
+  // the holder of el or of an element that contains el, or with containing, of an element in el
+  holderOf(el: Element, containing = true): Resolved | null {
+    for (const [at, by] of this.holds) if (at.contains(el) || (containing && el.contains(at))) return by;
     return null;
   }
 

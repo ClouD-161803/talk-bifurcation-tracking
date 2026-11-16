@@ -1,4 +1,4 @@
-// the locks of a session in Chrome, on the edit command started on a temporary talk folder: a
+// the holds of a session in Chrome, on the edit command started on a temporary talk folder: a
 // command of one page that would move, delete, or restructure a text element that another page
 // types in is refused with the bubble, also when the command reaches the element from a neighbor,
 // from its table, or from an entry of the history, and typing and formatting in it are not
@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, show } from './helpers/client.mjs';
 import { center, click, drag, press, type, typeKeys } from './helpers/editor.mjs';
-import { BUBBLE, el, leave, LOCKER, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
+import { BUBBLE, el, leave, HOLDER, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
 const TABLE = `  <p>First slide</p>
@@ -18,14 +18,14 @@ const TABLE = `  <p>First slide</p>
   </table>`;
 const tableOf = (text) => text.match(/<table>[\s\S]*?<\/table>/)?.[0];
 
-test('a locked table cell refuses Delete Column, Delete Row, and a paste of cells from another cell of its table', { timeout: 120_000 }, async (t) => {
+test('a held table cell refuses Delete Column, Delete Row, and a paste of cells from another cell of its table', { timeout: 120_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', TABLE]] });
   await show(ana, 'One');
   await show(ben, 'One');
   const a2 = el(0, 'td');
   await caretAtEnd(ana, a2);
   await typeKeys(ana, ' typed');
-  await until(() => ben.evaluate(`${LOCKER(a2)} === 'Ana' && ${a2}.textContent === 'A2 typed'`), 'the cell that Ana types in, with her text, to be locked on the page of Ben');
+  await until(() => ben.evaluate(`${HOLDER(a2)} === 'Ana' && ${a2}.textContent === 'A2 typed'`), 'the cell that Ana types in, with her text, to be held on the page of Ben');
   const before = await ben.evaluate(`${el(0, 'table')}.outerHTML`);
   for (const [cell, id, arg] of [['th', 'table.deleteColumn'], ['td:nth-child(2)', 'table.deleteRow'], ['th', 'edit.paste', 'p\tq\nr\ts']]) {
     await unbubble(ben);
@@ -39,7 +39,7 @@ test('a locked table cell refuses Delete Column, Delete Row, and a paste of cell
   await leave(ben);
   const text = await converge(server, [ana, ben]);
   assert.match(tableOf(text), /<td>A2 typed<\/td><td>B2<\/td>/);
-  assert.equal(await ben.evaluate(LOCKER(a2)), 'Ana', 'the cell is still locked');
+  assert.equal(await ben.evaluate(HOLDER(a2)), 'Ana', 'the cell is still held');
   clean(ana);
   clean(ben);
 });
@@ -50,7 +50,7 @@ const caretAtStart = async (page, expression) => {
 };
 const listOf = (page) => page.evaluate(`${el(1, 'ul')}.outerHTML`);
 
-test('a locked list item refuses Backspace and Delete from the item beside it, and Tab from the item after it', { timeout: 120_000 }, async (t) => {
+test('a held list item refuses Backspace and Delete from the item beside it, and Tab from the item after it', { timeout: 120_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>', '    <li>Beta</li>\n    <li>Gamma</li>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -63,15 +63,15 @@ test('a locked list item refuses Backspace and Delete from the item beside it, a
   ];
   for (const [held, put, key] of cases) {
     // the item that Ben left is free on the page of Ana
-    await until(() => ana.evaluate(`${P}.locks.size === 0`), 'the items to be free on the page of Ana');
+    await until(() => ana.evaluate(`${P}.holds.size === 0`), 'the items to be free on the page of Ana');
     await front(ana);
     await caretAtEnd(ana, item(held));
-    await until(() => ben.evaluate(`${P}.locks.size === 1 && ${LOCKER(item(held))} === 'Ana'`), `the item ${held} that Ana is in to be locked on the page of Ben`);
+    await until(() => ben.evaluate(`${P}.holds.size === 1 && ${HOLDER(item(held))} === 'Ana'`), `the item ${held} that Ana is in to be held on the page of Ben`);
     const before = await listOf(ben);
     await put();
     // Ana hears the hold of Ben before Ben leaves the item, hence the wait for the free items at the
     // next case cannot end before this hold arrives
-    await until(() => ana.evaluate(`${P}.locks.size === 1`), 'the item that Ben holds to be locked on the page of Ana');
+    await until(() => ana.evaluate(`${P}.holds.size === 1`), 'the hold of Ben on the item to reach the page of Ana');
     await unbubble(ben);
     await press(ben, key);
     assert.equal(await listOf(ben), before, `${key} leaves the list as it was when Ana is in the item ${held}`);
@@ -96,7 +96,7 @@ test('a text element that another page types in refuses Delete, Arrange, a join,
   const text = `${p}.textContent`;
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' typed');
-  await until(async () => (await ben.evaluate(`${LOCKER(p)} === 'Ana' && ${text} === 'Second slide typed'`)), 'the paragraph that Ana types in, with her text, to be locked on the page of Ben');
+  await until(async () => (await ben.evaluate(`${HOLDER(p)} === 'Ana' && ${text} === 'Second slide typed'`)), 'the paragraph that Ana types in, with her text, to be held on the page of Ben');
   // Delete of the paragraph selected as an element
   await unbubble(ben);
   await select(ben, p);
@@ -136,7 +136,7 @@ test('a text element that another page types in refuses Delete, Arrange, a join,
   // the paragraph is deleted once Ana leaves it
   await front(ana);
   await leave(ana);
-  await until(() => ben.evaluate(`${P}.locks.size === 0`), 'the lock to go when Ana leaves the paragraph');
+  await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
   await select(ben, p);
   await ben.evaluate(`${C}.app.commands.run('element.delete')`);
   assert.equal(await ben.evaluate(BUBBLE), null);
@@ -164,7 +164,7 @@ test('an undo of typing in a text element that another page types in is taken, a
   assert.equal(await ben.evaluate(`${C}.app.history.undoLabel`), 'move');
   const last = `${p}.parentElement.lastElementChild === ${p}`;
   await caretAtEnd(ana, p);
-  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana', 'the paragraph that Ana is in to be locked on the page of Ben');
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in to be held on the page of Ben');
   await unbubble(ben);
   await front(ben);
   await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
@@ -189,14 +189,14 @@ test('an undo of typing in a text element that another page types in is taken, a
   // an undo of a command, whose entry is a transaction
   await front(ana);
   await leave(ana);
-  await until(() => ben.evaluate(`${P}.locks.size === 0`), 'the lock to go when Ana leaves the paragraph');
+  await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
   await select(ben, p);
   await ben.evaluate(`${C}.app.commands.run('text.bigger')`);
   await converge(server, [ana, ben]);
   await ben.evaluate(`${C}.app.selection.clear()`);
   const h3 = el(1, 'h3');
   await caretAtEnd(ana, h3);
-  await until(async () => (await ben.evaluate(LOCKER(h3))) === 'Ana', 'the subheading that Ana is in to be locked on the page of Ben');
+  await until(async () => (await ben.evaluate(HOLDER(h3))) === 'Ana', 'the subheading that Ana is in to be held on the page of Ben');
   await unbubble(ben);
   await front(ben);
   await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
@@ -234,7 +234,7 @@ test('the bubble of a refusal for a text element on another slide names the slid
   await show(ana, 'Two');
   await show(ben, 'One');
   await caretAtEnd(ana, el(1, 'p'));
-  await until(() => ben.evaluate(`${P}.locks.size === 1`), 'the paragraph that Ana is in to be locked on the page of Ben');
+  await until(() => ben.evaluate(`${P}.holds.size === 1`), 'the paragraph that Ana is in to be held on the page of Ben');
   await front(ben);
   await ben.evaluate(`${C}.app.commands.run('slide.moveTo', { slides: [document.querySelectorAll('.reveal .slides > section')[1]], gap: 0 })`);
   const shown = await ben.evaluate(`(() => { const b = document.querySelector('.beeson-bubble'); if (!b) return null; const r = b.getBoundingClientRect(); return { text: b.textContent, center: r.left + r.width / 2, top: r.top, middle: innerWidth / 2 }; })()`);
@@ -260,7 +260,7 @@ test('a refusal is read from one hidden status region, which is in the page befo
   const first = await ben.evaluate(`(() => { window.__said = document.querySelector('.beeson-bubble-said'); return ${SAID}; })()`);
   assert.deepEqual(first, { count: 1, role: 'status', text: '', size: 1, kept: true }, 'an empty status region before any bubble');
   await caretAtEnd(ana, p);
-  await until(async () => (await ben.evaluate(LOCKER(p))) === 'Ana', 'the paragraph that Ana is in to be locked on the page of Ben');
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in to be held on the page of Ben');
   await select(ben, p);
   for (let i = 0; i < 2; i++) {
     await unbubble(ben);
@@ -286,7 +286,7 @@ test('a figure of a plate is selected and dragged by itself while the caption of
   const caption = el(0, '#first figcaption');
   await caretAtEnd(ana, caption);
   await typeKeys(ana, ' typed');
-  await until(() => ben.evaluate(`${LOCKER(caption)} === 'Ana' && ${caption}.textContent === 'The first figure. typed'`), 'the caption that Ana holds, with her text, to be locked on the page of Ben');
+  await until(() => ben.evaluate(`${HOLDER(caption)} === 'Ana' && ${caption}.textContent === 'The first figure. typed'`), 'the hold of Ana on the caption, with her text, to reach the page of Ben');
   await front(ben);
   await unbubble(ben);
   await drag(ben, 'section.present #second img', { dx: 60, dy: 20 });
@@ -318,7 +318,7 @@ test('a click and a tap on a figure of a plate select the figure while the capti
   await typeKeys(ana, ' typed');
   const image = 'section.present #second img';
   for (const [page, how] of [[ben, 'a click'], [cy, 'a tap']]) {
-    await until(() => page.evaluate(`${LOCKER(caption)} === 'Ana' && ${caption}.textContent === 'The first figure. typed'`), `the caption that Ana holds to be locked on the page of ${how}`);
+    await until(() => page.evaluate(`${HOLDER(caption)} === 'Ana' && ${caption}.textContent === 'The first figure. typed'`), `the hold of Ana on the caption to reach the page of ${how}`);
     await front(page);
     await unbubble(page);
     await (page === cy ? tap(page, image) : click(page, image));
