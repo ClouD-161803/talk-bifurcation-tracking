@@ -11,6 +11,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
 import { center, click, press, type, typeKeys } from './helpers/editor.mjs';
+import { NET } from './helpers/net.mjs';
 import { until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
@@ -467,6 +468,36 @@ test('offline, the Comment command opens a draft, which is kept until the page i
 
 // the send button of the draft, and Resolve, Thread actions, and the send button of Reply of the
 // thread, each as its label, whether it is disabled, and its tooltip
+const DRAFT = `(() => { const b = document.querySelector('${PANE} .draft .actions .primary'); return [b.disabled, b.title, document.querySelector('${PANE} .draft textarea').value]; })()`;
+
+// the hello held while the page joins, and let through even when it is sent after the release, and
+// the requests of the session answered with 502 by a proxy whose host has stopped
+for (const [state, cut, back] of [
+  ['joining', '', `__net.clear() && __net.release('/.session/hello')`],
+  ['no-host', `__net.rule('/.session/', 'answer', { status: 502 }) && __net.drop('/.session/')`, `__net.clear() && (${C}.tryNow(), true)`],
+]) {
+  test(`in the state ${state}, the Comment command opens a draft, which is kept until the page is online`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const held = state === 'joining' ? `__net.rule('/.session/hello', 'hold');` : '';
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `${NET}\n${held}`, wait: state !== 'joining' });
+    if (cut) await a.evaluate(cut);
+    await a.waitFor(`${C}.connection === ${JSON.stringify(state)}`);
+    await show(a, 'One');
+    await caretAtEnd(a, el(0, 'h2'));
+    assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: true, checked: null });
+    await press(a, COMMENT_KEY);
+    await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
+    await type(a, `Written while ${state}`);
+    await sees(a, DRAFT, [true, OFFLINE, `Written while ${state}`]);
+    await a.evaluate(back);
+    await a.waitFor(ONLINE);
+    await sees(a, DRAFT, [false, '', `Written while ${state}`]);
+    clean(a, state === 'no-host' ? REFUSED : []);
+  });
+}
+
 const SENDS = `[...document.querySelectorAll('${PANE} :is(.draft .actions .primary, article :is(.resolve, .more, .reply .actions .primary))')].map((b) => [b.getAttribute('aria-label') || b.textContent, b.disabled, b.title])`;
 
 for (const from of ['online', 'offline']) {
