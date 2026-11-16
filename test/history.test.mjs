@@ -200,12 +200,14 @@ test('an entry of typing whose carry was refused is not undone from its old text
   h.carry(el);
   await h.undo();
   assert.equal(el.content, 'xaarho', 'the a of the other person is kept');
-  assert.deepEqual(state, { a: 0 }, 'the entry before it is undone');
-  assert.equal(h.canUndo, false);
+  assert.deepEqual(state, { a: 1 }, 'the entry before it is kept');
+  assert.equal(h.undoLabel, 'a');
 });
 
-test('an undo drops an entry of typing that cannot be undone, and undoes the entry before it in the same step', async () => {
+test('an undo drops an entry of typing that cannot be undone, tells refused of it, and keeps the entry before it for the next undo', async () => {
   const { h, changes } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push([entry.label, way]);
   const state = { a: 0 };
   h.push(change(state, 'a', 1));
   const el = textEl('X Y');
@@ -216,13 +218,37 @@ test('an undo drops an entry of typing that cannot be undone, and undoes the ent
   const before = changes.count;
   await h.undo();
   assert.equal(el.content, 'X aZ', 'the text element is not changed');
+  assert.deepEqual(state, { a: 1 }, 'the entry before it is kept');
+  assert.equal(h.undoLabel, 'a');
+  assert.equal(h.canRedo, false, 'the dropped entry is not redone');
+  assert.deepEqual(told, [['typing', 'undo']]);
+  assert.equal(changes.count, before + 1, 'onChange is called for the dropped entry');
+  await h.undo();
   assert.deepEqual(state, { a: 0 });
-  assert.equal(h.canUndo, false);
+  assert.deepEqual(told, [['typing', 'undo']], 'an undo that is made does not tell refused');
+});
+
+test('a redo drops an entry of typing that cannot be redone, tells refused of it, and keeps the entry after it for the next redo', async () => {
+  const { h } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push([entry.label, way]);
+  const el = textEl('X Y');
+  h.track(el);
+  typeInto(h, el, 'X abc Y');
+  const state = { a: 0 };
+  h.push(change(state, 'a', 1));
+  await h.undo();
+  await h.undo();
+  assert.equal(el.content, 'X Y');
+  // another person replaces the text around the point of the typing
+  el.content = 'Z';
+  await h.redo();
+  assert.equal(el.content, 'Z', 'the text element is not changed');
+  assert.deepEqual(told, [['typing', 'redo']]);
   assert.equal(h.redoLabel, 'a');
-  assert.ok(changes.count >= before + 2, 'onChange is called for the dropped entry and for the undo');
+  assert.equal(h.canUndo, false, 'the dropped entry is not undone');
   await h.redo();
   assert.deepEqual(state, { a: 1 });
-  assert.equal(h.canRedo, false, 'the dropped entry is not redone');
 });
 
 test('an error of an undo other than a refusal is passed on, and the entry before it is not undone', async () => {
