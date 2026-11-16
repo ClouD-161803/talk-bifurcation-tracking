@@ -299,7 +299,7 @@ test('an undo of typing that cannot be undone keeps the change before it and say
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a redo of typing that cannot be redone says why at the top of the window when its text element is on another slide', { timeout: 240_000 }, async (t) => {
+test('a redo of typing that cannot be redone says why at the top of the window, with the number of the slide, when its text element is on another slide', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -319,7 +319,7 @@ test('a redo of typing that cannot be redone says why at the top of the window w
   await show(ana, 'One');
   await run(ana, 'edit.redo');
   const shown = await ana.evaluate(BUBBLE_AT);
-  assert.equal(shown?.text, NOT_REDONE);
+  assert.equal(shown?.text, NOT_REDONE.replace('typing', 'typing on slide 2'));
   assert.ok(Math.abs(shown.center - shown.middle) < 2 && shown.top < 100, `the bubble is at the top of the window, at ${JSON.stringify(shown)}`);
   assert.equal(await ana.evaluate(`${C}.app.history.redoLabel`), null, 'the refused entry is dropped');
   text = await converge(server, pages);
@@ -455,6 +455,32 @@ for (const other of [false, true]) {
     assert.deepEqual([ana.errors, ben.errors], [[], []]);
   });
 }
+
+test('an undo of typing in the speaker notes that cannot be undone says why at the top of the window while the notes are hidden', { timeout: 240_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', `  <p>Second slide</p>\n  ${ASIDE}`]] });
+  const [ana, ben] = pages;
+  for (const page of pages) {
+    await show(page, 'Two');
+    await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    if (!(await page.evaluate(`${C}.app.notes.shown()`))) await page.evaluate(`${C}.app.commands.run('view.notes')`);
+  }
+  // the trailing space of Ana, which Chrome of Ben takes away, as in the test of the paragraph above
+  await caretAtEnd(ana, NOTES);
+  await typeKeys(ana, ' foo ');
+  await converge(server, pages);
+  await caretAtEnd(ben, NOTES);
+  await typeKeys(ben, 'bar');
+  assert.equal(aside(await converge(server, pages)), ASIDE.replace('x<', 'x foobar<'));
+  await leave(ben);
+  await ana.evaluate(`${C}.app.commands.run('view.notes')`);
+  assert.equal(await ana.evaluate(`${NOTES}.getClientRects().length`), 0, 'the notes are hidden');
+  await run(ana, 'edit.undo');
+  const shown = await ana.evaluate(BUBBLE_AT);
+  assert.equal(shown?.text, NOT_UNDONE);
+  assert.ok(Math.abs(shown.center - shown.middle) < 2 && shown.top < 100, `the bubble is at the top of the window, at ${JSON.stringify(shown)}`);
+  assert.equal(aside(await converge(server, pages)), ASIDE.replace('x<', 'x foobar<'));
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
 
 // Ben makes the word slide bold or italic with a command
 const format = (id) => async (page) => {
