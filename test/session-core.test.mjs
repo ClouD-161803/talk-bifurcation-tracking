@@ -924,3 +924,36 @@ test('a format that one browser puts around a word and a key that another browse
   const missed = new Authority(base, { epoch: 'E' }).submit({ client: 'other', seq: 1, base: 'E.0', patches: key }, 'O').op;
   assert.equal(away.conflictsOf([missed]).length, 1);
 });
+
+test('a replica keeps a format with a key of its own in the word, the removal of a format, and a format with a key further on the line, together with the keys of another browser inside the word', () => {
+  const base = '<section>\n  <p>Second slide here</p>\n</section>\n';
+  const at = (p) => base.replace('Second slide here', p);
+  // the key of the other browser reaches the authority first, and the replica hears of it after
+  // it sent its first edit and made its second
+  const race = (start, other, first, second) => {
+    const a = new Authority(start, { epoch: 'E' });
+    const r = new Replica('me', start, 'E.0');
+    r.edit(first);
+    const sent = r.outgoing();
+    if (second) r.edit(second);
+    const { op } = a.submit({ client: 'other', seq: 1, base: 'E.0', patches: diff(start, other) }, 'O');
+    r.answer(sent, a.submit(sent, 'me').answer);
+    r.receive(op);
+    a.submit(r.outgoing(), 'me');
+    return a.text;
+  };
+  assert.equal(race(base, at('Second slZide here'), at('Second <em>slide</em> here'), at('Second <em>slYide</em> here')), at('Second <em>slZYide</em> here'));
+  assert.equal(race(base, at('Second slZide here'), at('Second <em>slide</em> here'), at('Second <em>slide</em>s here')), at('Second <em>slZide</em>s here'));
+  const italic = at('Second <em>slide</em> here');
+  assert.equal(race(italic, at('Second <em>slZide</em> here'), at('Second slide here')), at('Second slZide here'));
+  assert.equal(race(italic, at('Second <em>Zslide</em> here'), at('Second slide here')), at('Second Zslide here'));
+  assert.equal(race(italic, at('Second <em>slideZ</em> here'), at('Second slide here')), at('Second slideZ here'));
+  // a format that replaces letters of its word and a key between these letters stay a conflict
+  assert.equal(race(base, at('Second <em>sXde</em> here'), at('Second slZide here')), at('Second slZide here'));
+  // so does one word replaced by two browsers, whose letters are not mixed
+  const first = at('First slide here'), [mine, theirs] = [at('Opening slide here'), at('Initial slide here')];
+  assert.equal(apply(first, mergePatches(diff(first, theirs), diff(first, mine), 'ours', first).patches), mine);
+  assert.equal(apply(first, mergePatches(diff(first, mine), diff(first, theirs), 'theirs', first).patches), mine);
+  assert.equal(race(base, at('Second <em>slide</em> here'), at('Second slZide hYere')), at('Second <em>slZide</em> hYere'));
+  assert.equal(race(base, at('Second slZide hYere'), at('Second <em>slide</em> here')), at('Second <em>slZide</em> hYere'));
+});
