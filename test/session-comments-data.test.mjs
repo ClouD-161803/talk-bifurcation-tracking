@@ -25,6 +25,16 @@ const ARTICLES = `document.querySelectorAll('${PANE} article').length`;
 // the id of each thread in the pane, followed by * when the thread is unread
 const UNREAD = `[...document.querySelectorAll('${PANE} article')].map((a) => a.dataset.id + (a.classList.contains('unread') ? '*' : ''))`;
 const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('aria-label')`;
+// the label of the button Comments, when its title is the same, the text of its count, and what the
+// count is drawn as inside the button: a dot narrower than the 14 px of a number, a number, or null
+const BUTTON = `(() => {
+  const b = document.querySelector('.beeson-session-comments');
+  const c = b.querySelector('.count');
+  const r = c.getBoundingClientRect();
+  const o = b.getBoundingClientRect();
+  const drawn = r.width > 0 && r.height > 0 && r.left >= o.left && r.right <= o.right && r.top >= o.top && r.bottom <= o.bottom;
+  return [b.title === b.getAttribute('aria-label') ? b.title : null, c.textContent, drawn ? (r.width < 14 ? 'dot' : 'number') : null];
+})()`;
 // the requests of a page that is offline fail in its console
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 const TWINS = TALK.replace('<p>First slide</p>', '<p>TBD</p>\n  <p>TBD</p>\n  <p>TBD</p>');
@@ -384,6 +394,58 @@ test('a reply of another person in a thread of the person is unread until the pe
   clean(b);
 });
 
+test('a dot on the button Comments shows an unread open thread while no comment of For You is unread', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const ann = await a.evaluate(`${C}.person`);
+  const post = (text) => b.evaluate(`${C}.transport.post('comments', { token: ${C}.token, anchor: null, slide: null, base: ${C}.base.v, text: ${JSON.stringify(text)}, mentions: [] }).then((t) => t.id)`);
+  const act = (id, route) => b.evaluate(`${C}.transport.post('comments/${id}/${route}', { token: ${C}.token }).then(() => true)`);
+  const none = ['Comments', '', null];
+  const dot = ['Comments, unread threads', '', 'dot'];
+  await sees(a, BUTTON, none);
+  const g = await post('For everyone');
+  await sees(a, BUTTON, dot);
+  // the number of For You is shown without the dot
+  const m = await mention(b, 'For Ann', ann);
+  await sees(a, BUTTON, ['Comments, 1 unread', '1', 'number']);
+  await openPane(a);
+  await click(a, `${PANE} article[data-id="${m}"] .text`);
+  await sees(a, BUTTON, dot);
+  await act(g, 'resolve');
+  await sees(a, BUTTON, none);
+  await act(g, 'reopen');
+  await sees(a, BUTTON, dot);
+  await click(a, `${PANE} article[data-id="${g}"] .text`);
+  await sees(a, BUTTON, none);
+  clean(a);
+  clean(b);
+});
+
+// in a page loaded with this script, the answer of GET comments waits until window.__goComments(),
+// and the comments are taken out of each answer of events, as when the change log of the edit
+// command does not reach back
+const HELD_COMMENTS = `{
+  const fetched = window.fetch;
+  window.__comments = [];
+  window.fetch = function (input, init) {
+    const url = typeof input === 'string' ? input : input.url;
+    const answer = fetched.call(this, input, init);
+    if (url.includes('/.session/events')) {
+      return answer.then(async (r) => {
+        if (!r.ok) return r;
+        const body = await r.json();
+        delete body.comments;
+        return new Response(JSON.stringify(body), { status: r.status, headers: r.headers });
+      });
+    }
+    if (!url.includes('/.session/comments?') || window.__goingComments) return answer;
+    return answer.then((r) => new Promise((done) => window.__comments.push(() => done(r))));
+  };
+  window.__goComments = () => {
+    window.__goingComments = true;
+    for (const go of window.__comments.splice(0)) go();
+  };
+}`;
+
 test('an answer of GET comments older than the base is moved through the operations applied since', { timeout: 300_000 }, async (t) => {
   const { server, pages: [a, b] } = await pair(t);
   await show(a, 'Two');
@@ -391,33 +453,9 @@ test('an answer of GET comments older than the base is moved through the operati
   await comment(a, 'On the paragraph');
   await badge(a, 'Two', 'p', '1');
 
-  // after the reload, the answer of GET comments waits until window.__goComments(), and the
-  // comments are taken out of each answer of events, as when the change log of the edit command
-  // does not reach back. the typing of Ben moves the anchor in the meantime
-  await a.send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `{
-      const fetched = window.fetch;
-      window.__comments = [];
-      window.fetch = function (input, init) {
-        const url = typeof input === 'string' ? input : input.url;
-        const answer = fetched.call(this, input, init);
-        if (url.includes('/.session/events')) {
-          return answer.then(async (r) => {
-            if (!r.ok) return r;
-            const body = await r.json();
-            delete body.comments;
-            return new Response(JSON.stringify(body), { status: r.status, headers: r.headers });
-          });
-        }
-        if (!url.includes('/.session/comments?') || window.__goingComments) return answer;
-        return answer.then((r) => new Promise((done) => window.__comments.push(() => done(r))));
-      };
-      window.__goComments = () => {
-        window.__goingComments = true;
-        for (const go of window.__comments.splice(0)) go();
-      };
-    }`,
-  });
+  // after the reload, the answer of GET comments waits. the typing of Ben moves the anchor in the
+  // meantime
+  await a.send('Page.addScriptToEvaluateOnNewDocument', { source: HELD_COMMENTS });
   await reload(a);
   await a.waitFor('window.__comments.length === 1');
   await show(b, 'One');
@@ -425,6 +463,39 @@ test('an answer of GET comments older than the base is moved through the operati
   await type(b, ' typed');
   await until(() => server.read().includes('<h2>One typed</h2>'), 'the typing to reach index.html');
   await a.waitFor(`${C}.base.text.includes('<h2>One typed</h2>')`);
+  assert.equal(await a.evaluate('window.__comments.length'), 1, 'the answer of GET comments waits');
+  await a.evaluate('window.__goComments()');
+  await badge(a, 'Two', 'p', '1');
+  clean(a);
+  clean(b);
+});
+
+test('an answer of GET comments older than a removal of its element and the Undo of it is moved through both', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a, b] } = await pair(t);
+  await show(a, 'Two');
+  await click(a, '.reveal .slides > section:nth-child(2) > p');
+  await comment(a, 'On the paragraph');
+  await badge(a, 'Two', 'p', '1');
+  await a.send('Page.addScriptToEvaluateOnNewDocument', { source: HELD_COMMENTS });
+  await reload(a);
+  await a.waitFor('window.__comments.length === 1');
+  // Ben types before the paragraph, removes it, and puts it back. the text before each of these
+  // operations differs from the text that the page holds at the end
+  await show(b, 'One');
+  await caretAtEnd(b, el(0, 'h2'));
+  await type(b, ' typed');
+  await until(() => server.read().includes('<h2>One typed</h2>'), 'the typing to reach index.html');
+  const before = server.read();
+  await show(b, 'Two');
+  await click(b, '.reveal section.present > p');
+  await press(b, 'Escape');
+  await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
+  await until(() => !server.read().includes('Second slide'), 'the removal to reach index.html');
+  await a.waitFor(`!${C}.base.text.includes('Second slide')`);
+  await front(b);
+  await press(b, 'Mod+Z');
+  await until(() => server.read() === before, 'the undo to reach index.html');
+  await a.waitFor(`${C}.base.text === ${JSON.stringify(before)}`);
   assert.equal(await a.evaluate('window.__comments.length'), 1, 'the answer of GET comments waits');
   await a.evaluate('window.__goComments()');
   await badge(a, 'Two', 'p', '1');
@@ -487,5 +558,32 @@ test('a thread refused for a base that left the log is sent again on a new base'
   await comment(a, 'Sent on a new base');
   assert.equal(await a.evaluate('window.__refused'), 1, 'the first thread is refused');
   assert.deepEqual(await a.evaluate(`${C}.transport.comments(${C}.token).then((r) => r.comments.map((c) => c.text))`), ['Sent on a new base']);
+  clean(a);
+});
+
+test('the keys typed in a deck of 2 MB add less than 30 texts of the deck to the memory of a page', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // the text of a scene, as a talk holds it in a script next to its slides
+  const scene = `<script type="application/json">${JSON.stringify('x'.repeat(2 * 2 ** 20))}</script>`;
+  const server = await talkOf(t, TALK.replace('<script src="theme/vendor', `${scene}\n<script src="theme/vendor`));
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const deck = (await converge(server, [a])).length;
+  // the bytes of the heap of the page that a collection leaves
+  const held = async () => {
+    await a.send('HeapProfiler.collectGarbage');
+    return (await a.send('Runtime.getHeapUsage')).usedSize;
+  };
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'h2'));
+  const before = await held();
+  // each key is answered before the next one, hence it is an operation of its own
+  for (let i = 0; i < 80; i++) {
+    await type(a, 'k');
+    await a.waitFor(`${C}.acked()`);
+  }
+  await converge(server, [a]);
+  const texts = ((await held()) - before) / deck;
+  assert.ok(texts < 30, `80 keys added ${texts.toFixed(1)} texts of the deck of ${deck} characters to the heap of the page`);
   clean(a);
 });

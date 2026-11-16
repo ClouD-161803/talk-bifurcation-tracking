@@ -18,7 +18,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, type } from './helpers/editor.mjs';
 import { ACTION, CONFLICTS, copied, downloads, dropFiles, edit, el, goOffline, goOnline, press, released, ROWS, rows, SHOWN, tab } from './helpers/offline.mjs';
-import { raw, until } from './helpers/session.mjs';
+import { post, raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
 const IMAGE = resolve('demo/figure-light.png');
@@ -389,6 +389,29 @@ test('an edit typed after a load that takes over a copy, before hello is answere
   clean(a);
 });
 
+test('a word typed after a load that takes over a copy, before hello is answered, at the end of the paragraph that the copy ends with a word keeps both words', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url, { script: `if (sessionStorage.getItem('__offline')) window.__offline = true;` });
+  await converge(server, [a]);
+  await a.evaluate(`sessionStorage.setItem('__offline', '1')`);
+  await goOffline(a);
+  await edit(a, 0, 'p', ' TOKH1');
+  await copied(a, 'TOKH1');
+  await a.evaluate('window.__old = true');
+  await a.send('Page.reload');
+  await a.waitFor(`!window.__old && window.BeesonSession?.client?.()?.connection === 'offline'`);
+  // the page shows the deck without the copy until its hello is answered
+  await edit(a, 0, 'p', ' TOKH2');
+  await a.waitFor(`(${ROWS}).then((rows) => rows.length === 1 && rows[0].mine.includes('<p>First slide TOKH1 TOKH2</p>'))`);
+  await a.evaluate(`sessionStorage.removeItem('__offline')`);
+  await goOnline(a);
+  assert.equal(await converge(server, [a]), TALK.replace('<p>First slide</p>', '<p>First slide TOKH1 TOKH2</p>'));
+  clean(a);
+});
+
 test('the copies of two closed tabs that changed the same text are both sent, the second after the first with the dialog of the conflicts', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -500,6 +523,35 @@ const plant = (page, row) =>
       t.onerror = () => fail(t.error);
     };
   })`);
+
+test('the next page retires the tokens of the closed pages of the copies that it takes over at its join and merges after it, leaves a copy of a page closed after its join, and merges such a copy of an older client', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const call = async (route, body) => (await post(server.edit.port, `${server.edit.base}.session/${route}`, body)).json();
+  // three closed pages, whose operations may still be on their way
+  const [a, b, d] = [await call('hello', { name: 'Xa' }), await call('hello', { name: 'Xb' }), await call('hello', { name: 'Xd' })];
+  const probe = await probeOf(browser, server);
+  const now = Date.now();
+  const row = (id, from, to, beat, token) => JSON.stringify({ id, base: TALK, v: a.v, mine: TALK.replace(from, to), beat, made: beat, tokens: [token] });
+  await plant(probe, row('a', 'First slide', 'TOKTA slide', now - 2, a.token));
+  await plant(probe, row('b', 'First slide', 'TOKTB slide', now - 1, b.token));
+  const c = await tab(browser, sessionUrl(server.edit), { script: 'window.__blockOps = true' });
+  await plant(probe, row('d', '<li>Beta</li>', '<li>Beta by D</li>', now, d.token));
+  // an older client does not keep its token in the record
+  await plant(probe, JSON.stringify({ id: 'e', base: TALK, v: a.v, mine: TALK.replace('<li>Alpha</li>', '<li>Alpha by E</li>'), beat: now, made: now }));
+  await c.evaluate(`(window.__blockOps = false, ${C}.tryNow(), true)`);
+  await front(c);
+  await c.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`);
+  await press(c, 'Keep mine');
+  const text = await converge(server, [c]);
+  assert.ok(text.includes('<p>TOKTB slide</p>') && !text.includes('by D'), 'the copy of the page closed after the join is left for the next join');
+  assert.ok(text.includes('<li>Alpha by E</li>'), 'the copy of the older client is merged');
+  await probe.waitFor(`(${ROWS}).then((r) => r.map((x) => x.id).join() === 'd')`);
+  const late = async (page) => (await call('op', { token: page.token, seq: 1, base: page.v, patches: [{ start: 0, end: 0, text: '<!-- late -->' }] })).reason ?? 'ok';
+  assert.deepEqual([await late(a), await late(b)], ['unknown', 'unknown']);
+  clean(c, REFUSED);
+});
 
 const EARLIER = `(() => {
   const d = document.querySelector('dialog.beeson-session-earlier[open]');
@@ -732,6 +784,35 @@ test('a guest offline while the host ends the session is shown the end once onli
   assert.equal(await host.evaluate(`${C}.connection`), 'online');
   assert.equal(server.read(), TALK);
   clean(host);
+  clean(guest, REFUSED);
+});
+
+// Ctrl+C in the terminal of the host reaches the same handler as SIGTERM. the relay kept a record
+// of the end only after End session, hence a guest who missed the end read that the edit command
+// of the host is not running, at every reconnect
+test('a guest offline while the host stops the edit command is shown the end once online', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET } });
+  const { key } = server.edit;
+  await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
+  const host = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const guest = await tab(browser, `${relay.url}/${key}/index.html?edit&session`, { name: 'Lea' });
+  await converge(server, [host, guest]);
+
+  await goOffline(guest);
+  await guest.waitFor(`${C}.connection === 'offline'`);
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await goOnline(guest);
+  await front(guest);
+  await guest.waitFor(`${C}.connection === 'ended' || ${C}.connection === 'no-host'`, 20_000);
+  assert.equal(await guest.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent ?? ${STATE}`), 'Ann ended the session');
+  assert.equal(await guest.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), "Your changes up to now are in Ann's deck.");
+  clean(host, REFUSED);
   clean(guest, REFUSED);
 });
 

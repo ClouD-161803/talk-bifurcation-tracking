@@ -702,7 +702,7 @@ function finer(base, patches, other) {
     return edits3.every((e) => p.start <= e.start && e.end <= p.end) ? edits3 : [p];
   });
 }
-function mergePatches(theirs, ours, wins = "ours", base, nested = true, keep) {
+function mergePatches(theirs, ours, wins = "ours", base, nested = true, keep2) {
   if (base !== void 0 && nested) {
     const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
     [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours, true) : [t, o];
@@ -719,8 +719,8 @@ function mergePatches(theirs, ours, wins = "ours", base, nested = true, keep) {
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
-  const gone = new Set(!base ? [] : [[ours, theirs, "ours"], [theirs, ours, "theirs"]].flatMap(([a, b, s]) => keep === s ? [] : moves(base, a, b, conflict)));
-  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, false, keep).patches, conflicts };
+  const gone = new Set(!base ? [] : [[ours, theirs, "ours"], [theirs, ours, "theirs"]].flatMap(([a, b, s]) => keep2 === s ? [] : moves(base, a, b, conflict)));
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, false, keep2).patches, conflicts };
   const keptTheirs = wins === "ours" ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === "ours" ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
@@ -955,6 +955,7 @@ function aligned(base, a0, a1, text, b0, b1, unit) {
   }
   return out;
 }
+var byWords = (base, p) => aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS2);
 function cap(base, patches) {
   if (patches.length <= MAX_PATCHES) return patches;
   const run = Math.ceil(patches.length / MAX_PATCHES);
@@ -1817,7 +1818,7 @@ function childrenOf(html) {
   }
   return out;
 }
-function pairs(a, b, half = false) {
+function pairs(a, b, half = false, mid = false) {
   const out = [];
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) out.push({ i: pre, j: pre, same: true }), pre++;
@@ -1835,7 +1836,7 @@ function pairs(a, b, half = false) {
   anchors2.push([n, m]);
   let i0 = 0, j0 = 0;
   for (const [ai, aj] of anchors2) {
-    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
+    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half, mid)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
     if (ai < n) out.push({ i: pre + ai, j: pre + aj, same: true });
     i0 = ai + 1;
     j0 = aj + 1;
@@ -1850,10 +1851,10 @@ var shared2 = (x, y) => {
   while (s < x.length - p && s < y.length - p && x[x.length - 1 - s] === y[y.length - 1 - s]) s++;
   return p + s;
 };
-function bestPairs(a, b, half) {
+function bestPairs(a, b, half, mid) {
   const n = a.length, m = b.length;
   if (n === 0 || m === 0) return [];
-  if (half) return closePairs(a, b);
+  if (half) return closePairs(a, b, mid);
   if (n === m) return a.map((_, i) => [i, i]);
   const k = Math.min(n, m);
   const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
@@ -1871,13 +1872,31 @@ function bestPairs(a, b, half) {
 }
 var inner = (x) => x.slice(x.indexOf(">") + 1, x.lastIndexOf("<")).replace(/\s+/g, " ").trim();
 var words = (x) => x.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
-function closePairs(a, b) {
+function core(x, y) {
+  if (x.length > y.length) [x, y] = [y, x];
+  x = ` ${x} `;
+  const h = x.length >> 1, c = x[h];
+  let k = y.length, b = 0, p = -1;
+  while (k > 0 && ~(p = y.indexOf(c, ++p))) {
+    let l = h, r = h;
+    while (x[--l] === y[l + p - h]) ;
+    while (x[++r] === y[r + p - h]) ;
+    k -= r - l;
+    while (++l < r && x[l] !== " ") ;
+    while (--r > l && x[r] !== " ") ;
+    let s = r, w = 2;
+    while (w && --s > l) if (x[s] === " ") w--;
+    if (!w) b = Math.max(b, r - l + 1);
+  }
+  return b;
+}
+function closePairs(a, b, mid) {
   const n = a.length, m = b.length;
   const wa = a.map(words), wb = b.map(words);
   const ia = a.map(inner), ib = b.map(inner);
   const gain = (i, j) => {
     const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
-    const s = shared2(x, y);
+    const s = Math.max(shared2(x, y), mid && (i === j || n - i === m - j) ? core(x, y) : 0);
     return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
@@ -1938,7 +1957,7 @@ function pairInPlace(to, m, textA, textB) {
 function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const a = beforeSlides.map((s) => before2.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
-  const matched = pairs(a, b, true);
+  const matched = pairs(a, b, true, true);
   const to = new Int32Array(a.length).fill(-1);
   for (const p of matched) to[p.i] = p.j;
   const free = /* @__PURE__ */ new Map();
@@ -1949,12 +1968,13 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
     if (list) list.push(j);
     else free.set(t, [j]);
   });
+  const past = /* @__PURE__ */ new Set();
   a.forEach((t, i) => {
     const list = to[i] < 0 ? free.get(t) : void 0;
     if (!list?.length) return;
     let k = 0;
     for (let x = 1; x < list.length; x++) if (Math.abs(list[x] - i) < Math.abs(list[k] - i)) k = x;
-    to[i] = list.splice(k, 1)[0];
+    past.add(to[i] = list.splice(k, 1)[0]);
   });
   const moved2 = Int32Array.from(to);
   pairInPlace(to, b.length, (i) => a[i], (j) => b[j]);
@@ -1964,6 +1984,7 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = /* @__PURE__ */ new Set();
   afterSlides.forEach((s, j) => {
+    if (past.has(j)) slides.add(s.number);
     if (!same.has(j) && marks.some((m) => m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end)) slides.add(s.number);
   });
   const gone = beforeSlides.filter((_, i) => to[i] < 0).map((s) => s.number);
@@ -1987,6 +2008,8 @@ var sameAnchor = (a, b) => a === b || !!a && !!b && a.start === b.start && a.end
 var shiftTag = (a, patches) => ({ start: shiftOffset(a.start, patches, true), end: shiftOffset(a.end, patches, false), tag: a.tag });
 var touches = (p, s, e) => p.start < p.end ? p.start < e && s < p.end : s < p.start && p.start < e;
 var withRemoved = (anchor, slide, removed) => removed ? { anchor, slide, removed } : { anchor, slide };
+var lengthOf = (k) => typeof k === "string" ? k.length : parseInt(k.sum, 16);
+var keep = (text, open2) => text.length <= REMOVED_MAX ? text : { tag: text.slice(0, Math.min(open2, CHECK_TAG)), sum: checksum(text) };
 function startTagAt(text, i) {
   if (!Number.isInteger(i) || i < 0 || text.charCodeAt(i) !== 60 || !/[A-Za-z]/.test(text.charAt(i + 1))) return null;
   for (let size2 = 256; ; size2 *= 4) {
@@ -2057,9 +2080,10 @@ function overlaps2(spans, s, e) {
   }
   return false;
 }
-function findInserted(after, text, inserted, near, within = null) {
-  if (!text || !inserted.length) return -1;
-  const len = text.length;
+function findInserted(after, kept, inserted, near, within = null) {
+  const text = typeof kept === "string" ? kept : kept.tag;
+  if (!text) return -1;
+  const len = lengthOf(kept);
   const lo = within ? within.start : 0;
   const hi = within ? within.end : after.length;
   let best = -1;
@@ -2068,11 +2092,13 @@ function findInserted(after, text, inserted, near, within = null) {
     const w = from === 0 && to === after.length ? after : after.slice(from, to);
     for (let o = w.indexOf(text); o >= 0 && n < 256; o = w.indexOf(text, o + 1), n++) {
       const at = from + o;
-      if (overlaps2(inserted, at, at + len) && (best < 0 || Math.abs(at - near) < Math.abs(best - near))) best = at;
+      if (at + len > hi || !overlaps2(inserted, at, at + len) || best >= 0 && Math.abs(at - near) >= Math.abs(best - near)) continue;
+      if (typeof kept === "string" || checksum(after.slice(at, at + len)) === kept.sum) best = at;
     }
   };
   let total = 0;
-  for (const s of inserted) total += s.end - s.start + 2 * len;
+  for (const s of inserted) if (s.start < hi && s.end > lo) total += s.end - s.start + 2 * len;
+  if (!total || len > hi - lo) return -1;
   if (total >= hi - lo) {
     scan(lo, hi);
     return best;
@@ -2235,6 +2261,22 @@ function slow(before2, patches, after, items, given) {
   const inserted = insertedSpans(patches);
   const cap2 = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
   const regions = /* @__PURE__ */ new Map();
+  const slideKept = /* @__PURE__ */ new Map();
+  const keepSlide = (i) => {
+    let k = slideKept.get(i);
+    if (k === void 0) slideKept.set(i, k = keep(before2.slice(s0[i].start, s0[i].end), s0[i].open - s0[i].start));
+    return k;
+  };
+  const stored = /* @__PURE__ */ new Map();
+  const once = (key, f) => {
+    let v = stored.get(key);
+    if (v === void 0) stored.set(key, v = f());
+    return v;
+  };
+  const keptOf = (a, limit) => once(`${a.start}`, () => {
+    const e = elementEnd(before2, a, limit);
+    return e < 0 ? null : keep(before2.slice(a.start, e), a.end - a.start);
+  });
   const stays = (a, close, end) => {
     const q = patches.find((p) => touches(p, close, end));
     if (!q || q.text) return true;
@@ -2264,7 +2306,7 @@ function slow(before2, patches, after, items, given) {
     const found = byPatches(a, before2, patches, after, regions);
     if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
     const bound = Math.max(a.end, Math.min(limit, a.start + cap2));
-    const { end: e, close } = elementClose(before2, a, bound);
+    const { end: e, close } = once(`close ${a.start}`, () => elementClose(before2, a, bound));
     if (e < 0 && bound < limit) return { anchor: found, text: null };
     const end = e < 0 ? bound : e;
     const text = before2.slice(a.start, end);
@@ -2285,26 +2327,35 @@ function slow(before2, patches, after, items, given) {
     const k = old.findIndex((t) => t.start === a.start - from.start);
     return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
   };
+  const slideOf = (whole) => typeof whole === "string" ? findInserted(after, whole, inserted, 0) : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps2(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
+  const took = (x, at) => once(typeof x === "string" ? x : x.sum, () => {
+    const len = lengthOf(x);
+    const text = after.slice(at, at + len);
+    return patches.some((p) => p.end - p.start >= len && findInserted(before2, text, [p], p.start, { start: p.start, end: p.end + len - (typeof x === "string" ? x : x.tag).length }) >= 0);
+  });
+  const find2 = (x, near, within) => {
+    const look = () => findInserted(after, x, inserted, near, within);
+    return !overlaps2(inserted, within.start, within.end) ? -1 : typeof x === "string" ? look() : once(`${x.sum} ${within.start}`, look);
+  };
   const reattach = (it, text) => {
-    const took = (x) => patches.some((p) => p.end - p.start >= x.length && before2.slice(p.start, p.end).includes(x));
     let within = null;
     if (it.slide) {
       const i = index.get(it.slide.start) ?? -1;
       if (i < 0 || to[i] < 0) return null;
       within = s1[to[i]];
     } else {
-      const whole = it.removed?.slide ?? (startTagAt(text, 0)?.tag === "section" ? text : null);
-      const s = whole ? findInserted(after, whole, inserted, 0) : -1;
-      if (s < 0 || took(whole)) return null;
-      within = { start: s, end: s + whole.length };
-      if (!whole.includes(text)) {
+      const whole = it.removed?.slide ?? (/^<section[\s/>]/i.test(typeof text === "string" ? text : text.tag) ? text : null);
+      const s = whole ? slideOf(whole) : -1;
+      if (s < 0 || took(whole, s)) return null;
+      within = { start: s, end: s + lengthOf(whole) };
+      if (typeof whole === "string" && typeof text === "string" ? !whole.includes(text) : find2(text, s, within) < 0) {
         const slide2 = slideAt(s1, s);
         return slide2?.start === s ? { anchor: tagOf(slide2), slide: tagOf(slide2), removed: { text } } : null;
       }
     }
-    const o = findInserted(after, text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : within ? within.start : 0, within);
+    const o = find2(text, it.anchor ? shiftOffset(it.anchor.start, patches) : within.start, within);
     const t = o >= 0 ? startTagAt(after, o) : null;
-    if (!t || took(text)) return null;
+    if (!t || took(text, o)) return null;
     const slide = slideAt(s1, o);
     return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
   };
@@ -2321,7 +2372,7 @@ function slow(before2, patches, after, items, given) {
     const j = i >= 0 ? to[i] : -1;
     if (it.slide && a.start === it.slide.start) {
       if (j >= 0) return withRemoved(tagOf(s1[j]), tagOf(s1[j]), it.removed);
-      const whole = i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null;
+      const whole = i >= 0 ? keepSlide(i) : null;
       if (!it.removed) return { anchor: null, slide: null, removed: { text: whole } };
       return { anchor: null, slide: null, removed: whole && it.removed.text ? { text: it.removed.text, slide: whole } : it.removed };
     }
@@ -2335,8 +2386,8 @@ function slow(before2, patches, after, items, given) {
       const text = e < 0 ? null : before2.slice(a.start, e);
       const o = text ? findInserted(after, text, inserted, shiftOffset(a.start, patches)) : -1;
       if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, slide: slideAnchorAt(s1, o) };
-      const kept2 = text !== null && text.length <= REMOVED_MAX ? text : null;
-      const whole = kept2 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null;
+      const kept2 = text !== null ? keep(text, a.end - a.start) : keptOf(a, s0[i].end);
+      const whole = kept2 && keepSlide(i);
       return { anchor: null, slide: null, removed: whole ? { text: kept2, slide: whole } : { text: kept2 } };
     }
     const found = locate(a, i >= 0 ? s0[i].end : before2.length);
@@ -2346,7 +2397,7 @@ function slow(before2, patches, after, items, given) {
       if (t) return { anchor: t, slide: tagOf(s1[j]) };
     } else if (found.anchor) return { anchor: found.anchor, slide: at };
     const back = j >= 0 ? tagOf(s1[j]) : null;
-    return { anchor: back, slide: back, removed: { text: found.text !== null && found.text.length <= REMOVED_MAX ? found.text : null } };
+    return { anchor: back, slide: back, removed: { text: found.text !== null ? keep(found.text, a.end - a.start) : keptOf(a, i >= 0 ? s0[i].end : before2.length) } };
   };
   const out = items.map(move);
   return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], patches)), slides: s1 };
@@ -2526,6 +2577,7 @@ var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeN
 
 // src/edit/relay.ts
 var RELAY_BODY = 16 * 1024 * 1024;
+var RELAY_ANSWER = 64 * 1024 * 1024;
 var PULLS = 4;
 var FILE_ANSWERS = 8;
 function configFile() {
@@ -2688,7 +2740,7 @@ var RelayLink = class {
       response = { status: 502, headers: { "Content-Type": "text/plain" } };
       body = Buffer.from(e.message);
     }
-    if (body.length > RELAY_BODY) {
+    if (body.length > RELAY_ANSWER) {
       response = { status: 413, headers: { "Content-Type": "text/plain" } };
       body = Buffer.from("the answer is too large for the relay");
     }
@@ -2738,7 +2790,8 @@ var bytesOf = (x) => Buffer.byteLength(JSON.stringify(x));
 var headBytes = (t) => bytesOf({ ...t, replies: [] }) + 1;
 var replyBytes = (r) => bytesOf(r) + 1;
 var tooLarge = () => fail(413, "the comments of the deck are too large");
-var copyRemoved = (r) => r.slide === void 0 ? { text: r.text && copy(r.text) } : { text: r.text && copy(r.text), slide: copy(r.slide) };
+var copyKept = (k) => typeof k === "string" ? copy(k) : { tag: copy(k.tag), sum: k.sum };
+var copyRemoved = (r) => r.slide === void 0 ? { text: r.text && copyKept(r.text) } : { text: r.text && copyKept(r.text), slide: copyKept(r.slide) };
 var NOT_SAVED = "The host could not save the comment";
 var readOnly = () => fail(503, "the comments could not be read at the start, hence they are read only until the edit command is started again");
 function cleanText(raw) {
@@ -2753,10 +2806,12 @@ function cleanMentions(raw) {
   return [...new Set(raw)];
 }
 var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && a.tag.length > 0;
+var isCheck = (c) => !!c && typeof c === "object" && typeof c.tag === "string" && c.tag.length > 0 && typeof c.sum === "string" && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test(c.sum);
 var readCheck = (t) => {
   const c = t.check;
-  return !!c && typeof c === "object" && typeof c.tag === "string" && c.tag.length > 0 && typeof c.sum === "string" && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test(c.sum) ? { tag: c.tag, sum: c.sum } : null;
+  return isCheck(c) ? { tag: c.tag, sum: c.sum } : null;
 };
+var isKept = (k) => typeof k === "string" || isCheck(k);
 var isReply = (r) => !!r && isCommentId(r.id) && isPersonId(r.author) && isNumber(r.time) && typeof r.text === "string" && (r.edited === void 0 || isNumber(r.edited));
 function readThread(t) {
   if (!t || typeof t !== "object") return null;
@@ -2767,9 +2822,9 @@ function readThread(t) {
   if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
   if (c.edited !== void 0 && !isNumber(c.edited)) return null;
   if (c.resolved !== void 0 && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
-  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || typeof c.removed.text === "string") && (c.removed.slide === void 0 || typeof c.removed.slide === "string"))) return null;
+  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || isKept(c.removed.text)) && (c.removed.slide === void 0 || isKept(c.removed.slide)))) return null;
   const out = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
-  if (c.removed) out.removed = c.removed.slide === void 0 ? { text: c.removed.text } : { text: c.removed.text, slide: c.removed.slide };
+  if (c.removed) out.removed = copyRemoved(c.removed);
   if (c.edited !== void 0) out.edited = c.edited;
   if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
   return out;
@@ -3391,6 +3446,48 @@ function moveMarks(marks, patches, author) {
   }
   return tidy(out);
 }
+function compose(a, b) {
+  const out = [];
+  let i = 0;
+  let delta = 0;
+  const next = () => {
+    const p = a[i++];
+    delta += p.text.length - (p.end - p.start);
+    return p;
+  };
+  let [head, tail] = ["", ""];
+  for (const q of b) {
+    while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
+    const before2 = delta;
+    let [low, high, pre, post] = [q.start, q.end, "", ""];
+    const o = out[out.length - 1];
+    if (o && q.start < o.end + delta) {
+      out.pop();
+      high = o.end + delta;
+      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + tail.slice(0, tail.length - (high - q.start)), tail.slice(tail.length - (high - q.end))];
+    }
+    while (i < a.length && a[i].start + delta <= q.end) {
+      const at = a[i].start + delta;
+      const p = next();
+      if (at < low) [low, pre] = [at, p.text.slice(0, q.start - at) + pre];
+      if (at + p.text.length > high) [high, post] = [at + p.text.length, post + p.text.slice(q.end - at)];
+    }
+    [head, tail] = [pre + q.text, post];
+    if (low - before2 < high - delta || head || tail) out.push({ start: low - before2, end: high - delta, text: head + tail });
+  }
+  return out.concat(a.slice(i));
+}
+function overwrites(marks, p) {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) {
+    const m = marks[k];
+    if (m.author !== AUTHOR && (m.start === m.end ? m.start >= p.start : p.start < p.end && p.start < m.end && m.start < p.end)) return true;
+  }
+  return false;
+}
+function touches2(marks, p) {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) if (marks[k].author !== AUTHOR && marks[k].end >= p.start) return true;
+  return false;
+}
 function clip(marks, patches, author) {
   const ranges = rangesOf(patches);
   const out = [];
@@ -3464,6 +3561,9 @@ var History = class {
     this.rev = 0;
     // the count of restores
     this.restores = 0;
+    // the n of the version of the authority made by the last change from outside that replaced text
+    // that a person wrote in this run, or 0
+    this.overwritten = 0;
     // the patches from the text of the last version to index.html at the start, or null when the
     // history began at this start
     this.found = null;
@@ -3487,6 +3587,8 @@ var History = class {
     this.asides = [];
     // the last restore, with the n of the version of the authority that it made
     this.restored = null;
+    // the marks of the closed versions of people of this run, in the text before an open one
+    this.typed = [];
     this.listeners = /* @__PURE__ */ new Set();
     this.dir = dir;
     this.file = join5(dir, "history.jsonl");
@@ -3604,6 +3706,11 @@ var History = class {
     if (!at || !this.restored) return null;
     return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
   }
+  // whether a change from outside replaced text of a person after the version since of a page
+  overwrittenAfter(since) {
+    const at = parseVersion(since);
+    return !!at && at.epoch === this.authority.epoch && at.n < this.overwritten;
+  }
   // a text that a person set aside, or null when it is too large
   setAside(text, author) {
     const bytes = Buffer.from(text, "utf8");
@@ -3642,6 +3749,7 @@ var History = class {
     this.timer = null;
     const open2 = this.open;
     this.open = null;
+    if (open2 && open2.author !== AUTHOR) this.typed = moveMarks(this.typed, open2.ops, open2.author);
     if (text === this.lastText && !empty) {
       if (open2) this.writeAll();
       return null;
@@ -3716,9 +3824,14 @@ var History = class {
     if (this.stopped) return;
     const t = this.clock();
     const w = this.now();
-    if (this.open && this.due(this.open, t, w)) this.close(false, void 0, this.held);
+    if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
+    if (op.author === AUTHOR) {
+      const patches = op.patches.flatMap((p) => touches2(this.typed, p) ? byWords(this.held, p) : [p]);
+      if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
+      this.typed = moveMarks(this.typed, patches, AUTHOR);
+    }
     this.held = text;
-    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author };
+    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author, ops: [] };
     open2.last = t;
     open2.time = w;
     open2.author = op.author;
@@ -3727,6 +3840,7 @@ var History = class {
       this.append({ kind: "open", author: op.author });
     }
     open2.marks = moveMarks(open2.marks, op.patches, op.author);
+    if (op.author !== AUTHOR) open2.ops = compose(open2.ops, op.patches);
     this.arm();
   }
   // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
@@ -4086,6 +4200,10 @@ var People = class {
     member.state = state;
     this.changed();
     return true;
+  }
+  // the token of a closed page forgotten, hence a later request of it is one of an unknown token
+  retire(token) {
+    this.tokens.delete(token);
   }
   // the page left, and a request of it that arrives later does not bring it back, only a hello
   bye(client) {
@@ -5207,6 +5325,7 @@ var GUEST_MEDIA_MAX = 16 * 1024 * 1024;
 var MEDIA_TYPES = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "bmp", "mp4", "m4v", "webm", "mov", "ogv", "json"]);
 var LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2e3;
 var END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1e3;
+var CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
 var AlreadyRunning = class extends Error {
   constructor(found) {
     super(`the edit command already runs for this folder at ${found.url}`);
@@ -5530,6 +5649,7 @@ async function start(options = {}) {
     }
     if (route === "hello") {
       const hello = body;
+      if (Array.isArray(hello.retire)) for (const token2 of hello.retire.slice(0, 16)) people.retire(token2);
       const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ("taken" in joined) return json(200, { taken: joined.taken });
       if ("empty" in joined) return error(400, "the name is empty");
@@ -5722,6 +5842,12 @@ async function start(options = {}) {
       if (restored) answer.restored = restored;
     }
   });
+  people.feed({
+    rev: () => history.overwritten,
+    write: (answer, _seen, since) => {
+      if (history.overwrittenAfter(since)) answer.overwritten = true;
+    }
+  });
   comments = new Comments(join7(root, ".session"), authority, history.found, { ...options.comments, log });
   comments.onChange(() => people.news());
   people.feed({
@@ -5771,8 +5897,8 @@ async function start(options = {}) {
       history.stopSync();
       const all = unwritten2 + (comments.stopSync() ? 0 : 1);
       written(all);
-      await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
-      await new Promise((done) => setTimeout(done, 200));
+      await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
+      await new Promise((done) => setTimeout(done, CLOSE_WAIT));
       await new Promise((done) => {
         server.close(() => done());
         setTimeout(() => {

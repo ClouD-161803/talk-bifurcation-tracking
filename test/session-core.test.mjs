@@ -932,6 +932,7 @@ test('a vertical stack moved before three slides by one replica and a key of ano
   for (const moveFirst of [true, false]) assert.equal(race(base, moved, base.replace('More of top 2', 'More of top 2 by Bob'), moveFirst), moved.replace('More of top 2', 'More of top 2 by Bob'), `${moveFirst ? 'move' : 'key'} first`);
 });
 
+
 test('a move that also adds a paragraph keeps this paragraph when another replica types in the moved paragraph, in both orders and in the merge of the editor', () => {
   const [base, moved] = MOVES['inside its slide'];
   const typed = base.replace('Second slide', 'Second slide by Ana');

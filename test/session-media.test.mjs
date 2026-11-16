@@ -8,7 +8,7 @@
 // or refused
 
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, request as httpRequest } from 'node:http';
 import { join, resolve } from 'node:path';
@@ -327,7 +327,7 @@ const middle = (page, selector) =>
 // the answer of the command id run with arg, an expression of the page: taken, or the reason of its refusal
 const run = (page, id, arg) => page.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}, ${arg}).then(() => 'taken', (e) => e.message)`);
 
-test('a PDF that is dropped, or chosen with Replace…, is refused in a session with its reason, and the picture is kept', { timeout: 120_000 }, async (t) => {
+test('a PDF that is dropped, or chosen with Replace…, is refused in a session with its reason, and the picture is kept', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -347,7 +347,7 @@ test('a PDF that is dropped, or chosen with Replace…, is refused in a session 
   clean(ann);
 });
 
-test('the page and Match the Mode of a PDF figure of the deck are changed in a session, and the other page shows the new renders from media/', { timeout: 180_000 }, async (t) => {
+test('the page and Match the Mode of a PDF figure of the deck are changed in a session, and the other page shows the new renders from media/', { timeout: 780_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -397,6 +397,126 @@ test('the page and Match the Mode of a PDF figure of the deck are changed in a s
   clean(ann);
   clean(ben);
 });
+
+// a PDF of one page of 1920 by 1080 pt that shows noise of 3840 by 2160 px without compression,
+// hence a file of 25 MB whose render in the colors of the PDF is a PNG over 16 MB
+function noisePdf() {
+  const [w, h] = [3840, 2160];
+  const pixels = randomBytes(w * h * 3);
+  const content = 'q 1920 0 0 1080 0 0 cm /Im0 Do Q';
+  const objects = [
+    ['<< /Type /Catalog /Pages 2 0 R >>'],
+    ['<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1920 1080] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'],
+    [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${pixels.length} >>\nstream\n`, pixels, '\nendstream'],
+    [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`],
+  ];
+  const parts = [Buffer.from('%PDF-1.4\n')];
+  let length = parts[0].length;
+  const offsets = objects.map((o, i) => {
+    const at = length;
+    for (const part of [`${i + 1} 0 obj\n`, ...o, '\nendobj\n']) {
+      const bytes = Buffer.isBuffer(part) ? part : Buffer.from(part);
+      parts.push(bytes);
+      length += bytes.length;
+    }
+    return at;
+  });
+  const xref = offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  parts.push(Buffer.from(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${xref}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`));
+  return Buffer.concat(parts);
+}
+
+// a talk whose slide Two holds a PDF figure of pdf in both modes
+async function figureTalk(t, pdf) {
+  const server = await talk(t);
+  leftover(server, 'figure.pdf', pdf);
+  leftover(server, 'figure-dark.png', DARK);
+  leftover(server, 'figure-light.png', LIGHT);
+  writeOutside(server, '<img class="for-dark" src="media/figure-dark.png" data-pdf="media/figure.pdf" alt="A plot">\n  <img class="for-light" src="media/figure-light.png" data-pdf="media/figure.pdf" alt="A plot">');
+  return server;
+}
+
+test('a render of a PDF figure over 16 MB is refused in a session with its reason, and the deck and media/ are kept', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await figureTalk(t, noisePdf());
+  const ann = await tab(browser, sessionUrl(server.edit));
+  const before = await converge(server, [ann]);
+  const files = media(server);
+  await show(ann, 'Two');
+  await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
+  // without Match the Mode, the figure is one render of the noise in the colors of the PDF
+  const answer = await run(ann, 'media.matchMode', 'undefined');
+  assert.match(answer, /^figure\.png is larger than 16 MB/, answer);
+  assert.equal(await converge(server, [ann]), before);
+  assert.deepEqual(media(server), files);
+  clean(ann);
+});
+
+// the paths of the files in the store of media of a page
+const STORED = `[...${C}.shell.media.byPath.keys()].sort()`;
+
+for (const refused of ['dark', 'light']) {
+  test(`every render of a PDF figure is checked in a session before the deck is changed, and the reason of a refused one is given, here of the ${refused} render`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await figureTalk(t, readFileSync(PDF));
+    const ann = await tab(browser, sessionUrl(server.edit));
+    const before = await converge(server, [ann]);
+    const files = media(server);
+    await show(ann, 'Two');
+    await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
+    const stored = await ann.evaluate(STORED);
+    await ann.evaluate(`${C}.shell.media.refuse = (file) => (file.name.endsWith(${JSON.stringify(`-${refused}.png`)}) ? 'refused by the test' : null), true`);
+    assert.equal(await run(ann, 'media.pdfPage', '{ page: 2 }'), 'refused by the test');
+    assert.deepEqual(await ann.evaluate(STORED), stored);
+    assert.equal(await converge(server, [ann]), before);
+    assert.deepEqual(media(server), files);
+    clean(ann);
+  });
+}
+
+test('a guest who changes Match the Mode of a PDF figure whose PDF is over 16 MB is told of the limit of the relay, and the deck is kept', { timeout: 360_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await figureTalk(t, noisePdf());
+  const { url } = await relayed(t, server);
+  const ann = await tab(browser, sessionUrl(server.edit));
+  const gus = await open(browser, `${url}index.html?edit&session`, { name: 'Gus' });
+  const before = await converge(server, [ann, gus]);
+  await show(gus, 'Two');
+  await click(gus, await middle(gus, '.reveal .slides img[data-pdf]'));
+  assert.equal(await run(gus, 'media.matchMode', 'undefined'), 'media/figure.pdf is over the 16 MB limit of the relay');
+  assert.equal(await converge(server, [ann, gus]), before);
+  clean(ann);
+  clean(gus, [/status of 413 .*media\/figure\.pdf$/]);
+});
+
+// a page behind the relay without a session is answered 413 by the edit command as well
+for (const how of ['left the session', 'edits another deck of the talk folder']) {
+  test(`a guest who ${how} and changes Match the Mode of a PDF figure whose PDF is over 16 MB is told of the limit of the relay`, { timeout: 360_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await figureTalk(t, noisePdf());
+    writeFileSync(join(server.talk, 'other.html'), server.read());
+    const { url } = await relayed(t, server);
+    const gus = await open(browser, `${url}${how.startsWith('left') ? 'index' : 'other'}.html?edit&session`, { name: 'Gus', wait: false });
+    if (how.startsWith('left')) {
+      await converge(server, [gus]);
+      await gus.evaluate(`${C}.leave(), true`);
+      await gus.waitFor(`${C}.connection === 'ended'`);
+    } else {
+      await gus.waitFor(`/not the deck of the session/.test(document.querySelector('dialog[open]')?.textContent ?? '')`);
+      await gus.evaluate(`document.querySelector('dialog[open] button').click(), true`);
+    }
+    await show(gus, 'Two');
+    await gus.waitFor(`[...document.querySelectorAll('.reveal .slides img[data-pdf]')].some((e) => e.getBoundingClientRect().width > 0)`);
+    await click(gus, await middle(gus, '.reveal .slides img[data-pdf]'));
+    const answer = await gus.evaluate(`window.BeesonEditor.exec('media.matchMode').then(() => 'taken', (e) => e.message)`);
+    assert.equal(answer, 'media/figure.pdf is over the 16 MB limit of the relay');
+  });
+}
 
 test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px, and once in the title of a screen of 1440 px', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });

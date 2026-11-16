@@ -10,7 +10,7 @@
 import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
-import { keeps } from './copy.ts';
+import { early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
 import { FULL, type AppliedOp, type CommentsEvent, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
@@ -42,6 +42,8 @@ export type ClientEvents = {
   // a drive ended, with whether the base moved on after the last applied without an apply, e.g. at
   // the broadcast of an operation of this page
   settled: [moved: boolean];
+  // operations of others were merged into the edits of this page, whose text was before
+  rebased: [before: string];
   // connection, saving, retryAt, blocked, or warning changed
   state: [];
   ended: [Ended];
@@ -55,6 +57,8 @@ export type ClientEvents = {
   base: [text: string, v: Version, ops: AppliedOp[] | null];
   // the comments of an answer of events, whose anchors are of the text at version v
   comments: [CommentsEvent, Version];
+  // a change of index.html from outside replaced text that a person wrote in the session
+  overwritten: [];
 };
 
 // the parts of the offline path that the core calls, set by conflicts.ts and media.ts
@@ -251,8 +255,16 @@ export class Client {
     else this.receive(answer.ops);
     this.since = answer.v;
     this.setConnection('online');
+    // the keys that are not read are sent when the page is hidden, since a hidden page draws no
+    // frame that reads them, and a phone may suspend it or close it without pagehide
+    const send = (): void => {
+      if (this.dirty) this.dirty = !this.capture();
+      this.pump();
+    };
+    document.addEventListener('visibilitychange', send);
     window.addEventListener('pagehide', () => {
       if (!this.token || this.ended) return;
+      send();
       this.gone = true;
       this.transport.bye(this.token);
     });
@@ -345,7 +357,10 @@ export class Client {
   }
 
   private unkept(): boolean {
-    return !this.acked() && !this.ended && !keeps(this);
+    // a change that is not read yet is in neither the replica nor the copy. once join.ts has given
+    // the copy before the join, this copy is read from the deck, and join.ts checks again after each
+    // change
+    return !this.acked() && !this.ended && ((this.dirty && (!!this.sync || !early(this))) || !keeps(this));
   }
 
   // resolves once every edit of this page is acknowledged, which is a save in a session
@@ -487,11 +502,14 @@ export class Client {
     this.check();
   }
 
-  // the operations that waited are taken into the replica, and base tells the parts what moved
+  // the operations that waited are taken into the replica. rebased tells copy.ts what moved, and
+  // base tells the parts
   private merge(ops: AppliedOp[]): string | null {
     const sync = this.sync!;
     const was = { text: sync.base, v: sync.version };
+    const before = sync.mine;
     const out = sync.receive(ops);
+    this.emit('rebased', before);
     if (sync.version !== was.v) this.emit('base', was.text, was.v, ops);
     return out;
   }
@@ -766,6 +784,7 @@ export class Client {
     if (answer.history !== undefined) this.emit('history', answer.history);
     if (answer.restored) this.emit('restored', answer.restored);
     if (answer.comments) this.emit('comments', answer.comments, answer.v);
+    if (answer.overwritten) this.emit('overwritten');
     if (answer.ops === null) {
       this.sync!.lose();
       this.pump();

@@ -9,7 +9,10 @@ import { join } from 'node:path';
 import { readBody, type Request, type Response } from './http.ts';
 import type { Ended } from '../session/protocol.ts';
 
+// the largest file, or range of a file, that is answered through the relay
 export const RELAY_BODY = 16 * 1024 * 1024;
+// the largest answer that the relay takes, e.g. index.html, which a guest loads whole
+const RELAY_ANSWER = 64 * 1024 * 1024;
 const PULLS = 4;
 // the files answered through the relay at once, each read into memory before it is pushed
 const FILE_ANSWERS = 8;
@@ -203,7 +206,7 @@ export class RelayLink {
       response = { status: 502, headers: { 'Content-Type': 'text/plain' } };
       body = Buffer.from((e as Error).message);
     }
-    if (body.length > RELAY_BODY) {
+    if (body.length > RELAY_ANSWER) {
       response = { status: 413, headers: { 'Content-Type': 'text/plain' } };
       body = Buffer.from('the answer is too large for the relay');
     }

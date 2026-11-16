@@ -113,6 +113,11 @@ export function install(app: App): void {
     items = ordered;
     kind = nextKind;
     if (kind !== 'text') dropRange(app);
+    // a focused formula stands for its framed object, e.g. a display after its TeX field is closed,
+    // and gives up the focus when the selection leaves it, since the slide would else take the keys
+    // of a text, e.g. ⌘V after a click on the empty slide
+    const active = document.activeElement;
+    if (kind !== 'text' && active instanceof HTMLElement && active.matches('mjx-container') && !items.some((el) => el.contains(active))) active.blur();
     for (const fn of listeners) fn();
     app.invalidate('selection');
   };

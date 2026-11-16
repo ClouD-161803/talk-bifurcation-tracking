@@ -34,7 +34,7 @@
 //                                  registered for key, 410 after an end with a record, and 504
 //                                  when it does not answer in 60 s
 //
-// limits: 16 MB per body, 256 MB of bodies held at once, of which a session holds a quarter at
+// limits: 16 MB per body of a guest, 64 MB per answer, 256 MB of bodies held at once, of which a session holds a quarter at
 // most and 4 MB are kept for bodies of at most 64 kB, 256 waiting requests per session, 64
 // sessions, a session dropped after 90 s without a pull, and 256 ends of at most 1 kB kept. hop-by-hop headers, cookies, and credentials are not forwarded
 
@@ -45,6 +45,9 @@ import { fileURLToPath } from 'node:url';
 
 export const DEFAULTS = {
   bodyBytes: 16 * 1024 * 1024,
+  // an answer of the edit command may be larger than the body of a guest, since a guest loads
+  // index.html whole, and a talk with scenes written into it takes over 20 MB
+  answerBytes: 64 * 1024 * 1024,
   waiting: 256,
   sessions: 64,
   idleMs: 90_000,
@@ -287,12 +290,12 @@ export async function startRelay({ port = 0, host, secret, ...options } = {}) {
     if (action === 'push' && req.method === 'POST' && typeof id === 'string') {
       if (!session.pending.has(id)) return answer(res, 404, 'no request of this id, it may have timed out');
       // the declared length is held at the start, so that pushes at once do not each fail partway
-      const declared = Math.min(Number(req.headers['content-length']) || 0, limits.bodyBytes);
+      const declared = Math.min(Number(req.headers['content-length']) || 0, limits.answerBytes);
       let reserved = 0;
       let read = 0;
       let body;
       try {
-        body = await bodyOf(req, limits.bodyBytes, (n) => {
+        body = await bodyOf(req, limits.answerBytes, (n) => {
           read += n;
           const more = Math.max(read, declared) - reserved;
           if (more <= 0) return true;

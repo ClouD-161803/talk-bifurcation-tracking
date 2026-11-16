@@ -11,6 +11,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
 import { center, click, press, type, typeKeys } from './helpers/editor.mjs';
+import { NET } from './helpers/net.mjs';
 import { until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
@@ -21,6 +22,7 @@ const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const TAB_KEY = (n) => (process.platform === 'darwin' ? `Ctrl+Mod+${n}` : `Ctrl+Shift+${n}`);
 const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments can be sent once you are back online';
+const ENDED = 'The session has ended';
 
 // the text of the badge of the element of expression, found at its place 4 px outside the upper
 // right corner of the element, or 18 px while the element is selected, or inside the upper right
@@ -411,7 +413,8 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
     await sees(c, THREADS, [first(['The first comment, edited']), { anchor: 'On Paragraph: Second slide', texts: ['Look, @Annabel what do you think?'] }]);
     await badge(c, 'One', 'p', '1*');
     await badge(c, 'Two', 'p', '1*');
-    await sees(c, COUNT, 'Comments');
+    // both threads are unread and neither is for Cy, hence the dot
+    await sees(c, COUNT, 'Comments, unread threads');
 
     const count = await loads(a);
     await a.evaluate('location.reload()').catch(() => {});
@@ -432,21 +435,21 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
   clean(b, [/status of 403/]);
 });
 
-test('offline, the Comment command is disabled, and a draft is kept until the page is back online', { timeout: 300_000 }, async (t) => {
+test('offline, the Comment command opens a draft, which is kept until the page is back online', { timeout: 300_000 }, async (t) => {
   const { server, pages: [a] } = await pair(t, ['Ann']);
   const { port } = server.edit;
   await show(a, 'One');
   await click(a, '.reveal .slides > section:nth-child(1) p');
   await comment(a, 'Before the stop');
-  await caretAtEnd(a, el(0, 'h2'));
-  await press(a, COMMENT_KEY);
-  await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
   // the edit command writes a comment before it answers it, hence the kill below does not lose it
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
   await a.waitFor(`/^Offline/.test(${STATE})`);
+  await caretAtEnd(a, el(0, 'h2'));
+  assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: true, checked: null });
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
   await type(a, 'Written offline');
-  assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: OFFLINE });
   await sees(a, `(() => { const b = document.querySelector('${PANE} .draft .actions .primary'); return [b.disabled, b.title, document.querySelector('${PANE} .draft textarea').value]; })()`, [true, OFFLINE, 'Written offline']);
   await sees(a, THREADS, [{ anchor: 'On Paragraph: First slide', texts: ['Before the stop'] }]);
 
@@ -462,6 +465,66 @@ test('offline, the Comment command is disabled, and a draft is kept until the pa
   assert.equal(await converge(server, [a]), TALK);
   clean(a, REFUSED);
 });
+
+// the send button of the draft, and Resolve, Thread actions, and the send button of Reply of the
+// thread, each as its label, whether it is disabled, and its tooltip
+const DRAFT = `(() => { const b = document.querySelector('${PANE} .draft .actions .primary'); return [b.disabled, b.title, document.querySelector('${PANE} .draft textarea').value]; })()`;
+
+// the hello held while the page joins, and let through even when it is sent after the release, the
+// requests of the session answered with 502 by a proxy whose host has stopped, and the hello refused
+// since the session is full. the page is online in each of them, hence the send button does not say
+// offline
+for (const [state, script, cut, back, why, ...refused] of [
+  ['joining', `__net.rule('/.session/hello', 'hold');`, '', `__net.clear() && __net.release('/.session/hello')`, 'Comments can be sent once you have joined'],
+  ['no-host', '', `__net.rule('/.session/', 'answer', { status: 502 }) && __net.drop('/.session/')`, `__net.clear() && (${C}.tryNow(), true)`, "Comments can be sent once the host's edit command runs", ...REFUSED],
+  ['full', `__net.rule('/.session/hello', 'answer', { status: 503, body: '{"error":"the session is full"}' });`, '', `__net.clear() && (${C}.tryNow(), true)`, 'The session is full. Comments can be sent once you have joined', /status of 503 .*\/\.session\/hello/],
+]) {
+  test(`in the state ${state}, the Comment command opens a draft, whose send button says why it waits, and which is kept until the page is online`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `${NET}\n${script}`, wait: !script });
+    if (cut) await a.evaluate(cut);
+    await a.waitFor(state === 'full' ? `${C}.connection === 'offline' && ${C}.full` : `${C}.connection === ${JSON.stringify(state)}`);
+    await show(a, 'One');
+    await caretAtEnd(a, el(0, 'h2'));
+    assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: true, checked: null });
+    await press(a, COMMENT_KEY);
+    await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
+    await type(a, `Written while ${state}`);
+    await sees(a, DRAFT, [true, why, `Written while ${state}`]);
+    await a.evaluate(back);
+    await a.waitFor(ONLINE);
+    await sees(a, DRAFT, [false, '', `Written while ${state}`]);
+    clean(a, refused);
+  });
+}
+
+const SENDS = `[...document.querySelectorAll('${PANE} :is(.draft .actions .primary, article :is(.resolve, .more, .reply .actions .primary))')].map((b) => [b.getAttribute('aria-label') || b.textContent, b.disabled, b.title])`;
+
+for (const from of ['online', 'offline']) {
+  test(`once the session has ended ${from}, the Comment command is disabled, and the controls that send say that it has ended`, { timeout: 300_000 }, async (t) => {
+    const { server, pages: [a] } = await pair(t, ['Ann']);
+    await show(a, 'One');
+    await click(a, '.reveal .slides > section:nth-child(1) p');
+    await comment(a, 'Before the end');
+    await caretAtEnd(a, el(0, 'h2'));
+    await press(a, COMMENT_KEY);
+    await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
+    await type(a, 'Not sent');
+    if (from === 'offline') {
+      server.edit.child.kill('SIGKILL');
+      await server.edit.exited;
+      await a.waitFor(`/^Offline/.test(${STATE})`);
+      await sees(a, SENDS, [['Comment', true, OFFLINE], ['Resolve', true, OFFLINE], ['Thread actions', true, OFFLINE], ['Reply', true, OFFLINE]]);
+    }
+    await a.evaluate(`${C}.leave()`);
+    await a.waitFor(`${C}.connection === 'ended'`);
+    assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: ENDED });
+    await sees(a, SENDS, [['Comment', true, ENDED], ['Resolve', true, ENDED], ['Thread actions', true, ENDED], ['Reply', true, ENDED]]);
+    clean(a, from === 'offline' ? REFUSED : []);
+  });
+}
 
 test('the three tabs of the inspector and the keys of the pane, text that looks like HTML, and a phone of 390 px', { timeout: 300_000 }, async (t) => {
   const { browser, server, pages: [a, b] } = await pair(t, ['<b>Ann</b>', 'Ben']);
@@ -541,6 +604,13 @@ test('the three tabs of the inspector and the keys of the pane, text that looks 
       return { inside: r.left >= 0 && r.right <= innerWidth, hit: b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
     })()`), { inside: true, hit: true });
     await sees(c, HITS('.beeson-session-comments'), []);
+    // the thread of Ann is unread and not of For You, hence a dot is drawn inside the narrow title bar
+    await sees(c, `(() => {
+      const b = document.querySelector('.beeson-session-comments');
+      const r = b.querySelector('.count').getBoundingClientRect();
+      const o = b.getBoundingClientRect();
+      return [b.getAttribute('aria-label'), r.width > 0 && r.width < 14 && r.left >= o.left && r.right <= o.right && r.right <= innerWidth];
+    })()`, ['Comments, unread threads', true]);
     await show(c, 'One');
     await sees(c, `${badgeOf(el(0, 'p'))}`, '1*');
     await sees(c, HITS('.beeson-comment-badge'), []);

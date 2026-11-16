@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { checkAnchors, checkOf, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Check, type Moved } from '../session/anchor.ts';
+import { checkAnchors, checkOf, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Check, type Kept, type Moved } from '../session/anchor.ts';
 import type { Authority } from '../session/authority.ts';
 import { apply, checksum, copy, type Patch } from '../session/patch.ts';
 import {
@@ -58,7 +58,8 @@ const replyBytes = (r: CommentReply) => bytesOf(r) + 1;
 const tooLarge = () => fail(413, 'the comments of the deck are too large');
 // the texts of a removed element are cut from a whole earlier text of the deck, which a copy does not
 // keep alive
-const copyRemoved = (r: NonNullable<Anchored['removed']>) => (r.slide === undefined ? { text: r.text && copy(r.text) } : { text: r.text && copy(r.text), slide: copy(r.slide) });
+const copyKept = (k: Kept): Kept => (typeof k === 'string' ? copy(k) : { tag: copy(k.tag), sum: k.sum });
+const copyRemoved = (r: NonNullable<Anchored['removed']>) => (r.slide === undefined ? { text: r.text && copyKept(r.text) } : { text: r.text && copyKept(r.text), slide: copyKept(r.slide) });
 const NOT_SAVED = 'The host could not save the comment';
 const readOnly = () => fail(503, 'the comments could not be read at the start, hence they are read only until the edit command is started again');
 
@@ -80,10 +81,12 @@ function cleanMentions(raw: unknown): string[] | Failure {
 const isAnchor = (a: unknown): a is Anchor =>
   !!a && isInt((a as Anchor).start) && isInt((a as Anchor).end) && (a as Anchor).start < (a as Anchor).end && typeof (a as Anchor).tag === 'string' && (a as Anchor).tag.length > 0;
 
+const isCheck = (c: unknown): c is Check => !!c && typeof c === 'object' && typeof (c as Check).tag === 'string' && (c as Check).tag.length > 0 && typeof (c as Check).sum === 'string' && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test((c as Check).sum);
 const readCheck = (t: unknown): Check | null => {
   const c = (t as { check?: Check }).check;
-  return !!c && typeof c === 'object' && typeof c.tag === 'string' && c.tag.length > 0 && typeof c.sum === 'string' && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test(c.sum) ? { tag: c.tag, sum: c.sum } : null;
+  return isCheck(c) ? { tag: c.tag, sum: c.sum } : null;
 };
+const isKept = (k: unknown): k is Kept => typeof k === 'string' || isCheck(k);
 
 const isReply = (r: unknown): r is CommentReply =>
   !!r && isCommentId((r as CommentReply).id) && isPersonId((r as CommentReply).author) && isNumber((r as CommentReply).time) && typeof (r as CommentReply).text === 'string' && ((r as CommentReply).edited === undefined || isNumber((r as CommentReply).edited));
@@ -98,9 +101,9 @@ function readThread(t: unknown): Comment | null {
   if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
   if (c.edited !== undefined && !isNumber(c.edited)) return null;
   if (c.resolved !== undefined && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
-  if (c.removed !== undefined && !(c.removed && (c.removed.text === null || typeof c.removed.text === 'string') && (c.removed.slide === undefined || typeof c.removed.slide === 'string'))) return null;
+  if (c.removed !== undefined && !(c.removed && (c.removed.text === null || isKept(c.removed.text)) && (c.removed.slide === undefined || isKept(c.removed.slide)))) return null;
   const out: Comment = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
-  if (c.removed) out.removed = c.removed.slide === undefined ? { text: c.removed.text } : { text: c.removed.text, slide: c.removed.slide };
+  if (c.removed) out.removed = copyRemoved(c.removed);
   if (c.edited !== undefined) out.edited = c.edited;
   if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
   return out;

@@ -24,7 +24,7 @@
 
 import type { App } from '../app.ts';
 import { overlay, previewPlays } from '../canvas/frames.ts';
-import { keysOf, type Command } from '../commands.ts';
+import { CLIPBOARD_REGIONS, keysOf, type Command } from '../commands.ts';
 import { matches } from '../keymap.ts';
 import { childSpace } from '../render.ts';
 import { contentWithTex, mathLookup } from '../math.ts';
@@ -2345,14 +2345,15 @@ export function install(app: App): void {
     const text = data.getData('text/plain');
     if (html.includes(MARK) || text.includes(MARK)) return;
     const region = app.region();
-    if (region === 'canvas' && (text.trim() || html) && selectedRange(app)) {
+    const onSlide = CLIPBOARD_REGIONS.includes(region);
+    if (onSlide && (text.trim() || html) && selectedRange(app)) {
       ev.preventDefault();
       ev.stopImmediatePropagation();
       void app.history.transact('Paste', () => pasteRange(app, text, html)).catch(fail);
       return;
     }
     const cell = region === 'text' ? cellAt(app) : null;
-    if (region !== 'canvas' && !cell) return;
+    if (!onSlide && !cell) return;
     // a range of the editor keeps the inline elements of its cells, in a new table as well
     const marked = parseEditorTable(html);
     const rows = marked ?? parseHtmlTable(html) ?? parseTabular(text);

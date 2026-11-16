@@ -212,6 +212,32 @@ test('a thread of a removed slide is attached again by an undo, also after a res
   gone(again.comments);
 });
 
+test('a thread of a removed element longer than 4 kB keeps its check in the file, by which an undo after a restart attaches it again', (t) => {
+  const dir = sessionDir(t);
+  const long = `<pre><code>${'y'.repeat(12_000)}</code></pre>`;
+  const deck = DECK.replace('<p>Second slide</p>', `<p>Second slide</p>\n  ${long}`);
+  const first = open(dir, deck);
+  first.comments.add(ANN, { base: first.authority.version, anchor: tagRange(deck, '<pre>'), slide: slideRange(deck, '<pre>'), text: 'code' });
+  replace(first.authority, `\n  ${long}`, '');
+  first.comments.stopSync();
+  const data = readJson(join(dir, 'comments.json'));
+  const [saved] = data.comments;
+  assert.deepEqual(saved.removed, { text: { tag: '<pre>', sum: checksum(long) } });
+  // a thread whose check is not one is not read
+  const other = sessionDir(t);
+  writeFileSync(join(other, 'comments.json'), JSON.stringify({ ...data, comments: [{ ...saved, removed: { text: { tag: '<pre>', sum: 'x' } } }] }));
+  const refused = open(other, first.authority.text);
+  assert.deepEqual([refused.comments.list(ANN).comments, refused.logged.length], [[], 1]);
+  const again = open(dir, first.authority.text);
+  const [kept] = again.comments.list(ANN).comments;
+  reads(first.authority.text, kept.anchor, '<section>\n  <h2>Two');
+  assert.deepEqual(kept.removed, saved.removed);
+  again.authority.enter(diff(again.authority.text, deck), ANN);
+  const [thread] = again.comments.list(ANN).comments;
+  reads(deck, thread.anchor, '<pre><code>yyy');
+  assert.equal(thread.removed, undefined);
+});
+
 test('the new threads since a version are listed in the order in which they were made, as the list gives them', (t) => {
   // two threads made in one millisecond have the same time, and a page then shows them in the order
   // in which it got them
@@ -606,6 +632,27 @@ test('a thread on an element of any tag name is read again at a start, and a thr
     again.comments.stopSync();
     assert.deepEqual(readJson(file).comments.map((c) => c.text), ['kept', 'new']);
   });
+
+  await t.test('a thread of a removed element whose slide is malformed', () => {
+    const dir = sessionDir(t);
+    const first = open(dir, DECK);
+    first.comments.add(ANN, onDeck(first.authority, 'kept'));
+    first.comments.stopSync();
+    const file = join(dir, 'comments.json');
+    const saved = readJson(file);
+    const [good] = saved.comments;
+    const slide = '<section>\n  <p>Gone</p>\n</section>';
+    const check = { tag: '<section>', sum: checksum(slide) };
+    const slides = { string: slide, check, number: 7, null: null, 'check without a tag': { ...check, tag: '' }, 'check with a malformed sum': { ...check, sum: 'zz' } };
+    for (const [name, value] of Object.entries(slides)) saved.comments.push({ ...good, id: name.replaceAll(' ', '-'), text: name, removed: { text: '<p>Gone</p>', slide: value } });
+    writeFileSync(file, JSON.stringify(saved));
+    const again = open(dir, DECK);
+    assert.deepEqual(
+      again.comments.list(ANN).comments.map((c) => [c.text, c.removed?.slide]),
+      [['kept', undefined], ['string', slide], ['check', check]],
+    );
+    assert.equal(again.logged.length, 1, again.logged.join('\n'));
+  });
 });
 
 test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
@@ -625,6 +672,27 @@ test('the texts of removed elements do not keep the earlier texts of the deck in
   for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
   const grown = used() - before;
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.startsWith('<p>Paragraph')));
+  assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
+});
+
+test('the checks of removed elements longer than 4 kB do not keep the earlier texts of the deck in memory', (t) => {
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc');
+  const used = () => {
+    gc();
+    gc();
+    return process.memoryUsage().heapUsed;
+  };
+  const n = 50;
+  const long = (k) => `<p class="paragraph-${k}">${'y'.repeat(5000)}</p>`;
+  const filler = `<section>\n  <p>${'x'.repeat(100_000)}</p>\n</section>\n`;
+  const deck = DECK.replace('<p>Second slide</p>', Array.from({ length: n }, (_, k) => long(k)).join('\n  ')).replace('</body>', `${filler}</body>`);
+  const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 10 } });
+  for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p class="paragraph-${k}">`), slide: null, text: `p${k}` });
+  const before = used();
+  for (let k = 0; k < n; k++) replace(authority, `\n  ${long(k)}`, '');
+  const grown = used() - before;
+  assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.tag?.startsWith('<p class="paragraph-')));
   assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 

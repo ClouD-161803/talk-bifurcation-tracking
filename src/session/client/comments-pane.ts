@@ -5,7 +5,7 @@
 // every text of a person is written as text, and never as HTML
 
 import { COMMENT_MAX, type Comment } from '../protocol.ts';
-import type { Client } from './client.ts';
+import type { Client, Connection } from './client.ts';
 import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place, type Spot } from './comments.ts';
 import { bdi, make, style } from './dom.ts';
@@ -16,7 +16,12 @@ import { initials, inkOf, toneOf } from './people.ts';
 import { mountToasts, toast, type ToastButton, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 
-const OFFLINE = 'Comments can be sent once you are back online';
+const ENDED = 'The session has ended';
+const JOINED = 'Comments can be sent once you have joined';
+const UNSENT: Record<Connection, string> = { online: '', ended: ENDED, joining: JOINED, 'no-host': "Comments can be sent once the host's edit command runs", offline: 'Comments can be sent once you are back online' };
+// the tooltip of a control that sends, which is disabled unless the page is online, in the words of
+// the save state
+const unsent = (c: Client) => (c.connection === 'offline' && c.full ? `The session is full. ${JOINED}` : UNSENT[c.connection]);
 
 // the hit area of every control is 32 px or more, also on a phone
 const CSS = `
@@ -374,7 +379,7 @@ class Pane {
     // the offsets of the anchors move with each letter typed before them, and the label stands for
     // the place in the sign
     const { anchor: _a, slide: _s, ...shown } = t;
-    const sign = JSON.stringify([shown, !!t.anchor, names, known, this.label(t, p), this.client.connection === 'online', answering]);
+    const sign = JSON.stringify([shown, !!t.anchor, names, known, this.label(t, p), unsent(this.client), answering]);
     if (this.signs.get(t.id) === sign && !force) return node;
     // a thread in edit is drawn again once the edit ends
     if (this.editing?.id === t.id && !force) return node;
@@ -412,7 +417,7 @@ class Pane {
     // offline, an action is not sent later, hence its button is disabled
     const offline = (b: HTMLButtonElement) => {
       b.disabled = !online;
-      if (!online) b.title = OFFLINE;
+      if (!online) b.title = unsent(this.client);
       return b;
     };
     if (root) {
@@ -584,7 +589,7 @@ class Pane {
       const extra = Array.from(sent()).length - COMMENT_MAX;
       const disabled = busy || !online || !area.value.trim() || extra > 0;
       if (go.disabled !== disabled) go.disabled = disabled;
-      if (go.title !== (online ? '' : OFFLINE)) go.title = online ? '' : OFFLINE;
+      if (go.title !== unsent(this.client)) go.title = unsent(this.client);
       if (extra > 0) {
         over = true;
         error.textContent = `The text is ${extra} ${extra === 1 ? 'character' : 'characters'} too long.`;
@@ -693,6 +698,9 @@ class Pane {
       } finally {
         busy = false;
         sync();
+        // a browser moves the focus of the pressed button to the body while the button is disabled.
+        // an empty field would open the keyboard of a phone, hence the thread takes it then
+        if (document.activeElement === document.body) (area.value ? area : area.closest('article'))?.focus({ preventScroll: true });
       }
     };
     area.addEventListener('input', (ev) => {
@@ -969,7 +977,9 @@ const BUTTON_CSS = `
 .beeson-edit-titlebar .right button.beeson-session-comments svg { flex: none; color: var(--ed-muted); }
 .beeson-edit-titlebar .right button.beeson-session-comments[aria-pressed="true"] svg { color: var(--ed-select); }
 .beeson-session-comments .count { min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--ed-select); color: var(--ed-on-select); font: 600 10px/14px var(--ed-font); text-align: center; }
-.beeson-session-comments .count:empty { display: none; }
+.beeson-session-comments .count:empty:not(.dot) { display: none; }
+.beeson-session-comments .count.dot { min-width: 8px; height: 8px; padding: 0; background: var(--ed-focus); }
+.beeson-session-comments[inert] { opacity: 0.45; }
 `;
 
 // the comments of a session: the pane in the inspector, the badges, the commands Comment, Comments,
@@ -996,7 +1006,10 @@ export function install(client: Client): void {
   const draw = () => {
     const n = comments.unreadCount();
     if (count.textContent !== (n ? String(n) : '')) count.textContent = n ? String(n) : '';
-    const label = n ? `Comments, ${n} unread` : 'Comments';
+    // a dot in place of the number while only threads outside For You are unread
+    const dot = !n && comments.anyUnread();
+    count.classList.toggle('dot', dot);
+    const label = n ? `Comments, ${n} unread` : dot ? 'Comments, unread threads' : 'Comments';
     button.setAttribute('aria-label', label);
     button.title = label;
     button.setAttribute('aria-pressed', String(shell.tab.shown()));
@@ -1084,7 +1097,8 @@ export function install(client: Client): void {
     badges.schedule();
   });
 
-  const online = () => client.connection === 'online';
+  // a draft opened offline can be sent once the page is back online
+  const live = () => client.connection !== 'ended';
   shell.define({
     id: 'insert.comment',
     label: 'Comment',
@@ -1094,8 +1108,8 @@ export function install(client: Client): void {
     menu: { bar: 'Insert', group: 'comment', order: 40 },
     toolbar: { group: 'insert', order: 30, icon: 'comment', label: 'Comment' },
     context: ['element', 'text', 'canvas', 'slide'],
-    enabled: online,
-    why: () => (online() ? null : OFFLINE),
+    enabled: live,
+    why: () => (live() ? null : ENDED),
     // a context menu names its element or slide, which may be one that another person holds and
     // that the selection drops
     run: (_app, arg) => {

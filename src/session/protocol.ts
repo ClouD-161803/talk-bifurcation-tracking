@@ -5,6 +5,8 @@
 // token, which is secret. every later request of the page carries the token, from which the client
 // id is found, and the client id cannot be used in its place
 
+import type { Kept } from './anchor.ts';
+
 export type Version = string;
 
 // the characters start to end of a text replaced by text, with offsets in UTF-16 code units
@@ -42,8 +44,10 @@ export type AppliedOp = {
 // claim takes over the person who holds the name, i.e. one person on a second device. a page passes
 // the token of its earlier hello only when the same page reconnects with its Replica in memory,
 // and it keeps its client id. a reloaded page is a new client, and it says hello without a token.
-// was is the client id under which the page sent its operation in flight, passed with the token
-export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string };
+// was is the client id under which the page sent its operation in flight, passed with the token.
+// retire names the tokens of closed pages whose copies the page took over, at most 16 of which the
+// edit command forgets, so that an operation of such a page that arrives later is not applied twice
+export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string; retire?: Token[] };
 // the answer of hello and of name when another person holds the name, and nothing is changed
 export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise.
@@ -96,7 +100,8 @@ export type WriteError = { message: string; unwritten: number; file?: 'tex.js' }
 // a page that was dropped meanwhile. comments holds the threads changed since the last answer to
 // this page. a page reads the history and the comments again after each hello, since what changed
 // before is not sent to it. tex is as in HelloAnswer, and a page draws the deck again with tex.js
-// when it changed
+// when it changed. overwritten is sent as restored is, after a change of index.html from outside
+// that replaced text that a person wrote in the session
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
@@ -109,6 +114,7 @@ export type EventsAnswer = {
   history?: number;
   restored?: Restored;
   comments?: CommentsEvent;
+  overwritten?: true;
 };
 
 // a range of the text of a version that was changed since the version before, with the person id
@@ -162,8 +168,8 @@ export type CommentReply = { id: string; author: string; time: number; text: str
 // commented on, the start tag of the slide for a comment on a slide, and null for a comment on the
 // deck. slide is the start tag of the slide that holds the element, or null. a removed element
 // falls back to its slide, and a removed slide to the deck, and removed is then set, holding the
-// text of what was removed, or null when it was larger than 4 kB or is not known. a re-insertion of
-// this text attaches the thread to it again. a thread of an element of a removed slide holds the
+// text of what was removed, its check when it was larger than 4 kB, or null when it is not known. a
+// re-insertion of this text attaches the thread to it again. a thread of an element of a removed slide holds the
 // text of the slide as well in removed.slide, and is attached again only inside a re-insertion of
 // it. a removed slide is itself such a text. author, by, and mentions are person ids, time and
 // edited are times in ms. the offsets are of the text at the version that the answer or the events
@@ -172,7 +178,7 @@ export type Comment = {
   id: string;
   anchor: Anchor | null;
   slide: Anchor | null;
-  removed?: { text: string | null; slide?: string };
+  removed?: { text: Kept | null; slide?: Kept };
   author: string;
   time: number;
   text: string;
