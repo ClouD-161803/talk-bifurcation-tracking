@@ -1204,6 +1204,23 @@ test('two fixes of letters of one word by two browsers at once are both kept, wi
 
 // the patch of theirs spans from slide to here, hence it conflicts with the patch of ours, and the
 // finer edits are taken, since none of them conflicts
+// fine() finds the removal of a line one letter further on when the next line starts with the same
+// characters. the letter that the other browser removes is then before this edit, and not in it
+test('a line that one browser removes and the first letter of this line that another browser removes at once do not cost a letter of the next line', () => {
+  for (const [base, theirs, mine] of [
+    ['<ul>\n  <li>Moon 42</li>\n  <li>Method 41</li>\n</ul>\n', '<ul>\n  <li>Method 41</li>\n</ul>\n', '<ul>\n  <li>oon 42</li>\n  <li>Method 41</li>\n</ul>\n'],
+    // the line is moved to the end
+    ['<p>Method 13</p>\n<p>Moon 12</p>\n<p>Intro 11</p>\n', '<p>Moon 12</p>\n<p>Intro 11</p>\n<p>Method 13</p>\n', '<p>ethod 13</p>\n<p>Moon 12</p>\n<p>Intro 11</p>\n'],
+  ]) {
+    const t = diff(base, theirs), o = diff(base, mine);
+    const kept = base.split('\n').filter((l) => l.trim() && theirs.includes(l + '\n') && mine.includes(l + '\n'));
+    for (const [a, b, how] of [[t, o, 'the removal first'], [o, t, 'the letter first']]) for (const wins of ['ours', 'theirs']) {
+      const text = apply(base, mergePatches(a, b, wins, base).patches);
+      for (const l of kept) assert.ok(text.includes(l + '\n'), `${how}, ${wins} wins: ${l} is not in ${JSON.stringify(text)}`);
+    }
+  }
+});
+
 test('the merge of a replica keeps the edits of two browsers in one word and in two words of one line', () => {
   const at = (p) => `<section>\n  <p>${p}</p>\n</section>\n`;
   for (const [start, theirs, ours, want] of [
