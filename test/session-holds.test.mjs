@@ -261,6 +261,65 @@ test('a drag of the move handle, the rotate handle, or a grip of a held paragrap
   clean(cy);
 });
 
+// the translate of the element of expression
+const PLACE = (expression) => `${expression}.style.translate`;
+const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
+
+test('a double click on the move handle of a held paragraph, or Enter on this handle, is refused, and on a paragraph beside it each puts the paragraph back', { timeout: 120_000 }, async (t) => {
+  const edits = [['  <p>Second slide</p>', '  <p style="translate: 40px 30px">Second slide</p>'], ['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p style="translate: 20px 10px">Third</p>']];
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  // a clock of Ben far behind keeps the hold for the whole test
+  await ben.evaluate(`${P}.skew = -1e8`);
+  const THIRD = LAST('Third');
+  // each case: the act on the paragraph of expression, whose selector picks it on the current slide
+  const cases = [
+    ['a double click on the move handle', async (selector) => {
+      await front(ben);
+      const c = await center(ben, selector);
+      await mouse(ben, 'mouseMoved', c.x, c.y);
+      await frame(ben);
+      const h = await center(ben, '.beeson-handle');
+      await mouse(ben, 'mouseMoved', h.x, h.y);
+      await click(ben, h, { count: 2 });
+    }],
+    ['Enter on the focused move handle', async (selector, expression) => {
+      await select(ben, expression);
+      await frame(ben);
+      await ben.evaluate(`document.querySelector('.beeson-handle').focus()`);
+      await press(ben, 'Enter');
+    }],
+  ];
+  for (const [what, act] of cases) {
+    for (const [expression, selector, held] of [[SECOND, 'section.present > p:first-of-type', true], [THIRD, 'section.present > p:last-of-type', false]]) {
+      await leave(ben);
+      await ben.evaluate(`${C}.app.selection.clear()`);
+      const before = await ben.evaluate(PLACE(expression));
+      await unbubble(ben);
+      await act(selector, expression);
+      await frame(ben);
+      if (held) {
+        assert.equal(await ben.evaluate(PLACE(expression)), before, `${what} leaves the held paragraph in its place`);
+        assert.equal(await ben.evaluate(BUBBLE), REFUSED, what);
+        continue;
+      }
+      assert.notEqual(await ben.evaluate(PLACE(expression)), before, `${what} puts a paragraph that is not held back`);
+      assert.equal(await ben.evaluate(BUBBLE), null, `${what} of a paragraph that is not held`);
+      await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+      assert.equal(await ben.evaluate(PLACE(expression)), before, `${what} of a paragraph that is not held is undone`);
+    }
+  }
+  assert.ok(await caretOf(ben, 'Ana', SECOND), 'the caret of Ana stays in her paragraph');
+  await caretAtEnd(ana, SECOND);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<p style="translate: 40px 30px">Second slide typed more<\/p>/);
+  clean(ana);
+  clean(ben);
+});
+
 const TABLE = `  <p>First slide</p>
   <table>
     <tr><th>A1</th><th>B1</th></tr>
