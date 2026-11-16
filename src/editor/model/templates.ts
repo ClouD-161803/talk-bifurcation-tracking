@@ -73,7 +73,9 @@ export function layoutText(layout: NewLayout, style: TextStyle, base = ''): stri
   }
 }
 
-export type ElementOptions = { src?: string; alt?: string; poster?: string; tex?: string; language?: string; qr?: string; columns?: number; rows?: number; backdrop?: string };
+// pictures are the tags of the images of a new figure box in place of the one of src, e.g. the
+// renders of a PDF figure for each mode
+export type ElementOptions = { src?: string; alt?: string; pictures?: string[]; poster?: string; tex?: string; language?: string; qr?: string; columns?: number; rows?: number; backdrop?: string };
 
 // the units of a new element of the kind, each without the white space before it, in the order in
 // which they are inserted. base is the indentation of the children of the container
@@ -83,7 +85,7 @@ export function elementText(kind: ElementKind, style: TextStyle, base: string, o
     case 'text':
       return ['<p></p>'];
     case 'image':
-      return [lines([[0, '<figure class="figure-box">'], [1, `<img src="${attr(o.src ?? 'media/image.png')}" alt="${attr(o.alt ?? '')}">`], [0, '</figure>']], style, base)];
+      return [lines([[0, '<figure class="figure-box">'], ...(o.pictures ?? [`<img src="${attr(o.src ?? 'media/image.png')}" alt="${attr(o.alt ?? '')}">`]).map((t) => [1, t] as [number, string]), [0, '</figure>']], style, base)];
     case 'video': {
       const src = o.src ?? 'media/video.mp4';
       const poster = o.poster ?? src.replace(/\.[^./]*$/, '.png');

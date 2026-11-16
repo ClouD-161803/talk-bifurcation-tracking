@@ -1,4 +1,4 @@
-// the image and video files added in the editor and not saved yet. each file is kept as a blob under
+// the image, PDF, and video files added in the editor and not saved yet. each file is kept as a blob under
 // its path in the deck, e.g. media/orbit.png, and the page shows it from an object URL until a save
 // writes it next to the deck. the text of the file names the path, and only the page has the object
 // URL. the blobs are also kept in IndexedDB under the address of the deck, so that a draft of
@@ -18,7 +18,11 @@ const deck = () => location.href.split(/[?#]/)[0];
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i;
 const VIDEO_EXT = /\.(mp4|m4v|webm|mov|ogv)$/i;
 
+export const isPdf = (file: { type: string; name: string }): boolean => file.type === 'application/pdf' || (!file.type && /\.pdf$/i.test(file.name));
+
+// a PDF is put on a slide as the images of its renders, as media/pdf.ts describes
 export function kindOf(file: { type: string; name: string }): Kind | null {
+  if (isPdf(file)) return 'image';
   if (file.type.startsWith('image/') || (!file.type && IMAGE_EXT.test(file.name))) return 'image';
   if (file.type.startsWith('video/') || (!file.type && VIDEO_EXT.test(file.name))) return 'video';
   return null;
