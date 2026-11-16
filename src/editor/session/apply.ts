@@ -83,7 +83,8 @@ function keepCaret(app: App, host: Element): ((after: boolean) => void) | null {
     if (after && inputs !== typed) return;
     inputs = typed;
     const math = mathIn(host);
-    putCaret(host, mapOffset(before.offset, before.text, textIn(host, math)), math);
+    const text = textIn(host, math);
+    putCaret(host, mapOffset(before.offset, before.text, text), math, mapOffset(before.anchor, before.text, text));
   };
 }
 
@@ -682,7 +683,8 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
     if (!host?.isConnected || !caret) return;
     if (app.caretHost() === host && !ctx.hosts.includes(host)) return;
     const m = mathIn(host);
-    putCaret(host, mapOffset(caret.offset, caret.text, textIn(host, m)), m);
+    const text = textIn(host, m);
+    putCaret(host, mapOffset(caret.offset, caret.text, text), m, mapOffset(caret.anchor, caret.text, text));
   };
   put();
   if (ctx.reordered.size) app.history.prune(() => false, () => false, (el) => ctx.reordered.has(el));

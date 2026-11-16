@@ -4,13 +4,15 @@
 
 import type { MathLookup } from '../math.ts';
 
-// the text of host up to each point, and the offset of the point (node, at) in it, or -1
-function walk(host: Element, math: MathLookup, node: Node | null, at: number): { text: string; offset: number } {
+// the text of host, and the offset in it of each point (node, at), or -1
+function walk(host: Element, math: MathLookup, points: readonly [Node, number][]): { text: string; offsets: number[] } {
   let text = '';
-  let offset = -1;
+  const offsets = points.map(() => -1);
   const visit = (n: Node): void => {
     if (n.nodeType === Node.TEXT_NODE) {
-      if (n === node) offset = text.length + at;
+      points.forEach(([node, at], i) => {
+        if (n === node) offsets[i] = text.length + at;
+      });
       text += (n as Text).data;
       return;
     }
@@ -18,28 +20,37 @@ function walk(host: Element, math: MathLookup, node: Node | null, at: number): {
     const info = n.localName === 'mjx-container' ? math(n) : null;
     if (info) {
       text += info.open + info.tex + info.close;
-      if (node && n.contains(node)) offset = text.length;
+      points.forEach(([node], i) => {
+        if (n.contains(node)) offsets[i] = text.length;
+      });
       return;
     }
-    n.childNodes.forEach((c, i) => {
-      if (n === node && i === at) offset = text.length;
+    n.childNodes.forEach((c, j) => {
+      points.forEach(([node, at], i) => {
+        if (n === node && j === at) offsets[i] = text.length;
+      });
       visit(c);
     });
-    if (n === node && at >= n.childNodes.length) offset = text.length;
+    points.forEach(([node, at], i) => {
+      if (n === node && at >= n.childNodes.length) offsets[i] = text.length;
+    });
   };
   visit(host);
-  return { text, offset };
+  return { text, offsets };
 }
 
-// the caret of the selection in host, with the text of host, or null when it is not in host
-export function caretOf(host: Element, math: MathLookup): { offset: number; text: string } | null {
+// the focus and the anchor of the selection in host, with the text of host, or null when the focus
+// is not in host. the anchor is the focus when it lies outside host
+export function caretOf(host: Element, math: MathLookup): { offset: number; anchor: number; text: string } | null {
   const sel = getSelection();
   if (!sel?.rangeCount || !sel.focusNode || !host.contains(sel.focusNode)) return null;
-  const { text, offset } = walk(host, math, sel.focusNode, sel.focusOffset);
-  return offset < 0 ? null : { offset, text };
+  const points: [Node, number][] = [[sel.focusNode, sel.focusOffset]];
+  if (sel.anchorNode && host.contains(sel.anchorNode)) points.push([sel.anchorNode, sel.anchorOffset]);
+  const { text, offsets: [offset, anchor = offset] } = walk(host, math, points);
+  return offset < 0 ? null : { offset, anchor: anchor < 0 ? offset : anchor, text };
 }
 
-export const textIn = (host: Element, math: MathLookup): string => walk(host, math, null, 0).text;
+export const textIn = (host: Element, math: MathLookup): string => walk(host, math, []).text;
 
 // the offset of the caret moved with a change of before into after: kept before the change, moved
 // by its length after it, and put at its end inside it
@@ -53,12 +64,12 @@ export function mapOffset(offset: number, before: string, after: string): number
   return after.length - tail;
 }
 
-// the caret put at offset into the text of host, after a formula that the offset falls inside
-export function putCaret(host: Element, offset: number, math: MathLookup): void {
-  const sel = getSelection();
-  if (!sel) return;
-  let left = offset;
-  let spot = null as [Node, number] | null;
+// the point at offset into the text of host, after a formula that the offset falls inside, and at
+// the end of host past its text
+export function pointIn(host: Element, offset: number, math: MathLookup): [Node, number] {
+  let left = Math.max(0, offset);
+  let spot: [Node, number] | null = null;
+  const after = (n: Node, k: number): [Node, number] => [n.parentNode!, [...n.parentNode!.childNodes].indexOf(n as ChildNode) + k];
   const visit = (n: Node): boolean => {
     if (n.nodeType === Node.TEXT_NODE) {
       const length = (n as Text).length;
@@ -74,8 +85,7 @@ export function putCaret(host: Element, offset: number, math: MathLookup): void 
     if (info) {
       const length = info.open.length + info.tex.length + info.close.length;
       if (left < length) {
-        const parent = n.parentNode!;
-        spot = [parent, [...parent.childNodes].indexOf(n as ChildNode) + 1];
+        spot = after(n, 1);
         return true;
       }
       left -= length;
@@ -85,9 +95,17 @@ export function putCaret(host: Element, offset: number, math: MathLookup): void 
     return false;
   };
   visit(host);
+  return spot ?? [host, host.childNodes.length];
+}
+
+// the caret put at focus into the text of host, with the selection from anchor when it differs
+export function putCaret(host: Element, focus: number, math: MathLookup, anchor = focus): void {
+  const sel = getSelection();
+  if (!sel) return;
   if (document.activeElement !== host && !host.contains(document.activeElement)) (host as HTMLElement).focus?.({ preventScroll: true });
-  const [node, at] = spot ?? [host, host.childNodes.length];
-  sel.collapse(node, at);
+  const [node, at] = pointIn(host, focus, math);
+  if (anchor === focus) sel.collapse(node, at);
+  else sel.setBaseAndExtent(...pointIn(host, anchor, math), node, at);
 }
 
 // the presses and keys of the person, which tell a caret moved by the person from a caret moved by
