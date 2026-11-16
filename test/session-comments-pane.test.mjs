@@ -1155,34 +1155,68 @@ const postOn = (page, slide, tag, n, text) => page.evaluate(`(async () => {
 })()`);
 
 for (const [width, height] of [[1440, 900], [390, 844]]) {
-  test(`at ${width} px, the badges of two near elements do not overlap, and the badge of a turned element is at its own upper right corner`, { timeout: 300_000 }, async (t) => {
+  test(`at ${width} px, the badges of two near elements do not overlap`, { timeout: 300_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talkWith(t, `<section>
   <h2>One</h2>
   <p style="position: absolute; left: 300px; top: 250px; width: 300px; margin: 0">Upper paragraph</p>
   <p style="position: absolute; left: 300px; top: 260px; width: 300px; margin: 0">Lower paragraph</p>
-  <p style="position: absolute; left: 1100px; top: 500px; width: 300px; height: 80px; margin: 0; rotate: 30deg">Turned paragraph</p>
 </section>
 `);
     const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
     // a phone shows the slide without the Format inspector, which takes most of its width
     if (width < 600) await a.evaluate(`window.BeesonEditor.exec('view.slideOnly')`);
     await show(a, 'One');
-    for (const n of [0, 1, 2]) await postOn(a, 0, 'p', n, `On paragraph ${n + 1}`);
-    await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 3);
-    // the boxes of the badges, in the order of the paragraphs
-    const boxes = await a.evaluate(`[...document.querySelectorAll('.beeson-comment-badge')].map((b) => b.getBoundingClientRect().toJSON()).sort((x, y) => x.top - y.top)`);
-    const [upper, lower, turned] = boxes;
-    // a point 6 px along the top edge of the turned paragraph and 4 px into it from its upper right
-    // corner, which is 4 px left of and 4 px below the lower left corner of its badge
-    const a30 = Math.PI / 6;
-    const probe = { x: turned.left - 4 - 6 * Math.cos(a30) - 4 * Math.sin(a30), y: turned.bottom + 4 - 6 * Math.sin(a30) + 4 * Math.cos(a30) };
-    const got = {
-      apart: upper.bottom <= lower.top || upper.right <= lower.left || lower.right <= upper.left,
-      corner: await a.evaluate(`document.elementsFromPoint(${probe.x}, ${probe.y}).some((e) => e.textContent === 'Turned paragraph')`),
-    };
-    assert.deepEqual(got, { apart: true, corner: true }, JSON.stringify(boxes));
+    for (const n of [0, 1]) await postOn(a, 0, 'p', n, `On paragraph ${n + 1}`);
+    await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 2);
+    const [upper, lower] = await a.evaluate(BADGE_RECTS);
+    assert.equal(meets(upper, lower), false, JSON.stringify([upper, lower]));
+    clean(a);
+  });
+}
+
+// the badges as rectangles of the window
+const BADGE_RECTS = `[...document.querySelectorAll('.beeson-comment-badge')].map((b) => b.getBoundingClientRect().toJSON())`;
+const meets = (x, y) => x.left < y.right && y.left < x.right && x.top < y.bottom && y.top < x.bottom;
+
+for (const [width, height] of [[1440, 900], [390, 844]]) {
+  test(`at ${width} px, the badge of an element turned by any angle is beside its own upper right corner and clear of its text`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const angles = [0, 90, 180, 270, 135];
+    const server = await talkWith(t, `<section>
+  <h2>One</h2>
+${angles.map((deg, k) => `  <p style="position: absolute; left: ${60 + 370 * k}px; top: 500px; margin: 0; rotate: ${deg}deg">Turned ${deg}</p>`).join('\n')}
+</section>
+`);
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
+    if (width < 600) await a.evaluate(`window.BeesonEditor.exec('view.slideOnly')`);
+    await show(a, 'One');
+    for (const k of angles.keys()) await postOn(a, 0, 'p', k, `On paragraph ${k + 1}`);
+    await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, angles.length);
+    // for each paragraph, the badge nearest to its own upper right corner, the distance of this
+    // corner to the badge, and whether the badge meets the text of the paragraph
+    const got = await a.evaluate(`(() => {
+      const s = ${C}.app.stage.scale;
+      const badges = ${BADGE_RECTS};
+      const meets = ${meets.toString()};
+      return [...Reveal.getCurrentSlide().querySelectorAll('p')].map((p) => {
+        const r = p.getBoundingClientRect();
+        const deg = parseFloat(p.style.rotate) || 0;
+        const a = (deg * Math.PI) / 180;
+        const w = (p.offsetWidth * s) / 2;
+        const h = (p.offsetHeight * s) / 2;
+        const x = (r.left + r.right) / 2 + w * Math.cos(a) + h * Math.sin(a);
+        const y = (r.top + r.bottom) / 2 + w * Math.sin(a) - h * Math.cos(a);
+        const away = (b) => Math.hypot(Math.max(b.left - x, 0, x - b.right), Math.max(b.top - y, 0, y - b.bottom));
+        const badge = badges.reduce((m, b) => (away(b) < away(m) ? b : m));
+        const range = document.createRange();
+        range.selectNodeContents(p);
+        return { deg, near: away(badge) < 12, clear: ![...range.getClientRects()].some((q) => meets(badge, q)) };
+      });
+    })()`);
+    assert.deepEqual(got, angles.map((deg) => ({ deg, near: true, clear: true })), JSON.stringify(await a.evaluate(BADGE_RECTS)));
     clean(a);
   });
 }
