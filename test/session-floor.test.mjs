@@ -312,6 +312,53 @@ test('an undo or a redo of a move of the slide of a held text element, or of a n
   clean(ben);
 });
 
+// the undo or the redo of the browser at the caret of a page in the text element of expression,
+// e.g. from the Edit menu of the browser or by a shake of an iPhone
+const browserStep = (page, expression, inputType) => page.evaluate(`${expression}.dispatchEvent(new InputEvent('beforeinput', { inputType: '${inputType}', bubbles: true, cancelable: true }))`);
+
+test('an undo or a redo of the browser that would move the element around a held text element is refused, as one of the Edit menu is', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <div class="group"><p>Second slide</p><p>Other</p></div>']] });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, '.group p');
+  const group = el(1, '.group');
+  const heading = el(1, 'h2');
+  await select(ben, group);
+  await ben.evaluate(`${C}.app.commands.run('arrange.nudge.right.far')`);
+  assert.match(await ben.evaluate(`${group}.getAttribute('style')`), /translate: 10px/);
+  await converge(server, [ana, ben]);
+  // Ana holds the paragraph, and Ben has the caret in the heading
+  const enter = async () => {
+    await front(ana);
+    await caretAtEnd(ana, p);
+    await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in to be held on the page of Ben');
+    await unbubble(ben);
+    await front(ben);
+    await caretAtEnd(ben, heading);
+  };
+  await enter();
+  await browserStep(ben, heading, 'historyUndo');
+  await ben.evaluate(`${C}.app.history.idle().then(() => true)`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the undo of the browser');
+  assert.match(await ben.evaluate(`${group}.getAttribute('style')`), /translate: 10px/, 'the undo leaves the element around the paragraph in place');
+  await front(ana);
+  await leave(ana);
+  await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  assert.doesNotMatch(await ben.evaluate(`${group}.getAttribute('style') ?? ''`), /translate/, 'the undo of the nudge is taken once Ana left');
+  await converge(server, [ana, ben]);
+  await enter();
+  await browserStep(ben, heading, 'historyRedo');
+  await ben.evaluate(`${C}.app.history.idle().then(() => true)`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the redo of the browser');
+  assert.doesNotMatch(await ben.evaluate(`${group}.getAttribute('style') ?? ''`), /translate/, 'the redo leaves the element around the paragraph in place');
+  await leave(ben);
+  await converge(server, [ana, ben]);
+  clean(ana);
+  clean(ben);
+});
+
 test('an undo or a redo of a nudge of two elements, the second around a held text element, is refused, and an undo of a delete of another element of its slide is taken', { timeout: 300_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>Box</p>\n  <div class="group"><p>Second slide</p><p>Other</p></div>\n  <p>Spare</p>']] });
   await show(ana, 'Two');
