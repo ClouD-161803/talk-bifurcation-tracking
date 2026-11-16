@@ -13,6 +13,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
 import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
+import { NET } from './helpers/net.mjs';
 import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
@@ -1062,5 +1063,30 @@ test('one Backspace behind a picked mention takes out the whole mention, also fr
   await a.waitFor(`!document.querySelector('${PANE} .draft')`);
   assert.deepEqual((await stored(a)).map((c) => [c.text, c.mentions]), [['Hi there', []]]);
   clean(a);
+  clean(b);
+});
+
+test('a thread read offline is read on another page of the person once the page is back online', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: NET });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  const person = await a.evaluate(`localStorage.getItem('beeson-session-person')`);
+  const a2 = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `localStorage.setItem('beeson-session-person', ${JSON.stringify(person)});` });
+  assert.equal(await a2.evaluate(`${C}.person`), await a.evaluate(`${C}.person`), 'the two pages are of one person');
+  const id = await post(b, 0, 'Look, @Ann');
+  await sees(a, COUNT, 'Comments, 1 unread');
+  await sees(a2, COUNT, 'Comments, 1 unread');
+  await a.evaluate(`__net.clear() && __net.rule('/.session/', 'cut') && __net.cut('/.session/') && __net.drop('/.session/')`);
+  await a.waitFor(`/^Offline/.test(${STATE})`);
+  await openPane(a);
+  await click(a, `${ARTICLE(id)} .text`);
+  await sees(a, COUNT, 'Comments');
+  await a.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
+  await a.waitFor(ONLINE);
+  await sees(a2, COUNT, 'Comments');
+  clean(a, REFUSED);
+  clean(a2);
   clean(b);
 });
