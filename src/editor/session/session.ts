@@ -408,8 +408,9 @@ export function install(app: App): Port {
     const from = handed ?? seen;
     let target = text ?? seen;
     // an edit of the person that the client has not read is kept, and wins at a conflict. the
-    // authority orders it after the text, which arrived first
-    if (text !== null && from !== seen) target = mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true).text;
+    // authority orders it after the text, which arrived first. the text was written against from,
+    // hence a change of it equal to such an edit is the same key typed by another person
+    if (text !== null && from !== seen) target = mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text;
     if (text !== null && prior !== null) prior = prior === from ? text : mergeEdits(from, fine(from, prior), fine(from, text), 'ours', true).text;
     if (text !== null) handed = text;
     // a rebase that fails has read the source again from the page, which then renders otherwise
