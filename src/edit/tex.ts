@@ -253,6 +253,10 @@ export class TexWriter {
       this.onChange();
     } catch (e) {
       await unlink(tmp).catch(() => {});
+      // the derivation is taken, hence it is tried again at the retry, and a new change at once
+      this.keys = keysOf(html);
+      this.watched = derived.files;
+      this.sourcesSeen = null;
       this.failures++;
       this.retryAt = performance.now() + Math.min(5000, this.retry * 2 ** (this.failures - 1));
       // the message names the temporary file, which differs at each try

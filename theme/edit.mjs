@@ -2920,6 +2920,9 @@ ${sig}`).join("\n");
     } catch (e) {
       await unlink3(tmp).catch(() => {
       });
+      this.keys = keysOf(html);
+      this.watched = derived.files;
+      this.sourcesSeen = null;
       this.failures++;
       this.retryAt = performance.now() + Math.min(5e3, this.retry * 2 ** (this.failures - 1));
       const reason = e.code ?? e.message;
