@@ -17,7 +17,7 @@ import { presenceOf } from './presence.ts';
 import { mountToasts, toast, type ToastButton, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 
-const OFFLINE = 'Comments are sent once you are back online';
+const OFFLINE = 'Comments can be sent once you are back online';
 
 // the hit area of every control is 32 px or more, also on a phone
 const CSS = `
