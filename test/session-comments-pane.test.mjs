@@ -426,7 +426,11 @@ test('offline, Resolve, Reopen, Edit, Delete, and the send buttons are disabled,
   await comment(a, 'Before the stop');
   const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
   const one = await post(a, 1, 'Resolved before the stop');
+  // the page hears of the thread and of its resolve before the stop, since the edit command writes
+  // comments.json before it answers
+  await sees(a, `!!document.querySelector('${ARTICLE(one)}')`, true);
   await act(a, one, 'resolve');
+  await sees(a, `!!document.querySelector('${ARTICLE(one)}')`, false);
   await click(a, `${ARTICLE(id)} .reply textarea`);
   await type(a, 'Typed before the stop');
   await until(() => readFileSync(join(server.talk, '.session', 'comments.json'), 'utf8').includes('"resolved"'), 'the edit command to write the comments');
