@@ -312,7 +312,7 @@ for (const [what, slide, change, typed] of [
 // all the same
 for (const [what, change] of [
   ['answers a reload', (text) => text.replace('<p>Second slide', '<p>Second <b>slide')],
-  ['is rejected', (text) => text.replace('slidenih</p>', 'slidenih<div>q</div></p>')],
+  ['is rejected', (text) => text.replace('<p>Second slide</p>', '<p>Second slide<div>q</div></p>')],
 ]) {
   test(`a word committed at the end of a composition whose held-back change ${what} reaches index.html after both pages load again`, { timeout: 240_000 }, async (t) => {
     const browser = await launch({ offline: false });
@@ -345,8 +345,9 @@ for (const [what, change] of [
     await b.send('Input.insertText', { text: '你好' });
     await reloaded(pages, counts);
     const text = await converge(server, pages, 'the pages and index.html to agree', 30_000);
-    // the change from outside is kept as well
-    assert.equal(text.match(/<p>Second[^\n]*/)[0], marker.replace('</p>', '你好</p>'));
+    // the change from outside and the committed word are each kept once
+    const line = text.match(/<p>Second[^\n]*/)[0];
+    assert.deepEqual([line.split('你好').length, line.replace('你好', '')], [2, marker], line);
   });
 }
 
