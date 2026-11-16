@@ -174,6 +174,14 @@ The click of the talk at which an element appears, is dimmed, or is hidden, writ
 
 Avoid "fragment" outside the markup, and avoid "click" and "build". Avoid "card" for a step in the Steps pane of the editor.
 
+## Strip
+
+The surface swept along the orbit of a strip bundle by a segment through each point of the orbit, along a unit direction given at the point, e.g. an eigendirection of the monodromy matrix. A rib is one of these segments, drawn as a line at a point named in the key `ribs` of the strip.
+
+## Strip bundle
+
+A closed orbit drawn in 3D with the strips along it, from the JSON script named in `data-bundle` on a `surface`, with a compass toward far points. The strips shown at a step are named in `data-surface-state`, as the state of a surface.
+
 ## Surface point
 
 A named point on a surface, which is shown, dimmed, or filled in a tone at a step.
