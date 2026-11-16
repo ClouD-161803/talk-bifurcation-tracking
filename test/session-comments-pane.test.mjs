@@ -17,7 +17,7 @@ import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
-const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Alt+Shift+C';
+const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments are sent once you are back online';
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];

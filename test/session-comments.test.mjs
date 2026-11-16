@@ -18,7 +18,7 @@ import { until } from './helpers/session.mjs';
 // the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const slideEl = (slide) => `document.querySelectorAll('.reveal .slides > section')[${slide}]`;
-const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Alt+Shift+C';
+const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments are sent once you are back online';
 

@@ -17,7 +17,7 @@ import { goOffline, goOnline, tab } from './helpers/offline.mjs';
 import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
-const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Alt+Shift+C';
+const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const PANE = '.beeson-edit-inspector .panel.comments';
 // the message of a send whose answer did not arrive, which is not sent again without a press
 const LOST = 'Not sent. The connection to the host was lost.';
