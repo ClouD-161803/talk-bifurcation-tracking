@@ -5,7 +5,7 @@
 // every text of a person is written as text, and never as HTML
 
 import { COMMENT_MAX, type Comment } from '../protocol.ts';
-import type { Client } from './client.ts';
+import type { Client, Connection } from './client.ts';
 import { Badges } from './comments-badges.ts';
 import { Comments, MENTION, itemsOf, stamp, type Item, type Place, type Spot } from './comments.ts';
 import { bdi, make, style } from './dom.ts';
@@ -18,6 +18,9 @@ import { mountToasts, toast, type ToastButton, type ToastKind } from './toast.ts
 import { Failure } from './transport.ts';
 
 const OFFLINE = 'Comments can be sent once you are back online';
+const ENDED = 'The session has ended';
+// the tooltip of a control that sends, which is disabled unless the page is online
+const unsent = (c: Connection) => (c === 'online' ? '' : c === 'ended' ? ENDED : OFFLINE);
 
 // the hit area of every control is 32 px or more, also on a phone
 const CSS = `
@@ -375,7 +378,7 @@ class Pane {
     // the offsets of the anchors move with each letter typed before them, and the label stands for
     // the place in the sign
     const { anchor: _a, slide: _s, ...shown } = t;
-    const sign = JSON.stringify([shown, !!t.anchor, names, known, this.label(t, p), this.client.connection === 'online', answering]);
+    const sign = JSON.stringify([shown, !!t.anchor, names, known, this.label(t, p), unsent(this.client.connection), answering]);
     if (this.signs.get(t.id) === sign && !force) return node;
     // a thread in edit is drawn again once the edit ends
     if (this.editing?.id === t.id && !force) return node;
@@ -413,7 +416,7 @@ class Pane {
     // offline, an action is not sent later, hence its button is disabled
     const offline = (b: HTMLButtonElement) => {
       b.disabled = !online;
-      if (!online) b.title = OFFLINE;
+      if (!online) b.title = unsent(this.client.connection);
       return b;
     };
     if (root) {
@@ -585,7 +588,7 @@ class Pane {
       const extra = Array.from(sent()).length - COMMENT_MAX;
       const disabled = busy || !online || !area.value.trim() || extra > 0;
       if (go.disabled !== disabled) go.disabled = disabled;
-      if (go.title !== (online ? '' : OFFLINE)) go.title = online ? '' : OFFLINE;
+      if (go.title !== unsent(this.client.connection)) go.title = unsent(this.client.connection);
       if (extra > 0) {
         over = true;
         error.textContent = `The text is ${extra} ${extra === 1 ? 'character' : 'characters'} too long.`;
@@ -1104,7 +1107,7 @@ export function install(client: Client): void {
     toolbar: { group: 'insert', order: 30, icon: 'comment', label: 'Comment' },
     context: ['element', 'text', 'canvas', 'slide'],
     enabled: live,
-    why: () => (live() ? null : 'The session has ended'),
+    why: () => (live() ? null : ENDED),
     // a context menu names its element or slide, which may be one that another person holds and
     // that the selection drops
     run: (_app, arg) => {
