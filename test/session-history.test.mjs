@@ -1399,3 +1399,39 @@ test('Show changes tints the characters that each person added to a changed text
   clean(ann);
   clean(ben);
 });
+
+const OVERWRITTEN = 'A change of index.html from outside replaced text that was edited in this session. The text of the session is kept in Version History.';
+
+test('a change of index.html from outside over a text that Ann typed is told on every page in a toast, whose Show opens Version History at the version with this text', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  // a program reads index.html before Ann types
+  const read = server.read();
+  await show(ann, 'One');
+  // the caret inside the word, which the program changes as a whole
+  await ann.evaluate(`(() => { const h = ${el(0, 'h2')}; h.focus(); const r = document.createRange(); r.setStart(h.firstChild, 1); getSelection().removeAllRanges(); getSelection().addRange(r); return document.activeElement === h; })()`);
+  await typeKeys(ann, ' by Ann ');
+  await converge(server, [ann, ben]);
+  assert.ok(server.read().includes('<h2>O by Ann ne</h2>'));
+  for (const page of [ann, ben]) await recordToasts(page);
+  writeFileSync(server.file, read.replace('<h2>Two</h2>', '<h2>Two by an agent</h2>'));
+  await ann.waitFor(`${TEXT}.includes('Two by an agent')`, 20_000);
+  writeFileSync(server.file, read.replace('<h2>One</h2>', '<h2>Uno</h2>'));
+  await converge(server, [ann, ben]);
+  assert.ok(server.read().includes('<h2>Uno</h2>'));
+  await ben.waitFor(`document.querySelector('.beeson-session-toast span')?.textContent === ${JSON.stringify(OVERWRITTEN)}`, 20_000);
+  await press$(ben, '.beeson-session-toast', 'Show');
+  await ben.waitFor(SHOWN);
+  await ben.waitFor(`${LIST}.length > 1`);
+  // the version of Ann is closed at the change from outside, and the change is in the open version
+  const [version] = await versionsOf(ben);
+  assert.deepEqual(version.authors, [await ann.evaluate(`${C}.person`)]);
+  assert.ok((await (await fetch(`${server.edit.url}index.html?version=${version.id}`)).text()).includes('<h2>O by Ann ne</h2>'));
+  for (const page of [ann, ben]) assert.deepEqual(await page.evaluate('window.__toasts'), [`${OVERWRITTEN}|status`]);
+  clean(ann);
+  clean(ben);
+});
