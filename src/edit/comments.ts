@@ -71,7 +71,8 @@ function cleanText(raw: unknown): string | Failure {
 
 function cleanMentions(raw: unknown): string[] | Failure {
   if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw) || raw.length > MENTIONS_MAX || !raw.every(isPersonId)) return fail(400, 'mentions must be person ids');
+  if (Array.isArray(raw) && raw.length > MENTIONS_MAX) return fail(413, `the comment has more than ${MENTIONS_MAX} mentions`);
+  if (!Array.isArray(raw) || !raw.every(isPersonId)) return fail(400, 'mentions must be person ids');
   return [...new Set(raw as string[])];
 }
 

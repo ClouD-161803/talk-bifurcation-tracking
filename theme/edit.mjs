@@ -2392,7 +2392,8 @@ function cleanText(raw) {
 }
 function cleanMentions(raw) {
   if (raw === void 0 || raw === null) return [];
-  if (!Array.isArray(raw) || raw.length > MENTIONS_MAX || !raw.every(isPersonId)) return fail(400, "mentions must be person ids");
+  if (Array.isArray(raw) && raw.length > MENTIONS_MAX) return fail(413, `the comment has more than ${MENTIONS_MAX} mentions`);
+  if (!Array.isArray(raw) || !raw.every(isPersonId)) return fail(400, "mentions must be person ids");
   return [...new Set(raw)];
 }
 var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && a.tag.length > 0;
