@@ -632,6 +632,27 @@ test('a thread on an element of any tag name is read again at a start, and a thr
     again.comments.stopSync();
     assert.deepEqual(readJson(file).comments.map((c) => c.text), ['kept', 'new']);
   });
+
+  await t.test('a thread of a removed element whose slide is malformed', () => {
+    const dir = sessionDir(t);
+    const first = open(dir, DECK);
+    first.comments.add(ANN, onDeck(first.authority, 'kept'));
+    first.comments.stopSync();
+    const file = join(dir, 'comments.json');
+    const saved = readJson(file);
+    const [good] = saved.comments;
+    const slide = '<section>\n  <p>Gone</p>\n</section>';
+    const check = { tag: '<section>', sum: checksum(slide) };
+    const slides = { string: slide, check, number: 7, null: null, 'check without a tag': { ...check, tag: '' }, 'check with a malformed sum': { ...check, sum: 'zz' } };
+    for (const [name, value] of Object.entries(slides)) saved.comments.push({ ...good, id: name.replaceAll(' ', '-'), text: name, removed: { text: '<p>Gone</p>', slide: value } });
+    writeFileSync(file, JSON.stringify(saved));
+    const again = open(dir, DECK);
+    assert.deepEqual(
+      again.comments.list(ANN).comments.map((c) => [c.text, c.removed?.slide]),
+      [['kept', undefined], ['string', slide], ['check', check]],
+    );
+    assert.equal(again.logged.length, 1, again.logged.join('\n'));
+  });
 });
 
 test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
