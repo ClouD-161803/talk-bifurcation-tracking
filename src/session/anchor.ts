@@ -456,12 +456,15 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
       ? findInserted(after, whole, inserted, 0)
       : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
 
-  // true when a patch took x from before, as a move does: a place of a kept text lies in the patch,
-  // and so does the start tag of one of a check
-  const took = (x: Kept): boolean =>
+  // true when a patch took x, found at at of after, from before, as a move does: a place of a kept
+  // text lies in the patch, and so does the start tag of one of a check. the text at at is looked for
+  // rather than the check, since a comparison stops at the first character that differs, where a
+  // checksum reads all
+  const took = (x: Kept, at: number): boolean =>
     once(typeof x === 'string' ? x : x.sum, () => {
       const len = lengthOf(x);
-      return patches.some((p) => p.end - p.start >= len && findInserted(before, x, [p], p.start, { start: p.start, end: p.end + len - (typeof x === 'string' ? x : x.tag).length }) >= 0);
+      const text = after.slice(at, at + len);
+      return patches.some((p) => p.end - p.start >= len && findInserted(before, text, [p], p.start, { start: p.start, end: p.end + len - (typeof x === 'string' ? x : x.tag).length }) >= 0);
     });
   // the place of x in within. a kept text is short, and looked for again. the key of a check is built
   // only for a slide that the patches inserted into, and near follows from the slide of a removed
@@ -483,7 +486,7 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
       // a thread of the deck is of a removed slide, whose whole text has to be inserted again
       const whole = it.removed?.slide ?? (/^<section[\s/>]/i.test(typeof text === 'string' ? text : text.tag) ? text : null);
       const s = whole ? slideOf(whole) : -1;
-      if (s < 0 || took(whole!)) return null;
+      if (s < 0 || took(whole!, s)) return null;
       within = { start: s, end: s + lengthOf(whole!) };
       // an element that had fallen back to the slide before its removal falls back to it again
       if (typeof whole === 'string' && typeof text === 'string' ? !whole.includes(text) : find(text, s, within) < 0) {
@@ -493,7 +496,7 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     }
     const o = find(text, it.anchor ? shiftOffset(it.anchor.start, patches) : within.start, within);
     const t = o >= 0 ? startTagAt(after, o) : null;
-    if (!t || took(text)) return null;
+    if (!t || took(text, o)) return null;
     const slide = slideAt(s1, o);
     return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
   };

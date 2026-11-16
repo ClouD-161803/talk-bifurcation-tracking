@@ -2010,9 +2010,10 @@ function slow(before2, patches, after, items, given) {
     return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
   };
   const slideOf = (whole) => typeof whole === "string" ? findInserted(after, whole, inserted, 0) : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
-  const took = (x) => once(typeof x === "string" ? x : x.sum, () => {
+  const took = (x, at) => once(typeof x === "string" ? x : x.sum, () => {
     const len = lengthOf(x);
-    return patches.some((p) => p.end - p.start >= len && findInserted(before2, x, [p], p.start, { start: p.start, end: p.end + len - (typeof x === "string" ? x : x.tag).length }) >= 0);
+    const text = after.slice(at, at + len);
+    return patches.some((p) => p.end - p.start >= len && findInserted(before2, text, [p], p.start, { start: p.start, end: p.end + len - (typeof x === "string" ? x : x.tag).length }) >= 0);
   });
   const find = (x, near, within) => {
     const look = () => findInserted(after, x, inserted, near, within);
@@ -2027,7 +2028,7 @@ function slow(before2, patches, after, items, given) {
     } else {
       const whole = it.removed?.slide ?? (/^<section[\s/>]/i.test(typeof text === "string" ? text : text.tag) ? text : null);
       const s = whole ? slideOf(whole) : -1;
-      if (s < 0 || took(whole)) return null;
+      if (s < 0 || took(whole, s)) return null;
       within = { start: s, end: s + lengthOf(whole) };
       if (typeof whole === "string" && typeof text === "string" ? !whole.includes(text) : find(text, s, within) < 0) {
         const slide2 = slideAt(s1, s);
@@ -2036,7 +2037,7 @@ function slow(before2, patches, after, items, given) {
     }
     const o = find(text, it.anchor ? shiftOffset(it.anchor.start, patches) : within.start, within);
     const t = o >= 0 ? startTagAt(after, o) : null;
-    if (!t || took(text)) return null;
+    if (!t || took(text, o)) return null;
     const slide = slideAt(s1, o);
     return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
   };
