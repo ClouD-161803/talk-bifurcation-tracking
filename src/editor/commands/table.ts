@@ -884,6 +884,9 @@ function writtenHeights(app: App, t: Target): Element[] {
 // end as they are needed. with asRange set, the cells written are then selected as a range, and
 // with markup set, each cell of rows is HTML rather than text
 async function pasteCells(app: App, cell: HTMLTableCellElement, rows: string[][], asRange = false, markup = false): Promise<void> {
+  // a paste of cells that a refusal refuses, e.g. while another person types in a cell of the
+  // table, writes nothing. it is asked here for the key and for the menu alike
+  if (app.commands.refused('edit.paste', { cell })) return;
   const start = placeOf(cell)!;
   const table = cell.closest('table') as HTMLTableElement;
   while (table.rows.length < start.row + rows.length) await addRow(app, { table, cell: null, box: null }, true);

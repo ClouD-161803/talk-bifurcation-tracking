@@ -122,10 +122,13 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
     }
     return null;
   }
-  // a command of a table and a paste into a cell may change any cell of the table
+  // a command of a table and a paste of cells may change any cell of the table. the code of the
+  // table asks a paste of cells with the cell where it starts, and a paste of tab-separated text
+  // fills cells as well. a paste of plain text goes into the cell of the caret alone
   const cell = (arg as { cell?: unknown } | null | undefined)?.cell;
   const table = (cell instanceof Element ? cell : sel.kind === 'text' ? sel.items[0] : null)?.closest('table');
-  if (table && ((c.undoable && c.id.startsWith('table.')) || c.id.startsWith('edit.paste'))) return presence.holderOf(table);
+  const cells = c.id === 'edit.paste' && (cell instanceof Element || (typeof arg === 'string' && arg.includes('\t')));
+  if (table && ((c.undoable && c.id.startsWith('table.')) || cells)) return presence.holderOf(table);
   // a text selection over several text elements is replaced by its commands and by typing
   if (sel.kind === 'text' && OF_SPAN.has(c.id)) {
     for (const el of spanned()) {
