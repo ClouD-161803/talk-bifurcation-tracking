@@ -318,6 +318,8 @@ test('a picture over 16 MB is refused on the host as well, a video of the host u
 const PDF = resolve('test/pages/figure.pdf');
 // figure.pdf as a file made in the page, for a command that takes its files as an argument
 const PDF_FILE = `new File([Uint8Array.from(atob(${JSON.stringify(readFileSync(PDF).toString('base64'))}), (c) => c.charCodeAt(0))], 'figure.pdf', { type: 'application/pdf' })`;
+// the first bytes of a PNG
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const NO_PDF = 'figure.pdf cannot be sent to the others, since a session does not take .pdf files. Add a PDF figure in the editor without a session.';
 // the middle of the image of selector that is drawn
 const middle = (page, selector) =>
@@ -343,6 +345,57 @@ test('a PDF that is dropped, or chosen with Replace…, is refused in a session 
   assert.equal(await converge(server, [ann]), before);
   assert.deepEqual(media(server), ['plot.png']);
   clean(ann);
+});
+
+test('the page and Match the Mode of a PDF figure of the deck are changed in a session, and the other page shows the new renders from media/', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  leftover(server, 'figure.pdf', readFileSync(PDF));
+  leftover(server, 'figure-dark.png', DARK);
+  leftover(server, 'figure-light.png', LIGHT);
+  writeOutside(server, '<img class="for-dark" src="media/figure-dark.png" data-pdf="media/figure.pdf" alt="A plot">\n  <img class="for-light" src="media/figure-light.png" data-pdf="media/figure.pdf" alt="A plot">');
+  const ann = await tab(browser, sessionUrl(server.edit));
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await show(ann, 'Two');
+  await show(ben, 'Two');
+  await front(ann);
+  await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
+  assert.equal(await ann.evaluate(`${C}.app.commands.enabled('media.pdfPage')`), true);
+  assert.equal(await run(ann, 'media.pdfPage', '{ page: 2 }'), 'taken');
+  await until(() => server.read().includes('data-page="2"'), 'page 2 in index.html', 30_000);
+  const text = await converge(server, [ann, ben]);
+  const renders = sources(text)[1];
+  assert.equal(renders.length, 2, text);
+  // while Ben is in the session, a new file is named uniquely to the page of Ann
+  for (const [i, mode] of ['dark', 'light'].entries()) {
+    assert.match(renders[i], new RegExp(`^media/figure-page-2-${mode}(-[0-9a-z]{4})?\\.png$`));
+    assert.ok(disk(server, renders[i]).subarray(0, 8).equals(PNG), `${renders[i]} is a PNG`);
+  }
+  for (const written of ['data-pdf="media/figure.pdf"', 'data-page="2"']) assert.equal(text.split(written).length - 1, 2, text);
+  // the deck is shown in the dark mode
+  await ben.waitFor(SHOWN(renders[0]), 15_000);
+  assert.doesNotMatch(await ben.evaluate(`document.querySelector('.reveal .slides img.for-dark').src`), /^blob:/);
+
+  // without Match the Mode, the figure is one render in the colors of the PDF. the page of Ann is
+  // brought to the front, since a page behind another does not draw
+  await front(ann);
+  assert.equal(await run(ann, 'media.matchMode', 'undefined'), 'taken');
+  await until(() => sources(server.read())[1].length === 1, 'one render in index.html', 30_000);
+  const [own] = sources(await converge(server, [ann, ben]))[1];
+  assert.match(own, /^media\/figure-page-2(-[0-9a-z]{4})?\.png$/);
+  assert.ok(disk(server, own).subarray(0, 4).equals(PNG.subarray(0, 4)), `${own} is a PNG`);
+  await ben.waitFor(SHOWN(own), 15_000);
+  // and with it again, a pair
+  await front(ann);
+  assert.equal(await run(ann, 'media.matchMode', 'undefined'), 'taken');
+  await until(() => sources(server.read())[1].length === 2, 'a pair of renders in index.html', 30_000);
+  const pair = sources(await converge(server, [ann, ben]))[1];
+  assert.match(pair.join(' '), /^media\/figure-page-2-(dark|light)[^ ]*\.png media\/figure-page-2-(dark|light)[^ ]*\.png$/);
+  await ben.waitFor(`document.querySelectorAll('.reveal .slides img[data-pdf="media/figure.pdf"][data-page="2"]').length === 2`);
+  clean(ann);
+  clean(ben);
 });
 
 test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px, and once in the title of a screen of 1440 px', { timeout: 360_000 }, async (t) => {
