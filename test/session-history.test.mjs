@@ -1400,6 +1400,65 @@ test('Show changes tints the characters that each person added to a changed text
   clean(ben);
 });
 
+// the tints and the outlines of the preview of a version per case, each of which replaces the case
+// slide of the one before. a case is a slide with the words that its marks cover, by their
+// occurrence after the heading. each tinted range is written with its text, its element, and its
+// place among the children of this name, and each outlined element in the same form
+async function tintsOf(t, cases) {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const at = TALK.indexOf('\n</div>\n</div>');
+  const t0 = Date.now() - (cases.length + 5) * MIN;
+  const lines = [JSON.stringify({ kind: 'base', time: t0 - MIN, text: TALK })];
+  let last = '';
+  cases.forEach((c, i) => {
+    const slide = `\n<section>\n  <h2>Case ${c.name}</h2>\n  ${c.html}\n</section>\n`;
+    const marks = c.marks.map(([word, nth]) => {
+      let k = slide.indexOf('</h2>');
+      for (let n = 0; n <= nth; n++) k = slide.indexOf(word, k + 1);
+      return { start: at + k, end: at + k + word.length, author: 'pa' };
+    });
+    lines.push(JSON.stringify({ kind: 'version', id: `c${i}`, time: t0 + i * MIN, authors: ['pa'], slides: [3], patches: [{ start: at, end: at + last.length, text: slide }], marks }));
+    lines.push(JSON.stringify({ kind: 'name', id: `c${i}`, name: `Case ${c.name}` }));
+    last = slide;
+  });
+  const server = await crafted(t, { jsonl: `${lines.join('\n')}\n`, text: TALK.slice(0, at) + last + TALK.slice(at) }, HELD);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await openPane(ann);
+  const doc = `${FRAME}.contentDocument`;
+  const placed = (e) => `${e.localName}[${[...e.parentElement.children].filter((c) => c.localName === e.localName).indexOf(e)}]`;
+  const SEEN = `(() => {
+    const d = ${doc};
+    const placed = ${placed};
+    const tints = [...d.defaultView.CSS.highlights.values()].flatMap((h) => [...h].map((r) => r.toString() + ' in ' + placed(r.startContainer.parentElement)));
+    return { tints, outlined: [...d.querySelectorAll('[data-beeson-changed]')].map(placed) };
+  })()`;
+  const seen = {};
+  for (const c of cases) {
+    await ann.evaluate(`window.__shownDoc = ${FRAME}?.contentDocument`);
+    await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Case ${c.name}')`);
+    // the tints are set in the same task as the outlines
+    await ann.waitFor(`${doc} !== window.__shownDoc && !!${doc}?.querySelector('[data-beeson-changed]')`, 20_000);
+    seen[c.name] = await ann.evaluate(SEEN);
+  }
+  clean(ann);
+  return seen;
+}
+
+// the waits are 60 s for the edit command to start, 15 s for each of the open page and the pane,
+// and 35 s per case
+test('Show changes tints a paragraph only where the page holds as many paragraphs in its slide as the text does', { timeout: 360_000 }, async (t) => {
+  const seen = await tintsOf(t, [
+    { name: 'p-closed', html: '<p>Same<ul><li>x</li></ul></p>\n  <p>Same</p>\n  <p>Same</p>', marks: [['Same', 2]] },
+    { name: 'p-same', html: '<p>Same</p>\n  <p>Same</p>', marks: [['Same', 1]] },
+  ]);
+  assert.deepEqual(seen, {
+    // the parser closes the first p at the ul and adds an empty p, hence the nth p is another one
+    'p-closed': { tints: [], outlined: ['p[2]'] },
+    'p-same': { tints: ['Same in p[1]'], outlined: ['p[1]'] },
+  });
+});
+
 const OVERWRITTEN = 'A change of index.html from outside replaced text that was edited in this session. The text of the session is kept in Version History.';
 
 test('a change of index.html from outside over a text that Ann typed is told on every page in a toast, whose Show opens Version History at the version with this text', { timeout: 300_000 }, async (t) => {
