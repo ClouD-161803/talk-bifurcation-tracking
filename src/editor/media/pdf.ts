@@ -93,8 +93,9 @@ export async function pdfBytes(path: string): Promise<Uint8Array | null> {
   const url = new URL(path, location.href).href;
   if (location.protocol !== 'file:') {
     const response = await fetch(url);
-    // a guest of a session is answered 413 for a file over the 16 MB of the relay
-    if (response.status === 413) throw new Error(`${path} cannot be read on this page, since it is larger than 16 MB, the limit of the relay of the session`);
+    // a guest of a session is answered 413 for a file over the 16 MB of the relay. refuse is set
+    // only in a session
+    if (response.status === 413 && media.refuse) throw new Error(`${path} cannot be read on this page, since it is larger than 16 MB, the limit of the relay of the session`);
     if (!response.ok) throw new Error(`${path} is not found next to the deck`);
     return new Uint8Array(await response.arrayBuffer());
   }
