@@ -57,7 +57,8 @@ test('a guest is told that the host is not running, and the end of the session b
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const relayed = ['--relay', relay.url];
-  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET } });
+  // a poll without news is answered after 1 s, before the relay of this test gives up after 5 s
+  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000' } });
   const { port, key } = server.edit;
   const guestUrl = `${relay.url}/${key}/index.html?edit&session`;
   await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
