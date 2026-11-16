@@ -2,6 +2,7 @@
 // are called by the tests, with a stable time of 0 ms, hence a change is taken at the second poll
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -161,8 +162,9 @@ test('a write of tex.js that fails is logged and reported once, and is tried aga
     w.poll();
     await w.idle();
   }
-  assert.equal(seen.log.length, 1, seen.log.join('\n'));
-  assert.match(seen.log[0], /^could not write .*tex\.js: /);
+  const failed = () => seen.log.filter((line) => line.startsWith('could not write'));
+  assert.equal(failed().length, 1, seen.log.join('\n'));
+  assert.match(failed()[0], /^could not write .*tex\.js: /);
   assert.equal(seen.changes, changes);
   rmSync(join(f.dir, 'tex.js'), { recursive: true });
   await twoPolls(w);
@@ -171,7 +173,7 @@ test('a write of tex.js that fails is logged and reported once, and is tried aga
   assert.match(seen.errors[0], /tex\.js/);
   assert.equal(seen.errors[1], null);
   assert.equal(seen.changes, changes + 1);
-  assert.equal(seen.log.length, 1);
+  assert.equal(failed().length, 1);
 });
 
 test('a write of index.html while preamble.tex is being saved does not write tex.js without its macros, and tex.js is written once preamble.tex is stable', async (t) => {
@@ -190,4 +192,27 @@ test('a write of index.html while preamble.tex is being saved does not write tex
   assert.equal(f.read('tex.js'), deckTex(join(f.dir, 'index.html')).text);
   assert.ok(f.read('tex.js').includes('"szebehely1967"'));
   assert.equal(seen.changes, 1);
+});
+
+test('the skipped lines of the sources and the cited keys without an entry are logged as npm run tex prints them, and only when they differ from those logged last', async (t) => {
+  const html = DECK.replace('low-energy transfer</p>', 'low-energy transfer<cite data-key="nobody2020"></cite></p>');
+  const change = (f) => {
+    f.write('preamble.tex', `${f.read('preamble.tex')}\\newcommand{\\Z}{\\mathbb{Z}\n`);
+    f.write('references.bib', `${f.read('references.bib')}\n@article{broken, title = {unclosed\n`);
+    f.write('index.html', html);
+  };
+  const npm = folder(t);
+  change(npm);
+  const printed = execFileSync(process.execPath, ['scripts/tex.mjs', join(npm.dir, 'index.html')], { encoding: 'utf8' }).split('\n').slice(1).filter((line) => /^(preamble\.tex|references\.bib|index\.html):/.test(line));
+  assert.equal(printed.length, 4, printed.join('\n'));
+  const f = folder(t);
+  const { w, seen } = writer(f);
+  change(f);
+  w.written(html);
+  await twoPolls(w);
+  assert.deepEqual(seen.log, printed);
+  f.write('defs.tex', `${f.read('defs.tex')}\\newcommand{\\R}{\\mathbb{R}}\n`);
+  await twoPolls(w);
+  assert.ok(f.read('tex.js').includes('"R"'));
+  assert.deepEqual(seen.log, printed);
 });
