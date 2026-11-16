@@ -625,3 +625,42 @@ test('a composition in a text element whose content is twice in its slide after 
   const { end } = await busy(t, { edit: `${h2}.textContent = 'SecondKJ slide SecondK slide'; await ${REMOVE_LIST}` });
   assert.deepEqual([title(end), para(end), slideOf(end, 1).includes('<ul>')], ['<h2>SecondKJ slide SecondK slide</h2>', '<p>Second你好 slide</p>', false]);
 });
+
+const heading = (text) => text.match(/<h2>[^\n]*<\/h2>/g)[0];
+
+// the transaction writes OneX into the heading of slide One, waits until the test ends it, and
+// writes OneXY. the page of Ben records each text of this heading
+test('a composition that starts during a transaction that changed the deck in part does not hand the half transaction to the others', { timeout: 240_000 }, async (t) => {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  assert.ok(await ben.evaluate(`(() => {
+    const h = ${el(0, 'h2')};
+    window.__seen = [];
+    new MutationObserver(() => window.__seen.push(h.textContent)).observe(h, { subtree: true, childList: true, characterData: true });
+    return true;
+  })()`));
+  assert.ok(await caretAt(ana, 6));
+  await ana.evaluate(`(() => {
+    const h = ${el(0, 'h2')};
+    const step = (text) => {
+      const was = h.textContent;
+      h.textContent = text;
+      ${C}.app.history.push({ label: 'set', undo: () => void (h.textContent = was), redo: () => void (h.textContent = text) });
+    };
+    ${C}.app.history.transact('Wait', async () => {
+      step('OneX');
+      await new Promise((end) => (window.__end = end));
+      step('OneXY');
+    });
+    return true;
+  })()`);
+  await ana.send('Input.imeSetComposition', { text: 'K', selectionStart: 1, selectionEnd: 1 });
+  await ana.evaluate(RELEASE);
+  await ana.send('Input.imeSetComposition', { text: 'KJ', selectionStart: 2, selectionEnd: 2 });
+  await until(async () => (await ana.evaluate(`${C}.acked()`)) && (await ana.evaluate(TEXT)) === server.read(), 'the text that Ana reads during the composition in index.html');
+  await ana.send('Input.insertText', { text: '你好' });
+  assert.equal(heading(await converge(server, pages)), '<h2>OneXY</h2>');
+  const seen = await ben.evaluate('window.__seen');
+  assert.deepEqual([seen.includes('OneX'), seen.includes('OneXY')], [false, true], 'the page of Ben shows OneXY and never the half transaction');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
