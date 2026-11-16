@@ -487,7 +487,7 @@ class Pane {
   // a field of a comment, with the list of people at an @, Cancel, and a button that sends it. a
   // name picked from the list is a mention, kept as a mark on its @name until a change of the text
   // touches it or a letter follows it, and a name typed by hand is text
-  private field(placeholder: string, sendLabel: string, send: (text: string, mentions: string[]) => Promise<void>, cancel: () => void, initial: Kept = { text: '', marks: [] }): Field {
+  private field(placeholder: string, sendLabel: string, send: (text: string, mentions: string[]) => Promise<void>, cancel: () => void, initial: Kept = { text: '', marks: [] }, escape = cancel): Field {
     const box = make('div', 'field');
     const area = make('textarea');
     area.placeholder = placeholder;
@@ -702,7 +702,7 @@ class Pane {
       } else if (ev.key === 'Escape') {
         ev.preventDefault();
         ev.stopPropagation();
-        cancel();
+        escape();
       }
       ev.stopPropagation();
     });
@@ -729,6 +729,11 @@ class Pane {
     if (!this.draft) {
       const box = make('div', 'draft');
       const label = make('p', 'anchor');
+      const discard = () => {
+        this.draft = null;
+        this.keep();
+        this.render();
+      };
       const field = this.field('Comment, or type @ to mention someone', 'Comment', async (text, mentions) => {
         const d = this.draft!;
         const thread = await this.comments.add(d.el, d.slide, text, mentions);
@@ -737,10 +742,10 @@ class Pane {
         this.focused = thread.id;
         this.render();
         this.nodes.get(thread.id)?.focus();
-      }, () => {
-        this.draft = null;
-        this.keep();
-        this.render();
+      }, discard, undefined, () => {
+        // Esc keeps a draft with text, as it keeps a reply, and Cancel discards it
+        if (field.area.value.trim()) field.area.blur();
+        else discard();
       });
       box.append(label, field.box);
       this.draft = { el, slide, box, label, field };
