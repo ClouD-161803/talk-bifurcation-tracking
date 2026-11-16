@@ -628,9 +628,9 @@ test('a draft stays on its element when its page leaves with an edit before it t
   await a.waitFor(`${C}.app.source.text.includes('Inserted') && !${C}.acked()`, 30_000);
   await a.send('Page.enable', {});
   const count = await loads(a);
-  // the page asks before it leaves with an edit that was not sent
+  // the page asks before it leaves while the copy in the browser does not hold its edit yet
   const accept = setInterval(() => a.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}), 200);
-  t.after(() => clearInterval(accept));
+  accept.unref();
   await a.evaluate('location.reload()').catch(() => {});
   await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again', 30_000);
   clearInterval(accept);
