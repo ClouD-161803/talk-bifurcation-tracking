@@ -416,7 +416,8 @@ export function install(client: Client): void {
       arm();
     }
     render();
-    pane.querySelector<HTMLElement>(aside ? `[data-id="aside:${CSS.escape(aside)}"]` : '.row.current')?.focus();
+    // the selected row, which the sheet of a phone shows alone
+    pane.querySelector<HTMLElement>('.row[aria-current="true"]')?.focus();
     void load();
   }
 
@@ -606,6 +607,6 @@ export function install(client: Client): void {
     if (r.by === client.person) return;
     toast([bdi(personOf(client, r.by)?.name ?? 'Someone'), ` restored the version of ${whenOf(r.time)}`]);
   });
-  client.on('overwritten', () => toast('A change of index.html from outside replaced text that was edited in this session. The text of the session is kept in Version History.', { label: 'Show', run: () => open() }));
+  client.on('overwritten', () => toast('A change of index.html from outside replaced text of this session. The text is kept in Version History.', { label: 'Show', run: () => open() }));
   client.on('ended', () => close());
 }
