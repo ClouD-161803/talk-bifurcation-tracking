@@ -11,7 +11,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd } from './helpers/apply.mjs';
 import { C, clean, converge, open, ops, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
 import { type } from './helpers/editor.mjs';
-import { el } from './helpers/offline.mjs';
+import { el, tab } from './helpers/offline.mjs';
 import { until } from './helpers/session.mjs';
 
 /**
@@ -60,6 +60,49 @@ async function proxy(t, edit) {
   };
   return net;
 }
+
+// a request of the page that the proxy holds until Chrome cancels it, i.e. until the page is torn down
+async function canary(page, net) {
+  await page.evaluate(`void fetch('canary').catch(() => {}), true`);
+  await until(() => net.parked.canary, 'the proxy to hold the canary');
+}
+
+// the page draws no frame and runs no timer from now on, as in the last frame before a phone
+// suspends it, hence a key is read only when the page is hidden or closed
+async function still(page) {
+  await page.evaluate('(window.requestAnimationFrame = () => 0), true');
+  await page.send('Emulation.setVirtualTimePolicy', { policy: 'pause' });
+}
+
+// the requests of the closed page are cancelled, and the operations that Chrome still sends go on
+async function closed(page, net) {
+  await page.close();
+  await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the closed page');
+  net.release();
+}
+
+test('a word typed right before the page is closed without the question reaches index.html once', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const net = await proxy(t, server.edit);
+  const page = await tab(browser, net.url);
+  await converge(server, [page]);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  net.hold();
+  await canary(page, net);
+  await still(page);
+  await type(page, ' closed');
+  await closed(page, net);
+  const want = TALK.replace('<p>First slide</p>', '<p>First slide closed</p>');
+  await until(() => server.read() === want, 'the word to reach index.html');
+  assert.equal(net.sent.filter((b) => b.includes('closed')).length, 1);
+  // the next page of the browser takes over the copy of the closed page, which may hold the word too
+  const next = await tab(browser, net.url);
+  assert.equal(await converge(server, [next]), want);
+  clean(next);
+});
 
 // a script for open() that records in window.__kept whether each operation was sent with keepalive,
 // and the size of its body in bytes
