@@ -649,8 +649,8 @@ test('a page that waits for the answer of its hello asks before it unloads from 
   await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`);
 });
 
-// on the first load, the handler of the first read of the copies, i.e. of restore() of copy.ts,
-// waits until window.__restored(), as on a slow disk
+// on the first load, the handler of the first transaction on the copies, i.e. of restore() of
+// copy.ts, waits until window.__restored(), as on a slow disk
 const SLOW_RESTORE = `{
   window.__holdRestore = sessionStorage.getItem('__loads') === '1';
   const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
@@ -660,7 +660,7 @@ const SLOW_RESTORE = `{
     configurable: true,
     get() { return complete.get.call(this); },
     set(fn) {
-      const hold = fn && window.__holdRestore && this.mode === 'readonly' && this.objectStoreNames.contains('copies');
+      const hold = fn && window.__holdRestore && this.objectStoreNames.contains('copies');
       if (hold) window.__holdRestore = !(window.__restoreHeld = true);
       complete.set.call(this, hold ? (ev) => (held = () => fn.call(this, ev)) : fn);
     },

@@ -450,6 +450,104 @@ for (const how of ['is closed', 'crashes']) {
   });
 }
 
+// a page closed with the word ' both' in its copy, whose operation op the proxy holds until release()
+async function closedWithWord(browser, server, net) {
+  const first = await tab(browser, net.url);
+  const probe = await probeOf(browser, net.url);
+  await converge(server, [first]);
+  await show(first, 'One');
+  await caretAtEnd(first, el(0, 'p'));
+  net.hold();
+  await canary(first, net);
+  await type(first, ' both');
+  await until(() => net.held.some((r) => r.body.includes('both')), 'the operation to be held');
+  const id = await copied(first, ' both');
+  const [op] = net.held;
+  await first.close();
+  await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the closed page');
+  await released(probe, id);
+  net.holding = null;
+  return { probe, op, id };
+}
+
+// a write of the probe that lasts until window.__done is set, hence every transaction of the pages waits
+const HOLD = `new Promise((done) => {
+  const r = indexedDB.open('beeson-session', 1);
+  r.onsuccess = () => {
+    const s = r.result.transaction('copies', 'readwrite').objectStore('copies');
+    const spin = () => { if (!window.__done) s.get('none').onsuccess = spin; };
+    spin();
+    done(true);
+  };
+})`;
+// a script for tab() that counts in window.__reads the reads of all the records of the store
+const READS = `{
+  const getAll = IDBObjectStore.prototype.getAll;
+  window.__reads = 0;
+  IDBObjectStore.prototype.getAll = function (...args) {
+    window.__reads++;
+    return getAll.apply(this, args);
+  };
+}`;
+
+test('two pages that load at the same moment take over the copy of a closed page once, and its word reaches index.html once', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const net = await proxy(t, server.edit);
+  const { probe, op } = await closedWithWord(browser, server, net);
+  await probe.evaluate(HOLD);
+  const pages = await Promise.all([0, 1].map(() => tab(browser, net.url, { script: READS, wait: false })));
+  // both pages ask for the records before either is answered
+  for (const page of pages) await page.waitFor('window.__reads > 0');
+  await probe.evaluate('(window.__done = true)');
+  await converge(server, pages);
+  net.release();
+  await until(() => op.answered, 'the answer of the operation of the closed page');
+  assert.equal(count(await served(server), ' both'), 1);
+  for (const page of pages) clean(page);
+});
+
+// a script for tab() that holds the answer of the first navigator.locks.query() until window.__go()
+const QUERY = `{
+  const query = LockManager.prototype.query;
+  let go;
+  const held = new Promise((done) => (go = done));
+  window.__go = () => (go(), true);
+  LockManager.prototype.query = function () {
+    const answer = query.call(this);
+    if (window.__queried) return answer;
+    window.__queried = true;
+    return answer.then((a) => held.then(() => a));
+  };
+}`;
+
+test('a page that loads does not take over the copy of a page that opened after it read the locks', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const net = await proxy(t, server.edit);
+  const late = await tab(browser, net.url, { script: QUERY, wait: false });
+  await late.waitFor('window.__queried === true');
+  const page = await tab(browser, net.url);
+  await converge(server, [page]);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  net.hold();
+  await type(page, ' live');
+  await until(() => net.held.some((r) => r.body.includes('live')), 'the operation to be held');
+  await copied(page, ' live');
+  const [op] = net.held;
+  net.holding = null;
+  await late.evaluate('window.__go()');
+  await late.waitFor(ONLINE);
+  net.release();
+  await until(() => op.answered, 'the answer of the operation of the open page');
+  assert.equal(await converge(server, [page, late]), TALK.replace('<p>First slide</p>', '<p>First slide live</p>'));
+  clean(page);
+  clean(late);
+});
+
 /**
  * A proxy on the TCP level in front of the edit command edit. Once token is set, the first
  * operation that carries it is never sent on, as on a connection that a mobile network dropped
