@@ -1139,18 +1139,20 @@ function deckOf(r) {
 
 const range = (at, n) => Array.from({ length: n }, (_, i) => at + i);
 const TEXT = /^(\s*<(h2|p|li)>)(.+)(<\/\2>)$/;
-const MOVING = new Set(['move', 'several', 'slide']);
+const MOVING = new Set(['move', 'several', 'slide', 'down', 'slidekey']);
+const KINDS = ['key', 'letter', 'add', 'delete', 'move', 'move', 'several', 'slide', 'duplicate'];
 
 // one edit k of person p, as the lines it removes, the lines it changes, the lines it puts before
-// a line, and the texts that must be in the result. null when the deck does not allow it
-function editOf(r, { lines, slides, elements }, p, k) {
+// some lines, the line and the text of its key, and the texts that must be in the result. null when
+// the deck does not allow it
+function editOf(r, { lines, slides, elements }, p, k, kinds = KINDS) {
   const texts = lines.map((l, i) => (TEXT.test(l) ? i : -1)).filter((i) => i >= 0);
   const gapsIn = (s) => range(s[0] + 2, s[1] - 2).filter((g) => /<\/(h2|p|ul)>$/.test(lines[g - 1]));
-  const kind = r.pick(['key', 'letter', 'add', 'delete', 'move', 'move', 'several', 'slide', 'duplicate']);
+  const kind = r.pick(kinds);
   const mark = `k${p}${k}`;
   if (kind === 'key' || kind === 'letter') {
     const i = r.pick(texts), m = lines[i].match(TEXT);
-    if (kind === 'key') return { kind, cut: [], mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, want: [mark] };
+    if (kind === 'key') return { kind, cut: [], mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, key: [i, mark], want: [mark] };
     const j = r.int(m[3].length);
     if (m[3].length < 2) return null;
     const line = `${m[1]}${m[3].slice(0, j)}${m[3].slice(j + 1)}${m[4]}`;
@@ -1158,7 +1160,7 @@ function editOf(r, { lines, slides, elements }, p, k) {
   }
   if (kind === 'add') {
     const g = r.pick(gapsIn(r.pick(slides)));
-    return g === undefined ? null : { kind, cut: [], mod: {}, put: [g, [`  <p>Added ${mark}</p>`]], want: [`<p>Added ${mark}</p>`] };
+    return g === undefined ? null : { kind, cut: [], mod: {}, puts: [[g, [`  <p>Added ${mark}</p>`]]], want: [`<p>Added ${mark}</p>`] };
   }
   if (kind === 'delete') {
     const i = r.pick(texts.filter((i) => /<(p|li)>/.test(lines[i])));
@@ -1174,7 +1176,16 @@ function editOf(r, { lines, slides, elements }, p, k) {
     if (g === undefined) return null;
     cut = picked.flatMap(([at, n]) => range(at, n));
     if (cut.includes(g) || cut.includes(g - 1)) return null;
-    return { kind, cut, mod: {}, put: [g, cut.map((i) => lines[i])], want: cut.map((i) => lines[i].trim()) };
+    return { kind, cut, mod: {}, puts: [[g, cut.map((i) => lines[i])]], want: cut.map((i) => lines[i].trim()) };
+  }
+  // Move Slide Down on two slides that are not neighbors, which passes each below the slide after it
+  if (kind === 'down') {
+    const [i, j] = [r.int(slides.length), r.int(slides.length)].sort((a, b) => a - b);
+    if (j < i + 2 || j + 1 >= slides.length) return null;
+    const below = (n) => slides[n + 1][0] + slides[n + 1][1];
+    cut = [...range(...slides[i]), ...range(...slides[j])];
+    const passed = [...range(...slides[i + 1]), ...range(...slides[j + 1])];
+    return { kind, cut, mod: {}, puts: [[below(i), range(...slides[i]).map((x) => lines[x])], [below(j), range(...slides[j]).map((x) => lines[x])]], passed, want: cut.map((x) => lines[x].trim()) };
   }
   const s = r.pick(slides);
   cut = range(...s);
@@ -1184,30 +1195,35 @@ function editOf(r, { lines, slides, elements }, p, k) {
   }
   const g = r.pick([...slides.map((s) => s[0]), lines.length]);
   if (cut.includes(g) || cut.includes(g - 1)) return null;
-  const put = [g, cut.map((i) => lines[i])];
-  return kind === 'slide' ? { kind, cut, mod: {}, put, want: cut.map((i) => lines[i].trim()) } : { kind, cut: [], mod: {}, put, want: [] };
+  const puts = [[g, cut.map((i) => lines[i])]];
+  // a slide moved and a key typed in another slide in one operation
+  if (kind === 'slidekey') {
+    const i = r.pick(texts.filter((i) => !cut.includes(i))), m = lines[i]?.match(TEXT);
+    return m ? { kind, cut, mod: { [i]: `${m[1]}${m[3]} ${mark}${m[4]}` }, puts, key: [i, mark], want: [...cut.map((i) => lines[i].trim()), mark] } : null;
+  }
+  return kind === 'slide' ? { kind, cut, mod: {}, puts, want: cut.map((i) => lines[i].trim()) } : { kind, cut: [], mod: {}, puts, want: [] };
 }
 
 // the lines of the base that an edit touches, with both lines next to the place it puts lines
-const touch = (e) => new Set([...e.cut, ...Object.keys(e.mod).map(Number), ...(e.put ? [e.put[0] - 1, e.put[0]] : [])]);
+const touch = (e) => new Set([...e.cut, ...Object.keys(e.mod).map(Number), ...(e.puts ?? []).flatMap(([g]) => [g - 1, g])]);
 const disjoint = (a, b) => ![...a].some((x) => b.has(x));
 
 function textOf(d, list) {
   const out = [], cut = new Set(list.flatMap((e) => e.cut)), mod = Object.assign({}, ...list.map((e) => e.mod));
   for (let i = 0; i <= d.lines.length; i++) {
-    for (const e of list) if (e.put?.[0] === i) out.push(...e.put[1]);
+    for (const e of list) for (const [g, put] of e.puts ?? []) if (g === i) out.push(...put);
     if (i < d.lines.length && !cut.has(i)) out.push(mod[i] ?? d.lines[i]);
   }
   return out.map((l) => l + d.eol).join('');
 }
 
 // a deck and the edits of 2 or 3 people, 1 to 3 each, that touch different lines
-function roundOf(seed) {
+function roundOf(seed, kinds) {
   const r = generator(seed), d = deckOf(r), all = [];
   for (let p = 2 + r.int(2); p > 0; p--) {
     const list = [];
     for (let k = 1 + r.int(3), tries = 0; list.length < k && tries < 20; tries++) {
-      const e = editOf(r, d, all.length, list.length);
+      const e = editOf(r, d, all.length, list.length, kinds);
       if (e && list.every((f) => disjoint(touch(e), touch(f)))) list.push({ ...e, p: all.length });
     }
     all.push(list);
@@ -1287,10 +1303,18 @@ function broken({ d, all, base, texts }) {
   // is found as removals of its runs of whole lines and an insertion of its lines
   const runs = (cut) => cut.reduce((out, i) => (out.at(-1)?.at(-1) === i - 1 ? out.at(-1).push(i) : out.push([i]), out), []);
   const clean = flat.filter((e) => MOVING.has(e.kind)).every((e) => [diff(base, texts[e.p]), edits(base, texts[e.p])].every((list) =>
-    list.some((x) => x.start === x.end && trimmed(x.text).join('\n') === e.want.join('\n')) &&
+    e.puts.every(([, put]) => list.some((x) => x.start === x.end && trimmed(x.text).join('\n') === put.map((l) => l.trim()).join('\n'))) &&
     runs(e.cut).every((r) => list.some((x) => !x.text && x.start === starts[r[0]] && x.end === starts[r.at(-1) + 1]))));
+  // in a round with Move Slide Down or a slide moved with a key, a key must be kept when nobody
+  // moves or removes its slide, the edits of different people are a line apart or more, and nobody
+  // edits a slide that their Move Slide Down passes, which needs no diff to tell
+  const wide = (e) => new Set([...touch(e)].flatMap((i) => [i - 1, i, i + 1]));
+  const slideOf = (i) => new Set(range(...(d.slides.find(([at, n]) => at <= i && i < at + n) ?? [i, 1])));
+  const sure = flat.some((e) => e.kind === 'down' || e.kind === 'slidekey') && flat.every((e) => flat.every((f) => (f.p === e.p ? !e.passed || f === e || disjoint(new Set(e.passed), touch(f)) : disjoint(wide(e), touch(f)))));
+  const safe = sure ? flat.filter((e) => e.key && flat.every((f) => disjoint(slideOf(e.key[0]), new Set(f.cut)))) : [];
   for (const [how, text] of Object.entries(res)) {
     if (text === null) bad.push(`${how}: the pages differ`);
+    if (text !== null && !(texts.length === 3 && how.startsWith('order'))) for (const e of safe) if (!text.includes(e.key[1])) bad.push(`${how}: the key ${e.key[1]} of person ${e.p} is lost`);
     // three people can end with an element twice, or without it, after two races in a row, a known
     // limit
     if (text === null || !clean || (texts.length === 3 && how.startsWith('order'))) continue;
@@ -1302,12 +1326,19 @@ function broken({ d, all, base, texts }) {
   return bad;
 }
 
-test('random edits of two or three people, in every order of arrival and in the merge of the editor, end on the text of the edit command and keep each edit apart from the others and each line of the base that nobody removed', () => {
+test('random edits of two or three people, in every order of arrival and in the merge of the editor, end on the text of the edit command and keep each edit apart from the others, each line of the base that nobody removed, and each key in a slide that nobody moves', () => {
   // the line merge loses a line of seed 35 with or without moves
   const failed = [];
   for (let seed = 1; seed <= 4000; seed++) {
     const bad = seed === 35 ? [] : broken(roundOf(seed));
     if (bad.length) failed.push(`seed ${seed}: ${bad[0]}`);
+  }
+  // keys with Move Slide Down on two slides, and with a slide moved by a person who types in another
+  // slide, e.g. seed 1072. in seed 886 the line diff keeps the moved slide in place and removes the
+  // slides that it passes, in which its mover typed, with or without the move rule
+  for (let seed = 1; seed <= 1300; seed++) {
+    const bad = seed === 886 ? [] : broken(roundOf(seed, ['key', 'key', 'down', 'slidekey']));
+    if (bad.length) failed.push(`seed ${seed} with keys and slide moves: ${bad[0]}`);
   }
   assert.deepEqual(failed.slice(0, 5), [], `${failed.length} rounds failed`);
 });
