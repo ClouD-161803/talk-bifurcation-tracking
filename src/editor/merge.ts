@@ -184,10 +184,14 @@ export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours'
 // the same merge with the changes of the file, all, given as edits of base. with apart, an edit
 // and a change conflict only when they clash, and of two insertions at one point the change comes
 // first, as the authority of a session orders the operation that arrived first. with twice, an
-// edit equal to a change is kept as well, e.g. the same letter typed at one point by two people
+// edit equal to a change is kept as well, e.g. the same letter typed at one point by two people,
+// when it is the only such edit and an insertion. several equal edits are one change that the diff
+// split, e.g. a word replaced by the same word, which is taken once
 export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs', apart = false, twice = false): Merge {
   const hit = apart ? clash : overlaps;
-  const same = (a: Edit, b: Edit) => !twice && equal(a, b);
+  const both = ours.filter((o) => all.some((h) => equal(o, h)));
+  const keys = twice && both.length === 1 && both[0].start === both[0].end;
+  const same = (a: Edit, b: Edit) => !keys && equal(a, b);
   const others = all.filter((h) => !ours.some((o) => same(o, h)));
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
   const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
