@@ -368,6 +368,9 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
         getSelection()!.collapse(t.node, t.at);
         return close(false);
       }
+      // the brace taken out is part of the typing, hence an undo of the typing is not refused over
+      // it in a session
+      app.history.afterTyping(open.target.host);
       accept();
       return;
     }
