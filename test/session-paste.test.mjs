@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { clean, converge, open, sessionUrl, talk, TEXT } from './helpers/client.mjs';
+import { C, clean, converge, open, sessionUrl, talk, TEXT } from './helpers/client.mjs';
 import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 import { click } from './helpers/editor.mjs';
 import { edit } from './helpers/offline.mjs';
@@ -134,4 +134,45 @@ test('a copy in a session', { timeout: 180_000 }, async (t) => {
 
   clean(ann);
   clean(ben);
+});
+
+test('a page of a session names its deck by a hash of the key after the edit command stops', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const { key } = server.edit;
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const before = ORIGIN(await copySlide(ann, 'One'));
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await ann.waitFor(`${C}.connection === 'ended'`);
+  await ann.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Close').click()`);
+  await ann.waitFor(`!document.querySelector('dialog[open]')`);
+  const text = await copySlide(ann, 'One');
+  assert.ok(!text.includes(key), text.slice(0, 300));
+  assert.deepEqual(ORIGIN(text), before);
+  clean(ann);
+});
+
+test('a copy from a deck whose address has session, which no edit command serves, names its own address, and a deck of the same origin copies its files without a question', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const stat = await serve('.');
+  t.after(() => stat.close());
+  const a = await openDeck(browser, `${stat.origin}/${A}?${QUERY}&session`, A);
+  await a.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not served by an edit command')`);
+  await a.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
+  await a.waitFor(`!document.querySelector('dialog[open]')`);
+  const text = await copySlide(a, FILES);
+  const origin = ORIGIN(text);
+  assert.equal(origin.deck, `${stat.origin}/${A}`);
+  assert.equal(origin.session, undefined);
+  const b = await withMacrosOfA(await openDeck(browser, `${stat.origin}/${B}?${QUERY}`, B));
+  await pasteSlides(b, FIRST_B, text);
+  await b.waitFor(`!!document.querySelector('${DIALOG}[open]') || window.__pasted !== false`, 30000);
+  assert.equal(await b.evaluate(`document.querySelector('${DIALOG}[open]')?.textContent ?? null`), null);
+  await pasted(b);
+  const { message } = await status(b);
+  assert.ok(!message.includes('not copied'), message);
 });
