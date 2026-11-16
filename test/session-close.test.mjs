@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { caretAtEnd } from './helpers/apply.mjs';
+import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, open, ops, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
 import { type } from './helpers/editor.mjs';
 import { el, tab } from './helpers/offline.mjs';
@@ -184,5 +184,29 @@ test('an operation that the browser refuses with keepalive is sent again without
   await until(() => server.read() === TALK.replace('<p>First slide</p>', '<p>First slide refused</p>'), 'the word to reach index.html');
   assert.equal((await ops(page)) - before, 2);
   assert.equal(net.sent.filter((b) => b.includes('refused')).length, 1);
+  clean(page);
+});
+
+test('a page that is hidden without a key that it has not read does not read the deck', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit));
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' read');
+  await converge(server, [page]);
+  // a read renders the whole deck after an edit, which is slow on a slow machine
+  await page.evaluate(`(() => {
+    const port = ${C}.port;
+    const text = port.text.bind(port);
+    window.__reads = 0;
+    port.text = () => (window.__reads++, text());
+    return true;
+  })()`);
+  const other = await browser.newPage({ width: 1280, height: 800 });
+  await front(other);
+  await page.waitFor('document.hidden');
+  assert.equal(await page.evaluate('window.__reads'), 0);
   clean(page);
 });
