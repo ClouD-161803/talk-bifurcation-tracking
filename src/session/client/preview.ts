@@ -152,6 +152,8 @@ export class Preview {
   private text: string | null = null;
   private slides: Slide[] = [];
   private sections: (Element | null)[] = [];
+  // the slide chosen in the bar while the page was loading
+  private asked: number | null = null;
   private menu: OpenMenu | null = null;
 
   constructor(client: Client, pane: HTMLElement, actions: Actions) {
@@ -226,6 +228,9 @@ export class Preview {
     if (this.frame) this.frame.replaceWith(frame);
     else this.el.append(frame);
     this.frame = frame;
+    this.slides = [];
+    this.sections = [];
+    this.asked = null;
     this.el.hidden = false;
     this.layout();
     return frame;
@@ -383,6 +388,7 @@ export class Preview {
       this.slides = slides;
       this.sections = sectionsOf(w.document, text, slides);
       if (differ.length) this.go(differ[0]);
+      if (this.asked !== null) this.go(this.asked);
     } catch (e) {
       if (key === this.key) info.append(make('span', 'removed', (e as Error).message));
     }
@@ -438,11 +444,13 @@ export class Preview {
     const first = this.slides.findIndex((s, k) => this.sections[k] && v.slides.includes(s.number) && (marked(k) || !this.slides.some((o, j) => o.number === s.number && marked(j))));
     if (first >= 0) this.show(this.sections[first]!);
     else if (v.slides.length) this.go(v.slides[0]);
+    if (this.asked !== null) this.go(this.asked);
   }
 
-  // the slide numbered n shown in the preview. a hidden slide has the number of the slide after it,
-  // and it is not in the page
+  // the slide numbered n shown in the preview, once the page is loaded. a hidden slide has the number
+  // of the slide after it, and it is not in the page
   go(n: number): void {
+    if (!this.slides.length) this.asked = n;
     const k = this.slides.findIndex((s, i) => s.number === n && this.sections[i]);
     if (k >= 0) this.show(this.sections[k]!);
   }
