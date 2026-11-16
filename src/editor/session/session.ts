@@ -8,7 +8,7 @@ import type { App } from '../app.ts';
 import { setServed } from '../commands/origin.ts';
 import { mathLookup, type MathLookup } from '../math.ts';
 import { apply as applyEdits, edits, fine, mergeEdits, shared, type Edit } from '../merge.ts';
-import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
+import { pair, pairElement, renderDeck, renderTextElement, type Pairing, type Rendered } from '../render.ts';
 import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
 import { redrawTex as redrawDeckTex } from '../tex/install.ts';
 import { applyAt, partial, refresh, repairText, type Done } from './apply.ts';
@@ -117,6 +117,9 @@ export function install(app: App): Port {
   let composing: Element | null = null;
   let behind: { shown: string; want: string } | null = null;
   let rest: string | null = null;
+  // the composing element and its content at a start while the history or the document model is
+  // busy. rest is made of them and of the deck at the first read once both are quiet
+  let late: { host: Element; content: string } | null = null;
 
   // the caret of a text element that an apply moved to a slide that is not shown, as an offset into
   // the text of the element, see park
@@ -137,6 +140,7 @@ export function install(app: App): Port {
     handed = clean ? app.source!.text : null;
     behind = null;
     rest = null;
+    late = null;
     parked = null;
   });
 
@@ -201,6 +205,7 @@ export function install(app: App): Port {
   // at a reload the deck is as it was, and reads with the changes still held back as the text that
   // it was meant to read
   const ended = (): void => {
+    late = null;
     if (rest !== null) {
       rest = null;
       if (listeners.size) {
@@ -219,10 +224,36 @@ export function install(app: App): Port {
     clearTimeout(release);
     composing = app.hostOf(ev.target);
     // a deck changed in part is not rendered, hence while the history or the document model is busy
-    // rest is the text last handed to the client, which holds the edits of the person that it has
-    // read, and only the edits that it has not read yet are held with the composing text
-    rest = composing && ready() ? (busy() ? (handed ?? app.source!.text) : current()) : null;
+    // only the content of the composing element is read, and rest is made at the first read once
+    // both are quiet
+    const on = !!composing && ready();
+    const t = on && busy() ? app.pairing!.byLive.get(composing!) : undefined;
+    late = t ? { host: composing!, content: renderTextElement(app.source!, t, mathLookup(), app.tagEdits) } : null;
+    rest = on && !busy() ? current() : null;
   }, true);
+  // rest as the rendered deck with the content of the composing element at its busy start, hence
+  // with every edit of the person and without the changes held back, which the page does not show.
+  // the edits of a render nest, e.g. the content of a slide after a removal holds the edits of its
+  // texts, hence the content is placed by the outermost edits, and found in the text of the one
+  // around it. rest stays null when the element is not in the source, e.g. a new one, or when its
+  // content is not found once, and the client then reads the deck through
+  function lateRest(): void {
+    const l = late;
+    if (!l || busy() || !ready()) return;
+    late = null;
+    const t = composition() === l.host ? app.pairing!.byLive.get(l.host) : undefined;
+    const r = t && t.src.source === app.source ? contentRange(t.src) : null;
+    if (!r) return;
+    const { text, edits } = renderDeck(app.source!, app.pairing!, mathLookup(), app.tagEdits);
+    const now = edits.find((e) => e.start === r.start && e.end === r.end)?.text ?? app.source!.text.slice(r.start, r.end);
+    const top = edits.filter((e) => !edits.some((o) => o !== e && o.start <= e.start && e.end <= o.end));
+    const span = top.find((e) => e.start <= r.start && r.end <= e.end && r.start < e.end) ?? { ...r, text: now };
+    const at = span.text.indexOf(now);
+    if (at < 0 || (span.text !== now && at !== span.text.lastIndexOf(now))) return;
+    let p = span.start + at;
+    for (const e of top) if (e.end <= span.start && e !== span) p += e.text.length - (e.end - e.start);
+    rest = text.slice(0, p) + l.content + text.slice(p + now.length);
+  }
   document.addEventListener('compositionend', () => {
     composing = null;
     release = window.setTimeout(ended, 0);
@@ -404,6 +435,7 @@ export function install(app: App): Port {
   async function turn(text: string | null | typeof REREAD): Promise<Applied> {
     await quiet();
     if (!ready()) return reload();
+    lateRest();
     if (text === null && !behind) return { reload: false, changed: [] };
     // the deck is rendered once, and not at all while the source reads as it
     const math = clean ? null : mathLookup();
@@ -574,6 +606,7 @@ export function install(app: App): Port {
     text: () => {
       if (!ready()) throw new Error('no file is open');
       if (handed !== null && (busy() || applying || queued)) return handed;
+      lateRest();
       if (rest !== null && !composition()) rest = null;
       return (handed = virtual(rest ?? current()));
     },
