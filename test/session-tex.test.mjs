@@ -10,7 +10,9 @@ import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { deckTex } from '../scripts/tex.mjs';
+import { serve } from '../scripts/webdriver.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
+import { A, FILES, QUERY, copySlide, openDeck } from './helpers/cross-deck.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE } from './helpers/client.mjs';
 import { press, type, typeKeys } from './helpers/editor.mjs';
 import { goOffline, goOnline, tab } from './helpers/offline.mjs';
@@ -408,6 +410,14 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
   })()`);
   await ann.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(`A BibTeX entry is not added in a session. ${HOST_BIB}`)}`);
   assert.equal(await ann.evaluate(`!!document.querySelector('.reveal .slides cite[data-key="conley1968"]')`), false);
+  await ann.evaluate(`(() => {
+    const data = new DataTransfer();
+    data.setData('text/plain', 'https://doi.org/10.1063/1.166509');
+    document.querySelector('${LIST} input').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  await ann.waitFor(`document.querySelector('${LIST} .note').textContent.startsWith('A DOI')`);
+  assert.ok((await ann.evaluate(`document.querySelector('${LIST} .note').textContent`)).endsWith(HOST_BIB), 'the note of a DOI pasted in a session names what the host does');
   await converge(server, [ann]);
   assert.equal(server.read('references.bib'), bib);
   assert.ok(!server.read().includes('conley1968'));
@@ -443,4 +453,28 @@ test('the notes of File > Preamble… and File > Bibliography… in a session fi
     for (const [id, row] of Object.entries(rows)) assert.ok(row.scroll <= row.client + 1, `the label of ${id} is wider than its box at ${width} px: ${JSON.stringify(row)}`);
     clean(page, MISSING);
   }
+});
+
+test('a slide pasted in a session with macros that preamble.tex does not have opens the dialog that says the host pastes their lines into preamble.tex', { timeout: 300_000 }, async (t) => {
+  const deck = await serve('.');
+  t.after(() => deck.close());
+  const a = await openDeck(browser, `${deck.origin}/${A}?${QUERY}`, A);
+  t.after(() => a.close());
+  const copied = await copySlide(a, FILES);
+  const server = await texTalk(t);
+  const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
+  await front(ann);
+  await ann.evaluate(`(() => {
+    document.activeElement?.blur();
+    window.__pasted = false;
+    Promise.resolve(window.BeesonEditor.exec('slide.paste', ${JSON.stringify(copied)})).then(() => { window.__pasted = true; }, (e) => { window.__pasted = String(e); });
+    return true;
+  })()`);
+  // the slide is pasted without its files, since only its macros are tested here
+  await ann.waitFor(`!!document.querySelector('dialog.deck-folder[open]')`, 30_000);
+  await ann.evaluate(`[...document.querySelectorAll('dialog.deck-folder[open] button')].find((b) => b.textContent === 'Paste Without Files').click(), true`);
+  await ann.waitFor(`!!document.querySelector('dialog.paste-macros:not([hidden])') || window.__pasted !== false`, 30_000);
+  assert.ok(await ann.evaluate(`!!document.querySelector('dialog.paste-macros:not([hidden])')`), `the paste ended without the dialog: ${await ann.evaluate('String(window.__pasted)')}, ${(await ann.evaluate('window.BeesonEditor.status()')).message}`);
+  const text = await ann.evaluate(`document.querySelector('dialog.paste-macros:not([hidden]) p').textContent`);
+  assert.ok(text.startsWith('In a session, the host pastes the lines below at the end of preamble.tex'), text);
 });
