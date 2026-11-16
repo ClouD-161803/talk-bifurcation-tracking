@@ -244,7 +244,7 @@ export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'our
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
   // a move in a session that a change inside the moved element conflicts with is left out whole,
   // hence the element is neither doubled nor its change lost
-  const moved = new Set(shared && conflicts.length ? [...moves(base, ours, others, hit), ...moves(base, others, ours, hit)] : []);
+  const moved = new Set(shared ? [...moves(base, ours, others, hit), ...moves(base, others, ours, hit)] : []);
   if (moved.size) return { text: mergeEdits(base, ours.filter((e) => !moved.has(e)), all.filter((e) => !moved.has(e)), prefer, shared).text, conflicts };
   const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => equal(o, h)));
