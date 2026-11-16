@@ -2483,6 +2483,8 @@ var Comments = class {
     this.edits = 0;
     this.saved = 0;
     this.stopped = false;
+    // true from a failed delayed write to the next one that succeeds, which log once each
+    this.failing = false;
     this.file = join4(dir, "comments.json");
     this.authority = authority;
     this.now = options.now ?? Date.now;
@@ -2968,8 +2970,11 @@ var Comments = class {
       }
       renameRetriedSync(tmp, this.file, 1);
       this.saved = Math.max(this.saved, edits);
+      if (this.failing) this.log(`wrote ${this.file} again`);
+      this.failing = false;
     } catch (e) {
-      if (!this.stopped) this.log(`could not write ${this.file}, trying again: ${e.message}`);
+      if (!this.stopped && !this.failing) this.log(`could not write ${this.file}, trying again: ${e.message}`);
+      this.failing = true;
       await unlink2(tmp).catch(() => {
       });
     }
