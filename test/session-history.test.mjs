@@ -104,7 +104,8 @@ test('the versions of a host and a guest are listed live, fold, are named, and t
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const server = await talk(t, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, ...QUICK } });
+  // a poll without news is answered after 1 s, before the relay of this test gives up after 5 s
+  const server = await talk(t, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000', ...QUICK } });
   const { key } = server.edit;
   await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
