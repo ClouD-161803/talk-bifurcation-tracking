@@ -25,6 +25,9 @@ export type PresenceState = {
   // of the focus, see shapes() of the editor
   caret: (Omit<Caret, 'el'> & { el: number }) | null;
   typing: boolean;
+  // the person typed or moved the caret to another element in the last IDLE ms, by the clock of the
+  // page, which a page that first hears the state holds by
+  active: boolean;
   following: string | null;
   mode: 'edit' | 'present' | 'history';
   // the page is hidden, e.g. in a tab behind another
@@ -203,7 +206,7 @@ class Changes {
 
 // the state of another page as this page last heard it, with the time of this page at which the
 // page was last seen typing or moving its caret to another element. a page that this page first
-// hears is not active until it types or moves its caret, since its caret may have rested for long
+// hears is active when its state says so, since its caret may have rested for long
 type Other = {
   raw: string;
   // the offsets and their version, whose change reads the elements again
@@ -233,6 +236,7 @@ function parseState(raw: unknown): PresenceState | null {
     selected: Array.isArray(s.selected) ? s.selected.filter(isInt).slice(0, MAX_SELECTED) : [],
     caret: caret && typeof caret === 'object' && isInt(caret.el) && isInt(caret.at) ? { el: caret.el, at: caret.at, from: isInt(caret.from) ? caret.from : caret.at, pre: near(caret.pre, true), post: near(caret.post, false) } : null,
     typing: s.typing === true,
+    active: s.active === true,
     following: typeof s.following === 'string' ? s.following : null,
     mode,
     away: s.away === true,
@@ -263,6 +267,8 @@ export class Presence {
   private restTimer = 0;
   private typingTimer = 0;
   private typedAt = -Infinity;
+  private idleTimer = 0;
+  private activeAt = -Infinity;
   private caretHost: Element | null = null;
   private selection: Omit<Caret, 'el'> = { at: 0, from: 0, pre: '', post: '' };
   // the source and the version of the base after the last time that the port read the deck into
@@ -331,7 +337,8 @@ export class Presence {
       clearTimeout(this.timer);
       clearTimeout(this.restTimer);
       clearTimeout(this.typingTimer);
-      this.timer = this.restTimer = this.typingTimer = 0;
+      clearTimeout(this.idleTimer);
+      this.timer = this.restTimer = this.typingTimer = this.idleTimer = 0;
       this.publish();
     });
     app.selection.listen(() => this.moved());
@@ -403,6 +410,7 @@ export class Presence {
     clearTimeout(this.restTimer);
     this.restTimer = 0;
     if (!same) {
+      if (host && host !== this.caretHost) this.active();
       this.caretHost = host;
       this.due(true);
     } else if (host) this.restTimer = window.setTimeout(() => this.due(true), REST);
@@ -413,9 +421,17 @@ export class Presence {
     const t = this.now();
     const was = t - this.typedAt < TYPING;
     this.typedAt = t;
+    this.active();
     clearTimeout(this.typingTimer);
     this.typingTimer = window.setTimeout(() => this.due(true), TYPING);
     this.due(!was);
+  }
+
+  // the state is sent again when the person stops being active
+  private active(): void {
+    this.activeAt = this.now();
+    clearTimeout(this.idleTimer);
+    this.idleTimer = window.setTimeout(() => this.due(true), IDLE);
   }
 
   // a state is sent now, or for a change of offsets alone at most every THROTTLE ms
@@ -487,6 +503,7 @@ export class Presence {
       selected: this.selectedNow().map(offset).filter((o): o is number => o !== null),
       caret: caretEl === null ? null : { el: caretEl, ...this.selection },
       typing,
+      active: this.now() - this.activeAt < IDLE,
       following: this.fields.following,
       mode: this.fields.mode,
       away: document.visibilityState === 'hidden',
@@ -530,7 +547,7 @@ export class Presence {
       if (o && o.raw === raw && o.resolved?.name === p.name && o.resolved?.color === p.color) continue;
       const known = !!o;
       if (!o) {
-        o = { raw, key: '', state, activeAt: -Infinity, resolved: null, resolvedKey: '', ahead: false };
+        o = { raw, key: '', state, activeAt: state.active || state.typing ? t : -Infinity, resolved: null, resolvedKey: '', ahead: false };
         this.others.set(p.client, o);
       }
       if (state.typing || o.state.typing) o.activeAt = t;
@@ -580,7 +597,7 @@ export class Presence {
     const prev = o.resolvedKey === key || o.ahead || els === null ? o.resolved : null;
     if (!o.ahead) o.resolvedKey = key;
     if (o.ahead && prev) {
-      o.resolved = { ...prev, name, color, typing: s.typing, following: s.following, mode: s.mode, away: s.away };
+      o.resolved = { ...prev, name, color, typing: s.typing, active: s.active, following: s.following, mode: s.mode, away: s.away };
       return;
     }
     const at = (i: number, before: Element | null | undefined): Element | null => {
@@ -604,6 +621,7 @@ export class Presence {
       selected,
       caret: caretEl && s.caret ? { ...s.caret, el: caretEl } : null,
       typing: s.typing,
+      active: s.active,
       following: s.following,
       mode: s.mode,
       away: s.away,
