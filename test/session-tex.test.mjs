@@ -152,6 +152,32 @@ test('a citation of a paper of tex.js put into a text element by one page is num
   clean(ben, MISSING);
 });
 
+test('a citation typed with its closing brace in a session is taken back by two undos, on both pages and in index.html', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann, ben] = await pages(t, server);
+  await show(ann, 'Citations');
+  await show(ben, 'Citations');
+  const LAST = `[...document.querySelectorAll('.reveal section.present p')].at(-1)`;
+  await front(ann);
+  await caretAtEnd(ann, LAST);
+  await type(ann, ' \\cite{');
+  await ann.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length > 0`);
+  await type(ann, 'gomez2004}');
+  await ann.waitFor(`!document.querySelector('${LIST}')`);
+  await converge(server, [ann, ben]);
+  assert.match(server.read(), /transfer<cite data-key="gomez2004"><\/cite><\/p>/);
+  // the first undo takes back the citation, and the second one the typed text without its brace,
+  // which the list took out
+  await ann.evaluate('window.BeesonEditor.undo().then(() => true)');
+  await ann.evaluate('window.BeesonEditor.undo().then(() => true)');
+  await converge(server, [ann, ben]);
+  assert.equal(server.read(), server.before['index.html'].text);
+  await front(ben);
+  assert.equal(await ben.evaluate(`${LAST}.textContent`), 'Invariant manifolds guide a low-energy transfer');
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
 test('a macro added to preamble.tex on disk is written into tex.js, and is drawn on a page of the host and on a page of a guest through the relay', { timeout: 240_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
