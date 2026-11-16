@@ -460,6 +460,7 @@ test('the reason why a dropped file is not added follows the line of a file give
       await ann.waitFor(`${TITLE}.includes('IMG_2041.heic')`);
       const title = await ann.evaluate(TITLE);
       for (const part of [LOST.host, reason]) assert.equal(title.split(part.replace(/\.$/, '')).length - 1, 1, title);
+      assert.doesNotMatch(title, /\.\./);
     }
     assert.equal(await ann.evaluate(ACTION), null);
     clean(ann, [/status of 413/]);
