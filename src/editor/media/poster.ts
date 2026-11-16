@@ -3,8 +3,12 @@
 // of the Movie tab of Keynote and of the Playback tab of PowerPoint. the theme prints the poster in
 // the PDF, and npm run check asks for one on every video
 
-// the time in ms after which a video that does not load is given up
-const TIMEOUT = 15000;
+// the time in ms after which a video that does not load, or a seek of it that does not end, is
+// given up. a seek ends once the frames from the key frame before its time are decoded. on a slow
+// machine that decodes video in software, e.g. a crowded runner of GitHub, this takes longer than
+// 15 s for a video whose key frames are seconds apart. a longer limit only delays the message of
+// a video whose server does not answer
+const TIMEOUT = 60000;
 
 function loaded(video: HTMLVideoElement, event: string): Promise<void> {
   return new Promise((done, fail) => {
