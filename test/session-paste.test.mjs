@@ -4,7 +4,8 @@
 // the key of the session, also after the session ends, and a plain deck asks for the talk folder of
 // the session that it was copied from. a deck whose address has session, which no edit command
 // serves, names its own address, also at file://, and another page of the talk folder names its deck
-// by a hash of the key
+// by a hash of the key. a copy between two pages in one folder of a session is pasted without a
+// question
 
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -15,7 +16,7 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { C, clean, converge, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
-import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, status, withMacrosOfA } from './helpers/cross-deck.mjs';
+import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, render, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 import { click } from './helpers/editor.mjs';
 import { edit } from './helpers/offline.mjs';
 import { post } from './helpers/session.mjs';
@@ -183,6 +184,53 @@ test('a copy from a deck whose address has session, which no edit command serves
   await pasted(b);
   const { message } = await status(b);
   assert.ok(!message.includes('not copied'), message);
+});
+
+// a page of the talk folder that the session does not edit, opened with session at url, once OK of
+// its dialog is clicked
+async function plainPage(browser, url) {
+  const page = await open(browser, url, { wait: false, ready: false });
+  await page.waitFor(`!!document.querySelector('dialog[open] h3')`, 20_000);
+  await page.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
+  await page.waitFor(`!document.querySelector('dialog[open]') && window.BeesonEditor && window.BeesonEditor.ready.then(() => true)`);
+  return page;
+}
+
+// a paste whose end or folder dialog is waited for, which asserts that the dialog is not shown and
+// that the note of the paste does not name a file that was not copied
+async function pastedWithoutQuestion(page) {
+  await page.waitFor(`!!document.querySelector('${DIALOG}[open]') || window.__pasted !== false`, 30_000);
+  assert.equal(await page.evaluate(`document.querySelector('${DIALOG}[open]')?.textContent ?? null`), null);
+  await pasted(page);
+  const { message } = await status(page);
+  assert.ok(!message?.includes('not copied'), message);
+}
+
+test('a copy from another page of the talk folder of a session', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  mkdirSync(join(server.talk, 'media'));
+  writeFileSync(join(server.talk, 'media/fig.png'), readFileSync(resolve('demo/figure-light.png')));
+  const figure = (text) => text.replace('<p>First slide</p>', '<p>First slide</p>\n  <img src="media/fig.png" alt="A figure">');
+  writeFileSync(server.file, figure(server.read()));
+  writeFileSync(join(server.talk, 'other.html'), figure(TALK));
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  const other = await plainPage(browser, `${server.edit.url}other.html?edit&session`);
+
+  await t.test('is pasted into index.html of the session without a question, since each path is the same file', async () => {
+    await pasteSlides(ann, 'One', await copySlide(other, 'One'));
+    await pastedWithoutQuestion(ann);
+    const after = await converge(server, [ann]);
+    assert.equal(after.match(/<img src="media\/fig\.png" alt="A figure">/g).length, 2);
+  });
+
+  await t.test('from index.html is pasted into the other page without a question', async () => {
+    await pasteSlides(other, 'Two', await copySlide(ann, 'One'));
+    await pastedWithoutQuestion(other);
+    assert.equal((await render(other)).match(/<img src="media\/fig\.png" alt="A figure">/g).length, 2);
+  });
 });
 
 // another page of the talk folder, which the edit command serves without a session, through the
