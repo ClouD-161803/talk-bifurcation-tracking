@@ -1459,6 +1459,22 @@ test('Show changes tints a paragraph only where the page holds as many paragraph
   });
 });
 
+test('Show changes tints a paragraph with a character reference in an attribute, and neither one moved by a script nor one short of a text node', { timeout: 360_000 }, async (t) => {
+  // a script inside the paragraph puts the <i> before the <b>, whose text nodes both read xx
+  const swap = `<p><b>xx</b><i>xx</i><script>{const p=document.currentScript.parentNode;p.insertBefore(p.querySelector('i'),p.firstChild)}</script></p>`;
+  const seen = await tintsOf(t, [
+    { name: 'href-amp', html: '<p>See <a href="https://example.org/?a=1&amp;b=2">here</a> typed</p>', marks: [['typed', 0]] },
+    { name: 'script-swap', html: swap, marks: [['xx', 1]] },
+    { name: 'pre-newline', html: '<div>Alpha typed<pre>\n</pre></div>\n  <p>Later typed</p>', marks: [['Alpha typed', 0], ['Later typed', 0]] },
+  ]);
+  assert.deepEqual(seen, {
+    'href-amp': { tints: ['typed in p[0]'], outlined: ['p[0]'] },
+    'script-swap': { tints: [], outlined: ['p[0]'] },
+    // the parser drops the newline of the pre, which leaves the div one text node short
+    'pre-newline': { tints: ['Later typed in p[0]'], outlined: ['div[0]', 'p[0]'] },
+  });
+});
+
 const OVERWRITTEN = 'A change of index.html from outside replaced text that was edited in this session. The text of the session is kept in Version History.';
 
 test('a change of index.html from outside over a text that Ann typed is told on every page in a toast, whose Show opens Version History at the version with this text', { timeout: 300_000 }, async (t) => {
