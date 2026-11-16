@@ -146,6 +146,14 @@ export class Commands {
     this.refusals.push(check);
   }
 
+  // whether a check of refuse() refuses the command of id with arg, which then tells the person
+  // why. a change made outside run(), e.g. typing over a text selection of several text elements
+  // or a drag, asks this as the command that makes the same change
+  refused(id: string, arg?: unknown): boolean {
+    const c = this.byId.get(id);
+    return !!c && this.refusals.some((r) => r(this.app, c, arg));
+  }
+
   // whether the command applies to the selection by its own enabled, i.e. before the vetoes, as a
   // command of a locked element does, which its context menu shows dimmed
   applies(id: string): boolean {
@@ -172,7 +180,7 @@ export class Commands {
   async run(id: string, arg?: unknown): Promise<void> {
     const c = this.byId.get(id);
     if (!c) throw new Error(`there is no command ${id}`);
-    if (!this.enabled(id) || this.refusals.some((r) => r(this.app, c, arg))) return;
+    if (!this.enabled(id) || this.refused(id, arg)) return;
     if (c.undoable) await this.app.history.transact(c.undo ?? this.label(c.runsAs?.(this.app) ?? id), () => c.run(this.app, arg));
     else await c.run(this.app, arg);
   }

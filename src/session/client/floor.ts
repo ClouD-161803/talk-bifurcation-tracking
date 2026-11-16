@@ -17,6 +17,9 @@ const OF_SLIDES = new Set(['edit.cut', 'element.delete']);
 // the commands of a caret or a text selection that delete or resize its text element, or merge it
 // with the element beside it, refused in a held element together with arrange.*
 const OF_TEXT = new Set(['element.delete', 'text.bigger', 'text.smaller', 'text.indent', 'text.outdent', 'text.joinBackward', 'text.joinForward']);
+// the commands of a text selection over several text elements, which replace its text and remove
+// each text element after the first
+const OF_SPAN = new Set(['text.flow.delete', 'text.flow.newParagraph']);
 // the commands of a caret that also change the text element before it, or with joinForward after
 // it, unless the caret is in a nested item
 const BESIDE = new Set(['text.joinBackward', 'text.joinForward', 'text.indent']);
@@ -62,7 +65,7 @@ export function install(client: Client): void {
   for (const type of ['pointerdown', 'click']) window.addEventListener(type, pressed, true);
 
   app.commands.refuse((a: App, c: Command, arg?: unknown) => {
-    const by = refused(a, presence, c, arg);
+    const by = refused(a, presence, client.shell.presence.spanned, c, arg);
     const el = by?.caret?.el;
     if (!by || !el) return false;
     // a text element on another slide is named by the number of its slide, at the top of the window
@@ -74,7 +77,7 @@ export function install(client: Client): void {
 }
 
 // the page that holds an element that command c would change, or null
-function refused(app: App, presence: Presence, c: Command, arg: unknown): Resolved | null {
+function refused(app: App, presence: Presence, spanned: () => Element[], c: Command, arg: unknown): Resolved | null {
   const holds = presence.holds;
   if (!holds.size) return null;
   // a section is moved by its head, whose slides are not read here
@@ -114,6 +117,13 @@ function refused(app: App, presence: Presence, c: Command, arg: unknown): Resolv
   const cell = (arg as { cell?: unknown } | null | undefined)?.cell;
   const table = (cell instanceof Element ? cell : sel.kind === 'text' ? sel.items[0] : null)?.closest('table');
   if (table && ((c.undoable && c.id.startsWith('table.')) || c.id.startsWith('edit.paste'))) return presence.holderOf(table);
+  // a text selection over several text elements is replaced by its commands and by typing
+  if (sel.kind === 'text' && OF_SPAN.has(c.id)) {
+    for (const el of spanned()) {
+      const by = presence.holderOf(el);
+      if (by) return by;
+    }
+  }
   // a join and Tab at the first level of a list also change the text element beside the caret
   if (sel.kind === 'text' && BESIDE.has(c.id)) {
     const host = sel.items[0];

@@ -7,6 +7,7 @@ import type { App } from '../app.ts';
 import { growOf, orientOf, view } from '../canvas/frames.ts';
 import { frameOf, holdsSeveral, mediaIn } from '../canvas/hit.ts';
 import { mathIn, type MathLookup } from '../math.ts';
+import { spanTargets } from '../text/flow.ts';
 import { caretOf, pointIn, textIn } from './caret.ts';
 
 // a box in fractions of the width and the height of the slide, unturned about its center, the
@@ -36,6 +37,8 @@ export type PresenceHooks = {
   // the object one level inside container under target, as a second click selects it, when
   // container holds several objects, e.g. a figure of a plate, or null
   childIn(container: Element, target: Element): Element | null;
+  // the text elements of a text selection of this page over several of them, or none
+  spanned(): Element[];
 };
 
 export function hooks(app: App): PresenceHooks {
@@ -91,6 +94,7 @@ export function hooks(app: App): PresenceHooks {
     },
     hovered: () => view.hover,
     childIn: (container, target) => (holdsSeveral(container) ? mediaIn(container, target) : null),
+    spanned: () => spanTargets(app).map((t) => t.host),
   };
 }
 
