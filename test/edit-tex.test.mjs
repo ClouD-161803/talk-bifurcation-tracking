@@ -306,6 +306,21 @@ test('a citation while tex.js cannot be written is derived once over later write
   assert.equal(derived.n, 2, 'a new citation is derived at once');
 });
 
+test('the skipped lines of preamble.tex are logged at the start of the writer, and nothing is logged at its start without a skipped line or without preamble.tex', async (t) => {
+  const f = folder(t);
+  assert.match(f.read('preamble.tex'), /^\\usepackage\{tikz\}$/m);
+  const printed = execFileSync(process.execPath, ['scripts/tex.mjs', join(f.dir, 'index.html')], { encoding: 'utf8' }).split('\n').filter((line) => line.startsWith('preamble.tex:'));
+  assert.equal(printed.length, 1, printed.join('\n'));
+  const { w, seen } = writer(f);
+  assert.deepEqual(seen.log, printed);
+  await twoPolls(w);
+  assert.deepEqual(seen.log, printed, 'the same lines are not logged again');
+  const clean = folder(t);
+  clean.write('preamble.tex', clean.read('preamble.tex').replace('\\usepackage{tikz}\n', ''));
+  assert.deepEqual(writer(clean).seen.log, []);
+  assert.deepEqual(writer(folder(t, ['references.bib', 'tex.js'])).seen.log, []);
+});
+
 test('a write of index.html while preamble.tex is being saved does not write tex.js without its macros, and tex.js is written once preamble.tex is stable', async (t) => {
   const f = folder(t);
   const { w, seen } = writer(f);
@@ -337,12 +352,14 @@ test('the skipped lines of the sources and the cited keys without an entry are l
   assert.equal(printed.length, 4, printed.join('\n'));
   const f = folder(t);
   const { w, seen } = writer(f);
+  // the skipped line of the preamble before the change, logged at the start
+  const start = seen.log.length;
   change(f);
   w.written(html);
   await twoPolls(w);
-  assert.deepEqual(seen.log, printed);
+  assert.deepEqual(seen.log.slice(start), printed);
   f.write('defs.tex', `${f.read('defs.tex')}\\newcommand{\\R}{\\mathbb{R}}\n`);
   await twoPolls(w);
   assert.ok(f.read('tex.js').includes('"R"'));
-  assert.deepEqual(seen.log, printed);
+  assert.deepEqual(seen.log.slice(start), printed);
 });
