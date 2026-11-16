@@ -297,7 +297,7 @@ test('the preview outlines each changed element in the tone of its author, and a
   });
 
   await t.test('the preview opens at the first changed slide, and Slide 2 shows the second slide', async () => {
-    const current = `${FRAME}.contentWindow.Reveal.getCurrentSlide()?.querySelector('h2')?.textContent`;
+    const current = `${FRAME}?.contentWindow?.Reveal?.getCurrentSlide?.()?.querySelector('h2')?.textContent`;
     await ann.waitFor(`${current} === 'One by Ann'`);
     await press$(ann, BAR, 'Slide 2');
     await ann.waitFor(`${current} === 'Two'`);

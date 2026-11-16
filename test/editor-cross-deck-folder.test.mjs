@@ -82,7 +82,8 @@ test('a refused read asks once for the folder of the first deck, and reads the f
   const first = sectionOf(b.source, FIRST_B);
   assert.equal(await render(b), b.source.replace(first, `${first}\n    ${CARRIED(sectionOf(a.source, FILES))}`));
   assert.deepEqual(await b.evaluate('window.__picks.map((o) => o.mode)'), ['read']);
-  assert.equal(await b.evaluate(`[...document.querySelectorAll('.reveal img[src^="blob:"]')].every((i) => i.complete && i.naturalWidth > 0)`), true);
+  // a picture is loaded from its blob after the paste is over
+  await b.waitFor(`[...document.querySelectorAll('.reveal img[src^="blob:"]')].every((i) => i.complete && i.naturalWidth > 0)`);
   // the next paste from deck A reads the same folder without the dialog, and names the file that
   // the first paste carried
   await pasteElements(b, FIRST_B, figure);

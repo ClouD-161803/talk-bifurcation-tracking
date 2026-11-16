@@ -34,19 +34,24 @@ const SHOWN_ALT = (alt, path) => `(() => { const i = document.querySelector('.re
 const IMAGES = `(${TEXT}.match(/<img /g) ?? []).length`;
 // the errors in the console of a page for an upload that the proxy refused, cut, or lost
 const PROXIED = [/status of 50[04]/, /ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET|Failed to fetch/];
-// the number of elements of the page that show the whole of text where a person sees it, i.e.
-// inside the window, not cut, and not clipped by an ancestor. with scroll, an element that scrolls
-// vertically shows the part of text that a scroll of it reaches
+// the number of elements of the page that show the whole of text where a person sees it: the element
+// is inside the window and does not cut the text at its end, and every line of the text is inside
+// each box that clips it. a line is as tall as the letters of its font, which in most fonts is
+// taller than a line of height 1. with scroll, an element that scrolls vertically shows the part
+// of text that a scroll of it reaches
 const SEEN = (text, scroll = false) => `[...document.body.querySelectorAll('*')].filter((el) => {
   const has = (e) => e.textContent.includes(${JSON.stringify(text)});
   if (!has(el) || [...el.children].some(has) || getComputedStyle(el).visibility !== 'visible') return false;
   const r = el.getBoundingClientRect();
-  if (!r.width || !r.height || r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) return false;
-  if (el.scrollWidth > el.clientWidth || (el.scrollHeight > el.clientHeight + 1 && !(${scroll} && getComputedStyle(el).overflowY === 'auto'))) return false;
-  for (let p = el.parentElement; p; p = p.parentElement) {
+  if (!r.width || !r.height || r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight || el.scrollWidth > el.clientWidth) return false;
+  const scrolls = ${scroll} && getComputedStyle(el).overflowY === 'auto';
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const lines = scrolls ? [r] : [...range.getClientRects()];
+  for (let p = scrolls ? el.parentElement : el; p; p = p.parentElement) {
     if (getComputedStyle(p).overflow === 'visible') continue;
     const q = p.getBoundingClientRect();
-    if (r.left < q.left - 1 || r.right > q.right + 1 || r.top < q.top - 1 || r.bottom > q.bottom + 1) return false;
+    if (lines.some((l) => l.left < q.left - 1 || l.right > q.right + 1 || l.top < q.top - 1 || l.bottom > q.bottom + 1)) return false;
   }
   return true;
 }).length`;
@@ -358,6 +363,18 @@ test('the reason why a dropped file is not added is no longer shown after the ne
   assert.notEqual(await ann.evaluate(STATE), reason);
   await ann.waitFor(`${BAR} === ${bar}`);
   assert.match(await converge(server, [ann]), /<p>Second slide typed<\/p>/);
+  clean(ann);
+});
+
+test('the save state in the narrow title bar of a phone is on a line as tall as its letters', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await show(ann, 'Two');
+  await ann.waitFor(`${STATE} === 'Saved to index.html'`);
+  assert.ok(await ann.evaluate(`document.querySelector('.beeson-edit-titlebar').classList.contains('narrow')`));
+  assert.equal(await ann.evaluate(SEEN('Saved to index.html')), 1);
   clean(ann);
 });
 
