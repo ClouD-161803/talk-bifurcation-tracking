@@ -1386,3 +1386,37 @@ test('a change of index.html from outside of text that nobody wrote takes about 
   if (withHistory > 4 * without) [withHistory, without] = [Math.min(withHistory, ms(authority)), Math.max(without, ms(alone))];
   assert.ok(withHistory <= 4 * without, `${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone`);
 });
+
+test('a Replace All in slides that a person pasted in the same version takes about as long as in slides of an earlier version', { timeout: 300_000 }, (t) => {
+  let deck = '<!doctype html><html><body><div class="reveal"><div class="slides">\n';
+  for (let i = 0; deck.length < 100_000; i++) deck += `<section>\n  <h2>Old ${i}</h2>\n  <p>Text ${i}</p>\n</section>\n`;
+  deck += '</div></div></body></html>\n';
+  const at = deck.indexOf('</div></div>');
+  let slides = '';
+  for (let i = 0; slides.length < 400_000; i++) slides += `<section>\n  <h2>Slide ${i}</h2>\n  <p>The orbit of slide ${i}</p>\n</section>\n`;
+  const all = [];
+  for (let n = 0; n < 2000; n++) {
+    const i = slides.indexOf('orbit', Math.floor((n * slides.length) / 2000));
+    all.push({ start: at + i, end: at + i + 5, text: 'halo' });
+  }
+  assert.equal(new Set(all.map((p) => p.start)).size, 2000);
+  // the time of the Replace All at 2,000 places in 400 kB of slides that the operation before it
+  // pasted as one patch, with the version of the paste still open or closed, as the median of 3 runs
+  const took = (closed) => {
+    const times = [];
+    for (let r = 0; r < 3; r++) {
+      const { authority, history } = open(sessionDir(t), deck);
+      assert.equal(authority.enter([{ start: at, end: at, text: slides }], ANN).answer.ok, true);
+      if (closed) history.close();
+      const start = performance.now();
+      assert.equal(authority.enter(all, ANN).answer.ok, true);
+      times.push(performance.now() - start);
+      history.stopSync();
+    }
+    return times.sort((a, b) => a - b)[1];
+  };
+  took(true);
+  let [same, earlier] = [took(false), took(true)];
+  if (same > 6 * earlier) [same, earlier] = [Math.min(same, took(false)), Math.max(earlier, took(true))];
+  assert.ok(same <= 6 * earlier, `${same.toFixed(1)} ms in the version of the paste, and ${earlier.toFixed(1)} ms in a later version`);
+});
