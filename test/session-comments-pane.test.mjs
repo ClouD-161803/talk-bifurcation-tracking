@@ -1413,6 +1413,43 @@ test('the label of a thread on a citation shows its new number as soon as the ci
   clean(a, [/404/]);
 });
 
+for (const [width, height] of [[1440, 900], [390, 844]]) {
+  test(`at ${width} px, the count of comments on a thumbnail of the navigator is clear of the dots of the people and of the steps`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talkWith(t, `<section>
+  <h2>One</h2>
+  <p>First slide</p>
+  <p class="fragment" data-fragment-index="1">A step</p>
+</section>
+`);
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
+    const others = [await open(browser, sessionUrl(server.edit), { name: 'Ben' }), await open(browser, sessionUrl(server.edit), { name: 'Cy' })];
+    await converge(server, [a, ...others]);
+    for (const p of others) await show(p, 'One');
+    if (!(await a.evaluate(`window.BeesonEditor.state('view.navigator').checked`))) await a.evaluate(`window.BeesonEditor.exec('view.navigator')`);
+    await post(a, 0, 'A thread');
+    const frame = `document.querySelector('.beeson-edit-nav .row .frame')`;
+    // the rectangles of the count, of each dot of a person, and of each dot of the steps
+    const rects = `(() => {
+      const f = ${frame};
+      const r = (e) => e.getBoundingClientRect().toJSON();
+      const shown = (e) => e.getClientRects().length > 0;
+      return {
+        count: [...f.querySelectorAll('.beeson-comment-count')].filter(shown).map(r),
+        people: [...f.querySelectorAll('.beeson-session-dots i')].filter(shown).map(r),
+        steps: [...f.querySelectorAll('.dots i')].filter(shown).map(r),
+      };
+    })()`;
+    await sees(a, `(() => { const g = ${rects}; return [g.count.length, g.people.length, g.steps.length]; })()`, [1, 2, 3], 'the count, the dots of Ben and Cy, and the dots of the steps');
+    const got = await a.evaluate(rects);
+    const hits = [];
+    for (const [x, y] of [['count', 'people'], ['count', 'steps'], ['people', 'steps']]) for (const p of got[x]) for (const q of got[y]) if (meets(p, q)) hits.push(`${x} meets ${y}`);
+    assert.deepEqual(hits, [], JSON.stringify(got));
+    clean(a);
+  });
+}
+
 test('a thread that a person only replied to is listed under For You, and a later reply of another person is unread for them', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   const id = await post(a, 0, 'A thread of Ann');
