@@ -183,6 +183,27 @@ test('the typing in progress ends when another person removes letters of it, and
   assert.equal(h.canUndo, true, 'the entry of the typing before the removal is kept until its undo');
 });
 
+test('an entry of typing whose carry was refused is not undone from its old texts, which would take a letter of another person', async () => {
+  const { h } = texts();
+  const state = { a: 0 };
+  h.push(change(state, 'a', 1));
+  const el = textEl('rho');
+  h.track(el);
+  typeInto(h, el, 'xaarho');
+  // another person types an a after the x, which the texts also give inside the span of the person
+  el.content = 'xaaarho';
+  h.prune((x) => x === el, undefined, undefined, [el]);
+  h.carry(el);
+  // and then removes the last a of the person, after which the text reads as after the typing
+  el.content = 'xaarho';
+  h.prune((x) => x === el, undefined, undefined, [el]);
+  h.carry(el);
+  await h.undo();
+  assert.equal(el.content, 'xaarho', 'the a of the other person is kept');
+  assert.deepEqual(state, { a: 0 }, 'the entry before it is undone');
+  assert.equal(h.canUndo, false);
+});
+
 test('an undo drops an entry of typing that cannot be undone, and undoes the entry before it in the same step', async () => {
   const { h, changes } = texts();
   const state = { a: 0 };
