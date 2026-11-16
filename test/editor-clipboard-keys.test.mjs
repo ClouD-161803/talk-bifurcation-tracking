@@ -18,6 +18,10 @@ const DECK = 'test/pages/editor-clipboard-keys.html';
 const MARK = '<!--beeson-->';
 const MOD = { mac: 4, other: 2 };
 const LETTER = { copy: 'c', cut: 'x', paste: 'v' };
+// the display of the deck, at its step and with a colored symbol, which a copy keeps
+const DISPLAY = String.raw`\[ E = \class{mass}{m} c^2 \]`;
+const STEP = 'class="math fragment" data-fragment-index="1"';
+const INLINE = String.raw`Gamma \(a^2 + b^2\) item.`;
 
 let browser;
 let server;
@@ -37,6 +41,7 @@ const errors = (page) => page.errors.filter((e) => !e.includes('/favicon.ico'));
 const active = (page) => page.evaluate(`document.activeElement?.localName`);
 const selected = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.localName + (el.classList.contains('math') ? '.math' : ''))`);
 const plain = (page) => page.evaluate('navigator.clipboard.readText()');
+const times = (text, part) => text.split(part).length - 1;
 const html = (page) => page.evaluate(`navigator.clipboard.read().then(async (items) => { for (const i of items) if (i.types.includes('text/html')) return (await i.getType('text/html')).text(); return ''; })`);
 
 async function load(t, platform) {
@@ -151,7 +156,24 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`Reveal.getCurrentSlide().querySelectorAll('div.math').length === 2`);
     assert.deepEqual(await selected(page), ['div.math']);
     const saved = await page.evaluate('window.BeesonEditor.render()');
-    assert.equal(saved.split('\\[ E = m c^2 \\]').length - 1, 2, 'the deck does not have two displays with the TeX');
+    assert.equal(times(saved, DISPLAY), 2, 'the deck does not have two displays with the TeX and its colored symbol');
+    assert.equal(times(saved, STEP), 2, 'the copy of the display is not at its step');
+  });
+
+  test(`an inline formula framed with Esc is copied and pasted with its text element by the keys (${platform})`, async (t) => {
+    const page = await load(t, platform);
+    const li = `Reveal.getCurrentSlide().querySelector('li')`;
+    await click(page, await page.evaluate(`(() => { const r = ${li}.querySelector('mjx-container').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+    await page.waitFor(`!!document.activeElement?.matches('.beeson-math textarea')`);
+    await press(page, 'Escape');
+    await page.waitFor(`(() => { const s = window.BeesonEditor.selection(); return !document.querySelector('.beeson-math') && s.length === 1 && s[0].contains(${li}); })()`);
+    const kind = await page.evaluate(`window.BeesonEditor.selection()[0].localName`);
+    await clipKey(page, 'copy');
+    await page.waitFor(`navigator.clipboard.readText().then((t) => t.startsWith(${js(MARK)}))`);
+    await clipKey(page, 'paste');
+    await page.waitFor(`Reveal.getCurrentSlide().querySelectorAll(${js(kind)}).length === 2`);
+    assert.equal(await undoLabel(page), 'Undo Paste');
+    assert.equal(times(await page.evaluate('window.BeesonEditor.render()'), INLINE), 2, 'the deck does not have two copies of the inline formula');
   });
 
   test(`the copy key in the TeX field of a display as a click opens it copies the display, with its TeX as the plain text (${platform})`, async (t) => {
@@ -160,7 +182,8 @@ for (const platform of PLATFORMS) {
     const tex = await page.evaluate('document.activeElement.value');
     await clipKey(page, 'copy');
     await page.waitFor(`navigator.clipboard.readText().then((t) => t === ${js(tex)})`);
-    assert.ok((await html(page)).includes('<div class="math"'), 'the display is not the HTML of the clipboard');
+    const copied = await html(page);
+    assert.ok(copied.includes(STEP) && copied.includes(DISPLAY), `the display is not the HTML of the clipboard: ${copied}`);
     // a click away closes the field, and the key pastes the display on the slide
     await click(page, await emptyPoint(page));
     await page.waitFor(`!document.querySelector('.beeson-math')`);
@@ -168,7 +191,8 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`Reveal.getCurrentSlide().querySelectorAll('div.math').length === 2`);
     assert.equal(await undoLabel(page), 'Undo Paste');
     const saved = await page.evaluate('window.BeesonEditor.render()');
-    assert.equal(saved.split('\\[ E = m c^2 \\]').length - 1, 2, 'the deck does not have two displays with the TeX');
+    assert.equal(times(saved, DISPLAY), 2, 'the deck does not have two displays with the TeX and its colored symbol');
+    assert.equal(times(saved, STEP), 2, 'the copy of the display is not at its step');
     assert.deepEqual(errors(page), []);
   });
 
