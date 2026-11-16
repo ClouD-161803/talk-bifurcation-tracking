@@ -406,7 +406,7 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
     document.querySelector('${LIST} input').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
     return true;
   })()`);
-  await ann.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(HOST_BIB)}`);
+  await ann.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(`A BibTeX entry is not added in a session. ${HOST_BIB}`)}`);
   assert.equal(await ann.evaluate(`!!document.querySelector('.reveal .slides cite[data-key="conley1968"]')`), false);
   await converge(server, [ann]);
   assert.equal(server.read('references.bib'), bib);
