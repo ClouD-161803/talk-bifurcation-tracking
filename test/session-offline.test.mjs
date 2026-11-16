@@ -389,6 +389,29 @@ test('an edit typed after a load that takes over a copy, before hello is answere
   clean(a);
 });
 
+test('a word typed after a load that takes over a copy, before hello is answered, at the end of the paragraph that the copy ends with a word keeps both words', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const a = await tab(browser, url, { script: `if (sessionStorage.getItem('__offline')) window.__offline = true;` });
+  await converge(server, [a]);
+  await a.evaluate(`sessionStorage.setItem('__offline', '1')`);
+  await goOffline(a);
+  await edit(a, 0, 'p', ' TOKH1');
+  await copied(a, 'TOKH1');
+  await a.evaluate('window.__old = true');
+  await a.send('Page.reload');
+  await a.waitFor(`!window.__old && window.BeesonSession?.client?.()?.connection === 'offline'`);
+  // the page shows the deck without the copy until its hello is answered
+  await edit(a, 0, 'p', ' TOKH2');
+  await a.waitFor(`(${ROWS}).then((rows) => rows.length === 1 && rows[0].mine.includes('<p>First slide TOKH1 TOKH2</p>'))`);
+  await a.evaluate(`sessionStorage.removeItem('__offline')`);
+  await goOnline(a);
+  assert.equal(await converge(server, [a]), TALK.replace('<p>First slide</p>', '<p>First slide TOKH1 TOKH2</p>'));
+  clean(a);
+});
+
 test('the copies of two closed tabs that changed the same text are both sent, the second after the first with the dialog of the conflicts', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
