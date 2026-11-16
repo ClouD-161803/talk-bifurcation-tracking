@@ -1250,3 +1250,19 @@ test('Shift+F10 does not open the menu of the selected element over Version Hist
   await ann.waitFor(`!(${SHOWN})`);
   clean(ann);
 });
+
+test('the button Comments is drawn dimmed while Version History makes it inert', { timeout: 180_000 }, async (t) => {
+  const { pages: [ann] } = await session(t, ['Ann']);
+  const DIM = `(() => { const b = document.querySelector('.beeson-session-comments'); return [b.inert, Number(getComputedStyle(b).opacity) < 1]; })()`;
+  await front(ann);
+  assert.deepEqual(await ann.evaluate(DIM), [false, false]);
+  await press(ann, HISTORY_KEY);
+  await ann.waitFor(SHOWN);
+  await ann.waitFor(`document.querySelector('.beeson-session-comments').inert`);
+  assert.deepEqual(await ann.evaluate(DIM), [true, true]);
+  await press$(ann, PANE, 'Back to editor');
+  await ann.waitFor(`!(${SHOWN})`);
+  await ann.waitFor(`!document.querySelector('.beeson-session-comments').inert`);
+  assert.deepEqual(await ann.evaluate(DIM), [false, false]);
+  clean(ann);
+});
