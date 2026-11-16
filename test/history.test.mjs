@@ -257,3 +257,22 @@ test('a retract of an entry of typing that cannot be undone takes it out of the 
   assert.equal(h.canUndo, false);
   assert.equal(h.canRedo, false);
 });
+
+// outside a session, a text element is changed only by its person and by the editor. a change that
+// the history was not told of, e.g. the closing brace that the list of citations takes out of a
+// typed \cite{key}, is then not an edit of another person
+test('outside a session, an undo and a redo of typing write the old text over a change that the history was not told of', async () => {
+  const h = new History({ snapshot: (el) => el.content, restore: async (el, content) => void (el.content = content), onChange: () => {}, alone: () => true });
+  const el = textEl('Cited words');
+  h.track(el);
+  typeInto(h, el, 'Cited words \\cite{gomez2004}');
+  h.break();
+  el.content = 'Cited words \\cite{gomez2004';
+  await h.undo();
+  assert.equal(el.content, 'Cited words');
+  assert.equal(h.redoLabel, 'typing', 'the entry is not dropped');
+  el.content = 'Cited';
+  await h.redo();
+  assert.equal(el.content, 'Cited words \\cite{gomez2004}');
+  assert.equal(h.undoLabel, 'typing');
+});
