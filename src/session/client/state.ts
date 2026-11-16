@@ -11,7 +11,8 @@ import { isLeaving } from './people.ts';
 
 // the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
 // of their own, see people.ts. the button is drawn without its text while the title shows it, i.e.
-// from the width at which menubar.ts shows the state, and while the title has room for it
+// from the width at which menubar.ts shows the state, and while the title has room for it. in a
+// narrow title bar a warning takes a line of its own under the buttons, on which it wraps
 const CSS = `
 @media (min-width: 900px) { .beeson-edit-titlebar:has(.doc:not(.tight) .state) .right button.beeson-session-state .name { display: none; } }
 .beeson-edit-titlebar .right button.beeson-session-state, .beeson-edit-titlebar .right button.beeson-session-action { position: relative; }
@@ -19,10 +20,11 @@ const CSS = `
 .beeson-edit-titlebar .right button.beeson-session-state svg { flex: none; color: var(--ed-muted); }
 .beeson-edit-titlebar .right button.beeson-session-state.warn svg { color: var(--ed-guide); }
 .beeson-edit-titlebar .right button.beeson-session-action { border: 1px solid var(--ed-control-line); background: var(--ed-control); }
+.beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state.warn { order: 1; flex: 1 0 100%; align-items: flex-start; height: auto; padding: 4px 8px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; text-align: start; }
 `;
 
 type Action = 'retry' | 'reload' | 'upload' | null;
-type View = { text: string; icon: string; warn: boolean; action: Action };
+type View = { text: string; icon: string; warn: boolean; action: Action; note?: boolean };
 
 function view(client: Client): View {
   const retry: Action = client.retryAt === null ? null : 'retry';
@@ -47,6 +49,9 @@ function view(client: Client): View {
       if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload' };
       const lost = lostLine(client);
       if (lost) return { text: lost, icon: 'warning', warn: true, action: null };
+      // a warning of the editor, e.g. why a file is not added, shown by the title in place of the
+      // status, until the next edit
+      if (client.app.note?.warn) return { text: client.app.note.text, icon: 'warning', warn: true, action: null, note: true };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
       const restored = restoredLine(client);
       if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
@@ -91,7 +96,7 @@ export function install(client: Client): void {
     name.textContent = v.text;
     button.setAttribute('aria-label', v.text);
     button.title = v.text;
-    client.port.setStatus(v.text);
+    client.port.setStatus(v.note ? null : v.text);
   };
   button.addEventListener('click', () => {
     if (client.blocked) client.loadAgain();
@@ -106,5 +111,6 @@ export function install(client: Client): void {
   });
   client.on('state', draw);
   client.on('me', draw);
+  client.app.listen('report', draw);
   draw();
 }
