@@ -8,12 +8,15 @@ import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
 import { test } from 'node:test';
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, ops, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
 import { type } from './helpers/editor.mjs';
 import { copied, el, released, rows, tab } from './helpers/offline.mjs';
 import { post, raw, until } from './helpers/session.mjs';
+import { Transport } from '../src/session/client/transport.ts';
 
 /**
  * A proxy on 127.0.0.1 in front of the edit command edit, whose url serves the deck of the session.
@@ -188,6 +191,53 @@ test('an operation that the browser refuses with keepalive is sent again without
   assert.equal((await ops(page)) - before, 2);
   assert.equal(net.sent.filter((b) => b.includes('refused')).length, 1);
   clean(page);
+});
+
+// the transport alone, with a fetch whose first call fails and whose later calls are answered.
+// sent gets whether each request had keepalive
+function failOnce() {
+  const sent = [];
+  globalThis.fetch = async (url, init) => {
+    sent.push(!!init.keepalive);
+    if (sent.length === 1) throw new TypeError('Failed to fetch');
+    return new Response(JSON.stringify({ ok: true, v: '0' }));
+  };
+  return sent;
+}
+const opPost = (text) => ({ token: 't', seq: 1, base: '0', patches: [{ start: 0, end: 0, text }] });
+// the send() of the client sends one post again until it is answered
+const answered = async (transport, post) => {
+  for (;;) if (await transport.op(post).then(() => true, () => false)) return;
+};
+
+test('an operation after a failed and answered one is sent with keepalive again', async (t) => {
+  const fetched = globalThis.fetch;
+  t.after(() => (globalThis.fetch = fetched));
+  const sent = failOnce();
+  const transport = new Transport('http://127.0.0.1/index.html');
+  await answered(transport, opPost('a'));
+  await answered(transport, opPost('b'));
+  assert.deepEqual(sent, [true, false, true]);
+});
+
+v8.setFlagsFromString('--expose-gc');
+const gc = vm.runInNewContext('gc');
+
+test('a large operation that failed is not kept by the transport once it is answered', async (t) => {
+  const fetched = globalThis.fetch;
+  t.after(() => (globalThis.fetch = fetched));
+  const sent = failOnce();
+  const transport = new Transport('http://127.0.0.1/index.html');
+  let post = opPost('x'.repeat(3_000_000));
+  const ref = new WeakRef(post);
+  await answered(transport, post);
+  post = null;
+  for (let i = 0; i < 5 && ref.deref(); i++) {
+    await new Promise((done) => setImmediate(done));
+    gc();
+  }
+  assert.deepEqual(sent, [false, false]);
+  assert.equal(ref.deref(), undefined);
 });
 
 test('a page that is hidden without a key that it has not read does not read the deck', { timeout: 120_000 }, async (t) => {
