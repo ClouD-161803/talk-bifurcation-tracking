@@ -17,7 +17,7 @@ import { besidePlace } from '../src/editor/ui/dialog.ts';
 import { GRID, fillLine } from '../src/editor/table.ts';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, captured, click, drag, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
 const PANEL = '#beeson-edit-panel-format';
@@ -306,7 +306,7 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`!document.querySelector(${js(SLIDER)}).disabled`);
     const length = await page.evaluate(`document.querySelector(${js(video)}).duration`);
     await slideTo(page, 0.5);
-    await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}.png"')`);
+    await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}.png"')`);
     await settle(page);
     const time = await page.evaluate(`Number(document.querySelector(${js(SLIDER)}).value)`);
     assert.ok(Math.abs(time - length / 2) < length * 0.1, `the slider is at ${time} of ${length} s`);
@@ -318,7 +318,7 @@ for (const platform of PLATFORMS) {
     // the first frame of the video is another picture
     await page.evaluate(`document.querySelector(${js(SLIDER)}).focus()`);
     await press(page, 'Home');
-    await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}-2.png"')`);
+    await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}-2.png"')`);
     assert.notEqual(await posterBytes(page, video), half);
     await page.evaluate('window.BeesonEditor.undo()');
     await settle(page);
@@ -356,13 +356,13 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
     const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('input.beeson-media-input')` });
     await page.send('DOM.setFileInputFiles', { files: [resolve(`demo/${clip}.mp4`)], objectId: result.objectId });
-    await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}.png"')`);
+    await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}.png"')`);
     if (!(await page.evaluate(`!!document.querySelector(${js(SLIDER)})`))) return;
     // a second move of the slider reads the chosen file again without asking
     const half = await posterBytes(page, video);
     await page.evaluate(`document.querySelector(${js(SLIDER)}).focus()`);
     await press(page, 'Home');
-    await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}-2.png"')`);
+    await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}-2.png"')`);
     assert.equal(await page.evaluate(`!!document.querySelector(${js(ASK)})`), false);
     assert.notEqual(await posterBytes(page, video), half);
     const edited = page.source.replace(clipOf(mode), clipOf(mode).replace(`poster="demo/${clip}.png"`, `poster="media/${clip}-2.png"`));
