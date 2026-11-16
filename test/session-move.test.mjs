@@ -56,8 +56,9 @@ const CASES = [
     into: 'Two',
     ends: /<h2>Two by Ana<\/h2>\n {2}<ul>\n.*\n.*\n {2}<\/ul>\n {2}<p>Second slide<\/p>\n<\/section>/,
   },
-  { name: 'a slide moved below the next one', ben: SWAP, into: 'First slide' },
-  { name: 'a slide swapped with a slide of the same shape', edits: [[LIST, '']], ben: SWAP, into: 'Second slide' },
+  // a move gives way to a key inside the moved slide, hence the slides stay in their order
+  { name: 'a slide moved below the next one', ben: SWAP, into: 'First slide', ends: /<h2>One 1<\/h2>[^]*<h2>Two<\/h2>/ },
+  { name: 'a slide swapped with a slide of the same shape', edits: [[LIST, '']], ben: SWAP, into: 'Second slide', ends: /<h2>One 1<\/h2>[^]*<h2>Two<\/h2>/ },
 ];
 
 // the session of Ana and Ben, with a key of the other page in the heading of slide One, which the
