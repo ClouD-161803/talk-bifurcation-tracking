@@ -182,7 +182,10 @@ class Pane {
     const had = !!document.activeElement?.closest('.beeson-comments article');
     const give = this.salvage();
     this.retarget();
-    for (const b of this.filters.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.filter === this.filter));
+    for (const b of this.filters.children) {
+      const pressed = String((b as HTMLElement).dataset.filter === this.filter);
+      if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
+    }
     const places = this.comments.places();
     const shown = this.sorted(places).filter((t) => this.visible(t));
     const want: HTMLElement[] = [];
@@ -237,7 +240,8 @@ class Pane {
         this.signs.delete(id);
         this.drawn.delete(id);
       } else {
-        node.tabIndex = id === (this.focused ?? this.order[0]) ? 0 : -1;
+        const tab = id === (this.focused ?? this.order[0]) ? 0 : -1;
+        if (node.tabIndex !== tab) node.tabIndex = tab;
         node.classList.toggle('focused', id === this.focused);
       }
     }
@@ -359,7 +363,9 @@ class Pane {
     const unread = this.comments.unread(t);
     node.classList.toggle('unread', unread);
     node.classList.toggle('focused', this.focused === t.id);
-    node.setAttribute('aria-label', `Comment by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`);
+    const aria = `Comment by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`;
+    // an attribute written with its own value still invalidates the style of the pane
+    if (node.getAttribute('aria-label') !== aria) node.setAttribute('aria-label', aria);
     // a reply being typed stays in a thread that another person resolves
     const answering = !t.resolved || this.busy(t);
     const names = itemsOf(t).map((i) => `${this.nameOf(i.author)}|${this.colorOf(i.author)}`).join(',');
@@ -570,8 +576,9 @@ class Pane {
     const sync = () => {
       const online = this.client.connection === 'online';
       const extra = Array.from(sent()).length - COMMENT_MAX;
-      go.disabled = busy || !online || !area.value.trim() || extra > 0;
-      go.title = online ? '' : OFFLINE;
+      const disabled = busy || !online || !area.value.trim() || extra > 0;
+      if (go.disabled !== disabled) go.disabled = disabled;
+      if (go.title !== (online ? '' : OFFLINE)) go.title = online ? '' : OFFLINE;
       if (extra > 0) {
         over = true;
         error.textContent = `The text is ${extra} ${extra === 1 ? 'character' : 'characters'} too long.`;
