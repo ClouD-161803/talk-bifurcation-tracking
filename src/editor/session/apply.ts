@@ -363,9 +363,10 @@ function makeCtx(app: App, text: string): Ctx {
 }
 
 // a deck changed by an apply that then does not read as the text, i.e. neither as before nor as the
-// text. it throws, since a reload is answered only with the deck as it was
-export function partial(): never {
-  throw new Error('the deck does not read as the text after an apply');
+// text. it throws, since a reload is answered only with the deck as it was. target is the text that
+// the deck was to read, with the edits of the person that the client has not read, see turn()
+export function partial(target?: string): never {
+  throw Object.assign(new Error('the deck does not read as the text after an apply'), { target });
 }
 
 // the deck made to read as text, which differs from the text of the source in w, at spot. null when

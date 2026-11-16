@@ -467,8 +467,14 @@ export class Client {
     let applied: Applied;
     try {
       applied = await this.port.apply(text);
-    } catch {
-      // the deck may be changed in part, hence it is not read again
+    } catch (e) {
+      // the deck may be changed in part, hence it is not read again. the edits of the person that
+      // were not read are taken from the text that the deck was to read
+      const target = (e as { target?: unknown } | null)?.target;
+      if (typeof target === 'string') {
+        this.handed = text;
+        this.capture(target);
+      }
       this.freeze(null);
       return false;
     }
@@ -521,11 +527,12 @@ export class Client {
   }
 
   // the edits of the person since the deck read as handed, merged into mine, where they win at a
-  // conflict. false while the port gives unshown, as it does until a change of the person settles
-  private capture(): boolean {
+  // conflict. false while the port gives unshown, as it does until a change of the person settles.
+  // given is read in place of the deck, e.g. the text that an apply rejected in part was to read
+  private capture(given?: string): boolean {
     const sync = this.sync, handed = this.handed;
     if (!sync || handed === null) return true;
-    const deck = this.read();
+    const deck = given ?? this.read();
     if (deck === null || deck === this.unshown) return false;
     if (deck === handed) return true;
     const theirs = diff(handed, sync.mine);
