@@ -1561,13 +1561,26 @@ function bestPairs(a, b, half) {
 }
 var inner = (x) => x.slice(x.indexOf(">") + 1, x.lastIndexOf("<")).replace(/\s+/g, " ").trim();
 var words = (x) => x.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+function core(x, y) {
+  if (x.length > y.length) [x, y] = [y, x];
+  x = ` ${x} `;
+  let h = x.length >> 1, k = y.length, b = 0, p = -1;
+  while (k > 0 && ~(p = y.indexOf(x[h], ++p))) {
+    let l = h, r = h;
+    while (x[--l] === y[l + p - h]) ;
+    while (x[++r] === y[r + p - h]) ;
+    k -= r - l, l = x.indexOf(" ", l + 1), r = x.lastIndexOf(" ", r - 1);
+    if (x.lastIndexOf(" ", r - 1) > l) b = Math.max(b, r - l + 1);
+  }
+  return b;
+}
 function closePairs(a, b) {
   const n = a.length, m = b.length;
   const wa = a.map(words), wb = b.map(words);
   const ia = a.map(inner), ib = b.map(inner);
   const gain = (i, j) => {
     const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
-    const s = shared(x, y);
+    const s = Math.max(shared(x, y), i === j || n - i === m - j ? core(x, y) : 0);
     return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));

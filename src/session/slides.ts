@@ -94,7 +94,8 @@ function childrenOf(html: string): (Range & { name: string; open: number })[] {
 
 // the pairs of an item of a and an item of b that are one item, matched first by equal text in
 // order, and then, between two equal ones, by the most characters shared at the start and the end.
-// with half, the items are slides, paired only when they share at least half of the shorter text
+// with half, the items are slides, paired only when they share at least half of the shorter text,
+// at the start and the end or, at the same place between two equal ones, through the middle
 export function pairs(a: string[], b: string[], half = false): { i: number; j: number; same: boolean }[] {
   const out: { i: number; j: number; same: boolean }[] = [];
   let pre = 0;
@@ -158,17 +159,45 @@ function bestPairs(a: string[], b: string[], half: boolean): [number, number][] 
 const inner = (x: string) => x.slice(x.indexOf('>') + 1, x.lastIndexOf('<')).replace(/\s+/g, ' ').trim();
 const words = (x: string) => x.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 
+// the characters of the longest stretch of two or more whole words through the middle of the
+// shorter of x and y that the other holds as well, with the spaces around it, where the shorter is
+// read with a space at each end. the middle of the shorter is read, since it is kept more often,
+// e.g. when a long paragraph is added. the stretches are read for about as many characters as the
+// longer has
+function core(x: string, y: string) {
+  if (x.length > y.length) [x, y] = [y, x];
+  x = ` ${x} `;
+  // h is the middle of x, k the characters left to read, and b the longest stretch
+  let h = x.length >> 1, k = y.length, b = 0, p = -1;
+  while (k > 0 && ~(p = y.indexOf(x[h], ++p))) {
+    // y is trimmed, hence a space at an end of x is not read with an end of y, and both are never
+    // read past at once
+    let l = h, r = h;
+    while (x[--l] === y[l + p - h]);
+    while (x[++r] === y[r + p - h]);
+    // the reads are counted, and l and r become the spaces around the whole words read. one word is
+    // often shared by chance, e.g. by two short slides at one place
+    k -= r - l, l = x.indexOf(' ', l + 1), r = x.lastIndexOf(' ', r - 1);
+    if (x.lastIndexOf(' ', r - 1) > l) b = Math.max(b, r - l + 1);
+  }
+  return b;
+}
+
 // the pairs in order of a slide of a and a slide of b that share the most characters in all, where
 // a slide is left out rather than paired with one that shares less than half of the shorter text.
-// the texts are read without tags, since short slides share most of their markup, and the markup
-// inside their sections is read when neither slide has text, e.g. two slides of one picture each
+// two slides share the characters at their start and end, or, at the same place counted from the
+// start or the end of a and b, those of the stretch that core finds, e.g. a slide whose heading
+// and notes changed. the texts are read without tags, since short slides share most of their
+// markup, and the markup inside their sections is read when neither slide has text, e.g. two
+// slides of one picture each
 function closePairs(a: string[], b: string[]): [number, number][] {
   const n = a.length, m = b.length;
   const wa = a.map(words), wb = b.map(words);
   const ia = a.map(inner), ib = b.map(inner);
   const gain = (i: number, j: number) => {
     const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
-    const s = shared(x, y);
+    // the middle is read only at the same place, which keeps the reads linear in the slides
+    const s = Math.max(shared(x, y), i === j || n - i === m - j ? core(x, y) : 0);
     return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
