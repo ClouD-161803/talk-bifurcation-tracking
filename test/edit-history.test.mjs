@@ -1017,3 +1017,41 @@ test('a change of index.html from outside is told as an overwrite only where it 
   assert.deepEqual([history.overwrittenAfter('earlier.0'), history.overwrittenAfter('not a version')], [false, false]);
   assert.equal(told('First-gr', 'First-Gr', BO), false, 'an operation of a person over a word of Ann');
 });
+
+test('every page is told when a change of index.html from outside replaces text that a person wrote in the session, also when it reverts the text, and not when it changes other text', { timeout: 120_000 }, async (t) => {
+  const s = await session(t, { quiet: 3_600_000, longest: 3_600_000 });
+  const ann = await s.hello('Ann');
+  const bo = await s.hello('Bo');
+  const written = (text) => until(async () => (await s.current()).includes(text), `the session to hold ${text}`);
+  const onDisk = (text) => until(() => readFileSync(s.file, 'utf8').includes(text), `index.html to hold ${text}`);
+  const read = await s.current();
+  const uno = await s.op(ann, 1, 'One', 'Uno');
+  await onDisk('Uno');
+  // a program that read index.html before the edit of Ann writes over the same word
+  writeFileSync(s.file, read.replace('One', 'Eins'));
+  await written('Eins');
+  for (const page of [ann, bo]) assert.equal((await s.events(page, uno.v)).overwritten, true);
+  const { versions } = await s.list(bo);
+  assert.deepEqual(versions.map((v) => v.authors), [[ann.person], []]);
+  assert.ok((await raw(s.edit.port, 'GET', `${s.edit.base}index.html?version=${versions[0].id}`)).text.includes('<h2>Uno</h2>'));
+
+  // a program that read index.html before the edit of Ann writes after another program, hence its
+  // change is merged on the text of the other program, and the edit of Ann is reverted
+  const stale = await s.current();
+  const deux = await s.op(ann, 2, 'Two', 'Deux');
+  await onDisk('Deux');
+  writeFileSync(s.file, (await s.current()).replace('First slide', 'First slide by B'));
+  await written('by B');
+  const before = (await s.events(bo, deux.v)).v;
+  writeFileSync(s.file, stale.replace('</body>', '<p>by A</p>\n</body>'));
+  await written('by A');
+  assert.ok(!(await s.current()).includes('Deux'));
+  assert.equal((await s.events(bo, before)).overwritten, true);
+
+  const last = (await s.events(bo, before)).v;
+  writeFileSync(s.file, (await s.current()).replace('Second slide', 'Changed by an agent'));
+  await written('Changed by an agent');
+  const events = await s.events(bo, last);
+  assert.equal(events.ops.length, 1);
+  assert.equal(events.overwritten, undefined);
+});
