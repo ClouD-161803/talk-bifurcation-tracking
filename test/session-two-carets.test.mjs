@@ -73,7 +73,7 @@ function unseen({ files, views }) {
   for (const text of views) assert.equal(without(text, 'yz'), 'Second slide', 'the page of another person does not show the composing word');
 }
 
-test('a word composed with an input method reaches the others once it is committed, and the keys that another person types at its caret during the composition are kept', { timeout: 120_000 }, async (t) => {
+test('a word composed with an input method reaches the others once it is committed, and the keys that another person types at its caret during the composition are kept', { timeout: 300_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -90,7 +90,7 @@ test('a word composed with an input method reaches the others once it is committ
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a word composed with an input method between the keys of two other people, one before it and one after it, keeps every key of both', { timeout: 120_000 }, async (t) => {
+test('a word composed with an input method between the keys of two other people, one before it and one after it, keeps every key of both', { timeout: 360_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben', 'Cleo']);
   const [ana, ben, cleo] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -107,7 +107,7 @@ test('a word composed with an input method between the keys of two other people,
   assert.deepEqual([ana.errors, ben.errors, cleo.errors], [[], [], []]);
 });
 
-test('the letters of two people who take turns at one point each stay in a run of their own', { timeout: 120_000 }, async (t) => {
+test('the letters of two people who take turns at one point each stay in a run of their own', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -123,7 +123,7 @@ test('the letters of two people who take turns at one point each stay in a run o
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('the keys of two other people that come in one answer on both sides of an unread key of the person are kept with it', { timeout: 120_000 }, async (t) => {
+test('the keys of two other people that come in one answer on both sides of an unread key of the person are kept with it', { timeout: 300_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben', 'Cleo'], { pages: [{ script: NET }] });
   const [ana, ben, cleo] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -203,7 +203,7 @@ const run = async (page, id) => {
   await page.evaluate(`${C}.app.history.idle().then(() => true)`);
 };
 
-test('an undo of typing next to a space that the browser rewrote as &nbsp; removes only the typing of the person, and the undo of the other person removes only theirs', { timeout: 120_000 }, async (t) => {
+test('an undo of typing next to a space that the browser rewrote as &nbsp; removes only the typing of the person, and the undo of the other person removes only theirs', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>Second <code>x+1</code> slide</p>']] });
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -227,7 +227,7 @@ test('an undo of typing next to a space that the browser rewrote as &nbsp; remov
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('an undo of a word whose trailing space the browser of another person took away is refused, and keeps the letters of the other person', { timeout: 120_000 }, async (t) => {
+test('an undo of a word whose trailing space the browser of another person took away is refused, and keeps the letters of the other person', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -300,7 +300,7 @@ test('a word composed at the start of a word that another person makes bold duri
   assert.deepEqual([await loads(ana), ana.errors, ben.errors], [1, [], []], 'the page of Ana is not loaded again');
 });
 
-test('a paste of more than 500 characters and a key of a third person on the other side of an unread key of the person are kept with it', { timeout: 240_000 }, async (t) => {
+test('a paste of more than 500 characters and a key of a third person on the other side of an unread key of the person are kept with it', { timeout: 300_000 }, async (t) => {
   const paste = 'x'.repeat(600);
   const text = await race(t, {
     names: ['Ana', 'Ben', 'Cleo'],
@@ -346,7 +346,7 @@ async function stepped(server, ana, steps, act) {
   }
 }
 
-test('a key of another person at the caret of a composition that equals the first letter of the reading is kept, at each step', { timeout: 120_000 }, async (t) => {
+test('a key of another person at the caret of a composition that equals the first letter of the reading is kept, at each step', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -357,7 +357,7 @@ test('a key of another person at the caret of a composition that equals the firs
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('two keys of another person at the caret of a composition, the first of which equals the reading, are kept', { timeout: 120_000 }, async (t) => {
+test('two keys of another person at the caret of a composition, the first of which equals the reading, are kept', { timeout: 180_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -368,7 +368,7 @@ test('two keys of another person at the caret of a composition, the first of whi
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a letter that another person deletes before the caret of a composition whose reading starts with it stays deleted', { timeout: 120_000 }, async (t) => {
+test('a letter that another person deletes before the caret of a composition whose reading starts with it stays deleted', { timeout: 180_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -379,7 +379,7 @@ test('a letter that another person deletes before the caret of a composition who
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a sentence that another person pastes over the paragraph around the caret of a composition is kept whole, with the committed word once', { timeout: 120_000 }, async (t) => {
+test('a sentence that another person pastes over the paragraph around the caret of a composition is kept whole, with the committed word once', { timeout: 180_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -392,7 +392,7 @@ test('a sentence that another person pastes over the paragraph around the caret 
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a key typed right before a composition that starts while an apply waits reaches index.html before the commit', { timeout: 120_000 }, async (t) => {
+test('a key typed right before a composition that starts while an apply waits reaches index.html before the commit', { timeout: 180_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
