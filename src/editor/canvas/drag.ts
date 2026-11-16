@@ -1190,6 +1190,7 @@ export function install(app: App): void {
   const reset = () => {
     const el = frames.current();
     if (!el) return;
+    if (app.commands.refused('arrange.setPosition', { els: [el] })) return;
     const from = placeOf(el);
     const to = { ...from, translate: null };
     writePlace(app, el, to);
