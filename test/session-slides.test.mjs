@@ -56,6 +56,28 @@ test('a slide removed while another is added is reported as removed, and a slide
   assert.deepEqual(changes(before, deck(ALPHA, edited, GAMMA)), { slides: [2] });
 });
 
+test('a slide edited in place is changed and not removed when its heading is kept or one version of it is empty', async (t) => {
+  const MOT = slide('Motivation', '<p>Transfers cost fuel.</p>');
+  const RES = slide('Results', '<p>Lower cost by a third.</p>');
+  const OUT = slide('Outlook', '<p>Next we try NRHOs.</p>');
+  const Q = slide('Questions?');
+  const empty = ['<h2></h2>', '<p></p>'];
+  const versions = {
+    'an empty slide of a layout filled': [empty, RES],
+    'only the heading of an empty slide filled': [empty, slide('Results', '<p></p>')],
+    'a slide emptied': [RES, empty],
+    'the sentence of a short slide rewritten under its heading': [RES, slide('Results', '<p>Fuel use drops sharply.</p>')],
+  };
+  for (const [name, [x, y]] of Object.entries(versions)) {
+    await t.test(name, () => {
+      const one = deck(MOT, x, OUT, Q);
+      const two = deck(MOT, y, OUT, Q);
+      assert.deepEqual(changes(one, two), { slides: [2] });
+      assert.deepEqual(changes(two, one), { slides: [2] });
+    });
+  }
+});
+
 test('a short slide removed while the next one is edited and a new one is added is reported as removed', () => {
   const before = deck(slide('One', '<p>a</p>'), slide('Results', '<p>Remove me</p>'), slide('Method', '<p>Gamma</p>'), slide('End'));
   const after = deck(slide('One', '<p>a</p>'), slide('Method', '<p>Gamma and more</p>'), slide('Outlook', '<p>New</p>'), slide('End'));
