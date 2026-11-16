@@ -333,6 +333,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     }
     if (route === 'hello') {
       const hello = body as Partial<HelloRequest>;
+      if (Array.isArray(hello.retire)) for (const token of hello.retire.slice(0, 16)) people.retire(token);
       const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ('taken' in joined) return json(200, { taken: joined.taken });
       if ('empty' in joined) return error(400, 'the name is empty');

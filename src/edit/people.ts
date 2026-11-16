@@ -220,6 +220,11 @@ export class People {
     return true;
   }
 
+  // the token of a closed page forgotten, hence a later request of it is one of an unknown token
+  retire(token: string): void {
+    this.tokens.delete(token);
+  }
+
   // the page left, and a request of it that arrives later does not bring it back, only a hello
   bye(client: string): void {
     const known = this.clients.get(client);

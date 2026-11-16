@@ -42,8 +42,10 @@ export type AppliedOp = {
 // claim takes over the person who holds the name, i.e. one person on a second device. a page passes
 // the token of its earlier hello only when the same page reconnects with its Replica in memory,
 // and it keeps its client id. a reloaded page is a new client, and it says hello without a token.
-// was is the client id under which the page sent its operation in flight, passed with the token
-export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string };
+// was is the client id under which the page sent its operation in flight, passed with the token.
+// retire names the tokens of closed pages whose copies the page took over, at most 16 of which the
+// edit command forgets, so that an operation of such a page that arrives later is not applied twice
+export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string; retire?: Token[] };
 // the answer of hello and of name when another person holds the name, and nothing is changed
 export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise.

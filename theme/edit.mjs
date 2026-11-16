@@ -1719,6 +1719,10 @@ var People = class {
     this.changed();
     return true;
   }
+  // the token of a closed page forgotten, hence a later request of it is one of an unknown token
+  retire(token) {
+    this.tokens.delete(token);
+  }
   // the page left, and a request of it that arrives later does not bring it back, only a hello
   bye(client) {
     const known = this.clients.get(client);
@@ -3271,6 +3275,7 @@ async function start(options = {}) {
     }
     if (route === "hello") {
       const hello = body;
+      if (Array.isArray(hello.retire)) for (const token2 of hello.retire.slice(0, 16)) people.retire(token2);
       const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ("taken" in joined) return json(200, { taken: joined.taken });
       if ("empty" in joined) return error(400, "the name is empty");
