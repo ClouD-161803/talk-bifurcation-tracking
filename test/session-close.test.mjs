@@ -6,35 +6,38 @@
 
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
+import { connect, createServer as createTcpServer } from 'node:net';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, open, ops, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
+import { C, clean, converge, ONLINE, open, ops, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
 import { type } from './helpers/editor.mjs';
-import { el, tab } from './helpers/offline.mjs';
-import { until } from './helpers/session.mjs';
+import { copied, el, released, rows, tab } from './helpers/offline.mjs';
+import { post, raw, until } from './helpers/session.mjs';
 
 /**
  * A proxy on 127.0.0.1 in front of the edit command edit, whose url serves the deck of the session.
- * While hold() is on, each operation waits until release(), and is sent on only when the browser
- * still waits for its answer. A request whose path ends in /canary or /filler waits until the
- * browser cancels it, and parked.canary and parked.filler are their records, with gone set once
- * the browser cancelled it. held holds the operations that wait, and sent the bodies of the
+ * While hold() is on, each operation, or each request that its match takes, waits until release(),
+ * and is sent on only when the browser still waits for its answer. A request whose path ends in
+ * /canary or /filler waits until the browser cancels it, and parked.canary and parked.filler are
+ * their records, with gone set once the browser cancelled it. held holds the requests that wait,
+ * with answered set once the edit command has answered them, and sent the bodies of the
  * operations sent on.
  */
 async function proxy(t, edit) {
-  const net = { parked: {}, held: [], sent: [], holding: false, url: '' };
+  const net = { parked: {}, held: [], sent: [], holding: null, url: '' };
   const server = createServer((req, res) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
     req.on('end', () => {
       const body = Buffer.concat(chunks);
-      const r = { body: body.toString('utf8'), gone: false };
+      const r = { url: req.url, body: body.toString('utf8'), gone: false, answered: false };
       res.on('close', () => (r.gone = !res.writableEnded));
       r.go = () => {
         if (req.url.includes('/.session/op')) net.sent.push(r.body);
         const out = request({ host: '127.0.0.1', port: edit.port, method: req.method, path: req.url, agent: false, headers: { ...req.headers, host: `127.0.0.1:${edit.port}` } }, (answer) => {
           res.writeHead(answer.statusCode, answer.headers);
+          answer.on('end', () => (r.answered = true));
           answer.pipe(res);
         });
         out.on('error', () => res.destroy());
@@ -43,7 +46,7 @@ async function proxy(t, edit) {
       };
       const parked = /\/(canary|filler)$/.exec(req.url);
       if (parked) net.parked[parked[1]] = r;
-      else if (net.holding && req.url.includes('/.session/op')) net.held.push(r);
+      else if (net.holding?.(r)) net.held.push(r);
       else r.go();
     });
   });
@@ -53,9 +56,9 @@ async function proxy(t, edit) {
     return new Promise((done) => server.close(done));
   });
   net.url = `http://127.0.0.1:${server.address().port}${edit.base}index.html?edit&session`;
-  net.hold = () => (net.holding = true);
+  net.hold = (match = (r) => r.url.includes('/.session/op')) => (net.holding = match);
   net.release = () => {
-    net.holding = false;
+    net.holding = null;
     for (const r of net.held.splice(0)) if (!r.gone) r.go();
   };
   return net;
@@ -209,4 +212,214 @@ test('a page that is hidden without a key that it has not read does not read the
   await page.waitFor('document.hidden');
   assert.equal(await page.evaluate('window.__reads'), 0);
   clean(page);
+});
+
+const count = (text, word) => text.split(word).length - 1;
+// the text of the edit command, which it serves before the debounced write of index.html
+const served = async (server) => (await raw(server.edit.port, 'GET', `${server.edit.base}index.html`)).text;
+// a page of the origin of url without the editor, which reads IndexedDB and the Web Locks
+const probeOf = async (browser, url) => {
+  const probe = await browser.newPage({ width: 640, height: 480 });
+  await probe.goto(url.replace(/\?.*/, ''));
+  return probe;
+};
+
+for (const late of [true, false]) {
+  test(`a word in the copy of a closed page reaches index.html once when the operation of the page arrives ${late ? 'after the next page has joined' : 'before the next page joins'}`, { timeout: 360_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const net = await proxy(t, server.edit);
+    const page = await tab(browser, net.url);
+    const probe = await probeOf(browser, net.url);
+    await converge(server, [page]);
+    await show(page, 'One');
+    await caretAtEnd(page, el(0, 'p'));
+    net.hold();
+    await canary(page, net);
+    await type(page, ' both');
+    await until(() => net.held.some((r) => r.body.includes('both')), 'the operation to be held');
+    const id = await copied(page, ' both');
+    const [op] = net.held;
+    await page.close();
+    await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the closed page');
+    await released(probe, id);
+    net.holding = null;
+    if (!late) net.release();
+    await until(() => late || op.answered, 'the answer of the operation of the closed page');
+    const next = await tab(browser, net.url);
+    await converge(server, [next]);
+    net.release();
+    await until(() => op.answered, 'the answer of the operation of the closed page');
+    assert.equal(count(await served(server), ' both'), 1);
+    assert.equal(await converge(server, [next]), TALK.replace('<p>First slide</p>', '<p>First slide both</p>'));
+    clean(next);
+  });
+}
+
+test('a word of a closed page without a copy reaches index.html when its operation arrives after the next page has joined', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const net = await proxy(t, server.edit);
+  const page = await tab(browser, net.url);
+  await converge(server, [page]);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  net.hold();
+  await canary(page, net);
+  await still(page);
+  await type(page, ' alone');
+  await page.close();
+  await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the closed page');
+  const [op] = net.held;
+  assert.ok(op?.body.includes('alone'), 'the closed page sent its operation');
+  net.holding = null;
+  const next = await tab(browser, net.url);
+  await converge(server, [next]);
+  assert.deepEqual(await rows(next), [], 'the closed page did not leave a copy');
+  net.release();
+  const want = TALK.replace('<p>First slide</p>', '<p>First slide alone</p>');
+  await until(() => server.read() === want, 'the word to reach index.html');
+  assert.equal(await converge(server, [next]), want);
+  clean(next);
+});
+
+// a crash does not fire pagehide, hence the record is the one written at the take-over
+for (const how of ['is closed', 'crashes']) {
+  test(`a word in the copy of a closed page reaches index.html once when the page that takes over the copy ${how} before its hello is answered`, { timeout: 420_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const net = await proxy(t, server.edit);
+    const first = await tab(browser, net.url);
+    const probe = await probeOf(browser, net.url);
+    await converge(server, [first]);
+    await show(first, 'One');
+    await caretAtEnd(first, el(0, 'p'));
+    net.hold();
+    await canary(first, net);
+    await type(first, ' both');
+    await until(() => net.held.some((r) => r.body.includes('both')), 'the operation to be held');
+    const id = await copied(first, ' both');
+    const [op] = net.held;
+    await first.close();
+    await until(() => net.parked.canary.gone, 'Chrome to cancel the requests of the closed page');
+    await released(probe, id);
+    // the second page takes over the copy and ends while its hello waits
+    net.hold((r) => r.url.includes('/.session/hello'));
+    const second = await tab(browser, net.url, { wait: false });
+    await until(() => net.held.some((r) => r.url.includes('/.session/hello')), 'the hello of the second page to be held');
+    const kept = await until(async () => (await rows(probe)).find((r) => r.id !== id && r.mine.includes(' both'))?.id, 'the second page to keep the copy under its own record');
+    // Page.crash is never answered
+    if (how === 'crashes') void second.send('Page.crash').catch(() => {});
+    else await second.close();
+    await released(probe, kept);
+    net.holding = null;
+    const third = await tab(browser, net.url);
+    await converge(server, [third]);
+    net.release();
+    // the crash may cancel the keepalive request of the first page in a shared renderer, hence it is sent by hand
+    if (op.gone) await post(server.edit.port, `${server.edit.base}.session/op`, op.body);
+    else await until(() => op.answered, 'the answer of the operation of the first page');
+    assert.equal(count(await served(server), ' both'), 1);
+    assert.equal(await converge(server, [third]), TALK.replace('<p>First slide</p>', '<p>First slide both</p>'));
+    clean(third);
+  });
+}
+
+/**
+ * A proxy on the TCP level in front of the edit command edit. Once token is set, the first
+ * operation that carries it is never sent on, as on a connection that a mobile network dropped
+ * without a reset, and every later request goes through. lost is set once this operation is
+ * swallowed, resent once Chrome has sent it again on another connection, and answered once the
+ * edit command has answered it. copies holds the bodies of the other operations with ' both'.
+ */
+async function deadConnection(t, edit) {
+  const net = { token: null, lost: false, resent: false, answered: false, copies: [], url: '' };
+  const server = createTcpServer((client) => {
+    const upstream = connect(edit.port, '127.0.0.1');
+    let pending = null;
+    let swallowed = false;
+    let late = false;
+    client.on('data', (raw) => {
+      const chunk = Buffer.from(raw.toString('latin1').replace(`Host: 127.0.0.1:${server.address().port}`, `Host: 127.0.0.1:${edit.port}`), 'latin1');
+      if (swallowed) return;
+      if (!pending && net.token && /^POST [^ ]*[.]session[/]op/.test(chunk.toString('latin1'))) pending = [];
+      if (!pending) return void upstream.write(chunk);
+      pending.push(chunk);
+      const all = Buffer.concat(pending).toString('utf8');
+      const body = all.split('\r\n\r\n')[1] ?? '';
+      if (Buffer.byteLength(body) < Number(/content-length: (\d+)/i.exec(all)?.[1] ?? -1)) return;
+      if (body.includes(net.token) && !net.lost) {
+        swallowed = net.lost = true;
+      } else {
+        if (body.includes(net.token)) late = net.resent = true;
+        else if (body.includes(' both')) net.copies.push(body);
+        for (const c of pending) upstream.write(c);
+      }
+      pending = null;
+    });
+    upstream.on('data', (chunk) => {
+      if (late) net.answered = true;
+      if (!client.destroyed) client.write(chunk);
+    });
+    client.on('close', () => upstream.destroy());
+    client.on('error', () => {});
+    upstream.on('error', () => client.destroy());
+    upstream.on('close', () => client.destroy());
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  t.after(() => new Promise((done) => server.close(done)));
+  net.url = `http://127.0.0.1:${server.address().port}${edit.base}index.html?edit&session`;
+  return net;
+}
+
+for (const how of ['closed', 'loaded again']) {
+  test(`a word in the copy of a page ${how} reaches index.html once when Chrome sends the operation of the page again after the next page has joined`, { timeout: 360_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const net = await deadConnection(t, server.edit);
+    let page = await tab(browser, net.url);
+    await converge(server, [page]);
+    await show(page, 'One');
+    await caretAtEnd(page, el(0, 'p'));
+    net.token = await page.evaluate(`${C}.token`);
+    await type(page, ' both');
+    await until(() => net.lost, 'the operation to be lost');
+    await copied(page, ' both');
+    if (how === 'closed') {
+      await page.close();
+      page = await tab(browser, net.url);
+    } else {
+      await page.evaluate('(window.__before = true)');
+      await page.send('Page.reload', {});
+      await page.waitFor(`!window.__before && !!window.BeesonEditor && window.BeesonEditor.ready.then(() => ${ONLINE})`, 30_000);
+    }
+    await converge(server, [page]);
+    assert.equal(net.copies.length, 1, 'the next page sent the copy');
+    // the edit command closes the idle connection of the lost operation after 5 s, and Chrome then
+    // sends the operation again
+    await until(() => net.answered, 'Chrome to send the operation again and the edit command to answer it', 60_000);
+    assert.equal(count(await served(server), ' both'), 1);
+    assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide both</p>'));
+  });
+}
+
+test('a page whose token is retired while it is open joins again and sends its edit once', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit));
+  await converge(server, [page]);
+  const token = await page.evaluate(`${C}.token`);
+  await post(server.edit.port, `${server.edit.base}.session/hello`, { name: 'Gus', retire: [token] });
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' alive');
+  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide alive</p>'));
+  assert.notEqual(await page.evaluate(`${C}.token`), token, 'the page joined again under another token');
+  // the presence and the poll under the retired token are answered 404, and the page joins again
+  clean(page, [/status of 404 .*\/\.session\/(presence|events)/]);
 });

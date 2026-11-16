@@ -18,7 +18,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, type } from './helpers/editor.mjs';
 import { ACTION, CONFLICTS, copied, downloads, dropFiles, edit, el, goOffline, goOnline, press, released, ROWS, rows, SHOWN, tab } from './helpers/offline.mjs';
-import { raw, until } from './helpers/session.mjs';
+import { post, raw, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
 const IMAGE = resolve('demo/figure-light.png');
@@ -456,6 +456,35 @@ const plant = (page, row) =>
       t.onerror = () => fail(t.error);
     };
   })`);
+
+test('the next page retires the tokens of the closed pages of the copies that it takes over at its join and merges after it, leaves a copy of a page closed after its join, and merges such a copy of an older client', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const call = async (route, body) => (await post(server.edit.port, `${server.edit.base}.session/${route}`, body)).json();
+  // three closed pages, whose operations may still be on their way
+  const [a, b, d] = [await call('hello', { name: 'Xa' }), await call('hello', { name: 'Xb' }), await call('hello', { name: 'Xd' })];
+  const probe = await probeOf(browser, server);
+  const now = Date.now();
+  const row = (id, from, to, beat, token) => JSON.stringify({ id, base: TALK, v: a.v, mine: TALK.replace(from, to), beat, made: beat, tokens: [token] });
+  await plant(probe, row('a', 'First slide', 'TOKTA slide', now - 2, a.token));
+  await plant(probe, row('b', 'First slide', 'TOKTB slide', now - 1, b.token));
+  const c = await tab(browser, sessionUrl(server.edit), { script: 'window.__blockOps = true' });
+  await plant(probe, row('d', '<li>Beta</li>', '<li>Beta by D</li>', now, d.token));
+  // an older client does not keep its token in the record
+  await plant(probe, JSON.stringify({ id: 'e', base: TALK, v: a.v, mine: TALK.replace('<li>Alpha</li>', '<li>Alpha by E</li>'), beat: now, made: now }));
+  await c.evaluate(`(window.__blockOps = false, ${C}.tryNow(), true)`);
+  await front(c);
+  await c.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`);
+  await press(c, 'Keep mine');
+  const text = await converge(server, [c]);
+  assert.ok(text.includes('<p>TOKTB slide</p>') && !text.includes('by D'), 'the copy of the page closed after the join is left for the next join');
+  assert.ok(text.includes('<li>Alpha by E</li>'), 'the copy of the older client is merged');
+  await probe.waitFor(`(${ROWS}).then((r) => r.map((x) => x.id).join() === 'd')`);
+  const late = async (page) => (await call('op', { token: page.token, seq: 1, base: page.v, patches: [{ start: 0, end: 0, text: '<!-- late -->' }] })).reason ?? 'ok';
+  assert.deepEqual([await late(a), await late(b)], ['unknown', 'unknown']);
+  clean(c, REFUSED);
+});
 
 const EARLIER = `(() => {
   const d = document.querySelector('dialog.beeson-session-earlier[open]');
