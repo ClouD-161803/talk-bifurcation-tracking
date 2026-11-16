@@ -293,6 +293,30 @@ test('in a deck opened from a file, the PDF of a figure is chosen once and read 
   }
 });
 
+test('outside a session, a PDF figure whose PDF the server answers with 413 is said to be not found next to the deck', { timeout: 300_000 }, async () => {
+  writeDeck();
+  const page = await browser.newPage();
+  // a 413 is the limit of the relay only for a guest of a session
+  await page.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `{ const fetched = window.fetch; window.fetch = function (input, init) { return String(input instanceof Request ? input.url : input).endsWith('.pdf') ? Promise.resolve(new Response('', { status: 413 })) : fetched.call(this, input, init); }; }`,
+  });
+  try {
+    await page.goto(`${server.origin}/${DECK}?edit&still&edit-platform=mac`);
+    await page.waitFor(deckSettled);
+    await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+    assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(readFileSync(DECK, 'utf8'))})`)).problems, []);
+    assert.equal(await page.evaluate('!!window.BeesonSession'), false);
+    if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
+    await showSlide(page, 'A PDF figure');
+    await click(page, await centerOf(page, '.reveal section.present figure img'));
+    await frames(page);
+    await assert.rejects(exec(page, 'media.pdfPage', { page: 2 }), /figure\.pdf is not found next to the deck/);
+    await assert.rejects(exec(page, 'media.matchMode'), /figure\.pdf is not found next to the deck/);
+  } finally {
+    await page.close();
+  }
+});
+
 test('an image of a pair replaced with a PDF is a PDF figure, with the alt of each image kept', async () => {
   const page = await load();
   await page.evaluate(`Reveal.slide(${slideWith('<figure class="figure-box fragment"')})`);
