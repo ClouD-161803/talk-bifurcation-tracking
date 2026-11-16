@@ -95,7 +95,8 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
   // slide.moveTo of a drag in the navigator or the Slide Sorter names the slides in its argument
   const moved = (arg as { slides?: unknown } | undefined)?.slides;
   if (c.id === 'slide.moveTo' && Array.isArray(moved)) return holding(moved.filter((s): s is Element => s instanceof Element));
-  if (SLIDE.has(c.id) || (sel.kind === 'slides' && OF_SLIDES.has(c.id))) {
+  // a layout writes each of its slides anew
+  if (SLIDE.has(c.id) || c.id.startsWith('slide.layout.') || (sel.kind === 'slides' && OF_SLIDES.has(c.id))) {
     const current = app.current();
     return holding(sel.kind === 'slides' ? sel.items : current ? [current] : []);
   }
@@ -158,6 +159,11 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
     const by = beside && presence.holderOf(beside);
     if (by) return by;
   }
+  // Caption takes off the caption of the selected figure, and Footnote the footnote of the slide,
+  // which need not be selected
+  const off = c.id === 'figure.caption' ? sel.items[0]?.closest('figure, .figure-box') : c.id === 'slide.footnote' ? app.current()?.querySelector('.foot:not([data-generated])') : null;
+  const by = off && presence.holderOf(off);
+  if (by) return by;
   // a selection of elements that contains a held element takes no command that changes it, and a
   // caret or a text selection in one takes the commands of the text that keep the element
   if (PASS.test(c.id) || (sel.kind !== 'elements' && (sel.kind !== 'text' || !(OF_TEXT.has(c.id) || retags || c.id.startsWith('arrange.'))))) return null;
