@@ -26,10 +26,10 @@ const CSS = `
 .beeson-session-preview :is(.removed, .notes) { color: var(--ed-muted); white-space: nowrap; }
 .beeson-session-preview :is(.removed, .notes):empty { display: none; }
 .beeson-session-preview .actions { flex: none; margin-left: auto; }
-.beeson-session-preview.two .info { max-width: calc(100% - 76px); flex-wrap: nowrap; overflow: hidden; }
+.beeson-session-preview.two .info { flex: 1 1 0; max-width: max-content; flex-wrap: nowrap; overflow: hidden; }
 .beeson-session-preview.two .date { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .beeson-session-preview.two .who { flex: none; flex-wrap: nowrap; white-space: nowrap; }
-.beeson-session-preview.two .bar > .slides { flex-basis: 0; }
+.beeson-session-preview.two .bar > .slides { flex: none; max-width: 45%; }
 .beeson-session-preview.two .actions { flex: 1 0 100%; margin-left: 0; }
 .beeson-session-preview.two .actions .name { display: none; }
 .beeson-session-preview label.changes { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; white-space: nowrap; }
