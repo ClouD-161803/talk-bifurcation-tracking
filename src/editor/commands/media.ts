@@ -1,6 +1,6 @@
 // the commands of image and video files: Image… and Video… of the Insert menu and of the Insert
-// group of the toolbar, Choose File… of the Insert menu as in Keynote, Replace Image… and Capture
-// Poster of Format > Image and of the Image and Video panes, and Save as Picture… of the menu of a
+// group of the toolbar, Choose File… of the Insert menu as in Keynote, Replace Image…, Match the
+// Mode of a PDF figure, and Capture Poster of Format > Image and of the Image and Video panes, and Save as Picture… of the menu of a
 // picture in PowerPoint. each takes its files from the file chooser of the browser, or from
 // arg.files, e.g. in a test. the install also sets up the drop of files onto the slide, the
 // writing of new files at a save, and the files of a draft
@@ -8,7 +8,7 @@
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
 import { display } from '../keymap.ts';
-import { ACCEPT, capturePoster, chooseFiles, insertFiles, replaceFile } from '../media/actions.ts';
+import { ACCEPT, capturePoster, chooseFiles, insertFiles, ownColors, replaceFile, rerenderPdf } from '../media/actions.ts';
 import { install as installDrop } from '../media/drop.ts';
 import { install as installSave } from '../media/save.ts';
 import { media } from '../media/store.ts';
@@ -18,6 +18,12 @@ import { install as installBackdrop, openGallery } from './backdrop.ts';
 type Arg = { el?: Element; files?: File[] } | undefined;
 
 const filesOf = (arg: unknown): File[] | null => (arg as Arg)?.files ?? null;
+
+// the PDF figure given as arg.el, else the one of the selection
+const pdfFigureOf = (app: App, arg?: unknown): HTMLImageElement | null => {
+  const el = mediaOf(app, arg);
+  return el instanceof HTMLImageElement && el.hasAttribute('data-pdf') ? el : null;
+};
 
 // the image or the video given as arg.el, else the one of the selection
 function mediaOf(app: App, arg: unknown): HTMLImageElement | HTMLVideoElement | null {
@@ -168,6 +174,33 @@ export function install(app: App): void {
         const el = mediaOf(a, arg);
         const picture = el && pictureOf(el);
         if (picture) savePicture(a, picture);
+      },
+    },
+    {
+      // the page is arg.page, typed into the Image pane
+      id: 'media.pdfPage',
+      label: 'PDF Page',
+      enabled: (a) => !!pdfFigureOf(a),
+      run: async (a, arg) => {
+        const el = pdfFigureOf(a, arg);
+        const page = (arg as { page?: number } | undefined)?.page;
+        if (el && page) await rerenderPdf(a, el, { page }, 'PDF Page');
+      },
+    },
+    {
+      // a PDF figure with an image for each mode in its tones, or one image in the colors of the PDF
+      id: 'media.matchMode',
+      label: 'Match the Mode',
+      menu: { bar: 'Format', group: 'file', order: 7, submenu: 'Image' },
+      context: ['element'],
+      enabled: (a) => !!pdfFigureOf(a),
+      checked: (a) => {
+        const el = pdfFigureOf(a);
+        return el ? !ownColors(el) : false;
+      },
+      run: async (a, arg) => {
+        const el = pdfFigureOf(a, arg);
+        if (el) await rerenderPdf(a, el, { own: !ownColors(el) }, 'Match the Mode');
       },
     },
     {

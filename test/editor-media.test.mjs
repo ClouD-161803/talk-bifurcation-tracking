@@ -270,7 +270,7 @@ for (const platform of PLATFORMS) {
       await click(page, await centerOf(page, '.reveal section.present > .text-column > h2'));
       await press(page, 'Escape');
       await press(page, 'Mod+Shift+V');
-      assert.equal(await page.evaluate(`document.querySelector('input.beeson-media-input')?.accept ?? null`), 'image/*,video/*,.mp4,.m4v,.webm,.mov');
+      assert.equal(await page.evaluate(`document.querySelector('input.beeson-media-input')?.accept ?? null`), 'image/*,application/pdf,.pdf,video/*,.mp4,.m4v,.webm,.mov');
       await page.evaluate(`document.querySelector('input.beeson-media-input').dispatchEvent(new Event('cancel'))`);
     }
     // Choose File… is in the Insert menu, with ⇧⌘V on the Mac and without a key elsewhere, since

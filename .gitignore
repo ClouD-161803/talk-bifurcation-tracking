@@ -1,6 +1,7 @@
 node_modules/
 check/
-*.pdf
+# the export of npm run pdf. the PDFs of PDF figures are kept, since their renders are made from them
+/slides.pdf
 *.pptx
 .DS_Store
 __pycache__/
