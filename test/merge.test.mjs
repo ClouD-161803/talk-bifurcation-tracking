@@ -321,6 +321,35 @@ test('the merge of an apply in a session gives the text of the authority for pai
   }
 });
 
+test('the merge of an apply in a session keeps a long paste of one person and a key of a third person around an unread key of the person', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+  const words = (n) => Array.from({ length: n }, (_, i) => `w${i % 97}`).join(' ') + ' ';
+  // the paragraph, the offset of the unread key A of the person, and the paste of another person at
+  // its start, which arrives with the key C of a third person at its end
+  const CASES = [
+    ['Second slide', 6, rep('x', 499)],
+    ['Second slide', 6, rep('x', 501)],
+    ['Second slide', 6, rep('x', 5000)],
+    ['Second slide', 6, rep('abc ', 600)],
+    ['Second slide', 6, words(249)],
+    ['Second slide', 6, words(251)],
+    ['Second slide', 6, words(400)],
+    ['Secondslide', 6, rep('x', 600)],
+    ['今天我们讨论轨道', 4, rep('天地玄黄宇宙洪荒', 499)],
+    ['今天我们讨论轨道', 4, rep('天地玄黄宇宙洪荒', 600)],
+    ['今日は軌道について話します', 6, rep('いろはにほへと', 600)],
+    ['今天 我们 讨论 轨道', 5, rep('天地玄黄宇宙洪荒', 600)],
+  ];
+  const lost = CASES.filter(([para, at, paste]) => {
+    const f = wrap(`<p>${para}</p>`);
+    const s = wrap(`<p>${para.slice(0, at)}A${para.slice(at)}</p>`);
+    const t = wrap(`<p>${paste}${para}C</p>`);
+    return mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text !== wrap(`<p>${paste}${para.slice(0, at)}A${para.slice(at)}C</p>`);
+  });
+  assert.deepEqual(lost.map(([para, , paste]) => `${paste.slice(0, 8)}… of ${paste.length} into ${para}`), []);
+});
+
 test('with twice, the same letter typed at one point by two people is kept twice, and the same replacement of a word by two people once', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const twice = (p0, ps, pt) => {

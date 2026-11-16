@@ -301,21 +301,28 @@ test('a word composed at the start of a word that another person makes bold duri
   assert.deepEqual([await loads(ana), ana.errors, ben.errors], [1, [], []], 'the page of Ana is not loaded again');
 });
 
-test('a paste of more than 500 characters and a key of a third person on the other side of an unread key of the person are kept with it', { timeout: 300_000 }, async (t) => {
-  const paste = 'x'.repeat(600);
-  const text = await race(t, {
-    names: ['Ana', 'Ben', 'Cleo'],
-    ana: [6, 6, 'A'],
-    marker: 'slideC',
-    ben: async (ben, cleo) => {
-      assert.ok(await caretAt(ben, 0));
-      await ben.evaluate(`document.execCommand('insertText', false, ${JSON.stringify(paste)})`);
-      await caretAtEnd(cleo, p);
-      await typeKeys(cleo, 'C');
-    },
+const prose = 'The spacecraft leaves the halo orbit near the second Lagrange point and follows the stable manifold toward the Moon. ';
+for (const [what, paste, words, at] of [
+  ['more than 500 characters', 'x'.repeat(600), 'Second slide', 6],
+  ['1,200 characters of English prose', prose.repeat(11).slice(0, 1200), 'Second slide', 6],
+  ['600 Chinese characters', '天地玄黄宇宙洪荒日月盈昃辰宿列张'.repeat(40).slice(0, 600), '今天我们讨论轨道', 4],
+]) {
+  test(`a paste of ${what} and a key of a third person on the other side of an unread key of the person are kept with it`, { timeout: 300_000 }, async (t) => {
+    const text = await race(t, {
+      names: ['Ana', 'Ben', 'Cleo'],
+      edits: words === 'Second slide' ? [] : [['  <p>Second slide</p>', `  <p>${words}</p>`]],
+      ana: [at, at, 'A'],
+      marker: `${words}C`,
+      ben: async (ben, cleo) => {
+        assert.ok(await caretAt(ben, 0));
+        await ben.evaluate(`document.execCommand('insertText', false, ${JSON.stringify(paste)})`);
+        await caretAtEnd(cleo, p);
+        await typeKeys(cleo, 'C');
+      },
+    });
+    assert.equal(text, `<p>${paste}${words.slice(0, at)}A${words.slice(at)}C</p>`);
   });
-  assert.equal(text, `<p>${paste}SecondA slideC</p>`);
-});
+}
 
 test('the same letter typed at one point by another person and as an unread key of the person is kept twice', { timeout: 240_000 }, async (t) => {
   const text = await race(t, {
