@@ -242,7 +242,7 @@ function mergeEdits(base, ours, all, prefer, apart = false, twice = false) {
   const same = (a, b) => !keys && equal(a, b);
   const others = all.filter((h) => !ours.some((o) => same(o, h)));
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
-  const keptTheirs = prefer === "theirs" ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
+  const keptTheirs = prefer === "theirs" ? all : all.filter((h) => !conflicts.some((o) => hit(o, h) || apart && sameWord(base, o, h)));
   const keptOurs = (prefer === "ours" ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => same(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
 }

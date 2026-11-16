@@ -285,7 +285,9 @@ export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'our
   const same = (a: Edit, b: Edit) => !keys && equal(a, b);
   const others = all.filter((h) => !ours.some((o) => same(o, h)));
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
-  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
+  // with apart, a change in the word of a conflict is left out with it, hence one word replaced by
+  // two people is the word of one of them, as in mergePatches()
+  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h) || (apart && sameWord(base, o, h))));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => same(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
 }
