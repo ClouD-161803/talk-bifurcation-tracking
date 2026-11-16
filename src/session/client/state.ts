@@ -24,7 +24,9 @@ const CSS = `
 `;
 
 type Action = 'retry' | 'reload' | 'upload' | null;
-type View = { text: string; icon: string; warn: boolean; action: Action; note?: boolean };
+// note is a warning of the editor, e.g. why a file is not added, which follows text until the next
+// edit. the title shows it in place of the status, hence text is the status
+type View = { text: string; icon: string; warn: boolean; action: Action; note?: string };
 
 function view(client: Client): View {
   const retry: Action = client.retryAt === null ? null : 'retry';
@@ -43,15 +45,15 @@ function view(client: Client): View {
     case 'no-host':
       return { text: "The host's edit command is not running", icon: 'warning', warn: true, action: retry };
     default:
+      // a line that asks the person to act is not hidden behind a note
+      const note = client.app.note?.warn ? client.app.note.text : undefined;
       // the one place for a warning of the edit command, e.g. that it cannot write index.html
-      if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null };
+      if (client.warning) return { text: client.warning, icon: 'warning', warn: true, action: null, note };
       const failed = failedLine(client);
-      if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload' };
+      if (failed) return { text: failed, icon: 'warning', warn: true, action: 'upload', note };
       const lost = lostLine(client);
-      if (lost) return { text: lost, icon: 'warning', warn: true, action: null };
-      // a warning of the editor, e.g. why a file is not added, shown by the title in place of the
-      // status, until the next edit
-      if (client.app.note?.warn) return { text: client.app.note.text, icon: 'warning', warn: true, action: null, note: true };
+      if (lost) return { text: lost, icon: 'warning', warn: true, action: null, note };
+      if (note) return { text: '', icon: 'warning', warn: true, action: null, note };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
       const restored = restoredLine(client);
       if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
@@ -91,12 +93,13 @@ export function install(client: Client): void {
     action.hidden = !v.action;
     if (v.action && v.action !== doing) [label.textContent, action.title] = ACTIONS[v.action];
     doing = v.action;
-    if (v.text === shown) return;
-    shown = v.text;
-    name.textContent = v.text;
-    button.setAttribute('aria-label', v.text);
-    button.title = v.text;
-    client.port.setStatus(v.note ? null : v.text);
+    const text = v.text && v.note ? `${v.text.replace(/\.$/, '')}. ${v.note}` : v.text || v.note!;
+    if (text === shown) return;
+    shown = text;
+    name.textContent = text;
+    button.setAttribute('aria-label', text);
+    button.title = text;
+    client.port.setStatus(v.text || null);
   };
   button.addEventListener('click', () => {
     if (client.blocked) client.loadAgain();
