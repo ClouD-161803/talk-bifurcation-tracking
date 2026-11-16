@@ -321,6 +321,16 @@ test('the skipped lines of preamble.tex are logged at the start of the writer, a
   assert.deepEqual(writer(folder(t, ['references.bib', 'tex.js'])).seen.log, []);
 });
 
+test('the reason why tex.js is not written is logged at the start of the writer while a file that preamble.tex inputs cannot be read', { skip: noChmod }, async (t) => {
+  const f = folder(t);
+  chmodSync(join(f.dir, 'defs.tex'), 0o000);
+  const { w, seen } = writer(f);
+  assert.equal(seen.log.length, 1, seen.log.join('\n'));
+  assert.match(seen.log[0], /^tex\.js is not written, since defs\.tex is not read: /);
+  await twoPolls(w);
+  assert.equal(seen.log.length, 1, 'the reason is not logged again without a change');
+});
+
 test('a write of index.html while preamble.tex is being saved does not write tex.js without its macros, and tex.js is written once preamble.tex is stable', async (t) => {
   const f = folder(t);
   const { w, seen } = writer(f);
