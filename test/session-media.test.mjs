@@ -34,19 +34,24 @@ const SHOWN_ALT = (alt, path) => `(() => { const i = document.querySelector('.re
 const IMAGES = `(${TEXT}.match(/<img /g) ?? []).length`;
 // the errors in the console of a page for an upload that the proxy refused, cut, or lost
 const PROXIED = [/status of 50[04]/, /ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET|Failed to fetch/];
-// the number of elements of the page that show the whole of text where a person sees it, i.e.
-// inside the window, not cut, and not clipped by an ancestor. with scroll, an element that scrolls
-// vertically shows the part of text that a scroll of it reaches
+// the number of elements of the page that show the whole of text where a person sees it: the element
+// is inside the window and does not cut the text at its end, and every line of the text is inside
+// each box that clips it. a line is as tall as the letters of its font, which in most fonts is
+// taller than a line of height 1. with scroll, an element that scrolls vertically shows the part
+// of text that a scroll of it reaches
 const SEEN = (text, scroll = false) => `[...document.body.querySelectorAll('*')].filter((el) => {
   const has = (e) => e.textContent.includes(${JSON.stringify(text)});
   if (!has(el) || [...el.children].some(has) || getComputedStyle(el).visibility !== 'visible') return false;
   const r = el.getBoundingClientRect();
-  if (!r.width || !r.height || r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) return false;
-  if (el.scrollWidth > el.clientWidth || (el.scrollHeight > el.clientHeight + 1 && !(${scroll} && getComputedStyle(el).overflowY === 'auto'))) return false;
-  for (let p = el.parentElement; p; p = p.parentElement) {
+  if (!r.width || !r.height || r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight || el.scrollWidth > el.clientWidth) return false;
+  const scrolls = ${scroll} && getComputedStyle(el).overflowY === 'auto';
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const lines = scrolls ? [r] : [...range.getClientRects()];
+  for (let p = scrolls ? el.parentElement : el; p; p = p.parentElement) {
     if (getComputedStyle(p).overflow === 'visible') continue;
     const q = p.getBoundingClientRect();
-    if (r.left < q.left - 1 || r.right > q.right + 1 || r.top < q.top - 1 || r.bottom > q.bottom + 1) return false;
+    if (lines.some((l) => l.left < q.left - 1 || l.right > q.right + 1 || l.top < q.top - 1 || l.bottom > q.bottom + 1)) return false;
   }
   return true;
 }).length`;
@@ -361,6 +366,43 @@ test('the reason why a dropped file is not added is no longer shown after the ne
   clean(ann);
 });
 
+test('the save state in the narrow title bar of a phone is on a line as tall as its letters', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await show(ann, 'Two');
+  await ann.waitFor(`${STATE} === 'Saved to index.html'`);
+  assert.ok(await ann.evaluate(`document.querySelector('.beeson-edit-titlebar').classList.contains('narrow')`));
+  assert.equal(await ann.evaluate(SEEN('Saved to index.html')), 1);
+  clean(ann);
+});
+
+test('a warning of the editor is shown in full at every width of the window, from 900 px up to the widths at which the title has room for it', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', width: 900, height: 800 });
+  await show(ben, 'Two');
+  const reason = 'scan.tiff cannot be sent to the others, since a session does not take .tiff files. Save it as a PNG or a JPEG.';
+  await ben.evaluate(`(${C}.app.note = { text: ${JSON.stringify(reason)}, warn: true }, ${C}.app.report(), true)`);
+  // the width at which the title takes the warning from the save state depends on the font of the
+  // system, hence every width is tried until the title has shown the warning at 40 widths in a row
+  const cut = [];
+  let roomy = 0;
+  for (let width = 900; width <= 2600 && roomy < 40; width++) {
+    await ben.send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false });
+    await ben.waitFor(`innerWidth === ${width}`);
+    // the title is fitted in the frame of the resize, which is over after two animation frames
+    const [seen, tight] = await ben.evaluate(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done([${SEEN(reason)}, document.querySelector('.beeson-edit-titlebar .doc').classList.contains('tight')]))))`);
+    if (!seen) cut.push(width);
+    roomy = tight ? 0 : roomy + 1;
+  }
+  assert.equal(roomy, 40, 'the title did not have room for the warning up to 2600 px');
+  assert.deepEqual(cut, [], 'the widths at which the warning is cut');
+  clean(ben);
+});
+
 test('a long reason in a narrow title bar scrolls inside its line, and the current slide stays inside the window of a phone of 320 px', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -389,9 +431,30 @@ test('a long reason in a narrow title bar scrolls inside its line, and the curre
     return w.height > 0 && w.top >= r.top - 1 && w.bottom <= r.bottom + 1 && w.bottom <= innerHeight;
   })()`;
   assert.equal(await ann.evaluate(LAST), false);
-  const at = await ann.evaluate(`(() => { const r = ${NAME}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await ann.send('Input.synthesizeScrollGesture', { x: at.x, y: at.y, yDistance: -2000, gestureSourceType: 'touch', speed: 4000 });
-  await ann.waitFor(LAST, 10_000).catch(async () => assert.fail(`the last word is not reached by a scroll of the line, which is scrolled by ${await ann.evaluate(`${NAME}.scrollTop`)} px`));
+  // a finger drags from the last line of the box up to its first line, again and again. the touch
+  // events are sent one by one, as in the other tests of a touch, since a synthesized scroll
+  // gesture did not move the line in the Chrome of the Linux and Windows runners
+  const box = await ann.evaluate(`(() => { const r = ${NAME}.getBoundingClientRect(); return { x: r.left + r.width / 2, top: r.top + 6, bottom: r.bottom - 6 }; })()`);
+  const touch = (type, y) => ann.send('Input.dispatchTouchEvent', { type, touchPoints: y === undefined ? [] : [{ x: box.x, y }] });
+  await ann.evaluate(`(() => {
+    window.__touches = {};
+    for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) addEventListener(type, (ev) => { const k = type + (${NAME}.contains(ev.target) ? ' in the line' : ' outside'); window.__touches[k] = (window.__touches[k] ?? 0) + 1; }, { capture: true, passive: true });
+  })()`);
+  // what a failure needs to be read without the page: the box, what the finger hits, and the events
+  const STUCK = `JSON.stringify((() => {
+    const el = ${NAME};
+    const cs = getComputedStyle(el);
+    const hit = document.elementFromPoint(${box.x}, ${box.bottom});
+    return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, overflowY: cs.overflowY, maxHeight: cs.maxHeight, hit: hit ? hit.tagName + '.' + hit.className : null, touches: window.__touches };
+  })())`;
+  for (let drags = 0; !(await ann.evaluate(LAST)); drags++) {
+    assert.ok(drags < 60, `the last word is not reached after 60 drags of the line: ${await ann.evaluate(STUCK)}`);
+    const top = await ann.evaluate(`${NAME}.scrollTop`);
+    await touch('touchStart', box.bottom);
+    for (let i = 1; i <= 8; i++) await touch('touchMove', box.bottom + ((box.top - box.bottom) * i) / 8);
+    await touch('touchEnd');
+    await ann.waitFor(`${NAME}.scrollTop > ${top}`, 10_000).catch(async () => assert.fail(`a drag of a finger does not scroll the line: ${await ann.evaluate(STUCK)}`));
+  }
   clean(ann);
 });
 

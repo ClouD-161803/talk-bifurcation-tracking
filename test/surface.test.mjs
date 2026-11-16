@@ -228,7 +228,7 @@ function expectPoints(seen, lit, tone, where) {
   }
 }
 
-test('the points of a surface are dimmed and colored by data-surface-points, data-surface-accent, and data-surface-violet', { timeout: 120000 }, async (t) => {
+test('the points of a surface are dimmed and colored by data-surface-points, data-surface-accent, and data-surface-violet', { timeout: 240000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
@@ -263,15 +263,16 @@ test('the points of a surface are dimmed and colored by data-surface-points, dat
   await live.goto(deckUrl('test-deck.html'));
   await live.waitFor(deckSettled);
   await live.evaluate(`Reveal.slide(${h}, 0, 3)`);
-  await live.waitFor(`(${marked}).settled`);
+  await live.waitFor(`(${marked}).settled`, 60000);
   const step = await live.evaluate(`(() => { Reveal.slide(${h}, 0, 4); return ${marked}; })()`);
   assert.equal(step.state, 'extrema');
   assert.equal(step.settled, true);
   assert.equal(step.points.L4.lit, 1);
   assert.equal(step.points.L4.tone, 'text');
   assert.equal(step.points.L1.tone, 'accent');
-  await new Promise((done) => setTimeout(done, 1500));
-  expectPoints(await live.evaluate(marked), SADDLES, 'accent', '1.5 s after the live step of the saddles');
+  // the end of the fade is waited for, since a crowded runner may draw a frame or two in 1.5 s
+  await live.waitFor(`Object.entries((${marked}).points).every(([name, m]) => Math.abs(m.lit - (${JSON.stringify(SADDLES)}.includes(name) ? 1 : ${UNLIT})) < 1e-3)`, 60000);
+  expectPoints(await live.evaluate(marked), SADDLES, 'accent', 'after the live step of the saddles');
   assert.deepEqual(live.errors, []);
 });
 

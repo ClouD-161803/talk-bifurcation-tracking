@@ -33,7 +33,8 @@ const OTHERS_NARROW = 2;
 const SAY_GAP = 1000;
 const SAID = 8;
 
-// the hit area of each control is 32 px, around a circle of 22 px
+// the hit area of each control is 32 px, around a circle of 22 px. the save state of a narrow title
+// bar clips its text, hence its line is as tall as the letters of the font, see menubar.ts
 const CSS = `
 .beeson-session-people { display: inline-flex; align-items: center; gap: 10px; flex: none; }
 .beeson-edit-titlebar .right button.beeson-session-avatar { position: relative; justify-content: center; width: 22px; min-width: 22px; padding: 0; border-radius: 11px; background: var(--tone); color: var(--ink); font: 600 11px/1 var(--ed-font); letter-spacing: -0.2px; -webkit-touch-callout: none; touch-action: manipulation; }
@@ -51,7 +52,7 @@ const CSS = `
 .beeson-edit-titlebar.beeson-session-bar.narrow .beeson-edit-menubar { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .beeson-edit-titlebar.beeson-session-bar.narrow .beeson-edit-menubar::-webkit-scrollbar { display: none; }
 .beeson-edit-titlebar.beeson-session-bar.narrow .right { grid-row: 2; min-width: 0; flex-wrap: wrap; padding: 7px 0; }
-.beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state { flex: 0 1 auto; min-width: 32px; }
+.beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state { flex: 0 1 auto; min-width: 32px; line-height: normal; }
 .beeson-edit-titlebar.beeson-session-bar.narrow .right button.beeson-session-state .name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .beeson-session-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 `;

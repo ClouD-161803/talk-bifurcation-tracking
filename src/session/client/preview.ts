@@ -117,12 +117,12 @@ export function targetsOf(text: string, slides: Slide[], marks: Mark[]): Target[
 }
 
 // the sections of the page that are slides, by the index of the slide in the text. reveal.js takes
-// a hidden slide out of the page, hence the hidden slides are skipped when the counts differ
+// a hidden slide out of the page once its plugins are started, which may be after the page is
+// loaded, hence a hidden slide is without a section also while it is still in the page
 function sectionsOf(doc: Document, text: string, slides: Slide[]): (Element | null)[] {
-  const leaves = [...doc.querySelectorAll('.reveal .slides section')].filter((s) => !s.querySelector('section'));
-  if (leaves.length === slides.length) return leaves;
+  const shown = [...doc.querySelectorAll('.reveal .slides section')].filter((s) => !s.querySelector('section') && !/^hidden/i.test(s.getAttribute('data-visibility') ?? ''));
   let i = 0;
-  return slides.map((s) => (/\sdata-visibility\s*=\s*["']?hidden/i.test(text.slice(s.start, s.open)) ? null : leaves[i++] ?? null));
+  return slides.map((s) => (/\sdata-visibility\s*=\s*["']?hidden/i.test(text.slice(s.start, s.open)) ? null : shown[i++] ?? null));
 }
 
 type RevealLike = { isReady?(): boolean; on?(type: string, fn: () => void): void; getIndices(el: Element): { h: number; v?: number }; slide(h: number, v?: number): void };
