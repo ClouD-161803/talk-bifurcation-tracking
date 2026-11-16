@@ -131,35 +131,33 @@ test('a word typed right before the page is hidden and frozen reaches index.html
 });
 
 // a script for open() that records in window.__kept whether each operation was sent with keepalive,
-// and the size of its body in bytes
+// and the length of its body
 const KEPT = `{
   const fetched = window.fetch;
   window.__kept = [];
   window.fetch = function (input, init) {
-    if (String(input).includes('/.session/op')) window.__kept.push({ keepalive: !!init.keepalive, bytes: new Blob([init.body]).size });
+    if (String(input).includes('/.session/op')) window.__kept.push({ keepalive: !!init.keepalive, chars: init.body.length });
     return fetched.call(this, input, init);
   };
 }`;
 
-test('an operation is sent with keepalive only under 60,000 bytes in UTF-8, and a larger paste reaches index.html in one request', { timeout: 240_000 }, async (t) => {
+test('an operation is sent with keepalive only under 20,000 characters, and a larger paste reaches index.html in one request', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const page = await open(browser, sessionUrl(server.edit), { script: KEPT });
   await converge(server, [page]);
-  // operations of a token that the edit command does not know, which it answers without a change.
-  // an é is one character and two bytes
+  // operations of a token that the edit command does not know, which it answers without a change
   const sent = await page.evaluate(`(async () => {
     window.__kept = [];
-    for (const n of [59999, 60000]) {
+    for (const n of [19999, 20000]) {
       const post = { token: 'none', seq: 1, base: '0', patches: [{ start: 0, end: 0, text: '' }] };
-      const more = n - new Blob([JSON.stringify(post)]).size;
-      post.patches[0].text = 'é'.repeat(more >> 1) + 'e'.repeat(more & 1);
+      post.patches[0].text = 'é'.repeat(n - JSON.stringify(post).length);
       await ${C}.transport.op(post);
     }
     return window.__kept.splice(0);
   })()`);
-  assert.deepEqual(sent, [{ keepalive: true, bytes: 59999 }, { keepalive: false, bytes: 60000 }]);
+  assert.deepEqual(sent, [{ keepalive: true, chars: 19999 }, { keepalive: false, chars: 20000 }]);
 
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
@@ -177,18 +175,20 @@ test('an operation that the browser refuses with keepalive is sent again without
   t.after(() => browser.close());
   const server = await talk(t);
   const net = await proxy(t, server.edit);
-  const page = await open(browser, net.url);
+  const page = await open(browser, net.url, { script: KEPT });
   await converge(server, [page]);
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
-  // a body with keepalive in flight that leaves less than an operation of the 64 KiB that the
-  // browsers allow
-  await page.evaluate(`void fetch('filler', { method: 'POST', body: 'x'.repeat(65500), keepalive: true }).catch(() => {}), true`);
+  // a body with keepalive in flight that leaves less than the 64 KiB that Chrome allows for an
+  // operation just under 20,000 characters of three bytes each in UTF-8
+  await page.evaluate(`void fetch('filler', { method: 'POST', body: 'x'.repeat(8000), keepalive: true }).catch(() => {}), true`);
   await until(() => net.parked.filler, 'the proxy to hold the filler');
   const before = await ops(page);
-  await type(page, ' refused');
-  await until(() => server.read() === TALK.replace('<p>First slide</p>', '<p>First slide refused</p>'), 'the word to reach index.html');
+  const word = ` refused${'€'.repeat(19_500)}`;
+  await type(page, word);
+  await until(() => server.read() === TALK.replace('<p>First slide</p>', `<p>First slide${word}</p>`), 'the word to reach index.html');
   assert.equal((await ops(page)) - before, 2);
+  assert.deepEqual(await page.evaluate('window.__kept.map((k) => k.keepalive && k.chars < 20_000)'), [true, false]);
   assert.equal(net.sent.filter((b) => b.includes('refused')).length, 1);
   clean(page);
 });
