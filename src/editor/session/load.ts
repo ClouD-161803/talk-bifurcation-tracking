@@ -28,7 +28,11 @@ export function load(app: App, port: Port): () => Promise<boolean> {
   // a client that the page defined before editor.js ran is taken as it is, as the tests of the
   // session mode do, which need the mode without an edit command
   const given = (window as { BeesonSession?: Entry }).BeesonSession;
-  if (!given && location.protocol === 'file:') return async () => false;
+  // an edit command never serves a page at file:, which hence names its own address in a copy
+  if (!given && location.protocol === 'file:') {
+    port.served(false);
+    return async () => false;
+  }
   const loaded = given ? Promise.resolve<Entry | null>(given) : new Promise<Entry | null>((done) => {
     const script = document.createElement('script');
     script.src = self?.src ? new URL('session.js', self.src).href : 'theme/session.js';
