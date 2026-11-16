@@ -66,6 +66,11 @@ const HELD = ['Mod+D'];
 // browser takes them in a text
 const CLIPBOARD_KEYS: Record<string, string[]> = { 'edit.cut': ['Mod+X'], 'edit.copy': ['Mod+C'], 'edit.paste': ['Mod+V'] };
 
+// the regions where the clipboard keys act on the slide: the canvas, and the panes, whose buttons,
+// tabs, sliders, and lists do not have a clipboard of their own, as in the inspector of Keynote. a
+// field of a pane is the region field, and keeps the keys of the browser
+export const CLIPBOARD_REGIONS: Region[] = ['canvas', 'inspector'];
+
 // the keys that run a command on the platform
 export function boundKeys(c: Command, platform: Platform): string[] {
   return c.keys?.[platform] ?? [];
