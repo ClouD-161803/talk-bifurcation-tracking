@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes } from '../editor/merge.ts';
+import { changes, moveOf } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -146,8 +146,9 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
-// conflict with a patch of theirs
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours'): { patches: Patch[]; conflicts: Patch[] } {
+// conflict with a patch of theirs. with the text base of both, a move of either side that conflicts
+// is left out whole, see mergeEdits()
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string): { patches: Patch[]; conflicts: Patch[] } {
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
@@ -162,6 +163,9 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
+  const moves = new Set<Patch>();
+  if (base !== undefined) for (const o of conflicts) for (const t of theirs) if (conflict(o, t)) for (const p of moveOf(base, ours, o, t.start) ?? moveOf(base, theirs, t, o.start) ?? []) moves.add(p);
+  if (moves.size) return { patches: mergePatches(theirs.filter((p) => !moves.has(p)), ours.filter((p) => !moves.has(p)), wins, base).patches, conflicts };
   const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };

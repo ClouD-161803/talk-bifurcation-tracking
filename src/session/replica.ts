@@ -179,7 +179,7 @@ export class Replica {
     const theirs = diff(from, text);
     const ours = diff(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-    const both = mergePatches(kept, ours, wins);
+    const both = mergePatches(kept, ours, wins, from);
     conflicts.push(...both.conflicts);
     const merged = apply(from, both.patches);
     this.base = text;
@@ -244,7 +244,7 @@ export class Replica {
   private merge(text: string, theirs: Patch[], wins: Side, conflicts: Patch[], dedupe: boolean): string {
     const ours = diff(text, this.mine);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
-    const merged = mergePatches(kept, ours, wins);
+    const merged = mergePatches(kept, ours, wins, text);
     conflicts.push(...merged.conflicts);
     return apply(text, merged.patches);
   }
