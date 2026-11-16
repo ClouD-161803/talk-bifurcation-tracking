@@ -226,8 +226,8 @@ function anchored(a: string, b: string): Edit[] | null {
   let cells = CELLS;
   for (let part = parts.pop(); part; part = parts.pop()) {
     const [at, x, y] = part;
-    // charEdits() gives up on a part whose sides differ in length by over 500
-    const found = Math.abs(x.length - y.length) <= 500 ? charEdits(x, y, 500) : null;
+    // charEdits() gives up on whole in fine(), and on a part whose sides differ in length by over 500
+    const found = part !== whole && Math.abs(x.length - y.length) <= 500 ? charEdits(x, y, 500) : null;
     if (found) {
       out.push(...found.map((e) => ({ start: e.start + at, end: e.end + at, text: e.text })));
       continue;
