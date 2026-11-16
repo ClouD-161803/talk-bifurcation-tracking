@@ -441,11 +441,13 @@ test('offline, Resolve, Reopen, Edit, Delete, and the send buttons are disabled,
   await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="open"]').click()`);
   // the key E on a thread does nothing while offline
   await a.evaluate(`document.querySelector('${ARTICLE(id)}').focus()`);
+  await recordToasts(a);
   await press(a, 'E');
-  assert.deepEqual(await a.evaluate(TOASTS), []);
   assert.equal(await a.evaluate(`document.querySelector('${ARTICLE(id)} .reply textarea').value`), 'Typed before the stop');
 
   await server.start(['--port', String(port)]);
+  // a toast of a request that the key sent and that failed has come by the restart of the edit command
+  assert.deepEqual(await a.evaluate('window.__toasts'), [], 'the toasts after the key E');
   await front(a);
   await click(a, '.beeson-session-action');
   await a.waitFor(ONLINE);
