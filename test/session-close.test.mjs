@@ -21,14 +21,15 @@ import { Transport } from '../src/session/client/transport.ts';
 /**
  * A proxy on 127.0.0.1 in front of the edit command edit, whose url serves the deck of the session.
  * While hold() is on, each operation, or each request that its match takes, waits until release(),
- * and is sent on only when the browser still waits for its answer. A request whose path ends in
+ * and is sent on only when the browser still waits for its answer. The answers of the polls wait
+ * as well, since an answer would make the page read its keys. A request whose path ends in
  * /canary or /filler waits until the browser cancels it, and parked.canary and parked.filler are
  * their records, with gone set once the browser cancelled it. held holds the requests that wait,
  * with answered set once the edit command has answered them, and sent the bodies of the
  * operations sent on.
  */
 async function proxy(t, edit) {
-  const net = { parked: {}, held: [], sent: [], holding: null, url: '' };
+  const net = { parked: {}, held: [], answers: [], sent: [], holding: null, url: '' };
   const server = createServer((req, res) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
@@ -39,9 +40,13 @@ async function proxy(t, edit) {
       r.go = () => {
         if (req.url.includes('/.session/op')) net.sent.push(r.body);
         const out = request({ host: '127.0.0.1', port: edit.port, method: req.method, path: req.url, agent: false, headers: { ...req.headers, host: `127.0.0.1:${edit.port}` } }, (answer) => {
-          res.writeHead(answer.statusCode, answer.headers);
-          answer.on('end', () => (r.answered = true));
-          answer.pipe(res);
+          const pass = () => {
+            res.writeHead(answer.statusCode, answer.headers);
+            answer.on('end', () => (r.answered = true));
+            answer.pipe(res);
+          };
+          if (net.holding && req.url.includes('/.session/events')) net.answers.push(pass);
+          else pass();
         });
         out.on('error', () => res.destroy());
         res.on('close', () => out.destroy());
@@ -63,6 +68,7 @@ async function proxy(t, edit) {
   net.release = () => {
     net.holding = null;
     for (const r of net.held.splice(0)) if (!r.gone) r.go();
+    for (const pass of net.answers.splice(0)) pass();
   };
   return net;
 }
@@ -100,6 +106,7 @@ test('a word typed right before the page is closed without the question reaches 
   await canary(page, net);
   await still(page);
   await type(page, ' closed');
+  assert.equal(net.held.length, 0, 'the word is sent at the close');
   await closed(page, net);
   await until(() => server.read() === TALK.replace('<p>First slide</p>', '<p>First slide closed</p>'), 'the word to reach index.html');
   assert.equal(net.sent.filter((b) => b.includes('closed')).length, 1);
@@ -118,6 +125,7 @@ test('a word typed right before the page is hidden and frozen reaches index.html
   await canary(page, net);
   await still(page);
   await type(page, ' hidden');
+  assert.equal(net.held.length, 0, 'the word is sent at the hide');
   // Chrome hides the page before it freezes it
   await page.send('Page.setWebLifecycleState', { state: 'frozen' });
   await until(() => net.held.some((r) => r.body.includes('hidden')), 'the frozen page to have sent the word');
