@@ -439,7 +439,8 @@ test('tex.js is not written in a talk folder without preamble.tex and references
 // query typed into it
 async function search(page, n, query) {
   await show(page, 'Citations');
-  // the caret is put again until the paragraph takes it, since a redraw of the deck may be running
+  // the caret is put again until the paragraph takes it, since a page that held it a moment ago may
+  // still hold it on this page
   await page.waitFor(`(() => {
     const host = document.querySelector('.reveal section.present p:nth-of-type(${n})');
     host?.focus();
@@ -471,15 +472,17 @@ test('a paper added to references.bib on disk is found by a new search on a page
   assert.equal(shared.status, 200, shared.text);
   const list = await pages(t, server, [sessionUrl(server.edit), shared.json().link]);
   const tex = server.read('tex.js');
-  for (const page of list) {
-    await search(page, 3, 'conley');
+  // each page searches in a paragraph of its own, since the caret of a page in a paragraph holds it,
+  // which takes the caret away from the other page
+  for (const [i, page] of list.entries()) {
+    await search(page, 3 - i, 'conley');
     await page.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(`No entry of references.bib matches conley. ${HOST_BIB}`)}`);
     await press(page, 'Escape');
     await page.waitFor(`!document.querySelector('${LIST}')`);
   }
   server.write('references.bib', `${server.read('references.bib')}\n@article{conley1968,\n  author = {Conley, Charles},\n  title = {Low energy transit orbits in the restricted three-body problem},\n  year = {1968},\n}\n`);
-  for (const page of list) {
-    await search(page, 3, 'conley');
+  for (const [i, page] of list.entries()) {
+    await search(page, 3 - i, 'conley');
     // the search is typed again until the list finds the paper, as a person would
     await page.waitFor(`(() => {
       document.querySelector('${LIST} input').dispatchEvent(new Event('input', { bubbles: true }));
