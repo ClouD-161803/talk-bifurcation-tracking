@@ -25,6 +25,8 @@ const MB = 1024 * 1024;
 const DIALOG = 'dialog.beeson-edit-dialog.deck-folder';
 const SECRET = 'a secret of the relay of the tests';
 const ORIGIN = (text) => JSON.parse(text.match(/<!--beeson-origin (.*?)-->/s)[1]);
+// the text and the buttons of the dialog that is open
+const DIALOG_SHOWN = `(() => { const d = document.querySelector('dialog[open]'); return { text: d.querySelector('p').textContent, buttons: [...d.querySelectorAll('button')].map((b) => b.textContent) }; })()`;
 // a paste asks the edit command for each path of a pasted file, and for each path under media/ that
 // it would take, which are answered with 404
 const PROBED = /status of 404 .*\/(data|figs|media)\//;
@@ -171,6 +173,10 @@ test('a copy from a deck whose address has session, which no edit command serves
   t.after(() => stat.close());
   const a = await openDeck(browser, `${stat.origin}/${A}?${QUERY}&session`, A);
   await a.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not served by an edit command')`);
+  assert.deepEqual(await a.evaluate(DIALOG_SHOWN), {
+    text: 'The deck is edited without a session. Double-click Edit.command (macOS), Edit.cmd (Windows), or Edit.sh (Linux) in the talk folder, or run npm run edit there, and open the address that it prints.',
+    buttons: ['OK'],
+  });
   await a.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
   await a.waitFor(`!document.querySelector('dialog[open]')`);
   const text = await copySlide(a, FILES);
@@ -264,7 +270,8 @@ for (const through of ['the edit command', 'the relay']) {
       assert.ok(url.startsWith(relay.url), url);
     }
     const page = await open(browser, url, { wait: false, ready: false });
-    await page.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not served by an edit command')`, 20_000);
+    await page.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not the deck of the session')`, 20_000);
+    assert.deepEqual(await page.evaluate(DIALOG_SHOWN), { text: 'A session edits index.html of the talk folder. This deck is edited without a session.', buttons: ['OK'] });
     await page.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
     await page.waitFor(`!document.querySelector('dialog[open]') && window.BeesonEditor && window.BeesonEditor.ready.then(() => true)`);
     const text = await copySlide(page, 'One');
