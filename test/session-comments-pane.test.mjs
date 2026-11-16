@@ -1090,3 +1090,18 @@ test('a thread read offline is read on another page of the person once the page 
   clean(a2);
   clean(b);
 });
+
+test('Show on the toast of a mention on the slide that following shows stops following', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const ben = await b.evaluate(`${C}.person`);
+  await show(b, 'Two');
+  await a.evaluate(`window.BeesonSession.follow().start(${JSON.stringify(ben)})`);
+  await sees(a, `[...document.querySelectorAll('.reveal .slides > section')].indexOf(Reveal.getCurrentSlide())`, 1, 'Ann to follow Ben to slide 2');
+  await post(b, 1, 'Look, @Ann');
+  await front(a);
+  await a.waitFor(`!!document.querySelector('.beeson-session-toast button')`);
+  await click(a, '.beeson-session-toast button');
+  await sees(a, `window.BeesonSession.follow().target`, null, 'Ann to stop following');
+  clean(a);
+  clean(b);
+});
