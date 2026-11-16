@@ -849,19 +849,21 @@ function distributeRows(app: App, t: Target): void {
 // the width of the content of each cell of the first row of table, measured with the cell set a
 // px wide, so that its column is as narrow as its cells let it be: as wide as its longest word, or
 // with nowrap as its widest text on one line. the style of each cell is put back before the next
-// frame. a cell of the first row over more than one column is not measured
+// frame, and a cell without a style is left without one. a cell of the first row over more than
+// one column is not measured
 function columnWidths(table: HTMLTableElement, nowrap: boolean, from = 0, to = Infinity): Map<HTMLTableCellElement, number> {
   const g = gridOf(table);
   const out = new Map<HTMLTableCellElement, number>();
   for (const head of (g.spots[0] ?? []).filter((s) => s.span === 1 && s.col >= from && s.col <= to)) {
     const column = g.grid.map((r) => r[head.col]).filter((s): s is Place => !!s && s.span === 1);
-    const kept = column.map((s) => [s.cell.style.whiteSpace, s.cell.style.width] as const);
+    const kept = column.map((s) => [s.cell.style.whiteSpace, s.cell.style.width, s.cell.hasAttribute('style')] as const);
     if (nowrap) for (const s of column) s.cell.style.whiteSpace = 'nowrap';
     head.cell.style.width = '1px';
     out.set(head.cell, contentWidth(head.cell));
     column.forEach((s, i) => {
       s.cell.style.whiteSpace = kept[i][0];
       s.cell.style.width = kept[i][1];
+      if (!kept[i][2]) s.cell.removeAttribute('style');
     });
   }
   return out;
@@ -1410,6 +1412,12 @@ function installBars(app: App): void {
     bar.addEventListener('pointermove', (ev) => {
       const m = moving;
       if (!m || (!m.on && Math.hypot(ev.clientX - m.x, ev.clientY - m.y) < 4)) return;
+      // a refused move, e.g. of a table that another person types in, ends at its first move
+      if (!m.on && refusedDrag(app, m.kind === 'row' ? 'table.moveRowUp' : 'table.moveColumnLeft', m.table)) {
+        dragged = true;
+        stopMove();
+        return;
+      }
       m.at = [ev.clientX, ev.clientY];
       // rows or columns that do not have a gap to go to are not lifted
       if (!m.on && movableAnywhere(m.table, m.kind, m.lo, m.hi)) lifted(m);
@@ -1451,7 +1459,7 @@ function installBars(app: App): void {
   // in the style at the press, the cell at the left of the border, and the scale of the slide
   // in the style at the press, the narrowest widths that their words leave, the cell at the left
   // of the border, and the scale of the slide
-  let resize: { cells: HTMLTableCellElement[]; widths: number[]; styles: string[]; least: number[]; i: number; x: number; scale: number } | null = null;
+  let resize: { cells: HTMLTableCellElement[]; widths: number[]; styles: string[]; least: number[]; i: number; x: number; scale: number; on: boolean } | null = null;
   const sized = (ev: PointerEvent): Map<HTMLTableCellElement, number> => {
     const r = resize!;
     const d = (ev.clientX - r.x) / r.scale;
@@ -1475,13 +1483,20 @@ function installBars(app: App): void {
     const least = columnWidths(shown.table, false);
     resize = {
       cells, widths, styles: cells.map((c) => c.style.width), least: cells.map((c, i) => Math.min(widths[i], Math.max(NARROWEST, least.get(c) ?? widths[i]))),
-      i: Number(grip.dataset.grip), x: ev.clientX, scale: box.width / (shown.table.offsetWidth || 1) || 1,
+      i: Number(grip.dataset.grip), x: ev.clientX, scale: box.width / (shown.table.offsetWidth || 1) || 1, on: false,
     };
     grip.setPointerCapture(ev.pointerId);
     document.documentElement.classList.add('beeson-column-resizing');
   });
   grips.addEventListener('pointermove', (ev) => {
-    if (!resize) return;
+    if (!resize || (!resize.on && ev.clientX === resize.x)) return;
+    // a refused resize ends at its first move, before a width is set
+    if (!resize.on && refusedDrag(app, 'arrange.setSize', resize.cells[0].closest('table'))) {
+      resize = null;
+      document.documentElement.classList.remove('beeson-column-resizing');
+      return;
+    }
+    resize.on = true;
     for (const [cell, w] of sized(ev)) cell.style.width = `${Math.round(w)}px`;
   });
   const drop = (ev: PointerEvent | null) => {
@@ -1514,6 +1529,14 @@ function installBars(app: App): void {
     const to = reach(filling.table, filling.from, ev.clientX, ev.clientY);
     Object.assign(filling, { x: ev.clientX, y: ev.clientY });
     if (sameBox(to, filling.to)) return;
+    // a refused autofill ends when it first reaches beyond its cells
+    if (sameBox(filling.to, filling.from) && refusedDrag(app, 'edit.paste', filling.table)) {
+      filling = null;
+      reaching = null;
+      document.documentElement.classList.remove('beeson-autofilling');
+      app.invalidate('selection');
+      return;
+    }
     filling.to = to;
     reaching = { table: filling.table, box: to };
     app.invalidate('selection');
@@ -1558,7 +1581,7 @@ function installBars(app: App): void {
 
   // the drag of an edge grip: the cells of the first row with their outer widths and the widths of
   // their content, and their styles at the press, the translate of the table, and its width
-  let widening: { table: HTMLTableElement; cells: HTMLTableCellElement[]; outer: number[]; content: number[]; styles: string[]; at: number[]; moved: string; left: boolean; x: number; scale: number; width: number } | null = null;
+  let widening: { table: HTMLTableElement; cells: HTMLTableCellElement[]; outer: number[]; content: number[]; styles: string[]; at: number[]; moved: string; left: boolean; x: number; scale: number; width: number; on: boolean } | null = null;
   const widen = (ev: PointerEvent) => {
     const r = widening!;
     const d = ((ev.clientX - r.x) / r.scale) * (r.left ? -1 : 1);
@@ -1577,13 +1600,22 @@ function installBars(app: App): void {
       const at = (table.style.translate || '0 0').split(/\s+/).map((v) => parseFloat(v) || 0);
       widening = {
         table, cells, outer: cells.map((c) => c.offsetWidth), content: cells.map(contentWidth), styles: cells.map((c) => c.style.width), at: [at[0] ?? 0, at[1] ?? 0],
-        moved: table.style.translate, left: g.dataset.handle === 'w', x: ev.clientX, scale: table.getBoundingClientRect().width / (table.offsetWidth || 1) || 1, width: table.offsetWidth || 1,
+        moved: table.style.translate, left: g.dataset.handle === 'w', x: ev.clientX, scale: table.getBoundingClientRect().width / (table.offsetWidth || 1) || 1, width: table.offsetWidth || 1, on: false,
       };
       g.setPointerCapture(ev.pointerId);
       document.documentElement.classList.add('beeson-resizing');
     });
     g.addEventListener('pointermove', (ev) => {
-      if (widening) widen(ev);
+      const r = widening;
+      if (!r || (!r.on && ev.clientX === r.x)) return;
+      // a refused resize ends at its first move, before the table is changed
+      if (!r.on && refusedDrag(app, 'arrange.setSize', r.table)) {
+        widening = null;
+        document.documentElement.classList.remove('beeson-resizing');
+        return;
+      }
+      r.on = true;
+      widen(ev);
     });
     const end = (ev: PointerEvent | null) => {
       const r = widening;
