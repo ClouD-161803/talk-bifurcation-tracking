@@ -451,6 +451,41 @@ test('a drag of the grip of a column, of the edge of a table, of the bar of a ro
   clean(ben);
 });
 
+test('a drag in the navigator of a slide where a text element is held is refused at its first move, and a drag of another slide is taken', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  // a clock of Ben far behind keeps the hold for the whole test
+  await ben.evaluate(`${P}.skew = -1e8`);
+  const ORDER = `[...document.querySelectorAll('.reveal .slides > section')].map((s) => s.querySelector('h2').textContent).join(',')`;
+  // the paragraph of slide Two, wherever the slide is
+  const p = `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2').textContent === 'Two').querySelector('p')`;
+  const row = (n) => center(ben, `.beeson-edit-nav .row:nth-of-type(${n})`);
+  await front(ben);
+  const [one, two] = [await row(1), await row(2)];
+  await unbubble(ben);
+  await drag(ben, two, { dy: one.y - two.y - 20, steps: 12, hold: true });
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'a drag of the slide of the held element is refused before its release');
+  assert.equal(await ben.evaluate(`!!document.querySelector('.beeson-edit-ghost')`), false, 'a refused drag of a slide ends at its first move');
+  await unbubble(ben);
+  await ben.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: two.x, y: one.y - 20, button: 'left', clickCount: 1 });
+  await frame(ben);
+  assert.equal(await ben.evaluate(ORDER), 'One,Two', 'a refused drag leaves the slides in their order');
+  assert.equal(await ben.evaluate(BUBBLE), null, 'the release of a refused drag is not refused again');
+  await drag(ben, one, { dy: two.y - one.y + 30, steps: 12 });
+  await frame(ben);
+  assert.equal(await ben.evaluate(ORDER), 'Two,One', 'a drag of a slide where nothing is held is taken');
+  assert.equal(await ben.evaluate(BUBBLE), null, 'a drag of a slide where nothing is held');
+  assert.ok(await caretOf(ben, 'Ana', p), 'the caret of Ana stays in her paragraph');
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<h2>Two<\/h2>\s*<p>Second slide typed more<\/p>[\s\S]*<h2>One<\/h2>/);
+  clean(ana);
+  clean(ben);
+});
+
 const PLATE = `  <p>First slide</p>
   <div class="plate row">
     <figure id="first"><img src="brand/logo.png" alt="A"><figcaption class="caption">The first figure.</figcaption></figure>
