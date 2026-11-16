@@ -75,10 +75,13 @@ export async function renderPdf(bytes: Uint8Array, path: string, page: number, m
   const [r, t] = await Promise.all([renderer(), tones()]);
   const { pages, renders } = await r.render(bytes, page, modes, t);
   const stem = path.slice(path.lastIndexOf('/') + 1).replace(/\.[^.]*$/, '') + (page > 1 ? `-page-${page}` : '');
-  return {
-    pages,
-    files: renders.map(({ mode, png }) => ({ mode, file: media.add(new Blob([png as BlobPart], { type: 'image/png' }), `${stem}${mode ? `-${mode}` : ''}.png`, taken, 'figure') })),
-  };
+  const pngs = renders.map(({ mode, png }) => ({ mode, file: new File([png as BlobPart], `${stem}${mode ? `-${mode}` : ''}.png`, { type: 'image/png' }) }));
+  // e.g. a render over the limit of a picture of a session, refused before the deck is changed
+  for (const { file } of pngs) {
+    const refused = media.refuse?.(file);
+    if (refused) throw new Error(refused);
+  }
+  return { pages, files: pngs.map(({ mode, file }) => ({ mode, file: media.add(file, file.name, taken, 'figure') })) };
 }
 
 // the bytes of the PDF at path, from the store for a new file, and over http for a deck on a
