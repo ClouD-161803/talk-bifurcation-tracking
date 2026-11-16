@@ -132,7 +132,7 @@ function markMoved(a, b) {
   });
   return [x, y];
 }
-function changes(base, theirs) {
+function changes(base, theirs, marks = true) {
   if (base === theirs) return [];
   const a = linesOf(base), b = linesOf(theirs);
   let x = a, y = b, pre = 0, suf = 0;
@@ -143,7 +143,7 @@ function changes(base, theirs) {
   };
   trim();
   const slides = (l) => l.slice(pre, l.length - suf).join("").split(SECTION).length;
-  const moved2 = slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
+  const moved2 = marks && slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
   if (moved2) {
     [x, y] = moved2;
     trim();
@@ -167,6 +167,8 @@ function changes(base, theirs) {
     removed += end - start2;
     out.push({ start: start2, end, text });
   }
+  const paired = moved2 ? moves(base, out, out, () => true) : [];
+  if (moved2 && out.some((e) => base.slice(e.start, e.end).includes("\n") && !paired.includes(e))) return changes(base, theirs, false);
   return removed > base.length / 2 && !moved2 ? null : out;
 }
 function moves(base, list, others, hit) {
