@@ -364,7 +364,10 @@ class Pane {
     const answering = !t.resolved || this.busy(t);
     const names = itemsOf(t).map((i) => `${this.nameOf(i.author)}|${this.colorOf(i.author)}`).join(',');
     const known = this.client.known.map((k) => `${k.person}=${k.name}`).join(',');
-    const sign = JSON.stringify([t, names, known, this.label(t, p), this.client.connection === 'online', answering]);
+    // the offsets of the anchors move with each letter typed before them, and the label stands for
+    // the place in the sign
+    const { anchor: _a, slide: _s, ...shown } = t;
+    const sign = JSON.stringify([shown, !!t.anchor, names, known, this.label(t, p), this.client.connection === 'online', answering]);
     if (this.signs.get(t.id) === sign && !force) return node;
     // a thread in edit is drawn again once the edit ends
     if (this.editing?.id === t.id && !force) return node;
