@@ -75,13 +75,14 @@ export async function renameRetried(from: string, to: string): Promise<void> {
   }
 }
 
-export function renameRetriedSync(from: string, to: string): void {
+// up to tries renames, with waits of 10 ms, 20 ms, and so on between them
+export function renameRetriedSync(from: string, to: string, tries = 21): void {
   const wait = new Int32Array(new SharedArrayBuffer(4));
   for (let attempt = 0; ; attempt++) {
     try {
       return renameSync(from, to);
     } catch (e) {
-      if (attempt >= 20 || !RETRY.has((e as NodeJS.ErrnoException).code ?? '')) throw e;
+      if (attempt + 1 >= tries || !RETRY.has((e as NodeJS.ErrnoException).code ?? '')) throw e;
       Atomics.wait(wait, 0, 0, 10 * (attempt + 1));
     }
   }

@@ -863,13 +863,13 @@ async function renameRetried(from, to) {
     }
   }
 }
-function renameRetriedSync(from, to) {
+function renameRetriedSync(from, to, tries = 21) {
   const wait = new Int32Array(new SharedArrayBuffer(4));
   for (let attempt = 0; ; attempt++) {
     try {
       return renameSync(from, to);
     } catch (e) {
-      if (attempt >= 20 || !RETRY.has(e.code ?? "")) throw e;
+      if (attempt + 1 >= tries || !RETRY.has(e.code ?? "")) throw e;
       Atomics.wait(wait, 0, 0, 10 * (attempt + 1));
     }
   }
@@ -2684,12 +2684,13 @@ var Comments = class {
     }
     return this.saved === this.edits || this.locked;
   }
-  // the file written at once, or false when it could not be
-  writeNow() {
+  // the file written at once, or false when it could not be. a change of a thread tries the rename 3
+  // times, which holds the edit command for 30 ms at most, and a stop as often as other files
+  writeNow(tries) {
     const tmp = this.tmpName();
     try {
       writeFileSync3(tmp, this.serialize());
-      renameRetriedSync(tmp, this.file);
+      renameRetriedSync(tmp, this.file, tries);
       this.saved = this.edits;
       this.writesNow++;
       return true;
@@ -2705,7 +2706,7 @@ var Comments = class {
   // a change of the threads written before it is told and answered, since a page drops a comment
   // that the host answered and then lost, or else taken back by undo and refused with error
   commit(ids, undo, error2, gone = false) {
-    if (!this.writeNow()) {
+    if (!this.writeNow(3)) {
       undo();
       return fail(503, error2);
     }
@@ -2935,7 +2936,7 @@ var Comments = class {
         });
         return;
       }
-      renameRetriedSync(tmp, this.file);
+      renameRetriedSync(tmp, this.file, 1);
       this.saved = Math.max(this.saved, edits);
     } catch (e) {
       if (!this.stopped) this.log(`could not write ${this.file}, trying again: ${e.message}`);
