@@ -177,7 +177,11 @@ html, body, .reveal-viewport { background: var(--bg); }
 .reveal p.theorem[data-missing]::before { color: var(--red); }
 .reveal a { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 0.14em; transition: text-decoration-color 200ms ease-out, color 200ms ease-out; }
 .reveal a:hover { color: var(--accent); }
+/* the reset of reveal.js sets sup and sub on the baseline. with line-height 0, a raised number does
+   not make its line taller */
 .reveal sub, .reveal sup { font-size: 0.7em; line-height: 0; }
+.reveal sup { vertical-align: super; }
+.reveal sub { vertical-align: sub; }
 
 /* words in a color of the palette, set with Text Color of the editor. tone-text gives the words of
    a block drawn in another color, e.g. a small paragraph, the text color */
