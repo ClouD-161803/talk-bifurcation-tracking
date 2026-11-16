@@ -119,7 +119,7 @@ function askName(client: Client, error = ''): Promise<string> {
 export async function askTaken(client: Client, name: string): Promise<boolean> {
   const dialog = client.shell.dialog({
     title: `${name} has joined this deck before. Is that you?`,
-    text: 'If you are not this person, choose Use another name. With Yes, continue, you join as this person, and you can edit and delete the comments of this person.',
+    text: 'If you are not this person, choose Use another name. If you continue, you join as this person, and you can edit and delete the comments of this person.',
     buttons: [
       { label: 'Use another name', value: 'other' },
       { label: 'Yes, continue', value: 'claim', primary: true },
