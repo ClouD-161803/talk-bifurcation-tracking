@@ -12,7 +12,7 @@ import { rangesOf, showRange } from '../shown-steps.ts';
 import { nextShown, transitionOf } from '../review/transitions.ts';
 import { injectStyle, stored, store } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
-import { drawInto, type Thumbs } from './thumbs.ts';
+import { drawInto, stillViewers, type Thumbs } from './thumbs.ts';
 
 const KEY = 'beeson-nav';
 const LAYOUTS = ['title', 'section', 'closing', 'figure', 'split'];
@@ -690,7 +690,7 @@ export class Navigator implements Pane {
 
   // a clone of the slide, scaled into the preview from its upper left, with every step shown. the
   // canvases of a backdrop are painted from the originals, since a cloned canvas is blank, and a
-  // tycho viewer is left out, since its clone would start a second renderer
+  // tycho viewer shows a still of its scene
   private showPeek(slide: Element, row: HTMLElement): void {
     if (this.drag || isHidden(slide) || shownWhole(row)) return;
     const stage = slide.parentElement as HTMLElement;
@@ -709,12 +709,7 @@ export class Navigator implements Pane {
     clone.querySelectorAll<HTMLElement>('.backdrop .label').forEach((l) => {
       if (!l.style.left) l.remove();
     });
-    clone.querySelectorAll('tycho-viewer').forEach((v) => {
-      const box = document.createElement('div');
-      box.className = v.className;
-      box.setAttribute('style', v.getAttribute('style') ?? '');
-      v.replaceWith(box);
-    });
+    stillViewers(slide, clone, PEEK_WIDTH / width);
     clone.querySelectorAll('video').forEach((v) => {
       v.removeAttribute('autoplay');
       v.preload = 'none';
