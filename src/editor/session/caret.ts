@@ -4,8 +4,9 @@
 
 import type { MathLookup } from '../math.ts';
 
-// the text of host, and the offset in it of each point (node, at), or -1
-function walk(host: Element, math: MathLookup, points: readonly [Node, number][]): { text: string; offsets: number[] } {
+// the text of host, and the offset in it of each point (node, at), or -1. with br, a <br> counts as
+// one character
+function walk(host: Element, math: MathLookup, points: readonly [Node, number][], br = false): { text: string; offsets: number[] } {
   let text = '';
   const offsets = points.map(() => -1);
   const visit = (n: Node): void => {
@@ -17,6 +18,10 @@ function walk(host: Element, math: MathLookup, points: readonly [Node, number][]
       return;
     }
     if (!(n instanceof Element)) return;
+    if (br && n.localName === 'br') {
+      text += '\n';
+      return;
+    }
     const info = n.localName === 'mjx-container' ? math(n) : null;
     if (info) {
       text += info.open + info.tex + info.close;
@@ -41,16 +46,16 @@ function walk(host: Element, math: MathLookup, points: readonly [Node, number][]
 
 // the focus and the anchor of the selection in host, with the text of host, or null when the focus
 // is not in host. the anchor is the focus when it lies outside host
-export function caretOf(host: Element, math: MathLookup): { offset: number; anchor: number; text: string } | null {
+export function caretOf(host: Element, math: MathLookup, br = false): { offset: number; anchor: number; text: string } | null {
   const sel = getSelection();
   if (!sel?.rangeCount || !sel.focusNode || !host.contains(sel.focusNode)) return null;
   const points: [Node, number][] = [[sel.focusNode, sel.focusOffset]];
   if (sel.anchorNode && host.contains(sel.anchorNode)) points.push([sel.anchorNode, sel.anchorOffset]);
-  const { text, offsets: [offset, anchor = offset] } = walk(host, math, points);
+  const { text, offsets: [offset, anchor = offset] } = walk(host, math, points, br);
   return offset < 0 ? null : { offset, anchor: anchor < 0 ? offset : anchor, text };
 }
 
-export const textIn = (host: Element, math: MathLookup): string => walk(host, math, []).text;
+export const textIn = (host: Element, math: MathLookup, br = false): string => walk(host, math, [], br).text;
 
 // the offset of the caret moved with a change of before into after: kept before the change, moved
 // by its length after it, and put at its end inside it
@@ -65,8 +70,8 @@ export function mapOffset(offset: number, before: string, after: string): number
 }
 
 // the point at offset into the text of host, after a formula that the offset falls inside, and at
-// the end of host past its text
-export function pointIn(host: Element, offset: number, math: MathLookup): [Node, number] {
+// the end of host past its text. with br, a <br> counts as one character
+export function pointIn(host: Element, offset: number, math: MathLookup, br = false): [Node, number] {
   let left = Math.max(0, offset);
   let spot: [Node, number] | null = null;
   const after = (n: Node, k: number): [Node, number] => [n.parentNode!, [...n.parentNode!.childNodes].indexOf(n as ChildNode) + k];
@@ -81,6 +86,14 @@ export function pointIn(host: Element, offset: number, math: MathLookup): [Node,
       return false;
     }
     if (!(n instanceof Element)) return false;
+    if (br && n.localName === 'br') {
+      if (left === 0) {
+        spot = after(n, 0);
+        return true;
+      }
+      left--;
+      return false;
+    }
     const info = n.localName === 'mjx-container' ? math(n) : null;
     if (info) {
       const length = info.open.length + info.tex.length + info.close.length;

@@ -14,13 +14,16 @@
 import type { AppliedOp, Patch, Version } from '../protocol.ts';
 import { parseVersion } from '../protocol.ts';
 import { apply, diff } from '../patch.ts';
+import type { Caret } from '../../editor/session/presence.ts';
 import type { Client } from './client.ts';
 
 export type PresenceState = {
   v: Version;
   slide: number | null;
   selected: number[];
-  caret: { el: number; at: number } | null;
+  // the focus and the anchor of the selection in the text element at el, with the text on each side
+  // of the focus, see shapes() of the editor
+  caret: (Omit<Caret, 'el'> & { el: number }) | null;
   typing: boolean;
   following: string | null;
   mode: 'edit' | 'present' | 'history';
@@ -39,7 +42,7 @@ export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret' | 'hel
   color: number;
   slide: Element | null;
   selected: Element[];
-  caret: { el: Element; at: number } | null;
+  caret: Caret | null;
   held: Element | null;
 };
 
@@ -63,6 +66,8 @@ const SLIDE = 4096;
 // a state is sent again with the newest version when the one sent is this many operations behind
 const BEHIND = 64;
 const MAX_SELECTED = 500;
+// the characters on each side of a caret that a state keeps, as selectionIn() of the editor reads them
+const NEAR = 12;
 
 // a change of the text, as it moves an offset: an offset at hi or after it moves by delta, an
 // offset in lo to hi is in doubt, and one before lo stays
@@ -225,13 +230,15 @@ function parseState(raw: unknown): PresenceState | null {
   if (!raw || typeof raw !== 'object') return null;
   const s = raw as Record<string, unknown>;
   if (typeof s.v !== 'string' || !parseVersion(s.v)) return null;
-  const caret = s.caret as { el?: unknown; at?: unknown } | null;
+  const caret = s.caret as { el?: unknown; at?: unknown; from?: unknown; pre?: unknown; post?: unknown } | null;
+  // the characters next to the caret, i.e. the end of pre and the start of post
+  const near = (t: unknown, end: boolean): string => (typeof t !== 'string' ? '' : end ? t.slice(Math.max(0, t.length - NEAR)) : t.slice(0, NEAR));
   const mode = s.mode === 'present' || s.mode === 'history' ? s.mode : 'edit';
   return {
     v: s.v,
     slide: isInt(s.slide) ? s.slide : null,
     selected: Array.isArray(s.selected) ? s.selected.filter(isInt).slice(0, MAX_SELECTED) : [],
-    caret: caret && typeof caret === 'object' && isInt(caret.el) && isInt(caret.at) ? { el: caret.el, at: caret.at } : null,
+    caret: caret && typeof caret === 'object' && isInt(caret.el) && isInt(caret.at) ? { el: caret.el, at: caret.at, from: isInt(caret.from) ? caret.from : caret.at, pre: near(caret.pre, true), post: near(caret.post, false) } : null,
     typing: s.typing === true,
     following: typeof s.following === 'string' ? s.following : null,
     mode,
@@ -268,7 +275,7 @@ export class Presence {
   private typingTimer = 0;
   private typedAt = -Infinity;
   private caretHost: Element | null = null;
-  private at = 0;
+  private selection: Omit<Caret, 'el'> = { at: 0, from: 0, pre: '', post: '' };
   private holding: Element | null = null;
   private holdAt = 0;
   private beat = 0;
@@ -530,14 +537,14 @@ export class Presence {
       return c;
     };
     const host = this.caretHost?.isConnected ? this.caretHost : null;
-    if (host) this.at = shell.presence.caretIn(host) ?? this.at;
+    if (host) this.selection = shell.presence.selectionIn(host) ?? this.selection;
     const caretEl = offset(host);
     const typing = this.now() - this.typedAt < TYPING && !!host;
     return {
       v: base.v,
       slide: offset(app.current()),
       selected: this.selectedNow().map(offset).filter((o): o is number => o !== null),
-      caret: caretEl === null ? null : { el: caretEl, at: this.at },
+      caret: caretEl === null ? null : { el: caretEl, ...this.selection },
       typing,
       following: this.fields.following,
       mode: this.fields.mode,
@@ -657,7 +664,7 @@ export class Presence {
       v: s.v,
       slide: at(0, prev?.slide),
       selected,
-      caret: caretEl && s.caret ? { el: caretEl, at: s.caret.at } : null,
+      caret: caretEl && s.caret ? { ...s.caret, el: caretEl } : null,
       typing: s.typing,
       following: s.following,
       mode: s.mode,

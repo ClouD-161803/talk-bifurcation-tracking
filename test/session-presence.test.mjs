@@ -744,7 +744,7 @@ test('a caret at the start of a line after a line break is drawn at the start of
     getSelection().removeAllRanges();
     getSelection().addRange(r);
     const b = r.getClientRects();
-    return { x: b[b.length - 1].left, y: b[b.length - 1].top, at: ${P}.client.shell.presence.caretIn(p) };
+    return { x: b[b.length - 1].left, y: b[b.length - 1].top, at: ${P}.client.shell.presence.selectionIn(p).at };
   })()`);
   await until(async () => (await ben.evaluate(`${C}.resolved()[0]?.caret?.at`)) === mine.at, 'the caret of Ana on the page of Ben');
   const d = await until_(ben, (d) => d.carets.length === 1, 'the caret bar of Ana');
