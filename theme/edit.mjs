@@ -102,14 +102,51 @@ function diff(a, b, max) {
   }
   return hunks;
 }
+var SECTION = /^[ \t]*<\/?section[\s>]/m;
+function slidesOf(lines) {
+  const out = /* @__PURE__ */ new Map(), open2 = [];
+  lines.forEach((line, i) => {
+    const t = line.trimStart();
+    if (/^<section[\s>]/.test(t) && !t.includes("</section")) open2.push(i);
+    const from = t.startsWith("</section") ? open2.pop() : void 0;
+    if (from === void 0) return;
+    const text = lines.slice(from, i + 1).join("");
+    out.set(text, [out.has(text) ? -1 : from, i + 1 - from]);
+  });
+  return out;
+}
+function markMoved(a, b) {
+  const inB = slidesOf(b);
+  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]);
+  const best = pairs.map((p) => p[2]), prev = pairs.map(() => -1);
+  pairs.forEach((p, i) => pairs.forEach((q, j) => {
+    if (j < i && q[1] < p[1] && best[j] + p[2] > best[i]) [best[i], prev[i]] = [best[j] + p[2], j];
+  }));
+  const kept = /* @__PURE__ */ new Set();
+  for (let i = best.indexOf(Math.max(...best)); i >= 0; i = prev[i]) kept.add(i);
+  if (kept.size === pairs.length) return null;
+  const x = [...a], y = [...b];
+  pairs.forEach(([from, to, n], i) => {
+    for (let k = 0; k < n && !kept.has(i); k++) [x[from + k], y[to + k]] = ["\0a", "\0b"];
+  });
+  return [x, y];
+}
 function changes(base, theirs) {
   if (base === theirs) return [];
   const a = linesOf(base), b = linesOf(theirs);
-  let pre = 0;
-  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-  let suf = 0;
-  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-  const hunks = diff(a.slice(pre, a.length - suf), b.slice(pre, b.length - suf), MAX_LINES);
+  let x = a, y = b, pre = 0, suf = 0;
+  const trim = () => {
+    pre = suf = 0;
+    while (pre < x.length && pre < y.length && x[pre] === y[pre]) pre++;
+    while (suf < x.length - pre && suf < y.length - pre && x[x.length - 1 - suf] === y[y.length - 1 - suf]) suf++;
+  };
+  trim();
+  const moved2 = SECTION.test(a.slice(pre, a.length - suf).join("") + b.slice(pre, b.length - suf).join("")) && markMoved(a, b);
+  if (moved2) {
+    [x, y] = moved2;
+    trim();
+  }
+  const hunks = diff(x.slice(pre, x.length - suf), y.slice(pre, y.length - suf), MAX_LINES);
   if (!hunks) return null;
   const oa = offsets(a), ob = offsets(b);
   const out = [];
@@ -128,7 +165,7 @@ function changes(base, theirs) {
     removed += end - start2;
     out.push({ start: start2, end, text });
   }
-  return removed > base.length / 2 ? null : out;
+  return removed > base.length / 2 && !moved2 ? null : out;
 }
 function moveOf(base, list, e, at) {
   if (e.start === e.end) return null;
