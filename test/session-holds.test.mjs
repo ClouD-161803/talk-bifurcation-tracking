@@ -109,3 +109,40 @@ test('a held paragraph refuses a paragraph style, a list style, and Enter, and t
   clean(ana);
   clean(ben);
 });
+
+const STYLE = (expression) => `${expression}.getAttribute('style')`;
+
+test('a drag of the move handle, the rotate handle, or a grip of a held paragraph is refused, also by a touch on a phone, and the holder keeps typing', { timeout: 180_000 }, async (t) => {
+  const { server, pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy'], { pages: [{}, {}, { width: 390, height: 844, mobile: true }] });
+  for (const page of [ana, ben, cy]) await show(page, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  for (const handle of ['.beeson-handle', '.beeson-rotor', '.beeson-grip[data-handle="e"]']) {
+    await select(ben, SECOND);
+    await frame(ben);
+    await unbubble(ben);
+    await drag(ben, handle, { dx: 60, dy: 50 });
+    await frame(ben);
+    assert.equal(await ben.evaluate(STYLE(SECOND)), null, `a drag of ${handle} leaves the paragraph in place`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, handle);
+  }
+  await until(() => cy.evaluate(`${HOLDER(SECOND)} === 'Ana'`), 'the paragraph to be held on the phone of Cy');
+  await select(cy, SECOND);
+  await frame(cy);
+  await unbubble(cy);
+  // the move handle is drawn beyond the left edge of the window of a phone, hence its grip is dragged
+  const h = await center(cy, '.beeson-grip[data-handle="e"]');
+  await cy.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [h] });
+  for (let i = 1; i <= 8; i++) await cy.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: h.x + i * 8, y: h.y + i * 6 }] });
+  await cy.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await frame(cy);
+  assert.equal(await cy.evaluate(STYLE(SECOND)), null, 'a touch drag of the grip leaves the paragraph as it was');
+  assert.equal(await cy.evaluate(BUBBLE), REFUSED, 'a touch drag of the grip');
+  assert.ok(await caretOf(ben, 'Ana', SECOND), 'the caret of Ana stays in her paragraph');
+  await caretAtEnd(ana, SECOND);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben, cy]);
+  assert.match(text, /<p>Second slide typed more<\/p>/);
+  clean(ana);
+  clean(ben);
+  clean(cy);
+});
