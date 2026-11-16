@@ -386,20 +386,23 @@ export function install(app: App): void {
     apply.disabled = !sheet.tex.trim();
     void ed.refresh();
     // the commit key is held until the TeX typed before it is typeset, since Apply is dimmed or
-    // lit by the preview of an earlier TeX until then. a TeX with an error is not committed
+    // lit by the preview of an earlier TeX until then. a TeX with an error is not committed. false
+    // for a commit that threw
     let committing = false;
     const submit = async (focus = !!target && !sheet.made) => {
-      if (committing) return;
+      if (committing) return true;
       committing = true;
       try {
         await ed.settle();
-        if (popover !== box || !ed.ok()) return;
+        if (popover !== box || !ed.ok()) return true;
         await sheet.commit(field.value);
         closeMath(focus);
         sheet.done?.();
+        return true;
       } catch (e) {
         ed.message.classList.remove('prompt');
         ed.message.textContent = e instanceof Error ? e.message : String(e);
+        return false;
       } finally {
         committing = false;
       }
@@ -425,9 +428,10 @@ export function install(app: App): void {
       stops[(at + (ev.shiftKey ? -1 : 1) + stops.length) % stops.length].focus();
     });
     popover = box;
+    // a refused commit keeps the field open with its TeX and the message
     away = sheet.made
       ? async () => {
-          if (field.value.trim()) await submit(false);
+          if (field.value.trim() && !(await submit(false))) return;
           if (popover === box) closeMath(false);
         }
       : sheet.left
