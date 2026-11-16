@@ -14,6 +14,7 @@ const LARGE = 20 * 1024 * 1024;
 let browser;
 let inner;
 let server;
+let asked = false;
 let closed = false;
 before(async () => {
   browser = await launch({ offline: false });
@@ -24,6 +25,7 @@ before(async () => {
       // the buffers of the system, hence no byte of the body is sent
       response.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': LARGE });
       response.flushHeaders();
+      asked = true;
       return void response.on('close', () => (closed = true));
     }
     const r = await fetch(`${inner.origin}${request.url}`, { headers: request.headers.range ? { range: request.headers.range } : {} });
@@ -45,10 +47,10 @@ test('a file of this deck of another length than a carried file is not downloade
   const text = await copySlide(a, FILES);
   const b = await withMacrosOfA(await openDeck(browser, `${server.origin}/${B}?${QUERY}`, B));
   t.after(() => b.close());
-  closed = false;
+  asked = closed = false;
   await pasteSlides(b, FIRST_B, text);
   // a page that reads the body waits for it, and does not close the request
-  for (const end = Date.now() + 60000; !closed; await sleep(50)) assert.ok(Date.now() < end, 'the request of media/clip.png of deck B is not closed by the page within 60 s, before its body');
+  for (const end = Date.now() + 60000; !closed; await sleep(50)) assert.ok(Date.now() < end, asked ? 'the request of media/clip.png of deck B is not closed by the page within 60 s, before its body' : 'the page does not ask for media/clip.png of deck B within 60 s');
   await pasted(b, 60000);
   assert.match(sectionOf(await render(b), FILES), /poster="media\/clip-2\.png"/);
 });
