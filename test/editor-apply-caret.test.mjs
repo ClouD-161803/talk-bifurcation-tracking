@@ -215,3 +215,24 @@ for (const [label, change] of SAME) {
     assert.deepEqual(b.errors, []);
   });
 }
+
+test('on a clean page, a character typed by another person in a paragraph with a formula does not look up the formulas of the whole deck', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Equations are first class');
+  await b.evaluate(`(() => {
+    const d = window.MathJax.startup.document;
+    const items = d.getMathItemsWithin.bind(d);
+    window.__whole = 0;
+    d.getMathItemsWithin = (nodes) => (nodes.includes(document.body) && window.__whole++, items(nodes));
+    return true;
+  })()`);
+  let text = b.source;
+  for (const [from, to] of [['potential.</p>', 'potential.!</p>'], ['potential.!</p>', 'potential.!?</p>']]) {
+    text = once(text, `is the effective ${from}`, `is the effective ${to}`);
+    assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  }
+  assert.equal(await b.evaluate('window.__whole'), 0, 'the formulas are looked up in the paragraph alone');
+  assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.deepEqual(b.errors, []);
+});
