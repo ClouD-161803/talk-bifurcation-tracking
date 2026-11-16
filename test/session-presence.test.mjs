@@ -278,6 +278,75 @@ test('a text element that another page holds refuses a caret, a press, a selecti
   clean(ben);
 });
 
+// the x in px of the point after n characters of the text of the element of expression
+const xAt = (page, expression, n) => page.evaluate(`(() => {
+  const w = document.createTreeWalker(${expression}, NodeFilter.SHOW_TEXT);
+  let left = ${n};
+  for (let t = w.nextNode(); t; t = w.nextNode()) {
+    if (left <= t.length) { const r = document.createRange(); r.setStart(t, left); return r.getClientRects()[0].left; }
+    left -= t.length;
+  }
+  return null;
+})()`);
+
+test('a caret sent before the typing of another person reaches the page of this person is drawn at its characters', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  // the state of Ana with her caret after Second is held back while Ben types before it
+  await hold(ana);
+  await front(ana);
+  await ana.evaluate(`(() => { const p = ${p}; p.focus(); getSelection().collapse(p.firstChild, 'Second'.length); })()`);
+  await until(() => ana.evaluate(`(window.__mine = window.__held.findLast((s) => s.caret?.at === 'Second'.length)) !== undefined`), 'the state of Ana with her caret');
+  await front(ben);
+  await ben.evaluate(`(() => { const p = ${p}; p.focus(); getSelection().collapse(p.firstChild, 0); })()`);
+  await typeKeys(ben, 'XYZ');
+  await ben.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
+  await until(() => ana.evaluate(`${p}.textContent === 'XYZSecond slide'`), 'the typing of Ben on the page of Ana');
+  await ana.evaluate(`window.__send(window.__mine)`);
+  const d = await until_(ben, (d) => d.carets.length === 1, 'the caret of Ana on the page of Ben');
+  const x = await xAt(ben, p, 'XYZSecond'.length);
+  assert.ok(Math.abs(d.carets[0].x + d.carets[0].w / 2 - x) < 2, `the caret of Ana is drawn after XYZSecond, at ${x}, and it is at ${d.carets[0].x + d.carets[0].w / 2}`);
+  clean(ana);
+  clean(ben);
+});
+
+const MATHJAX = '<script src="theme/mathjax-config.js"></script>\n<script src="theme/vendor/mathjax/tex-svg.js"></script>\n</head>';
+
+test('the caret and the selection of another person in a paragraph with a formula are drawn without a lookup of the formulas of the whole deck', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  writeFileSync(server.file, server.read().replace('</head>', MATHJAX).replace('<p>Second slide</p>', '<p>Second slide</p>\n  <p>A square \\(x^2\\) in a line</p>'));
+  const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ana, ben]);
+  const math = `document.querySelectorAll('.reveal .slides > section')[1].querySelectorAll('p')[1]`;
+  for (const page of [ana, ben]) {
+    await show(page, 'Two');
+    await page.waitFor(`!!${math}.querySelector('mjx-container')`);
+  }
+  await ben.evaluate(`(() => {
+    const d = window.MathJax.startup.document;
+    const items = d.getMathItemsWithin.bind(d);
+    window.__whole = 0;
+    d.getMathItemsWithin = (nodes) => (nodes.includes(document.body) && window.__whole++, items(nodes));
+    return true;
+  })()`);
+  // Ana selects the words after the formula, and then puts the caret at their end
+  await front(ana);
+  await ana.evaluate(`(() => { const p = ${math}; p.focus(); const t = p.lastChild; getSelection().setBaseAndExtent(t, 1, t, t.length); })()`);
+  await until_(ben, (d) => d.carets.length === 1, 'the caret of Ana on the page of Ben');
+  await front(ana);
+  await ana.evaluate(`getSelection().collapseToEnd()`);
+  const end = await xAt(ben, math, 'A square '.length + 1);
+  await until_(ben, (d) => d.carets.length === 1 && d.carets[0].x > end, 'the caret of Ana at the end of the paragraph');
+  assert.equal(await ben.evaluate('window.__whole'), 0, 'the formulas are looked up in the paragraph alone');
+  clean(ana);
+  clean(ben);
+});
+
 // a copy of a slide that holds the element of a state makes its offset doubtful on another page, and
 // a copy of a slide reloads the other pages today. the decision of send() is hence checked on its log
 test('a page sends its state again at a new version when another page could not carry its last state', { timeout: 120_000 }, async (t) => {
@@ -394,6 +463,19 @@ test('of two pages that claim one text element at the same time, the smaller cli
   assert.equal(await loser.evaluate(`${p}.contains(getSelection().focusNode)`), false);
   assert.equal(await keeper.evaluate(`${P}.held === ${p} && !${LOCKED(p)}`), true);
   await until(() => keeper.evaluate(`${C}.resolved()[0]?.held === null`), 'the claim of the other page to end on the page that keeps the paragraph');
+  clean(ana);
+  clean(ben);
+});
+
+test('the text on each side of a caret is read as 12 characters at most', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await caretAtEnd(ana, el(1, 'p'));
+  await until(() => ben.evaluate(`${C}.resolved()[0]?.caret?.post === ''`), 'the caret of Ana on the page of Ben');
+  await hold(ana);
+  await ana.evaluate(`(() => { const s = ${P}.sent; window.__send({ ...s, caret: { ...s.caret, pre: 'a'.repeat(999) + 'z', post: 'y' + 'b'.repeat(999) } }); })()`);
+  await until(() => ben.evaluate(`${C}.resolved()[0]?.caret?.post.length > 0`), 'the long caret of Ana on the page of Ben');
+  assert.deepEqual(await ben.evaluate(`(({ pre, post }) => ({ pre, post }))(${C}.resolved()[0].caret)`), { pre: 'a'.repeat(11) + 'z', post: 'y' + 'b'.repeat(11) });
   clean(ana);
   clean(ben);
 });
