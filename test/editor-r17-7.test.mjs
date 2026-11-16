@@ -224,7 +224,7 @@ for (const platform of PLATFORMS) {
     await undoAll(page);
   });
 
-  // entries-1 of review 12: the caret went to the end of the item, where the text did not change
+  // the caret is not put at the end of the item, where the text did not change
   for (const [keys, label, text, at] of [['XY', 'Undo Typing', SAME, 4], ['"', 'Undo Smart Quote', SAME.replace('Two ', 'Two "'), 5]]) {
     test(`an undo of ${label.slice(5).toLowerCase()} inside an item after a click into the heading puts the caret where the text changed (${platform})`, async (t) => {
       const page = await load(t, platform, 'test-deck.html', 2);

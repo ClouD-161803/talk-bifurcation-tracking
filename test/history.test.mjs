@@ -464,7 +464,7 @@ test('an undo of typing empties the text element when another person removed eve
   assert.equal(el.content, '');
 });
 
-// told-1 of review 12: pins the contents that write() sets after each step in a session
+// the contents that write() sets after each step in a session, from which the next step starts
 test('an undo after a redo puts back a word before the letters that another person typed right after it while it was undone', async () => {
   const { h } = texts();
   const el = textEl('ab');
