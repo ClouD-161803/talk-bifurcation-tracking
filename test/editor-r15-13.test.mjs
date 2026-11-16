@@ -346,9 +346,9 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`!!document.querySelector('${POSTER}:not([disabled])')`, 10000);
     const r = await page.evaluate(`(() => { const r = document.querySelector(${js(POSTER)}).getBoundingClientRect(); return { x: r.left + r.width * 0.6, y: r.top + r.height / 2 }; })()`);
     await click(page, r);
-    // the capture of the poster waits up to 15 s for the video to load and 15 s for its seek, see
+    // the capture of the poster waits up to 60 s for the video to load and 60 s for its seek, see
     // src/editor/media/poster.ts
-    await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`, 60000);
+    await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`, 150000);
     const poster = await render(page);
     assert.deepEqual(await held(page), { els: ['video'], focus: 'input.range', same: false });
     await press(page, 'Mod+Z');
