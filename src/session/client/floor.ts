@@ -100,13 +100,18 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
   }
   // an undo or a redo that moves, deletes, or restructures a held element, i.e. a part that
   // touches or detaches it, or a transaction that names it. typing, a top-level entry with els
-  // alone, is undone in a held element
+  // alone, is undone in a held element. the first element that a part touches is the one that it
+  // moves, retags, or places, e.g. a slide or an element around the held one, and the others are
+  // the parents that it is moved from and to
   if (c.id === 'edit.undo' || c.id === 'edit.redo') {
     const entry = c.id === 'edit.undo' ? app.history.last : app.history.next;
     const parts = entry ? app.history.partsOf(entry) : [];
     const transaction = parts.length !== 1 || parts[0] !== entry;
     for (const part of parts) {
-      for (const el of [...(transaction ? (part.els ?? []) : []), ...(part.touches ?? [])]) {
+      const [first, ...rest] = part.touches ?? [];
+      const by = first && presence.holderOf(first);
+      if (by) return by;
+      for (const el of [...(transaction ? (part.els ?? []) : []), ...rest]) {
         const by = presence.holderOf(el, false);
         if (by) return by;
       }
