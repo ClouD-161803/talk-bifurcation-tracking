@@ -4139,6 +4139,33 @@ void main() {
     }
     return shared;
   }
+  function dragToTurn(el, turn3, end) {
+    let drag = null;
+    el.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      drag = { x: ev.clientX, y: ev.clientY };
+      try {
+        el.setPointerCapture(ev.pointerId);
+      } catch {
+      }
+      el.classList.add("dragging");
+    });
+    el.addEventListener("pointermove", (ev) => {
+      if (!drag) return;
+      const { x, y } = drag;
+      drag = { x: ev.clientX, y: ev.clientY };
+      turn3(ev.clientX - x, ev.clientY - y);
+    });
+    const stop3 = () => {
+      if (!drag) return;
+      drag = null;
+      el.classList.remove("dragging");
+      end();
+    };
+    el.addEventListener("pointerup", stop3);
+    el.addEventListener("pointercancel", stop3);
+    return () => drag !== null;
+  }
   var CACHE3 = /* @__PURE__ */ new WeakMap();
   var Surface = class {
     constructor(el, fn, THREE) {
@@ -4164,7 +4191,6 @@ void main() {
       this.raf = 0;
       this.last = 0;
       this.resume = 0;
-      this.drag = null;
       this.W = 0;
       this.H = 0;
       this.w = 0;
@@ -4184,7 +4210,7 @@ void main() {
           }
           if (k >= 1) this.settle();
         }
-        if (this.rate && !this.drag && now > this.resume) this.azimuth += dt * this.rate;
+        if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
         this.draw();
         if (this.moving || this.rate || !this.pointsSettled()) this.kick();
       };
@@ -4235,7 +4261,9 @@ void main() {
       this.points = this.makePoints();
       this.scene.add(this.plane, this.glow, this.curve, this.points);
       this.recolor();
-      this.bindDrag();
+      this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => {
+        this.resume = performance.now() + 1500;
+      });
       CACHE3.set(el, this);
       this.sync(false);
       this.fit();
@@ -4812,32 +4840,6 @@ void main() {
       }
       return false;
     }
-    bindDrag() {
-      const el = this.el;
-      el.addEventListener("pointerdown", (ev) => {
-        if (ev.button !== 0) return;
-        this.drag = { x: ev.clientX, y: ev.clientY };
-        try {
-          el.setPointerCapture(ev.pointerId);
-        } catch {
-        }
-        el.classList.add("dragging");
-      });
-      el.addEventListener("pointermove", (ev) => {
-        if (!this.drag) return;
-        const { x, y } = this.drag;
-        this.drag = { x: ev.clientX, y: ev.clientY };
-        this.turn(ev.clientX - x, ev.clientY - y);
-      });
-      const end = () => {
-        if (!this.drag) return;
-        this.drag = null;
-        el.classList.remove("dragging");
-        this.resume = performance.now() + 1500;
-      };
-      el.addEventListener("pointerup", end);
-      el.addEventListener("pointercancel", end);
-    }
     kick() {
       if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
     }
@@ -4909,7 +4911,7 @@ void main() {
   };
   function mount3(root2) {
     const out = [];
-    for (const el of root2.querySelectorAll(".surface")) {
+    for (const el of root2.querySelectorAll(".surface:not([data-bundle])")) {
       const known = CACHE3.get(el);
       if (known) {
         out.push(known);
@@ -4922,6 +4924,596 @@ void main() {
       }
       if (!renderer() || !window.THREE) continue;
       out.push(new Surface(el, fn, window.THREE));
+    }
+    return out;
+  }
+
+  // src/bundle.ts
+  var GROW = 3600;
+  var SHRINK = 1400;
+  var RIBS_END = 0.42;
+  var RIB_DELAY = 0.2;
+  var SHEET_START = 0.42;
+  var TURN2 = 90;
+  var ORBIT_WIDTH = 4;
+  var RIB_WIDTH = 2;
+  var DOT_SIZE = 18;
+  var COMPASS_LEFT = 190;
+  var COMPASS_TOP = 170;
+  var COMPASS_RADIUS = 70;
+  var CIRCLE_WIDTH = 1.5;
+  var NEEDLE_WIDTH = 3;
+  var HEAD = 18;
+  var LABEL_GAP = 10;
+  var SHEET_ALPHA = 0.86;
+  var QUAD = [0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1];
+  var SHEET_VERTEX = (
+    /* glsl */
+    `
+attribute vec3 aNormal;
+attribute float aAcross;
+varying vec3 vNormal;
+varying float vAcross;
+void main() {
+  vNormal = aNormal;
+  vAcross = aAcross;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`
+  );
+  var SHEET_FRAGMENT = (
+    /* glsl */
+    `
+uniform vec3 uColor;
+uniform vec3 uEdge;
+uniform vec3 uLight;
+uniform float uAlpha;
+varying vec3 vNormal;
+varying float vAcross;
+void main() {
+  vec3 c = mix(uColor, uEdge, vAcross);
+  c *= 0.62 + 0.38 * abs(dot(normalize(vNormal), uLight));
+  gl_FragColor = vec4(c, uAlpha);
+}`
+  );
+  var DOT_VERTEX = (
+    /* glsl */
+    `
+uniform float uSize;
+void main() {
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = uSize;
+}`
+  );
+  var DOT_FRAGMENT = (
+    /* glsl */
+    `
+uniform vec3 uColor;
+uniform vec3 uRing;
+uniform float uSize;
+void main() {
+  float r = length(gl_PointCoord * 2.0 - 1.0);
+  float aa = 2.0 / uSize;
+  float outer = 1.0 - smoothstep(1.0 - aa, 1.0, r);
+  if (outer <= 0.0) discard;
+  float fill = 1.0 - smoothstep(0.62 - aa, 0.62, r);
+  gl_FragColor = vec4(mix(uRing, uColor, fill), outer);
+}`
+  );
+  var add = (a, b, s) => [a[0] + s * b[0], a[1] + s * b[1], a[2] + s * b[2]];
+  var ribGrowth = (g, k, count) => {
+    const start4 = count > 1 ? RIB_DELAY * k / (count - 1) : 0;
+    return ease(clamp2((g - start4) / (RIBS_END - RIB_DELAY), 0, 1));
+  };
+  var sheetGrowth = (g) => ease(clamp2((g - SHEET_START) / (1 - SHEET_START), 0, 1));
+  function parseBundle(text) {
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      return `its JSON is malformed, ${String(error)}`;
+    }
+    const n = data?.orbit?.length ?? 0;
+    if (n < 3) return "its orbit has fewer than three points";
+    for (const r of data.strips ?? []) {
+      if (r.directions?.length !== n) return `the strip ${r.id} has ${r.directions?.length ?? 0} directions for ${n} points of the orbit`;
+      if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
+      if (r.ribs.some((i) => !(i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
+    }
+    for (const a of data.arrows ?? []) {
+      if (!(a.toward?.length === 3 && a.toward.every(Number.isFinite))) return `the arrow ${a.id} does not have a point toward of three numbers`;
+    }
+    return data;
+  }
+  var CACHE4 = /* @__PURE__ */ new WeakMap();
+  var Bundle = class _Bundle {
+    constructor(el, data, THREE) {
+      this.subtle = "";
+      this.rate = 0;
+      this.azimuth = 0;
+      this.elevation = 0;
+      this.zoom = 1;
+      this.stateName = null;
+      this.t0 = 0;
+      this.duration = GROW;
+      this.moving = false;
+      this.active = false;
+      this.raf = 0;
+      this.last = 0;
+      this.resume = 0;
+      this.W = 0;
+      this.H = 0;
+      this.w = 0;
+      this.h = 0;
+      this.tick = (now) => {
+        this.raf = 0;
+        const dt = this.last ? Math.min(0.1, (now - this.last) / 1e3) : 0;
+        this.last = now;
+        if (this.moving) {
+          const k = Math.min(1, (now - this.t0) / this.duration);
+          for (const rb of this.strips) {
+            const span = Math.abs(rb.to - rb.from) * (rb.to > rb.from ? GROW : SHRINK);
+            rb.grow = span > 0 ? lerp(rb.from, rb.to, Math.min(1, k * this.duration / span)) : rb.to;
+          }
+          if (k >= 1) this.settle();
+        }
+        if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
+        this.draw();
+        if (this.moving || this.rate) this.kick();
+      };
+      this.el = el;
+      this.THREE = THREE;
+      this.orbit = data.orbit;
+      this.point = data.libration_point ?? null;
+      this.setCamera();
+      for (const old of el.querySelectorAll(":scope > canvas.surface-image")) old.remove();
+      this.canvas = document.createElement("canvas");
+      this.canvas.className = "surface-image";
+      this.canvas.setAttribute("aria-hidden", "true");
+      el.prepend(this.canvas);
+      el.setAttribute("data-prevent-swipe", "");
+      this.labels = [...el.querySelectorAll(".label")];
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
+      this.camera.up.set(0, 0, 1);
+      this.line = this.makeLine(this.orbit.length, ORBIT_WIDTH, 2);
+      this.orbit.forEach((p, i) => this.setSegment(this.line.geometry, i, p, this.orbit[(i + 1) % this.orbit.length]));
+      this.dot = this.makeDot();
+      this.scene.add(this.line, this.dot);
+      this.strips = data.strips.map((r, i) => this.makeStrip(r, i));
+      const points = [...this.orbit];
+      for (const r of this.strips) this.orbit.forEach((p, i) => points.push(add(p, r.directions[i], r.half), add(p, r.directions[i], -r.half)));
+      const lo = [0, 1, 2].map((k) => Math.min(...points.map((p) => p[k])));
+      const hi = [0, 1, 2].map((k) => Math.max(...points.map((p) => p[k])));
+      this.center = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+      this.radius = 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+      const from = this.point ?? this.center;
+      this.arrows = (data.arrows ?? []).map((a) => {
+        const d = add(a.toward, from, -1);
+        return { id: a.id, u: add([0, 0, 0], d, 1 / (Math.hypot(...d) || 1)) };
+      });
+      this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => {
+        this.resume = performance.now() + 1500;
+      });
+      this.recolor();
+      CACHE4.set(el, this);
+      this.sync(false);
+      this.fit();
+    }
+    // the segments of a line as quads of width pixels, for count segments set with setSegment()
+    makeLine(count, width, order) {
+      const THREE = this.THREE, geometry = new THREE.BufferGeometry();
+      const corner = new Float32Array(12 * count);
+      for (let i = 0; i < count; i++) corner.set(QUAD, 12 * i);
+      geometry.setAttribute("corner", new THREE.BufferAttribute(corner, 2));
+      geometry.setAttribute("start", new THREE.BufferAttribute(new Float32Array(18 * count), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("end", new THREE.BufferAttribute(new Float32Array(18 * count), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setDrawRange(0, 6 * count);
+      const material = new THREE.ShaderMaterial({
+        vertexShader: LINE_VERTEX,
+        fragmentShader: LINE_FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        uniforms: {
+          uColor: { value: new THREE.Vector3() },
+          uAlpha: { value: 1 },
+          uWidth: { value: width },
+          uSoft: { value: 0 },
+          uViewport: { value: new THREE.Vector2(1, 1) },
+          uBias: { value: 3e-3 }
+        }
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = order;
+      mesh.userData.width = width;
+      return mesh;
+    }
+    setSegment(geometry, k, a, b) {
+      const start4 = geometry.getAttribute("start"), end = geometry.getAttribute("end");
+      for (let v = 0; v < 6; v++) {
+        start4.setXYZ(6 * k + v, a[0], a[1], a[2]);
+        end.setXYZ(6 * k + v, b[0], b[1], b[2]);
+      }
+      start4.needsUpdate = end.needsUpdate = true;
+    }
+    makeDot() {
+      const THREE = this.THREE, geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(this.point ?? [0, 0, 0]), 3));
+      const material = new THREE.ShaderMaterial({
+        vertexShader: DOT_VERTEX,
+        fragmentShader: DOT_FRAGMENT,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        uniforms: { uColor: { value: new THREE.Vector3() }, uRing: { value: new THREE.Vector3() }, uSize: { value: DOT_SIZE } }
+      });
+      const dot2 = new THREE.Points(geometry, material);
+      dot2.frustumCulled = false;
+      dot2.renderOrder = 4;
+      dot2.visible = this.point !== null;
+      return dot2;
+    }
+    // the sheet of a strip as a mesh of three rows of points across it, at its two edges and on the
+    // orbit, whose positions are set by grow in place()
+    makeStrip(r, i) {
+      const THREE = this.THREE, n = this.orbit.length, geometry = new THREE.BufferGeometry();
+      const normal = new Float32Array(9 * n), across = new Float32Array(3 * n);
+      for (let k = 0; k < n; k++) {
+        const a = this.orbit[(k + n - 1) % n], b = this.orbit[(k + 1) % n], d = r.directions[k];
+        const t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const c = [t[1] * d[2] - t[2] * d[1], t[2] * d[0] - t[0] * d[2], t[0] * d[1] - t[1] * d[0]];
+        const l = Math.hypot(...c) || 1;
+        for (let j = 0; j < 3; j++) {
+          normal.set([c[0] / l, c[1] / l, c[2] / l], 3 * (3 * k + j));
+          across[3 * k + j] = j === 1 ? 0 : 1;
+        }
+      }
+      const index = [];
+      for (let k = 0; k < n; k++) {
+        const m = (k + 1) % n;
+        for (let j = 0; j < 2; j++) {
+          const a = 3 * k + j, b = 3 * m + j;
+          index.push(a, b, b + 1, a, b + 1, a + 1);
+        }
+      }
+      geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(9 * n), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("aNormal", new THREE.BufferAttribute(normal, 3));
+      geometry.setAttribute("aAcross", new THREE.BufferAttribute(across, 1));
+      geometry.setIndex(index);
+      const uniforms = {
+        uColor: { value: new THREE.Vector3() },
+        uEdge: { value: new THREE.Vector3() },
+        uLight: { value: new THREE.Vector3(-0.45, -0.35, 0.82).normalize() },
+        uAlpha: { value: SHEET_ALPHA }
+      };
+      const material = (colorWrite) => new THREE.ShaderMaterial({
+        vertexShader: SHEET_VERTEX,
+        fragmentShader: SHEET_FRAGMENT,
+        side: THREE.DoubleSide,
+        transparent: true,
+        colorWrite,
+        uniforms
+      });
+      const sheet = new THREE.Mesh(geometry, material(true)), depth = new THREE.Mesh(geometry, material(false));
+      depth.renderOrder = 0.1 * i;
+      sheet.renderOrder = 1 + 0.1 * i;
+      const segments = this.makeLine(r.ribs.length, RIB_WIDTH, 3 + 0.1 * i);
+      for (const o of [sheet, depth, segments]) {
+        o.frustumCulled = false;
+        this.scene.add(o);
+      }
+      return { id: r.id, tone: r.tone, half: r.half_width, ribs: r.ribs, directions: r.directions, sheet, depth, segments, grow: 0, from: 0, to: 0, drawn: "" };
+    }
+    /** Reads the colors of the theme from the custom properties of the element, e.g. after a flip of the mode. */
+    recolor() {
+      const cs = getComputedStyle(this.el), css = (name, fallback) => rgb(cs.getPropertyValue(name), fallback);
+      const bg = css("--bg", [0.02, 0.02, 0.02]), text = css("--text", [0.95, 0.95, 0.94]);
+      const set2 = (target, c) => target.set(c[0], c[1], c[2]);
+      this.subtle = cs.getPropertyValue("--subtle").trim() || "#a6a6a0";
+      set2(this.line.material.uniforms.uColor.value, text);
+      set2(this.dot.material.uniforms.uColor.value, text);
+      set2(this.dot.material.uniforms.uRing.value, bg);
+      for (const r of this.strips) {
+        const tone = css(`--${r.tone}`, [0.94, 0.5, 0.31]);
+        set2(r.sheet.material.uniforms.uColor.value, tone);
+        set2(r.sheet.material.uniforms.uEdge.value, mix3(tone, bg, 0.35));
+        set2(r.segments.material.uniforms.uColor.value, mix3(tone, text, 0.4));
+      }
+    }
+    // the strips named by the visible fragment of the slide with data-surface-state and the highest
+    // fragment index, or by the data-surface-state of the element, or none. an unknown name is reported
+    target() {
+      let best = null, index = -Infinity;
+      for (const f of this.el.closest("section")?.querySelectorAll(".fragment.visible[data-surface-state]") ?? []) {
+        const i = num4(f.dataset.fragmentIndex, 0);
+        if (i >= index) {
+          best = f;
+          index = i;
+        }
+      }
+      const names = (best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? "").split(/\s+/).filter(Boolean);
+      const unknown = names.filter((name) => !this.strips.some((r) => r.id === name));
+      if (unknown.length) console.error(`beeson: unknown strip "${unknown.join(" ")}" of the bundle ${this.el.dataset.bundle}, known: ${this.strips.map((r) => r.id).join(", ")}`);
+      return names;
+    }
+    /** Sets the strips shown from the fragments of the slide, grown or shrunk, or at once. */
+    sync(animate) {
+      const names = this.target(), name = names.join(" ");
+      if (name === this.stateName) return;
+      const jump = !animate || this.stateName === null;
+      this.stateName = name;
+      this.el.dataset.shown = name;
+      let longest = 0;
+      for (const r of this.strips) {
+        r.from = r.grow;
+        r.to = names.includes(r.id) ? 1 : 0;
+        longest = Math.max(longest, Math.abs(r.to - r.from) * (r.to > r.from ? GROW : SHRINK));
+      }
+      if (jump || longest === 0) {
+        this.settle();
+        this.draw();
+        return;
+      }
+      this.duration = longest;
+      this.t0 = performance.now();
+      this.moving = true;
+      this.kick();
+    }
+    // the end of a change, at once
+    settle() {
+      this.moving = false;
+      for (const r of this.strips) r.grow = r.from = r.to;
+    }
+    /**
+     * The strips as drawn now, read by the tests: for each, its growth from 0 to 1, the growth of its
+     * sheet, and that of each of its segments. With settled, the change of state has ended. For each
+     * arrow, in the slide pixels of the element, its needle from the middle of the compass to the tip,
+     * and its direction in the scene, from the libration point to a point 0.1 toward its point.
+     */
+    probe() {
+      return {
+        state: this.stateName ?? "",
+        settled: !this.moving,
+        strips: this.strips.map((r) => ({ id: r.id, grow: r.grow, sheet: sheetGrowth(r.grow), ribs: r.ribs.map((_, k) => ribGrowth(r.grow, k, r.ribs.length)) })),
+        arrows: this.arrows.map((a, i) => {
+          const from = this.point ?? this.center, { middle, tips } = this.compass();
+          return { id: a.id, needle: [middle, tips[i]], scene: [this.screen(from), this.screen(add(from, a.u, 0.1))] };
+        })
+      };
+    }
+    /** Sizes the canvas from the box of the element on the screen, and draws. */
+    fit() {
+      const r = this.el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+      const w = this.el.offsetWidth, h = this.el.offsetHeight;
+      if (!r.width || !r.height || !w || !h) return;
+      this.W = Math.max(1, Math.round(r.width * dpr));
+      this.H = Math.max(1, Math.round(r.height * dpr));
+      this.w = w;
+      this.h = h;
+      this.canvas.width = this.W;
+      this.canvas.height = this.H;
+      const px = dpr * r.height / h;
+      for (const mesh of [this.line, ...this.strips.map((rb) => rb.segments)]) {
+        mesh.material.uniforms.uViewport.value.set(this.W, this.H);
+        mesh.material.uniforms.uWidth.value = mesh.userData.width * px;
+      }
+      this.dot.material.uniforms.uSize.value = DOT_SIZE * px;
+      this.camera.aspect = this.W / this.H;
+      this.draw();
+    }
+    // the camera on a sphere about the middle of the box of the drawing, at the distance at which the
+    // sphere around the box fills the narrower field of view, divided by data-zoom
+    aim() {
+      const [cx, cy, cz] = this.center, R = this.radius;
+      const v = this.camera.fov * Math.PI / 360, half = Math.min(v, Math.atan(Math.tan(v) * this.camera.aspect));
+      const d = R / Math.sin(half) / this.zoom, c = Math.cos(this.elevation);
+      this.camera.position.set(cx + d * c * Math.cos(this.azimuth), cy + d * c * Math.sin(this.azimuth), cz + d * Math.sin(this.elevation));
+      this.camera.near = Math.max(0.01, d - 2 * R);
+      this.camera.far = d + 2 * R;
+      this.camera.lookAt(cx, cy, cz);
+      this.camera.updateProjectionMatrix();
+      this.camera.updateMatrixWorld();
+    }
+    // the points of the sheets and the segments at the growth of each strip, set only when it has
+    // changed since the last frame
+    place() {
+      const n = this.orbit.length;
+      for (const r of this.strips) {
+        const key = String(r.grow);
+        if (key === r.drawn) continue;
+        r.drawn = key;
+        const s = sheetGrowth(r.grow) * r.half;
+        const position = r.sheet.geometry.getAttribute("position");
+        for (let k = 0; k < n; k++) {
+          const p = this.orbit[k], d = r.directions[k];
+          position.setXYZ(3 * k, ...add(p, d, -s));
+          position.setXYZ(3 * k + 1, ...p);
+          position.setXYZ(3 * k + 2, ...add(p, d, s));
+        }
+        position.needsUpdate = true;
+        r.sheet.visible = r.depth.visible = s > 0;
+        r.ribs.forEach((i, k) => {
+          const g = ribGrowth(r.grow, k, r.ribs.length) * r.half, p = this.orbit[i], d = r.directions[i];
+          this.setSegment(r.segments.geometry, k, add(p, d, -g), add(p, d, g));
+        });
+        r.segments.visible = r.grow > 0;
+      }
+    }
+    // a point of the drawing in the slide pixels of the element, under the camera of now
+    screen(v) {
+      const p = new this.THREE.Vector3(...v).project(this.camera);
+      return [(p.x + 1) / 2 * this.w, (1 - p.y) / 2 * this.h];
+    }
+    // the compass in the slide pixels of the element: its middle, and the tip of the needle of each
+    // arrow, along the direction of the arrow under the turn of the camera, without perspective. the
+    // needle of a direction toward the camera or away from it is short
+    compass() {
+      const middle = [COMPASS_LEFT, COMPASS_TOP];
+      const q = this.camera.quaternion.clone().invert(), v = new this.THREE.Vector3();
+      const at = (d) => {
+        v.set(...d).applyQuaternion(q);
+        return [middle[0] + COMPASS_RADIUS * v.x, middle[1] - COMPASS_RADIUS * v.y];
+      };
+      return { middle, tips: this.arrows.map((a) => at(a.u)) };
+    }
+    // the circle of the plane of the orbit about the middle of the compass, and a needle with a head
+    // toward the point of each arrow, over the image of the scene
+    drawCompass(ctx) {
+      if (!this.arrows.length) return;
+      const { middle, tips } = this.compass();
+      const q = this.camera.quaternion.clone().invert(), v = new this.THREE.Vector3();
+      ctx.save();
+      ctx.scale(this.W / this.w, this.H / this.h);
+      ctx.strokeStyle = ctx.fillStyle = this.subtle;
+      ctx.lineWidth = CIRCLE_WIDTH;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        v.set(Math.cos(i * Math.PI / 32), Math.sin(i * Math.PI / 32), 0).applyQuaternion(q);
+        ctx.lineTo(middle[0] + COMPASS_RADIUS * v.x, middle[1] - COMPASS_RADIUS * v.y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = NEEDLE_WIDTH;
+      for (const t of tips) {
+        const l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
+        if (l < 1) continue;
+        const e = [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l], head = Math.min(HEAD, l), b = 0.4 * head;
+        const base = [t[0] - e[0] * head, t[1] - e[1] * head];
+        ctx.beginPath();
+        ctx.moveTo(...middle);
+        ctx.lineTo(base[0], base[1]);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(t[0], t[1]);
+        ctx.lineTo(base[0] - e[1] * b, base[1] + e[0] * b);
+        ctx.lineTo(base[0] + e[1] * b, base[1] - e[0] * b);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    // the labels at their anchors in the pixels of the slide. data-at is L1, for the libration point,
+    // the id of a strip, or the id of an arrow. the label of a strip is at the outer end of the
+    // segment of its rib data-rib, from 0, on the side data-side, 1 or -1, and it is faded in with its
+    // sheet. the label of an arrow is past the head of its needle, by LABEL_GAP and by its half extent
+    // along the needle, or above the middle of the compass when the needle is too short to show
+    label() {
+      const { middle, tips } = this.compass();
+      for (const lab of this.labels) {
+        const at = lab.dataset.at ?? "";
+        const i = this.arrows.findIndex((a) => a.id === at);
+        if (i >= 0) {
+          const t = tips[i], l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
+          const e = l < 1 ? [0, -1] : [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l];
+          const reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
+          lab.style.left = `${t[0] + e[0] * reach + num4(lab.dataset.dx, 0)}px`;
+          lab.style.top = `${t[1] + e[1] * reach + num4(lab.dataset.dy, 0)}px`;
+          lab.style.opacity = "1";
+          continue;
+        }
+        let anchor2 = null, alpha = 1;
+        const r = this.strips.find((rb) => rb.id === at);
+        if (r) {
+          const k = clamp2(Math.round(num4(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i2 = r.ribs[k];
+          anchor2 = add(this.orbit[i2], r.directions[i2], r.half * (num4(lab.dataset.side, 1) < 0 ? -1 : 1));
+          alpha = sheetGrowth(r.grow);
+        } else if (this.point && /^L\d$/.test(at)) anchor2 = this.point;
+        if (!anchor2) continue;
+        const [x, y] = this.screen(anchor2);
+        lab.style.left = `${x + num4(lab.dataset.dx, 0)}px`;
+        lab.style.top = `${y + num4(lab.dataset.dy, -30)}px`;
+        lab.style.opacity = String(alpha);
+      }
+    }
+    /** Draws the orbit and the strips at their growth and the camera of now, and places the labels. */
+    draw() {
+      if (!this.W) return;
+      const r = renderer();
+      if (!r) return;
+      this.place();
+      this.aim();
+      this.label();
+      if (r.domElement.width !== this.W || r.domElement.height !== this.H) r.setSize(this.W, this.H, false);
+      r.render(this.scene, this.camera);
+      const ctx = this.canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, this.W, this.H);
+      ctx.drawImage(r.domElement, 0, 0);
+      this.drawCompass(ctx);
+    }
+    kick() {
+      if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
+    }
+    // the camera and the turn read from the attributes of the element
+    setCamera() {
+      const w = this.view().written;
+      this.rate = w.turn > 0 ? 2 * Math.PI / w.turn : 0;
+      this.azimuth = w.azimuth * Math.PI / 180;
+      this.elevation = w.elevation * Math.PI / 180;
+      this.zoom = w.zoom;
+    }
+    /** Turns the camera as a drag by dx and dy screen pixels does. */
+    turn(dx, dy) {
+      const scale = this.el.getBoundingClientRect().width / (this.el.offsetWidth || 1) || 1;
+      this.azimuth -= dx / scale * 5e-3;
+      this.elevation = clamp2(this.elevation + dy / scale * 4e-3, -1.45, 1.45);
+      if (!this.raf) this.draw();
+    }
+    /** The camera drawn now and the values read from the attributes of the element, with the angles in degrees, as of a Surface for the editor. A bundle does not scale its heights, hence its zscale is 1. */
+    view() {
+      const d = this.el.dataset, deg = 180 / Math.PI;
+      return {
+        azimuth: this.azimuth * deg,
+        elevation: this.elevation * deg,
+        zoom: this.zoom,
+        written: { azimuth: num4(d.azimuth, -60), elevation: num4(d.elevation, 32), zoom: num4(d.zoom, 1), turn: num4(d.turn, TURN2), zscale: 1 }
+      };
+    }
+    /** Reads the camera and the turn from the attributes of the element again, e.g. after the editor changed them. */
+    configure() {
+      this.setCamera();
+      this.draw();
+    }
+    /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other, a bundle. */
+    follow(other) {
+      if (!(other instanceof _Bundle)) return;
+      this.azimuth = other.azimuth;
+      this.elevation = other.elevation;
+      this.resume = other.resume;
+    }
+    /** Starts the turning of the camera and the growth of the strips, while the slide is shown. */
+    start() {
+      this.active = true;
+      this.last = 0;
+      if (this.moving || this.rate) this.kick();
+      else this.draw();
+    }
+    /** Stops the animation, and ends a change at once. */
+    stop() {
+      this.active = false;
+      cancelAnimationFrame(this.raf);
+      this.raf = 0;
+      if (this.moving) this.settle();
+    }
+  };
+  function mount4(root2) {
+    const out = [];
+    for (const el of root2.querySelectorAll(".surface[data-bundle]")) {
+      const known = CACHE4.get(el);
+      if (known) {
+        out.push(known);
+        continue;
+      }
+      const id = el.dataset.bundle ?? "";
+      const script2 = document.getElementById(id);
+      const data = script2 ? parseBundle(script2.textContent ?? "") : `the JSON script with the id "${id}" is not found`;
+      if (typeof data === "string") {
+        console.error(`beeson: the bundle ${id} is not drawn, since ${data}`);
+        continue;
+      }
+      if (!renderer() || !window.THREE) continue;
+      out.push(new Bundle(el, data, window.THREE));
     }
     return out;
   }
@@ -5583,7 +6175,7 @@ void main() {
   function remount() {
     for (const o of mount(document)) if (!backdrops.includes(o)) backdrops.push(o);
     if (document.querySelector(".surface")) {
-      for (const s of mount3(document)) if (!surfaces.includes(s)) surfaces.push(s);
+      for (const s of [...mount3(document), ...mount4(document)]) if (!surfaces.includes(s)) surfaces.push(s);
     }
     for (const p of mountPlots(document)) if (!plots.includes(p)) plots.push(p);
   }

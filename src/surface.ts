@@ -21,7 +21,7 @@ declare global {
   }
 }
 
-type RGB = [number, number, number];
+export type RGB = [number, number, number];
 // the values drawn at a frame: the progress of the points and of the cut from 0 to 1, the height of
 // the cutting plane, nondimensional, and the lowest and highest heights framed by the camera, in
 // world units
@@ -77,14 +77,14 @@ const POINT_FADE = 0.15;
 // texels of the texture of a color ramp
 const RAMP_TEXELS = 256;
 
-const ease = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
-const num = (v: string | undefined, fallback: number): number => (v !== undefined && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : fallback);
-const mix3 = (a: RGB, b: RGB, t: number): RGB => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+export const ease = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+export const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
+export const num = (v: string | undefined, fallback: number): number => (v !== undefined && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : fallback);
+export const mix3 = (a: RGB, b: RGB, t: number): RGB => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
 // a CSS color of the form #rgb, #rrggbb, or rgb(), as RGB in 0 to 1. the alpha of rgba() is dropped
-function rgb(css: string, fallback: RGB): RGB {
+export function rgb(css: string, fallback: RGB): RGB {
   const s = css.trim();
   const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(s);
   if (short) return [1, 2, 3].map((i) => parseInt(short[i] + short[i], 16) / 255) as RGB;
@@ -181,7 +181,7 @@ void main() {
 // a segment from start to end drawn as a quad of uWidth pixels on the screen, lengthened by half
 // its width at both ends so that the segments of a curve overlap at their joints. the depth is
 // moved toward the camera by uBias, since the curve lies on the surface
-const LINE_VERTEX = /* glsl */ `
+export const LINE_VERTEX = /* glsl */ `
 attribute vec3 start;
 attribute vec3 end;
 attribute vec2 corner;
@@ -205,7 +205,7 @@ void main() {
   gl_Position = p;
 }`;
 
-const LINE_FRAGMENT = /* glsl */ `
+export const LINE_FRAGMENT = /* glsl */ `
 uniform vec3 uColor;
 uniform float uAlpha;
 uniform float uWidth;
@@ -261,7 +261,7 @@ let shared: Three.WebGLRenderer | null | undefined;
 
 // the renderer of every surface of the page, created on first use, or null without THREE or WebGL,
 // which is reported once
-function renderer(): Three.WebGLRenderer | null {
+export function renderer(): Three.WebGLRenderer | null {
   if (shared !== undefined) return shared;
   shared = null;
   const THREE = window.THREE;
@@ -280,6 +280,37 @@ function renderer(): Three.WebGLRenderer | null {
     console.warn(`beeson: WebGL is not available for the surfaces, ${String(error)}`);
   }
   return shared;
+}
+
+/**
+ * Turns a camera by a drag on el, with the pointer captured, as on a surface or a strip bundle. The
+ * callback turn is called with each move in screen pixels, and end once the drag is over. Returns a
+ * function that returns true during a drag.
+ */
+export function dragToTurn(el: HTMLElement, turn: (dx: number, dy: number) => void, end: () => void): () => boolean {
+  let drag: { x: number; y: number } | null = null;
+  el.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    drag = { x: ev.clientX, y: ev.clientY };
+    // the capture is refused for a pointer that is not active, e.g. that of a synthetic event
+    try { el.setPointerCapture(ev.pointerId); } catch { /* the drag is followed without a capture */ }
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    const { x, y } = drag;
+    drag = { x: ev.clientX, y: ev.clientY };
+    turn(ev.clientX - x, ev.clientY - y);
+  });
+  const stop = () => {
+    if (!drag) return;
+    drag = null;
+    el.classList.remove('dragging');
+    end();
+  };
+  el.addEventListener('pointerup', stop);
+  el.addEventListener('pointercancel', stop);
+  return () => drag !== null;
 }
 
 const CACHE = new WeakMap<HTMLElement, Surface>();
@@ -343,7 +374,7 @@ export class Surface {
   private raf = 0;
   private last = 0;
   private resume = 0;
-  private drag: { x: number; y: number } | null = null;
+  private dragging: () => boolean;
   private W = 0;
   private H = 0;
   private w = 0;
@@ -401,7 +432,7 @@ export class Surface {
     this.points = this.makePoints();
     this.scene.add(this.plane, this.glow, this.curve, this.points);
     this.recolor();
-    this.bindDrag();
+    this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => { this.resume = performance.now() + 1500; });
     CACHE.set(el, this);
     this.sync(false);
     this.fit();
@@ -1003,31 +1034,6 @@ export class Surface {
     return false;
   }
 
-  private bindDrag(): void {
-    const el = this.el;
-    el.addEventListener('pointerdown', (ev) => {
-      if (ev.button !== 0) return;
-      this.drag = { x: ev.clientX, y: ev.clientY };
-      // the capture is refused for a pointer that is not active, e.g. that of a synthetic event
-      try { el.setPointerCapture(ev.pointerId); } catch { /* the drag is followed without a capture */ }
-      el.classList.add('dragging');
-    });
-    el.addEventListener('pointermove', (ev) => {
-      if (!this.drag) return;
-      const { x, y } = this.drag;
-      this.drag = { x: ev.clientX, y: ev.clientY };
-      this.turn(ev.clientX - x, ev.clientY - y);
-    });
-    const end = () => {
-      if (!this.drag) return;
-      this.drag = null;
-      el.classList.remove('dragging');
-      this.resume = performance.now() + 1500;
-    };
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
-  }
-
   private kick(): void {
     if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
   }
@@ -1049,7 +1055,7 @@ export class Surface {
       }
       if (k >= 1) this.settle();
     }
-    if (this.rate && !this.drag && now > this.resume) this.azimuth += dt * this.rate;
+    if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
     this.draw();
     if (this.moving || this.rate || !this.pointsSettled()) this.kick();
   };
@@ -1130,7 +1136,7 @@ export class Surface {
 /** One Surface per `.surface` under root, reused when an element was mounted before. An element with an unknown function, or a page without three.js or WebGL, is reported and left blank. */
 export function mount(root: ParentNode): Surface[] {
   const out: Surface[] = [];
-  for (const el of root.querySelectorAll<HTMLElement>('.surface')) {
+  for (const el of root.querySelectorAll<HTMLElement>('.surface:not([data-bundle])')) {
     const known = CACHE.get(el);
     if (known) { out.push(known); continue; }
     const fn = surfaceFunction(el.dataset.function ?? '', el.dataset);
