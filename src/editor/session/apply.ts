@@ -130,7 +130,7 @@ const shiftPiece = (p: Piece, d: number): Piece =>
 // a change inside one text node of the text element, outside its formulas, written into the text
 // node of the page with replaceData, which keeps the caret and the selection of the person. false,
 // with nothing changed, when the change is not one of plain characters in a run of text, or leaves
-// the run blank, which may end a text element, see isTextElement()
+// blank a run of a div or a span, which may then end the text element, see isTextElement()
 function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const at = textAt(textEl.src, w.start, w.endA);
   if (!at) return false;
@@ -138,7 +138,7 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const decoded = decodedIn(at.parent, at.index, ctx.text, d);
   const math = lookupFor(textEl.live);
   const host = decoded === null ? null : liveIn(textEl, at.parent, math);
-  if (decoded === null || !/\S/.test(decoded) || !host) return false;
+  if (decoded === null || (!/\S/.test(decoded) && at.parent === textEl.src && (textEl.src.tag === 'div' || textEl.src.tag === 'span')) || !host) return false;
   const k = at.parent.children[at.index] as SrcText;
   const items = virtualChildren(host, math);
   const item = items[at.index];
