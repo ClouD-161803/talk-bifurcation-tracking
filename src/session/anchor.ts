@@ -363,8 +363,9 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     if (k === undefined) slideKept.set(i, (k = keep(before.slice(s0[i].start, s0[i].end), s0[i].open - s0[i].start)));
     return k;
   };
-  // a result stored for all of the threads, by its key: the start of an element for its kept text, and
-  // a check for its slide
+  // a result stored for all of the threads, by its key: the start of an element for its kept text, a
+  // check for its slide, a checksum, a space, and the start of a slide for its place there, and a kept
+  // text or a checksum for whether a patch took it. a checksum is of a text that starts with its tag
   const stored = new Map<string, unknown>();
   const once = <T>(key: string, f: () => T): T => {
     let v = stored.get(key) as T | undefined;
@@ -464,11 +465,23 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     while (!p.text && r < cap && before[p.start + r] === before[p.end + r]) r++;
     return { start: p.start - l, end: p.end + r };
   };
+  // true when a patch took x from before, as a move does
+  const took = (x: Kept): boolean =>
+    once(typeof x === 'string' ? x : x.sum, () => {
+      const len = lengthOf(x);
+      return patches.filter((p) => p.end - p.start >= len).map((p) => removal(p, len)).some((r) => findInserted(before, x, [r], r.start, r) >= 0);
+    });
+  // the place of x in within. a kept text is short, and looked for again. the key of a check is built
+  // only for a slide that the patches inserted into, and near follows from the slide of a removed
+  // element for all of its threads
+  const find = (x: Kept, near: number, within: Span) => {
+    const look = () => findInserted(after, x, inserted, near, within);
+    return !overlaps(inserted, within.start, within.end) ? -1 : typeof x === 'string' ? look() : once(`${x.sum} ${within.start}`, look);
+  };
 
   // the element of a removed text that the patches inserted again into the slide of it, or anywhere
   // for a thread of the deck, unless the same operation took the text from elsewhere
   const reattach = (it: Anchored, text: Kept): Anchored | null => {
-    const took = (x: Kept) => patches.filter((p) => p.end - p.start >= lengthOf(x)).map((p) => removal(p, lengthOf(x))).some((r) => findInserted(before, x, [r], r.start, r) >= 0);
     let within: Span | null = null;
     if (it.slide) {
       const i = index.get(it.slide.start) ?? -1;
@@ -481,12 +494,12 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
       if (s < 0 || took(whole!)) return null;
       within = { start: s, end: s + lengthOf(whole!) };
       // an element that had fallen back to the slide before its removal falls back to it again
-      if (typeof whole === 'string' && typeof text === 'string' ? !whole.includes(text) : findInserted(after, text, inserted, s, within) < 0) {
+      if (typeof whole === 'string' && typeof text === 'string' ? !whole.includes(text) : find(text, s, within) < 0) {
         const slide = slideAt(s1, s);
         return slide?.start === s ? { anchor: tagOf(slide), slide: tagOf(slide), removed: { text } } : null;
       }
     }
-    const o = findInserted(after, text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : within ? within.start : 0, within);
+    const o = find(text, it.anchor ? shiftOffset(it.anchor.start, patches) : within.start, within);
     const t = o >= 0 ? startTagAt(after, o) : null;
     if (!t || took(text)) return null;
     const slide = slideAt(s1, o);

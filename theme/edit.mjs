@@ -2004,8 +2004,15 @@ function slow(before2, patches, after, items, given) {
     while (!p.text && r < cap3 && before2[p.start + r] === before2[p.end + r]) r++;
     return { start: p.start - l, end: p.end + r };
   };
+  const took = (x) => once(typeof x === "string" ? x : x.sum, () => {
+    const len = lengthOf(x);
+    return patches.filter((p) => p.end - p.start >= len).map((p) => removal(p, len)).some((r) => findInserted(before2, x, [r], r.start, r) >= 0);
+  });
+  const find = (x, near, within) => {
+    const look = () => findInserted(after, x, inserted, near, within);
+    return !overlaps(inserted, within.start, within.end) ? -1 : typeof x === "string" ? look() : once(`${x.sum} ${within.start}`, look);
+  };
   const reattach = (it, text) => {
-    const took = (x) => patches.filter((p) => p.end - p.start >= lengthOf(x)).map((p) => removal(p, lengthOf(x))).some((r) => findInserted(before2, x, [r], r.start, r) >= 0);
     let within = null;
     if (it.slide) {
       const i = index.get(it.slide.start) ?? -1;
@@ -2016,12 +2023,12 @@ function slow(before2, patches, after, items, given) {
       const s = whole ? slideOf(whole) : -1;
       if (s < 0 || took(whole)) return null;
       within = { start: s, end: s + lengthOf(whole) };
-      if (typeof whole === "string" && typeof text === "string" ? !whole.includes(text) : findInserted(after, text, inserted, s, within) < 0) {
+      if (typeof whole === "string" && typeof text === "string" ? !whole.includes(text) : find(text, s, within) < 0) {
         const slide2 = slideAt(s1, s);
         return slide2?.start === s ? { anchor: tagOf(slide2), slide: tagOf(slide2), removed: { text } } : null;
       }
     }
-    const o = findInserted(after, text, inserted, it.anchor ? shiftOffset(it.anchor.start, patches) : within ? within.start : 0, within);
+    const o = find(text, it.anchor ? shiftOffset(it.anchor.start, patches) : within.start, within);
     const t = o >= 0 ? startTagAt(after, o) : null;
     if (!t || took(text)) return null;
     const slide = slideAt(s1, o);
