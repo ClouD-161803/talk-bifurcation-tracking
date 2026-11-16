@@ -401,6 +401,23 @@ test('a page asks before it unloads after an Undo of an edit that the edit comma
   assert.equal(await reload(page), true, 'the page asked before it left');
 });
 
+test('a page asks before it unloads from the moment that it is told of an edit, also while its copy holds an earlier edit', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Mine');
+  await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
+  // a listener of the port added after the one of the client runs before the client reads the deck
+  await page.evaluate(`window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done({ asking: ${C}.asking, read: ${C}.snapshot().mine.includes('Q0q') }); }); }); true`);
+  await type(page, ' Q0q');
+  assert.deepEqual(await page.evaluate('window.__told'), { asking: true, read: false });
+});
+
 // the time in ms that each listener of beforeunload was on window before its removal, in
 // window.__unload
 const UNLOAD = `{
