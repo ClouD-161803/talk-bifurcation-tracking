@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import fs, { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -154,6 +154,23 @@ test('a tex.js changed by another program is counted once it is stable, and is n
   await twoPolls(w);
   assert.equal(seen.changes, 1);
   assert.equal(f.read('tex.js'), changed);
+});
+
+test('a touch of preamble.tex or of references.bib that leaves its text as it is is not counted, and a paper added to references.bib is counted although tex.js keeps its text', async (t) => {
+  const f = folder(t);
+  const { w, seen } = writer(f);
+  await twoPolls(w);
+  const later = new Date(Date.now() + 5000);
+  for (const name of ['preamble.tex', 'references.bib']) {
+    utimesSync(join(f.dir, name), later, later);
+    await twoPolls(w);
+    assert.equal(seen.changes, 0, `a touch of ${name} is counted`);
+  }
+  const tex = f.read('tex.js');
+  f.write('references.bib', `${f.read('references.bib')}\n@article{conley1968,\n  author = {Conley, Charles},\n  title = {Low energy transit orbits},\n  year = {1968},\n}\n`);
+  await twoPolls(w);
+  assert.equal(seen.changes, 1);
+  assert.equal(f.read('tex.js'), tex);
 });
 
 test('a source that cannot be read is reported once for each change, and tex.js is not written', async (t) => {
