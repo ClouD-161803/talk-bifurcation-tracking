@@ -90,10 +90,18 @@ When the connection is lost, you go on editing, and the save state reads e.g. Of
 To run a relay for your group, start it on a machine that everyone can reach, behind a proxy that serves it over https, which a guest needs.
 
 ```sh
-SLIDES_RELAY_SECRET=<a secret of 16 or more characters> npm run relay -- --port 8787
+SLIDES_RELAY_SECRET=<a secret of 16 or more characters> npm run relay -- --port 8787 --host 127.0.0.1
 ```
 
-The secret can also be read from a file with `--secret-file PATH`, and the relay is bound to one address with `--host ADDRESS`. Everything is kept in memory, and the relay does not read or write a file apart from the secret file. The limits of a relay are 64 sessions, 256 waiting requests per session, and bodies of 16 MB each and 256 MB in all, a quarter of them for one session. A session is dropped after 90 s without its edit command. The end of a session is kept for 24 h, for a guest who comes back in this time. At most 256 ends are kept, each of at most 1 kB.
+With `--host 127.0.0.1`, the relay is reached only through the proxy. Caddy is one such proxy, and it gets the certificate of the address by itself.
+
+```sh
+caddy reverse-proxy --from relay.example.org --to 127.0.0.1:8787
+```
+
+Behind nginx, set `client_max_body_size 16m`, since the relay carries every file that a guest loads, and `proxy_read_timeout 90s`, since a guest waits up to 60 s for the edit command.
+
+The secret can also be read from a file with `--secret-file PATH`, and the relay is bound to another address with `--host ADDRESS`. Everything is kept in memory, and the relay does not read or write a file apart from the secret file. The limits of a relay are 64 sessions, 256 waiting requests per session, and bodies of 16 MB each and 256 MB in all, a quarter of them for one session. A session is dropped after 90 s without its edit command. The end of a session is kept for 24 h, for a guest who comes back in this time. At most 256 ends are kept, each of at most 1 kB.
 
 ### Trust and limits
 
