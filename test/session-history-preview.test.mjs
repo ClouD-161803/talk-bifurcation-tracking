@@ -13,9 +13,9 @@ import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { launch } from '../scripts/chrome.mjs';
-import { front } from './helpers/apply.mjs';
-import { C, clean, HISTORY_KEY, ONLINE, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
-import { click, press } from './helpers/editor.mjs';
+import { caretAtEnd, front } from './helpers/apply.mjs';
+import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
+import { click, press, type } from './helpers/editor.mjs';
 
 // a version is closed only when the current state is named
 const HELD = { SLIDES_HISTORY: JSON.stringify({ quiet: 3_600_000, longest: 3_600_000 }) };
@@ -249,6 +249,45 @@ test('the preview of a deck whose plugin of reveal.js starts after the page is l
   await ann.waitFor(`${CURRENT} === 'One'`);
   await press$(ann, BAR, 'Slide 2');
   await ann.waitFor(`${CURRENT} === 'Three'`);
+  clean(ann);
+});
+
+// a name of more than about 26 characters is cut on a phone, and the selected row of the pane shows it
+const LONG = 'A much longer name of a version for the review';
+
+test('on a phone of 390 px, the bar of the preview shows a short name and the time of a version by one person in full, and the button of the changed slide next to a long name', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await show(ann, 'One');
+  for (const [typed, name] of [[' on a phone', 'Draft for review'], [' again', LONG]]) {
+    await caretAtEnd(ann, `document.querySelector('.reveal .slides > section h2')`);
+    await type(ann, typed);
+    await converge(server, [ann]);
+    await nameNow(ann, name);
+  }
+  await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await ann.waitFor(SHOWN);
+  for (const height of [844, 664]) {
+    await ann.send('Emulation.setDeviceMetricsOverride', { width: 390, height, deviceScaleFactor: 1, mobile: true });
+    await ann.waitFor(`innerWidth === 390 && innerHeight === ${height}`);
+    for (const name of ['Draft for review', LONG]) {
+      if (await ann.evaluate(`!!(${button(PANE, 'Versions')})`)) await press$(ann, PANE, 'Versions');
+      await tapOrClick(ann, rowByTitle(name));
+      await ann.waitFor(`document.querySelector('${BAR} .date').textContent.startsWith(${JSON.stringify(name)}) && document.querySelectorAll('${BAR} button.slide').length === 1`, 60_000);
+      // whether the name is cut, and whether the button of the changed slide is in view next to it
+      const date = `(() => {
+        const d = document.querySelector('${BAR} .date');
+        const strip = document.querySelector('${BAR} .slides').getBoundingClientRect();
+        const slide = document.querySelector('${BAR} button.slide').getBoundingClientRect();
+        return { text: d.textContent, cut: d.scrollWidth > d.clientWidth, who: document.querySelector('${BAR} .who').textContent, slide: slide.left >= strip.left - 0.5 && slide.right <= strip.right + 0.5 };
+      })()`;
+      const m = { ...(await ann.evaluate(MEASURE)), date: await ann.evaluate(date) };
+      assert.ok((name === LONG || !m.date.cut) && m.date.who === 'Ann' && m.date.slide && m.rows <= 2 && m.oneRow, `${name} at 390 by ${height}: ${JSON.stringify(m)}`);
+    }
+  }
   clean(ann);
 });
 
