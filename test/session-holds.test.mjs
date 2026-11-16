@@ -777,7 +777,7 @@ test('a page that loads after a person stopped typing does not see the text elem
   clean(ben);
 });
 
-test('a page that loads again, or rejoins after a restart, while a person who typed in the last 30 s pauses, sees the text element of their caret held and refuses its delete', { timeout: 180_000 }, async (t) => {
+test('a page that loads again, or rejoins after a restart, while a person who typed in the last 30 s pauses, sees the text element of their caret held and refuses its delete', { timeout: 300_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { pages: [{ script: NET }, {}] });
   const { port } = server.edit;
   await show(ana, 'Two');
@@ -797,6 +797,13 @@ test('a page that loads again, or rejoins after a restart, while a person who ty
   await reload(ben);
   await refused('after it loads again');
 
+  // a caret move of Ana into another element and back starts her 30 s anew, since the restart
+  // below is refused only while her page sends that she is active
+  await front(ana);
+  await caretAtEnd(ana, ALPHA);
+  await until(() => caretOf(ben, 'Ana', ALPHA), 'the caret of Ana in the first item on the page of Ben');
+  await caretAtEnd(ana, SECOND);
+  await until(() => ben.evaluate(PAUSED), 'the caret of Ana back in the paragraph on the page of Ben');
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
   // the hello of Ana is held, hence the page of Ben is read alone and hears Ana anew
