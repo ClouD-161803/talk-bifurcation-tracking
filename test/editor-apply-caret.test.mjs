@@ -268,6 +268,40 @@ test('a selection keeps both ends when another person moves its paragraph to the
   assert.deepEqual(b.errors, []);
 });
 
+// the calls of MathJax.typesetPromise from now on, in window.__typesets
+const countTypesets = (b) => b.evaluate(`(() => {
+  const mj = window.MathJax;
+  mj.__counted ??= mj.typesetPromise.bind(mj);
+  window.__typesets = 0;
+  mj.typesetPromise = (els) => (window.__typesets++, mj.__counted(els));
+  return true;
+})()`);
+// the text node of the paragraph that holds needle, kept in window.__node
+const keepNode = (b, needle) => b.evaluate(`(() => {
+  window.__node = [...${P1}.childNodes].find((n) => n.nodeType === 3 && n.data.includes(${JSON.stringify(needle)})) ?? null;
+  return !!window.__node;
+})()`);
+
+test('a character typed away from a literal dollar or backslash of its text keeps the text node, and a dollar typed is set as content', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  const literal = once(b.source, 'Direct the viewer', 'Direct $5 at C:\\temp the viewer');
+  assert.equal((await applyOn(b, literal)).reload, false);
+  assert.ok(await keepNode(b, 'attention.'), 'a text node holds the end of the paragraph');
+  await countTypesets(b);
+  const away = once(literal, 'viewer\'s attention.</p>', 'viewer\'s attention.X</p>');
+  assert.deepEqual(await applyOn(b, away), { reload: false, changed: ['p'] });
+  assert.deepEqual(await b.evaluate(`({ same: window.__node.isConnected && window.__node.data.endsWith('attention.X'), typesets: window.__typesets })`), { same: true, typesets: 0 }, 'the character is written into the text node');
+  assert.equal(await b.evaluate(`${E}.render()`), away);
+  // a dollar typed may begin a formula, and the content of the paragraph is set
+  const dollar = once(away, 'attention.X</p>', 'attention.X$</p>');
+  assert.deepEqual(await applyOn(b, dollar), { reload: false, changed: ['p'] });
+  assert.equal(await b.evaluate('window.__typesets'), 1, 'the paragraph is typeset again');
+  assert.equal(await b.evaluate(`${E}.render()`), dollar);
+  assert.deepEqual(b.errors, []);
+});
+
 test('on a clean page, a character typed by another person in a paragraph with a formula does not look up the formulas of the whole deck', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
