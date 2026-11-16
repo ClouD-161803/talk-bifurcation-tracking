@@ -1278,7 +1278,7 @@ test('while Version History is open, every inert part of the editor but the canv
   // the edge of the navigator is drawn only under the pointer, and the canvas holds the slide
   const undimmed = `[...document.querySelectorAll('[inert]')].filter((e) => e.getClientRects().length && !e.closest('.beeson-edit-canvas, .reveal, .beeson-edit-nav-edge') && Number(getComputedStyle(e).opacity) === 1).map((e) => e.classList[0])`;
   assert.deepEqual(await ann.evaluate(undimmed), []);
-  assert.deepEqual((await ann.evaluate(DIMMED(false))).sort(), ['beeson-edit-bottom inert', 'beeson-edit-menubar inert', 'beeson-edit-nav inert', 'beeson-edit-pane inert', 'beeson-edit-top inert']);
+  assert.deepEqual((await ann.evaluate(DIMMED(false))).sort(), ['beeson-edit-bottom inert', 'beeson-edit-menubar inert', 'beeson-edit-nav inert', 'beeson-edit-objects inert', 'beeson-edit-pane inert', 'beeson-edit-top inert']);
   await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Changed')`);
   await ann.waitFor(`${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0`, 30_000);
   assert.deepEqual([await ann.evaluate(DRAWN(`document.querySelector('${PANE}')`)), await ann.evaluate(DRAWN(FRAME))], [1, 1]);
@@ -1532,4 +1532,27 @@ test('a change of index.html from outside over a text that Ann typed is told on 
   clean(ann);
   clean(ben);
   clean(cy);
+});
+
+test('the Slide Sorter and the Objects pane open when Version History is opened are inert and dimmed until Version History is left, and Lock does not change the deck', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const PARTS = ['.beeson-edit-sorter', '.beeson-edit-objects'];
+  for (const id of ['view.lightTable', 'view.objects']) await ann.evaluate(`window.BeesonEditor.exec('${id}').then(() => true)`);
+  const state = `${JSON.stringify(PARTS)}.map((s) => { const el = document.querySelector(s + ':not([hidden])'); return el && [el.inert, getComputedStyle(el).opacity]; })`;
+  await ann.waitFor(`${state}.every(Boolean)`);
+  assert.deepEqual(await ann.evaluate(state), [[false, '1'], [false, '1']]);
+  await openPane(ann);
+  assert.deepEqual(await ann.evaluate(state), [[true, '0.45'], [true, '0.45']]);
+  // a click on Lock, which an inert pane does not take
+  const before = await ann.evaluate(TEXT);
+  await click(ann, await ann.evaluate(`(() => { const r = document.querySelector('.beeson-edit-objects button[aria-label="Lock"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+  await ann.waitFor(`!document.querySelector('.beeson-edit-objects button[aria-label="Unlock"]')`);
+  assert.equal(await ann.evaluate(TEXT), before);
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  assert.deepEqual(await ann.evaluate(state), [[false, '1'], [false, '1']]);
+  clean(ann);
 });
