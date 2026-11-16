@@ -2,37 +2,19 @@
 // next to it: the macros and the environments for MathJax, the kinds of theorem, and the references
 // of the entries that the deck cites. The lines of the preamble and the entries of the bibliography
 // that are not read are printed with their reason, and so is a key that is cited without an entry.
+// The TikZ figures of figures.mjs are compiled, and the PDF figures of pdf-figures.mjs rendered.
 // In an older talk, the macros of theme/macros.js are written into a preamble.tex once.
 //
 //   node scripts/tex.mjs [deck]     the deck is index.html unless it is given
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import { compileFigures } from './figures.mjs';
+import { renderPdfFigures } from './pdf-figures.mjs';
+import { sources } from './sources.mjs';
 
-// the readers of src/ are TypeScript, which Node reads without a flag from version 22.18 on. under
-// an older Node they are bundled by esbuild, which is installed by npm ci
-async function readers() {
-  const names = ['texfile'];
-  try {
-    return Object.assign({}, ...(await Promise.all(names.map((name) => import(`../src/${name}.ts`)))));
-  } catch (error) {
-    if (error?.code !== 'ERR_UNKNOWN_FILE_EXTENSION') throw error;
-  }
-  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const { buildSync } = await import('esbuild').catch(() => {
-    throw new Error('npm run tex needs Node 22.18 or later, or the packages that npm ci installs');
-  });
-  const built = buildSync({
-    stdin: { contents: names.map((name) => `export * from './src/${name}.ts';`).join('\n'), resolveDir: root },
-    bundle: true,
-    format: 'esm',
-    write: false,
-  });
-  return import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
-}
-const { folderTex, preambleOf, skippedLines, texScript } = await readers();
+const { folderTex, preambleOf, skippedLines, texScript } = await sources(['texfile']);
 
 /** What npm run tex writes for a deck, with the lines that are skipped and the keys without an entry. Nothing is written. */
 export function deckTex(deck) {
@@ -78,7 +60,7 @@ function convertMacros(deck) {
   console.log('preamble.tex: written from theme/macros.js, which is deleted');
 }
 
-function main() {
+async function main() {
   const [deck = 'index.html'] = process.argv.slice(2);
   if (!existsSync(deck)) {
     console.error(`${deck} is not found`);
@@ -90,6 +72,7 @@ function main() {
   const count = (items, one, many = `${one}s`) => `${Object.keys(items).length} ${Object.keys(items).length === 1 ? one : many}`;
   console.log(`tex.js: ${count(tex.macros, 'macro')}, ${count(tex.environments, 'environment')}, ${count(tex.theorems, 'kind of theorem', 'kinds of theorem')}, and ${count(tex.references, 'reference')}`);
   compileFigures(deck);
+  await renderPdfFigures(deck);
   const name = basename(deck);
   for (const line of skippedLines(preamble, bibliography, missing, name)) console.log(line);
   if (!/<script\b[^>]*\ssrc\s*=\s*["']tex\.js["']/.test(readFileSync(deck, 'utf8'))) {
@@ -97,4 +80,4 @@ function main() {
   }
 }
 
-if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) main();
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) await main();

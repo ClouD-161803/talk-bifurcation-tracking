@@ -23,6 +23,7 @@ import { basename, dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { deckSettled, deckUrl, launch } from './chrome.mjs';
 import { figureProblems } from './figures.mjs';
+import { pdfFigureProblems } from './pdf-figures.mjs';
 import { deckTex } from './tex.mjs';
 import { launch as launchWebDriver, serve } from './webdriver.mjs';
 
@@ -72,6 +73,7 @@ const written = existsSync(fresh.file) ? readFileSync(fresh.file, 'utf8') : null
 const sources = ['preamble.tex', 'references.bib'].some((name) => existsSync(join(dirname(options.deck), name)));
 if (written === null ? sources : written !== fresh.text) failures.push('tex.js is not the one written from preamble.tex and references.bib: run npm run tex');
 failures.push(...figureProblems(options.deck));
+failures.push(...pdfFigureProblems(options.deck));
 const browser = await (options.browser === 'chrome' ? launch() : launchWebDriver(options.browser));
 const server = options.browser === 'safari' ? await serve(dirname(options.deck)) : null;
 

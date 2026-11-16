@@ -94,6 +94,32 @@ buildSync({
 });
 copy('three/LICENSE', 'three/LICENSE');
 
+// pdf.js renders the pages of the PDF figures in the editor and in npm run tex, and a deck does not
+// load it. its build for older browsers is bundled, since the other build calls methods that a
+// Safari a version behind does not have. its worker is bundled into the same classic script and run
+// on the main thread, since a deck opened as a file cannot start a worker from a file
+rmSync(join(out, 'pdfjs'), { recursive: true, force: true });
+const pdfjs = JSON.parse(readFileSync(join(modules, 'pdfjs-dist/package.json'), 'utf8')).version;
+buildSync({
+  stdin: {
+    contents: `import * as lib from 'pdfjs-dist/legacy/build/pdf.min.mjs';
+import { WorkerMessageHandler } from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs';
+globalThis.pdfjsWorker = { WorkerMessageHandler };
+globalThis.pdfjsLib = lib;`,
+    resolveDir: root,
+    loader: 'js',
+  },
+  outfile: join(out, 'pdfjs/pdf.js'),
+  bundle: true,
+  format: 'iife',
+  target: 'es2022',
+  minify: true,
+  legalComments: 'none',
+  banner: { js: `/*! pdf.js ${pdfjs}, https://mozilla.github.io/pdf.js, Apache-2.0 license, bundled by scripts/vendor.mjs. */` },
+  logLevel: 'warning',
+});
+copy('pdfjs-dist/LICENSE', 'pdfjs/LICENSE');
+
 function size(path) {
   const stat = statSync(path);
   if (!stat.isDirectory()) return stat.size;

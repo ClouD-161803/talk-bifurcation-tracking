@@ -1,6 +1,7 @@
 // bundles src/main.ts into theme/beeson.js, src/editor/main.ts into theme/editor.js, the sheets of
 // the preamble and the bibliography into theme/editor-tex.js, which editor.js loads at their first
-// open, src/session/client/main.ts into theme/session.js, and src/edit/main.ts into theme/edit.mjs.
+// open, the renders of PDF figures into theme/editor-pdf.js, which editor.js loads at the first
+// PDF, src/session/client/main.ts into theme/session.js, and src/edit/main.ts into theme/edit.mjs.
 // the bundles are committed so that a toolchain is not required for a talk
 
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -49,6 +50,14 @@ await build({
   outfile: fileURLToPath(new URL('theme/editor-tex.js', root)),
   minifyWhitespace: true,
   banner: { js: `/*! editor-tex.js ${version}, the sheets of the preamble and the bibliography of the beeson editor. MIT license. */` },
+});
+
+await build({
+  ...common,
+  entryPoints: [fileURLToPath(new URL('src/editor/pdf/render.ts', root))],
+  outfile: fileURLToPath(new URL('theme/editor-pdf.js', root)),
+  minifyWhitespace: true,
+  banner: { js: `/*! editor-pdf.js ${version}, the renders of the PDF figures of the beeson editor and of npm run tex. MIT license. */` },
 });
 
 await build({
