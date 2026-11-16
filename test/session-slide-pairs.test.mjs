@@ -242,3 +242,21 @@ test('a long slide replaced at its place by a slide without the letter at its mi
     assert.ok(attempt < 3, `${large.toFixed(1)} ms for 4 times the length against ${small.toFixed(1)} ms`);
   }
 });
+
+test('a slide whose long run without spaces is replaced, e.g. the data of a plot, is paired in a time linear in its length', { timeout: 120_000 }, () => {
+  const other = '<section>\n  <h2>Other</h2>\n</section>';
+  // the points of a plot as JSON.stringify writes them
+  const data = (k, seed) => JSON.stringify(Array.from({ length: k }, (_, i) => [i, ((i * 7919 + seed) % 10007) / 10007]));
+  const plot = (k, seed) => `<section>\n  <h2>Results</h2>\n  <script type="application/json">${data(k, seed)}</script>\n</section>`;
+  const run = (k) => {
+    const a = [other, plot(k, 1)];
+    const b = [`${other}\n`, plot(k, 4001)];
+    return fastest(() => pairs(a, b, true));
+  };
+  for (let attempt = 1; ; attempt++) {
+    const small = run(2_000);
+    const large = run(8_000);
+    if (large < 8 * small) break;
+    assert.ok(attempt < 3, `${large.toFixed(1)} ms for 4 times the length against ${small.toFixed(1)} ms`);
+  }
+});
