@@ -172,8 +172,8 @@ export function install(app: App): void {
   // folder of the deck to be chosen
   const open = (which: Which) => load().then((s) => void s.open(which).catch((e) => app.fail(e)));
   // in a session, the sources are the files of the talk folder, which the edit command reads
-  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'In a session, the host edits preamble.tex in the talk folder' : null), run: () => open('preamble') });
-  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'In a session, the host edits references.bib in the talk folder' : null), run: () => open('bibliography') });
+  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in preamble.tex' : null), run: () => open('preamble') });
+  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in references.bib' : null), run: () => open('bibliography') });
   app.commands.define({
     id: 'insert.citation',
     label: 'Citation…',
