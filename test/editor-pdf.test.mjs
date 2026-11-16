@@ -294,12 +294,12 @@ test('in a deck opened from a file, the PDF of a figure is chosen once and read 
 });
 
 // the messages of a new page and of Match the Mode of the PDF figure outside a session, whose PDF is
-// answered with status
-async function refused(status) {
+// answered with status, or with the promise of the expression answer
+async function refused(status, answer = `Promise.resolve(new Response('', { status: ${status} }))`) {
   writeDeck();
   const page = await browser.newPage();
   await page.send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `{ const fetched = window.fetch; window.fetch = function (input, init) { return String(input instanceof Request ? input.url : input).endsWith('.pdf') ? Promise.resolve(new Response('', { status: ${status} })) : fetched.call(this, input, init); }; }`,
+    source: `{ const fetched = window.fetch; window.fetch = function (input, init) { return String(input instanceof Request ? input.url : input).endsWith('.pdf') ? ${answer} : fetched.call(this, input, init); }; }`,
   });
   try {
     await page.goto(`${server.origin}/${DECK}?edit&still&edit-platform=mac`);
@@ -329,6 +329,10 @@ test('a PDF figure whose PDF is answered with a status of 500 or more cannot be 
   }
 });
 
+test('a PDF figure whose request fails on the network cannot be read now', { timeout: 300_000 }, async () => {
+  assert.deepEqual(await refused(0, "Promise.reject(new TypeError('Failed to fetch'))"), Array(2).fill('figure.pdf cannot be read now (the request failed). Try again later'));
+});
+
 // a talk of index.html with a PDF figure of media/figure.pdf, the names of the case of a talk, whose
 // page is answered the PDF, or the answer that the function window.__pdf returns once it is set
 const TITLED = 'test/pages/pdf-title.tmp';
@@ -350,6 +354,7 @@ after(() => rmSync(TITLED, { recursive: true, force: true }));
 const TITLED_ANSWERS = [
   ["Promise.resolve(new Response('', { status: 502 }))", '502'],
   ["Promise.resolve(new Response('', { status: 413, headers: { 'x-edit-command': '1' } }))", '16 MB'],
+  ["Promise.reject(new TypeError('Failed to fetch'))", 'Try again later'],
 ];
 
 // the state of the title bar is left out when it does not fit, hence a message that is too long
