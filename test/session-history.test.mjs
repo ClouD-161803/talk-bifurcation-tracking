@@ -1250,3 +1250,40 @@ test('Shift+F10 does not open the menu of the selected element over Version Hist
   await ann.waitFor(`!(${SHOWN})`);
   clean(ann);
 });
+
+// the classes of the elements whose own opacity is below 1, which the page keeps in window.__dim
+// when keep is true. otherwise the classes of those that were not below 1 at the last keep, each
+// with whether it is inert
+const DIMMED = (keep) => `(() => {
+  const dim = [...document.body.querySelectorAll('*')].filter((e) => Number(getComputedStyle(e).opacity) < 1);
+  if (${keep}) return (window.__dim = new Set(dim)).size >= 0;
+  return dim.filter((e) => !window.__dim.has(e)).map((e) => e.classList[0] + (e.inert ? ' inert' : ''));
+})()`;
+// the opacity of el as it is drawn, i.e. with the opacities of its ancestors
+const DRAWN = (el) => `(() => { let o = 1; for (let e = ${el}; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity); return o; })()`;
+
+test('while Version History is open, every inert part of the editor but the canvas is dimmed, every dimmed part is inert, and the pane and the preview are not dimmed', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await converge(server, [ann]);
+  writeFileSync(server.file, server.read().replace('<h2>Two</h2>', '<h2>Two changed</h2>'));
+  await ann.waitFor(`${TEXT}.includes('Two changed')`, 20_000);
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Changed' })`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Notes')`);
+  await ann.waitFor(`document.documentElement.classList.contains('beeson-notes')`);
+  await ann.evaluate(DIMMED(true));
+  await openPane(ann);
+  // the edge of the navigator is drawn only under the pointer, and the canvas holds the slide
+  const undimmed = `[...document.querySelectorAll('[inert]')].filter((e) => e.getClientRects().length && !e.closest('.beeson-edit-canvas, .reveal, .beeson-edit-nav-edge') && Number(getComputedStyle(e).opacity) === 1).map((e) => e.classList[0])`;
+  assert.deepEqual(await ann.evaluate(undimmed), []);
+  assert.deepEqual((await ann.evaluate(DIMMED(false))).sort(), ['beeson-edit-bottom inert', 'beeson-edit-menubar inert', 'beeson-edit-nav inert', 'beeson-edit-pane inert', 'beeson-edit-top inert']);
+  await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Changed')`);
+  await ann.waitFor(`${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0`, 30_000);
+  assert.deepEqual([await ann.evaluate(DRAWN(`document.querySelector('${PANE}')`)), await ann.evaluate(DRAWN(FRAME))], [1, 1]);
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  assert.deepEqual(await ann.evaluate(DIMMED(false)), []);
+  clean(ann);
+});
