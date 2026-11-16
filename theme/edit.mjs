@@ -215,7 +215,10 @@ function nest(base, a, b, first2 = false) {
 function slid(base, d, own, others) {
   const at = d.text ? void 0 : others.find((e) => e.start === e.end && d.start < e.start && e.start < d.end)?.start;
   if (at === void 0) return d;
-  const fits = (m) => ![...own, ...others].some((o) => o !== d && clash(o, m));
+  const fits = (m) => {
+    const [w] = widen(base, [m]);
+    return w.start === m.start && w.end === m.end && ![...own, ...others].some((o) => o !== d && clash(o, m));
+  };
   let left = true, right = true;
   for (let i = 1; left && i <= d.end - at; i++) left = base[d.start - i] === base[d.end - i];
   const l = { start: d.start - (d.end - at), end: at, text: "" };

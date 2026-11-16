@@ -246,7 +246,11 @@ export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours'
 function slid(base: string, d: Edit, own: Edit[], others: Edit[]): Edit {
   const at = d.text ? undefined : others.find((e) => e.start === e.end && d.start < e.start && e.start < d.end)?.start;
   if (at === undefined) return d;
-  const fits = (m: Edit) => ![...own, ...others].some((o) => o !== d && clash(o, m));
+  // a move whose ends cut a tag or a character reference of base is refused
+  const fits = (m: Edit) => {
+    const [w] = widen(base, [m]);
+    return w.start === m.start && w.end === m.end && ![...own, ...others].some((o) => o !== d && clash(o, m));
+  };
   // a letter before the start or past the end of base is undefined, and stops the move
   let left = true, right = true;
   for (let i = 1; left && i <= d.end - at; i++) left = base[d.start - i] === base[d.end - i];
