@@ -234,7 +234,7 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
     // e.g. a file over the limit of a session, or of a type that it does not take
     const why = fresh ? media.refuse?.(new File([blob], path.slice(FOLDER.length + 1), { type: blob.type })) : null;
     if (why) {
-      arrival.notes.push(`${p} was not copied: ${why}.`);
+      arrival.notes.push(`${p} was not copied: ${why}${why.endsWith('.') ? '' : '.'}`);
       continue;
     }
     to.set(p, fresh ? media.add(blob, path.slice(FOLDER.length + 1), isTaken).path : path);
