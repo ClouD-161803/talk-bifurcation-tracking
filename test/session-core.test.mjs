@@ -924,10 +924,14 @@ test('a move that also adds a paragraph keeps this paragraph when another replic
     assert.equal(times(text, '<p>New paragraph</p>'), 1, `${how}: the new paragraph is in the text`);
     assert.ok(times(text, 'Second slide') >= 1, `${how}: the moved paragraph is in the text`);
   }
-  // diff() gives the key in the heading and the removal of the paragraph below as one patch
-  for (const [how, text] of Object.entries(merges(base, moved.replace('<h2>Two</h2>', '<h2>Two by Ben</h2>'), typed))) {
+  // diff() gives the key in the heading and the removal of the paragraph below as one patch, which
+  // conflicts with the key in the paragraph. the key of the side that wins is kept, i.e. of the
+  // operation sent last in a race and of ours in the merge of the editor
+  const ben = '<h2>Two by Ben</h2>', ana = 'Second slide by Ana';
+  const wins = { 'change first': ana, 'key first': ben, 'the key unread': ana, 'the change unread': ben };
+  for (const [how, text] of Object.entries(merges(base, moved.replace('<h2>Two</h2>', ben), typed))) {
     assert.ok(times(text, 'Second slide') >= 1, `a key in the heading, ${how}: the moved paragraph is in the text`);
-    assert.ok(text.includes('<h2>Two by Ben</h2>') || text.includes('Second slide by Ana'), `a key in the heading, ${how}: a key is in the text`);
+    assert.equal(times(text, wins[how]), 1, `a key in the heading, ${how}: the key of the side that wins is in the text`);
   }
 });
 
