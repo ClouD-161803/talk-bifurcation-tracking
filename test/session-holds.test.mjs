@@ -16,6 +16,8 @@ const BETA = el(1, 'li:nth-child(2)');
 const SECOND = el(1, 'p');
 const listOf = (page) => page.evaluate(`${el(1, 'ul')}.outerHTML`);
 const ITEMS = (text) => text.match(/<ul>[\s\S]*?<\/ul>/)?.[0].replace(/\s+/g, ' ');
+// the last element of slide Two whose text starts with text, i.e. its text element
+const LAST = (text) => `[...${el(1, 'h2')}.parentElement.querySelectorAll('*')].findLast((e) => e.textContent.startsWith(${JSON.stringify(text)}))`;
 
 // whether page reads the caret of the person of name in the text element of expression
 const caretOf = (page, name, expression) => page.evaluate(`${P}.resolved().some((r) => r.name === ${JSON.stringify(name)} && r.caret?.el === ${expression})`);
@@ -24,6 +26,7 @@ const caretIn = (page, expression) => page.evaluate(`(() => { const h = ${expres
 
 /** Ana types text at the end of the text element of expression, until Ben sees it held by her. */
 async function holding(ana, ben, expression, text) {
+  await front(ana);
   await caretAtEnd(ana, expression);
   await typeKeys(ana, text);
   await until(() => ben.evaluate(`${HOLDER(expression)} === 'Ana' && ${expression}.textContent.endsWith(${JSON.stringify(text)})`), 'the text element that Ana types in, with her text, to be held on the page of Ben');
@@ -38,18 +41,21 @@ async function edit(page, letter, command) {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
 }
 
-test('a text selection from an item into a held item refuses Backspace, Delete, a typed letter, a cut, a paste, and a drop, and the holder keeps typing', { timeout: 120_000 }, async (t) => {
-  const { server, pages: [ana, ben] } = await session(t);
+test('a text selection from an item into a held item refuses Backspace, Delete, a typed letter, a cut, a paste, and a drop, which a text selection over two items that are not held takes, and the holder keeps typing', { timeout: 180_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n', '    <li>Beta</li>\n    <li>Gamma</li>\n    <li>Delta</li>\n']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
   await holding(ana, ben, BETA, ' typed by Ana');
+  // a clock of Ben far behind keeps the hold for the whole test
+  await ben.evaluate(`${P}.skew = -1e8`);
   const before = await listOf(ben);
   await ben.send('Browser.grantPermissions', { permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
-  const drop = async () => {
-    const at = await center(ben, 'section.present li:nth-child(2)');
+  const drop = async (n) => {
+    const at = await center(ben, `section.present li:nth-child(${n})`);
     const data = { items: [{ mimeType: 'text/plain', data: 'dropped' }], dragOperationsMask: 1 };
     for (const type of ['dragEnter', 'dragOver', 'drop']) await ben.send('Input.dispatchDragEvent', { type, x: at.x, y: at.y, data });
   };
+  // each case: the act, given the place of the second item of its text selection
   const cases = [
     ['Backspace', () => press(ben, 'Backspace')],
     ['Delete', () => press(ben, 'Delete')],
@@ -62,33 +68,50 @@ test('a text selection from an item into a held item refuses Backspace, Delete, 
     ['a drop', drop],
   ];
   for (const [what, act] of cases) {
-    // a text selection from offset 2 of Alpha to the same place in Beta
-    await front(ben);
-    await ben.evaluate(`(() => { const a = ${ALPHA}; a.focus(); getSelection().collapse(a.firstChild, 2); })()`);
-    await press(ben, 'Shift+ArrowDown');
-    await frame(ben);
-    assert.ok(await ben.evaluate(`${C}.app.commands.enabled('text.flow.delete')`), `a text selection over both items for ${what}`);
-    await unbubble(ben);
-    await act();
-    await frame(ben);
-    assert.equal(await listOf(ben), before, `${what} leaves both items as they were`);
-    assert.equal(await ben.evaluate(BUBBLE), REFUSED, what);
+    // a text selection from offset 2 of item n - 1 to the same place in item n, first into the held
+    // item and then over Gamma and Delta
+    for (const n of [2, 4]) {
+      await front(ben);
+      await leave(ben);
+      await frame(ben);
+      await ben.evaluate(`(() => { const a = ${el(1, `li:nth-child(${n - 1})`)}; a.focus(); getSelection().collapse(a.firstChild, 2); })()`);
+      await press(ben, 'Shift+ArrowDown');
+      await frame(ben);
+      assert.ok(await ben.evaluate(`${C}.app.commands.enabled('text.flow.delete')`), `a text selection over two items for ${what}`);
+      await unbubble(ben);
+      await act(n);
+      await frame(ben);
+      if (n === 2) {
+        assert.equal(await listOf(ben), before, `${what} leaves both items as they were`);
+        assert.equal(await ben.evaluate(BUBBLE), REFUSED, what);
+        continue;
+      }
+      assert.notEqual(await listOf(ben), before, `${what} over two items that are not held is taken`);
+      assert.equal(await ben.evaluate(BUBBLE), null, `${what} over two items that are not held`);
+      assert.ok((await listOf(ben)).includes('<li contenteditable="true">Beta typed by Ana</li>'), `${what} over two items that are not held leaves the held item as it was`);
+      // the act undone, so that the next case finds Gamma and Delta again
+      for (let i = 0; i < 4 && (await listOf(ben)) !== before; i++) await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+      assert.equal(await listOf(ben), before, `${what} over two items that are not held is undone`);
+    }
   }
   assert.ok(await caretOf(ben, 'Ana', BETA), 'the caret of Ana stays in her item');
   await caretAtEnd(ana, BETA);
   await typeKeys(ana, ' more');
   const text = await converge(server, [ana, ben]);
-  assert.equal(ITEMS(text), '<ul> <li>Alpha</li> <li>Beta typed by Ana more</li> </ul>');
+  assert.equal(ITEMS(text), '<ul> <li>Alpha</li> <li>Beta typed by Ana more</li> <li>Gamma</li> <li>Delta</li> </ul>');
   clean(ana);
   clean(ben);
 });
 
-test('a held paragraph refuses a paragraph style, a list style, and Enter, and the holder keeps typing', { timeout: 120_000 }, async (t) => {
-  const { server, pages: [ana, ben] } = await session(t);
+test('a held paragraph refuses a paragraph style, a list style, and Enter, which a paragraph beside it takes, and the holder keeps typing', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p>Third</p>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
   await holding(ana, ben, SECOND, ' typed');
+  // a clock of Ben far behind keeps the hold for the whole test
+  await ben.evaluate(`${P}.skew = -1e8`);
   const before = await ben.evaluate(`${SECOND}.outerHTML`);
+  const slide = `${el(1, 'h2')}.parentElement.innerHTML`;
   const cases = [
     ['text.style.subheading', () => ben.evaluate(`${C}.app.commands.run('text.style.subheading')`)],
     ['text.list.ul', () => ben.evaluate(`${C}.app.commands.run('text.list.ul')`)],
@@ -96,18 +119,34 @@ test('a held paragraph refuses a paragraph style, a list style, and Enter, and t
   ];
   for (const [what, act] of cases) {
     await front(ben);
+    await leave(ben);
+    await frame(ben);
     await ben.evaluate(`(() => { const p = ${SECOND}; p.focus(); getSelection().collapse(p.firstChild, 3); })()`);
     await unbubble(ben);
     await act();
     await frame(ben);
     assert.equal(await ben.evaluate(`${SECOND}?.outerHTML`), before, `${what} leaves the paragraph as it was`);
     assert.equal(await ben.evaluate(BUBBLE), REFUSED, what);
+    // the same act in the paragraph Third, which is not held
+    const all = await ben.evaluate(slide);
+    await leave(ben);
+    await frame(ben);
+    await ben.evaluate(`(() => { const p = ${LAST('Third')}; p.focus(); getSelection().collapse(p.firstChild, 3); })()`);
+    await unbubble(ben);
+    await act();
+    await frame(ben);
+    assert.notEqual(await ben.evaluate(slide), all, `${what} in a paragraph that is not held is taken`);
+    assert.equal(await ben.evaluate(BUBBLE), null, `${what} in a paragraph that is not held`);
+    assert.equal(await ben.evaluate(`${SECOND}?.outerHTML`), before, `${what} in a paragraph that is not held leaves the held paragraph as it was`);
+    for (let i = 0; i < 4 && (await ben.evaluate(slide)) !== all; i++) await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+    assert.equal(await ben.evaluate(slide), all, `${what} in a paragraph that is not held is undone`);
   }
   assert.ok(await caretOf(ben, 'Ana', SECOND), 'the caret of Ana stays in her paragraph');
   await caretAtEnd(ana, SECOND);
   await typeKeys(ana, ' more');
   const text = await converge(server, [ana, ben]);
   assert.match(text, /<h2>Two<\/h2>\s*<p>Second slide typed more<\/p>\s*<ul>/);
+  assert.match(text, /<\/ul>\s*<p>Third<\/p>/);
   clean(ana);
   clean(ben);
 });
