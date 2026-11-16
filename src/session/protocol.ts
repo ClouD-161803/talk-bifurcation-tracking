@@ -83,8 +83,9 @@ export type OpAnswer = { ok: true; v: Version } | { ok: false; reason: RefusalRe
 // the name of the host, or null when it is not known
 export type Ended = { by: string | null };
 
-// a write of index.html that failed, with the number of operations that are not in the file
-export type WriteError = { message: string; unwritten: number };
+// a write of index.html that failed, with the number of operations that are not in the file, or a
+// write of the file tex.js
+export type WriteError = { message: string; unwritten: number; file?: 'tex.js' };
 
 // GET events?token=&since=. ops is null when since is of another epoch or older than the log,
 // and the browser then says hello again. known is sent only when it changed since the last answer

@@ -76,11 +76,13 @@ export function deriveTex(dir: string, html: string): DerivedTex {
 }
 
 // onChange is called at each change of tex.js on disk, and after a stable change of a source that
-// leaves tex.js as it is. stable is the time in ms that a changed file
-// must not change before it is taken, shorter in the tests
+// leaves tex.js as it is. onWriteError is called with the message of a failed write of tex.js,
+// once for each reason, and with null at the next derivation that does not fail. stable is the
+// time in ms that a changed file must not change before it is taken, shorter in the tests
 export type TexOptions = {
   log?: (message: string) => void;
   onChange?: () => void;
+  onWriteError?: (message: string | null) => void;
   stable?: number;
 };
 
@@ -92,6 +94,7 @@ export class TexWriter {
   private file: string;
   private log: (message: string) => void;
   private onChange: () => void;
+  private onWriteError: (message: string | null) => void;
   private stable: number;
   // the text of index.html written last, and the cited keys of the text of the last derivation
   private html: string;
@@ -109,6 +112,8 @@ export class TexWriter {
   private changed = false;
   private polling = false;
   private stopped = false;
+  // the reason of the write of tex.js that failed last, which is tried again at each poll
+  private failure: string | null = null;
 
   // html is the text of index.html at the start. the files are read for their signatures, and
   // nothing is written
@@ -117,6 +122,7 @@ export class TexWriter {
     this.file = join(dir, 'tex.js');
     this.log = options.log ?? (() => {});
     this.onChange = options.onChange ?? (() => {});
+    this.onWriteError = options.onWriteError ?? (() => {});
     this.stable = options.stable ?? STABLE;
     this.html = html;
     this.keys = keysOf(html);
@@ -178,7 +184,10 @@ export class TexWriter {
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
       if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
       else if (now - this.sourcesSeen.at >= this.stable) this.derive(true);
-    } else this.sourcesSeen = null;
+    } else {
+      this.sourcesSeen = null;
+      if (this.failure !== null) this.derive();
+    }
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
       if (this.texSeen?.sig !== tex) this.texSeen = { sig: tex, at: now };
@@ -195,17 +204,26 @@ export class TexWriter {
     const changed = this.changed;
     this.changed = false;
     const derived = deriveTex(this.dir, html);
-    this.keys = keysOf(html);
-    this.watched = derived.files;
-    this.sourcesSeen = null;
-    if (!derived.sources) return;
+    // the keys and the files of the derivation are kept once a write is not owed for them, hence a
+    // write that failed is tried again at the next poll
+    const settle = () => {
+      this.keys = keysOf(html);
+      this.watched = derived.files;
+      this.sourcesSeen = null;
+      if (this.failure === null) return;
+      this.failure = null;
+      this.onWriteError(null);
+    };
+    if (!derived.sources) return settle();
     // a tex.js without the macros of a file that is not read would break every page
     if (derived.unread.length) {
+      settle();
       this.log(`tex.js is not written, since ${derived.unread.join(', and ')}`);
       return;
     }
     const old = await readFile(this.file, 'utf8').catch(() => null);
     if (old === derived.text) {
+      settle();
       if (changed) this.onChange();
       return;
     }
@@ -214,12 +232,18 @@ export class TexWriter {
       await writeFile(tmp, derived.text);
       const made = await stat(tmp);
       await renameRetried(tmp, this.file);
+      settle();
       this.texSig = signature(made);
       this.texSeen = null;
       this.onChange();
     } catch (e) {
       await unlink(tmp).catch(() => {});
+      // the message names the temporary file, which differs at each try
+      const reason = (e as NodeJS.ErrnoException).code ?? (e as Error).message;
+      if (reason === this.failure) return;
+      this.failure = reason;
       this.log(`could not write ${this.file}: ${(e as Error).message}`);
+      this.onWriteError((e as Error).message);
     }
   }
 }

@@ -1523,6 +1523,8 @@ var People = class {
     // the write of index.html that failed last, or null once a write succeeded, and its revision
     this.writeError = null;
     this.writeRev = 0;
+    // the message of the write of tex.js that failed last, or null once a write succeeded
+    this.texError = null;
     // the changes of tex.js on disk, by the edit command or by another program, counted from the time
     // of the start in ms, which a later run does not repeat
     this.texRev = Date.now();
@@ -1672,6 +1674,14 @@ var People = class {
     this.writeRev++;
     this.changed();
   }
+  // a write of tex.js that failed, or null once a derivation does not fail, told to every page as a
+  // write of index.html that failed is, when no write of index.html failed
+  texFailed(message) {
+    if (message === this.texError) return;
+    this.texError = message;
+    this.writeRev++;
+    this.changed();
+  }
   // tex.js changed on disk, told to every page, which draws the deck again with it
   texChanged() {
     this.texRev++;
@@ -1792,7 +1802,7 @@ var People = class {
     const presence = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
     const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
-    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
+    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError ?? (this.texError === null ? null : { message: this.texError, unwritten: 0, file: "tex.js" });
     return answer;
   }
   answer(poll) {
@@ -2758,11 +2768,15 @@ var TexWriter = class {
     this.changed = false;
     this.polling = false;
     this.stopped = false;
+    // the reason of the write of tex.js that failed last, which is tried again at each poll
+    this.failure = null;
     this.dir = dir;
     this.file = join4(dir, "tex.js");
     this.log = options.log ?? (() => {
     });
     this.onChange = options.onChange ?? (() => {
+    });
+    this.onWriteError = options.onWriteError ?? (() => {
     });
     this.stable = options.stable ?? STABLE2;
     this.html = html;
@@ -2820,7 +2834,10 @@ ${sig}`).join("\n");
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
       if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
       else if (now - this.sourcesSeen.at >= this.stable) this.derive(true);
-    } else this.sourcesSeen = null;
+    } else {
+      this.sourcesSeen = null;
+      if (this.failure !== null) this.derive();
+    }
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
       if (this.texSeen?.sig !== tex) this.texSeen = { sig: tex, at: now };
@@ -2836,16 +2853,23 @@ ${sig}`).join("\n");
     const changed = this.changed;
     this.changed = false;
     const derived = deriveTex(this.dir, html);
-    this.keys = keysOf(html);
-    this.watched = derived.files;
-    this.sourcesSeen = null;
-    if (!derived.sources) return;
+    const settle = () => {
+      this.keys = keysOf(html);
+      this.watched = derived.files;
+      this.sourcesSeen = null;
+      if (this.failure === null) return;
+      this.failure = null;
+      this.onWriteError(null);
+    };
+    if (!derived.sources) return settle();
     if (derived.unread.length) {
+      settle();
       this.log(`tex.js is not written, since ${derived.unread.join(", and ")}`);
       return;
     }
     const old = await readFile2(this.file, "utf8").catch(() => null);
     if (old === derived.text) {
+      settle();
       if (changed) this.onChange();
       return;
     }
@@ -2854,13 +2878,18 @@ ${sig}`).join("\n");
       await writeFile4(tmp, derived.text);
       const made = await stat3(tmp);
       await renameRetried(tmp, this.file);
+      settle();
       this.texSig = signature2(made);
       this.texSeen = null;
       this.onChange();
     } catch (e) {
       await unlink3(tmp).catch(() => {
       });
+      const reason = e.code ?? e.message;
+      if (reason === this.failure) return;
+      this.failure = reason;
       this.log(`could not write ${this.file}: ${e.message}`);
+      this.onWriteError(e.message);
     }
   }
 };
@@ -2998,7 +3027,7 @@ async function start(options = {}) {
   const appliedFile = join5(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const appliedTable = new AppliedTable(appliedFile, log);
-  const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged() });
+  const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged(), onWriteError: (m) => people.texFailed(m) });
   const onWritten = (n, written2) => {
     if (authority.written(n)) appliedTable.write(authority.table());
     tex.written(written2);

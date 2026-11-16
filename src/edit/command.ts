@@ -197,7 +197,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const appliedTable = new AppliedTable(appliedFile, log);
   // the pages draw the deck again at each change of tex.js on disk
-  const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged() });
+  const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged(), onWriteError: (m) => people.texFailed(m) });
   const onWritten = (n: number, written: string) => {
     if (authority.written(n)) appliedTable.write(authority.table());
     tex.written(written);
