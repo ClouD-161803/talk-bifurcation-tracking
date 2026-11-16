@@ -2,12 +2,14 @@
 // started on a temporary talk folder: a word that an input method composes reaches the others only
 // once it is committed, and the keys that the others type during the composition, at its caret or
 // on both sides of it, are kept. the keys of two people that come in one answer on both sides of an
-// unread key of the person are kept with it
+// unread key of the person are kept with it. an undo next to a space that the browser writes as
+// &nbsp; removes only the typing of the person, and an undo of a word whose trailing space another
+// browser took away is refused
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { caretAtEnd } from './helpers/apply.mjs';
-import { STATE, TEXT, converge, show } from './helpers/client.mjs';
+import { caretAtEnd, front } from './helpers/apply.mjs';
+import { C, STATE, TEXT, converge, show } from './helpers/client.mjs';
 import { typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { el, session } from './helpers/presence.mjs';
@@ -15,6 +17,7 @@ import { until } from './helpers/session.mjs';
 
 const p = el(1, 'p');
 const para = (text) => text.match(/<p>[^\n]*<\/p>/g)[1];
+const loose = (text) => text.replaceAll('&nbsp;', ' ');
 const STEPS = ['n', 'ni', 'nih', 'niha', 'nihao'];
 
 // the caret of a page put into the paragraph, at offset of its first text node
@@ -134,4 +137,55 @@ test('the keys of two other people that come in one answer on both sides of an u
   const text = await converge(server, pages);
   assert.equal(para(text), '<p>BSecondA slideC</p>');
   assert.deepEqual([ana.errors, ben.errors, cleo.errors], [[], [], []]);
+});
+
+// the history of page settled after a command of it
+const run = async (page, id) => {
+  await front(page);
+  await page.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
+  await page.evaluate(`${C}.app.history.idle().then(() => true)`);
+};
+
+test('an undo of typing next to a space that the browser rewrote as &nbsp; removes only the typing of the person, and the undo of the other person removes only theirs', { timeout: 120_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>Second <code>x+1</code> slide</p>']] });
+  const [ana, ben] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  // both carets after the space that follows the code element
+  const after = (page) => page.evaluate(`(() => { const q = ${p}; q.focus(); getSelection().collapse(q.lastChild, 1); return document.activeElement === q; })()`);
+  assert.ok(await after(ana));
+  await typeKeys(ana, 'ab cd');
+  await converge(server, pages);
+  assert.match(await ana.evaluate(`${p}.innerHTML`), /<\/code>&nbsp;ab cdslide$/, 'Chrome writes the space before the typing of Ana as &nbsp;');
+  assert.ok(await after(ben));
+  await typeKeys(ben, 'q');
+  let text = await converge(server, pages);
+  assert.equal(loose(para(text)), '<p>Second <code>x+1</code> qab cdslide</p>');
+  await run(ana, 'edit.undo');
+  text = await converge(server, pages);
+  assert.equal(loose(para(text)), '<p>Second <code>x+1</code> qslide</p>', 'the undo of Ana removes her typing alone');
+  await run(ben, 'edit.undo');
+  text = await converge(server, pages);
+  assert.equal(loose(para(text)), '<p>Second <code>x+1</code> slide</p>', 'the undo of Ben removes his typing alone');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+test('an undo of a word whose trailing space the browser of another person took away is refused, and keeps the letters of the other person', { timeout: 120_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben']);
+  const [ana, ben] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' foo ');
+  await converge(server, pages);
+  await caretAtEnd(ben, p);
+  await typeKeys(ben, 'bar');
+  let text = await converge(server, pages);
+  assert.equal(para(text), '<p>Second slide foobar</p>', 'Chrome of Ben takes away the trailing space of Ana');
+  assert.equal(await ana.evaluate(`${C}.app.history.undoLabel`), 'typing');
+  await run(ana, 'edit.undo');
+  text = await converge(server, pages);
+  assert.equal(para(text), '<p>Second slide foobar</p>');
+  assert.equal(await ana.evaluate(`${C}.app.history.undoLabel`), null, 'the refused entry is dropped');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });

@@ -120,6 +120,15 @@ test('revert removes the letters of the person and keeps the same letter typed n
   assert.equal(revert('Plan the and slide.', 'Plan the slide.', 'Plan the aand slide.'), 'Plan the aslide.');
 });
 
+test('revert finds the span of the person with each &nbsp; read as a space, and keeps an insertion of another person after a space that the browser rewrote', () => {
+  // the person typed "ab cd" after the space that follows the code element, which Chrome then wrote as &nbsp;
+  const before = 'X <code>x+1</code> slide';
+  const after = 'X <code>x+1</code>&nbsp;ab cdslide';
+  assert.equal(revert(after, before, 'X <code>x+1</code>&nbsp;qab cdslide'), 'X <code>x+1</code>&nbsp;qslide');
+  assert.equal(revert(after, before, 'X <code>x+1</code> qab cdslide'), 'X <code>x+1</code> qslide');
+  assert.equal(revert(before, after, 'X <code>x+1</code> qslide'), 'X <code>x+1</code> qab cdslide', 'the redo puts the text of the person back after the insertion on its left');
+});
+
 test('revert gives null for an insertion inside the span that is not beside it, a removal across the span, and too many edits of others', () => {
   assert.equal(revert('Xabc Y', 'X Y', 'XabZc Y'), null, 'an insertion of another person inside the typing');
   assert.equal(revert('X abc Y', 'X  Y', 'X aY'), null, 'a removal across the end of the span');
