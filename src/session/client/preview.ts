@@ -39,8 +39,8 @@ const CSS = `
 .beeson-session-preview iframe { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--ed-canvas); }
 `;
 
-// drawn into the page of the iframe, which shows the slide as the canvas of the editor does, without
-// the controls of the show
+// drawn into the page of the iframe, which hides the controls of the show as the canvas of the
+// editor does
 const FRAME_CSS = `
 .reveal :is(.progress, .scrub, .slide-number), .theme-switch { display: none !important; }
 [data-beeson-changed] { outline: 6px solid var(--beeson-changed) !important; outline-offset: 6px !important; }

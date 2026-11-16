@@ -236,7 +236,7 @@ test('a version that changes only the start tag of a slide outlines the slide it
   clean(ann);
 });
 
-test('the preview draws the slide as the canvas does, without the switch of the mode, the slide number, and the progress bar of the show', { timeout: 180_000 }, async (t) => {
+test('the preview draws neither the switch of the mode, the slide number, nor the progress bar of the show', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
