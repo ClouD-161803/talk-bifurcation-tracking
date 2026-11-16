@@ -134,7 +134,7 @@ test('a removed element falls back to its slide, a removed slide to the deck, an
   const v2 = v1.replace('<section>\n  <h2>Beta</h2>\n  <p>Two</p>\n</section>\n', '');
   r = move(v1, v2, r.items);
   assert.deepEqual(r.items[1], { anchor: null, slide: null, removed: { text: '<section>\n  <h2>Beta</h2>\n  <p>Two</p>\n</section>' } });
-  assert.deepEqual(r.items[2], { anchor: null, slide: null, removed: { text: '<p>Two</p>' } });
+  assert.deepEqual(r.items[2], { anchor: null, slide: null, removed: { text: '<p>Two</p>', slide: '<section>\n  <h2>Beta</h2>\n  <p>Two</p>\n</section>' } });
   reads(v2, r.items[0].anchor, '<section>\n  <h2>Alpha');
   assert.deepEqual(r.changed, [false, true, true]);
   // the undo of the removal of the slide, and then of the paragraph
@@ -155,6 +155,25 @@ test('a removed element falls back to its slide, a removed slide to the deck, an
   r = move(big, withoutBig, [onSlide(big, 'Big')]);
   assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: null } });
   assert.deepEqual(move(withoutBig, big, r.items).items[0], r.items[0]);
+});
+
+test('a thread of a removed slide is attached again only inside a re-insertion of the whole slide', () => {
+  const v0 = deck(['<h2>Alpha</h2>', '<p>One</p>'], ['<h2>Beta</h2>', '<p></p>', '<p>Gone</p>']);
+  const items = [onElement(v0, '<p></p>'), onElement(v0, '<p>Gone')];
+  const v1 = v0.replace('  <p>Gone</p>\n', '');
+  const v2 = v1.replace('<section>\n  <h2>Beta</h2>\n  <p></p>\n</section>\n', '');
+  const r2 = move(v1, v2, move(v0, v1, items).items);
+  assert.ok(r2.items.every((it) => it.anchor === null && it.removed), JSON.stringify(r2.items));
+  // an empty paragraph added to another slide
+  const added = v2.replace('<p>One</p>', '<p>One</p>\n  <p></p>');
+  assert.deepEqual(move(v2, added, r2.items).items, r2.items);
+  // the undo of the removal of the slide, and then of the paragraph
+  const [empty, gone] = move(v2, v1, r2.items).items;
+  reads(v1, empty.anchor, '<p></p>');
+  reads(v1, empty.slide, '<section>\n  <h2>Beta');
+  reads(v1, gone.anchor, '<section>\n  <h2>Beta');
+  assert.deepEqual([gone.slide, gone.removed], [gone.anchor, { text: '<p>Gone</p>' }]);
+  assert.deepEqual(move(v1, v0, [empty, gone]).items, items);
 });
 
 test('anchors checked against a text that does not hold their start tags fall back', () => {
@@ -328,7 +347,7 @@ test('an element removed before a sibling that starts the same way falls back, a
     const before = '<!doctype html><body><section><h2>Alpha</h2><p>One</p></section><section><h2>Beta</h2><p>Two</p></section></body>';
     const after = before.replace('<section><h2>Alpha</h2><p>One</p></section>', '');
     const r = move(before, after, [onElement(before, '<h2>Alpha'), onSlide(before, 'Alpha'), onElement(before, '<h2>Beta')]);
-    assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: '<h2>Alpha</h2>' } });
+    assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: '<h2>Alpha</h2>', slide: '<section><h2>Alpha</h2><p>One</p></section>' } });
     assert.deepEqual(r.items[1], { anchor: null, slide: null, removed: { text: '<section><h2>Alpha</h2><p>One</p></section>' } });
     reads(after, r.items[2].anchor, '<h2>Beta');
   });
@@ -397,7 +416,7 @@ test('a slide removed while another is added in one operation hands its threads 
   const after = deck(ALPHA, GAMMA, ['<h2>Summary</h2>', '<p>Manifolds lower the cost of the transfer by a third, at a longer flight.</p>']);
   const r = move(before, after, [onSlide(before, 'Beta'), onElement(before, '<p>Two'), onSlide(before, 'Gamma'), onElement(before, '<p>The cost')]);
   assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: `<section>\n  ${BETA.join('\n  ')}\n</section>` } });
-  assert.deepEqual(r.items[1], { anchor: null, slide: null, removed: { text: BETA[1] } });
+  assert.deepEqual(r.items[1], { anchor: null, slide: null, removed: { text: BETA[1], slide: `<section>\n  ${BETA.join('\n  ')}\n</section>` } });
   reads(after, r.items[2].anchor, '<section>\n  <h2>Gamma');
   reads(after, r.items[3].anchor, '<p>The cost');
   reads(after, r.items[3].slide, '<section>\n  <h2>Gamma');
@@ -414,7 +433,7 @@ test('a short slide removed while others are added or edited in one operation ha
     const before = deck(title, ['<h2>Remove me</h2>', '<p>Some text</p>'], method, ['<h2>Questions?</h2>']);
     const after = deck(title, method, ['<h2>Questions?</h2>'], ['<h2></h2>', '<p></p>']);
     const r = move(before, after, [onElement(before, '<h2>Remove me'), onSlide(before, 'Remove me')]);
-    assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: '<h2>Remove me</h2>' } });
+    assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: '<h2>Remove me</h2>', slide: gone(before, 'Remove me').removed.text } });
     assert.deepEqual(r.items[1], gone(before, 'Remove me'));
   });
   const cases = {

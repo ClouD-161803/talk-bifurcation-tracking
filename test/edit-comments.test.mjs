@@ -173,6 +173,38 @@ test('the changes of the threads are told, and a shift of an anchor is not', (t)
   assert.equal(told, 4);
 });
 
+test('a thread of a removed slide is attached again by an undo, also after a restart, and not by an equal element added elsewhere', (t) => {
+  const dir = sessionDir(t);
+  const notes = '<section>\n  <h2></h2>\n  <p>Notes</p>\n</section>\n';
+  const deck = DECK.replace('</body>', `${notes}</body>`);
+  const first = open(dir, deck);
+  const slide = slideRange(deck, '<h2></h2>');
+  const base = first.authority.version;
+  first.comments.add(ANN, { base, anchor: tagRange(deck, '<h2></h2>'), slide, text: 'heading' });
+  first.comments.add(ANN, { base, anchor: null, slide, text: 'slide' });
+  replace(first.authority, notes, '');
+  const gone = (comments) => comments.list(ANN).comments.forEach((c) => assert.deepEqual([c.anchor, c.slide, !!c.removed], [null, null, true], c.text));
+  gone(first.comments);
+  first.comments.stopSync();
+  // the undo, at a start that read the file
+  const again = open(dir, first.authority.text);
+  gone(again.comments);
+  again.authority.enter(diff(again.authority.text, deck), ANN);
+  const [heading, onSlide] = again.comments.list(ANN).comments;
+  reads(deck, heading.anchor, '<h2></h2>\n  <p>Notes');
+  reads(deck, heading.slide, '<section>\n  <h2></h2>\n  <p>Notes');
+  assert.equal(heading.removed, undefined);
+  reads(deck, onSlide.anchor, '<section>\n  <h2></h2>\n  <p>Notes');
+  assert.equal(onSlide.removed, undefined);
+  // removed again, and then a slide of a layout added and an empty heading added on another slide
+  replace(again.authority, notes, '');
+  replace(again.authority, 'First slide', 'First slide, longer');
+  replace(again.authority, '</body>', '<section>\n  <h2></h2>\n  <p></p>\n</section>\n</body>');
+  gone(again.comments);
+  replace(again.authority, '<h2>Two</h2>', '<h2>Two</h2>\n  <h2></h2>');
+  gone(again.comments);
+});
+
 test('the new threads since a version are listed in the order in which they were made, as the list gives them', (t) => {
   // two threads made in one millisecond have the same time, and a page then shows them in the order
   // in which it got them
