@@ -111,6 +111,7 @@ The secret can also be read from a file with `--secret-file PATH`, and the relay
 - Everyone who has the link can read every version of the deck and every text set aside, also of the time before this person joined.
 - In the preview of a version, the scripts of this version are run in the page of the session.
 - A history of over 32 MB is shortened to the versions of the last 30 days. The oldest named version and every version after it are kept as well.
+- A history that cannot be read when the edit command is started is kept as `.session/history-unreadable-<time>.jsonl`, and a new history is begun. The path of the kept file is printed in the window of the edit command.
 - A text set aside is limited to 8 MB, and at most 50 of them are kept per person, of which the oldest is removed first.
 - The tests of the synchronous editor were run in Chrome, and its behavior in Firefox and Safari is argued from their documentation.
 
