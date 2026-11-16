@@ -93,6 +93,8 @@ export class Comments {
   private cache: { base: string; text: string; count: number; places: Map<string, Place> } | null = null;
   private count = 0;
   private slides: { text: string; slides: Slide[] } | null = null;
+  // the result of spots(), given again while its element, its slide, and the texts are unchanged
+  private spotsOf: { key: unknown[]; out: { el: Spot | null; slide: Spot | null } } | null = null;
   private reread: string | null = null;
   private rereading = false;
   // the id of each request whose answer may have been lost, by its text, sent again with it
@@ -410,16 +412,21 @@ export class Comments {
   spots(el: Element | null, slide: Element): { el: Spot | null; slide: Spot | null } {
     const base = this.client.base;
     if (!base || !this.client.app.source) return { el: null, slide: null };
+    // the replica's text with the edits of this page, read without a render of the deck
+    const mine = el ? this.client.snapshot()?.mine ?? base.text : base.text;
+    const key = [el, slide, base.text, mine, this.client.app.source.text];
+    if (this.spotsOf?.key.every((x, i) => x === key[i])) return this.spotsOf.out;
     const item = this.item(el, slide, base.text);
     const { anchor: a, slide: s } = item;
-    const mine = el ? this.client.port.text() : base.text;
     const own = mine === base.text ? null : this.item(el, slide, mine);
     const slides = this.slidesOf(base.text);
     const n = s ? slides.findIndex((x) => x.start >= s.start) : -1;
-    return {
+    const out = {
       el: el && a && s && !item.removed && a.start !== s.start ? { ...spot(base.text, a), ...(own?.anchor && !own.removed ? { own: spot(mine, own.anchor) } : {}) } : null,
-      slide: s ? { ...spot(base.text, s), place: [n, slides.length], ...(n >= 0 && slides[n].start !== s.start ? { stack: true } : {}) } : null,
+      slide: s ? { ...spot(base.text, s), place: [n, slides.length] as [number, number], ...(n >= 0 && slides[n].start !== s.start ? { stack: true } : {}) } : null,
     };
+    this.spotsOf = { key, out };
+    return out;
   }
 
   // the element of a spot in the deck as it is now, or null. a slide that reads otherwise is taken
