@@ -454,6 +454,23 @@ test('a render of a PDF figure over 16 MB is refused in a session with its reaso
   clean(ann);
 });
 
+test('every render of a PDF figure is checked in a session before the deck is changed, and the reason of a refused one is given', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await figureTalk(t, readFileSync(PDF));
+  const ann = await tab(browser, sessionUrl(server.edit));
+  const before = await converge(server, [ann]);
+  const files = media(server);
+  await show(ann, 'Two');
+  await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
+  // the session refuses the second render of the pair
+  await ann.evaluate(`${C}.shell.media.refuse = (file) => (file.name.endsWith('-light.png') ? 'refused by the test' : null), true`);
+  assert.equal(await run(ann, 'media.pdfPage', '{ page: 2 }'), 'refused by the test');
+  assert.equal(await converge(server, [ann]), before);
+  assert.deepEqual(media(server), files);
+  clean(ann);
+});
+
 test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px, and once in the title of a screen of 1440 px', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
