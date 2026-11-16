@@ -423,3 +423,32 @@ test('a page whose token is retired while it is open joins again and sends its e
   // the presence and the poll under the retired token are answered 404, and the page joins again
   clean(page, [/status of 404 .*\/\.session\/(presence|events)/]);
 });
+
+// a script for open() that records in window.__puts, for each record that the copy writes, whether
+// it holds the word hidden. IndexedDB does not answer a read while the virtual time is paused
+const PUTS = `{
+  const put = IDBObjectStore.prototype.put;
+  window.__puts = [];
+  IDBObjectStore.prototype.put = function (value, key) {
+    window.__puts.push(value.mine.includes(' hidden'));
+    return put.call(this, value, key);
+  };
+}`;
+
+test('a page hidden right after a key keeps this key in its copy', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const net = await proxy(t, server.edit);
+  const page = await open(browser, net.url, { script: PUTS });
+  await converge(server, [page]);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  net.hold();
+  await still(page);
+  await type(page, ' hidden');
+  const other = await browser.newPage({ width: 1280, height: 800 });
+  await front(other);
+  await until(() => net.held.some((r) => r.body.includes('hidden')), 'the hidden page to have sent the key');
+  assert.deepEqual(await page.evaluate('window.__puts'), [true]);
+});
