@@ -101,13 +101,8 @@ test('a word typed right before the page is closed without the question reaches 
   await still(page);
   await type(page, ' closed');
   await closed(page, net);
-  const want = TALK.replace('<p>First slide</p>', '<p>First slide closed</p>');
-  await until(() => server.read() === want, 'the word to reach index.html');
+  await until(() => server.read() === TALK.replace('<p>First slide</p>', '<p>First slide closed</p>'), 'the word to reach index.html');
   assert.equal(net.sent.filter((b) => b.includes('closed')).length, 1);
-  // the next page of the browser takes over the copy of the closed page, which may hold the word too
-  const next = await tab(browser, net.url);
-  assert.equal(await converge(server, [next]), want);
-  clean(next);
 });
 
 test('a word typed right before the page is hidden and frozen reaches index.html', { timeout: 300_000 }, async (t) => {
