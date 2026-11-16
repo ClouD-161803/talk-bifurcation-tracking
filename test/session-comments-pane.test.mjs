@@ -654,7 +654,9 @@ test('the times of the pane follow the locale of the browser, as those of Versio
   await sees(a, `!!document.querySelector('${PANE} article .time')`, true);
   const [shown, want] = await a.evaluate(`[document.querySelector('${PANE} article .time').textContent, new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })]`);
   assert.match(shown, /^\d{1,2}:\d{2}$/);
-  assert.ok(Math.abs(Number(shown.replace(':', '')) - Number(want.replace(':', ''))) <= 1, `${shown} is the time in de-DE, ${want}`);
+  // the minutes of the day, which differ by 1 also across an hour and midnight
+  const minutes = (hm) => hm.split(':').reduce((h, m) => Number(h) * 60 + Number(m));
+  assert.ok([0, 1, 1439].includes((minutes(want) - minutes(shown) + 1440) % 1440), `${shown} is the time in de-DE, ${want}`);
   clean(a);
 });
 
