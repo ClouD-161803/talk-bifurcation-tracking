@@ -597,7 +597,7 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   const url = `${server.origin}/test-deck.html?edit&still`;
   const status = () => page.evaluate('window.BeesonEditor.status()');
   // a load, a save, and the pause before an autosave or a draft take many times longer on a crowded
-  // Windows runner than on a laptop: this test took 14 to 83 s there in rounds that passed, and it
+  // Windows runner than on a laptop: this test took 9 to 83 s there in rounds that passed, and it
   // takes 6 s on a laptop. each wait is for a state, hence its limit only ends a test that fails
   const LIMIT = 60000;
   const load = async () => {
