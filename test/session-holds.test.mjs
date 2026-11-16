@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
-import { C, clean, converge, loads, ONLINE, show } from './helpers/client.mjs';
+import { C, clean, converge, loads, ONLINE, open, sessionUrl, show } from './helpers/client.mjs';
 import { center, click, drag, press, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { BUBBLE, el, HOLDER, leave, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
@@ -819,4 +819,23 @@ test('a page that loads again, or rejoins after a restart, while a person who ty
   const lost = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, lost);
   clean(ben, lost);
+});
+
+test('a page that joins while a person pauses ends the hold when the page of this person says that their 30 s passed', { timeout: 360_000 }, async (t) => {
+  const { browser, server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  await until(() => ben.evaluate(PAUSED), 'Ana to stop typing on the page of Ben');
+  const cy = await open(browser, sessionUrl(server.edit), { name: 'Cy' });
+  await show(cy, 'Two');
+  await until(() => caretOf(cy, 'Ana', SECOND), 'the caret of Ana to be read on the page of Cy');
+  assert.equal(await cy.evaluate(HOLDER(SECOND)), 'Ana', 'the paragraph is held on the page of Cy');
+  // a clock of Cy far behind keeps the hold of its own first hearing for the whole test. the hold
+  // then ends only by the state that the page of Ana sends by its timer when her 30 s pass
+  await cy.evaluate(`${P}.skew = -1e8`);
+  await until(() => cy.evaluate(`${HOLDER(SECOND)} === null`), 'the hold to end on the page of Cy when Ana is idle', 60_000);
+  clean(ana);
+  clean(ben);
+  clean(cy);
 });
