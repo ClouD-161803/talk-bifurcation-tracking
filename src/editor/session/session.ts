@@ -127,8 +127,9 @@ export function install(app: App): Port {
   const busy = () => !app.history.settled || app.doc.busy;
   // the text of the deck now, with the edits of the person
   const current = (): string => (clean ? app.source!.text : app.files.render());
-  // the text of the deck with the changes held back, merged as the authority of the session
-  // orders them, since they arrived before the edits of the person
+  // the text of the deck with the changes held back, which arrived before the edits of the person,
+  // hence go first where both insert at one point, as at the authority. an edit of the person equal
+  // to one of them is taken once
   const virtual = (deck: string): string => (behind ? mergeEdits(behind.shown, fine(behind.shown, deck), fine(behind.shown, behind.want), 'ours', true).text : deck);
 
   app.listen('open', () => {

@@ -150,7 +150,8 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   // then typesets. one that the change leaves apart already failed to start one
   if (/[$\\]/.test(ins + was.slice(q, q + cut) + (now[q - 1] ?? '') + (now[q + ins.length] ?? '')) || !sameText(lp.node.data, was)) return false;
   // one replaceData per edit, from the last, keeps a caret between two edits at its characters. a
-  // caret at an insertion stays before it, hence the letters of two people at one point stay together
+  // caret at an insertion stays before it, hence two people who take turns at one point each keep a
+  // run of their own
   for (const e of (charEdits(was, now, 500) ?? [{ start: q, end: q + cut, text: ins }]).reverse()) lp.node.replaceData(e.start, e.end - e.start, e.text);
   const grow = ins.length - cut;
   k.pieces = k.pieces.map((q, i) => (i < j ? q : i === j ? { kind: 'text', dec: { start: q.dec.start, end: q.dec.end + grow } } : shiftPiece(q, grow)));

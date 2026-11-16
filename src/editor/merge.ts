@@ -228,8 +228,9 @@ function wordEdits(a: string, b: string, max: number): Edit[] | null {
 // the edits that turn a into b for a merge of a session, one per run of changed characters, or of
 // changed words past 500 changed units, e.g. for a paste, or of changed lines past 250 changed
 // words. an edit is widened so that it cuts neither a tag nor a character reference of b, nor one
-// of a, as the authority widens a patch, hence a merge never writes into a tag that neither side
-// wrote, e.g. a key before a word that another person makes bold
+// of a, as the authority widens a patch, and a start tag and its end tag that b puts around a run
+// are one edit over the run. a merge thus never writes into a tag that neither side wrote, and a
+// key before a word that another person makes bold stays before the new element
 export function fine(a: string, b: string): Edit[] {
   const found = charEdits(a, b, 500) ?? wordEdits(a, b, 250) ?? edits(a, b);
   if (!found.length) return found;
