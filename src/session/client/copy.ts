@@ -87,7 +87,11 @@ function db(): Promise<IDBDatabase> {
     setTimeout(() => fail(new Error('IndexedDB did not answer')), OPEN_WAIT);
     const r = indexedDB.open(DB, 1);
     r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' }).createIndex('key', 'key');
-    r.onsuccess = () => done(r.result);
+    r.onsuccess = () => {
+      // the browser closes the database e.g. at Clear site data, and the next write opens it again
+      r.result.onclose = () => (opened = null);
+      done(r.result);
+    };
     r.onerror = () => fail(r.error);
   }));
 }
