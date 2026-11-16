@@ -73,6 +73,41 @@ test('a guest edits a deck through the relay', { timeout: 120_000 }, async (t) =
   });
 });
 
+// a talk with scenes of TyCHO written into index.html takes over 20 MB, which is more than a guest
+// may upload. the relay has its limits as it is started
+test('a guest loads and edits a deck of 24 MB through the relay', { timeout: 180_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 5000, pullMs: 1000 });
+  t.after(() => relay.close());
+  const MB = 1024 * 1024;
+  const deck = DECK.replace('</body>', `<script type="application/json">"${'A'.repeat(24 * MB)}"</script>\n</body>`);
+  const { root, talk, config } = talkFolder(t, deck);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const guest = (path, init) => fetch(`${relay.url}/${edit.key}/${path}`, init);
+  // a file that the talk folder does not have is answered by the edit command, not by the relay
+  await until(async () => (await guest('none.txt')).status === 404, 'the edit command to register with the relay');
+
+  const navigate = { 'sec-fetch-mode': 'navigate' };
+  const page = await raw(relay.port, 'GET', `/${edit.key}/index.html?edit&session`, { headers: navigate });
+  assert.equal(page.status, 302);
+  const loaded = await raw(relay.port, 'GET', `/${edit.key}/${page.headers.location}`, { headers: navigate });
+  assert.equal(loaded.status, 200, loaded.text.slice(0, 80));
+  assert.ok(loaded.text === deck, `the guest reads ${loaded.text.length} characters of ${deck.length}`);
+
+  const json = { 'content-type': 'application/json' };
+  const hello = await (await guest('.session/hello', { method: 'POST', headers: json, body: JSON.stringify({ name: 'Guest' }) })).json();
+  const at = deck.indexOf('First slide');
+  const op = { token: hello.token, seq: 1, base: hello.v, patches: [{ start: at, end: at + 5, text: 'Opening' }] };
+  assert.equal((await (await guest('.session/op', { method: 'POST', headers: json, body: JSON.stringify(op) })).json()).ok, true);
+  await until(() => readFileSync(join(talk, 'index.html'), 'utf8').includes('Opening slide'), 'the operation of the guest to be written');
+  assert.equal(relay.held(), 0, 'the relay holds no body once the guest has read the deck');
+
+  // the upload of a guest keeps its limit of 16 MB
+  const big = await guest('media/big.png', { method: 'PUT', body: Buffer.alloc(16 * MB + 1) });
+  assert.equal(big.status, 413);
+});
+
 test('the relay refuses to start without a secret of 16 or more characters', () => {
   const env = { ...process.env, SLIDES_RELAY_SECRET: 'short' };
   const run = spawnSync(process.execPath, [resolve('scripts/relay.mjs'), '--port', '0'], { env, encoding: 'utf8', timeout: 30_000 });
