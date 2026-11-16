@@ -788,6 +788,37 @@ test('a page asks before it unloads once its copy is deleted under it and cannot
   await until(() => paragraph(server.read()) === 'First slide Zed' || null, 'the edit in index.html', 15_000);
 });
 
+// a script for open() that fails the next put once window.__failPut is set. Date.now() of the page
+// then stops 5 s after this failure, i.e. before the heartbeat of copy.ts (BEAT, 10 s) is due
+const FAIL_ONCE = `{
+  const put = IDBObjectStore.prototype.put;
+  const now = Date.now;
+  Date.now = () => Math.min(now(), window.__stop ?? Infinity);
+  IDBObjectStore.prototype.put = function (...args) {
+    if (!window.__failPut) return put.apply(this, args);
+    window.__failPut = false;
+    window.__stop = now() + 5000;
+    throw new DOMException('The quota was exceeded.', 'QuotaExceededError');
+  };
+}`;
+
+test('a page whose write of its copy failed once writes it again before the heartbeat, and then does not ask before it unloads', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${FAIL_ONCE}` });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Mine');
+  await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
+  await page.evaluate('(window.__failPut = true)');
+  await type(page, ' More');
+  await page.waitFor(`window.__stop !== undefined && ${C}.asking`);
+  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`);
+});
+
 // the time in ms that each listener of beforeunload was on window before its removal, in
 // window.__unload
 const UNLOAD = `{
