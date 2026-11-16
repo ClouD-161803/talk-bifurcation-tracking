@@ -629,3 +629,79 @@ test('an inserting operation takes about as long with threads of removed element
   for (let attempt = 0; attempt < 3 && ratio > 3; attempt++) ratio = median(removed) / median(live);
   assert.ok(ratio <= 3, `the threads of removed elements took ${ratio.toFixed(1)} times as long`);
 });
+
+const INTRO = ['<h2>Introduction</h2>', '<p>Why transfers matter.</p>'];
+const INTRO2 = ['<h2>Introduction</h2>', '<p>Why transfers matter so much.</p>'];
+const MOTIVATION = ['<h2>Motivation</h2>', '<p>Transfers cost fuel.</p>'];
+const RESULTS = ['<h2>Results</h2>', '<p>Lower cost by a third.</p>'];
+const RESULTS2 = ['<h2>Results</h2>', '<p>Fuel use drops sharply.</p>'];
+const OUTLOOK = ['<h2>Outlook</h2>', '<p>Next we try NRHOs.</p>'];
+const OUTLOOK2 = ['<h2>Outlook</h2>', '<p>Next we try NRHOs and DROs.</p>'];
+const METHOD = ['<h2>Method</h2>', '<p>We use a shooting method.</p>'];
+const QUESTIONS = ['<h2>Questions?</h2>'];
+
+test('a slide edited in place keeps its threads next to slides inserted, removed, moved, or edited in place in the same operation', async (t) => {
+  const BACKDROP = '<div class="backdrop" data-backdrop="orbits"></div>';
+  // the items are the thread of the slide that holds inside, then those of its elements in order.
+  // an element given by its text keeps its thread, and one given as null stays on the slide
+  const stays = (after, r, inside, ...elements) => {
+    const slide = slideAround(after, after.indexOf(inside));
+    assert.ok(slide, `${inside} is on a slide`);
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+    elements.forEach((what, k) => {
+      const it = r.items[k + 1];
+      assert.deepEqual(it.slide, slide, JSON.stringify(it));
+      if (what) {
+        reads(after, it.anchor, what);
+        assert.equal(it.removed, undefined);
+      } else assert.ok(it.anchor && it.anchor.start >= slide.start, JSON.stringify(it));
+    });
+  };
+  const cases = {
+    'two neighbors rewritten under their headings, and another slide edited': [
+      deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS),
+      deck(INTRO2, ['<h2>Motivation</h2>', '<p>Fuel is expensive.</p>'], RESULTS2, OUTLOOK, QUESTIONS),
+    ],
+    'a new slide inserted after it': [deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS), deck(INTRO, MOTIVATION, RESULTS2, METHOD, OUTLOOK, QUESTIONS)],
+    'a new slide inserted before it': [deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS), deck(INTRO, MOTIVATION, METHOD, RESULTS2, OUTLOOK, QUESTIONS)],
+    'the slide after it removed': [deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS), deck(INTRO, MOTIVATION, RESULTS2, QUESTIONS)],
+    'another slide moved to the front': [deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS), deck(OUTLOOK, INTRO, MOTIVATION, RESULTS2, QUESTIONS)],
+  };
+  for (const [name, [before, after]] of Object.entries(cases)) {
+    await t.test(name, () => {
+      const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<h2>Results'), onElement(before, '<p>Lower')]);
+      stays(after, r, 'Fuel use drops', '<h2>Results</h2>', null);
+    });
+  }
+  await t.test('a slide of a picture first, its text rewritten, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<img src="a.png">', '<p>Lower cost by a third.</p>'], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO2, MOTIVATION, ['<img src="a.png">', '<p>Fuel use drops sharply.</p>'], OUTLOOK, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<img'), onElement(before, '<p>Lower')]);
+    stays(after, r, 'Fuel use drops', '<img src="a.png">', null);
+  });
+  await t.test('a slide of a backdrop first, its text rewritten, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, [BACKDROP, ...RESULTS], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO2, MOTIVATION, [BACKDROP, ...RESULTS2], OUTLOOK, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<div class="backdrop"'), onElement(before, '<h2>Results'), onElement(before, '<p>Lower')]);
+    stays(after, r, 'Fuel use drops', BACKDROP, '<h2>Results</h2>', null);
+  });
+  await t.test('of three slides of one heading, one removed and one rewritten, the first in order keeps its threads on the rewritten slide', () => {
+    const r1 = ['<h2>Results</h2>', '<p>Cost.</p>'];
+    const before = deck(INTRO, r1, ['<h2>Results</h2>', '<p>Cost and time.</p>'], ['<h2>Results</h2>', '<p>Cost, time, and risk.</p>'], QUESTIONS);
+    const after = deck(INTRO2, r1, ['<h2>Results</h2>', '<p>We also found a family of orbits.</p>'], QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Cost and time'), onElement(before, '<p>Cost and time'), onSlide(before, 'Cost, time')]);
+    const slide = slideAround(after, after.indexOf('We also found'));
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+    assert.deepEqual(r.items[1].slide, slide);
+    assert.equal(r.items[2].anchor, null);
+    assert.ok(r.items[2].removed, JSON.stringify(r.items[2]));
+  });
+});
+
+test('a slide whose first element is rewritten in an operation that edits another slide is removed, although its picture is kept', () => {
+  const before = deck(INTRO, MOTIVATION, ['<p>Lower cost by a third.</p>', '<img src="a.png">'], OUTLOOK, QUESTIONS);
+  const after = deck(INTRO2, MOTIVATION, ['<p>Fuel use drops sharply.</p>', '<img src="a.png">'], OUTLOOK, QUESTIONS);
+  const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<img')]);
+  assert.equal(r.items[0].anchor, null);
+  assert.equal(r.items[1].anchor, null);
+});
