@@ -698,6 +698,35 @@ test('a slide edited in place keeps its threads next to slides inserted, removed
   });
 });
 
+test('a slide replaced by another without words in one operation hands its threads to the deck, unless the two hold the same elements', async (t) => {
+  const gone = (before, inside, r, k) => {
+    const s = slideAround(before, before.indexOf(inside));
+    const whole = before.slice(s.start, before.indexOf('</section>', s.start) + 10);
+    assert.deepEqual(r.items[k], { anchor: null, slide: null, removed: { text: whole } });
+  };
+  await t.test('a slide of text replaced by a slide of a picture, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<img src="orbit.png">'], OUTLOOK2, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Lower cost'), onElement(before, '<h2>Results'), onElement(before, '<p>Lower')]);
+    gone(before, 'Lower cost', r, 0);
+    for (const k of [1, 2]) assert.equal(r.items[k].anchor, null, JSON.stringify(r.items[k]));
+  });
+  await t.test('an empty slide replaced by a slide of other elements without words, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<h2></h2>'], OUTLOOK2, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<p></p>', '<img src="x.png">'], OUTLOOK, QUESTIONS);
+    const r = move(before, after, [onSlide(before, '<h2></h2>'), onElement(before, '<h2></h2>')]);
+    gone(before, '<h2></h2>', r, 0);
+    assert.equal(r.items[1].anchor, null, JSON.stringify(r.items[1]));
+  });
+  await t.test('a slide emptied into the same elements, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<h2></h2>', '<p></p>'], OUTLOOK2, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'Lower cost')]);
+    const slide = slideAround(after, after.indexOf('<h2></h2>'));
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+  });
+});
+
 test('a slide whose first element is rewritten in an operation that edits another slide is removed, although its picture is kept', () => {
   const before = deck(INTRO, MOTIVATION, ['<p>Lower cost by a third.</p>', '<img src="a.png">'], OUTLOOK, QUESTIONS);
   const after = deck(INTRO2, MOTIVATION, ['<p>Fuel use drops sharply.</p>', '<img src="a.png">'], OUTLOOK, QUESTIONS);
