@@ -440,6 +440,29 @@ test('the merge of an apply in a session moves a deletion off an insertion of an
   }
 });
 
+// x interleaves 40 distinct letters with U, and y the same letters with V, followed by 500 V. each
+// part between two runs in common has sides of over 500 units that charEdits() cannot diff
+test('fine() of a chain of parts that charEdits() cannot diff costs no more than a paste at the cap of anchored()', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+  const median = (f, t) => {
+    fine(f, t);
+    const times = [];
+    for (let i = 0; i < 7; i++) {
+      const t0 = performance.now();
+      fine(f, t);
+      times.push(performance.now() - t0);
+    }
+    return times.sort((a, b) => a - b)[3];
+  };
+  const letters = Array.from({ length: 40 }, (_, i) => String.fromCharCode(0x4e00 + i));
+  const chain = () => median(wrap(`<p>${letters.join('U')}U</p>`), wrap(`<p>${letters.join('V')}V${'V'.repeat(500)}</p>`));
+  const cap = () => median(wrap(`<p>${PARA}</p>`), wrap(`<p>${rep(PROSE, 3_194)}${PARA}C</p>`));
+  let ratio = Infinity;
+  for (let i = 0; i < 3 && ratio >= 4; i++) ratio = chain() / cap();
+  assert.ok(ratio < 4, `the chain costs ${ratio.toFixed(1)} times a paste of 3,194 characters`);
+});
+
 test('with twice, the same letter typed at one point by two people is kept twice, and the same replacement of a word by two people once', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const twice = (p0, ps, pt) => {
