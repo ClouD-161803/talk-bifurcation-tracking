@@ -793,6 +793,40 @@ test('a comments.json that cannot be renamed over refuses a comment at once, let
   assert.equal(saved().seen[ann.person], 6);
 });
 
+test('a delayed write that keeps failing logs one line at the first failure and one when the file is written again', { timeout: 60_000 }, async (t) => {
+  const dir = sessionDir(t);
+  const file = join(dir, 'comments.json');
+  const { renameSync } = fs;
+  let held = true;
+  let tries = 0;
+  fs.renameSync = (from, to) => {
+    if (String(to) === file) {
+      tries++;
+      if (held) throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+    }
+    return renameSync(from, to);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.renameSync = renameSync;
+    syncBuiltinESMExports();
+  });
+  const { comments, logged } = open(dir, DECK, { every: 10 });
+  const failing = (n) => logged.filter((m) => m.startsWith(`could not write ${file}, trying again`)).length === n;
+  for (const time of [1, 2]) {
+    held = true;
+    tries = 0;
+    comments.seen(BO, time);
+    await until(() => tries >= 4, 'four tries of the delayed write');
+    assert.ok(failing(time), logged.join('\n'));
+    held = false;
+    await until(() => readJson(file)?.seen[BO] === time, 'the read time to be written');
+    await comments.idle();
+    assert.equal(logged.filter((m) => m === `wrote ${file} again`).length, time, logged.join('\n'));
+  }
+  assert.equal(logged.length, 4, logged.join('\n'));
+});
+
 // the comments of a session through its requests. the folder is removed after the edit command
 // stops, unless it is kept for a later session
 async function session(t, folder = talkFolder(t), keep = false) {
