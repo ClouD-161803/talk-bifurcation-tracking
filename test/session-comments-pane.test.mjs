@@ -14,7 +14,7 @@ import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
-import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
+import { post as request, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
@@ -1293,6 +1293,36 @@ test('a letter typed by another person before the anchors of many threads does n
   assert.ok((await changes()) <= none, 'the changes of the pane with 60 threads are not more than with none');
   clean(a);
   clean(b);
+});
+
+test('the label of a thread on a citation shows its new number as soon as the citation on the slide does', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const dir = 'test/pages/tex-sheets';
+  const folder = talkFolder(t, readFileSync(`${dir}/index.html`, 'utf8').replaceAll('../../../theme/', 'theme/'));
+  for (const name of ['preamble.tex', 'references.bib', 'tex.js', 'defs.tex', 'mymath.sty']) cpSync(join(dir, name), join(folder.talk, name));
+  for (const name of ['theme', 'brand']) cpSync(resolve(name), join(folder.talk, name), { recursive: true });
+  const edit = await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config } });
+  t.after(async () => {
+    await stopEdit(edit);
+    rmSync(folder.root, { recursive: true, force: true });
+  });
+  const a = await open(browser, sessionUrl(edit), { name: 'Ann' });
+  await openPane(a);
+  await show(a, 'Citations');
+  const cite = `document.querySelector('.reveal .slides cite[data-key="gomez2004"]')`;
+  await a.evaluate(`window.BeesonEditor.exec('insert.comment', { kind: 'element', target: ${cite} })`);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await type(a, 'On the paper of Gomez');
+  await click(a, `${PANE} .draft .actions .primary`);
+  await sees(a, THREADS, [{ anchor: 'On Citation: 2', texts: ['On the paper of Gomez'] }]);
+  // another person cites a paper before it, after which the edit command writes tex.js again
+  const bo = (await request(edit.port, `${edit.base}.session/hello`, { name: 'Bo' })).json();
+  const at = bo.text.indexOf('<p>A heteroclinic') + 3;
+  assert.equal((await request(edit.port, `${edit.base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at, text: 'First<cite data-key="szebehely1967"></cite> ' }] })).status, 200);
+  await sees(a, `${cite}.dataset.n`, '3', 'the number of the citation on the slide', 30_000);
+  await sees(a, THREADS, [{ anchor: 'On Citation: 3', texts: ['On the paper of Gomez'] }], 'the thread in the pane', 1500);
+  clean(a, [/404/]);
 });
 
 test('a thread that a person only replied to is listed under For You, and a later reply of another person is unread for them', { timeout: 300_000 }, async (t) => {
