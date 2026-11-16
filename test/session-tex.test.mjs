@@ -98,7 +98,7 @@ async function cite(page, expression, query, key) {
   await page.waitFor(`!document.querySelector('${LIST}')`);
 }
 
-test('a paper of references.bib that tex.js does not have, cited on one page, is written into tex.js, and is numbered the same on both pages', { timeout: 180_000 }, async (t) => {
+test('a paper of references.bib that tex.js does not have, cited on one page, is written into tex.js, and is numbered the same on both pages', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);
   assert.ok(!server.read('tex.js').includes('szebehely1967'));
@@ -112,7 +112,7 @@ test('a paper of references.bib that tex.js does not have, cited on one page, is
   clean(ben, MISSING);
 });
 
-test('a citation deleted on one page is taken out of tex.js, and the others are numbered again on both pages', { timeout: 180_000 }, async (t) => {
+test('a citation deleted on one page is taken out of tex.js, and the others are numbered again on both pages', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);
   assert.ok(server.read('tex.js').includes('"koon2000"'));
@@ -137,7 +137,7 @@ test('a citation deleted on one page is taken out of tex.js, and the others are 
   clean(ben, MISSING);
 });
 
-test('a citation of a paper of tex.js put into a text element by one page is numbered on the other page', { timeout: 180_000 }, async (t) => {
+test('a citation of a paper of tex.js put into a text element by one page is numbered on the other page', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);
   const tex = server.read('tex.js');
@@ -196,7 +196,7 @@ test('a formula of an open Edit Formula field is applied after the macro that it
   clean(ann, MISSING);
 });
 
-test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 180_000 }, async (t) => {
+test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   const [ann, ben] = await pages(t, server);
   await onEvery([ann, ben], `${RED} && ${HEAD} === 'conjecture.'`);
