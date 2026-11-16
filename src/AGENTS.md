@@ -4,7 +4,7 @@ The rules below are for work on the template itself: the theme, the editor, the 
 
 ## Bundles and vendored files
 
-- The theme is compiled from `src/main.ts` into `theme/beeson.js`. The editor is compiled from `src/editor/main.ts` into `theme/editor.js`. The preamble and bibliography sheets are compiled from `src/editor/tex/sheets.ts` into `theme/editor-tex.js`, which is loaded when a sheet or the bibliography list is first opened. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
+- The theme is compiled from `src/main.ts` into `theme/beeson.js`. The editor is compiled from `src/editor/main.ts` into `theme/editor.js`. The preamble and bibliography sheets are compiled from `src/editor/tex/sheets.ts` into `theme/editor-tex.js`, which is loaded when a sheet or the bibliography list is first opened. The renderer of PDF figures is compiled from `src/editor/pdf/render.ts` into `theme/editor-pdf.js`, which the editor loads with `theme/vendor/pdfjs/pdf.js` at the first PDF, and which `npm run tex` loads into Chrome. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
 - Keep the editor out of `theme/beeson.js`. Nothing of the editor is loaded in decks opened without `edit`.
 - Keep `theme/editor.js` under the budget in `test/build.test.mjs`. The editor is loaded from this file at each `edit`.
 - The session client is compiled from `src/session/client/main.ts` into `theme/session.js`. The edit command is compiled from `src/edit/main.ts` into `theme/edit.mjs`. Keep both under their budgets in `test/build.test.mjs`. `theme/session.js` is loaded at each `edit` with `session`.
