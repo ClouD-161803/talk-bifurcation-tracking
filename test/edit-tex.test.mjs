@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -70,8 +70,13 @@ test('a write of index.html that cites another paper writes tex.js, and one that
   assert.equal(f.read('tex.js'), deckTex(join(f.dir, 'index.html')).text);
   assert.equal(seen.changes, 1);
   const at = f.at('tex.js');
+  // a references.bib that cannot be read, with the signature that it had, which a derivation would log
+  const lines = seen.log.length;
+  chmodSync(join(f.dir, 'references.bib'), 0o000);
   w.written(CITED.replace('Citations', 'The citations'));
-  await twoPolls(w);
+  await w.idle();
+  chmodSync(join(f.dir, 'references.bib'), 0o644);
+  assert.deepEqual(seen.log.slice(lines), [], 'a write of index.html that cites the same papers does not derive tex.js');
   assert.equal(f.at('tex.js'), at);
   assert.equal(seen.changes, 1);
 });
