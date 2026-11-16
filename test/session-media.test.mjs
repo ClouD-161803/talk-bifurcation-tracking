@@ -8,7 +8,7 @@
 // or refused
 
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, request as httpRequest } from 'node:http';
 import { join, resolve } from 'node:path';
@@ -396,6 +396,62 @@ test('the page and Match the Mode of a PDF figure of the deck are changed in a s
   await ben.waitFor(`document.querySelectorAll('.reveal .slides img[data-pdf="media/figure.pdf"][data-page="2"]').length === 2`);
   clean(ann);
   clean(ben);
+});
+
+// a PDF of one page of 1920 by 1080 pt that shows noise of 3840 by 2160 px without compression,
+// hence a file of 25 MB whose render in the colors of the PDF is a PNG over 16 MB
+function noisePdf() {
+  const [w, h] = [3840, 2160];
+  const pixels = randomBytes(w * h * 3);
+  const content = 'q 1920 0 0 1080 0 0 cm /Im0 Do Q';
+  const objects = [
+    ['<< /Type /Catalog /Pages 2 0 R >>'],
+    ['<< /Type /Pages /Kids [3 0 R] /Count 1 >>'],
+    ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1920 1080] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'],
+    [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${pixels.length} >>\nstream\n`, pixels, '\nendstream'],
+    [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`],
+  ];
+  const parts = [Buffer.from('%PDF-1.4\n')];
+  let length = parts[0].length;
+  const offsets = objects.map((o, i) => {
+    const at = length;
+    for (const part of [`${i + 1} 0 obj\n`, ...o, '\nendobj\n']) {
+      const bytes = Buffer.isBuffer(part) ? part : Buffer.from(part);
+      parts.push(bytes);
+      length += bytes.length;
+    }
+    return at;
+  });
+  const xref = offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  parts.push(Buffer.from(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${xref}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`));
+  return Buffer.concat(parts);
+}
+
+// a talk whose slide Two holds a PDF figure of pdf in both modes
+async function figureTalk(t, pdf) {
+  const server = await talk(t);
+  leftover(server, 'figure.pdf', pdf);
+  leftover(server, 'figure-dark.png', DARK);
+  leftover(server, 'figure-light.png', LIGHT);
+  writeOutside(server, '<img class="for-dark" src="media/figure-dark.png" data-pdf="media/figure.pdf" alt="A plot">\n  <img class="for-light" src="media/figure-light.png" data-pdf="media/figure.pdf" alt="A plot">');
+  return server;
+}
+
+test('a render of a PDF figure over 16 MB is refused in a session with its reason, and the deck and media/ are kept', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await figureTalk(t, noisePdf());
+  const ann = await tab(browser, sessionUrl(server.edit));
+  const before = await converge(server, [ann]);
+  const files = media(server);
+  await show(ann, 'Two');
+  await click(ann, await middle(ann, '.reveal .slides img[data-pdf]'));
+  // without Match the Mode, the figure is one render of the noise in the colors of the PDF
+  const answer = await run(ann, 'media.matchMode', 'undefined');
+  assert.match(answer, /^figure\.png is larger than 16 MB/, answer);
+  assert.equal(await converge(server, [ann]), before);
+  assert.deepEqual(media(server), files);
+  clean(ann);
 });
 
 test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px, and once in the title of a screen of 1440 px', { timeout: 360_000 }, async (t) => {
