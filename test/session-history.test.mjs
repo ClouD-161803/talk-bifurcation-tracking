@@ -15,7 +15,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
-import { click, press, type, typeKeys } from './helpers/editor.mjs';
+import { click, drag, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
 import { BUBBLE, leave, LOCKED, select, session } from './helpers/presence.mjs';
 import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
@@ -1312,8 +1312,8 @@ test('while Version History is open, every inert part of the editor but the canv
   await ann.waitFor(`document.documentElement.classList.contains('beeson-notes')`);
   await ann.evaluate(DIMMED(true));
   await openPane(ann);
-  // the edge of the navigator is drawn only under the pointer, and the canvas holds the slide
-  const undimmed = `[...document.querySelectorAll('[inert]')].filter((e) => e.getClientRects().length && !e.closest('.beeson-edit-canvas, .reveal, .beeson-edit-nav-edge') && Number(getComputedStyle(e).opacity) === 1).map((e) => e.classList[0])`;
+  // the edge of the navigator is drawn only under the pointer, and the canvas and its layers hold the slide
+  const undimmed = `[...document.querySelectorAll('[inert]')].filter((e) => e.getClientRects().length && !e.closest('.beeson-edit-canvas, .reveal, .beeson-edit-nav-edge, .beeson-overlay, .beeson-line-layer, .beeson-table-bars') &&Number(getComputedStyle(e).opacity) === 1).map((e) => e.classList[0])`;
   assert.deepEqual(await ann.evaluate(undimmed), []);
   assert.deepEqual((await ann.evaluate(DIMMED(false))).sort(), ['beeson-edit-bottom inert', 'beeson-edit-menubar inert', 'beeson-edit-nav inert', 'beeson-edit-objects inert', 'beeson-edit-pane inert', 'beeson-edit-top inert']);
   await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Changed')`);
@@ -1647,5 +1647,53 @@ test('the Objects pane open when Version History is opened is inert and dimmed u
   await click(ann, at);
   await ann.waitFor(`${TEXT} !== ${JSON.stringify(before)}`);
   assert.equal((await ann.evaluate(TEXT)).split('data-locked').length, before.split('data-locked').length + 1);
+  clean(ann);
+});
+
+// the east grip of the paragraph of the first slide
+const GRIP = `[...document.querySelectorAll('.beeson-overlay .beeson-grip')].find((g) => {
+  const r = g.getBoundingClientRect();
+  const p = ${el(0, 'p')}.getBoundingClientRect();
+  return g.getClientRects().length && g.dataset.handle === 'e' && r.top + r.height / 2 >= p.top && r.top + r.height / 2 <= p.bottom;
+})`;
+const LAYERS = `['.beeson-overlay', '.beeson-line-layer', '.beeson-table-bars'].map((s) => document.querySelector(s).inert)`;
+
+// the waits are 60 s for the edit command to start, 15 s for the page, 20 s for each converge, 15 s
+// for each of the grip, the pane, and the preview row, 30 s for the preview, and 15 s for each of
+// the end of the mode and the resize
+test('while Version History is open, the layers of the grips, of the ends of lines, and of the bars of tables are inert, a drag of a grip of the selected paragraph leaves the deck and index.html as they were, and the preview of a version takes the pointer, and the grip resizes the paragraph once Version History is left', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await caretAtEnd(ann, el(0, 'h2'));
+  await type(ann, ' x');
+  await converge(server, [ann]);
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Typed' }).then(() => true)`);
+  await ann.evaluate(`${C}.app.selection.set('elements', [${el(0, 'p')}]), true`);
+  await ann.waitFor(`!!(${GRIP})`);
+  assert.deepEqual(await ann.evaluate(LAYERS), [false, false, false]);
+  const before = await ann.evaluate(TEXT);
+  const file = server.read();
+  await openPane(ann);
+  const mode = { layers: await ann.evaluate(LAYERS), grip: await ann.evaluate(HIT(GRIP)) };
+  await drag(ann, await centerOf(ann, GRIP), { dx: 60 });
+  await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Typed')`);
+  await ann.waitFor(`!!${FRAME}?.contentDocument?.querySelector('[data-beeson-changed]')`, 30_000);
+  mode.preview = await ann.evaluate(HIT(FRAME));
+  await press(ann, 'Escape');
+  await ann.waitFor(`!(${SHOWN})`);
+  await converge(server, [ann]);
+  mode.deck = (await ann.evaluate(TEXT)) === before;
+  mode.file = server.read() === file;
+  assert.deepEqual(mode, { layers: [true, true, true], grip: false, preview: true, deck: true, file: true });
+  assert.deepEqual(await ann.evaluate(LAYERS), [false, false, false]);
+  // the focus goes back to the heading, which takes the selection
+  await ann.evaluate(`${C}.app.selection.set('elements', [${el(0, 'p')}]), true`);
+  await ann.waitFor(`!!(${GRIP})`);
+  await drag(ann, await centerOf(ann, GRIP), { dx: 60 });
+  await ann.waitFor(`${TEXT} !== ${JSON.stringify(before)}`);
+  await converge(server, [ann]);
+  assert.match(server.read(), /<p style="[^"]*width: \d+px[^"]*">First slide<\/p>/);
   clean(ann);
 });
