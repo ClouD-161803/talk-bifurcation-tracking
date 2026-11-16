@@ -336,8 +336,9 @@ export class Client {
   }
 
   private unkept(): boolean {
-    // a change that is not read yet is in neither the replica nor the copy
-    return !this.acked() && !this.ended && (this.dirty || !keeps(this));
+    // a change that is not read yet is in neither the replica nor the copy. before the join, the copy
+    // is read from the deck, and join.ts checks again after each change
+    return !this.acked() && !this.ended && ((this.dirty && !!this.sync) || !keeps(this));
   }
 
   // resolves once every edit of this page is acknowledged, which is a save in a session

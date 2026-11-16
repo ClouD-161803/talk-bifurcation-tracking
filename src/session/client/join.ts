@@ -149,7 +149,11 @@ export async function join(client: Client, text: string, v: string, copy: Copy |
   };
   // until hello is answered, copy.ts keeps the edits typed since the load, read again after a change
   let early: Copy | null | undefined;
-  client.port.onChange(() => (early = undefined));
+  // the listener of the client ran before this one, with the copy before the change
+  client.port.onChange(() => {
+    early = undefined;
+    if (!client.snapshot()) client.refresh();
+  });
   beforeJoin(client, () => {
     if (early !== undefined) return early;
     let deck: string;
