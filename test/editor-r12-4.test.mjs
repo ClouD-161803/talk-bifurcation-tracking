@@ -193,7 +193,7 @@ for (const platform of PLATFORMS) {
       await waitText(page, 'media/figure-light.png');
       await frames(page);
       const edited = await render(page);
-      assert.match(edited, /<img src="media\/figure-dark.png" class="for-dark">\s*<img class="for-light" src="media\/figure-light.png"/);
+      assert.match(edited, /<img src="media\/figure-dark.png" class="for-dark">\s*<img src="media\/figure-light.png" class="for-light">/);
       assert.equal(edited.split('<figure').length, before.split('<figure').length, 'the file was added as a new figure');
       assert.equal(await page.evaluate(`[...document.querySelectorAll('.reveal section.present img.for-light')].filter((e) => e.getBoundingClientRect().width > 0).length`), 1);
       await undo(page);

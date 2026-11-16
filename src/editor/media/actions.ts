@@ -165,13 +165,14 @@ export const pdfText = (pdf: Pdf, attrs: Record<string, string> = {}, classes: s
 // the classes of an image of a pair that name or recolor its file, which its twin does not share
 const OWN_CLASSES = ['for-dark', 'for-light', 'white-figure', 'invert'];
 
-// the tag of the twin of el for mode, with the file src, and with every attribute, class, and
-// declaration of el that the two images share
-function twinText(app: App, el: Element, mode: 'dark' | 'light', src: string): string {
+// the tag of the twin of the image or video el for mode, with the attributes files, and with every
+// attribute, class, and declaration of el that the two pictures share. a null in files takes the
+// attribute off
+function twinText(app: App, el: Element, mode: 'dark' | 'light', files: Record<string, string | null>): string {
   const state = app.doc.tagState(el);
-  const attrs: Record<string, string> = { ...state.attrs, class: [`for-${mode}`, ...state.classes.filter((c) => !OWN_CLASSES.includes(c))].join(' '), src };
-  delete attrs.srcset;
-  return `<img${Object.entries(attrs).map(([k, v]) => (v ? ` ${k}="${attr(v)}"` : ` ${k}`)).join('')}>`;
+  const attrs: Record<string, string | null> = { ...state.attrs, class: [`for-${mode}`, ...state.classes.filter((c) => !OWN_CLASSES.includes(c))].join(' '), srcset: null, ...files };
+  const text = Object.entries(attrs).filter(([, v]) => v !== null).map(([k, v]) => (v ? ` ${k}="${attr(v)}"` : ` ${k}`)).join('');
+  return el.localName === 'video' ? `<video${text}></video>` : `<img${text}>`;
 }
 
 function mediaText(r: Ready, classes: string[] = [], attrs: Record<string, string> = {}): string {
@@ -284,7 +285,7 @@ export async function setPdf(app: App, el: HTMLImageElement, pdf: Pdf, label: st
   const file = (m: Mode) => pdf.renders.find((r) => r.mode === m)!.file;
   setFiles(app, el, { ...shared, src: file(mode).path }, label, { ...plain, 'for-dark': mode === 'dark', 'for-light': mode === 'light' });
   if (twin) return setFiles(app, twin, { src: file(other).path }, label, plain);
-  const pending = app.doc.insert(twinText(app, el, other, file(other).path), el.parentElement!, el.nextElementSibling, label);
+  const pending = app.doc.insert(twinText(app, el, other, { src: file(other).path }), el.parentElement!, el.nextElementSibling, label);
   media.resolve(el.parentElement!);
   for (const node of await pending) {
     media.resolve(node);
@@ -330,14 +331,11 @@ export async function replaceFile(app: App, el: HTMLImageElement | HTMLVideoElem
     if (!held) app.selection.set('elements', [node]);
   };
   await app.history.selecting(label, async () => {
-    // a file put onto a picture that the mode hides is its twin for the mode shown, at its size
+    // a file put onto a picture that the mode hides is its twin for the mode shown, which is not a
+    // render of the PDF of el
     if (pair && el.parentElement) {
-      const own = app.doc.tagState(el);
-      const size = Object.entries(own.style).filter(([k]) => k === 'width' || k === 'height').map(([k, v]) => `${k}: ${v}`).join('; ');
-      const attrs: Record<string, string> = {};
-      if (el.hasAttribute('alt')) attrs.alt = el.getAttribute('alt')!;
-      if (size) attrs.style = size;
-      const pending = app.doc.insert(mediaText(r, [`for-${pair}`], attrs), el.parentElement, el.nextElementSibling, label);
+      const files = { src: r.file.path, poster: r.poster?.path ?? null, 'data-pdf': null, 'data-page': null };
+      const pending = app.doc.insert(twinText(app, el, pair, files), el.parentElement, el.nextElementSibling, label);
       media.resolve(el.parentElement);
       const [node] = await pending;
       media.resolve(node);
