@@ -978,3 +978,17 @@ test('a change of the history while the edit command stops is refused', { timeou
   assert.equal(status, 503);
   await stopped;
 });
+
+test('a change of index.html from outside is a version of its own, and the version before it holds the text of the people', { timeout: 60_000 }, (t) => {
+  const { authority, history } = open(sessionDir(t), DECK);
+  replace(authority, 'Two', 'Zwei', 'file');
+  replace(authority, 'One', 'Uno', ANN);
+  const typed = authority.text;
+  replace(authority, 'Uno', 'Eins', 'file');
+  replace(authority, 'Zwei', 'Zwo', 'file');
+  replace(authority, 'Zwo', 'Deux', BO);
+  history.stopSync();
+  const { versions } = history.list();
+  assert.deepEqual(versions.map((v) => v.authors), [[BO], ['file'], [ANN], ['file'], []]);
+  assert.equal(history.textOf(versions[2].id), typed);
+});
