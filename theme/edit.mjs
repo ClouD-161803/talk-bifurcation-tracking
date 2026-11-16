@@ -1568,12 +1568,11 @@ function closePairs(a, b) {
   return out;
 }
 function keyOf(x) {
-  const kids = childrenOf(x);
-  const c = kids[0];
+  const c = childrenOf(x)[0];
   const first2 = c ? words(x.slice(c.start, c.end)) : "";
-  return { bare: !words(x), tags: kids.map((k) => k.name).join(" "), first: first2, tag: c && !first2 ? x.slice(c.start, c.open) : "" };
+  return { bare: !words(x), name: c?.name ?? "", first: first2, tag: c && !first2 ? x.slice(c.start, c.open) : "" };
 }
-var sameSlide = (x, y) => x.bare || y.bare ? x.tags === y.tags : x.first ? x.first === y.first : !y.first && x.tag !== "" && x.tag === y.tag;
+var sameSlide = (x, y) => x.bare || y.bare ? x.name === y.name : x.first ? x.first === y.first : !y.first && x.tag !== "" && x.tag === y.tag;
 function pairInPlace(to, m, textA, textB) {
   const n = to.length;
   const used = new Uint8Array(m);

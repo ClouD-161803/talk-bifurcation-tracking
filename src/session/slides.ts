@@ -189,19 +189,18 @@ function closePairs(a: string[], b: string[]): [number, number][] {
 }
 
 // what sameSlide reads of a slide, given as its text
-type Key = { bare: boolean; tags: string; first: string; tag: string };
+type Key = { bare: boolean; name: string; first: string; tag: string };
 function keyOf(x: string): Key {
-  const kids = childrenOf(x);
-  const c = kids[0];
+  const c = childrenOf(x)[0];
   const first = c ? words(x.slice(c.start, c.end)) : '';
-  return { bare: !words(x), tags: kids.map((k) => k.name).join(' '), first, tag: c && !first ? x.slice(c.start, c.open) : '' };
+  return { bare: !words(x), name: c?.name ?? '', first, tag: c && !first ? x.slice(c.start, c.open) : '' };
 }
 
 // true when two slides, given by their keys, are one slide edited in place. when one is without
-// words, both hold children of the same names in the same order. otherwise the words of their first
-// children are equal and not empty, or both first children are without words and have equal start
-// tags, e.g. the same picture or the same backdrop
-const sameSlide = (x: Key, y: Key) => (x.bare || y.bare ? x.tags === y.tags : x.first ? x.first === y.first : !y.first && x.tag !== '' && x.tag === y.tag);
+// words, their first children have the same name, e.g. a picture that gains a caption or an empty
+// heading that is filled. otherwise the words of their first children are equal and not empty, or
+// both first children are without words and have equal start tags, e.g. the same backdrop
+const sameSlide = (x: Key, y: Key) => (x.bare || y.bare ? x.name === y.name : x.first ? x.first === y.first : !y.first && x.tag !== '' && x.tag === y.tag);
 
 // pairs in to, where to[i] is the slide of b paired with slide i of a or -1, the slides left out on
 // both sides that are one slide edited in place. a slide of a left out is paired with the first
