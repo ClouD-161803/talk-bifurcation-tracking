@@ -258,6 +258,69 @@ test('a program that changes a line read after a person typed in it keeps the ty
   }
 });
 
+// numbers in [0, 1) from a seed, so that a failed case is run again by its seed
+function random(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 2 ** 32;
+  };
+}
+
+test('a program that changes a text written during a chain of insertions keeps each insertion once', { timeout: 300_000 }, async (t) => {
+  const start = ['<!doctype html>', '<html>', '<body>', ...Array.from({ length: 4 }, (_, i) => `<p>the ${'quick brown fox jumps over the lazy dog '.slice(i * 4)}line ${'abcd'[i]}</p>`), '</body>', '</html>', ''].join('\n');
+  for (const seed of Array.from({ length: 24 }, (_, i) => i + 1)) {
+    const next = random(seed), pick = (n) => Math.floor(next() * n);
+    const { file, authority, disk } = setup(t, start, { quiet: 5, latest: 20, poll: 20 });
+    disk.start();
+    // whether each character of the text was typed, and an offset inside a random paragraph of
+    // the ones that a filter lets through
+    let typed = Array.from(start, () => false);
+    const spot = (allowed) => {
+      const paragraphs = [...authority.text.matchAll(/<p>([^\n]*)<\/p>/g)].filter((_, i) => allowed(i)), p = paragraphs[pick(paragraphs.length)];
+      return p.index + 3 + pick(p[1].length + 1);
+    };
+    // the insertions are upper case, and the change of the program puts digits over lower case
+    // characters that were not typed, in one to three places apart from each other, and not in
+    // the paragraph free. the insertions after the read go into the paragraphs that the change
+    // leaves alone, since a change of a line wins over an edit of the session in this line. hence
+    // each part of the merged text has one source
+    const count = 3 + pick(6), read = pick(count + 1), free = pick(4);
+    const near = (at, c) => at >= c.start - 1 && at <= c.end + 1;
+    const paragraphOf = (at) => authority.text.slice(0, at).split('<p>').length - 2;
+    const change = [], changed = new Set();
+    let theirs = null;
+    for (let k = 0; ; k++) {
+      if (k === read) {
+        for (let places = 1 + pick(3); change.length < places; ) {
+          const at = spot((i) => i !== free), end = at + pick(5), text = '0123456789'.slice(pick(5), 5 + pick(5));
+          if (end === at && !text) continue;
+          if (!/^[a-z ]*$/.test(authority.text.slice(at, end)) || typed.slice(at, end).some(Boolean)) continue;
+          if (change.some((c) => near(at, c) || near(end, c) || (at < c.start && end > c.end))) continue;
+          change.push({ start: at, end, text });
+          changed.add(paragraphOf(at));
+        }
+        change.sort((x, y) => y.start - x.start);
+        theirs = change.reduce((text, c) => `${text.slice(0, c.start)}${c.text}${text.slice(c.end)}`, authority.text);
+      }
+      if (k === count) break;
+      const at = spot((i) => !changed.has(i));
+      const word = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(pick(26)).slice(0, 1 + pick(3));
+      typed = [...typed.slice(0, at), ...Array.from(word, () => true), ...typed.slice(at)];
+      for (const c of change) if (at < c.start) [c.start, c.end] = [c.start + word.length, c.end + word.length];
+      authority.enter([{ start: at, end: at, text: word }], 'Ann');
+      const text = authority.text;
+      await until(() => readFileSync(file, 'utf8') === text, `the write of insertion ${k + 1} of seed ${seed}`);
+    }
+    const head = authority.text, expected = change.reduce((text, c) => `${text.slice(0, c.start)}${c.text}${text.slice(c.end)}`, head);
+    writeFileSync(file, theirs);
+    await until(() => authority.text !== head && readFileSync(file, 'utf8') === authority.text, `the change of seed ${seed} to be merged`);
+    assert.equal(authority.text, expected, `seed ${seed}, ${count} insertions, read after ${read}`);
+    await disk.stop();
+  }
+});
+
 test('an agent that adds a paragraph after a person moved a slide 8 or 9 times keeps each slide once', { timeout: 120_000 }, async (t) => {
   const slides = Array.from({ length: 12 }, (_, i) => `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text of slide ${i}</p>\n</section>\n`);
   const deck = `<!doctype html>\n<html>\n<body>\n${slides.join('')}</body>\n</html>\n`;
