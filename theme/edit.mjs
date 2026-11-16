@@ -3228,7 +3228,10 @@ async function start(options = {}) {
   async function handle(request) {
     const prefix = `/${key}/`;
     if (!request.path.startsWith(prefix)) return error(404, "not found");
-    const rest = request.path.slice(prefix.length);
+    const response = await below(request, request.path.slice(prefix.length));
+    return { ...response, headers: { ...response.headers, "x-edit-command": "1" } };
+  }
+  async function below(request, rest) {
     if (rest.startsWith(".session/")) return api(rest.slice(".session/".length), request);
     if (request.method !== "GET" && request.method !== "HEAD") return error(405, "GET or HEAD");
     if (rest === "") return { status: 302, headers: { Location: "index.html" } };

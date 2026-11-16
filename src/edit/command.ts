@@ -394,10 +394,17 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     return { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'x-session-version': version }, body };
   }
 
+  // every answer below the key is marked, since a page that the edit command serves without
+  // x-session-version, e.g. another page of the talk folder, writes a hash of the key into a copy,
+  // see deckAddress() in src/editor/commands/origin.ts
   async function handle(request: Request): Promise<Response> {
     const prefix = `/${key}/`;
     if (!request.path.startsWith(prefix)) return error(404, 'not found');
-    const rest = request.path.slice(prefix.length);
+    const response = await below(request, request.path.slice(prefix.length));
+    return { ...response, headers: { ...response.headers, 'x-edit-command': '1' } };
+  }
+
+  async function below(request: Request, rest: string): Promise<Response> {
     if (rest.startsWith('.session/')) return api(rest.slice('.session/'.length), request);
     if (request.method !== 'GET' && request.method !== 'HEAD') return error(405, 'GET or HEAD');
     if (rest === '') return { status: 302, headers: { Location: 'index.html' } };
