@@ -474,6 +474,14 @@ test('the merge of an apply in a session does not move a deletion off an inserti
   assert.equal(mergeEdits(f, others, mine, 'ours', true, true).text, wrap('R&XD &amp; co'));
 });
 
+// the other person also deletes a letter of the word, which clashes with the deletion of the page
+test('the merge of an apply in a session keeps a paste, a word, or an Enter of another person right beside a word that the page deleted', () => {
+  const page = (from, seen, text) => mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text;
+  assert.equal(page('<p>Second item</p>', '<p>Second </p>', '<p>Second brand new iem</p>'), '<p>Second brand new </p>');
+  assert.equal(page('<p>Second item here</p>', '<p>Second  here</p>', '<p>Second iem, brand new here</p>'), '<p>Second , brand new here</p>');
+  assert.equal(page('<p>Second item</p>', '<p>Second </p>', '<p>Second iem</p><p></p>'), '<p>Second </p><p></p>');
+});
+
 // the edits of two words that replace one word interleave, and some of them do not clash, e.g. ial
 // at the end of First, which the page replaced by Opening
 test('the merge of an apply in a session keeps the word of the page whole where another person replaced the same word, as the replica does', () => {
