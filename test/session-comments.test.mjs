@@ -470,31 +470,33 @@ test('offline, the Comment command opens a draft, which is kept until the page i
 // thread, each as its label, whether it is disabled, and its tooltip
 const DRAFT = `(() => { const b = document.querySelector('${PANE} .draft .actions .primary'); return [b.disabled, b.title, document.querySelector('${PANE} .draft textarea').value]; })()`;
 
-// the hello held while the page joins, and let through even when it is sent after the release, and
-// the requests of the session answered with 502 by a proxy whose host has stopped
-for (const [state, cut, back] of [
-  ['joining', '', `__net.clear() && __net.release('/.session/hello')`],
-  ['no-host', `__net.rule('/.session/', 'answer', { status: 502 }) && __net.drop('/.session/')`, `__net.clear() && (${C}.tryNow(), true)`],
+// the hello held while the page joins, and let through even when it is sent after the release, the
+// requests of the session answered with 502 by a proxy whose host has stopped, and the hello refused
+// since the session is full. the page is online in each of them, hence the send button does not say
+// offline
+for (const [state, script, cut, back, why, ...refused] of [
+  ['joining', `__net.rule('/.session/hello', 'hold');`, '', `__net.clear() && __net.release('/.session/hello')`, 'Comments can be sent once you have joined'],
+  ['no-host', '', `__net.rule('/.session/', 'answer', { status: 502 }) && __net.drop('/.session/')`, `__net.clear() && (${C}.tryNow(), true)`, "Comments can be sent once the host's edit command runs", ...REFUSED],
+  ['full', `__net.rule('/.session/hello', 'answer', { status: 503, body: '{"error":"the session is full"}' });`, '', `__net.clear() && (${C}.tryNow(), true)`, 'The session is full. Comments can be sent once you have joined', /status of 503 .*\/\.session\/hello/],
 ]) {
-  test(`in the state ${state}, the Comment command opens a draft, which is kept until the page is online`, { timeout: 300_000 }, async (t) => {
+  test(`in the state ${state}, the Comment command opens a draft, whose send button says why it waits, and which is kept until the page is online`, { timeout: 300_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talk(t);
-    const held = state === 'joining' ? `__net.rule('/.session/hello', 'hold');` : '';
-    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `${NET}\n${held}`, wait: state !== 'joining' });
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `${NET}\n${script}`, wait: !script });
     if (cut) await a.evaluate(cut);
-    await a.waitFor(`${C}.connection === ${JSON.stringify(state)}`);
+    await a.waitFor(state === 'full' ? `${C}.connection === 'offline' && ${C}.full` : `${C}.connection === ${JSON.stringify(state)}`);
     await show(a, 'One');
     await caretAtEnd(a, el(0, 'h2'));
     assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: true, checked: null });
     await press(a, COMMENT_KEY);
     await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
     await type(a, `Written while ${state}`);
-    await sees(a, DRAFT, [true, OFFLINE, `Written while ${state}`]);
+    await sees(a, DRAFT, [true, why, `Written while ${state}`]);
     await a.evaluate(back);
     await a.waitFor(ONLINE);
     await sees(a, DRAFT, [false, '', `Written while ${state}`]);
-    clean(a, state === 'no-host' ? REFUSED : []);
+    clean(a, refused);
   });
 }
 
