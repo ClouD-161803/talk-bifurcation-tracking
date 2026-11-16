@@ -133,6 +133,14 @@ export function overlaps(a: Edit, b: Edit): boolean {
   return (a.start === a.end || b.start === b.end) && a.start <= b.end && b.start <= a.end;
 }
 
+// a and b clash when they share a character, or when one of them is an insertion strictly inside
+// the other, which is the rule of conflict() in src/session/patch.ts, by which the authority of a
+// session refuses an operation
+export function clash(a: Edit, b: Edit): boolean {
+  if (a.start < b.end && b.start < a.end) return true;
+  return (a.start === a.end && b.start < a.start && a.start < b.end) || (b.start === b.end && a.start < b.start && b.start < a.end);
+}
+
 // base with edits that do not overlap
 export function apply(base: string, edits: Edit[]): string {
   const sorted = [...edits].sort((a, b) => b.start - a.start || b.end - a.end);
@@ -165,11 +173,14 @@ export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours'
   return all && mergeEdits(base, ours, all, prefer);
 }
 
-// the same merge with the changes of the file, all, given as edits of base
-export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs'): Merge {
+// the same merge with the changes of the file, all, given as edits of base. with apart, an edit
+// and a change conflict only when they clash, and of two insertions at one point the change comes
+// first, as the authority of a session orders the operation that arrived first
+export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs', apart = false): Merge {
+  const hit = apart ? clash : overlaps;
   const others = all.filter((h) => !ours.some((o) => equal(o, h)));
-  const conflicts = ours.filter((o) => others.some((h) => overlaps(o, h)));
-  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => overlaps(o, h)));
+  const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
+  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => equal(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
 }
