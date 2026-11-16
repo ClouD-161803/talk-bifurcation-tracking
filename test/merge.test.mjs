@@ -1,13 +1,14 @@
 // the merge of the edits of the page with a file changed since it was read: the changes of the
 // file turn the text that was read into the file, edits and changes in different places are both
 // kept, an overlap is a conflict settled by prefer, and another file is not merged. the merge of a
-// session keeps two insertions at one point as the authority does, and revert() makes the change
-// of an entry of typing again over the edits of other people
+// session keeps two insertions at one point as the authority does, and gives the text of the
+// authority for pairs of edits of two people in one paragraph. revert() makes the change of an
+// entry of typing again over the edits of other people
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, changes, charEdits, clash, edits, merge, mergeEdits, revert } from '../src/editor/merge.ts';
-import { apply as applyPatches, conflict, shift } from '../src/session/patch.ts';
+import { apply, changes, charEdits, clash, edits, fine, merge, mergeEdits, revert } from '../src/editor/merge.ts';
+import { apply as applyPatches, conflict, diff, mergePatches, shift } from '../src/session/patch.ts';
 
 const base = ['<section>', '  <h2>One</h2>', '  <p>First slide</p>', '</section>', '<section>', '  <h2>Two</h2>', '  <p>Second slide</p>', '</section>', ''].join('\n');
 const at = (text, s) => {
@@ -267,4 +268,60 @@ test('a change within one line gives the edit of the line diff, more than half r
   assert.equal(changes('  <p>A paragraph of one line</p>\n', '  <p>A</p>\n'), null);
   const two = changes(deck, deck.replace('Line 1 of', 'Line one of').replace('Line 5 of', 'Line five of'));
   assert.deepEqual(two.map((e) => e.text), ['one', 'five']);
+});
+
+// pairs of edits of two people in one paragraph: the paragraph before, the unread edit of the
+// person, and the edit of the others that arrives first. the merge of an apply in a session, as
+// turn() of session.ts makes it, gives the text that the authority makes of the two operations
+const PAIRS = [
+  ['<p>Second slide</p>', '<p>Second Zslide</p>', '<p>Second <strong>slide</strong></p>'],
+  ['<p>Second slide</p>', '<p>Second Zslide</p>', '<p>Second <em>slide</em></p>'],
+  ['<p>Second slide</p>', '<p>Second slideZ</p>', '<p>Second <em>slide</em></p>'],
+  ['<p>Second slide</p>', '<p>Second slZide</p>', '<p>Second <a href="https://x.org">slide</a></p>'],
+  ['<p>Second strong slide</p>', '<p>Second Zstrong slide</p>', '<p>Second <strong>strong</strong> slide</p>'],
+  ['<p>Second me slide</p>', '<p>Second mZe slide</p>', '<p>Second <em>me</em> slide</p>'],
+  ['<p>Second em slide</p>', '<p>Second Zem slide</p>', '<p>Second <em>em</em> slide</p>'],
+  ['<p>Second em slide</p>', '<p>Second emZ slide</p>', '<p>Second <em>em</em> slide</p>'],
+  ['<p>Second slide</p>', '<p>Second <strong>slide</strong></p>', '<p>Second <em>slide</em></p>'],
+  ['<p>Second slide</p>', '<p>Second <strong>slide</strong></p>', '<p>Second <strong>slide</strong></p>'],
+  ['<p>Second <em>em</em></p>', '<p>Second em</p>', '<p>Second <em>eZm</em></p>'],
+  ['<p>Second slide</p>', '<p>Second&amp; slide</p>', '<p>SecondZ slide</p>'],
+  ['<p>Second cat</p>', '<p>Second c&amp;t</p>', '<p>Second caZt</p>'],
+  ['<p>Second slide</p>', '<p>Second s&lt;ide</p>', '<p>Second slZide</p>'],
+  ['<p>Second cat</p>', '<p>Second ca&lt;</p>', '<p>Second catZ</p>'],
+  ['<p>Second slide</p>', '<p>Second &nbsp;slide</p>', '<p>Second sZlide</p>'],
+  ['<p>Second \u{1F600} slide</p>', '<p>Second \u{1F600}\u{1F601} slide</p>', '<p>Second \u{1F600}\u{1F602} slide</p>'],
+  ['<p>Second \u{1F600} slide</p>', '<p>Second \u{1F601} slide</p>', '<p>Second \u{1F600}Z slide</p>'],
+  ['<p>Second \u{1F600} slide</p>', '<p>Second \u{1F601} slide</p>', '<p>Second \u{1F602} slide</p>'],
+  ['<p>Second slide</p>', '<p>Second slid\u00e9</p>', '<p>Second slideZ</p>'],
+  ['<p>Second slide</p>', '<p>Second</p><p> slide</p>', '<p>Second</p><p> slide</p>'],
+  ['<p>Second slide</p>', '<p>Se</p>', '<p>Second slZide</p>'],
+  ['<p>Second slide</p>', '<p>Second deck</p>', '<p>Second page</p>'],
+  ['<p>Second slide</p>', '<p>Second side</p>', '<p>Second slice</p>'],
+  ['<p>Second it</p>', '<p>Second <strong>it</strong></p>', '<p>Second Zit</p>'],
+  ['<p>Second it</p>', '<p>Second Zit</p>', '<p>Second <em>it</em></p>'],
+  ['<p>Second i x</p>', '<p>Second iZ x</p>', '<p>Second <em>i</em> x</p>'],
+  ['<p>Second a x</p>', '<p>Second Za x</p>', '<p>Second <a href="u">a</a> x</p>'],
+  ['<p>Second s x</p>', '<p>Second sZ x</p>', '<p>Second <strong>s</strong> x</p>'],
+  ['<p>Second co x</p>', '<p>Second cZo x</p>', '<p>Second <code>co</code> x</p>'],
+];
+
+test('the merge of an apply in a session gives the text of the authority for pairs of edits of two people in one paragraph', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  for (const [p0, ps, pt] of PAIRS) {
+    const f = wrap(p0), s = wrap(ps), t = wrap(pt);
+    const page = mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text;
+    const moved = shift(diff(f, s), diff(f, t), true);
+    const authority = moved ? applyPatches(t, moved) : applyPatches(f, mergePatches(diff(f, t), diff(f, s), 'ours').patches);
+    assert.equal(page, authority, `${ps} over ${pt}`);
+  }
+});
+
+test('the merge of an apply in a session keeps a key of another person inside a word whose bold the person removes', () => {
+  // the authority takes the removal of both tags as one patch over the word, which drops the key
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const f = wrap('<p>Second <strong>slide</strong></p>'), s = wrap('<p>Second slide</p>');
+  for (const [pt, want] of [['<p>Second <strong>sliZde</strong></p>', '<p>Second sliZde</p>'], ['<p>Second <strong>slideZ</strong></p>', '<p>Second slideZ</p>']]) {
+    assert.equal(mergeEdits(f, fine(f, s), fine(f, wrap(pt)), 'ours', true, true).text, wrap(want));
+  }
 });
