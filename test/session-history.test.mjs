@@ -2,7 +2,7 @@
 // folder with SLIDES_HISTORY set, so that a version is closed 2 s after the last operation or only
 // when it is named: the list after the edits of a host and a guest, live while the pane is
 // open, the mode with the chrome inert, folding and named versions, the preview with the outlines
-// of the changed elements in the tones of their authors, Restore seen by both pages and in
+// of the changed elements and the tints of the added characters in the tones of their authors, Restore seen by both pages and in
 // index.html, Name, Download, the page offline while the pane is open, a phone of 390 px, and the
 // list, the toasts, and the mode against histories written by hand, a compaction, a conflict, a
 // reload held back, and midnight
@@ -17,7 +17,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
-import { BUBBLE, LOCKED, select, session } from './helpers/presence.mjs';
+import { BUBBLE, leave, LOCKED, select, session } from './helpers/presence.mjs';
 import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -1286,4 +1286,116 @@ test('while Version History is open, every inert part of the editor but the canv
   await ann.waitFor(`!(${SHOWN})`);
   assert.deepEqual(await ann.evaluate(DIMMED(false)), []);
   clean(ann);
+});
+
+// a slide with a word in italic, a character reference, a formula, a table, and a pre whose first
+// newline the page drops, and a plain slide
+const MORE = `<section>
+  <h2>Three</h2>
+  <p>Some <em>slanted words</em> here</p>
+  <p>Fish &amp; chips</p>
+  <p>A formula \\(x^2\\) here</p>
+  <table>
+    <tr><td>Cell one</td><td>Cell two</td></tr>
+  </table>
+  <pre>
+plain code</pre>
+</section>
+
+<section>
+  <h2>Four</h2>
+  <p>Added whole</p>
+</section>
+`;
+
+// the caret put at offset in the first text node of the element of node, with the focus in the text element of host
+const caretAt = async (page, host, node, offset) => assert.ok(await page.evaluate(`(() => { const h = ${host}; h.focus(); const r = document.createRange(); r.setStart(${node}.firstChild, ${offset}); r.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(r); return document.activeElement === h; })()`));
+
+test('Show changes tints the characters that each person added to a changed text element in the tone of this person, and unticking it takes the tints off', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  writeFileSync(server.file, server.read().replace('\n</div>\n</div>', `\n${MORE}\n</div>\n</div>`));
+  await ann.waitFor(`${TEXT}.includes('Added whole')`, 20_000);
+  await converge(server, [ann, ben]);
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Added' })`);
+  await show(ann, 'One');
+  await caretAtEnd(ann, el(0, 'h2'));
+  await typeKeys(ann, ' by Ann');
+  await caretAtEnd(ann, el(0, 'p'));
+  await typeKeys(ann, ' and Ann');
+  await converge(server, [ann, ben]);
+  await leave(ann);
+  await show(ben, 'One');
+  await ben.waitFor(`!${LOCKED(el(0, 'p'))}`);
+  await caretAtEnd(ben, el(0, 'p'));
+  await typeKeys(ben, ' then Ben');
+  await show(ben, 'Two');
+  await caretAtEnd(ben, `${el(1, 'li')}.nextElementSibling`);
+  await typeKeys(ben, ' too');
+  await show(ann, 'Three');
+  await caretAt(ann, el(2, 'p'), el(2, 'em'), 'slanted'.length);
+  await typeKeys(ann, ' and new');
+  for (const [k, typed] of [[2, ' fries'], [3, ' more']]) {
+    await caretAtEnd(ann, `${el(2, 'p')}.parentElement.children[${k}]`);
+    await typeKeys(ann, typed);
+  }
+  await show(ben, 'Three');
+  await caretAtEnd(ben, `${el(2, 'td')}.nextElementSibling`);
+  await typeKeys(ben, ' changed');
+  await converge(server, [ann, ben]);
+  assert.ok(server.read().includes('<p>Some <em>slanted and new words</em> here</p>'));
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Typed' })`);
+  await openPane(ann);
+  const doc = `${FRAME}.contentDocument`;
+  // the trimmed text of each range of each highlight, without the ranges of whitespace alone, since
+  // the space of a word typed between two may be either one, and the tint drawn on its first range
+  const TINTS = `(() => {
+    const d = ${doc};
+    const w = d.defaultView;
+    const out = {};
+    for (const [name, h] of w.CSS.highlights) {
+      const ranges = [...h].map((r) => r.toString().trim()).filter(Boolean).sort();
+      const host = [...h][0].startContainer.parentElement;
+      out[ranges.join('|')] = w.getComputedStyle(host, '::highlight(' + name + ')').backgroundColor;
+    }
+    return out;
+  })()`;
+  // the tone of a person in the page of the preview, with 35% of its alpha as the tint
+  const tint = async (page) => (await ann.evaluate(toneIn(doc, await page.evaluate(`${C}.color`)))).replace(/^rgb\((\d+), (\d+), (\d+)\)$/, (_, r, g, b) => `color(srgb ${[r, g, b].map((x) => +(x / 255).toFixed(6)).join(' ')} / 0.35)`);
+  const preview = async (title) => {
+    await ann.evaluate(`window.__shownDoc = ${FRAME}?.contentDocument`);
+    await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === ${JSON.stringify(title)})`);
+    await ann.waitFor(`${doc} !== window.__shownDoc && !!${doc}?.querySelector('[data-beeson-changed]')`, 30_000);
+    return ann.evaluate(TINTS);
+  };
+  const typed = await preview('Typed');
+  assert.deepEqual(typed, {
+    'and Ann|and new|by Ann': await tint(ann),
+    'changed|then Ben|too': await tint(ben),
+  });
+  // the outlines of the elements whose text is not tinted
+  const outlined = await ann.evaluate(`[...${doc}.querySelectorAll('[data-beeson-changed]')].map((e) => e.textContent.trim().split(/\\s+/).slice(0, 2).join(' '))`);
+  assert.deepEqual(outlined, ['One by', 'First slide', 'Alpha Beta', 'Some slanted', 'Fish &', 'A formula', 'Cell oneCell']);
+
+  const added = await preview('Added');
+  assert.deepEqual(Object.keys(added), ['Added whole|Four']);
+  assert.deepEqual(await preview('Typed'), typed);
+
+  await tapOrClick(ann, `document.querySelector('${BAR} label.changes input')`);
+  await ann.waitFor(`Object.values(${TINTS}).every((c) => c === 'rgba(0, 0, 0, 0)')`);
+  await tapOrClick(ann, `document.querySelector('${BAR} label.changes input')`);
+  await ann.waitFor(`JSON.stringify(${TINTS}) === ${JSON.stringify(JSON.stringify(typed))}`);
+
+  writeFileSync(server.file, server.read().replace('plain code</pre>', 'plain code too</pre>'));
+  await ann.waitFor(`${TEXT}.includes('plain code too')`, 20_000);
+  await converge(server, [ann, ben]);
+  await ann.evaluate(`${C}.transport.post('history/current/name', { token: ${C}.token, name: 'Code' })`);
+  assert.deepEqual(await preview('Code'), {});
+  assert.deepEqual(await ann.evaluate(`[...${doc}.querySelectorAll('[data-beeson-changed]')].map((e) => e.localName)`), ['pre']);
+  clean(ann);
+  clean(ben);
 });
