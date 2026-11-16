@@ -131,6 +131,11 @@ export class TexWriter {
     this.watched = derived.files;
     this.texts = derived.key;
     this.texSig = sigOf(this.file);
+    // the skipped lines are logged at the start as well, since the next derivation logs only a change
+    if (derived.sources && !derived.unread.length) {
+      this.skipped = derived.skipped.join('\n');
+      for (const line of derived.skipped) this.log(line);
+    }
   }
 
   // index.html holds html on disk. tex.js is derived again when it cites other keys
