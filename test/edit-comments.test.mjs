@@ -108,7 +108,7 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
   assert.equal(status({ ...ok, mentions: ['short'] }), 400);
   assert.equal(status({ ...ok, mentions: 'x' }), 400);
   const people = Array.from({ length: 51 }, (_, i) => `${i}`.padStart(22, 'P'));
-  assert.equal(status({ ...ok, mentions: people }), 400, 'more than 50 mentions');
+  assert.deepEqual(comments.add(ANN, { ...ok, mentions: people }), { status: 413, error: 'the comment has more than 50 mentions' });
   assert.equal(status({ ...ok, mentions: people.slice(1) }), 200);
   for (let i = 0; i < 3; i++) replace(authority, /First slide[^<]*/, `First slide ${i}`);
   assert.equal(status(ok), 409, 'the base is older than the log');
