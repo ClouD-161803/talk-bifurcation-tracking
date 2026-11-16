@@ -2771,6 +2771,7 @@ ${read}`);
   const { preamble, bibliography, tex, missing: missing2 } = folderTex(text, html);
   return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread, skipped: skippedLines(preamble, bibliography, missing2, "index.html"), key: hash.digest("hex") };
 }
+var unreadLine = (unread) => `tex.js is not written, since ${unread.join(", and ")}`;
 var TexWriter = class {
   // html is the text of index.html at the start. the files are read for their signatures, and
   // nothing is written
@@ -2811,7 +2812,7 @@ var TexWriter = class {
     if (derived.sources && !derived.unread.length) {
       this.skipped = derived.skipped.join("\n");
       for (const line of derived.skipped) this.log(line);
-    }
+    } else if (derived.sources) this.log(unreadLine(derived.unread));
   }
   // index.html holds html on disk. tex.js is derived again when it cites other keys
   written(html) {
@@ -2898,7 +2899,7 @@ ${sig}`).join("\n");
     if (!derived.sources) return settle();
     if (derived.unread.length) {
       settle();
-      this.log(`tex.js is not written, since ${derived.unread.join(", and ")}`);
+      this.log(unreadLine(derived.unread));
       return;
     }
     if (derived.skipped.join("\n") !== this.skipped) {

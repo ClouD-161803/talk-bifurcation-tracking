@@ -183,13 +183,14 @@ test('a source that cannot be read is reported once for each change, and tex.js 
   mkdirSync(join(f.dir, 'preamble.tex'));
   const before = f.read('tex.js');
   const { w, seen } = writer(f);
+  // the reason is logged at the start as well
   w.written(CITED);
   await twoPolls(w);
-  assert.equal(seen.log.length, 1);
-  assert.match(seen.log[0], /^tex\.js is not written, since preamble\.tex is not read: /);
+  assert.equal(seen.log.length, 2);
+  assert.match(seen.log[1], /^tex\.js is not written, since preamble\.tex is not read: /);
   w.written(DECK);
   await twoPolls(w);
-  assert.equal(seen.log.length, 2);
+  assert.equal(seen.log.length, 3);
   assert.equal(f.read('tex.js'), before);
   assert.equal(seen.changes, 0);
 });
