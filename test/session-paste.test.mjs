@@ -4,8 +4,8 @@
 // the key of the session, also after the session ends, and a plain deck asks for the talk folder of
 // the session that it was copied from. a deck whose address has session, which no edit command
 // serves, names its own address, also at file://, and another page of the talk folder names its deck
-// by a hash of the key. a copy between two pages in one folder of a session is pasted without a
-// question
+// by a hash of the key, also in a subfolder. a copy between two pages in one folder of a session
+// is pasted without a question
 
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -231,24 +231,36 @@ test('a copy from another page of the talk folder of a session', { timeout: 180_
     await pastedWithoutQuestion(other);
     assert.equal((await render(other)).match(/<img src="media\/fig\.png" alt="A figure">/g).length, 2);
   });
+
+  await t.test('from a page in a subfolder asks for the talk folder, since each path names another file', async () => {
+    mkdirSync(join(server.talk, 'old'));
+    writeFileSync(join(server.talk, 'old/deck.html'), figure(TALK).replaceAll('"theme/', '"../theme/').replaceAll('"brand/', '"../brand/'));
+    const old = await plainPage(browser, `${server.edit.url}old/deck.html?edit&session`);
+    await pasteSlides(ann, 'Two', await copySlide(old, 'One'));
+    const asked = await answer(ann, 'Paste Without Files');
+    assert.ok(asked.includes('files in the talk folder of the session that you copied from'), asked);
+    await pasted(ann);
+  });
 });
 
 // another page of the talk folder, which the edit command serves without a session, through the
-// edit command and through the relay for a guest
+// edit command and through the relay for a guest. the key is the first folder of the address
+for (const [which, path] of [['a page of the talk folder other than index.html', 'other.html'], ['a page in a subfolder of the talk folder', 'old/deck.html']])
 for (const through of ['the edit command', 'the relay']) {
-  test(`a page of the talk folder other than index.html, opened with session through ${through}, names its deck by a hash of the key`, { timeout: 120_000 }, async (t) => {
+  test(`${which}, opened with session through ${through}, names its deck by a hash of the key`, { timeout: 120_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talk(t);
-    writeFileSync(join(server.talk, 'other.html'), TALK);
+    mkdirSync(join(server.talk, 'old'));
+    writeFileSync(join(server.talk, path), path === 'other.html' ? TALK : TALK.replaceAll('"theme/', '"../theme/').replaceAll('"brand/', '"../brand/'));
     const { key } = server.edit;
-    let url = `${server.edit.url}other.html?edit&session`;
+    let url = `${server.edit.url}${path}?edit&session`;
     if (through === 'the relay') {
       const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
       t.after(() => relay.close());
       const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: relay.url, secret: SECRET });
       assert.equal(shared.status, 200, shared.text);
-      url = shared.json().link.replace('index.html', 'other.html');
+      url = shared.json().link.replace('index.html', path);
       assert.ok(url.startsWith(relay.url), url);
     }
     const page = await open(browser, url, { wait: false, ready: false });
@@ -256,9 +268,10 @@ for (const through of ['the edit command', 'the relay']) {
     await page.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
     await page.waitFor(`!document.querySelector('dialog[open]') && window.BeesonEditor && window.BeesonEditor.ready.then(() => true)`);
     const text = await copySlide(page, 'One');
-    assert.ok(!text.includes(key), text.slice(0, 300));
+    assert.ok(!text.includes(key) && !text.includes(key.replaceAll('-', '\\u002d')), text.slice(0, 300));
     const origin = ORIGIN(text);
-    assert.match(origin.deck, /\/session-[0-9a-z]+\/other\.html$/);
+    assert.equal(origin.deck, `${new URL(url).origin}/${origin.deck.split('/')[3]}/${path}`);
+    assert.match(origin.deck.split('/')[3], /^session-[0-9a-z]+$/);
     assert.equal(origin.session, true);
   });
 }
