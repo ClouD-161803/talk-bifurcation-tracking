@@ -326,9 +326,21 @@ for (const [what, change] of [
     await show(b, 'Two');
     await front(b);
     await caretAtEnd(b, el(1, 'p'));
+    // the text of a read of the client while the paragraph shows the composing text, which index.html
+    // holds once the client has sent it
+    await b.evaluate(`(() => {
+      const port = window.BeesonEditor.session;
+      const text = port.text;
+      port.text = () => {
+        const r = text();
+        if (${el(1, 'p')}.textContent.includes('nih')) window.__read = r;
+        return r;
+      };
+    })()`);
     await b.send('Input.imeSetComposition', { text: 'ni', selectionStart: 2, selectionEnd: 2 });
     await b.send('Input.imeSetComposition', { text: 'nih', selectionStart: 3, selectionEnd: 3 });
     await b.waitFor(`window.BeesonEditor.render().includes('<p>Second slidenih</p>')`);
+    await until(async () => (await b.evaluate('window.__read')) === server.read(), 'a read of the client with the composing text shown, in index.html');
     assert.ok(server.read().includes('<p>Second slide</p>'), 'index.html does not hold the composing text');
     // the text of each apply that resolved, to wait for the one that holds the change back
     await b.evaluate(`(() => {
