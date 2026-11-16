@@ -974,6 +974,7 @@ const BUTTON_CSS = `
 .beeson-session-comments .count { min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--ed-select); color: var(--ed-on-select); font: 600 10px/14px var(--ed-font); text-align: center; }
 .beeson-session-comments .count:empty:not(.dot) { display: none; }
 .beeson-session-comments .count.dot { min-width: 8px; height: 8px; padding: 0; }
+.beeson-session-comments[inert] { opacity: 0.45; }
 `;
 
 // the comments of a session: the pane in the inspector, the badges, the commands Comment, Comments,
