@@ -7,7 +7,7 @@
 // uploaded the same way. a file that the edit command would refuse is refused when it is added.
 // a file refused anyway with a status that another try cannot change is given up, i.e. sent to the
 // others only as its path, and named in the save state while the text names it, until the page
-// loads again, after which nothing names the missing file
+// loads again, after which the save state does not name it while the deck still does
 
 import type { MediaFile } from '../../editor/media/store.ts';
 import type { SrcEl } from '../../editor/source.ts';
