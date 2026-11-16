@@ -1073,7 +1073,7 @@ export function install(client: Client): void {
     }
     if (first) pane.restore();
   });
-  for (const e of ['known', 'people', 'state', 'applied', 'me'] as const) client.on(e, schedule);
+  for (const e of ['known', 'people', 'state', 'applied', 'me', 'tex'] as const) client.on(e, schedule);
   client.app.onRefresh(['structure', 'content'], () => shell.tab.shown() && schedule());
   // the pane is shown again when the page loads again, e.g. for a change of the deck that it does
   // not take

@@ -54,6 +54,7 @@ export class Badges {
     app.listen('slide', () => this.schedule());
     app.listen('resize', () => this.place());
     comments.client.on('applied', () => this.schedule());
+    comments.client.on('tex', () => this.schedule());
   }
 
   toggle(): void {

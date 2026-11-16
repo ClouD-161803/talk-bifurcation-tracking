@@ -37,6 +37,8 @@ export type ClientEvents = {
   resolved: [];
   // an apply changed the deck, with the elements that it changed
   applied: [Element[]];
+  // the deck was drawn again with a new tex.js, e.g. with new numbers of its citations
+  tex: [];
   // a drive ended, with whether the base moved on after the last applied without an apply, e.g. at
   // the broadcast of an operation of this page
   settled: [moved: boolean];
@@ -775,7 +777,7 @@ export class Client {
     const was = this.tex;
     this.tex = count;
     // a redraw that failed, e.g. at a fetch of tex.js, is tried again at the next answer
-    this.port.redrawTex().catch(() => {
+    this.port.redrawTex().then(() => this.emit('tex'), () => {
       if (this.tex === count) this.tex = was;
     });
   }
