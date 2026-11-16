@@ -408,15 +408,16 @@ test('a text element is held while the caret of another person is in it and this
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' typed');
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the hold of Ana on the page of Ben');
-  // the end of the typing of Ana is her last activity
-  await until(() => ben.evaluate(`${C}.resolved()[0]?.typing === false`), 'Ana to stop typing');
+  // the end of the typing of Ana is her last activity, in a state sent after her last key
+  await until(() => ben.evaluate(`${P}.resolved().some((r) => r.name === 'Ana' && r.caret?.at === 'Second slide typed'.length && !r.typing)`), 'Ana to stop typing');
   await later(ben, 29_000);
   assert.equal(await ben.evaluate(HOLDER(p)), 'Ana', 'still held at 29 s');
   await later(ben, 1000);
   assert.equal(await ben.evaluate(HOLDER(p)), null, 'not held after 30 s without typing');
   assert.equal(await ben.evaluate(`${P}.holds.size`), 0);
-  // Ana holds it again when she types
+  // Ana holds it again when she types. bringing her page to the front can take its caret out
   await front(ana);
+  await caretAtEnd(ana, p);
   await typeKeys(ana, '!');
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the hold of Ana after she types again');
   // a caret moved to another element is an activity, and the hold goes with it
