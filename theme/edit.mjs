@@ -701,16 +701,10 @@ function combine(first2, second) {
 function finer(base, patches, other) {
   return patches.flatMap((p) => other.some((o) => conflict(p, o)) ? fine(base, apply2(base, [p])) : [p]);
 }
-var TAG = /<\/?[A-Za-z](?:[^<>"']|"[^"]*"|'[^']*')*>/g;
 function mergePatches(theirs, ours, wins = "ours", base, nested = true, keep) {
   if (base !== void 0 && nested) {
     const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
-    const cuts = (p) => {
-      const was = base.slice(p.start, p.end).replace(TAG, "");
-      return find(p.text.replace(TAG, ""), was) < 0;
-    };
-    const ct = t.map(cuts), co = o.map(cuts);
-    [theirs, ours] = t.some((p, i) => o.some((q, j) => conflict(p, q) || ct[i] && co[j] && sameWord(base, p, q))) ? nest(base, theirs, ours, true) : [t, o];
+    [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours, true) : [t, o];
   }
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
   let k = 0, any = false;
