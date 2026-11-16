@@ -502,7 +502,7 @@ export function checkOf(text: string, a: Anchor): Check {
 
 // the start tag of the name of a, the nearest to its offset, whose element reads as at the check, or
 // null. the checksum holds the length of the text it was taken of
-function findChecked(text: string, a: Anchor, c: Check): Anchor | null {
+export function findChecked(text: string, a: Anchor, c: Check): Anchor | null {
   const len = parseInt(c.sum, 16);
   const at = (o: number) => {
     if (checksum(text.slice(o, o + len)) !== c.sum) return null;

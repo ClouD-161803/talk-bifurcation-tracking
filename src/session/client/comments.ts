@@ -7,7 +7,7 @@
 // when its start tag there holds the name of the anchor. a thread is otherwise shown on its slide,
 // or under On the deck. a mention is written @{person id} in the text of a comment
 
-import { moveAnchors, slideAt, startTagAt, type Anchored } from '../anchor.ts';
+import { checkOf, findChecked, moveAnchors, slideAt, startTagAt, type Anchored, type Check } from '../anchor.ts';
 import { apply, diff, type Patch } from '../patch.ts';
 import { slidesOf, type Slide } from '../slides.ts';
 import { parseVersion, type Anchor, type AppliedOp, type Comment, type CommentsAnswer, type CommentsEvent, type SeenAnswer, type Version } from '../protocol.ts';
@@ -17,6 +17,10 @@ import { Failure } from './transport.ts';
 // where a thread is shown. el is the element commented on, slide is its slide, and both are null on
 // the deck. number is the number of the slide in the status bar
 export type Place = { el: Element | null; slide: Element | null; number: number | null };
+// an element or a slide as its start tag in the base and its check, by which it is found again in a
+// later text of the deck, e.g. once the page is loaded again. place is the index of a slide among
+// the slides of the base and their count
+export type Spot = { at: Anchor; check: Check; place?: [number, number] };
 
 export type Item = { id: string; author: string; time: number; text: string; edited?: number };
 
@@ -335,13 +339,7 @@ export class Comments {
       // element after a removal in this page may be paired with a twin until then
       await port.rebase();
       const base = client.base!;
-      const source = client.app.source!.text;
-      const at = (x: Element) => {
-        const i = port.offsetOf(x);
-        return i === null ? null : startTagAt(source, i);
-      };
-      let item: Anchored = { anchor: el ? at(el) : null, slide: at(slide) };
-      if (source !== base.text && item.slide) item = moveAnchors(source, diff(source, base.text), base.text, [item]).items[0];
+      const item = this.item(el, slide, base.text);
       const { anchor: a, slide: s } = item;
       if (s && !item.removed && (!el || (a && a.start !== s.start))) {
         try {
@@ -364,6 +362,46 @@ export class Comments {
         }
       } else if (k > 2) throw new Error('The element is not found in the deck. Try again.');
     }
+  }
+
+  // el and slide as anchors of the text base, moved there from the text that the editor indexes
+  private item(el: Element | null, slide: Element, base: string): Anchored {
+    const port = this.client.port;
+    const source = this.client.app.source!.text;
+    const at = (x: Element) => {
+      const i = port.offsetOf(x);
+      return i === null ? null : startTagAt(source, i);
+    };
+    const item: Anchored = { anchor: el ? at(el) : null, slide: at(slide) };
+    return source !== base && item.slide ? moveAnchors(source, diff(source, base), base, [item]).items[0] : item;
+  }
+
+  // the spots of el and of its slide, each null when the base does not hold it, as for an element
+  // inserted in this page until its edit is acknowledged
+  spots(el: Element | null, slide: Element): { el: Spot | null; slide: Spot | null } {
+    const base = this.client.base;
+    if (!base || !this.client.app.source) return { el: null, slide: null };
+    const item = this.item(el, slide, base.text);
+    const { anchor: a, slide: s } = item;
+    const spot = (x: Anchor): Spot => ({ at: x, check: checkOf(base.text, x) });
+    const slides = this.slidesOf(base.text);
+    return {
+      el: el && a && s && !item.removed && a.start !== s.start ? spot(a) : null,
+      slide: s ? { ...spot(s), place: [slides.findIndex((x) => x.start === s.start), slides.length] } : null,
+    };
+  }
+
+  // the element of a spot in the deck as it is now, i.e. the nearest element of its name that reads
+  // as it did, or null. a slide that reads otherwise is taken at its place while the deck has as
+  // many slides as before. what was kept by another version of the theme is not read
+  spotted(s: Spot): Element | null {
+    const text = this.client.app.source?.text;
+    if (text === undefined || typeof s.at?.start !== 'number' || typeof s.at.tag !== 'string' || typeof s.check?.sum !== 'string' || typeof s.check.tag !== 'string') return null;
+    const a = findChecked(text, s.at, s.check);
+    if (a) return this.find(a);
+    const slides = Array.isArray(s.place) ? this.slidesOf(text) : [];
+    const x = slides.length === s.place?.[1] ? slides[s.place[0]] : null;
+    return x ? this.find({ start: x.start, end: x.open, tag: 'section' }) : null;
   }
 
   // a thread of an answer to this page, with its anchors of the text at version at
