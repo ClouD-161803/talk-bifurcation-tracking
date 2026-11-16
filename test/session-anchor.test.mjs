@@ -884,6 +884,27 @@ test('an inserting operation takes about as long with threads of removed element
   assert.ok(ratio <= 3, `the threads of removed elements took ${ratio.toFixed(1)} times as long`);
 });
 
+test('a removal reads each element longer than 4 kB once for all of its threads', () => {
+  const big = (k) => `<div class="c${k}">${String(k).repeat(200_000)}</div>`;
+  const v0 = deck(...Array.from({ length: 10 }, (_, k) => [`<h2>Slide ${k}</h2>`, `<p>${'x'.repeat(5000)}</p>`, ...(k === 5 || k === 6 ? [big(k)] : [])]));
+  const removals = {
+    'the elements removed': v0.replace(`  ${big(5)}\n`, '').replace(`  ${big(6)}\n`, ''),
+    'their slides removed': v0.replace(/<section>\n {2}<h2>Slide 5[^]*?<\/section>\n<section>\n {2}<h2>Slide 6[^]*?<\/section>\n/, ''),
+  };
+  for (const [what, v1] of Object.entries(removals)) {
+    const patches = diff(v0, v1);
+    // n threads on each of the two elements
+    const read = (n) =>
+      sliced(() => {
+        const items = [5, 6].flatMap((k) => Array.from({ length: n }, () => onElement(v0, `<div class="c${k}">`)));
+        const r = moveAnchors(v0, patches, v1, items);
+        assert.deepEqual(r.items.map((it) => it.removed.text.sum), [5, 6].flatMap((k) => Array(n).fill(checksum(big(k)))));
+      });
+    const each = (read(100) - read(1)) / 198;
+    assert.ok(each < 20_000, `${what}: each thread after the first of its element read ${each} characters of an element of 200,000`);
+  }
+});
+
 test('an operation reads no other slide for the threads of removed elements longer than 4 kB, nor its own slide for a check longer than it', () => {
   const column = '<div class="column">';
   const slide = (k) => [`<h2>Slide ${k}</h2>`, ...[0, 1, 2].flatMap((c) => [column, ...Array.from({ length: 30 }, (_, q) => `<p>Paragraph ${q} of column ${c} of slide ${k}, ${'x'.repeat(160)}</p>`), '</div>'])];
