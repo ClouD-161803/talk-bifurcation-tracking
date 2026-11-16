@@ -705,7 +705,10 @@ class Pane {
       this.keep();
     });
     area.addEventListener('click', update);
-    area.addEventListener('blur', () => setTimeout(close, 150));
+    // the field may have the focus again by then, e.g. after a click on a scroll bar
+    area.addEventListener('blur', () => setTimeout(() => {
+      if (document.activeElement !== area && !people.contains(document.activeElement)) close();
+    }, 150));
     area.addEventListener('keydown', (ev) => {
       // a key of an input method that composes a text is its own
       if (ev.isComposing || ev.keyCode === 229) {
