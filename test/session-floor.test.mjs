@@ -209,7 +209,7 @@ test('an undo of typing in a text element that another page types in is taken, a
   clean(ben);
 });
 
-test('an undo of a person who typed in a text element together with another person keeps the text of the other person', { timeout: 120_000, todo: 'needs part A' }, async (t) => {
+test('an undo of a person who typed in a text element together with another person keeps the text of the other person', { timeout: 120_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
