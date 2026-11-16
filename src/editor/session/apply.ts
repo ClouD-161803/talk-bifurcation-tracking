@@ -143,10 +143,12 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const lp = item.pieces[j];
   if (j < 0 || lp.kind !== 'text') return false;
   const was = old.slice(piece.dec.start, piece.dec.end);
-  const now = was.slice(0, p - piece.dec.start) + ins + was.slice(p - piece.dec.start + cut);
-  // a dollar or a backslash may start a formula, which MathJax then typesets
-  if (/[$\\]/.test(now) || !sameText(lp.node.data, was)) return false;
-  lp.node.replaceData(p - piece.dec.start, cut, ins);
+  const q = p - piece.dec.start;
+  const now = was.slice(0, q) + ins + was.slice(q + cut);
+  // a dollar or a backslash typed, removed, or beside the change may start a formula, which MathJax
+  // then typesets. one that the change leaves apart already failed to start one
+  if (/[$\\]/.test(ins + was.slice(q, q + cut) + (now[q - 1] ?? '') + (now[q + ins.length] ?? '')) || !sameText(lp.node.data, was)) return false;
+  lp.node.replaceData(q, cut, ins);
   const grow = ins.length - cut;
   k.pieces = k.pieces.map((q, i) => (i < j ? q : i === j ? { kind: 'text', dec: { start: q.dec.start, end: q.dec.end + grow } } : shiftPiece(q, grow)));
   retext(ctx.source, at.parent, at.index, ctx.text, decoded);
