@@ -10,7 +10,7 @@ import { apply as applyEdits, edits, mergeEdits, type Edit } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
 import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
 import { redrawTex as redrawDeckTex } from '../tex/install.ts';
-import { applyAt, refresh, repairText, type Done } from './apply.ts';
+import { applyAt, partial, refresh, repairText, type Done } from './apply.ts';
 import { caretOf, mapOffset, markOf, moved, putCaret, textIn, type Mark } from './caret.ts';
 import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
 
@@ -20,7 +20,8 @@ export type Applied = { reload: boolean; changed: Element[] };
 
 // the client reads text() inside a listener of onChange or after an apply has resolved, and writes
 // the text of each apply against the text last handed to it, i.e. the text it last read or passed
-// to apply. an edit of the person that the client has not read is kept through every apply, and
+// to apply. at a reload, apply leaves the deck as it was, and it rejects when it changed the deck in
+// part. an edit of the person that the client has not read is kept through every apply, and
 // onChange is called after it. the listeners of onReload are called when the page does not read as
 // its text after the applies, after which the client loads the page again. copy() reads the deck
 // with the edits of the person at any time, and leaves the text handed to the client as it is.
@@ -372,7 +373,8 @@ export function install(app: App): Port {
     // an edit of the person that the client has not read is kept, and wins at a conflict
     if (text !== null && from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours').text;
     if (text !== null) handed = text;
-    if (rendered && !rebase(rendered, math)) return reload();
+    // a rebase that fails has read the source again from the page, which then renders otherwise
+    if (rendered && !rebase(rendered, math)) partial();
     const changed: Element[] = [];
     const typesets: Promise<void>[] = [];
     // the deck made to read as next by one apply: false when the page is loaded again, and null
@@ -388,6 +390,9 @@ export function install(app: App): Port {
       mine = true;
       try {
         done = applyAt(app, next, w, spot);
+      } catch (e) {
+        clean = false;
+        throw e;
       } finally {
         mine = false;
       }
@@ -423,8 +428,12 @@ export function install(app: App): Port {
       return around(list.slice(mid)) && around(list.slice(0, mid));
     };
     composition();
+    const was = app.source!.text;
     const first = put(target);
-    if (first === false || (first === null && !around(edits(app.source!.text, target)))) return reload();
+    if (first === false) return reload();
+    // around() may apply edits before one that it cannot apply, after which the deck reads as neither
+    // text
+    if (first === null && !around(edits(app.source!.text, target))) return app.source!.text === was ? reload() : partial();
     const shown = app.source!.text;
     app.saved = shown;
     behind = shown === target ? null : { shown, want: target };
