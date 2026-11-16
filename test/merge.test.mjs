@@ -149,6 +149,10 @@ test('revert refuses when an insertion of another person beside the span can be 
   // give as the letters of the person
   assert.equal(revert('<p>Second goslide</p>', '<p>Second slide</p>', '<p>Second go goslide</p>'), null);
   assert.equal(revert('ba', 'a', 'b ba'), null);
+  // the person typed "low " before grows, and another person typed " low energy" before it. the
+  // texts also give the letters of the person inside " low energy", with "energylow " typed after
+  // them. slides() does not refuse it, since " low energy" does not start with the l of low
+  assert.equal(revert('low grows quickly', 'grows quickly', ' low energylow grows quickly'), null);
 });
 
 test('revert refuses when an edit of another person at an end of the span can be read on the other side of it', () => {
