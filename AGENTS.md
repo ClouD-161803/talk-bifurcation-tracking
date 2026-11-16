@@ -27,6 +27,7 @@ Hard invariants are never traded away for other goals. When a change would break
 - Set widths in px in a `style` only on headings, paragraphs, lists, `math` divs, captions, and cells in the top row of tables. Pictures, QR codes, TyCHO viewers, shapes, and backdrops may take widths as well.
 - Set heights in px in a `style` only on shapes, backdrops, table rows, and images, videos, or TyCHO viewers that have a width.
 - Give figures a version for each mode with `for-dark` and `for-light`, or the class `white-figure` or `invert`. Otherwise a figure may be visible in one mode only.
+- Put a PDF on a slide as a PDF figure, described under Figures in `REFERENCE.md`, rather than converting it by hand. Run `npm run tex` after you add or change one, and commit its renders.
 - Write each TikZ figure as a lone `tikzpicture` in `figures/name.tex`, with the colors of `styles/beeson-tikz.sty`. `npm run tex` compiles it into `figures/name.js` with a TeX that has `latex` and `dvisvgm`. Commit this output.
 - Write math macros used on more than one slide into `preamble.tex`. Write papers cited on slides into `references.bib`. Run `npm run tex` after you change either file.
 - Put the speaker notes of a slide in an `aside.notes`.
@@ -39,7 +40,7 @@ Hard invariants are never traded away for other goals. When a change would break
 
 ```sh
 npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, and the bundles theme/beeson.js, theme/editor.js, and theme/editor-tex.js
-npm run tex                                 # tex.js, from preamble.tex and references.bib next to index.html
+npm run tex                                 # tex.js, from preamble.tex and references.bib next to index.html, and the TikZ and PDF figures
 npm run check                               # screenshots of every slide in both modes into check/, and the problems of the page
 npm run check -- --browser firefox          # the same in Firefox, or in Safari with --browser safari
 npm run pdf                                 # slides.pdf, one page per step
