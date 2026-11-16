@@ -161,27 +161,31 @@ function compose(a: Patch[], b: Patch[]): Patch[] {
     delta += p.text.length - (p.end - p.start);
     return p;
   };
+  // the text of the last patch of out is head and then tail, where tail is the end of a patch of a
+  // that a later q may replace. only tail is sliced, since V8 copies a joined string to slice it
+  let [head, tail] = ['', ''];
   for (const q of b) {
     while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
     // low and high are the ends of the text after a that q and the patches of a that meet it
     // replace
     const before = delta;
-    let [low, high, text] = [q.start, q.end, q.text];
+    let [low, high, pre, post] = [q.start, q.end, '', ''];
     // q starts before o.end + delta only in the text of a patch of a that o, the last patch, took
     // in, hence q is joined to o
     const o = out[out.length - 1];
     if (o && q.start < o.end + delta) {
       out.pop();
       high = o.end + delta;
-      [low, high, text] = [o.start + delta, Math.max(high, q.end), o.text.slice(0, o.text.length - (high - q.start)) + text + o.text.slice(o.text.length - (high - q.end))];
+      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + tail.slice(0, tail.length - (high - q.start)), tail.slice(tail.length - (high - q.end))];
     }
     while (i < a.length && a[i].start + delta <= q.end) {
       const at = a[i].start + delta;
       const p = next();
-      if (at < low) [low, text] = [at, p.text.slice(0, q.start - at) + text];
-      if (at + p.text.length > high) [high, text] = [at + p.text.length, text + p.text.slice(q.end - at)];
+      if (at < low) [low, pre] = [at, p.text.slice(0, q.start - at) + pre];
+      if (at + p.text.length > high) [high, post] = [at + p.text.length, post + p.text.slice(q.end - at)];
     }
-    if (low - before < high - delta || text) out.push({ start: low - before, end: high - delta, text });
+    [head, tail] = [pre + q.text, post];
+    if (low - before < high - delta || head || tail) out.push({ start: low - before, end: high - delta, text: head + tail });
   }
   return out.concat(a.slice(i));
 }
