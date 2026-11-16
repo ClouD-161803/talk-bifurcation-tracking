@@ -31,15 +31,17 @@ function hash(s: string): string {
   return (h >>> 0).toString(36);
 }
 
-// the address of this deck, without its query and its slide. the first folder of the path of a page
-// of a session, also in a subfolder, is the key of the session, with which anyone can join it,
-// hence a hash of the key takes its place
+// the address of this deck, without its query and its slide. a folder of the path of a page of a
+// session is the key of the session, with which anyone can join it, after the path of a relay if it
+// has one. hence a hash takes the place of every folder whose name may be a key, as the edit command
+// and the relay take a key, and a folder of the talk with such a name is named by its hash too
+const KEY = /^[A-Za-z0-9_-]{22,128}$/;
 export function deckAddress(): string {
   const address = location.href.split(/[?#]/)[0];
-  const start = address.indexOf('/', address.indexOf('//') + 2) + 1;
-  const end = address.indexOf('/', start);
-  if (!keyed() || !start || end < 0) return address;
-  return `${address.slice(0, start)}session-${hash(address.slice(start, end))}${address.slice(end)}`;
+  const start = address.indexOf('/', address.indexOf('//') + 2);
+  if (!keyed() || start < 0) return address;
+  const parts = address.slice(start).split('/');
+  return address.slice(0, start) + parts.map((p, i) => (i < parts.length - 1 && KEY.test(p) ? `session-${hash(p)}` : p)).join('/');
 }
 
 // the macros of the deck that text uses, with the macros that their bodies use
