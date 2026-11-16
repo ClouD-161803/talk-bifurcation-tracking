@@ -314,12 +314,14 @@ test('the reason why a dropped file is not added is shown in full on a phone of 
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  const heic = file(server, 'a', 'IMG_2041.heic', Buffer.alloc(16));
+  // a TIFF, since a browser knows its type on every system. a HEIC is without a type on a Windows
+  // that does not know it, and the editor then answers that it is not an image or a video
+  const tiff = file(server, 'a', 'scan.tiff', Buffer.alloc(16));
   const big = file(server, 'a', 'big.png', Buffer.alloc(17 * 1024 * 1024));
   for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1280, 800, false], ['Cy', 1440, 900, false]]) {
     const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
     await show(page, 'Two');
-    for (const [path, start] of [[heic, 'IMG_2041.heic cannot be sent'], [big, 'big.png is larger than 16 MB']]) {
+    for (const [path, start] of [[tiff, 'scan.tiff cannot be sent'], [big, 'big.png is larger than 16 MB']]) {
       await dropFiles(page, [path]);
       await page.waitFor(`(${C}.app.note?.text ?? '').startsWith(${JSON.stringify(start)})`);
       const reason = await page.evaluate(`${C}.app.note.text`);
