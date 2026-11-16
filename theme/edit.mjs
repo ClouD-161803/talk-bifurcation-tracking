@@ -2465,10 +2465,12 @@ function cleanMentions(raw) {
   return [...new Set(raw)];
 }
 var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && a.tag.length > 0;
+var isCheck = (c) => !!c && typeof c === "object" && typeof c.tag === "string" && c.tag.length > 0 && typeof c.sum === "string" && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test(c.sum);
 var readCheck = (t) => {
   const c = t.check;
-  return !!c && typeof c === "object" && typeof c.tag === "string" && c.tag.length > 0 && typeof c.sum === "string" && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test(c.sum) ? { tag: c.tag, sum: c.sum } : null;
+  return isCheck(c) ? { tag: c.tag, sum: c.sum } : null;
 };
+var isKept = (k) => typeof k === "string" || isCheck(k);
 var isReply = (r) => !!r && isCommentId(r.id) && isPersonId(r.author) && isNumber(r.time) && typeof r.text === "string" && (r.edited === void 0 || isNumber(r.edited));
 function readThread(t) {
   if (!t || typeof t !== "object") return null;
@@ -2479,9 +2481,9 @@ function readThread(t) {
   if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
   if (c.edited !== void 0 && !isNumber(c.edited)) return null;
   if (c.resolved !== void 0 && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
-  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || typeof c.removed.text === "string") && (c.removed.slide === void 0 || typeof c.removed.slide === "string"))) return null;
+  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || isKept(c.removed.text)) && (c.removed.slide === void 0 || isKept(c.removed.slide)))) return null;
   const out = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
-  if (c.removed) out.removed = c.removed.slide === void 0 ? { text: c.removed.text } : { text: c.removed.text, slide: c.removed.slide };
+  if (c.removed) out.removed = copyRemoved(c.removed);
   if (c.edited !== void 0) out.edited = c.edited;
   if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
   return out;
