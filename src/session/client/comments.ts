@@ -427,7 +427,11 @@ export class Comments {
   spotted(s: Spot): Element | null {
     const text = this.client.app.source?.text;
     if (text === undefined) return null;
-    const a = checked(text, s) ?? checked(text, s.own);
+    // the edits of this page that waited are merged again once it loads, unless they were lost, e.g.
+    // without IndexedDB. hence an element of own and another of the base are in doubt
+    const own = checked(text, s.own);
+    const base = checked(text, s);
+    const a = own && base && own.start !== base.start ? null : own ?? base;
     if (a) return this.find(a);
     const slides = Array.isArray(s.place) ? this.slidesOf(text) : [];
     const x = slides.length === s.place?.[1] ? slides[s.place[0]] : null;
