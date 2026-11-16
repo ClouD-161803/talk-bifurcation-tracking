@@ -17,6 +17,23 @@ export const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? 
 export const REFUSED = 'Ana is typing here. You can do this once they leave it or stop for 30 s.';
 // the name of the person who holds the element of expression, or null
 export const HOLDER = (expression) => `(${P}.holderOf(${expression})?.name ?? null)`;
+/**
+ * The holds on page kept however long a test takes: the time at which page last heard each person
+ * active no longer changes, hence a person holds the text element of their caret until the caret
+ * leaves it, and neither the clock of page nor a state of the person ends the hold.
+ */
+export async function keep(page) {
+  const kept = await page.evaluate(`(() => {
+    let n = 0;
+    for (const o of ${P}.others.values()) {
+      if (typeof o.activeAt !== 'number') continue;
+      Object.defineProperty(o, 'activeAt', { get: () => Infinity, set() {} });
+      n++;
+    }
+    return n;
+  })()`);
+  assert.ok(kept > 0, 'the page heard a person whose holds are kept');
+}
 // the bubble of page cleared, so that the next one can be told from it
 export const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
 

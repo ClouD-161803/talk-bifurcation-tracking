@@ -9,7 +9,7 @@ import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show } from './helpers/client.mjs';
 import { center, click, drag, press, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
-import { BUBBLE, el, HOLDER, leave, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
+import { BUBBLE, el, HOLDER, keep, leave, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
 const ALPHA = el(1, 'li:nth-child(1)');
@@ -33,6 +33,13 @@ async function holding(ana, ben, expression, text) {
   await until(() => ben.evaluate(`${HOLDER(expression)} === 'Ana' && ${expression}.textContent.endsWith(${JSON.stringify(text)})`), 'the text element that Ana types in, with her text, to be held on the page of Ben');
 }
 
+// the same, and the page of Ben then holds the element until Ana leaves it, however long the test
+// takes
+async function kept(ana, ben, expression, text) {
+  await holding(ana, ben, expression, text);
+  await keep(ben);
+}
+
 // a key that the browser runs as an edit command of its own, e.g. the paste of the clipboard by
 // Ctrl+V, or by Cmd+V on a Mac
 const MOD = process.platform === 'darwin' ? 4 : 2;
@@ -46,9 +53,7 @@ test('a text selection from an item into a held item refuses Backspace, Delete, 
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n', '    <li>Beta</li>\n    <li>Gamma</li>\n    <li>Delta</li>\n']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
-  await holding(ana, ben, BETA, ' typed by Ana');
-  // a clock of Ben far behind keeps the hold for the whole test
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, BETA, ' typed by Ana');
   const before = await listOf(ben);
   await ben.send('Browser.grantPermissions', { permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
   const drop = async (n) => {
@@ -108,9 +113,7 @@ test('a held paragraph refuses a paragraph style, a list style, and Enter, which
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p>Third</p>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
-  await holding(ana, ben, SECOND, ' typed');
-  // a clock of Ben far behind keeps the hold for the whole test
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, SECOND, ' typed');
   const before = await ben.evaluate(`${SECOND}.outerHTML`);
   const slide = `${el(1, 'h2')}.parentElement.innerHTML`;
   const cases = [
@@ -181,9 +184,7 @@ test('a paragraph style, a list style, or Paste Style over a text selection from
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p>Third</p>\n  <p>Fourth</p>\n  <p>Fifth</p>\n  <p>Sixth</p>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
-  await holding(ana, ben, FOURTH, ' typed');
-  // a clock of Ben far behind keeps the hold for the whole test
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, FOURTH, ' typed');
   const before = await ben.evaluate(HEAD);
   // the style of a list item, which Paste Style sets with its list
   await caretAtEnd(ben, ALPHA);
@@ -282,9 +283,7 @@ test('a double click on the move handle of a held paragraph, or Enter on this ha
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits });
   await show(ana, 'Two');
   await show(ben, 'Two');
-  await holding(ana, ben, SECOND, ' typed');
-  // a clock of Ben far behind keeps the hold for the whole test
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, SECOND, ' typed');
   const THIRD = LAST('Third');
   // each case: the act on the paragraph of expression, whose selector picks it on the current slide
   const cases = [
@@ -343,9 +342,7 @@ test('a drag of the move handle of a paragraph that becomes held during the drag
   await mouse(ben, 'mousePressed', h.x, h.y, { button: 'left', buttons: 1, clickCount: 1 });
   for (let i = 1; i <= 5; i++) await mouse(ben, 'mouseMoved', h.x + i * 10, h.y + i * 8, { button: 'left', buttons: 1 });
   assert.notEqual(await ben.evaluate(PLACE(SECOND)), '', 'the paragraph follows the drag before it is held');
-  await holding(ana, ben, SECOND, ' typed');
-  // a clock of Ben far behind keeps the hold for the whole test
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, SECOND, ' typed');
   await front(ben);
   await unbubble(ben);
   await mouse(ben, 'mouseMoved', h.x + 60, h.y + 48, { button: 'left', buttons: 1 });
@@ -391,9 +388,7 @@ test('a drag of the grip of a column, of the edge of a table, of the bar of a ro
   await show(ana, 'One');
   await show(ben, 'One');
   const a2 = el(0, 'td');
-  await holding(ana, ben, a2, ' typed');
-  // a clock of Ben far behind keeps the hold for the whole test
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, a2, ' typed');
   const rows = (n) => ben.evaluate(`[...${el(n, 'table')}.rows].map((r) => { const b = r.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; })`);
   const run = (id) => ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)})`);
   // each case: how Ben shows the grip on the slide of index n, the grip or its point, and how far it
@@ -467,9 +462,7 @@ test('a drag in the navigator of a slide where a text element is held is refused
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
-  await holding(ana, ben, SECOND, ' typed');
-  // a clock of Ben far behind keeps the hold for the whole test
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, SECOND, ' typed');
   const ORDER = `[...document.querySelectorAll('.reveal .slides > section')].map((s) => s.querySelector('h2').textContent).join(',')`;
   // the paragraph of slide Two, wherever the slide is
   const p = `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2').textContent === 'Two').querySelector('p')`;
@@ -584,9 +577,7 @@ test('Caption off, Footnote off, and a layout of the slide are refused when they
     const [held, n, heading] = holds[i];
     if (held !== holds[i - 1]?.[0]) {
       await show(ana, heading);
-      await holding(ana, ben, held, ' typed');
-      // a clock of Ben far behind keeps the hold for the whole test
-      await ben.evaluate(`${P}.skew = -1e8`);
+      await kept(ana, ben, held, ' typed');
     }
     await show(ben, heading);
     await put(n);
@@ -672,9 +663,7 @@ test('a held paragraph selected as an element takes a new shape, table, or slide
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
-  await holding(ana, ben, SECOND, ' typed');
-  // a clock of Ben far behind keeps the hold for the whole test
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, SECOND, ' typed');
   const ids = JSON.stringify([...TAKEN, ...KEPT]);
   assert.deepEqual(await ben.evaluate(`${ids}.filter((id) => !${C}.app.commands.get(id))`), [], 'every command is registered');
   const parent = `${SECOND}.parentElement === Reveal.getSlides()[1]`;
@@ -725,8 +714,7 @@ test('Insert Backdrop and a drawing of the backdrop are refused on a slide whose
   await show(ana, 'One');
   await show(ben, 'One');
   const label = el(0, '.label');
-  await holding(ana, ben, label, ' typed');
-  await ben.evaluate(`${P}.skew = -1e8`);
+  await kept(ana, ben, label, ' typed');
   const gallery = `!!document.querySelector('.beeson-backdrop-gallery')`;
   // the drawing of a file, which takes the labels off a backdrop, and a built-in drawing
   for (const [slide, n, drawing] of [['One', 0, 'logo'], ['Two', 1, 'tubes']]) {

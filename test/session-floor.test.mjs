@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, show } from './helpers/client.mjs';
 import { center, click, drag, press, type, typeKeys } from './helpers/editor.mjs';
-import { BUBBLE, el, leave, HOLDER, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
+import { BUBBLE, el, keep, leave, HOLDER, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
 const TABLE = `  <p>First slide</p>
@@ -322,8 +322,8 @@ test('an undo or a redo of a nudge of two elements, the second around a held tex
     await front(ana);
     await caretAtEnd(ana, p);
     await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in to be held on the page of Ben');
-    // a clock of Ben far behind keeps the hold until Ana leaves
-    await ben.evaluate(`${P}.skew = -1e8`);
+    // the hold is kept until Ana leaves, however long the test takes
+    await keep(ben);
     await unbubble(ben);
     await front(ben);
   };
