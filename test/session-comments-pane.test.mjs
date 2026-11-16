@@ -1162,3 +1162,19 @@ for (const [width, height] of [[1440, 900], [390, 844]]) {
     clean(a);
   });
 }
+
+test('a thread that a person only replied to is listed under For You, and a later reply of another person is unread for them', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const id = await post(a, 0, 'A thread of Ann');
+  await act(b, id, 'reply', { text: 'A reply of Ben', mentions: [] });
+  await openPane(b);
+  await b.evaluate(`document.querySelector('${PANE} .filters [data-filter="mine"]').click()`);
+  await sees(b, `[...document.querySelectorAll('${PANE} article')].map((a) => a.dataset.id)`, [id]);
+  await click(b, `${ARTICLE(id)} .text`);
+  await sees(b, COUNT, 'Comments');
+  await b.evaluate(`window.BeesonEditor.exec('view.comments')`);
+  await act(a, id, 'reply', { text: 'A second reply of Ann', mentions: [] });
+  await sees(b, COUNT, 'Comments, 1 unread');
+  clean(a);
+  clean(b);
+});
