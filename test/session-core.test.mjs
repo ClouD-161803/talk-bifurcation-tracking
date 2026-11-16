@@ -790,7 +790,8 @@ test('a text element that one replica moves while another, which has not receive
   }
 });
 
-for (const [shape, one, two] of [['of another shape', ONE, TWO]]) {
+const SAME = TWO.replace('  <ul>\n    <li>Alpha</li>\n  </ul>\n', '');
+for (const [shape, one, two] of [['of another shape', ONE, TWO], ['of the same shape', ONE, SAME]]) {
   test(`a slide swapped with a slide ${shape} by one replica while another, which has not received the swap, types in it keeps every text once and the key, in both orders`, () => {
     const base = `${one}\n${two}`, swapped = `${two}\n${one}`;
     for (const into of ['First slide', 'Second slide']) {
@@ -818,6 +819,19 @@ test('the merge of the editor keeps a text element that a received text moves, a
     const typed = base.replace('Second slide', 'Second slide by Ana');
     assert.equal(mergeEdits(base, edits(base, typed), edits(base, moved), 'ours', true).text, typed, `moved ${name}, the key unread`);
     assert.equal(mergeEdits(base, edits(base, moved), edits(base, typed), 'ours', true).text, typed, `moved ${name}, the move unread`);
+  }
+});
+
+test('the merge of the editor keeps each text of two slides that a received text swaps, and an unread key in one of them, once and in its slide', () => {
+  const base = `${ONE}\n${SAME}`, swapped = `${SAME}\n${ONE}`;
+  for (const into of ['First slide', 'Second slide']) {
+    const typed = base.replace(into, `${into} by Ana`);
+    for (const diff of [edits]) {
+      for (const [ours, all] of [[typed, swapped], [swapped, typed]]) {
+        const text = mergeEdits(base, diff(base, ours), diff(base, all), 'ours', true).text;
+        assert.ok(text === typed || text === swapped.replace(into, `${into} by Ana`), `a key in ${into}, ${ours === typed ? 'the key' : 'the swap'} unread, by ${diff.name}(): ${text}`);
+      }
+    }
   }
 });
 

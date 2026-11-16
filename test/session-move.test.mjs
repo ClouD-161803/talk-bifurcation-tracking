@@ -28,6 +28,7 @@ const para = (text) => `[...document.querySelectorAll('.reveal .slides :is(p, h2
 const slide = (heading) => `[...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector('h2')?.textContent.startsWith(${JSON.stringify(heading)}))`;
 const run = (body) => `(async () => { ${body}; return true; })()`;
 const count = (text, part) => text.split(part).length - 1;
+const LIST = '  <ul>\n    <li>Alpha</li>\n    <li>Beta</li>\n  </ul>\n';
 
 const MOVE = run(`const p = ${para('Second slide')}; await ${C}.app.doc.move(p, p.parentElement, null)`);
 const SWAP = run(`await ${C}.app.commands.run('slide.moveTo', { slides: [${slide('One')}], gap: 2 })`);
@@ -56,6 +57,7 @@ const CASES = [
     ends: /<h2>Two by Ana<\/h2>\n {2}<ul>\n.*\n.*\n {2}<\/ul>\n {2}<p>Second slide<\/p>\n<\/section>/,
   },
   { name: 'a slide moved below the next one', ben: SWAP, into: 'First slide' },
+  { name: 'a slide swapped with a slide of the same shape', edits: [[LIST, '']], ben: SWAP, into: 'Second slide' },
 ];
 
 // the session of Ana and Ben, with a key of the other page in the heading of slide One, which the
