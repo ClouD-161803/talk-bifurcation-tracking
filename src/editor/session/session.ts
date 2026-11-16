@@ -382,8 +382,9 @@ export function install(app: App): Port {
     if (text === REREAD) text = handed ?? seen;
     const from = handed ?? seen;
     let target = text ?? seen;
-    // an edit of the person that the client has not read is kept, and wins at a conflict
-    if (text !== null && from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours').text;
+    // an edit of the person that the client has not read is kept, and wins at a conflict. it follows
+    // an insertion of text at its point, as an edit that the client has sent does
+    if (text !== null && from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours', true).text;
     if (text !== null) handed = text;
     // a rebase that fails has read the source again from the page, which then renders otherwise
     if (rendered && !rebase(rendered, math)) partial(target);
