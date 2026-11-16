@@ -100,8 +100,10 @@ export function hooks(app: App): PresenceHooks {
 
 // the offset in text of a caret read at at with pre before it and post after it: at while they
 // surround it, else the nearest place between pre and post, before post, or after pre, else at
-// within the text
+// within the text. a browser holds a space that was typed before an element as U+00A0, and the
+// other pages hold a space there
 function locate(text: string, at: number, pre: string, post: string): number {
+  [text, pre, post] = [text, pre, post].map((s) => s.replaceAll('\u00a0', ' '));
   if (at >= pre.length && at <= text.length && text.startsWith(pre, at - pre.length) && text.startsWith(post, at)) return at;
   for (const [needle, shift] of [[pre + post, pre.length], [post, 0], [pre, pre.length]] as const) {
     let best = -1;
