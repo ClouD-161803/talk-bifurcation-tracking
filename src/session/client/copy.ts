@@ -213,12 +213,20 @@ export async function restore(client: Client): Promise<Copy | null> {
       q.onsuccess = () => {
         const dead = (q.result as Row[]).filter((r) => r.id !== st.id && r.beat < at && gone(r));
         const old = dead.filter((r) => Date.now() - (r.made ?? r.beat) > OLD);
-        const here = dead.filter((r) => r.key === key() && !old.includes(r));
+        // the edit command retires at most 16 tokens of a hello, hence a record that would make more
+        // waits for the next load
+        let named = new Set<Token>();
+        const here = dead.filter((r) => {
+          const more = new Set([...named, ...(r.tokens ?? [])]);
+          if (r.key !== key() || old.includes(r) || more.size > 16) return false;
+          named = more;
+          return true;
+        });
         let taken: Row[];
         ({ copy, taken, made } = here.length ? combine(here) : { copy: null, taken: [], made: 0 });
         st.left = here.length > taken.length;
         // also of the records left, which rest() merges after the join
-        st.retire = here.flatMap((r) => r.tokens ?? []);
+        st.retire = [...named];
         files = taken.flatMap((r) => r.files ?? []);
         for (const r of [...old, ...taken]) s.delete(r.id);
         if (copy) s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now(), made, tokens: st.retire } satisfies Row);
