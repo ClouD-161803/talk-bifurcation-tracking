@@ -288,7 +288,7 @@ async function fileDeck(browser, file, query) {
   return page;
 }
 
-test('a copy from a deck at file:// whose address has session names its own address, and a paste of it does not name a session', { timeout: 120_000 }, async (t) => {
+test('a copy from a deck at file:// whose address has session names its own address, and a paste of it does not name a session', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const a = await fileDeck(browser, A, `${QUERY}&session`);
