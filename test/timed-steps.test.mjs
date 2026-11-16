@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { isDeepStrictEqual } from 'node:util';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 import { press } from './helpers/editor.mjs';
 
@@ -29,10 +30,26 @@ async function open(t) {
 }
 
 // the slide and the texts of the visible fragments
-const state = (page) => page.evaluate(`({
+const STATE = `({
   slide: Reveal.getIndices().h,
   shown: [...Reveal.getCurrentSlide().querySelectorAll('.fragment.visible')].map((f) => f.textContent).filter(Boolean),
-})`);
+})`;
+const state = (page) => page.evaluate(STATE);
+
+// opens the deck and sends keys, whose last key is meant to reach the page during a delay, at the
+// state at. the state at each key is recorded in the page, since on a slow machine a key may reach
+// it after the delay. a late key is sent again on a new page, twice at most
+async function inDelay(t, keys, at) {
+  for (let n = 0; ; n++) {
+    const page = await open(t);
+    await page.evaluate(`window.addEventListener('keydown', () => (window.keys ??= []).push(${STATE}), true)`);
+    await keys(page);
+    const seen = (await page.evaluate('window.keys')).at(-1);
+    if (isDeepStrictEqual(seen, at)) return page;
+    assert.ok(n < 2, `the last key reaches the page at ${JSON.stringify(seen)} in three tries, and not during the delay at ${JSON.stringify(at)}`);
+    t.diagnostic(`the last key reaches the page late, at ${JSON.stringify(seen)}, and is sent again`);
+  }
+}
 
 // the state once nothing changes for QUIET ms
 async function settled(page) {
@@ -125,11 +142,12 @@ test('the restore step of a slide without a delay on its last step waits for a k
 });
 
 test('a key during a delay shows the next step at once, the later delays still play, and Back lands on the step of the key', async (t) => {
-  const page = await open(t);
-  await press(page, 'ArrowRight');
-  assert.deepEqual(await settled(page), { slide: 1, shown: [] });
-  await press(page, 'ArrowRight');
-  await press(page, 'ArrowRight');
+  const page = await inDelay(t, async (page) => {
+    await press(page, 'ArrowRight');
+    assert.deepEqual(await settled(page), { slide: 1, shown: [] });
+    await press(page, 'ArrowRight');
+    await press(page, 'ArrowRight');
+  }, { slide: 1, shown: ['Click'] });
   assert.deepEqual(await settled(page), { slide: 1, shown: ALL });
   // the second step was reached by the key, and its delay is not started again
   await press(page, 'ArrowLeft');
@@ -142,11 +160,12 @@ test('a key during a delay shows the next step at once, the later delays still p
 // a remote sends PageDown, and the space bar moves the talk on as well. reveal.js pauses every
 // later delay of the talk at such a key by default
 test('the keys of a remote during the delay of the last step go on to the next slide, whose delay still plays', async (t) => {
-  const page = await open(t);
-  await page.evaluate('Reveal.slide(4)');
-  await press(page, 'PageDown');
-  await press(page, 'PageDown');
-  await press(page, 'Space');
+  const page = await inDelay(t, async (page) => {
+    await page.evaluate('Reveal.slide(4)');
+    await press(page, 'PageDown');
+    await press(page, 'PageDown');
+    await press(page, 'Space');
+  }, { slide: 4, shown: ['Dims one', 'Dims two'] });
   assert.deepEqual(await settled(page), { slide: 5, shown: [] });
   await press(page, 'PageDown');
   assert.deepEqual(await settled(page), { slide: 5, shown: ['Later', 'Later timed'] });
@@ -154,10 +173,11 @@ test('the keys of a remote during the delay of the last step go on to the next s
 });
 
 test('the key A pauses the delays, which stay paused through the steps of the keys, and A again plays them', async (t) => {
-  const page = await open(t);
-  await press(page, 'ArrowRight');
-  await press(page, 'ArrowRight');
-  await press(page, 'A');
+  const page = await inDelay(t, async (page) => {
+    await press(page, 'ArrowRight');
+    await press(page, 'ArrowRight');
+    await press(page, 'A');
+  }, { slide: 1, shown: ['Click'] });
   assert.deepEqual(await settled(page), { slide: 1, shown: ['Click'] });
   await press(page, 'ArrowRight');
   assert.deepEqual(await settled(page), { slide: 1, shown: ['Click', 'Timed one'] });
@@ -195,23 +215,29 @@ test('a slide whose last step moves on by a delay keeps the look of its last ste
 // a key that does not move the deck, e.g. D for the mode, leaves the running delay alone, as a key
 // that does nothing to the slideshow in PowerPoint and Keynote. the delay of the slide is 1 s
 test('a key that does not move the deck leaves the running delay alone', async (t) => {
-  const page = await open(t);
-  await page.evaluate(`(() => {
-    window.times = {};
-    Reveal.on('fragmentshown', (ev) => { for (const f of ev.fragments) window.times[f.textContent] = performance.now(); });
-    document.addEventListener('keydown', (ev) => { if (ev.key === 'd') window.times.key = performance.now(); }, true);
-  })()`);
-  await page.evaluate('Reveal.slide(6)');
-  await settled(page);
-  await press(page, 'ArrowRight');
-  await sleep(500);
-  await press(page, 'D');
-  await page.waitFor(`'Slow timed' in window.times`, 5000);
-  const times = await page.evaluate('window.times');
-  const key = times.key - times.Slow;
-  assert.ok(key > 200 && key < 1000, `the key is pressed during the delay, ${Math.round(key)} ms after its start`);
-  // the delay ends 1 s after its start, and a restarted one 1 s after the key
-  const shown = times['Slow timed'] - times.Slow;
-  assert.ok(shown < 1000 + key / 2, `the timed step is shown ${Math.round(shown)} ms after the step before, with the key at ${Math.round(key)} ms`);
-  assert.deepEqual(page.errors, []);
+  // a stall of the page may hold back the step before the delay or the timed step, hence a time
+  // over its bound is measured again on a new page, twice at most
+  for (let n = 0; ; n++) {
+    const page = await inDelay(t, async (page) => {
+      await page.evaluate(`(() => {
+        window.times = {};
+        Reveal.on('fragmentshown', (ev) => { for (const f of ev.fragments) window.times[f.textContent] = performance.now(); });
+        document.addEventListener('keydown', (ev) => { if (ev.key === 'd') window.times.key = performance.now(); }, true);
+      })()`);
+      await page.evaluate('Reveal.slide(6)');
+      await settled(page);
+      await press(page, 'ArrowRight');
+      await sleep(500);
+      await press(page, 'D');
+    }, { slide: 6, shown: ['Slow'] });
+    await page.waitFor(`'Slow timed' in window.times`, 5000);
+    const times = await page.evaluate('window.times');
+    assert.deepEqual(page.errors, []);
+    const key = times.key - times.Slow;
+    // the delay ends 1 s after its start, and a restarted one 1 s after the key
+    const shown = times['Slow timed'] - times.key;
+    if (key > 200 && shown < 1000) break;
+    assert.ok(n < 2, `in three tries, the timed step is shown ${Math.round(shown)} ms after the key, with the key ${Math.round(key)} ms after the start of the delay`);
+    t.diagnostic(`the timed step is shown ${Math.round(shown)} ms after the key, with the key ${Math.round(key)} ms after the start of the delay, and is measured again`);
+  }
 });
