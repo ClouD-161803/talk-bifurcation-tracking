@@ -689,18 +689,25 @@ test('a page asks before it unloads for an edit typed while IndexedDB does not a
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // the open of the database of the copies never answers, as for a database blocked by another tab
+  // the open of the database of the copies never answers, as for a database blocked by another tab,
+  // and the wait of copy.ts for it, OPEN_WAIT, ends only at window.__openWait()
   const silent = `{
     const opened = IDBFactory.prototype.open;
     IDBFactory.prototype.open = function (name, ...rest) { return name === 'beeson-session' ? {} : opened.call(this, name, ...rest); };
+    const later = window.setTimeout;
+    window.setTimeout = function (fn, ...rest) {
+      if (!String(fn).includes('IndexedDB did not answer')) return later.call(this, fn, ...rest);
+      window.__openWait = () => (fn(), true);
+      return 0;
+    };
   }`;
   const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n__net.rule('/.session/', 'cut');\n${silent}`, wait: false });
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
   await page.evaluate(TOLD);
   await type(page, ' Early');
-  // restore() of copy.ts waits OPEN_WAIT (3 s) for IndexedDB, hence the edit is typed before the hello
   assert.deepEqual(await page.evaluate('window.__told'), { asking: true, hellos: 0 });
+  await page.evaluate('window.__openWait()');
   await page.waitFor(`/cannot be kept/.test(${STATE}) && ${C}.connection === 'offline'`);
   assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks while its copy cannot be kept');
 });
