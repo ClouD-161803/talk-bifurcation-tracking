@@ -45,6 +45,16 @@ export function texOf(preamble: Preamble, bibliography: Bibliography, html: stri
   return { tex: { macros, environments, packages, theorems, references }, missing };
 }
 
+/** The lines that npm run tex prints for the skipped lines of the sources, and for the keys that the deck of the file deck cites without an entry. */
+export function skippedLines(preamble: Preamble, bibliography: Bibliography, missing: string[], deck: string): string[] {
+  const short = (statement: string) => (statement.length > 100 ? `${statement.slice(0, 99)}…` : statement);
+  return [
+    ...preamble.skipped.map((s) => `${s.file}:${s.line}: ${short(s.text)}: ${s.reason}`),
+    ...bibliography.skipped.map((s) => `references.bib:${s.line}: ${short(s.text)}: ${s.reason}`),
+    ...missing.map((key) => `${deck}: the key ${key} is cited, and it is not in references.bib`),
+  ];
+}
+
 // a value as JSON in ASCII, since the script is read in the encoding of its page
 const ascii = (value: unknown): string => JSON.stringify(value).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 

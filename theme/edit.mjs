@@ -2706,6 +2706,14 @@ function texOf(preamble, bibliography, html) {
   const { macros, environments, packages, theorems } = preamble;
   return { tex: { macros, environments, packages, theorems, references }, missing: missing2 };
 }
+function skippedLines(preamble, bibliography, missing2, deck) {
+  const short = (statement) => statement.length > 100 ? `${statement.slice(0, 99)}\u2026` : statement;
+  return [
+    ...preamble.skipped.map((s) => `${s.file}:${s.line}: ${short(s.text)}: ${s.reason}`),
+    ...bibliography.skipped.map((s) => `references.bib:${s.line}: ${short(s.text)}: ${s.reason}`),
+    ...missing2.map((key) => `${deck}: the key ${key} is cited, and it is not in references.bib`)
+  ];
+}
 var ascii = (value) => JSON.stringify(value).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 function texScript(tex) {
   const lines = ["// written from preamble.tex and references.bib by npm run tex and by a save in the editor.", "// change the two sources, since this file is written again from them", "window.beesonTex = {"];
@@ -2752,8 +2760,8 @@ function deriveTex(dir, html) {
   };
   const preamble = readPreamble(text("preamble.tex") ?? "", { file: "preamble.tex", resolve: find });
   const bibliography = readBibtex(text("references.bib") ?? "");
-  const { tex } = texOf(preamble, bibliography, html);
-  return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread };
+  const { tex, missing: missing2 } = texOf(preamble, bibliography, html);
+  return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread, skipped: skippedLines(preamble, bibliography, missing2, "index.html") };
 }
 var TexWriter = class {
   // html is the text of index.html at the start. the files are read for their signatures, and
@@ -2771,6 +2779,8 @@ var TexWriter = class {
     this.stopped = false;
     // the reason of the write of tex.js that failed last, which is tried again at each poll
     this.failure = null;
+    // the skipped lines and the keys without an entry logged last
+    this.skipped = "";
     this.dir = dir;
     this.file = join4(dir, "tex.js");
     this.log = options.log ?? (() => {
@@ -2869,6 +2879,10 @@ ${sig}`).join("\n");
       settle();
       this.log(`tex.js is not written, since ${derived.unread.join(", and ")}`);
       return;
+    }
+    if (derived.skipped.join("\n") !== this.skipped) {
+      this.skipped = derived.skipped.join("\n");
+      for (const line of derived.skipped) this.log(line);
     }
     const old = await readFile2(this.file, "utf8").catch(() => null);
     if (old === derived.text) {

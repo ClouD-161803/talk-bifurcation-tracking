@@ -32,7 +32,7 @@ async function readers() {
   });
   return import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
 }
-const { readBibtex, readPreamble, preambleOf, texOf, texScript } = await readers();
+const { readBibtex, readPreamble, preambleOf, skippedLines, texOf, texScript } = await readers();
 
 /** What npm run tex writes for a deck, with the lines that are skipped and the keys without an entry. Nothing is written. */
 export function deckTex(deck) {
@@ -106,11 +106,8 @@ function main() {
   const count = (items, one, many = `${one}s`) => `${Object.keys(items).length} ${Object.keys(items).length === 1 ? one : many}`;
   console.log(`tex.js: ${count(tex.macros, 'macro')}, ${count(tex.environments, 'environment')}, ${count(tex.theorems, 'kind of theorem', 'kinds of theorem')}, and ${count(tex.references, 'reference')}`);
   compileFigures(deck);
-  const short = (statement) => (statement.length > 100 ? `${statement.slice(0, 99)}…` : statement);
-  for (const skipped of preamble.skipped) console.log(`${skipped.file}:${skipped.line}: ${short(skipped.text)}: ${skipped.reason}`);
-  for (const skipped of bibliography.skipped) console.log(`references.bib:${skipped.line}: ${short(skipped.text)}: ${skipped.reason}`);
   const name = basename(deck);
-  for (const key of missing) console.log(`${name}: the key ${key} is cited, and it is not in references.bib`);
+  for (const line of skippedLines(preamble, bibliography, missing, name)) console.log(line);
   if (!/<script\b[^>]*\ssrc\s*=\s*["']tex\.js["']/.test(readFileSync(deck, 'utf8'))) {
     console.log(`${name} does not load tex.js: put <script src="tex.js"></script> before the script of theme/mathjax-config.js`);
   }

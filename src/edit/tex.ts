@@ -14,7 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { readBibtex } from '../bibtex.ts';
 import { readPreamble, type Resolve } from '../preamble.ts';
-import { citedKeys, texOf, texScript } from '../texfile.ts';
+import { citedKeys, skippedLines, texOf, texScript } from '../texfile.ts';
 import { renameRetried } from './disk.ts';
 
 const STABLE = 300;
@@ -33,6 +33,8 @@ export type DerivedTex = {
   sources: boolean;
   // the files that exist but could not be read, each with its reason
   unread: string[];
+  // the skipped lines of the sources and the cited keys without an entry, as npm run tex prints them
+  skipped: string[];
 };
 
 /**
@@ -71,8 +73,8 @@ export function deriveTex(dir: string, html: string): DerivedTex {
   };
   const preamble = readPreamble(text('preamble.tex') ?? '', { file: 'preamble.tex', resolve: find });
   const bibliography = readBibtex(text('references.bib') ?? '');
-  const { tex } = texOf(preamble, bibliography, html);
-  return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread };
+  const { tex, missing } = texOf(preamble, bibliography, html);
+  return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread, skipped: skippedLines(preamble, bibliography, missing, 'index.html') };
 }
 
 // onChange is called at each change of tex.js on disk, and after a stable change of a source that
@@ -115,6 +117,8 @@ export class TexWriter {
   private stopped = false;
   // the reason of the write of tex.js that failed last, which is tried again at each poll
   private failure: string | null = null;
+  // the skipped lines and the keys without an entry logged last
+  private skipped = '';
 
   // html is the text of index.html at the start. the files are read for their signatures, and
   // nothing is written
@@ -225,6 +229,10 @@ export class TexWriter {
       settle();
       this.log(`tex.js is not written, since ${derived.unread.join(', and ')}`);
       return;
+    }
+    if (derived.skipped.join('\n') !== this.skipped) {
+      this.skipped = derived.skipped.join('\n');
+      for (const line of derived.skipped) this.log(line);
     }
     const old = await readFile(this.file, 'utf8').catch(() => null);
     if (old === derived.text) {
