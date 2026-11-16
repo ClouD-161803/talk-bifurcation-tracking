@@ -34,6 +34,22 @@ const SHOWN_ALT = (alt, path) => `(() => { const i = document.querySelector('.re
 const IMAGES = `(${TEXT}.match(/<img /g) ?? []).length`;
 // the errors in the console of a page for an upload that the proxy refused, cut, or lost
 const PROXIED = [/status of 50[04]/, /ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET|Failed to fetch/];
+// the number of elements of the page that show the whole of text where a person sees it, i.e.
+// inside the window, not cut, and not clipped by an ancestor
+const SEEN = (text) => `[...document.body.querySelectorAll('*')].filter((el) => {
+  const has = (e) => e.textContent.includes(${JSON.stringify(text)});
+  if (!has(el) || [...el.children].some(has) || getComputedStyle(el).visibility !== 'visible') return false;
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height || r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) return false;
+  if (el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight + 1) return false;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (getComputedStyle(p).overflow === 'visible') continue;
+    const q = p.getBoundingClientRect();
+    if (r.left < q.left - 1 || r.right > q.right + 1 || r.top < q.top - 1 || r.bottom > q.bottom + 1) return false;
+  }
+  return true;
+}).length`;
+const BAR = `document.querySelector('.beeson-edit-titlebar').getBoundingClientRect().height`;
 
 /** A file of bytes at name in a new folder dir of the talk folder, for a drop. */
 function file(server, dir, name, bytes) {
@@ -284,6 +300,47 @@ test('a picture over 16 MB is refused on the host as well, and a video of the ho
   assert.equal(await refuse('big.png', 'image/png', 15), null);
   assert.equal(await refuse('big.mp4', 'video/mp4', 17), null);
   assert.equal(await refuse('big.mp4', 'video/mp4', 65), 'big.mp4 is larger than 64 MB, the largest file that can be sent to the others');
+  clean(ann);
+});
+
+test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const heic = file(server, 'a', 'IMG_2041.heic', Buffer.alloc(16));
+  const big = file(server, 'a', 'big.png', Buffer.alloc(17 * 1024 * 1024));
+  for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1280, 800, false]]) {
+    const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
+    await show(page, 'Two');
+    for (const [path, start] of [[heic, 'IMG_2041.heic cannot be sent'], [big, 'big.png is larger than 16 MB']]) {
+      await dropFiles(page, [path]);
+      await page.waitFor(`(${C}.app.note?.text ?? '').startsWith(${JSON.stringify(start)})`);
+      const reason = await page.evaluate(`${C}.app.note.text`);
+      await page.waitFor(`${SEEN(reason)} > 0`).catch(async () => assert.fail(`the reason is not seen in full at ${width} px: ${reason}. the save state reads ${await page.evaluate(STATE)}`));
+      assert.equal(await page.evaluate(IMAGES), 0);
+    }
+    assert.ok(!(await converge(server, [page])).includes('<img'));
+    clean(page);
+    await page.close();
+  }
+});
+
+test('the reason why a dropped file is not added is no longer shown after the next edit, and the title bar has its height again', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await show(ann, 'Two');
+  const bar = await ann.evaluate(BAR);
+  await dropFiles(ann, [file(server, 'a', 'IMG_2041.heic', Buffer.alloc(16))]);
+  await ann.waitFor(`(${C}.app.note?.text ?? '').startsWith('IMG_2041.heic')`);
+  const reason = await ann.evaluate(`${C}.app.note.text`);
+  await ann.waitFor(`${STATE} === ${JSON.stringify(reason)}`);
+  await edit(ann, 1, 'p', ' typed');
+  await ann.waitFor(`${C}.app.note === null && ${SEEN(reason)} === 0`);
+  assert.notEqual(await ann.evaluate(STATE), reason);
+  await ann.waitFor(`${BAR} === ${bar}`);
+  assert.match(await converge(server, [ann]), /<p>Second slide typed<\/p>/);
   clean(ann);
 });
 
