@@ -14,6 +14,7 @@ import { createServer, request as httpRequest } from 'node:http';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
+import { startRelay } from '../scripts/relay.mjs';
 import { front } from './helpers/apply.mjs';
 import { C, clean, converge, open, sessionUrl, show, STATE, talk, TEXT } from './helpers/client.mjs';
 import { click, press as keys } from './helpers/editor.mjs';
@@ -329,34 +330,52 @@ test('the save state of a failed upload is cleared once the deck no longer names
   clean(ann, PROXIED);
 });
 
-const LOST = 'media/plot.png is not in the talk folder, since the body is larger than the limit of the relay. Delete it from the deck, or add the file to media/ by hand.';
+// the line of a file given up, which a guest cannot add to the talk folder of the host
+const LOST = {
+  host: 'media/plot.png is not in the talk folder, since the body is larger than the limit of the relay. Delete it from the deck, or add the file to media/ by hand and load the page again.',
+  guest: 'media/plot.png is not in the talk folder, since the body is larger than the limit of the relay. Delete it from the deck, or ask the host to add the file to media/, then load the page again.',
+};
+const SECRET = 'a secret of the relay of the tests';
 
-test('an upload that the session refuses although the page did not is given up and named in the save state, and the later edits of the page reach index.html', { timeout: 120_000 }, async (t) => {
-  const browser = await launch({ offline: false });
-  t.after(() => browser.close());
-  const server = await talk(t);
-  const p = await proxy(t, server.edit);
-  const ann = await tab(browser, p.url);
-  p.next('large');
-  await show(ann, 'One');
-  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
-  await ann.waitFor(`${STATE} === ${JSON.stringify(LOST)}`, 10_000);
-  assert.equal(await ann.evaluate(ACTION), null);
-  await edit(ann, 1, 'p', ' typed');
-  const text = await converge(server, [ann]);
-  assert.match(text, /<p>Second slide typed<\/p>/);
-  assert.deepEqual(sources(text)[0], ['media/plot.png']);
-  assert.equal(p.puts, 1);
-  assert.equal(await ann.evaluate(STATE), LOST);
-  // the save state is cleared once the deck no longer names the picture
-  await keys(ann, 'Mod+Z');
-  await keys(ann, 'Mod+Z');
-  await ann.waitFor(`${IMAGES} === 0`);
-  await edit(ann, 0, 'p', ' typed');
-  await until(() => server.read().includes('<p>First slide typed</p>'), 'the edit in index.html');
-  await ann.waitFor(`${STATE} === 'Saved to index.html'`, 10_000);
-  clean(ann, [/status of 413/]);
-});
+// the relay that the edit command of server shares the session through, with the port and the
+// address of its session as edit of proxy() takes them, through which the page is a guest
+async function relayed(t, server) {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: relay.url, secret: SECRET });
+  assert.equal(shared.status, 200, shared.text);
+  return { port: Number(new URL(relay.url).port), url: `${relay.url}/${server.edit.key}/` };
+}
+
+for (const who of ['host', 'guest']) {
+  test(`an upload that the session refuses although the page of a ${who} did not is given up and named in the save state, and the later edits of the page reach index.html`, { timeout: 120_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const p = await proxy(t, who === 'host' ? server.edit : await relayed(t, server));
+    const ann = await tab(browser, p.url);
+    assert.equal(await ann.evaluate(`${C}.host`), who === 'host');
+    p.next('large');
+    await show(ann, 'One');
+    await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+    await ann.waitFor(`${STATE} === ${JSON.stringify(LOST[who])}`, 10_000);
+    assert.equal(await ann.evaluate(ACTION), null);
+    await edit(ann, 1, 'p', ' typed');
+    const text = await converge(server, [ann]);
+    assert.match(text, /<p>Second slide typed<\/p>/);
+    assert.deepEqual(sources(text)[0], ['media/plot.png']);
+    assert.equal(p.puts, 1);
+    assert.equal(await ann.evaluate(STATE), LOST[who]);
+    // the save state is cleared once the deck no longer names the picture
+    await keys(ann, 'Mod+Z');
+    await keys(ann, 'Mod+Z');
+    await ann.waitFor(`${IMAGES} === 0`);
+    await edit(ann, 0, 'p', ' typed');
+    await until(() => server.read().includes('<p>First slide typed</p>'), 'the edit in index.html');
+    await ann.waitFor(`${STATE} === ${JSON.stringify(who === 'host' ? 'Saved to index.html' : 'Saved')}`, 10_000);
+    clean(ann, [/status of 413/]);
+  });
+}
 
 test('the save state of an upload given up is cleared once another page deletes the picture, without an edit of the page', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
