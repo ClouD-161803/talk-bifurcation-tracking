@@ -22,7 +22,7 @@ const CSS = `
 .beeson-comment-badge.unread { background: var(--ed-select, #8a2be2); color: var(--ed-on-select, #fff); }
 .beeson-comment-badge::after { content: ''; position: absolute; inset: -${TAP}px; }
 .beeson-comment-badge:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 2px; }
-.beeson-edit-nav .row .frame .beeson-comment-count { position: absolute; right: -6px; bottom: -6px; z-index: 1; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--ed-panel); color: var(--ed-text); box-shadow: 0 0 0 1.5px var(--ed-select); font: 600 10px/16px var(--ed-font); text-align: center; pointer-events: none; }
+.beeson-edit-nav .row .frame .beeson-comment-count { position: absolute; left: -6px; top: -6px; z-index: 1; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--ed-panel); color: var(--ed-text); box-shadow: 0 0 0 1.5px var(--ed-select); font: 600 10px/16px var(--ed-font); text-align: center; pointer-events: none; }
 .beeson-edit-nav .row .frame .beeson-comment-count.unread { background: var(--ed-select); color: var(--ed-on-select); }
 html.beeson-history .beeson-comment-badges, html.beeson-history .beeson-edit-nav .beeson-comment-count { display: none; }
 `;
