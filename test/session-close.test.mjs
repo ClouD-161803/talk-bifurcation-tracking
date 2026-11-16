@@ -14,7 +14,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, ops, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
 import { type } from './helpers/editor.mjs';
-import { copied, el, released, rows, tab } from './helpers/offline.mjs';
+import { copied, el, released, ROWS, rows, tab } from './helpers/offline.mjs';
 import { post, raw, until } from './helpers/session.mjs';
 import { Transport } from '../src/session/client/transport.ts';
 
@@ -546,6 +546,35 @@ test('a page that loads does not take over the copy of a page that opened after 
   assert.equal(await converge(server, [page, late]), TALK.replace('<p>First slide</p>', '<p>First slide live</p>'));
   clean(page);
   clean(late);
+});
+
+test('a page takes over the copies of closed pages only while it names at most 16 tokens, and leaves the others to the next load', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const net = await proxy(t, server.edit);
+  const { probe, op, id } = await closedWithWord(browser, server, net);
+  // 16 copies without edits of other closed pages, older and with ids before the id of the first page
+  await probe.evaluate(`new Promise((done, fail) => {
+    const r = indexedDB.open('beeson-session', 1);
+    r.onsuccess = () => {
+      const t = r.result.transaction('copies', 'readwrite');
+      const s = t.objectStore('copies');
+      s.get(${JSON.stringify(id)}).onsuccess = (e) => {
+        const a = e.target.result;
+        for (let i = 10; i < 26; i++) s.put({ ...a, id: '!' + i, mine: a.base, files: [], beat: a.beat - 1000 - i, tokens: ['fake' + i + 'x'.repeat(16)] });
+      };
+      t.oncomplete = () => (r.result.close(), done(true));
+      t.onerror = () => fail(t.error);
+    };
+  })`);
+  const next = await tab(browser, net.url);
+  await converge(server, [next]);
+  net.release();
+  await until(() => op.answered, 'the answer of the operation of the closed page');
+  assert.equal(count(await served(server), ' both'), 1);
+  await probe.waitFor(`(${ROWS}).then((r) => r.map((x) => x.id).join() === ${JSON.stringify(id)})`);
+  clean(next);
 });
 
 /**
