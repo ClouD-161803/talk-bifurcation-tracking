@@ -87,10 +87,10 @@ function childrenOf(html: string): Child[] {
   return out;
 }
 
-// a changed element: the child of a slide by its name and its place among the children of this
-// name, or the slide itself when name is null, with the person id of who changed it and its range
-// in the text
-export type Target = { slide: number; name: string | null; nth: number; author: string; start: number; end: number };
+// a changed element: the child of a slide by its name, its place among the children of this name,
+// and the number of them, or the slide itself when name is null, with the person id of who changed
+// it and its range in the text
+export type Target = { slide: number; name: string | null; nth: number; of: number; author: string; start: number; end: number };
 
 const touches = (m: Mark, start: number, end: number) => (m.start < m.end ? m.start < end && start < m.end : start < m.start && m.start < end);
 
@@ -103,15 +103,16 @@ export function targetsOf(text: string, slides: Slide[], marks: Mark[]): Target[
     if (!mine.length) return;
     const tag = mine.find((m) => touches(m, s.start, s.open));
     if (tag) {
-      out.set(`${k}`, { slide: k, name: null, nth: 0, author: tag.author, start: s.start, end: s.end });
+      out.set(`${k}`, { slide: k, name: null, nth: 0, of: 1, author: tag.author, start: s.start, end: s.end });
       return;
     }
     const counts = new Map<string, number>();
-    for (const c of childrenOf(text.slice(s.start, s.end))) {
+    const children = childrenOf(text.slice(s.start, s.end));
+    for (const c of children) {
       const nth = counts.get(c.name) ?? 0;
       counts.set(c.name, nth + 1);
       const m = mine.find((x) => touches(x, s.start + c.start, s.start + c.end));
-      if (m) out.set(`${k} ${c.name} ${nth}`, { slide: k, name: c.name, nth, author: m.author, start: s.start + c.start, end: s.start + c.end });
+      if (m) out.set(`${k} ${c.name} ${nth}`, { slide: k, name: c.name, nth, of: children.filter((x) => x.name === c.name).length, author: m.author, start: s.start + c.start, end: s.start + c.end });
     }
   });
   return [...out.values()];
@@ -467,11 +468,14 @@ export class Preview {
     const css = (w as Window & typeof globalThis).CSS?.highlights ? (w as Window & typeof globalThis) : null;
     for (const t of targets) {
       const section = this.sections[t.slide];
-      const el = !section || t.name === null ? section : [...section.children].filter((c) => c.localName === t.name)[t.nth];
+      const same = !section || t.name === null ? [section] : [...section.children].filter((c) => c.localName === t.name);
+      const el = same[t.nth];
       if (!el) continue;
       el.setAttribute('data-beeson-changed', t.author);
       (el as HTMLElement).style.setProperty('--beeson-changed', tone(t.author));
-      if (css) addedIn(el, text, tokens, t.start, t.end, detail.marks, added);
+      // the parser of the page adds or moves a child, e.g. a p that it closes at a ul, hence the nth
+      // child of a name is the one of the text only when the page has as many of them
+      if (css && same.length === t.of) addedIn(el, text, tokens, t.start, t.end, detail.marks, added);
       // the notes are not drawn on the slide, hence their change is named in the bar
       if (el.matches('aside.notes')) notes.add(this.slides[t.slide].number);
     }
