@@ -310,6 +310,60 @@ test('an undo or a redo of a move of the slide of a held text element, or of a n
   clean(ben);
 });
 
+test('an undo or a redo of a nudge of two elements, the second around a held text element, is refused, and an undo of a delete of another element of its slide is taken', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>Box</p>\n  <div class="group"><p>Second slide</p><p>Other</p></div>\n  <p>Spare</p>']] });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, '.group p');
+  const group = el(1, '.group');
+  const box = el(1, ':scope > p');
+  const spare = `[...${el(1, 'h2')}.parentElement.children].find((e) => e.textContent === 'Spare')`;
+  const enter = async () => {
+    await front(ana);
+    await caretAtEnd(ana, p);
+    await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in to be held on the page of Ben');
+    // a clock of Ben far behind keeps the hold until Ana leaves
+    await ben.evaluate(`${P}.skew = -1e8`);
+    await unbubble(ben);
+    await front(ben);
+  };
+  const exit = async () => {
+    await front(ana);
+    await leave(ana);
+    await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
+    await front(ben);
+  };
+  const places = () => ben.evaluate(`[${box}, ${group}].map((e) => e.style.translate)`);
+  // Ben nudges the box and the element around the paragraph, then deletes another paragraph
+  await select(ben, box, group);
+  await ben.evaluate(`${C}.app.commands.run('arrange.nudge.right.far')`);
+  const nudged = await places();
+  assert.ok(nudged.every((x) => x.startsWith('10px')), 'the nudge moves both elements');
+  await select(ben, spare);
+  await ben.evaluate(`${C}.app.commands.run('element.delete')`);
+  assert.equal(await ben.evaluate(`${spare} ?? null`), null, 'the paragraph Spare is deleted');
+  await ben.evaluate(`${C}.app.selection.clear()`);
+  await enter();
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  assert.equal(await ben.evaluate(BUBBLE), null, 'the undo of the delete of another element of the slide is not refused');
+  assert.notEqual(await ben.evaluate(`${spare} ?? null`), null, 'the undo of the delete of another element of the slide is taken');
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the undo of the nudge');
+  assert.deepEqual(await places(), nudged, 'the undo leaves both elements in place');
+  await exit();
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  assert.deepEqual(await places(), ['', ''], 'the undo of the nudge is taken once Ana left');
+  await enter();
+  await ben.evaluate(`${C}.app.commands.run('edit.redo')`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the redo of the nudge');
+  assert.deepEqual(await places(), ['', ''], 'the redo leaves both elements in place');
+  await leave(ben);
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<p>Box<\/p>\s*<div class="group"><p>Second slide<\/p><p>Other<\/p><\/div>\s*<p>Spare<\/p>/);
+  clean(ana);
+  clean(ben);
+});
+
 test('an undo of typing in a text element that the person left keeps the text that another person typed in it since', { timeout: 120_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
