@@ -26,7 +26,7 @@ const CSS = `
 .beeson-session-preview :is(.removed, .notes) { color: var(--ed-muted); white-space: nowrap; }
 .beeson-session-preview :is(.removed, .notes):empty { display: none; }
 .beeson-session-preview .actions { flex: none; margin-left: auto; }
-.beeson-session-preview.two .info { max-width: 55%; flex-wrap: nowrap; overflow: hidden; }
+.beeson-session-preview.two .info { max-width: calc(100% - 76px); flex-wrap: nowrap; overflow: hidden; }
 .beeson-session-preview.two .date { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .beeson-session-preview.two .who { flex: none; flex-wrap: nowrap; white-space: nowrap; }
 .beeson-session-preview.two .bar > .slides { flex-basis: 0; }
