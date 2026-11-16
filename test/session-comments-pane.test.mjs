@@ -568,6 +568,29 @@ test('a draft stays on its element when an element before it is removed or inser
   clean(b);
 });
 
+test('a draft on an element that its page inserted is kept on it through a reload of the page', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [a] } = await pair(t, ['Ann']);
+  const state = `(() => { const d = document.querySelector('${PANE} .draft'); return d && { label: d.querySelector('.anchor').textContent, text: d.querySelector('textarea').value }; })()`;
+  await show(a, 'One');
+  await a.evaluate(`window.BeesonEditor.exec('insert.text')`);
+  await a.waitFor(`document.querySelectorAll('.reveal .slides > section:nth-child(1) p').length === 2`);
+  await typeKeys(a, 'Mine');
+  await until(() => server.read().includes('Mine'), 'the new paragraph to reach index.html');
+  await converge(server, [a]);
+  await a.evaluate(`window.BeesonEditor.exec('insert.comment', { kind: 'element', target: [...document.querySelectorAll('.reveal .slides > section:nth-child(1) p')].find((p) => p.textContent === 'Mine') })`);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(a, 'Half a draft');
+  const first = await a.evaluate(state);
+  assert.deepEqual(first, { label: 'On Paragraph: Mine', text: 'Half a draft' });
+  const count = await loads(a);
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again');
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await sees(a, state, first, 'the draft after a reload');
+  clean(a);
+});
+
 test('a mention is toasted once, also after a reload of the page, a reply, and an edit of the comment', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   const id = await post(b, 1, 'Look, @Ann');
