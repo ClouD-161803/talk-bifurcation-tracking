@@ -700,6 +700,105 @@ test('a draft goes to its slide, and not to an element that reads the same, when
   clean(b);
 });
 
+// the draft of page sent, and the newest comment as the 20 characters around its anchor and the
+// heading of its slide in index.html
+async function sentAt(page, server) {
+  const SENT = `${C}.transport.comments(${C}.token).then((x) => x.comments.map((c) => ({ id: c.id, at: c.anchor.start, slide: c.slide.start })))`;
+  const before = new Set((await page.evaluate(SENT)).map((c) => c.id));
+  await click(page, `${PANE} .draft .actions .primary`);
+  await page.waitFor(`!document.querySelector('${PANE} .draft')`);
+  const text = server.read();
+  return (await page.evaluate(SENT)).filter((c) => !before.has(c.id)).map((c) => ({ near: text.slice(c.at - 10, c.at + 10), slide: /<h2>([^<]*)/.exec(text.slice(c.slide, c.slide + 40))?.[1] }));
+}
+
+// slides with items TBD on One and Two, and a table with three cells that read 0 on Three
+const TWINS = `<section>
+  <h2>One</h2>
+  <ul>
+    <li>Done</li>
+    <li>TBD</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Two</h2>
+  <ul>
+    <li>TBD</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Three</h2>
+  <ul>
+    <li>Later</li>
+  </ul>
+  <table>
+    <tr><td>a</td><td>0</td></tr>
+    <tr><td>b</td><td>0</td></tr>
+    <tr><td>c</td><td>0</td></tr>
+  </table>
+</section>
+`;
+
+test('a draft stays on its element when an element that reads the same before it is removed and one after it is added while its page is away', { timeout: 660_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, TWINS);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  const away = (change, has) => left(server, a, [b], () => writeFileSync(server.file, change(server.read())), has);
+
+  // the item TBD of slide One is removed, and one is added on slide Three, hence the draft on the
+  // item of slide Two is the second of two items again
+  await show(a, 'Two');
+  const item = { label: 'On Item: TBD', text: 'Half a draft' };
+  assert.deepEqual(await drafted(a, el(1, 'li')), item);
+  await away((text) => text.replace('    <li>Done</li>\n    <li>TBD</li>\n', '    <li>Done</li>\n').replace('    <li>Later</li>\n', '    <li>Later</li>\n    <li>TBD</li>\n'), (text) => text.includes('<li>Later</li>\n    <li>TBD</li>'));
+  await sees(a, DRAFTED, item, 'the draft after its twins moved');
+  assert.deepEqual(await sentAt(a, server), [{ near: ' <ul>\n    <li>TBD</l', slide: 'Two' }], 'the comment is on the item of slide Two');
+
+  // row a is removed and row d is added, hence the draft on the cell of row b is the first of three
+  await show(a, 'Three');
+  const cell = { label: 'On Table cell: 0', text: 'Half a draft' };
+  assert.deepEqual(await drafted(a, el(2, 'tr:nth-child(2) td:nth-child(2)')), cell);
+  await away((text) => text.replace('    <tr><td>a</td><td>0</td></tr>\n', '').replace('    <tr><td>c</td><td>0</td></tr>\n', '    <tr><td>c</td><td>0</td></tr>\n    <tr><td>d</td><td>0</td></tr>\n'), (text) => text.includes('<td>d</td>'));
+  await sees(a, DRAFTED, cell, 'the draft after its row moved');
+  assert.deepEqual(await sentAt(a, server), [{ near: '<td>b</td><td>0</td>', slide: 'Three' }], 'the comment is on the cell of row b');
+  clean(a);
+  clean(b);
+});
+
+test('a draft stays on its element when an element is added right before it, and another element that reads the same has the same text before it', { timeout: 660_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, `<section>
+  <h2>One</h2>
+  <ul>
+    <li>TBD</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Two</h2>
+  <ul>
+    <li>TBD</li>
+  </ul>
+</section>
+`);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  await show(a, 'One');
+  const item = { label: 'On Item: TBD', text: 'Half a draft' };
+  assert.deepEqual(await drafted(a, el(0, 'li')), item);
+  await left(server, a, [b], () => writeFileSync(server.file, server.read().replace('<h2>One</h2>\n  <ul>\n', '<h2>One</h2>\n  <ul>\n    <li>Intro</li>\n')), (text) => text.includes('<li>Intro</li>'));
+  await sees(a, DRAFTED, item, 'the draft after an item added right before it');
+  assert.deepEqual(await sentAt(a, server), [{ near: '</li>\n    <li>TBD</l', slide: 'One' }], 'the comment is on the item of slide One');
+  clean(a);
+  clean(b);
+});
+
 test('a draft on a slide that reads as another slide, and a draft on a stack, stay on it when it is changed while the page is away', { timeout: 660_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
