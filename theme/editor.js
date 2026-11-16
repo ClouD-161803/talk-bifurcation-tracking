@@ -977,7 +977,7 @@ html.beeson-no-toolbar .beeson-edit-top { display: none; }
 .beeson-edit-menubar [role=menuitem]:hover, .beeson-edit-menubar [role=menuitem][aria-expanded="true"] { background: var(--ed-pressed); }
 .beeson-edit-menubar [role=menuitem][aria-disabled="true"] { color: var(--ed-faint); }
 .beeson-edit-menubar [role=menuitem]:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: -2px; }
-.beeson-edit-titlebar .doc { min-width: 0; display: flex; gap: 12px; align-items: baseline; overflow: hidden; white-space: nowrap; }
+.beeson-edit-titlebar .doc { min-width: 0; display: flex; gap: 12px; align-items: baseline; overflow: hidden; white-space: nowrap; line-height: normal; }
 .beeson-edit-titlebar .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .beeson-edit-titlebar .doc.tight .state { display: none; }
 .beeson-edit-titlebar .doc.gone { visibility: hidden; }
