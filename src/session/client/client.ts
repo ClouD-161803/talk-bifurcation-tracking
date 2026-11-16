@@ -326,7 +326,8 @@ export class Client {
   }
 
   private unkept(): boolean {
-    return !this.acked() && !this.ended && !keeps(this);
+    // a change that is not read yet is in neither the replica nor the copy
+    return !this.acked() && !this.ended && (this.dirty || !keeps(this));
   }
 
   // resolves once every edit of this page is acknowledged, which is a save in a session
