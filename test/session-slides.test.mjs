@@ -54,3 +54,9 @@ test('a slide removed while another is added is reported as removed, and a slide
   const edited = slide('Beta', '<p>Two impulses place the spacecraft on the stable manifold of the halo orbit.</p>');
   assert.deepEqual(changes(before, deck(ALPHA, edited, GAMMA)), { slides: [2] });
 });
+
+test('a short slide removed while the next one is edited and a new one is added is reported as removed', () => {
+  const before = deck(slide('One', '<p>a</p>'), slide('Results', '<p>Remove me</p>'), slide('Method', '<p>Gamma</p>'), slide('End'));
+  const after = deck(slide('One', '<p>a</p>'), slide('Method', '<p>Gamma and more</p>'), slide('Outlook', '<p>New</p>'), slide('End'));
+  assert.deepEqual(changes(before, after), { slides: [2, 3], removed: { slides: [2], elements: 0 } });
+});

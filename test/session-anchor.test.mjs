@@ -403,6 +403,64 @@ test('a slide removed while another is added in one operation hands its threads 
   reads(after, r.items[3].slide, '<section>\n  <h2>Gamma');
 });
 
+test('a short slide removed while others are added or edited in one operation hands its threads to the deck', async (t) => {
+  const gone = (before, inside) => {
+    const s = slideAround(before, before.indexOf(inside));
+    return { anchor: null, slide: null, removed: { text: before.slice(s.start, before.indexOf('</section>', s.start) + 10) } };
+  };
+  await t.test('a slide of a layout added at the end', () => {
+    const title = ['<h2>Title</h2>', '<p>by Ana</p>'];
+    const method = ['<h2>Method</h2>', '<p>More text here</p>'];
+    const before = deck(title, ['<h2>Remove me</h2>', '<p>Some text</p>'], method, ['<h2>Questions?</h2>']);
+    const after = deck(title, method, ['<h2>Questions?</h2>'], ['<h2></h2>', '<p></p>']);
+    const r = move(before, after, [onElement(before, '<h2>Remove me'), onSlide(before, 'Remove me')]);
+    assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: '<h2>Remove me</h2>' } });
+    assert.deepEqual(r.items[1], gone(before, 'Remove me'));
+  });
+  const cases = {
+    'slides of one line': [
+      [['<h2>One</h2>'], ['<p class="x">Remove me</p>'], ['<p>Gamma</p>'], ['<h2>End</h2>']],
+      [['<h2>One</h2>'], ['<p>Gamma, edited</p>'], ['<p>New slide</p>'], ['<h2>End</h2>']],
+      '<p>Gamma, edited</p>',
+    ],
+    'slides with a title': [
+      [['<h2>One</h2>', '<p>a</p>'], ['<h2>Results</h2>', '<p>Remove me</p>'], ['<h2>Method</h2>', '<p>Gamma</p>'], ['<h2>End</h2>']],
+      [['<h2>One</h2>', '<p>a</p>'], ['<h2>Method</h2>', '<p>Gamma and more</p>'], ['<h2>Outlook</h2>', '<p>New</p>'], ['<h2>End</h2>']],
+      '<p>Gamma and more</p>',
+    ],
+  };
+  for (const [name, [a, b, edited]] of Object.entries(cases)) {
+    await t.test(`${name}, the next one edited and a new one added after it`, () => {
+      const before = deck(...a);
+      const after = deck(...b);
+      const removedTag = before.lastIndexOf('<', before.indexOf('Remove me') - 1);
+      const items = [{ anchor: startTagAt(before, removedTag), slide: slideAround(before, removedTag) }, onSlide(before, 'Remove me'), onSlide(before, 'Gamma'), onElement(before, '<p>Gamma')];
+      const r = move(before, after, items);
+      assert.equal(r.items[0].anchor, null);
+      assert.ok(r.items[0].removed?.text.includes('Remove me'), JSON.stringify(r.items[0]));
+      assert.deepEqual(r.items[1], gone(before, 'Remove me'));
+      const slide = slideAround(after, after.indexOf(edited));
+      assert.deepEqual(r.items[2], { anchor: slide, slide });
+      reads(after, r.items[3].anchor, edited);
+      assert.deepEqual(r.items[3].slide, slide);
+      assert.equal(r.items[3].removed, undefined);
+    });
+  }
+  await t.test('slides without text, one removed and an attribute of the next one changed', () => {
+    const before = deck(['<h2>One</h2>'], ['<img src="figures/a.png">'], ['<img src="figures/b.png">'], ['<h2>End</h2>']);
+    const after = deck(['<h2>One</h2>'], ['<img class="wide" src="figures/b.png">'], ['<h2>End</h2>']);
+    const r = move(before, after, [onSlide(before, 'a.png'), onSlide(before, 'b.png')]);
+    assert.deepEqual(r.items[0], gone(before, 'a.png'));
+    const slide = slideAround(after, after.indexOf('b.png'));
+    assert.deepEqual(r.items[1], { anchor: slide, slide });
+  });
+  await t.test('a slide without text removed while a slide of a layout is added', () => {
+    const before = deck(['<h2>One</h2>'], ['<img src="figures/a.png">'], ['<h2>End</h2>']);
+    const after = deck(['<h2>One</h2>'], ['<h2>End</h2>'], ['<h2></h2>', '<p></p>']);
+    assert.deepEqual(move(before, after, [onSlide(before, 'a.png')]).items[0], gone(before, 'a.png'));
+  });
+});
+
 test('of two slides of equal text, the one that the operation removes loses its threads', async (t) => {
   const Q = ['<h2>Questions?</h2>'];
   const before = deck(['<h2>Alpha</h2>'], Q, ['<h2>Beta</h2>'], Q);
