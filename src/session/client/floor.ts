@@ -86,11 +86,11 @@ export function install(client: Client): void {
     return true;
   });
   // an undo or a redo of typing that the history refused, beside its text element on the slide
-  // shown, and at the top of the window otherwise, e.g. for hidden speaker notes, with the number of
-  // the slide of a text element on another slide
+  // shown, and at the top of the window otherwise, e.g. for hidden speaker notes, which it names, with
+  // the number of the slide of a text element on another slide
   app.history.refused = (entry, way) => {
     const here = entry.els?.find((el) => app.current()?.contains(el)), other = entry.els?.[0];
-    bubble(here?.getClientRects().length ? here : null, `Your typing${client.shell.onSlides(here || !other ? [] : numbersOf(other))} cannot be ${way === 'undo' ? 'undone' : 'redone'} without changing the letters of another person.`);
+    bubble(here?.getClientRects().length ? here : null, `Your typing${other?.closest('aside.notes') ? ' in the speaker notes' : ''}${client.shell.onSlides(here || !other ? [] : numbersOf(other))} cannot be ${way === 'undo' ? 'undone' : 'redone'} without changing the letters of another person.`);
   };
 }
 
