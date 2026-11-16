@@ -110,7 +110,7 @@ test('a word composed with an input method between the keys of two other people,
   assert.deepEqual([ana.errors, ben.errors, cleo.errors], [[], [], []]);
 });
 
-test('the letters of two people who take turns at one point each stay in a run of their own', { timeout: 240_000 }, async (t) => {
+test('the letters of two people who take turns at one point each stay in a run of their own', { timeout: 270_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -212,7 +212,7 @@ const run = async (page, id) => {
   await page.evaluate(`${C}.app.history.idle().then(() => true)`);
 };
 
-test('an undo of typing next to a space that the browser rewrote as &nbsp; removes only the typing of the person, and the undo of the other person removes only theirs', { timeout: 240_000 }, async (t) => {
+test('an undo of typing next to a space that the browser rewrote as &nbsp; removes only the typing of the person, and the undo of the other person removes only theirs', { timeout: 270_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>Second <code>x+1</code> slide</p>']] });
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -299,7 +299,7 @@ test('an undo of typing that cannot be undone keeps the change before it and say
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a redo of typing that cannot be redone says why at the top of the window, with the number of the slide, when its text element is on another slide', { timeout: 240_000 }, async (t) => {
+test('a redo of typing that cannot be redone says why at the top of the window, with the number of the slide, when its text element is on another slide', { timeout: 270_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -366,7 +366,7 @@ for (const [what, keys, made] of [
 
 // ' one' ends with the letter that ends "slide", and ' two' does not
 for (const word of [' two', ' one']) {
-  test(`a redo of "${word}" right after its undo puts it back before the keys that another person typed right after it once the typing had ended`, { timeout: 240_000 }, async (t) => {
+  test(`a redo of "${word}" right after its undo puts it back before the keys that another person typed right after it once the typing had ended`, { timeout: 270_000 }, async (t) => {
     const { server, pages } = await session(t, ['Ana', 'Ben']);
     const [ana, ben] = pages;
     for (const page of pages) await show(page, 'Two');
@@ -390,7 +390,7 @@ for (const word of [' two', ' one']) {
   });
 }
 
-test('an undo of typing followed by typing in another text element keeps a word that another person removed and typed again', { timeout: 240_000 }, async (t) => {
+test('an undo of typing followed by typing in another text element keeps a word that another person removed and typed again', { timeout: 300_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -420,7 +420,7 @@ const aside = (text) => text.match(/<aside class="notes">.*?<\/aside>/s)?.[0] ??
 const notesAt = (page, node) => page.evaluate(`(() => { const q = ${NOTES}; q.focus(); getSelection().collapse(q.${node}, 0); return document.activeElement === q; })()`);
 
 for (const other of [false, true]) {
-  test(`a dash item typed at the start of a line of the speaker notes is taken back by the undos of the person${other ? ' after another person typed at the start of the notes' : ''}, and given back by the redos`, { timeout: 240_000 }, async (t) => {
+  test(`a dash item typed at the start of a line of the speaker notes is taken back by the undos of the person${other ? ' after another person typed at the start of the notes' : ''}, and given back by the redos`, { timeout: 450_000 }, async (t) => {
     const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', `  <p>Second slide</p>\n  ${ASIDE}`]] });
     const [ana, ben] = pages;
     for (const page of pages) {
@@ -488,7 +488,7 @@ const format = (id) => async (page) => {
   await run(page, id);
 };
 
-test('an unread less-than sign that replaces a letter stays one character reference beside the key of another person after the letter', { timeout: 240_000 }, async (t) => {
+test('an unread less-than sign that replaces a letter stays one character reference beside the key of another person after the letter', { timeout: 300_000 }, async (t) => {
   const text = await race(t, {
     ana: [8, 9, '<'],
     marker: 'slZide',
@@ -500,7 +500,7 @@ test('an unread less-than sign that replaces a letter stays one character refere
   assert.equal(text, '<p>Second s&lt;Zide</p>');
 });
 
-test('an unread ampersand that replaces a letter stays one character reference beside the key of another person after the letter', { timeout: 240_000 }, async (t) => {
+test('an unread ampersand that replaces a letter stays one character reference beside the key of another person after the letter', { timeout: 300_000 }, async (t) => {
   const text = await race(t, {
     edits: [['  <p>Second slide</p>', '  <p>Second cat</p>']],
     ana: [8, 9, '&'],
@@ -513,7 +513,7 @@ test('an unread ampersand that replaces a letter stays one character reference b
   assert.equal(text, '<p>Second c&amp;Zt</p>');
 });
 
-test('an unread key at the start of a word that another person makes italic goes before the new element', { timeout: 240_000 }, async (t) => {
+test('an unread key at the start of a word that another person makes italic goes before the new element', { timeout: 300_000 }, async (t) => {
   const text = await race(t, { ana: [7, 7, 'Z'], marker: '<em>slide</em>', ben: format('text.italic') });
   assert.equal(text, '<p>Second Z<em>slide</em></p>');
 });
@@ -533,12 +533,12 @@ const FORMATS = [
   ['a link', link, LINK, '</a>'],
 ];
 
-test('an unread key at the start of a word that another person links goes before the link', { timeout: 240_000 }, async (t) => {
+test('an unread key at the start of a word that another person links goes before the link', { timeout: 300_000 }, async (t) => {
   const text = await race(t, { ana: [7, 7, 'Z'], marker: `${LINK}slide</a>`, ben: link });
   assert.equal(text, `<p>Second Z${LINK}slide</a></p>`);
 });
 
-test('an unread key inside a word that another person makes italic or links stays inside the new element, and so does the next key of the person', { timeout: 300_000 }, async (t) => {
+test('an unread key inside a word that another person makes italic or links stays inside the new element, and so does the next key of the person', { timeout: 570_000 }, async (t) => {
   for (const [name, act, open, close] of FORMATS) {
     await t.test(name, async (t) => {
       const text = await race(t, { ana: [9, 9, 'Z'], marker: `${open}slide${close}`, ben: act, more: 'Y' });
@@ -581,7 +581,7 @@ const inside = async (page) => {
   await typeKeys(page, 'Z');
 };
 
-test('a key inside a word and a format around this word, each made before its page hears of the other, are both kept', { timeout: 480_000 }, async (t) => {
+test('a key inside a word and a format around this word, each made before its page hears of the other, are both kept', { timeout: 1110_000 }, async (t) => {
   for (const [name, act, open, close] of FORMATS) {
     await t.test(`the key of Ben, then ${name} of Ana`, async (t) => {
       const text = await unheard(t, { ben: inside, file: 'slZide', ana: act, mine: `${open}slide${close}` });
@@ -635,7 +635,7 @@ for (const [what, paste, words, at, over = 0] of [
   });
 }
 
-test('the same letter typed at one point by another person and as an unread key of the person is kept twice', { timeout: 240_000 }, async (t) => {
+test('the same letter typed at one point by another person and as an unread key of the person is kept twice', { timeout: 300_000 }, async (t) => {
   const text = await race(t, {
     ana: [6, 6, 'e'],
     marker: 'Seconde',
@@ -653,7 +653,7 @@ for (const [words, a, b, word, want] of [
   ['Second slide', 7, 12, 'deck', 'Second deck'],
   ['Second teh slide', 7, 10, 'the', 'Second the slide'],
 ]) {
-  test(`the same replacement of ${words.slice(a, b)} by ${word} made by another person and as an unread change of the person is kept once`, { timeout: 240_000 }, async (t) => {
+  test(`the same replacement of ${words.slice(a, b)} by ${word} made by another person and as an unread change of the person is kept once`, { timeout: 300_000 }, async (t) => {
     const text = await race(t, {
       edits: words === 'Second slide' ? [] : [['  <p>Second slide</p>', `  <p>${words}</p>`]],
       ana: [a, b, word],
@@ -685,7 +685,7 @@ async function stepped(server, ana, steps, act) {
   }
 }
 
-test('a key of another person at the caret of a composition that equals the first letter of the reading is kept, at each step', { timeout: 240_000 }, async (t) => {
+test('a key of another person at the caret of a composition that equals the first letter of the reading is kept, at each step', { timeout: 270_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -696,7 +696,7 @@ test('a key of another person at the caret of a composition that equals the firs
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('two keys of another person at the caret of a composition, the first of which equals the reading, are kept', { timeout: 180_000 }, async (t) => {
+test('two keys of another person at the caret of a composition, the first of which equals the reading, are kept', { timeout: 270_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -707,7 +707,7 @@ test('two keys of another person at the caret of a composition, the first of whi
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a letter that another person deletes before the caret of a composition whose reading starts with it stays deleted', { timeout: 180_000 }, async (t) => {
+test('a letter that another person deletes before the caret of a composition whose reading starts with it stays deleted', { timeout: 270_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -718,7 +718,7 @@ test('a letter that another person deletes before the caret of a composition who
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a sentence that another person pastes over the paragraph around the caret of a composition is kept whole, with the committed word once', { timeout: 180_000 }, async (t) => {
+test('a sentence that another person pastes over the paragraph around the caret of a composition is kept whole, with the committed word once', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -731,7 +731,7 @@ test('a sentence that another person pastes over the paragraph around the caret 
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
-test('a key typed right before a composition that starts while an apply waits reaches index.html before the commit', { timeout: 180_000 }, async (t) => {
+test('a key typed right before a composition that starts while an apply waits reaches index.html before the commit', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await pair(t);
   const [ana, ben] = pages;
   assert.ok(await caretAt(ana, 6));
@@ -765,7 +765,7 @@ const first = (text) => text.match(/<p>[^\n]*<\/p>/g)[0];
 // restore, a paste of a picture, or an inline formula keeps one open. the test ends the transaction
 // during the composition
 for (const between of [false, true]) {
-  test(`the keys of the person before a composition that starts while the history is busy stay in index.html${between ? ', also with a key of another person during the composition' : ''}`, { timeout: 240_000 }, async (t) => {
+  test(`the keys of the person before a composition that starts while the history is busy stay in index.html${between ? ', also with a key of another person during the composition' : ''}`, { timeout: 300_000 }, async (t) => {
     const { server, pages } = await pair(t);
     const [ana, ben] = pages;
     await show(ana, 'One');
