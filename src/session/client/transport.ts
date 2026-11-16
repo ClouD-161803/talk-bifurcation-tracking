@@ -46,13 +46,14 @@ export class Transport {
     return this.post('hello', request);
   }
 
-  // an operation with keepalive reaches the edit command also when its page is closed. Chrome and
-  // Safari refuse such a request while 64 KiB of such bodies are in flight in one document, and
-  // Firefox limits their count instead. 20,000 characters are under 60,000 bytes in UTF-8, and an
-  // operation that failed with keepalive is sent again without it
+  // an operation with keepalive reaches the edit command also when its page is closed. the fetch
+  // standard refuses such a request while 64 KiB of such bodies are in flight in one document. a
+  // body under 20,000 characters is under 60,000 bytes in UTF-8, and one of 60,000 characters is
+  // not, hence the bytes of the others alone are counted. an operation that failed with keepalive
+  // is sent again without it
   op(post: OpPost): Promise<OpAnswer> {
     const body = JSON.stringify(post);
-    const keepalive = post !== this.failed && body.length < 20_000;
+    const keepalive = post !== this.failed && (body.length < 20_000 || (body.length < 60_000 && new Blob([body]).size < 60_000));
     return this.send<OpAnswer>(this.url('op'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive }, POST_WAIT).catch((e: unknown) => {
       if (keepalive) this.failed = post;
       throw e;
