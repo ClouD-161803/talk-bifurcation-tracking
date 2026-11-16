@@ -244,11 +244,22 @@ test('a drag of the move handle, the rotate handle, or a grip of a held paragrap
   await select(cy, SECOND);
   await frame(cy);
   await unbubble(cy);
-  // the move handle is drawn beyond the left edge of the window of a phone, hence its grip is dragged
-  const h = await center(cy, '.beeson-grip[data-handle="e"]');
-  await cy.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [h] });
-  for (let i = 1; i <= 8; i++) await cy.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: h.x + i * 8, y: h.y + i * 6 }] });
-  await cy.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  // the move handle is drawn beyond the left edge of the window of a phone, hence its grip is
+  // dragged. the pointer events of the touch are made in the page, since Chrome may give a touch on
+  // a grip to a text element beside it (issue 61), and the deck then moves to another slide
+  await cy.evaluate(`(() => {
+    const grip = document.querySelector('.beeson-grip[data-handle="e"]');
+    const r = grip.getBoundingClientRect();
+    const touch = (type, i) => grip.dispatchEvent(new PointerEvent(type, {
+      pointerId: 2, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, composed: true,
+      button: type === 'pointermove' ? -1 : 0, buttons: type === 'pointerup' ? 0 : 1,
+      clientX: r.left + r.width / 2 + i * 8, clientY: r.top + r.height / 2 + i * 6,
+    }));
+    touch('pointerdown', 0);
+    for (let i = 1; i <= 8; i++) touch('pointermove', i);
+    touch('pointerup', 8);
+    return true;
+  })()`);
   await frame(cy);
   assert.equal(await cy.evaluate(STYLE(SECOND)), null, 'a touch drag of the grip leaves the paragraph as it was');
   assert.equal(await cy.evaluate(BUBBLE), REFUSED, 'a touch drag of the grip');
