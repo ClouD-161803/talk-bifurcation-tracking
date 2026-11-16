@@ -14,6 +14,7 @@ import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
+import { goOffline, tab } from './helpers/offline.mjs';
 import { post as request, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
@@ -873,6 +874,43 @@ test('the button of the actions of a comment is drawn as the ellipsis of More in
   })()`, { text: '⋯', icon: false, name: 'Thread actions' });
   clean(a);
 });
+
+for (const scheme of ['dark', 'light']) {
+  test(`in ${scheme} mode, a button of a thread that is disabled offline is drawn dimmer than when it is enabled`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    const a = await tab(browser, sessionUrl(server.edit), { name: 'Ann' });
+    await converge(server, [a]);
+    const open = await post(a, 0, 'An open thread');
+    const done = await post(a, 1, 'A resolved thread');
+    await act(a, done, 'resolve');
+    await a.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await openPane(a);
+    await sees(a, `!!document.querySelector('${ARTICLE(open)}')`, true);
+    // the buttons of the head of each thread, as their names, whether they are disabled, and how
+    // they are drawn
+    const look = async () => {
+      const read = (id) => a.evaluate(`[...document.querySelectorAll('${ARTICLE(id)} .head button')].map((b) => { const s = getComputedStyle(b); return [b.getAttribute('aria-label') || b.textContent, b.disabled, s.color, s.opacity]; })`);
+      const out = await read(open);
+      await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="resolved"]').click()`);
+      await sees(a, `!!document.querySelector('${ARTICLE(done)}')`, true);
+      out.push(...(await read(done)));
+      await a.evaluate(`document.querySelector('${PANE} .filters [data-filter="open"]').click()`);
+      await sees(a, `!!document.querySelector('${ARTICLE(open)}')`, true);
+      return out;
+    };
+    await front(a);
+    const on = await look();
+    await goOffline(a);
+    await a.waitFor(`/^Offline/.test(${STATE})`);
+    await sees(a, `document.querySelector('${ARTICLE(open)} .resolve').disabled`, true);
+    const off = await look();
+    assert.deepEqual(on.map(([name, disabled]) => [name, disabled]), [['Resolve', false], ['Thread actions', false], ['Reopen', false], ['Thread actions', false]]);
+    assert.deepEqual(off.map(([name, disabled, color, opacity], k) => [name, disabled, color !== on[k][2] || opacity !== on[k][3]]), on.map(([name]) => [name, true, true]), JSON.stringify({ on, off }));
+    clean(a, REFUSED);
+  });
+}
 
 test('the initials and the tone of a person in the pane are those of the avatar', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t, ['Ann 🇮🇹', 'Ben']);
