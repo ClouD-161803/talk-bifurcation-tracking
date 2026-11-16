@@ -91,3 +91,15 @@ test('the changes of random edits of a deck turn it into the edited deck', () =>
     assert.equal(apply(deck, changes(deck, theirs)), theirs);
   }
 });
+
+test('a vertical stack moved before three slides is the move of the stack, and a key in one of these slides merges with it without a conflict', () => {
+  const top = (n) => `<section>\n  <h2>Top ${n}</h2>\n  <p>Words of top ${n}</p>\n  <p>More of top ${n}</p>\n  <p>End of top ${n}</p>\n</section>\n`;
+  const inner = (n) => `  <section>\n    <h2>Inner ${n}</h2>\n    <p>Words of inner ${n}</p>\n    <p>End of inner ${n}</p>\n  </section>\n`;
+  const stack = `<section>\n${inner(1)}${inner(2)}</section>\n`;
+  const deck = top(1) + top(2) + top(3) + stack, moved = stack + top(1) + top(2) + top(3);
+  const found = changes(deck, moved);
+  assert.equal(apply(deck, found), moved);
+  assert.ok(found.every((e) => !deck.slice(e.start, e.end).includes('Top')), 'a slide that the stack passes is read as moved');
+  const typed = deck.replace('More of top 2', 'More of top 2 by Bob');
+  for (const prefer of ['ours', 'theirs']) assert.deepEqual(merge(deck, changes(deck, typed), moved, prefer), { text: moved.replace('More of top 2', 'More of top 2 by Bob'), conflicts: [] }, prefer);
+});

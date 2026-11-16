@@ -835,6 +835,14 @@ test('the merge of the editor keeps each text of two slides that a received text
   }
 });
 
+test('a vertical stack moved before three slides by one replica and a key of another in one of these slides are both taken, in both orders', () => {
+  const top = (n) => `<section>\n  <h2>Top ${n}</h2>\n  <p>Words of top ${n}</p>\n  <p>More of top ${n}</p>\n  <p>End of top ${n}</p>\n</section>\n`;
+  const inner = (n) => `  <section>\n    <h2>Inner ${n}</h2>\n    <p>Words of inner ${n}</p>\n    <p>End of inner ${n}</p>\n  </section>\n`;
+  const stack = `<section>\n${inner(1)}${inner(2)}</section>\n`;
+  const base = top(1) + top(2) + top(3) + stack, moved = stack + top(1) + top(2) + top(3);
+  for (const moveFirst of [true, false]) assert.equal(race(base, moved, base.replace('More of top 2', 'More of top 2 by Bob'), moveFirst), moved.replace('More of top 2', 'More of top 2 by Bob'), `${moveFirst ? 'move' : 'key'} first`);
+});
+
 test('a replace in every paragraph and a word typed at once in one of them are both in the text at the end', () => {
   // changes() gives up beyond 2000 changed lines, and gives one hunk for one long line
   for (const join of ['\n', '']) {
