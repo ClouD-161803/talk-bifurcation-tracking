@@ -167,6 +167,14 @@ function compose(a: Patch[], b: Patch[]): Patch[] {
     // replace
     const before = delta;
     let [low, high, text] = [q.start, q.end, q.text];
+    // q starts before o.end + delta only in the text of a patch of a that o, the last patch, took
+    // in, hence q is joined to o
+    const o = out[out.length - 1];
+    if (o && q.start < o.end + delta) {
+      out.pop();
+      high = o.end + delta;
+      [low, high, text] = [o.start + delta, Math.max(high, q.end), o.text.slice(0, o.text.length - (high - q.start)) + text + o.text.slice(o.text.length - (high - q.end))];
+    }
     while (i < a.length && a[i].start + delta <= q.end) {
       const at = a[i].start + delta;
       const p = next();

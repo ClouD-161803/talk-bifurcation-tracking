@@ -1670,6 +1670,12 @@ function compose(a, b) {
     while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
     const before2 = delta;
     let [low, high, text] = [q.start, q.end, q.text];
+    const o = out[out.length - 1];
+    if (o && q.start < o.end + delta) {
+      out.pop();
+      high = o.end + delta;
+      [low, high, text] = [o.start + delta, Math.max(high, q.end), o.text.slice(0, o.text.length - (high - q.start)) + text + o.text.slice(o.text.length - (high - q.end))];
+    }
     while (i < a.length && a[i].start + delta <= q.end) {
       const at = a[i].start + delta;
       const p = next();
