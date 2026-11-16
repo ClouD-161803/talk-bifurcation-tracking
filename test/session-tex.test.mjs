@@ -11,7 +11,7 @@ import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { deckTex } from '../scripts/tex.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { clean, converge, open, sessionUrl, show } from './helpers/client.mjs';
+import { clean, converge, loads, open, sessionUrl, show } from './helpers/client.mjs';
 import { press, type, typeKeys } from './helpers/editor.mjs';
 import { fileMenu } from './helpers/session-mode.mjs';
 import { post, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
@@ -209,6 +209,64 @@ test('tex.js is not written in a talk folder without preamble.tex and references
   assert.deepEqual(server.snapshot()['tex.js'], server.before['tex.js']);
   clean(ann, MISSING);
   clean(ben, MISSING);
+});
+
+// the list of Insert > Citation… opened at the end of the paragraph n of the slide Citations, with
+// query typed into it
+async function search(page, n, query) {
+  await show(page, 'Citations');
+  // the caret is put again until the paragraph takes it, since a redraw of the deck may be running
+  await page.waitFor(`(() => {
+    const host = document.querySelector('.reveal section.present p:nth-of-type(${n})');
+    host?.focus();
+    if (!host || document.activeElement !== host) return false;
+    const r = document.createRange();
+    r.selectNodeContents(host);
+    r.collapse(false);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    return true;
+  })()`).catch(async (e) => {
+    throw new Error(`the paragraph ${n} does not take the caret, with ${await page.evaluate(`JSON.stringify({ active: document.activeElement?.tagName, dialogs: [...document.querySelectorAll('dialog[open]')].map((d) => d.className), editable: document.querySelector('.reveal section.present p:nth-of-type(${n})')?.isContentEditable })`)}: ${e.message}`);
+  });
+  await page.evaluate(`Promise.resolve(window.BeesonEditor.exec('insert.citation')).then(() => true)`);
+  await page.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length > 0`);
+  await page.evaluate(`(() => {
+    const input = document.querySelector('${LIST} input');
+    input.value = ${JSON.stringify(query)};
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+}
+
+test('a paper added to references.bib on disk is found by a new search on a page of the host and on a page of a guest through the relay, without a reload', { timeout: 300_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const server = await texTalk(t);
+  const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: relay.url, secret: SECRET });
+  assert.equal(shared.status, 200, shared.text);
+  const list = await pages(t, server, [sessionUrl(server.edit), shared.json().link]);
+  const tex = server.read('tex.js');
+  for (const page of list) {
+    await search(page, 3, 'conley');
+    await page.waitFor(`document.querySelector('${LIST} .note').textContent === ${JSON.stringify(`No entry of references.bib matches conley. ${HOST_BIB}`)}`);
+    await press(page, 'Escape');
+    await page.waitFor(`!document.querySelector('${LIST}')`);
+  }
+  server.write('references.bib', `${server.read('references.bib')}\n@article{conley1968,\n  author = {Conley, Charles},\n  title = {Low energy transit orbits in the restricted three-body problem},\n  year = {1968},\n}\n`);
+  for (const page of list) {
+    await search(page, 3, 'conley');
+    // the search is typed again until the list finds the paper, as a person would
+    await page.waitFor(`(() => {
+      document.querySelector('${LIST} input').dispatchEvent(new Event('input', { bubbles: true }));
+      return !!document.querySelector('${LIST} li[data-key="conley1968"]');
+    })()`, 30_000);
+    await press(page, 'Escape');
+    assert.equal(await loads(page), 1);
+  }
+  assert.equal(server.read('tex.js'), tex, 'tex.js does not have an uncited paper');
+  clean(list[0], MISSING);
+  clean(list[1], MISSING);
 });
 
 test('File > Preamble… and File > Bibliography… are off in a session with a note, and a BibTeX entry pasted into the list of Insert > Citation… is refused with its note', { timeout: 180_000 }, async (t) => {
