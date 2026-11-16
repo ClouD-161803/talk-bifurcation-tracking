@@ -19,6 +19,8 @@ const ITEMS = (text) => text.match(/<ul>[\s\S]*?<\/ul>/)?.[0].replace(/\s+/g, ' 
 
 // whether page reads the caret of the person of name in the text element of expression
 const caretOf = (page, name, expression) => page.evaluate(`${P}.resolved().some((r) => r.name === ${JSON.stringify(name)} && r.caret?.el === ${expression})`);
+// whether the focus of page is in the text element of expression
+const caretIn = (page, expression) => page.evaluate(`(() => { const h = ${expression}; return document.activeElement === h && h.contains(getSelection().focusNode); })()`);
 
 /** Ana types text at the end of the text element of expression, until Ben sees it held by her. */
 async function holding(ana, ben, expression, text) {
@@ -225,6 +227,56 @@ test('a drag of a figure whose caption is held, or of the plate around it, is re
   const text = await converge(server, [ana, ben]);
   assert.match(text, /<div class="plate row">\s*<figure id="first">/);
   assert.match(text, /The first figure\. typed more<\/figcaption>/);
+  clean(ana);
+  clean(ben);
+});
+
+const PREVIEWS = ['slide.previewTransition', 'slide.guides.copy', 'steps.preview', 'steps.playFrom', 'backdrop.preview', 'preview.backdrop', 'preview.selectBackdrop'];
+
+test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, New Slide, Text Box, Copy Style, Format, Comment, a preview, and Copy Guides', { timeout: 180_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  const kind = () => ben.evaluate(`${C}.app.selection.kind`);
+  const slides = `document.querySelectorAll('.reveal .slides > section').length`;
+  const drafts = `[...document.querySelectorAll('.beeson-comments textarea')].filter((x) => x.getClientRects().length).length`;
+  // each case: what Ben does with the held paragraph selected, and what holds once it is done
+  const cases = [
+    ['Enter', () => press(ben, 'Enter'), async () => (await kind()) === 'text' && (await caretIn(ben, SECOND))],
+    ['Escape', () => press(ben, 'Escape'), async () => (await kind()) === 'none'],
+    ['Tab', () => press(ben, 'Tab'), () => ben.evaluate(`(() => { const s = window.BeesonEditor.selection(); return s.length === 1 && s[0] !== ${SECOND}; })()`)],
+    ['PageUp', () => press(ben, 'PageUp'), () => ben.evaluate(`Reveal.getCurrentSlide().querySelector('h2').textContent === 'One'`)],
+    ['slide.new', async () => {
+      await ben.evaluate(`window.__slides = ${slides}`);
+      await ben.evaluate(`${C}.app.commands.run('slide.new')`);
+    }, () => ben.evaluate(`${slides} === window.__slides + 1`)],
+    ['insert.text', async () => {
+      await ben.evaluate(`window.__boxes = Reveal.getCurrentSlide().querySelectorAll('p').length`);
+      await ben.evaluate(`${C}.app.commands.run('insert.text')`);
+    }, () => ben.evaluate(`Reveal.getCurrentSlide().querySelectorAll('p').length === window.__boxes + 1`)],
+    ['text.copyStyle', () => ben.evaluate(`${C}.app.commands.run('text.copyStyle')`), () => ben.evaluate(`${C}.app.commands.enabled('text.pasteStyle')`)],
+    ['shell.format', async () => {
+      await ben.evaluate(`window.__format = ${C}.app.commands.state('shell.format').checked`);
+      await ben.evaluate(`${C}.app.commands.run('shell.format')`);
+    }, () => ben.evaluate(`${C}.app.commands.state('shell.format').checked === !window.__format`)],
+    ['insert.comment', () => ben.evaluate(`${C}.app.commands.run('insert.comment')`), () => ben.evaluate(`${drafts} === 1`)],
+    ['insert.comment from a context menu', () => ben.evaluate(`${C}.app.commands.run('insert.comment', { kind: 'element', target: ${SECOND} })`), () => ben.evaluate(`${drafts} === 1`)],
+    // a preview and Copy Guides change nothing in the deck
+    ['a preview or Copy Guides', () => null, () => ben.evaluate(`${JSON.stringify(PREVIEWS)}.every((id) => !${C}.app.commands.refused(id))`)],
+  ];
+  for (const [what, act, done] of cases) {
+    await show(ben, 'Two');
+    // the caret of Ben that Enter put into the paragraph is taken out first
+    await leave(ben);
+    await select(ben, SECOND);
+    await frame(ben);
+    await unbubble(ben);
+    await act();
+    await frame(ben);
+    assert.equal(await ben.evaluate(BUBBLE), null, `${what} is not refused`);
+    await until(done, `${what} to do what it does without a hold`, 5000);
+  }
   clean(ana);
   clean(ben);
 });
