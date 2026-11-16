@@ -276,7 +276,8 @@ export function install(app: App): void {
     if (app.autosave && !app.handle && canWrite() && !app.session) parts.push('autosave starts after the first save');
     const changed = app.follow?.line();
     if (changed) parts.push(changed);
-    return { text: parts.join('. '), warn: warn || problems.length > 0 || app.overflow > 0, title: problems.map(problemText).join('\n') };
+    // a part may end in a full stop of its own, e.g. a note
+    return { text: parts.map((p, i) => (i < parts.length - 1 ? p.replace(/\.$/, '') : p)).join('. '), warn: warn || problems.length > 0 || app.overflow > 0, title: problems.map(problemText).join('\n') };
   }
 
   // pairs the text of the file with the page and makes the paired text elements editable. the state
