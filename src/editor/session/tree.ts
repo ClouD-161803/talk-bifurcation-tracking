@@ -6,24 +6,15 @@ import { RAW_TEXT, tokenize, type Range, type Token } from '../tokens.ts';
 import { contentRange, decode, elementRange, segmentsOf, VOID, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
 import { fragmentRoot, parseFragment } from '../model/fragments.ts';
 import { isTextElement, type Pairing } from '../render.ts';
+import { shared } from '../merge.ts';
 
 // the part in which two texts differ: a and b are equal before start, and a after endA is equal
 // to b after endB
 export type Window = { start: number; endA: number; endB: number };
 
-// the length of the slices compared before the texts are compared character by character
-const CHUNK = 2048;
-
 export function windowOf(a: string, b: string): Window | null {
   if (a === b) return null;
-  const n = Math.min(a.length, b.length);
-  let s = 0;
-  while (s + CHUNK <= n && a.slice(s, s + CHUNK) === b.slice(s, s + CHUNK)) s += CHUNK;
-  while (s < n && a.charCodeAt(s) === b.charCodeAt(s)) s += 1;
-  const most = n - s;
-  let t = 0;
-  while (t + CHUNK <= most && a.slice(a.length - t - CHUNK, a.length - t) === b.slice(b.length - t - CHUNK, b.length - t)) t += CHUNK;
-  while (t < most && a.charCodeAt(a.length - 1 - t) === b.charCodeAt(b.length - 1 - t)) t += 1;
+  const [s, t] = shared(a, b);
   return { start: s, endA: a.length - t, endB: b.length - t };
 }
 
