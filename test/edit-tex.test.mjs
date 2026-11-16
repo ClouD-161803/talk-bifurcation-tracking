@@ -27,6 +27,9 @@ function folder(t, names = SOURCES) {
   return { dir, read, at, write: (name, text) => writeFileSync(join(dir, name), text) };
 }
 
+// a mode set by chmod refuses neither a read nor a write on Windows or to root
+const noChmod = process.platform === 'win32' || process.getuid?.() === 0 ? 'chmod does not refuse a read or a write on Windows or to root' : false;
+
 // a writer on the folder f, with the changes it counted, the lines it logged, and the failed writes
 // it reported
 function writer(f, html = DECK, options = {}) {
@@ -92,11 +95,13 @@ test('a write of index.html that cites another paper writes tex.js, and one that
   const at = f.at('tex.js');
   // a references.bib that cannot be read, with the signature that it had, which a derivation would log
   const lines = seen.log.length;
-  chmodSync(join(f.dir, 'references.bib'), 0o000);
+  if (!noChmod) chmodSync(join(f.dir, 'references.bib'), 0o000);
   w.written(CITED.replace('Citations', 'The citations'));
   await w.idle();
-  chmodSync(join(f.dir, 'references.bib'), 0o644);
-  assert.deepEqual(seen.log.slice(lines), [], 'a write of index.html that cites the same papers does not derive tex.js');
+  if (!noChmod) {
+    chmodSync(join(f.dir, 'references.bib'), 0o644);
+    assert.deepEqual(seen.log.slice(lines), [], 'a write of index.html that cites the same papers does not derive tex.js');
+  }
   assert.equal(f.at('tex.js'), at);
   assert.equal(seen.changes, 1);
 });
