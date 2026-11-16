@@ -604,7 +604,7 @@ test('a page whose removal of a paragraph is not acknowledged reads the deck int
     // a state of Ana at the version of her key makes the page of Ben read the paragraph again
     await until(() => ben.evaluate(`${C}.presence.some((p) => p.client !== ${C}.client && p.state?.v === ${C}.base.v)`), 'the state of Ana after her key on the page of Ben');
   }
-  assert.ok((await ben.evaluate('window.__rebases')) <= 1, `the deck read into the source ${await ben.evaluate('window.__rebases')} times`);
+  assert.equal(await ben.evaluate('window.__rebases'), 1, 'the deck is read into the source once');
   await ben.evaluate(`(__net.clear(), __net.release(''))`);
   clean(ana);
   clean(ben);
