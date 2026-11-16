@@ -19,6 +19,8 @@ import { until } from './helpers/session.mjs';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const slideEl = (slide) => `document.querySelectorAll('.reveal .slides > section')[${slide}]`;
 const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
+// the key of the tab n of the inspector, as PANE_KEYS of src/editor/commands/view.ts binds it
+const TAB_KEY = (n) => (process.platform === 'darwin' ? `Ctrl+Mod+${n}` : `Ctrl+Shift+${n}`);
 const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments are sent once you are back online';
 
@@ -474,11 +476,11 @@ test('the three tabs of the inspector and the keys of the pane, text that looks 
     await front(a);
     assert.deepEqual(await a.evaluate(TABS), ['Format', 'Steps', 'Comments']);
     await click(a, '.reveal .slides > section:nth-child(1)');
-    for (const [keys, tab] of [['Ctrl+Mod+4', 'Comments'], ['Ctrl+Mod+1', 'Format'], ['Ctrl+Mod+2', 'Steps'], ['Ctrl+Mod+4', 'Comments'], ['Ctrl+Mod+4', null]]) {
-      await press(a, keys);
-      await sees(a, TAB, tab, `the tab after ${keys}`);
+    for (const [n, tab] of [[4, 'Comments'], [1, 'Format'], [2, 'Steps'], [4, 'Comments'], [4, null]]) {
+      await press(a, TAB_KEY(n));
+      await sees(a, TAB, tab, `the tab after ${TAB_KEY(n)}`);
     }
-    await press(a, 'Ctrl+Mod+1');
+    await press(a, TAB_KEY(1));
     await a.evaluate(`document.querySelector('#beeson-edit-tab-format').focus()`);
     for (const [key, tab] of [['ArrowRight', 'Steps'], ['ArrowRight', 'Comments'], ['ArrowRight', 'Format'], ['ArrowLeft', 'Comments']]) {
       await press(a, key);
