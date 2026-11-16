@@ -98,7 +98,7 @@ export async function keepOldDraft(page, text = deckText.replace('Thank you', 'T
 
 export const draftText = `JSON.parse(localStorage.getItem('beeson-draft:' + location.href.split(/[?#]/)[0]) ?? 'null')?.text ?? null`;
 
-/** The items of the File menu by command id, each with its label and whether it is dimmed. */
+/** The items of the File menu by command id, each with its label, whether it is dimmed, and the scroll and client widths of its label. */
 export async function fileMenu(page) {
   const items = await page.evaluate(`(() => {
     const title = [...document.querySelectorAll('.beeson-edit-menubar [role="menuitem"]')].find((b) => b.textContent === 'File');
@@ -107,7 +107,7 @@ export async function fileMenu(page) {
     const out = {};
     for (const i of document.querySelectorAll('.beeson-edit-menu .item')) {
       const label = i.querySelector('.label');
-      out[i.dataset.command ?? label.firstChild?.textContent ?? ''] = { label: label.textContent, disabled: i.getAttribute('aria-disabled') === 'true' };
+      out[i.dataset.command ?? label.firstChild?.textContent ?? ''] = { label: label.textContent, disabled: i.getAttribute('aria-disabled') === 'true', scroll: label.scrollWidth, client: label.clientWidth };
     }
     return out;
   })()`);

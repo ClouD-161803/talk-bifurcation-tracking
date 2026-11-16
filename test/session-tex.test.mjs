@@ -502,7 +502,7 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
   const bib = server.read('references.bib');
   for (const id of ['file.preamble', 'file.bibliography']) assert.equal(await ann.evaluate(`window.BeesonEditor.state(${JSON.stringify(id)}).enabled`), false, `${id} is enabled in a session`);
   const items = await fileMenu(ann);
-  assert.deepEqual([items['file.preamble'], items['file.bibliography']], [
+  assert.deepEqual(['file.preamble', 'file.bibliography'].map((id) => ({ label: items[id].label, disabled: items[id].disabled })), [
     { label: 'Preamble…Edited by the host in preamble.tex', disabled: true },
     { label: 'Bibliography…Edited by the host in references.bib', disabled: true },
   ]);
@@ -540,33 +540,17 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
   clean(ann, MISSING);
 });
 
-// the label of each row of the File menu whose command is in ids, with whether its text is wider
-// than its box
-async function menuRows(page, ids) {
-  await front(page);
-  const rows = await page.evaluate(`(() => {
-    [...document.querySelectorAll('.beeson-edit-menubar [role="menuitem"]')].find((b) => b.textContent === 'File').click();
-    const out = {};
-    for (const i of document.querySelectorAll('.beeson-edit-menu .item')) {
-      const label = i.querySelector('.label');
-      if (${JSON.stringify(ids)}.includes(i.dataset.command)) out[i.dataset.command] = { text: label.textContent, scroll: label.scrollWidth, client: label.clientWidth };
-    }
-    return out;
-  })()`);
-  await page.evaluate(`document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), true`);
-  await page.waitFor(`!document.querySelector('.beeson-edit-menu')`);
-  return rows;
-}
-
 test('the notes of File > Preamble… and File > Bibliography… in a session fit their rows of the menu on a phone of 390 px and on a screen of 1440 px', { timeout: 300_000 }, async (t) => {
   const server = await texTalk(t);
   for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1440, 900, false]]) {
     const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
     t.after(() => page.close());
     await converge(server, [page]);
-    const rows = await menuRows(page, ['file.preamble', 'file.bibliography']);
-    assert.equal(Object.keys(rows).length, 2, JSON.stringify(rows));
-    for (const [id, row] of Object.entries(rows)) assert.ok(row.scroll <= row.client + 1, `the label of ${id} is wider than its box at ${width} px: ${JSON.stringify(row)}`);
+    const items = await fileMenu(page);
+    for (const id of ['file.preamble', 'file.bibliography']) {
+      assert.ok(items[id], `the File menu does not have ${id}`);
+      assert.ok(items[id].scroll <= items[id].client + 1, `the label of ${id} is wider than its box at ${width} px: ${JSON.stringify(items[id])}`);
+    }
     clean(page, MISSING);
   }
 });
