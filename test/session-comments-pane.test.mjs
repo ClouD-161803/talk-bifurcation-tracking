@@ -1105,3 +1105,16 @@ test('Show on the toast of a mention on the slide that following shows stops fol
   clean(a);
   clean(b);
 });
+
+test('Show on the toast of a mention closes the Slide Sorter', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  await a.evaluate(`window.BeesonEditor.exec('view.lightTable')`);
+  await sees(a, `window.BeesonEditor.state('view.lightTable').checked`, true);
+  const id = await post(b, 1, 'Look, @Ann');
+  await front(a);
+  await a.waitFor(`!!document.querySelector('.beeson-session-toast button')`);
+  await click(a, '.beeson-session-toast button');
+  await sees(a, `[window.BeesonEditor.state('view.lightTable').checked, ${ACTIVE}, [...document.querySelectorAll('.reveal .slides > section')].indexOf(Reveal.getCurrentSlide())]`, [false, id, 1]);
+  clean(a);
+  clean(b);
+});
