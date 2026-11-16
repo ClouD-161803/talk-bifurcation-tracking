@@ -17,10 +17,12 @@ import { presenceOf } from './presence.ts';
 import { mountToasts, toast, type ToastButton, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 
-const OFFLINE = 'Comments can be sent once you are back online';
 const ENDED = 'The session has ended';
-// the tooltip of a control that sends, which is disabled unless the page is online
-const unsent = (c: Connection) => (c === 'online' ? '' : c === 'ended' ? ENDED : OFFLINE);
+const JOINED = 'Comments can be sent once you have joined';
+const UNSENT: Record<Connection, string> = { online: '', ended: ENDED, joining: JOINED, 'no-host': "Comments can be sent once the host's edit command runs", offline: 'Comments can be sent once you are back online' };
+// the tooltip of a control that sends, which is disabled unless the page is online, in the words of
+// the save state
+const unsent = (c: Client) => (c.connection === 'offline' && c.full ? `The session is full. ${JOINED}` : UNSENT[c.connection]);
 
 // the hit area of every control is 32 px or more, also on a phone
 const CSS = `
@@ -378,7 +380,7 @@ class Pane {
     // the offsets of the anchors move with each letter typed before them, and the label stands for
     // the place in the sign
     const { anchor: _a, slide: _s, ...shown } = t;
-    const sign = JSON.stringify([shown, !!t.anchor, names, known, this.label(t, p), unsent(this.client.connection), answering]);
+    const sign = JSON.stringify([shown, !!t.anchor, names, known, this.label(t, p), unsent(this.client), answering]);
     if (this.signs.get(t.id) === sign && !force) return node;
     // a thread in edit is drawn again once the edit ends
     if (this.editing?.id === t.id && !force) return node;
@@ -416,7 +418,7 @@ class Pane {
     // offline, an action is not sent later, hence its button is disabled
     const offline = (b: HTMLButtonElement) => {
       b.disabled = !online;
-      if (!online) b.title = unsent(this.client.connection);
+      if (!online) b.title = unsent(this.client);
       return b;
     };
     if (root) {
@@ -588,7 +590,7 @@ class Pane {
       const extra = Array.from(sent()).length - COMMENT_MAX;
       const disabled = busy || !online || !area.value.trim() || extra > 0;
       if (go.disabled !== disabled) go.disabled = disabled;
-      if (go.title !== unsent(this.client.connection)) go.title = unsent(this.client.connection);
+      if (go.title !== unsent(this.client)) go.title = unsent(this.client);
       if (extra > 0) {
         over = true;
         error.textContent = `The text is ${extra} ${extra === 1 ? 'character' : 'characters'} too long.`;
