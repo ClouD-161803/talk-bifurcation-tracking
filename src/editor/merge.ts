@@ -104,8 +104,8 @@ function slidesOf(lines: string[]): Map<string, number[]> {
   lines.forEach((line, i) => {
     const t = line.trimStart();
     if (/^<section[\s>]/.test(t) && !t.includes('</section')) open.push(i);
-    const from = t.startsWith('</section') ? open.pop() : undefined;
-    if (from === undefined) return;
+    const from = t.startsWith('</section') ? open.pop() ?? -1 : -1;
+    if (from < 0) return;
     const text = lines.slice(from, i + 1).join('');
     out.set(text, [out.has(text) ? -1 : from, i + 1 - from]);
   });
@@ -121,7 +121,7 @@ function markMoved(a: string[], b: string[]): [string[], string[]] | null {
   // a slide of a stack that is paired whole, which comes before it, moves or stays with the stack,
   // hence it is not weighed again
   let end = 0;
-  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
+  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter((p) => p.every((v) => v >= 0)).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
   // the heaviest run in the same order, by dynamic programming over the slides
   const best = pairs.map((p) => p[2]), prev = pairs.map(() => -1);
   pairs.forEach((p, i) => pairs.forEach((q, j) => {
@@ -188,8 +188,8 @@ export function changes(base: string, theirs: string, plain?: boolean): Edit[] |
   // the marks count only when each of their hunks is the half of a move that moves() pairs, and the
   // texts are diffed again without them otherwise
   if (moved) {
-    const m = moves(base, out, out, () => true);
-    if (hunks.some((h, i) => !m.includes(out[i]) && `${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`.includes('\0'))) return changes(base, theirs, true);
+    const m = moves(base, out, out);
+    if (hunks.some((h, i) => !m.includes(out[i]) && /\0/.test(`${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`))) return changes(base, theirs, true);
   }
   // a moved slide is in both texts, which are thus one file
   return removed > base.length / 2 && !moved ? null : out;
@@ -236,7 +236,7 @@ export function edits(base: string, theirs: string): Edit[] {
 // and without blank lines. lines without text outside tags, e.g. an empty list item, and lines that
 // two removals or two insertions hold are never moved, since they are not told from an edit of
 // someone else. with others the list itself, every move of the list
-export function moves(base: string, list: Edit[], others: Edit[], hit: (a: Edit, b: Edit) => boolean): Edit[] {
+export function moves(base: string, list: Edit[], others: Edit[], hit: (a: Edit, b: Edit) => boolean = () => true): Edit[] {
   const out: [string, Edit[]][] = [], cut = new Map<string, Edit | null>(), put = new Map(cut);
   let n = 0;
   for (const e of list) {
@@ -494,12 +494,12 @@ export function fine(a: string, b: string): Edit[] {
   // looked for only when the character edits remove some text and are several or cross a line, and
   // every other change stays as its runs of characters, hence a key between two of them is apart
   // from both. the edits are kept only when mergeEdits() reads each move in them as a move as well
-  if (chars?.some((e) => e.end > e.start) && (chars.length > 1 || (chars[0].text + a.slice(chars[0].start, chars[0].end)).includes('\n'))) {
+  if (chars?.some((e) => e.end > e.start) && (chars[1] || /\n/.test(chars[0].text + a.slice(chars[0].start, chars[0].end)))) {
     const lines = changes(a, b) ?? [];
-    const moved = moves(a, lines, lines, () => true);
-    if (moved.length) {
-      const out = lines.flatMap((e) => (moved.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ start: x.start + e.start, end: x.end + e.start, text: x.text })) ?? [e]));
-      const read = moves(a, out, lines, () => true);
+    const moved = moves(a, lines, lines);
+    if (moved[0]) {
+      const out = lines.flatMap((e) => (moved.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ ...x, start: x.start + e.start, end: x.end + e.start })) ?? [e]));
+      const read = moves(a, out, lines);
       if (moved.every((e) => read.includes(e))) found = out;
     }
   }

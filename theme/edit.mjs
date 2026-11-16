@@ -124,8 +124,8 @@ function slidesOf(lines) {
   lines.forEach((line, i) => {
     const t = line.trimStart();
     if (/^<section[\s>]/.test(t) && !t.includes("</section")) open2.push(i);
-    const from = t.startsWith("</section") ? open2.pop() : void 0;
-    if (from === void 0) return;
+    const from = t.startsWith("</section") ? open2.pop() ?? -1 : -1;
+    if (from < 0) return;
     const text = lines.slice(from, i + 1).join("");
     out.set(text, [out.has(text) ? -1 : from, i + 1 - from]);
   });
@@ -134,7 +134,7 @@ function slidesOf(lines) {
 function markMoved(a, b) {
   const inB = slidesOf(b);
   let end = 0;
-  const pairs2 = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
+  const pairs2 = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter((p) => p.every((v) => v >= 0)).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
   const best = pairs2.map((p) => p[2]), prev = pairs2.map(() => -1);
   pairs2.forEach((p, i) => pairs2.forEach((q, j) => {
     if (j < i && q[1] < p[1] && best[j] + p[2] > best[i]) [best[i], prev[i]] = [best[j] + p[2], j];
@@ -188,8 +188,8 @@ function changes(base, theirs, plain) {
     out.push({ start: start2, end: end2, text: text2 });
   }
   if (moved2) {
-    const m = moves(base, out, out, () => true);
-    if (hunks.some((h, i) => !m.includes(out[i]) && `${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`.includes("\0"))) return changes(base, theirs, true);
+    const m = moves(base, out, out);
+    if (hunks.some((h, i) => !m.includes(out[i]) && /\0/.test(`${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`))) return changes(base, theirs, true);
   }
   return removed > base.length / 2 && !moved2 ? null : out;
 }
@@ -217,7 +217,7 @@ function edits(base, theirs) {
   while (t < n - s && base[base.length - 1 - t] === theirs[theirs.length - 1 - t]) t++;
   return [{ start: s, end: base.length - t, text: theirs.slice(s, theirs.length - t) }];
 }
-function moves(base, list, others, hit) {
+function moves(base, list, others, hit = () => true) {
   const out = [], cut = /* @__PURE__ */ new Map(), put = new Map(cut);
   let n = 0;
   for (const e of list) {
@@ -380,12 +380,12 @@ function wordEdits(a, b, max) {
 function fine(a, b) {
   const chars = charEdits(a, b, 500);
   let found = chars ?? anchored(a, b) ?? wordEdits(a, b, 250) ?? edits(a, b);
-  if (chars?.some((e) => e.end > e.start) && (chars.length > 1 || (chars[0].text + a.slice(chars[0].start, chars[0].end)).includes("\n"))) {
+  if (chars?.some((e) => e.end > e.start) && (chars[1] || /\n/.test(chars[0].text + a.slice(chars[0].start, chars[0].end)))) {
     const lines = changes(a, b) ?? [];
-    const moved2 = moves(a, lines, lines, () => true);
-    if (moved2.length) {
-      const out2 = lines.flatMap((e) => moved2.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ start: x.start + e.start, end: x.end + e.start, text: x.text })) ?? [e]);
-      const read = moves(a, out2, lines, () => true);
+    const moved2 = moves(a, lines, lines);
+    if (moved2[0]) {
+      const out2 = lines.flatMap((e) => moved2.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ ...x, start: x.start + e.start, end: x.end + e.start })) ?? [e]);
+      const read = moves(a, out2, lines);
       if (moved2.every((e) => read.includes(e))) found = out2;
     }
   }
