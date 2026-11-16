@@ -36,6 +36,10 @@ Avoid "footnote", which is the `foot` line of a slide, and "reference", which is
 
 A rule of slides that is followed by default and may be argued with, as opposed to a hard invariant.
 
+## Delay
+
+The seconds between the click of a step and the moment an element is shown, as the Delay of an animation in PowerPoint. It is written as the key `delay` of an element of an animated plot, and as `--delay` on a late step.
+
 ## Dialog
 
 A window of the editor that is shown over the deck to ask a question or to give a message, until it is answered or closed.
@@ -67,6 +71,12 @@ A rule of slides that is never traded away for another goal, and that an agent d
 The title line at the top of a slide, i.e. its `h2`, or the `h1` of a title slide.
 
 Avoid "head" for the heading of a figure slide, since a head is the moving dot at the tip of a trajectory while it is traced, or the title of a theorem as in amsthm.
+
+## Iris
+
+To grow a region of an animated plot as a disk from a point until the region is filled, as its step is shown, as an iris opens in film. The seconds of the growth are written in the key `iris` of the region, and the point in its key `from`.
+
+The key `spread` of an old talk is `iris`.
 
 ## Kind
 
@@ -115,6 +125,12 @@ Avoid "PDF image" and "embedded PDF".
 The figure box over the whole of a figure slide, behind its heading and its caption.
 
 Avoid "plate" for a layout of a slide, such as the title, closing, or figure layout.
+
+## Play once
+
+To play a tab of an animated plot from its first frame to its last and to hold it at its last frame, at a step with `data-plot-once`. A plot started by a step with `data-plot-play` is played in a loop instead.
+
+Avoid "run", which is the running head of a section, written with `data-run`. The attribute `data-plot-run` of an old talk is `data-plot-once`.
 
 ## Plot panel
 
@@ -211,3 +227,9 @@ A color of the theme chosen by name, such as accent, violet, blue, or red, with 
 One polyline of a file of trajectories, traced over its times or its true anomalies.
 
 Avoid "strand" and "record". The attribute `data-strands` of an old talk is `data-trajectories`.
+
+## Wipe
+
+To trace a curve of an animated plot from its first point to its last as its step is shown, as the Wipe of PowerPoint does. The seconds of the tracing are written in the key `wipe` of the curve.
+
+Avoid "draw", which is said of every element on a slide. The key `draw` of an old talk is `wipe`.
