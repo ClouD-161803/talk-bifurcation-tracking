@@ -16,6 +16,23 @@ let inner;
 let server;
 let asked = false;
 let closed = false;
+// records in the page every read of the body of the answer for media/clip.png of deck B. a page that
+// reads the body and gives up on a timer of its own closes the request as well
+const READS = `(() => {
+  window.__reads = [];
+  const ours = (r) => !!r.url && new URL(r.url).pathname.endsWith('/cross-deck/b/media/clip.png');
+  const streams = new WeakSet();
+  const body = Object.getOwnPropertyDescriptor(Response.prototype, 'body');
+  Object.defineProperty(Response.prototype, 'body', { ...body, get() { const s = body.get.call(this); if (s && ours(this)) streams.add(s); return s; } });
+  for (const name of ['arrayBuffer', 'blob', 'bytes', 'formData', 'json', 'text']) {
+    const read = Response.prototype[name];
+    if (read) Response.prototype[name] = function (...rest) { if (ours(this)) window.__reads.push(name); return read.apply(this, rest); };
+  }
+  for (const name of ['getReader', 'pipeThrough', 'pipeTo', 'tee', 'values', Symbol.asyncIterator]) {
+    const read = ReadableStream.prototype[name];
+    if (read) ReadableStream.prototype[name] = function (...rest) { if (streams.has(this)) window.__reads.push(String(name)); return read.apply(this, rest); };
+  }
+})()`;
 before(async () => {
   browser = await launch({ offline: false });
   inner = await serve('.');
@@ -48,9 +65,11 @@ test('a file of this deck of another length than a carried file is not downloade
   const b = await withMacrosOfA(await openDeck(browser, `${server.origin}/${B}?${QUERY}`, B));
   t.after(() => b.close());
   asked = closed = false;
+  await b.evaluate(READS);
   await pasteSlides(b, FIRST_B, text);
-  // a page that reads the body waits for it, and does not close the request
+  // a page that waits for the body does not close the request
   for (const end = Date.now() + 60000; !closed; await sleep(50)) assert.ok(Date.now() < end, asked ? 'the request of media/clip.png of deck B is not closed by the page within 60 s, before its body' : 'the page does not ask for media/clip.png of deck B within 60 s');
   await pasted(b, 60000);
+  assert.deepEqual(await b.evaluate('window.__reads'), [], 'the body of media/clip.png of deck B is read');
   assert.match(sectionOf(await render(b), FILES), /poster="media\/clip-2\.png"/);
 });
