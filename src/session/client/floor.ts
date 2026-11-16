@@ -71,16 +71,18 @@ export function install(client: Client): void {
   };
   for (const type of ['pointerdown', 'click']) window.addEventListener(type, pressed, true);
 
-  // the number of the slide of el, from 1, or 0
-  const slideOf = (el: Element): number => [...app.slides().children].filter((s) => s.tagName === 'SECTION').findIndex((s) => s.contains(el)) + 1;
+  // the number that the navigator draws on the slide of el, and none on a hidden slide
+  const numbersOf = (el: Element): number[] => {
+    const s = el.closest('.reveal .slides > section:not([data-visibility=hidden])');
+    return s ? [client.shell.slides.numberOf(s)] : [];
+  };
   app.commands.refuse((a: App, c: Command, arg?: unknown) => {
     const by = refused(a, presence, client.shell.presence.spanned, c, arg);
     const el = by?.caret?.el;
     if (!by || !el) return false;
     // a text element on another slide is named by the number of its slide, at the top of the window
-    const n = slideOf(el);
-    if (!n || app.current()?.contains(el)) bubble(el, refusal(by));
-    else bubble(null, [bdi(by.name), ` is typing${client.shell.onSlides([n])}. You can do this once they leave it or stop for 30 s.`]);
+    if (app.current()?.contains(el)) bubble(el, refusal(by));
+    else bubble(null, [bdi(by.name), ` is typing${client.shell.onSlides(numbersOf(el))}. You can do this once they leave it or stop for 30 s.`]);
     return true;
   });
   // an undo or a redo of typing that the history refused, beside its text element on the slide
@@ -88,8 +90,7 @@ export function install(client: Client): void {
   // the slide of a text element on another slide
   app.history.refused = (entry, way) => {
     const here = entry.els?.find((el) => app.current()?.contains(el)), other = entry.els?.[0];
-    const n = here || !other ? 0 : slideOf(other);
-    bubble(here?.getClientRects().length ? here : null, `Your typing${client.shell.onSlides(n ? [n] : [])} cannot be ${way === 'undo' ? 'undone' : 'redone'} without changing the letters of another person.`);
+    bubble(here?.getClientRects().length ? here : null, `Your typing${client.shell.onSlides(here || !other ? [] : numbersOf(other))} cannot be ${way === 'undo' ? 'undone' : 'redone'} without changing the letters of another person.`);
   };
 }
 
