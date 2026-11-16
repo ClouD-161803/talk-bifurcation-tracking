@@ -494,6 +494,8 @@ class Pane {
     area.setAttribute('aria-label', placeholder);
     area.dir = 'auto';
     area.rows = 1;
+    // Mod+Enter sends, and is not Present of the editor here
+    area.dataset.ownKeys = 'Mod+Enter';
     // a mention is longer when it is sent than in the field, and the count is checked in sync()
     area.maxLength = 2 * COMMENT_MAX;
     const people = make('ul', 'people');
