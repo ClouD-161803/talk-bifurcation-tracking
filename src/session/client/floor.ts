@@ -130,8 +130,10 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
   const table = (cell instanceof Element ? cell : sel.kind === 'text' ? sel.items[0] : null)?.closest('table');
   const cells = c.id === 'edit.paste' && (cell instanceof Element || (typeof arg === 'string' && arg.includes('\t')));
   if (table && ((c.undoable && c.id.startsWith('table.')) || cells)) return presence.holderOf(table);
-  // a text selection over several text elements is replaced by its commands and by typing
-  if (sel.kind === 'text' && OF_SPAN.has(c.id)) {
+  // a text selection over several text elements is replaced by its commands and by typing, and a
+  // style, a list style, or Paste Style retags each of them
+  const retags = ((c.id.startsWith('text.style.') || c.id.startsWith('text.list.')) && c.id !== 'text.list.start') || c.id === 'text.pasteStyle';
+  if (sel.kind === 'text' && (OF_SPAN.has(c.id) || OF_TEXT.has(c.id) || retags)) {
     for (const el of spanned()) {
       const by = presence.holderOf(el);
       if (by) return by;
@@ -157,7 +159,6 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
   }
   // a selection of elements that contains a held element takes no command that changes it, and a
   // caret or a text selection in one takes the commands of the text that keep the element
-  const retags = (c.id.startsWith('text.style.') || c.id.startsWith('text.list.')) && c.id !== 'text.list.start';
   if (PASS.test(c.id) || (sel.kind !== 'elements' && (sel.kind !== 'text' || !(OF_TEXT.has(c.id) || retags || c.id.startsWith('arrange.'))))) return null;
   for (const el of sel.items) {
     const by = presence.holderOf(el);
