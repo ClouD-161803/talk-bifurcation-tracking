@@ -218,8 +218,11 @@ const real = (text: string, at: number): number => {
 // in which &nbsp; reads as a space, since the browser rewrites a space beside the typing. an edit
 // of others before the span moves it, and one after it is left as it is. the diff places an
 // insertion among repeated letters at any of them, hence an insertion inside the span is taken
-// before it or after it where the span then reads as in base. null when an edit of others
-// overlaps the span otherwise, or when they are too many to diff
+// before it or after it where the span then reads as in base. the span may also be rotated over
+// equal letters at its ends, e.g. " big" or "big " before a space, and each rotation must give the
+// same text. null when an edit of others overlaps the span otherwise, when the span or an
+// insertion of others beside it can be read in two places that give different texts, or when the
+// edits of others are too many to diff
 export function revert(base: string, target: string, now: string): string | null {
   if (now === base) return target;
   const b = base.replaceAll('&nbsp;', ' '), t = target.replaceAll('&nbsp;', ' '), n = now.replaceAll('&nbsp;', ' ');
@@ -227,10 +230,28 @@ export function revert(base: string, target: string, now: string): string | null
   const others = charEdits(b, n, OTHERS);
   if (!others) return null;
   const [head, tail] = shared(b, t);
-  const s = head, e = b.length - tail;
-  const p = place(others, b, n, s, e);
-  if (p < 0) return null;
-  return now.slice(0, real(now, p)) + target.slice(real(target, s), real(target, t.length - tail)) + now.slice(real(now, p + e - s));
+  let all = tail;
+  while (all < b.length && all < t.length && b[b.length - 1 - all] === t[t.length - 1 - all]) all++;
+  let got: string | null = null;
+  for (let k = 0; k <= Math.min(head, all - tail); k++) {
+    const s = head - k, e = b.length - tail - k;
+    const p = place(others, b, n, s, e);
+    if (p < 0) return null;
+    // an insertion of others beside the span that the span can be read across is not told apart
+    // from the same letters typed by the person
+    const span = b.slice(s, e), rest = n.slice(0, p) + n.slice(p + span.length);
+    for (const o of others) {
+      if (o.start !== o.end || (o.start !== s && o.start !== e)) continue;
+      for (let j = 1; j <= o.text.length; j++) {
+        const q = o.start === s ? p - j : p + j;
+        if (n.slice(q, q + span.length) === span && n.slice(0, q) + n.slice(q + span.length) !== rest) return null;
+      }
+    }
+    const out = now.slice(0, real(now, p)) + target.slice(real(target, s), real(target, t.length - tail - k)) + now.slice(real(now, p + span.length));
+    if (got === null) got = out;
+    else if (out.replaceAll('&nbsp;', ' ') !== got.replaceAll('&nbsp;', ' ')) return null;
+  }
+  return got;
 }
 
 // the start in n of the span [s, e) of b, where n is b with the edits others, or -1 when one of
