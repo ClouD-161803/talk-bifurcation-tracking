@@ -20,6 +20,13 @@ The drawing of orbits behind the words of a slide, or in its figure box, chosen 
 
 Avoid "background", and avoid "scene", which means only a TyCHO scene. The attribute `data-scene` of an old talk is `data-backdrop`.
 
+## Badge
+
+The count of the open threads of an element or a slide in a session, drawn at its upper right corner on the canvas, and filled violet while one of them is unread.
+
+Avoid "pin" and "marker", and avoid "bubble", which is the message shown at a refused edit of a held element.
+
+
 ## Bibliography
 
 The file `references.bib` next to the deck, from which the references of its citations are written into `tex.js`.
@@ -36,9 +43,21 @@ The empty `cite` after the cited words of a slide, with the key of a paper of th
 
 Avoid "footnote", which is the `foot` line of a slide, and "reference", which is the short entry of the cited paper.
 
+## Comment
+
+A text that a person of a session writes on an element or a slide, kept in `.session/comments.json` and never in `index.html`.
+
+Avoid "note", which is a speaker note, and "annotation". Write "HTML comment" for a comment `<!-- -->` in the source of a deck.
+
+
 ## Convention
 
 A rule of slides that is followed by default and may be argued with, as opposed to a hard invariant.
+
+## data-own-keys
+
+The attribute of a field of the editor in which the keys of commands that the field takes for itself are named, separated by spaces. In the field of a comment, it is `Mod+Enter`, which then sends the comment in place of Present.
+
 
 ## Dialog
 
@@ -63,6 +82,11 @@ Avoid "zone", the class of a figure box in an old talk, which is `figure-box`.
 To keep your view of the editor on the slide and the selection of another person of a session, from a click on the avatar of this person until you stop.
 
 Avoid "spotlight" and "watch".
+
+## For You
+
+The filter of the Comments pane under which the open threads that you wrote, replied to, or are mentioned in are listed.
+
 
 ## Guest
 
@@ -119,6 +143,13 @@ Avoid "layer" for the steps of a slide that the editor shows at once, which do n
 A drawn element of an animated plot, such as a curve or a trace.
 
 Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" or "trademark" for a file in `brand/`, "surface point" for a point of a surface, and "Markdown syntax" for the signs that format a text.
+
+## Mention
+
+A name of a person picked from the list after an @ in a comment, with which the thread is listed under For You for this person. A name typed by hand is not a mention.
+
+Avoid "tag" and "ping".
+
 
 ## Name flag
 
@@ -243,6 +274,13 @@ Avoid "block". The class `block` of the words of a title or closing slide in an 
 A paragraph of the class `theorem`, headed by the title of its kind, its number, and its name, as a theorem, a lemma, or a proof in amsthm. The head of a theorem is this title, number, and name, which is not the head of a trajectory.
 
 Avoid "statement", "block", "card", "box", and "environment".
+
+## Thread
+
+A comment together with its replies, on one element or slide, which is resolved and reopened as one.
+
+Avoid "conversation" and "discussion".
+
 
 ## TikZ figure
 
