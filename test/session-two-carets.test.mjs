@@ -481,3 +481,43 @@ for (const between of [false, true]) {
     assert.deepEqual([ana.errors, ben.errors], [[], []]);
   });
 }
+
+// a transaction of the history of a page, open until the test calls window.__end, as an undo with a
+// TeX restore, a paste of a picture, or an inline formula keeps one open
+const HOLD = `${C}.app.history.transact('Wait', () => new Promise((end) => (window.__end = end)))`;
+const RELEASE = `(window.__end(), ${C}.app.history.settle().then(() => true))`;
+const slideOf = (text, i) => text.match(/<section>[^]*?<\/section>/g)[i];
+const REMOVE_LIST = `${C}.app.doc.remove(${el(1, 'ul')})`;
+
+// Ana composes ni at the caret of Ben, who types y, which her page holds back. her history is busy
+// from the end of this composition until the next one has started, and Ben types Z at the start or
+// at the end of the paragraph during the next one. with removal, the transaction also removes the
+// list of the slide
+for (const [z, removal] of [[null], ['start'], ['end'], ['start', true]]) {
+  test(`a key of another person that a composition held back is kept when the next composition starts while the history is busy${z ? `, also with a key at the ${z} of the paragraph during it` : ''}${removal ? ' and a removal of another element of the slide in the transaction' : ''}`, { timeout: 300_000 }, async (t) => {
+    const { server, pages } = await pair(t);
+    const [ana, ben] = pages;
+    await front(ana);
+    assert.ok(await caretAt(ana, 6));
+    assert.ok(await caretAt(ben, 6));
+    await ana.send('Input.imeSetComposition', { text: 'ni', selectionStart: 2, selectionEnd: 2 });
+    await typeKeys(ben, 'y');
+    await until(async () => para(server.read()) === '<p>Secondy slide</p>' && (await ana.evaluate(TEXT)) === server.read(), 'the key of Ben in index.html and in the text that Ana reads');
+    assert.ok(await ana.evaluate(`(window.addEventListener('compositionend', () => { ${HOLD}; ${removal ? REMOVE_LIST : ''} }, { capture: true, once: true }), true)`));
+    await ana.send('Input.insertText', { text: '你好' });
+    await ana.send('Input.imeSetComposition', { text: 'K', selectionStart: 1, selectionEnd: 1 });
+    await ana.evaluate(RELEASE);
+    await ana.send('Input.imeSetComposition', { text: 'KJ', selectionStart: 2, selectionEnd: 2 });
+    if (z) {
+      if (z === 'start') assert.ok(await caretAt(ben, 0));
+      else await caretAtEnd(ben, p);
+      await typeKeys(ben, 'Z');
+      await until(async () => para(await ana.evaluate(TEXT)).includes('Z'), 'the key Z of Ben in the text that Ana reads');
+    }
+    await ana.send('Input.insertText', { text: '世界' });
+    const text = await converge(server, pages);
+    assert.equal(para(text), { start: '<p>ZSecondy你好世界 slide</p>', end: '<p>Secondy你好世界 slideZ</p>' }[z] ?? '<p>Secondy你好世界 slide</p>');
+    assert.equal(slideOf(text, 1).includes('<ul>'), !removal);
+    assert.deepEqual([ana.errors, ben.errors], [[], []]);
+  });
+}
