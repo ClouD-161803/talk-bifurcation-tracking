@@ -19,6 +19,7 @@ import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
 import { click, press, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { BUBBLE, el, leave, select, session, unbubble } from './helpers/presence.mjs';
+import { tap } from './helpers/share.mjs';
 import { until } from './helpers/session.mjs';
 
 const p = el(1, 'p');
@@ -508,6 +509,47 @@ test('an undo of typing in the speaker notes that cannot be undone says why at t
   assert.equal(aside(await converge(server, pages)), ASIDE.replace('x<', 'x foobar<'));
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
+
+// the boxes of the bubble, of More, and of the title bar of a page
+const BOXES = `(() => {
+  const box = (n) => { const r = n?.getBoundingClientRect(); return r && { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
+  return { bubble: box(document.querySelector('.beeson-bubble')), more: box([...document.querySelectorAll('.more-groups')].find((b) => b.getClientRects().length)), title: box(document.querySelector('.beeson-edit-titlebar')) };
+})()`;
+const overlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+// a session of two pages, 140 s, three converges, 60 s, and five waits, 75 s, at most
+for (const [width, height] of [[390, 844], [320, 568]]) {
+  test(`on a phone ${width} px wide, the bubble of an undo of typing in hidden speaker notes that is refused leaves More and the title bar free`, { timeout: 330_000 }, async (t) => {
+    const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', `  <p>Second slide</p>\n  ${ASIDE}`]], pages: [{ width, height, mobile: true }] });
+    const [ana, ben] = pages;
+    for (const page of pages) {
+      await show(page, 'Two');
+      await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+      if (!(await page.evaluate(`${C}.app.notes.shown()`))) await page.evaluate(`${C}.app.commands.run('view.notes')`);
+    }
+    await caretAtEnd(ana, NOTES);
+    await typeKeys(ana, ' foo ');
+    await converge(server, pages);
+    await caretAtEnd(ben, NOTES);
+    await typeKeys(ben, 'bar');
+    assert.equal(aside(await converge(server, pages)), ASIDE.replace('x<', 'x foobar<'));
+    await leave(ben);
+    await front(ana);
+    await ana.evaluate(`${C}.app.commands.run('view.notes')`);
+    await ana.waitFor(`${NOTES}.getClientRects().length === 0`);
+    // the toolbar folds Undo into More at this width
+    await tap(ana, '.more-groups');
+    const undo = `([...document.querySelectorAll('[data-command="edit.undo"]')].find((b) => b.getClientRects().length))`;
+    await ana.waitFor(`!!${undo}`);
+    await tap(ana, undo);
+    await ana.waitFor(`!!document.querySelector('.beeson-bubble')`);
+    const boxes = await ana.evaluate(BOXES);
+    assert.ok(!overlap(boxes.bubble, boxes.more), `the bubble leaves More free: ${JSON.stringify(boxes)}`);
+    assert.ok(!overlap(boxes.bubble, boxes.title), `the bubble leaves the title bar free: ${JSON.stringify(boxes)}`);
+    assert.equal(aside(await converge(server, pages)), ASIDE.replace('x<', 'x foobar<'));
+    assert.deepEqual([ana.errors, ben.errors], [[], []]);
+  });
+}
 
 // One, a hidden slide Hid, and Two, on whose rows the navigator draws 1, no number, and 2
 const HIDDEN = [['<section>\n  <h2>Two</h2>', '<section data-visibility="hidden">\n  <h2>Hid</h2>\n  <p>Hidden words</p>\n</section>\n\n<section>\n  <h2>Two</h2>']];
