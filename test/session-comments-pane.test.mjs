@@ -1118,3 +1118,47 @@ test('Show on the toast of a mention closes the Slide Sorter', { timeout: 300_00
   clean(a);
   clean(b);
 });
+
+// a comment on the nth start tag of tag on the slide at index, sent by page, and the id of its thread
+const postOn = (page, slide, tag, n, text) => page.evaluate(`(async () => {
+  const c = ${C};
+  const t = c.base.text;
+  let at = -1;
+  for (let k = 0; k <= ${slide}; k++) at = t.indexOf('<section', at + 1);
+  let p = at;
+  for (let k = 0; k <= ${n}; k++) p = t.indexOf('<${tag}', p + 1);
+  return (await c.transport.post('comments', { token: c.token, anchor: { start: p, end: t.indexOf('>', p) + 1 }, slide: { start: at, end: t.indexOf('>', at) + 1 }, base: c.base.v, text: ${JSON.stringify(text)}, mentions: [] })).id;
+})()`);
+
+for (const [width, height] of [[1440, 900], [390, 844]]) {
+  test(`at ${width} px, the badges of two near elements do not overlap, and the badge of a turned element is at its own upper right corner`, { timeout: 300_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talkWith(t, `<section>
+  <h2>One</h2>
+  <p style="position: absolute; left: 300px; top: 250px; width: 300px; margin: 0">Upper paragraph</p>
+  <p style="position: absolute; left: 300px; top: 260px; width: 300px; margin: 0">Lower paragraph</p>
+  <p style="position: absolute; left: 1100px; top: 500px; width: 300px; height: 80px; margin: 0; rotate: 30deg">Turned paragraph</p>
+</section>
+`);
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width, height, mobile: width < 600 });
+    // a phone shows the slide without the Format inspector, which takes most of its width
+    if (width < 600) await a.evaluate(`window.BeesonEditor.exec('view.slideOnly')`);
+    await show(a, 'One');
+    for (const n of [0, 1, 2]) await postOn(a, 0, 'p', n, `On paragraph ${n + 1}`);
+    await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, 3);
+    // the boxes of the badges, in the order of the paragraphs
+    const boxes = await a.evaluate(`[...document.querySelectorAll('.beeson-comment-badge')].map((b) => b.getBoundingClientRect().toJSON()).sort((x, y) => x.top - y.top)`);
+    const [upper, lower, turned] = boxes;
+    // a point 6 px along the top edge of the turned paragraph and 4 px into it from its upper right
+    // corner, which is 4 px left of and 4 px below the lower left corner of its badge
+    const a30 = Math.PI / 6;
+    const probe = { x: turned.left - 4 - 6 * Math.cos(a30) - 4 * Math.sin(a30), y: turned.bottom + 4 - 6 * Math.sin(a30) + 4 * Math.cos(a30) };
+    const got = {
+      apart: upper.bottom <= lower.top || upper.right <= lower.left || lower.right <= upper.left,
+      corner: await a.evaluate(`document.elementsFromPoint(${probe.x}, ${probe.y}).some((e) => e.textContent === 'Turned paragraph')`),
+    };
+    assert.deepEqual(got, { apart: true, corner: true }, JSON.stringify(boxes));
+    clean(a);
+  });
+}
