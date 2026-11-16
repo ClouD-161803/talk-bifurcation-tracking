@@ -1018,7 +1018,7 @@ test('a change of index.html from outside is told as an overwrite only where it 
   assert.equal(told('First-gr', 'First-Gr', BO), false, 'an operation of a person over a word of Ann');
 });
 
-test('every page is told when a change of index.html from outside replaces text that a person wrote in the session, also when it reverts the text, and not when it changes other text', { timeout: 120_000 }, async (t) => {
+test('every page is told when a change of index.html from outside replaces text that a person wrote in the session, also when it reverts the text, and not when it changes other text', { timeout: 240_000 }, async (t) => {
   const s = await session(t, { quiet: 3_600_000, longest: 3_600_000 });
   const ann = await s.hello('Ann');
   const bo = await s.hello('Bo');

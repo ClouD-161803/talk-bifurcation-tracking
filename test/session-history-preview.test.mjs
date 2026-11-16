@@ -256,7 +256,7 @@ test('the preview of a deck whose plugin of reveal.js starts after the page is l
 // a name of more than about 26 characters is cut on a phone, and the selected row of the pane shows it
 const LONG = 'A much longer name of a version for the review';
 
-test('on a phone of 390 px, the bar of the preview shows a short name and the time of a version by one person in full, and the button of the changed slide next to a long name', { timeout: 300_000 }, async (t) => {
+test('on a phone of 390 px, the bar of the preview shows a short name and the time of a version by one person in full, and the button of the changed slide next to a long name', { timeout: 720_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });

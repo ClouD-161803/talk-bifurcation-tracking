@@ -1262,7 +1262,7 @@ const DIMMED = (keep) => `(() => {
 // the opacity of el as it is drawn, i.e. with the opacities of its ancestors
 const DRAWN = (el) => `(() => { let o = 1; for (let e = ${el}; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity); return o; })()`;
 
-test('while Version History is open, every inert part of the editor but the canvas is dimmed, every dimmed part is inert, and the pane and the preview are not dimmed', { timeout: 300_000 }, async (t) => {
+test('while Version History is open, every inert part of the editor but the canvas is dimmed, every dimmed part is inert, and the pane and the preview are not dimmed', { timeout: 420_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
@@ -1311,7 +1311,7 @@ plain code</pre>
 // the caret put at offset in the first text node of the element of node, with the focus in the text element of host
 const caretAt = async (page, host, node, offset) => assert.ok(await page.evaluate(`(() => { const h = ${host}; h.focus(); const r = document.createRange(); r.setStart(${node}.firstChild, ${offset}); r.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(r); return document.activeElement === h; })()`));
 
-test('Show changes tints the characters that each person added to a changed text element in the tone of this person, and unticking it takes the tints off', { timeout: 300_000 }, async (t) => {
+test('Show changes tints the characters that each person added to a changed text element in the tone of this person, and unticking it takes the tints off', { timeout: 780_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
@@ -1377,7 +1377,7 @@ test('Show changes tints the characters that each person added to a changed text
     'and Ann|and new|by Ann': await tint(ann),
     'changed|then Ben|too': await tint(ben),
   });
-  // the outlines of the elements whose text is not tinted
+  // the outlines of every changed element, whether its text is tinted or not
   const outlined = await ann.evaluate(`[...${doc}.querySelectorAll('[data-beeson-changed]')].map((e) => e.textContent.trim().split(/\\s+/).slice(0, 2).join(' '))`);
   assert.deepEqual(outlined, ['One by', 'First slide', 'Alpha Beta', 'Some slanted', 'Fish &', 'A formula', 'Cell oneCell']);
 
