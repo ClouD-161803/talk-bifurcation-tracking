@@ -364,10 +364,18 @@ export class Preview {
       if (key !== this.key) return;
       const tokens = tokenize(text);
       const slides = slidesOf(text, tokens);
-      // a slide differs when no slide of the current deck reads as it does
+      // a slide differs when no slide of the current deck reads as it does. in a text with as many
+      // slides as the current deck, a slide differs as well when the slide at its place reads
+      // differently, which lists a slide that was only moved
       const now = this.client.snapshot()?.mine ?? text;
-      const kept = new Set(slidesOf(now).map((s) => now.slice(s.start, s.end)));
-      const differ = [...new Set(slides.filter((s) => !kept.has(text.slice(s.start, s.end))).map((s) => s.number))];
+      const current = slidesOf(now).map((s) => now.slice(s.start, s.end));
+      const kept = new Set(current);
+      const placed = current.length === slides.length;
+      const differs = (s: (typeof slides)[number], k: number): boolean => {
+        const t = text.slice(s.start, s.end);
+        return !kept.has(t) || (placed && current[k] !== t);
+      };
+      const differ = [...new Set(slides.filter(differs).map((s) => s.number))];
       bar.replaceChildren(...differ.map((n) => this.button(slidesText([n]), () => this.go(n), 'slide')));
       const w = await this.write(frame, text, tokens, this.url('aside', id));
       if (key !== this.key || !w) return;
