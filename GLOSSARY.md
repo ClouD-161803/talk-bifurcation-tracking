@@ -48,6 +48,10 @@ The box at the right of a content slide or of a split slide in which a figure is
 
 Avoid "zone", the class of a figure box in an old talk, which is `figure-box`.
 
+## Focus
+
+The step from which every step shown on its slide is held at full opacity, written as `data-focus` on a fragment, e.g. on an empty `span` after the steps of a comparison. It is not the keyboard focus of the editor.
+
 ## Hard invariant
 
 A rule of slides that is never traded away for another goal, and that an agent does not break without asking first. The hard invariants are listed at the top of `AGENTS.md`.
