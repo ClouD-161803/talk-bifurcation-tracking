@@ -322,6 +322,7 @@ test('the merge of an apply in a session gives the text of the authority for pai
 });
 
 const PROSE = 'The spacecraft leaves the halo orbit near the second Lagrange point and follows the stable manifold toward the Moon. ';
+const PARA = 'A low energy transfer from the Earth to the Moon uses the manifolds of the halo orbits of L1 and L2. '.repeat(3).slice(0, 300);
 
 test('the merge of an apply in a session keeps a long paste of one person and a key of a third person around an unread key of the person', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
@@ -342,6 +343,8 @@ test('the merge of an apply in a session keeps a long paste of one person and a 
     ['今天我们讨论轨道', 4, rep('天地玄黄宇宙洪荒', 600)],
     ['今日は軌道について話します', 6, rep('いろはにほへと', 600)],
     ['今天 我们 讨论 轨道', 5, rep('天地玄黄宇宙洪荒', 600)],
+    // the largest paste into a paragraph of 300 characters below the cap of anchored()
+    [PARA, 150, rep(PROSE, 3194)],
   ];
   const lost = CASES.filter(([para, at, paste]) => {
     const f = wrap(`<p>${para}</p>`);
@@ -359,6 +362,25 @@ test('the merge of an apply in a session keeps a paste of prose over the first w
   const paste = PROSE.repeat(6).slice(0, 600);
   const f = wrap('<p>Second slide</p>'), s = wrap('<p>Second slAide</p>'), t = wrap(`<p>${paste} slideC</p>`);
   assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(`<p>${paste} slAideC</p>`));
+});
+
+test('fine() of a paste far over the cap of anchored() costs no more than a paste at the cap', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+  const cost = (n) => {
+    const f = wrap(`<p>${PARA}</p>`), t = wrap(`<p>${rep(PROSE, n)}${PARA}C</p>`);
+    fine(f, t);
+    const times = [];
+    for (let i = 0; i < 7; i++) {
+      const t0 = performance.now();
+      fine(f, t);
+      times.push(performance.now() - t0);
+    }
+    return times.sort((a, b) => a - b)[3];
+  };
+  let ratio = Infinity;
+  for (let i = 0; i < 3 && ratio >= 4; i++) ratio = cost(55_000) / cost(3_194);
+  assert.ok(ratio < 4, `a paste of 55,000 characters costs ${ratio.toFixed(1)} times one of 3,194`);
 });
 
 test('with twice, the same letter typed at one point by two people is kept twice, and the same replacement of a word by two people once', () => {
