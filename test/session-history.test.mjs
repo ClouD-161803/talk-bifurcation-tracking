@@ -1488,11 +1488,15 @@ test('Show changes tints a paragraph only where the page holds as many paragraph
   const seen = await tintsOf(t, [
     { name: 'p-closed', html: '<p>Same<ul><li>x</li></ul></p>\n  <p>Same</p>\n  <p>Same</p>', marks: [['Same', 2]] },
     { name: 'p-same', html: '<p>Same</p>\n  <p>Same</p>', marks: [['Same', 1]] },
+    { name: 'p-moved', html: `<div class="box"></div>\n  <p>Same typed</p>\n  <p>Same typed</p>\n  <script>{const s=document.currentScript.parentNode;s.querySelector('div.box').append(s.querySelector('p'))}</script>`, marks: [['typed', 0]] },
   ]);
   assert.deepEqual(seen, {
     // the parser closes the first p at the ul and adds an empty p, hence the nth p is another one
     'p-closed': { tints: [], outlined: ['p[2]'] },
     'p-same': { tints: ['Same in p[1]'], outlined: ['p[1]'] },
+    // a script moves the first p into the box, hence the first p of the slide is the second of the
+    // text, which reads the same
+    'p-moved': { tints: [], outlined: ['p[0]'] },
   });
 });
 
