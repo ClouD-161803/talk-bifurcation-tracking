@@ -1340,3 +1340,49 @@ test('a change of index.html from outside is told whenever it replaces a charact
   }
   assert.equal(missed, 0, `${missed} changes from outside over the text of a person were not told`);
 });
+
+test('a change of index.html from outside is told by the words that it replaces next to a place where a person removed text, and inside a line of a person in which another person removed a letter', { timeout: 60_000 }, (t) => {
+  const told = (steps) => {
+    const { authority, history } = open(sessionDir(t), DECK.replace('First slide', 'First <b>big slide</b>'));
+    const out = [];
+    for (const [from, to, author] of steps) {
+      const before = authority.version;
+      replace(authority, from, to, author);
+      if (author === 'file') out.push(history.overwrittenAfter(before));
+      else history.close();
+    }
+    history.stopSync();
+    return out;
+  };
+  // the patch of the diff begins or ends at the tag, where Ann removed the word before or after
+  // it, and the attribute is written inside the tag
+  assert.deepEqual(told([['First <b>', '<b>', ANN], ['<b>', '<b class="x">', 'file']]), [false], 'an attribute added to a tag after a word that Ann removed');
+  assert.deepEqual(told([['<b>big ', '<b>', ANN], ['<b>', '<b class="x">', 'file']]), [false], 'an attribute added to a tag before a word that Ann removed');
+  // the second change replaces the word of Ann that the first one kept between its two words
+  assert.deepEqual(told([['First <b>big slide</b>', 'one two three four', ANN], ['one', 'oe', BO], ['two three four', 'TWO three FOUR', 'file'], ['three', 'THREE', 'file']]), [true, true], 'a word of Ann after a letter that Bo removed before it');
+});
+
+test('a change of index.html from outside of text that nobody wrote takes about as long with the history as the authority takes alone', { timeout: 120_000 }, (t) => {
+  let deck = '<!doctype html><html><body><div class="reveal"><div class="slides">\n';
+  for (let i = 0; i < 2400; i++) deck += `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text ${i}</p>\n</section>\n`;
+  deck += '</div></div></body></html>\n';
+  const { authority, history } = open(sessionDir(t), deck);
+  t.after(() => history.stopSync());
+  // Ann wrote on the last slide, which the change keeps
+  replace(authority, '<p>Text 2399</p>', '<p>Text by Ann</p>', ANN);
+  history.close();
+  const alone = new Authority(authority.text);
+  // a formatter indents every element again and back, as 20 operations of 1,600 patches each
+  const indented = authority.text.replace(/^ {2}</gm, '    <');
+  const there = diff(authority.text, indented);
+  const back = diff(indented, authority.text);
+  const ms = (a) => {
+    const start = performance.now();
+    for (let i = 0; i < 10; i++) for (const patches of [there, back]) assert.equal(a.enter(patches, 'file').answer.ok, true);
+    return performance.now() - start;
+  };
+  ms(alone);
+  let [withHistory, without] = [ms(authority), ms(alone)];
+  if (withHistory > 4 * without) [withHistory, without] = [Math.min(withHistory, ms(authority)), Math.max(without, ms(alone))];
+  assert.ok(withHistory <= 4 * without, `${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone`);
+});
