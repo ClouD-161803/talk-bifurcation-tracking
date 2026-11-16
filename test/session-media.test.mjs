@@ -35,13 +35,14 @@ const IMAGES = `(${TEXT}.match(/<img /g) ?? []).length`;
 // the errors in the console of a page for an upload that the proxy refused, cut, or lost
 const PROXIED = [/status of 50[04]/, /ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET|Failed to fetch/];
 // the number of elements of the page that show the whole of text where a person sees it, i.e.
-// inside the window, not cut, and not clipped by an ancestor
-const SEEN = (text) => `[...document.body.querySelectorAll('*')].filter((el) => {
+// inside the window, not cut, and not clipped by an ancestor. with scroll, an element that scrolls
+// vertically shows the part of text that a scroll of it reaches
+const SEEN = (text, scroll = false) => `[...document.body.querySelectorAll('*')].filter((el) => {
   const has = (e) => e.textContent.includes(${JSON.stringify(text)});
   if (!has(el) || [...el.children].some(has) || getComputedStyle(el).visibility !== 'visible') return false;
   const r = el.getBoundingClientRect();
   if (!r.width || !r.height || r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) return false;
-  if (el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight + 1) return false;
+  if (el.scrollWidth > el.clientWidth || (el.scrollHeight > el.clientHeight + 1 && !(${scroll} && getComputedStyle(el).overflowY === 'auto'))) return false;
   for (let p = el.parentElement; p; p = p.parentElement) {
     if (getComputedStyle(p).overflow === 'visible') continue;
     const q = p.getBoundingClientRect();
@@ -50,6 +51,7 @@ const SEEN = (text) => `[...document.body.querySelectorAll('*')].filter((el) => 
   return true;
 }).length`;
 const BAR = `document.querySelector('.beeson-edit-titlebar').getBoundingClientRect().height`;
+const TITLE = `document.querySelector('.beeson-edit-titlebar .doc .state').textContent`;
 
 /** A file of bytes at name in a new folder dir of the talk folder, for a drop. */
 function file(server, dir, name, bytes) {
@@ -436,6 +438,34 @@ for (const who of ['host', 'guest']) {
     clean(ann, [/status of 413/]);
   });
 }
+
+test('the reason why a dropped file is not added follows the line of a file given up, in the save state of a phone of 390 px and in the title of a screen of 1440 px', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  for (const [width, height, mobile] of [[390, 844, true], [1440, 900, false]]) {
+    const server = await talk(t);
+    const p = await proxy(t, server.edit);
+    const ann = await open(browser, p.url, { width, height, mobile });
+    p.next('large');
+    await show(ann, 'One');
+    await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+    await ann.waitFor(`${STATE} === ${JSON.stringify(LOST.host)}`, 10_000);
+    await dropFiles(ann, [file(server, 'b', 'IMG_2041.heic', Buffer.alloc(16))]);
+    await ann.waitFor(`(${C}.app.note?.text ?? '').startsWith('IMG_2041.heic')`);
+    const reason = await ann.evaluate(`${C}.app.note.text`);
+    if (mobile) {
+      await ann.waitFor(`${SEEN(LOST.host, true)} > 0 && ${SEEN(reason, true)} > 0`).catch(async () => assert.fail(`the line and the reason are not both read at ${width} px. the save state reads ${await ann.evaluate(STATE)}`));
+    } else {
+      // the title leaves out the final full stop of a part that another part follows
+      await ann.waitFor(`${TITLE}.includes('IMG_2041.heic')`);
+      const title = await ann.evaluate(TITLE);
+      for (const part of [LOST.host, reason]) assert.equal(title.split(part.replace(/\.$/, '')).length - 1, 1, title);
+    }
+    assert.equal(await ann.evaluate(ACTION), null);
+    clean(ann, [/status of 413/]);
+    await ann.close();
+  }
+});
 
 test('the save state of an upload given up is cleared once another page deletes the picture, without an edit of the page', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
