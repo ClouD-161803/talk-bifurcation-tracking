@@ -25,6 +25,16 @@ const ARTICLES = `document.querySelectorAll('${PANE} article').length`;
 // the id of each thread in the pane, followed by * when the thread is unread
 const UNREAD = `[...document.querySelectorAll('${PANE} article')].map((a) => a.dataset.id + (a.classList.contains('unread') ? '*' : ''))`;
 const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('aria-label')`;
+// the label of the button Comments, when its title is the same, the text of its count, and what the
+// count is drawn as inside the button: a dot narrower than the 14 px of a number, a number, or null
+const BUTTON = `(() => {
+  const b = document.querySelector('.beeson-session-comments');
+  const c = b.querySelector('.count');
+  const r = c.getBoundingClientRect();
+  const o = b.getBoundingClientRect();
+  const drawn = r.width > 0 && r.height > 0 && r.left >= o.left && r.right <= o.right && r.top >= o.top && r.bottom <= o.bottom;
+  return [b.title === b.getAttribute('aria-label') ? b.title : null, c.textContent, drawn ? (r.width < 14 ? 'dot' : 'number') : null];
+})()`;
 // the requests of a page that is offline fail in its console
 const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 const TWINS = TALK.replace('<p>First slide</p>', '<p>TBD</p>\n  <p>TBD</p>\n  <p>TBD</p>');
@@ -380,6 +390,32 @@ test('a reply of another person in a thread of the person is unread until the pe
   await click(a, `${PANE} article[data-id="${id}"] .text`);
   await sees(a, COUNT, 'Comments');
   await badge(a, 'One', 'p', '1');
+  clean(a);
+  clean(b);
+});
+
+test('a dot on the button Comments shows an unread open thread while no comment of For You is unread', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const ann = await a.evaluate(`${C}.person`);
+  const post = (text) => b.evaluate(`${C}.transport.post('comments', { token: ${C}.token, anchor: null, slide: null, base: ${C}.base.v, text: ${JSON.stringify(text)}, mentions: [] }).then((t) => t.id)`);
+  const act = (id, route) => b.evaluate(`${C}.transport.post('comments/${id}/${route}', { token: ${C}.token }).then(() => true)`);
+  const none = ['Comments', '', null];
+  const dot = ['Comments, unread threads', '', 'dot'];
+  await sees(a, BUTTON, none);
+  const g = await post('For everyone');
+  await sees(a, BUTTON, dot);
+  // the number of For You is shown without the dot
+  const m = await mention(b, 'For Ann', ann);
+  await sees(a, BUTTON, ['Comments, 1 unread', '1', 'number']);
+  await openPane(a);
+  await click(a, `${PANE} article[data-id="${m}"] .text`);
+  await sees(a, BUTTON, dot);
+  await act(g, 'resolve');
+  await sees(a, BUTTON, none);
+  await act(g, 'reopen');
+  await sees(a, BUTTON, dot);
+  await click(a, `${PANE} article[data-id="${g}"] .text`);
+  await sees(a, BUTTON, none);
   clean(a);
   clean(b);
 });

@@ -411,7 +411,8 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
     await sees(c, THREADS, [first(['The first comment, edited']), { anchor: 'On Paragraph: Second slide', texts: ['Look, @Annabel what do you think?'] }]);
     await badge(c, 'One', 'p', '1*');
     await badge(c, 'Two', 'p', '1*');
-    await sees(c, COUNT, 'Comments');
+    // both threads are unread and neither is for Cy, hence the dot
+    await sees(c, COUNT, 'Comments, unread threads');
 
     const count = await loads(a);
     await a.evaluate('location.reload()').catch(() => {});
@@ -541,6 +542,13 @@ test('the three tabs of the inspector and the keys of the pane, text that looks 
       return { inside: r.left >= 0 && r.right <= innerWidth, hit: b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
     })()`), { inside: true, hit: true });
     await sees(c, HITS('.beeson-session-comments'), []);
+    // the thread of Ann is unread and not of For You, hence a dot is drawn inside the narrow title bar
+    await sees(c, `(() => {
+      const b = document.querySelector('.beeson-session-comments');
+      const r = b.querySelector('.count').getBoundingClientRect();
+      const o = b.getBoundingClientRect();
+      return [b.getAttribute('aria-label'), r.width > 0 && r.width < 14 && r.left >= o.left && r.right <= o.right && r.right <= innerWidth];
+    })()`, ['Comments, unread threads', true]);
     await show(c, 'One');
     await sees(c, `${badgeOf(el(0, 'p'))}`, '1*');
     await sees(c, HITS('.beeson-comment-badge'), []);
