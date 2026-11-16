@@ -909,3 +909,53 @@ test('a state of a person who stopped being active that reaches the edit command
   clean(ana);
   clean(ben);
 });
+
+// the page keeps from the edit command its states that do not say typing while window.__quiet is
+// 'typing', and every state while it is 'all', as for another page that does not hear these states.
+// window.__sent is the last state that it sent, and window.__kept says that a state after a state of
+// typing was kept
+const QUIET = `(() => {
+  const c = ${C};
+  const send = c.sendPresence.bind(c);
+  c.sendPresence = (s) => {
+    if (window.__quiet === 'all' || (window.__quiet === 'typing' && !s.typing)) {
+      window.__kept = !!window.__sent?.typing;
+      return;
+    }
+    window.__sent = s;
+    send(s);
+  };
+  return true;
+})()`;
+
+test('a state that says a person stopped being active does not begin a hold on a page that did not hear the states before it', { timeout: 300_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const idle = `r.name === 'Ana' && r.active === false`;
+  // the page of Ben hears Ana typing, and it does not hear that she stops
+  await ana.evaluate(QUIET);
+  await ana.evaluate(`(window.__quiet = 'typing', true)`);
+  await holding(ana, ben, SECOND, ' typed');
+  await until(() => ana.evaluate(`window.__kept === true && !${C}.presenceBusy && !${C}.presenceDue`), 'the page of Ana to keep the state of the end of her typing');
+  const last = await ana.evaluate(`({ v: window.__sent.v, at: window.__sent.caret?.at ?? null })`);
+  await until(() => ben.evaluate(`[...${P}.others.values()].some((o) => o.state.typing && o.state.v === ${JSON.stringify(last.v)} && (o.state.caret?.at ?? null) === ${last.at})`), 'the last state of the typing of Ana on the page of Ben');
+  // the 30 s pass on the clock of Ben, and then on the clock of Ana, whose page says so
+  await ben.evaluate(`(${P}.skew += 31000, true)`);
+  assert.equal(await ben.evaluate(HOLDER(SECOND)), null, 'the hold of the key ends after 30 s on the clock of Ben');
+  await ana.evaluate(`(window.__quiet = null, ${P}.skew += 31000, ${P}.set({}), true)`);
+  await until(() => ben.evaluate(`${P}.resolved().some((r) => ${idle})`), 'Ana to stop being active on the page of Ben');
+  assert.equal(await ben.evaluate(HOLDER(SECOND)), null, 'the state that follows a state of her typing does not begin a hold');
+  // Ana moves her caret to the heading and 30 s pass, and the page of Ben hears of both at once
+  const heading = el(1, 'h2');
+  const before = await ana.evaluate(`${P}.sent.caret.el`);
+  await ana.evaluate(`(window.__quiet = 'all', true)`);
+  await front(ana);
+  await caretAtEnd(ana, heading);
+  await until(() => ana.evaluate(`(() => { const s = ${P}.sent; return s.active && !!s.caret && s.caret.el !== ${before}; })()`), 'the page of Ana to keep the state of her caret in the heading');
+  await ana.evaluate(`(window.__quiet = null, ${P}.skew += 31000, ${P}.set({}), true)`);
+  await until(() => ben.evaluate(`${P}.resolved().some((r) => ${idle} && r.caret?.el === ${heading})`), 'the caret of Ana in the heading on the page of Ben');
+  assert.equal(await ben.evaluate(HOLDER(heading)), null, 'the state with her caret in another element does not begin a hold');
+  clean(ana);
+  clean(ben);
+});
