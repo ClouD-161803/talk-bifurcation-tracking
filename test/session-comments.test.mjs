@@ -465,15 +465,33 @@ test('offline, the Comment command opens a draft, which is kept until the page i
   clean(a, REFUSED);
 });
 
-test('once the session has ended, the Comment command is disabled', { timeout: 120_000 }, async (t) => {
-  const { pages: [a] } = await pair(t, ['Ann']);
-  await show(a, 'One');
-  await caretAtEnd(a, el(0, 'h2'));
-  await a.evaluate(`${C}.leave()`);
-  await a.waitFor(`${C}.connection === 'ended'`);
-  assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: ENDED });
-  clean(a);
-});
+// the send button of the draft, and Resolve, Thread actions, and the send button of Reply of the
+// thread, each as its label, whether it is disabled, and its tooltip
+const SENDS = `[...document.querySelectorAll('${PANE} :is(.draft .actions .primary, article :is(.resolve, .more, .reply .actions .primary))')].map((b) => [b.getAttribute('aria-label') || b.textContent, b.disabled, b.title])`;
+
+for (const from of ['online', 'offline']) {
+  test(`once the session has ended ${from}, the Comment command is disabled, and the controls that send say that it has ended`, { timeout: 300_000 }, async (t) => {
+    const { server, pages: [a] } = await pair(t, ['Ann']);
+    await show(a, 'One');
+    await click(a, '.reveal .slides > section:nth-child(1) p');
+    await comment(a, 'Before the end');
+    await caretAtEnd(a, el(0, 'h2'));
+    await press(a, COMMENT_KEY);
+    await a.waitFor(`document.activeElement?.matches('${PANE} .draft textarea')`);
+    await type(a, 'Not sent');
+    if (from === 'offline') {
+      server.edit.child.kill('SIGKILL');
+      await server.edit.exited;
+      await a.waitFor(`/^Offline/.test(${STATE})`);
+      await sees(a, SENDS, [['Comment', true, OFFLINE], ['Resolve', true, OFFLINE], ['Thread actions', true, OFFLINE], ['Reply', true, OFFLINE]]);
+    }
+    await a.evaluate(`${C}.leave()`);
+    await a.waitFor(`${C}.connection === 'ended'`);
+    assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: ENDED });
+    await sees(a, SENDS, [['Comment', true, ENDED], ['Resolve', true, ENDED], ['Thread actions', true, ENDED], ['Reply', true, ENDED]]);
+    clean(a, from === 'offline' ? REFUSED : []);
+  });
+}
 
 test('the three tabs of the inspector and the keys of the pane, text that looks like HTML, and a phone of 390 px', { timeout: 300_000 }, async (t) => {
   const { browser, server, pages: [a, b] } = await pair(t, ['<b>Ann</b>', 'Ben']);
