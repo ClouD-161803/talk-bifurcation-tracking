@@ -150,45 +150,176 @@ function changes(base, theirs) {
   }
   return removed > base.length / 2 ? null : out;
 }
+function overlaps(a, b) {
+  if (a.start < b.end && b.start < a.end) return true;
+  return (a.start === a.end || b.start === b.end) && a.start <= b.end && b.start <= a.end;
+}
 function clash(a, b) {
   if (a.start < b.end && b.start < a.end) return true;
   return a.start === a.end && b.start < a.start && a.start < b.end || b.start === b.end && a.start < b.start && b.start < a.end;
 }
-function apply(base, edits2) {
-  const sorted = [...edits2].sort((a, b) => b.start - a.start || b.end - a.end);
+function apply(base, edits3) {
+  const sorted = [...edits3].sort((a, b) => b.start - a.start || b.end - a.end);
   let text = base;
   for (const e of sorted) text = text.slice(0, e.start) + e.text + text.slice(e.end);
   return text;
 }
+function edits(base, theirs) {
+  const found = changes(base, theirs);
+  if (found) return found;
+  const n = Math.min(base.length, theirs.length);
+  let s = 0;
+  while (s < n && base[s] === theirs[s]) s++;
+  let t = 0;
+  while (t < n - s && base[base.length - 1 - t] === theirs[theirs.length - 1 - t]) t++;
+  return [{ start: s, end: base.length - t, text: theirs.slice(s, theirs.length - t) }];
+}
+var equal = (a, b) => a.start === b.start && a.end === b.end && a.text === b.text;
+function tagged(s) {
+  const open2 = /^(?:<[A-Za-z](?:[^<>"']|"[^"]*"|'[^']*')*>)*/.exec(s)[0];
+  const rest = s.slice(open2.length);
+  const close = /(?:<\/[^<>]+>)*$/.exec(rest)[0];
+  return [open2, rest.slice(0, rest.length - close.length), close];
+}
 function around(base, e) {
   const run = base.slice(e.start, e.end);
-  if (!run || e.text[0] !== "<") return null;
-  const tag = /<[A-Za-z][^<>]*>/y;
-  while (tag.test(e.text)) {
-    const at = tag.lastIndex;
-    if (e.text.startsWith(run, at) && /^(<\/[^<>]+>)+$/.test(e.text.slice(at + run.length))) return [e.text.slice(0, at), e.text.slice(at + run.length)];
-  }
-  return null;
+  const tags = e.text.includes("<");
+  const pre = tags ? e.text.slice(0, e.text.indexOf("<")) : "";
+  const post = tags ? e.text.slice(e.text.lastIndexOf(">") + 1) : "";
+  const [open2, inner2, close] = tagged(e.text.slice(pre.length, e.text.length - post.length));
+  const [was, old, shut] = tagged(run);
+  if (open2 === was && close === shut || inner2 !== old && (inner2 + old).includes("<")) return null;
+  return { pre, open: open2, inner: inner2, close, post, lo: e.start + was.length, hi: e.end - shut.length };
 }
-function absorb(base, a, b) {
+function absorb(base, a, b, first2) {
   let rest = b;
   const out = a.map((w) => {
-    const tags = around(base, w);
-    const hits = tags ? rest.filter((e) => clash(w, e)) : [];
-    if (!tags || !hits.length || !hits.every((e) => w.start <= e.start && e.end <= w.end && !(e.text + base.slice(e.start, e.end)).includes("<"))) return w;
-    const run = apply(base.slice(w.start, w.end), hits.map((e) => ({ start: e.start - w.start, end: e.end - w.start, text: e.text })));
-    if (!run) return w;
+    const f = around(base, w);
+    const hits = f ? rest.filter((e) => clash(w, e)) : [];
+    if (!f || !hits.length || !hits.every((e) => f.lo <= e.start && e.end <= f.hi && !(e.text + base.slice(e.start, e.end)).includes("<"))) return w;
+    const old = base.slice(f.lo, f.hi);
+    const own = fine(old, f.inner);
+    const others = hits.map((e) => ({ start: e.start - f.lo, end: e.end - f.lo, text: e.text }));
+    const run = first2 ? mergeEdits(old, others, own, "ours", true) : mergeEdits(old, own, others, "ours", true);
+    if (!run.text || run.conflicts.length) return w;
     rest = rest.filter((e) => !hits.includes(e));
-    return { start: w.start, end: w.end, text: tags[0] + run + tags[1] };
+    return { start: w.start, end: w.end, text: f.pre + f.open + run.text + f.close + f.post };
   });
   return [out, rest];
 }
-function nest(base, a, b) {
-  const [x, y] = absorb(base, a, b);
-  const [v, u] = absorb(base, y, x);
+function nest(base, a, b, first2 = false) {
+  const [x, y] = absorb(base, a, b, first2);
+  const [v, u] = absorb(base, y, x, !first2);
   return [u, v];
 }
+function mergeEdits(base, ours, all, prefer, apart = false, twice = false) {
+  if (apart) [ours, all] = nest(base, ours, all);
+  const hit = apart ? clash : overlaps;
+  const both = ours.filter((o) => all.some((h) => equal(o, h)));
+  const keys = twice && both.length === 1 && both[0].start === both[0].end;
+  const same = (a, b) => !keys && equal(a, b);
+  const others = all.filter((h) => !ours.some((o) => same(o, h)));
+  const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
+  const keptTheirs = prefer === "theirs" ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
+  const keptOurs = (prefer === "ours" ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => same(o, h)));
+  return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
+}
+function charEdits(a, b, max) {
+  const [head, tail] = shared(a, b);
+  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
+  if (!x || !y) return x === y ? [] : [{ start: head, end: a.length - tail, text: y }];
+  const hunks = diff(x, y, max);
+  return hunks && hunks.map((h) => ({ start: head + h.a0, end: head + h.a1, text: y.slice(h.b0, h.b1) }));
+}
 var CELLS = 1 << 20;
+function anchored(a, b) {
+  const [head, tail] = shared(a, b);
+  const whole = [head, a.slice(head, a.length - tail), b.slice(head, b.length - tail)];
+  const parts = [whole], out = [];
+  let cells = CELLS;
+  for (let part = parts.pop(); part; part = parts.pop()) {
+    const [at, x, y] = part;
+    const found = part !== whole && Math.abs(x.length - y.length) <= 500 ? charEdits(x, y, 500) : null;
+    if (found) {
+      out.push(...found.map((e) => ({ start: e.start + at, end: e.end + at, text: e.text })));
+      continue;
+    }
+    let best = 0, bx = 0, by = 0;
+    if (x.length * y.length <= cells) {
+      cells -= x.length * y.length;
+      let prev = new Uint32Array(y.length + 1), row = new Uint32Array(y.length + 1);
+      for (let i = 1; i <= x.length; i++) {
+        for (let j = 1; j <= y.length; j++) {
+          const v = x.charCodeAt(i - 1) === y.charCodeAt(j - 1) ? prev[j - 1] + 1 : 0;
+          row[j] = v;
+          if (v > best) [best, bx, by] = [v, i - v, j - v];
+        }
+        [prev, row] = [row, prev];
+      }
+    }
+    if (best) parts.push([at + bx + best, x.slice(bx + best), y.slice(by + best)], [at, x.slice(0, bx), y.slice(0, by)]);
+    else if (part === whole) return null;
+    else out.push({ start: at, end: at + x.length, text: y });
+  }
+  return out;
+}
+var WORDS = /\w+|\s+|[^\w\s]+/g;
+function wordEdits(a, b, max) {
+  const [head, tail] = shared(a, b);
+  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
+  const xs = x.match(WORDS) ?? [], ys = y.match(WORDS) ?? [];
+  const hunks = diff(xs, ys, max);
+  if (!hunks) return null;
+  const ox = offsets(xs), oy = offsets(ys);
+  return hunks.map((h) => {
+    const old = x.slice(ox[h.a0], ox[h.a1]), text = y.slice(oy[h.b0], oy[h.b1]);
+    const [p, s] = shared(old, text);
+    return { start: head + ox[h.a0] + p, end: head + ox[h.a1] - s, text: text.slice(p, text.length - s) };
+  });
+}
+function fine(a, b) {
+  const found = charEdits(a, b, 500) ?? anchored(a, b) ?? wordEdits(a, b, 250) ?? edits(a, b);
+  if (!found.length) return found;
+  let d = 0;
+  const back = widen(b, found.map((e) => {
+    const start2 = e.start + d;
+    d += e.text.length - (e.end - e.start);
+    return { start: start2, end: start2 + e.text.length, text: a.slice(e.start, e.end) };
+  }));
+  d = 0;
+  return widen(a, wraps(b, back.map((p) => {
+    const start2 = p.start - d;
+    d += p.end - p.start - p.text.length;
+    return { start: start2, end: start2 + p.text.length, text: b.slice(p.start, p.end) };
+  })));
+}
+function wraps(b, es) {
+  const at = [];
+  let d = 0;
+  for (const e of es) {
+    at.push(e.start + d);
+    d += e.text.length - (e.end - e.start);
+  }
+  const last = at[at.length - 1] + es[es.length - 1].text.length;
+  const out = [];
+  for (let i = 0; i < es.length; i++) {
+    let k = i;
+    for (const m of es[i].text.matchAll(/<([A-Za-z][\w:-]*)(?:\s[^<>]*)?>/g)) {
+      const tag = new RegExp(`<(/?)${m[1]}(?=[\\s/>])[^<>]*>`, "gi");
+      tag.lastIndex = at[i] + m.index + m[0].length;
+      let depth = 1, end = null;
+      for (let t = tag.exec(b); t && t.index < last; t = tag.exec(b)) if ((depth += t[1] ? -1 : 1) === 0) {
+        end = t;
+        break;
+      }
+      if (!end) continue;
+      for (let j = i + 1; j < es.length; j++) if (at[j] <= end.index && end.index + end[0].length <= at[j] + es[j].text.length) k = Math.max(k, j);
+    }
+    out.push(k === i ? es[i] : { start: es[i].start, end: es[k].end, text: b.slice(at[i], at[k] + es[k].text.length) });
+    i = k;
+  }
+  return out;
+}
 
 // src/editor/tokens.ts
 var RAW_TEXT = /* @__PURE__ */ new Set(["script", "style", "xmp", "iframe", "noembed", "noframes"]);
@@ -639,7 +770,7 @@ function byLine(base, p) {
   return out;
 }
 var LINES = /[^\n]*\n|[^\n]+$/g;
-var WORDS = /\w+|\s+|[^\w\s]+/g;
+var WORDS2 = /\w+|\s+|[^\w\s]+/g;
 var LONG = 1e3;
 function pieces(text, a, b, unit) {
   const parts = [], at = [];
@@ -716,7 +847,7 @@ function diff2(base, text) {
   if (base === text) return [];
   const found = changes(base, text);
   const lines = found ? found.flatMap((p) => byLine(base, p)) : aligned(base, 0, base.length, text, 0, text.length, LINES);
-  const patches = lines.flatMap((p) => p.end - p.start > LONG ? aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS) : [p]);
+  const patches = lines.flatMap((p) => p.end - p.start > LONG ? aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS2) : [p]);
   return widen(base, cap(base, patches));
 }
 var size = (patches) => patches.reduce((n, p) => n + p.end - p.start + p.text.length, 0);
@@ -1054,11 +1185,11 @@ function measure(a, b, cap2) {
       chars += old.length + now.length + 1;
       continue;
     }
-    chars += edits(old, now);
+    chars += edits2(old, now);
   }
   return { lines: found, chars };
 }
-function edits(old, now) {
+function edits2(old, now) {
   let p = 0;
   while (p < old.length && p < now.length && old.charCodeAt(p) === now.charCodeAt(p)) p++;
   let s = 0;
@@ -1792,7 +1923,7 @@ function insertedSpans(patches) {
   }
   return out;
 }
-function overlaps(spans, s, e) {
+function overlaps2(spans, s, e) {
   let lo = 0;
   let hi = spans.length - 1;
   while (lo <= hi) {
@@ -1814,7 +1945,7 @@ function findInserted(after, text, inserted, near, within = null) {
     const w = from === 0 && to === after.length ? after : after.slice(from, to);
     for (let o = w.indexOf(text); o >= 0 && n < 256; o = w.indexOf(text, o + 1), n++) {
       const at = from + o;
-      if (overlaps(inserted, at, at + len) && (best < 0 || Math.abs(at - near) < Math.abs(best - near))) best = at;
+      if (overlaps2(inserted, at, at + len) && (best < 0 || Math.abs(at - near) < Math.abs(best - near))) best = at;
     }
   };
   let total = 0;
@@ -1996,7 +2127,7 @@ function slow(before2, patches, after, items, given) {
     const inner2 = after.slice(found.end, close);
     const o = found.end + inner2.length - inner2.trimStart().length;
     const t = startTagAt(after, o);
-    return t && t.tag === a.tag && overlaps(inserted, o, close) && squeeze(inner2.trim()) === squeeze(text) ? t : null;
+    return t && t.tag === a.tag && overlaps2(inserted, o, close) && squeeze(inner2.trim()) === squeeze(text) ? t : null;
   };
   const swapped = (a, close, text, found) => {
     const o = findInserted(after, text, inserted, found.start);
@@ -3031,7 +3162,7 @@ var Comments = class {
   }
   async write() {
     if (this.stopped) return;
-    const edits2 = this.edits;
+    const edits3 = this.edits;
     const writesNow = this.writesNow;
     this.lastWrite = Date.now();
     const tmp = this.tmpName();
@@ -3043,7 +3174,7 @@ var Comments = class {
         return;
       }
       renameRetriedSync(tmp, this.file, 1);
-      this.saved = Math.max(this.saved, edits2);
+      this.saved = Math.max(this.saved, edits3);
       if (this.failing) this.log(`wrote ${this.file} again`);
       this.failing = false;
     } catch (e) {

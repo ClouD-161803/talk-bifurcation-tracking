@@ -172,32 +172,49 @@ export function edits(base: string, theirs: string): Edit[] {
 
 const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.text === b.text;
 
-// the start tags and the end tags that e puts around the run of base that it replaces, when e does
-// nothing else, i.e. a format such as italic or a link
-function around(base: string, e: Edit): [string, string] | null {
+// the start tags at the start of s, the text after them, and the end tags at its end
+function tagged(s: string): [string, string, string] {
+  const open = /^(?:<[A-Za-z](?:[^<>"']|"[^"]*"|'[^']*')*>)*/.exec(s)![0];
+  const rest = s.slice(open.length);
+  const close = /(?:<\/[^<>]+>)*$/.exec(rest)![0];
+  return [open, rest.slice(0, rest.length - close.length), close];
+}
+
+type Form = { pre: string; open: string; inner: string; close: string; post: string; lo: number; hi: number };
+
+// the parts of e when it puts start and end tags around the run of base that it replaces, or takes
+// them off it, e.g. italic or a link put on or taken off. lo to hi is the run without its own
+// start and end tags, and e writes it as inner between its tags open and close, either as it is or
+// as plain text with keys of its own. pre and post are plain text that e puts before and after,
+// e.g. a key next to the new element
+function around(base: string, e: Edit): Form | null {
   const run = base.slice(e.start, e.end);
-  if (!run || e.text[0] !== '<') return null;
-  const tag = /<[A-Za-z][^<>]*>/y;
-  while (tag.test(e.text)) {
-    const at = tag.lastIndex;
-    if (e.text.startsWith(run, at) && /^(<\/[^<>]+>)+$/.test(e.text.slice(at + run.length))) return [e.text.slice(0, at), e.text.slice(at + run.length)];
-  }
-  return null;
+  const tags = e.text.includes('<');
+  const pre = tags ? e.text.slice(0, e.text.indexOf('<')) : '';
+  const post = tags ? e.text.slice(e.text.lastIndexOf('>') + 1) : '';
+  const [open, inner, close] = tagged(e.text.slice(pre.length, e.text.length - post.length));
+  const [was, old, shut] = tagged(run);
+  if ((open === was && close === shut) || (inner !== old && (inner + old).includes('<'))) return null;
+  return { pre, open, inner, close, post, lo: e.start + was.length, hi: e.end - shut.length };
 }
 
 // a with each format in it that clashes only with edits of plain text of b inside its run, e.g.
-// keys typed in a word that a makes italic, given these edits in its text, and b without them
-function absorb(base: string, a: Edit[], b: Edit[]): [Edit[], Edit[]] {
+// keys typed in a word that a makes italic, given these edits in its text, and b without them.
+// first is true when a is ordered first, whose insertion then comes first at one point
+function absorb(base: string, a: Edit[], b: Edit[], first: boolean): [Edit[], Edit[]] {
   let rest = b;
   const out = a.map((w) => {
-    const tags = around(base, w);
-    const hits = tags ? rest.filter((e) => clash(w, e)) : [];
-    if (!tags || !hits.length || !hits.every((e) => w.start <= e.start && e.end <= w.end && !(e.text + base.slice(e.start, e.end)).includes('<'))) return w;
-    const run = apply(base.slice(w.start, w.end), hits.map((e) => ({ start: e.start - w.start, end: e.end - w.start, text: e.text })));
-    // a run that the edits remove is left as a conflict
-    if (!run) return w;
+    const f = around(base, w);
+    const hits = f ? rest.filter((e) => clash(w, e)) : [];
+    if (!f || !hits.length || !hits.every((e) => f.lo <= e.start && e.end <= f.hi && !(e.text + base.slice(e.start, e.end)).includes('<'))) return w;
+    const old = base.slice(f.lo, f.hi);
+    const own = fine(old, f.inner);
+    const others = hits.map((e) => ({ start: e.start - f.lo, end: e.end - f.lo, text: e.text }));
+    const run = first ? mergeEdits(old, others, own, 'ours', true) : mergeEdits(old, own, others, 'ours', true);
+    // a run that the edits remove, and edits that clash inside it, are left as a conflict
+    if (!run.text || run.conflicts.length) return w;
     rest = rest.filter((e) => !hits.includes(e));
-    return { start: w.start, end: w.end, text: tags[0] + run + tags[1] };
+    return { start: w.start, end: w.end, text: f.pre + f.open + run.text + f.close + f.post };
   });
   return [out, rest];
 }
@@ -205,10 +222,11 @@ function absorb(base: string, a: Edit[], b: Edit[]): [Edit[], Edit[]] {
 // two lists of edits of base in which a format of one list and the edits of plain text of the other
 // list inside the run of this format no longer clash: the format holds these edits, and the other
 // list is left without them. both are thus kept by a merge. two formats of one run, a format
-// inside a run, and a removal of the whole run clash as before
-export function nest(base: string, a: Edit[], b: Edit[]): [Edit[], Edit[]] {
-  const [x, y] = absorb(base, a, b);
-  const [v, u] = absorb(base, y, x);
+// inside a run, and a removal of the whole run clash as before. first is true when a is ordered
+// first at a tie
+export function nest(base: string, a: Edit[], b: Edit[], first = false): [Edit[], Edit[]] {
+  const [x, y] = absorb(base, a, b, first);
+  const [v, u] = absorb(base, y, x, !first);
   return [u, v];
 }
 
