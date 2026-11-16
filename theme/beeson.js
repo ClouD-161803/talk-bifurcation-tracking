@@ -254,7 +254,7 @@
     }
     return first ? [...first.values()] : [];
   }
-  function fitView(trajectories, box2, slide) {
+  function fitView(trajectories, box3, slide) {
     const xs = [], ys = [], ws = [];
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const s of trajectories) {
@@ -274,7 +274,7 @@
         ws.push(length > 0 ? d / length : 1 / (n - 1));
       }
     }
-    if (!ws.length || !(box2.width > 0) || !(box2.height > 0)) return null;
+    if (!ws.length || !(box3.width > 0) || !(box3.height > 0)) return null;
     const total = ws.reduce((a2, b2) => a2 + b2, 0);
     const quantile = (v, q) => {
       const order = v.map((_, i) => i).sort((a2, b2) => v[a2] - v[b2]);
@@ -288,7 +288,7 @@
     const lo = (1 - FILL) / 2, hi = 1 - lo;
     const qx = [quantile(xs, lo), quantile(xs, hi)], qy = [quantile(ys, lo), quantile(ys, hi)];
     let cx = (qx[0] + qx[1]) / 2, cy = (qy[0] + qy[1]) / 2;
-    const aspect = box2.width / box2.height;
+    const aspect = box3.width / box3.height;
     const held = (half2) => {
       let k = 0;
       for (let i = 0; i < ws.length; i++)
@@ -303,12 +303,12 @@
     }
     let half = b;
     const inner = {
-      left: box2.left > 0.5,
-      right: box2.left + box2.width < slide.width - 0.5,
-      top: box2.top > 0.5,
-      bottom: box2.top + box2.height < slide.height - 0.5
+      left: box3.left > 0.5,
+      right: box3.left + box3.width < slide.width - 0.5,
+      top: box3.top > 0.5,
+      bottom: box3.top + box3.height < slide.height - 0.5
     };
-    const g = 2 * MARGIN / box2.height;
+    const g = 2 * MARGIN / box3.height;
     const need = (span, sides, width) => span / Math.max(width - sides * g, 1e-9);
     half = Math.max(
       half,
@@ -1048,11 +1048,11 @@
       this.unghost();
       if (this.fitted && this.trajectories.length) {
         const section = this.el.closest("section");
-        const box2 = { left: this.el.offsetLeft, top: this.el.offsetTop, width: w, height: h };
+        const box3 = { left: this.el.offsetLeft, top: this.el.offsetTop, width: w, height: h };
         const slide = { width: section?.offsetWidth || w, height: section?.offsetHeight || h };
-        const key2 = [box2.left, box2.top, w, h, slide.width, slide.height].join();
+        const key2 = [box3.left, box3.top, w, h, slide.width, slide.height].join();
         if (key2 !== this.fittedFor) {
-          const view = fitView(this.trajectories, box2, slide);
+          const view = fitView(this.trajectories, box3, slide);
           if (view) ({ cx: this.cx, cy: this.cy, half: this.half } = view);
           this.fittedFor = key2;
         }
@@ -2443,10 +2443,10 @@
         this.spec = parsePlot(text ?? block?.textContent ?? "");
       } catch (error) {
         const message = `plot ${el.dataset.plot ?? ""}: ${error.message}`;
-        const box2 = document.createElement("div");
-        box2.className = "plot-error";
-        box2.textContent = message;
-        el.append(box2);
+        const box3 = document.createElement("div");
+        box3.className = "plot-error";
+        box3.textContent = message;
+        el.append(box3);
         console.error(message);
         return;
       }
@@ -3382,10 +3382,10 @@
           el.append(logo);
         }
       } catch (error) {
-        const box2 = document.createElement("div");
-        box2.className = "qr-error";
-        box2.textContent = `QR code: ${error.message}`;
-        el.append(box2);
+        const box3 = document.createElement("div");
+        box3.className = "qr-error";
+        box3.textContent = `QR code: ${error.message}`;
+        el.append(box3);
       }
     }
   }
@@ -3586,10 +3586,10 @@
     for (const old of el.querySelectorAll(":scope > svg, :scope > .tikz-error")) old.remove();
     const output = window.beesonFigures?.[name];
     if (!output) {
-      const box2 = document.createElement("div");
-      box2.className = "tikz-error";
-      box2.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
-      el.prepend(box2);
+      const box3 = document.createElement("div");
+      box3.className = "tikz-error";
+      box3.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
+      el.prepend(box3);
       return;
     }
     const prefix = `tikz-${name}-${mode2}-`;
@@ -4874,6 +4874,40 @@ void main() {
     return out;
   }
 
+  // src/fly.ts
+  function box2(nodes) {
+    const rects = nodes.map((n) => n.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
+    if (!rects.length) return null;
+    const left = Math.min(...rects.map((r) => r.left)), right = Math.max(...rects.map((r) => r.right));
+    const top = Math.min(...rects.map((r) => r.top)), bottom = Math.max(...rects.map((r) => r.bottom));
+    return { x: (left + right) / 2, y: (top + bottom) / 2, w: right - left };
+  }
+  function flyIn(slide, el) {
+    const from = box2([...slide.querySelectorAll(el.dataset.flyFrom ?? "")]);
+    const to = box2(el.dataset.flyTo ? [...el.querySelectorAll(el.dataset.flyTo)] : [el]);
+    const own = el.getBoundingClientRect();
+    if (!from || !to || !to.w || !el.offsetWidth) return;
+    const k = own.width / el.offsetWidth;
+    const seconds = Number(el.dataset.flyDuration ?? 1.2);
+    el.style.transition = "none";
+    el.style.transformOrigin = `${(to.x - own.left) / k}px ${(to.y - own.top) / k}px`;
+    el.style.transform = `translate(${(from.x - to.x) / k}px, ${(from.y - to.y) / k}px) scale(${from.w / to.w})`;
+    void el.offsetWidth;
+    el.style.transition = `transform ${seconds}s cubic-bezier(0.45, 0, 0.25, 1), opacity 0s`;
+    el.style.transform = "";
+    setTimeout(() => {
+      el.style.transition = "";
+      el.style.transformOrigin = "";
+    }, seconds * 1e3 + 50);
+  }
+  function fly(slide, shown) {
+    for (const f of shown) {
+      for (const el of [f, ...f.querySelectorAll("[data-fly-from]")]) {
+        if (el instanceof HTMLElement && el.dataset.flyFrom) flyIn(slide, el);
+      }
+    }
+  }
+
   // src/steps.ts
   var TONES2 = ["accent", "violet", "blue", "red"];
   function resolve(steps, current) {
@@ -4908,7 +4942,7 @@ void main() {
       const unindexed = frags.filter((f) => !f.hasAttribute("data-fragment-index"));
       const last = unindexed.length ? [unindexed[unindexed.length - 1]] : frags.filter((f) => Number(f.dataset.fragmentIndex) === Math.max(...frags.map((g) => Number(g.dataset.fragmentIndex))));
       const boxes = new Set(frags.filter(isCopy).map((f) => f.parentElement));
-      const dimsBox = [...boxes].some((box2) => !last.some((f) => f.parentElement === box2 && isCopy(f)));
+      const dimsBox = [...boxes].some((box3) => !last.some((f) => f.parentElement === box3 && isCopy(f)));
       if (!dimsBox && !frags.some((f) => !last.includes(f) && hasContent(f) && !isCopy(f) && !holdsVideo(f))) continue;
       if (last.some(delayed)) {
         slide.setAttribute(MOVES_ON, "");
@@ -5123,9 +5157,9 @@ void main() {
     const deck = document.querySelector(".reveal");
     const live = [...document.querySelectorAll(".backdrop")].map((el) => Orbits.of(el)).filter((o) => o?.tracing);
     if (!deck || !live.length || !CSS.supports("view-transition-class", "a") || !CSS.supports("selector(:active-view-transition)")) return null;
-    const box2 = deck.getBoundingClientRect();
-    root.style.setProperty("--flip-deck-x", `${x - box2.left}px`);
-    root.style.setProperty("--flip-deck-y", `${y - box2.top}px`);
+    const box3 = deck.getBoundingClientRect();
+    root.style.setProperty("--flip-deck-x", `${x - box3.left}px`);
+    root.style.setProperty("--flip-deck-y", `${y - box3.top}px`);
     deck.style.setProperty("view-transition-name", "flip-deck");
     const canvases = live.flatMap((o) => o.canvases);
     canvases.forEach((c, k) => {
@@ -5140,12 +5174,12 @@ void main() {
     };
     const layer = document.createElement("div");
     layer.className = "flip-ghost";
-    Object.assign(layer.style, { left: `${box2.left}px`, top: `${box2.top}px`, width: `${box2.width}px`, height: `${box2.height}px` });
+    Object.assign(layer.style, { left: `${box3.left}px`, top: `${box3.top}px`, width: `${box3.width}px`, height: `${box3.height}px` });
     return {
       // called in the update of the view transition before the next mode is applied, hence the
       // canvases are redrawn after it in the new view of the deck
       lift() {
-        for (const o of live) o.ghost(layer, box2);
+        for (const o of live) o.ghost(layer, box3);
         document.body.append(layer);
         unname();
       },
@@ -5594,9 +5628,9 @@ void main() {
     void o.ready.then(() => o.complete());
     return o;
   }
-  async function fitWindow(el, box2) {
+  async function fitWindow(el, box3) {
     const trajectories = el.dataset.trajectories !== void 0 ? (await trajectoriesFor(el)).trajectories : builtIn(el.dataset.backdrop ?? "");
-    const b = box2 ?? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
+    const b = box3 ?? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
     return b.width && b.height ? fitView(trajectories, b, { width: 1920, height: 1080 }) : null;
   }
   function completeAll() {
@@ -5730,7 +5764,10 @@ void main() {
       stepPlots(deck.getCurrentSlide());
       syncCitations(deck.getCurrentSlide());
     };
-    deck.on("fragmentshown", step2);
+    deck.on("fragmentshown", (event) => {
+      step2();
+      if (!still2()) fly(deck.getCurrentSlide(), event.fragments ?? []);
+    });
     deck.on("fragmenthidden", step2);
     const stepped = (event) => {
       const shown = event.fragments ?? [];

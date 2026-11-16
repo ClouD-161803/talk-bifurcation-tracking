@@ -17,6 +17,7 @@ import { figuresReady, mountFigures, redrawFigures } from './tikz.ts';
 import { initScrub } from './scrub.ts';
 import { mount as mountSurfaces } from './surface.ts';
 import type { Surface } from './surface.ts';
+import { fly } from './fly.ts';
 import { fitView, register, trajectoriesFor, type View } from './trajectories.ts';
 import { builtIn } from './backdrops.ts';
 import { addRestoreSteps, applyAll, applySteps, initSteps, initTimedSteps, typeset, type Internal } from './steps.ts';
@@ -381,7 +382,10 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
     stepPlots(deck.getCurrentSlide());
     syncCitations(deck.getCurrentSlide());
   };
-  deck.on('fragmentshown', step);
+  deck.on('fragmentshown', (event) => {
+    step();
+    if (!still()) fly(deck.getCurrentSlide(), (event as Event & { fragments?: Element[] }).fragments ?? []);
+  });
   deck.on('fragmenthidden', step);
   // a backdrop that is a step is traced from its step on, and blanked when the step is hidden
   const stepped = (event: Event) => {
