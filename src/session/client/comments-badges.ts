@@ -2,10 +2,11 @@
 // the count of the open threads of an element, 4 px outside its upper right corner, or 18 px while
 // the element is selected or holds the caret, so that the grips of its frame stay free, or of a
 // slide, inside its upper right corner, and it is filled violet while one of them is unread. a badge
-// that would meet one above it is drawn below it. the boxes of the elements are read in one
-// requestAnimationFrame after a change of the deck, of the slide, or of the threads, and they are
-// kept in px of the slide. a scroll or a zoom then moves the badges by the origin and the scale of
-// the stage alone, without reading the box of any element
+// that would meet one above it is drawn below it, and the badge of a turned element is at its own
+// upper right corner. the boxes of the elements are read in one requestAnimationFrame after a
+// change of the deck, of the slide, or of the threads, and they are kept in px of the slide. a
+// scroll or a zoom then moves the badges by the origin and the scale of the stage alone, without
+// reading the box of any element
 
 import type { Comments } from './comments.ts';
 import { make, style } from './dom.ts';
@@ -108,6 +109,17 @@ export class Badges {
     for (const [target, g] of here) {
       const r = target.getBoundingClientRect();
       if (!r.width && !r.height) continue;
+      // the upper right corner of a turned element is its own and not that of its bounding box
+      const deg = target instanceof HTMLElement ? parseFloat(target.style.rotate) || 0 : 0;
+      let x = r.right;
+      let y = r.top;
+      if (deg) {
+        const a = (deg * Math.PI) / 180;
+        const w = ((target as HTMLElement).offsetWidth * scale) / 2;
+        const h = ((target as HTMLElement).offsetHeight * scale) / 2;
+        x = (r.left + r.right) / 2 + w * Math.cos(a) + h * Math.sin(a);
+        y = (r.top + r.bottom) / 2 + w * Math.sin(a) - h * Math.cos(a);
+      }
       const badge = old.get(target) ?? this.badge(target);
       const label = `${g.n} ${g.n === 1 ? 'comment' : 'comments'}${g.unread ? ', unread' : ''}`;
       if (badge.textContent !== String(g.n)) badge.textContent = String(g.n);
@@ -118,7 +130,7 @@ export class Badges {
       // the text element of the caret is framed with its grips too, see caretElement() of frames.ts
       const sel = app.selection;
       const selected = sel.kind === 'elements' ? sel.has(target) : sel.kind === 'text' && target.contains(sel.items[0]);
-      boxes.push({ target, slide: g.slide, selected, x: (r.right - origin.x) / scale, y: (r.top - origin.y) / scale, w: 20 + 7 * (String(g.n).length - 1), badge });
+      boxes.push({ target, slide: g.slide, selected, x: (x - origin.x) / scale, y: (y - origin.y) / scale, w: 20 + 7 * (String(g.n).length - 1), badge });
     }
     this.boxes = boxes;
     this.layer.replaceChildren(...boxes.map((b) => b.badge));
