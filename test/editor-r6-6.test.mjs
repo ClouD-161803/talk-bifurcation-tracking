@@ -7,7 +7,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { inflateSync } from 'node:zlib';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
@@ -152,7 +151,8 @@ for (const platform of PLATFORMS) {
 }
 
 // the drawing of each tile of the chooser opened on the slide at index, as the markup of the slide
-// in its shadow root, its pixels, and a hash of them, inside the outline of the tile
+// in its shadow root, the computed styles and boxes of the tile and of the elements in it, and its
+// pixels and a hash of them, inside the outline of the tile
 async function tiles(page, index) {
   await page.evaluate(`Reveal.slide(${index})`);
   await wait(page, 300);
@@ -166,6 +166,11 @@ async function tiles(page, index) {
       name: t.textContent.trim(),
       marked: t.getAttribute('aria-selected') === 'true',
       markup: t.querySelector('.pic').shadowRoot.querySelector('.slides').innerHTML,
+      // the outline of the marked tile is left out, as from the pixels
+      look: [t.querySelector('.pic'), ...t.querySelector('.pic').shadowRoot.querySelectorAll('*')].map((el) => {
+        const s = getComputedStyle(el), b = el.getBoundingClientRect();
+        return [el.localName, b.left - r.left, b.top - r.top, b.width, b.height, ...[...s].filter((k) => !k.startsWith('outline')).map((k) => k + ': ' + s.getPropertyValue(k))].join('; ');
+      }),
       clip: { x: r.left + 4, y: r.top + 4, width: r.width - 8, height: r.height - 8, scale: 1 },
     };
   })`);
@@ -175,39 +180,6 @@ async function tiles(page, index) {
   }
   await press(page, 'Escape');
   return list;
-}
-
-// the rows of pixels of a PNG written by Chrome, with 8 bits per channel and without interlace, as
-// in switcher.test.mjs
-function decodePng(png) {
-  let at = 8, width = 0, height = 0, channels = 4;
-  const data = [];
-  while (at < png.length) {
-    const length = png.readUInt32BE(at), kind = png.toString('ascii', at + 4, at + 8), body = png.subarray(at + 8, at + 8 + length);
-    if (kind === 'IHDR') ({ width, height, channels } = { width: body.readUInt32BE(0), height: body.readUInt32BE(4), channels: body[9] === 6 ? 4 : 3 });
-    if (kind === 'IDAT') data.push(body);
-    at += 12 + length;
-  }
-  const raw = inflateSync(Buffer.concat(data)), stride = width * channels, px = Buffer.alloc(height * stride);
-  for (let y = 0; y < height; y++) {
-    const filter = raw[y * (stride + 1)];
-    for (let x = 0; x < stride; x++) {
-      const a = x >= channels ? px[y * stride + x - channels] : 0, b = y ? px[(y - 1) * stride + x] : 0;
-      const c = x >= channels && y ? px[(y - 1) * stride + x - channels] : 0;
-      const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
-      const paeth = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-      px[y * stride + x] = raw[y * (stride + 1) + 1 + x] + [0, a, b, (a + b) >> 1, paeth][filter];
-    }
-  }
-  return { width, channels, px };
-}
-
-// true when two captures of a tile are drawn alike. Chrome may raster an anti-aliased edge of a new
-// tile one level apart, e.g. the corner of the figure box of Split at a half pixel, and it may keep that
-// raster for some frames under load, hence each channel may differ by two levels
-function alike(a, b) {
-  const [x, y] = [decodePng(a), decodePng(b)];
-  return x.width === y.width && x.px.length === y.px.length && x.px.every((v, i) => Math.abs(v - y.px[i]) <= 2);
 }
 
 for (const platform of PLATFORMS) {
@@ -220,7 +192,9 @@ for (const platform of PLATFORMS) {
     assert.equal(new Set(content.map((t) => t.markup)).size, 8, 'two tiles have the same markup');
     assert.equal(new Set(content.map((t) => t.pixels)).size, 8, 'two tiles are drawn alike');
     assert.deepEqual(figure.map((t) => t.markup), content.map((t) => t.markup), 'a tile depends on the current slide');
-    for (const [i, t] of figure.entries()) assert.ok(alike(t.png, content[i].png), `the tile of ${t.layout} is drawn from the current slide`);
+    // the styles and boxes from which Chrome draws a tile are compared rather than its pixels, since
+    // the raster of an anti-aliased edge may differ by a few levels under load
+    for (const [i, t] of figure.entries()) assert.deepEqual(t.look, content[i].look, `the tile of ${t.layout} is drawn from the current slide`);
     assert.deepEqual(content.filter((t) => t.marked).map((t) => t.layout), ['content']);
     assert.deepEqual(figure.filter((t) => t.marked).map((t) => t.layout), ['figure']);
     // the deck is not changed by the chooser
