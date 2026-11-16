@@ -411,6 +411,36 @@ test('a removed element or slide longer than 4 kB is kept as its check, by which
   });
 });
 
+test('a slide of the length of a removed slide longer than 4 kB, with one other character, does not take its thread', () => {
+  const v0 = deck(['<h2>Alpha</h2>'], ['<h2>Big</h2>', `<p>${'x'.repeat(6000)}</p>`], ['<h2>Omega</h2>']);
+  const v1 = v0.replace(/<section>\n {2}<h2>Big[^]*?<\/section>\n/, '');
+  const r = move(v0, v1, [onSlide(v0, '<h2>Big')]);
+  assert.ok(r.items[0].removed);
+  assert.deepEqual(move(v1, v0.replace('xxx</p>', 'xxz</p>'), r.items).items, r.items);
+});
+
+test('an undo of a removal of two slides longer than 4 kB of the same length gives each slide its thread again', () => {
+  const v0 = deck(['<h2>Alpha</h2>'], ['<h2>One</h2>', `<p>${'x'.repeat(6000)}</p>`], ['<h2>Two</h2>', `<p>${'y'.repeat(6000)}</p>`], ['<h2>Omega</h2>']);
+  const items = [onSlide(v0, '<h2>One'), onSlide(v0, '<h2>Two')];
+  const v1 = v0.replace(/<section>\n {2}<h2>One[^]*?<\/section>\n<section>\n {2}<h2>Two[^]*?<\/section>\n/, '');
+  const r = move(v0, v1, items);
+  assert.deepEqual(r.items.map((x) => !!x.removed), [true, true]);
+  assert.deepEqual(move(v1, v0, r.items).items, items);
+});
+
+test('an undo of the removal of a slide whose start tag has an attribute gives the slide its thread again', async (t) => {
+  for (const [name, body] of [['short', '<p>Dark</p>'], ['longer than 4 kB', `<p>${'x'.repeat(6000)}</p>`]]) {
+    await t.test(name, () => {
+      const v0 = deck(['<h2>Alpha</h2>'], ['<h2>Dark</h2>', body], ['<h2>Omega</h2>']).replace('<section>\n  <h2>Dark', '<section data-background-color="#000">\n  <h2>Dark');
+      const items = [onSlide(v0, '<h2>Dark')];
+      const v1 = v0.replace(/<section data-background-color="#000">[^]*?<\/section>\n/, '');
+      const r = move(v0, v1, items);
+      assert.ok(r.items[0].removed && r.items[0].anchor === null, JSON.stringify(r.items[0]));
+      assert.deepEqual(move(v1, v0, r.items).items, items);
+    });
+  }
+});
+
 test('a thread of a removed slide is attached again only inside a re-insertion of the whole slide', () => {
   const v0 = deck(['<h2>Alpha</h2>', '<p>One</p>'], ['<h2>Beta</h2>', '<p></p>', '<p>Gone</p>']);
   const items = [onElement(v0, '<p></p>'), onElement(v0, '<p>Gone')];
