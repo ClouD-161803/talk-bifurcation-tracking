@@ -358,6 +358,33 @@ test('an upload that the session refuses although the page did not is given up a
   clean(ann, [/status of 413/]);
 });
 
+test('the save state of an upload given up is cleared once another page deletes the picture, without an edit of the page', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  p.next('large');
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`${STATE}?.startsWith('media/plot.png ')`, 10_000);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await show(ben, 'One');
+  await ben.evaluate(`(() => {
+    const img = document.querySelector('.reveal .slides img');
+    ${C}.app.selection.set('elements', [img.closest('figure') ?? img]);
+    ${C}.app.commands.run('element.delete');
+  })()`);
+  const text = await converge(server, [ann, ben]);
+  assert.doesNotMatch(text, /<img /);
+  await front(ann);
+  await ann.waitFor(`${STATE} === 'Saved to index.html'`, 10_000);
+  clean(ann, [/status of 413/]);
+  // the file given up is not in media/, which the page of Ben loads until the deletion
+  clean(ben, [/status of 404 .*media\/plot\.png$/]);
+});
+
 test('an upload whose answer was lost after the write is sent again without a second copy in media/', { timeout: 120_000 }, async (t) => {
   await t.test('the page', async (t) => {
     const browser = await launch({ offline: false });
