@@ -6,10 +6,12 @@
 // an open composition of an input method waits for its end
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { typeKeys } from './helpers/editor.mjs';
 import { E, applied, applyOn, caretAtEnd, sessionPage, showSlide } from './helpers/apply.mjs';
+import { freshDeck } from './helpers/fresh.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 
 let browser;
@@ -157,6 +159,28 @@ test('an entry of the document model that set the content of a text element is d
   const text = once(await sessionText(b), 'Set the complete slide.', 'Set the complete slide now.');
   assert.equal((await applyOn(b, text)).reload, false);
   await applied(b, text, 'the entry dropped');
+  assert.deepEqual(b.errors, []);
+});
+
+test('the undo and the redo of typing by one person give the text before and after it in a text element with a formula and in one with a link', async (t) => {
+  const deck = once(readFileSync('test-deck.html', 'utf8'), '<p>Design the complete slide first,', '<p>Design the <a href="https://example.org/steps">complete slide</a> first,');
+  const b = await sessionPage(browser, { deck: freshDeck(t, deck), text: deck });
+  t.after(() => b.close());
+  const FORMULA = `[...document.querySelectorAll('.reveal p')].find((p) => p.textContent.includes('is the effective potential.'))`;
+  for (const [label, heading, host] of [['a formula', 'Equations are first class', FORMULA], ['a link', 'Show your steps', P1]]) {
+    await showSlide(b, heading);
+    assert.equal(await b.evaluate(`!!${host}.querySelector('${label === 'a link' ? 'a' : 'mjx-container'}')`), true, `the text element has ${label}`);
+    await caretAtEnd(b, host);
+    const before = await render(b);
+    await typeKeys(b, ' Typed');
+    await b.waitFor(`${E}.render().includes(' Typed</p>')`);
+    const typed = await render(b);
+    await b.evaluate(`${E}.undo()`);
+    assert.equal(await render(b), before, `${label}: the undo`);
+    await b.evaluate(`${E}.redo()`);
+    assert.equal(await render(b), typed, `${label}: the redo`);
+    await b.evaluate(`${E}.undo()`);
+  }
   assert.deepEqual(b.errors, []);
 });
 
