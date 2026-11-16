@@ -1357,7 +1357,7 @@ test('while Version History is open, every inert part of the editor but the canv
   // the edge of the navigator is drawn only under the pointer, and the canvas and its layers hold the slide
   const undimmed = `[...document.querySelectorAll('[inert]')].filter((e) => e.getClientRects().length && !e.closest('.beeson-edit-canvas, .reveal, .beeson-edit-nav-edge, .beeson-overlay, .beeson-line-layer, .beeson-table-bars') &&Number(getComputedStyle(e).opacity) === 1).map((e) => e.classList[0])`;
   assert.deepEqual(await ann.evaluate(undimmed), []);
-  assert.deepEqual((await ann.evaluate(DIMMED(false))).sort(), ['beeson-edit-bottom inert', 'beeson-edit-menubar inert', 'beeson-edit-nav inert', 'beeson-edit-objects inert', 'beeson-edit-pane inert', 'beeson-edit-top inert']);
+  assert.deepEqual((await ann.evaluate(DIMMED(false))).sort(), ['beeson-edit-bottom inert', 'beeson-edit-menubar inert', 'beeson-edit-nav inert', 'beeson-edit-objects inert', 'beeson-edit-pane inert', 'beeson-edit-top inert', 'beeson-session-comments inert']);
   await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Changed')`);
   await ann.waitFor(`${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0`, 30_000);
   assert.deepEqual([await ann.evaluate(DRAWN(`document.querySelector('${PANE}')`)), await ann.evaluate(DRAWN(FRAME))], [1, 1]);

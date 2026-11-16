@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkAnchors, checksum, diff, invert, moveAnchors, REMOVED_MAX, slideChanges, slidesOf, startTagAt } from '../theme/edit.mjs';
+import { apply, checkAnchors, checksum, diff, invert, moveAnchors, REMOVED_MAX, slideChanges, slidesOf, startTagAt } from '../theme/edit.mjs';
 
 // a deck of slides, each given as its lines
 const deck = (...slides) => ['<!doctype html>', '<body>', ...slides.flatMap((lines) => ['<section>', ...lines.map((l) => `  ${l}`), '</section>']), '</body>', ''].join('\n');
@@ -104,23 +104,30 @@ test('an element or a slide that moves is followed', async (t) => {
     reads(after, moved.slide, '<section>\n  <h2>Beta');
   });
 
-  await t.test('a slide moved after the next one, which the line diff makes a rotation', () => {
+  await t.test('a slide moved after the next one, as the whole slide and as the rotation of a line diff that does not find the move', () => {
     const before = deck(['<h2>Alpha</h2>', '<p>Uno</p>'], ['<h2>Beta</h2>', '<p>Dos</p>', '<p>Tres</p>'], ['<h2>Gamma</h2>']);
     const after = deck(['<h2>Beta</h2>', '<p>Dos</p>', '<p>Tres</p>'], ['<h2>Alpha</h2>', '<p>Uno</p>'], ['<h2>Gamma</h2>']);
-    const patches = diff(before, after);
-    // the start tag of the first slide stays in place, and the text of Alpha is moved after it
-    const first = before.indexOf('<section>');
-    assert.ok(!patches.some((p) => p.start <= first && first < p.end), 'the first start tag is kept by the diff');
-    const items = [onSlide(before, 'Alpha'), onElement(before, '<p>Uno'), onSlide(before, 'Beta'), onElement(before, '<p>Tres')];
-    const r = moveAnchors(before, patches, after, items);
-    reads(after, r.items[0].anchor, '<section>\n  <h2>Alpha');
-    reads(after, r.items[1].anchor, '<p>Uno</p>');
-    reads(after, r.items[1].slide, '<section>\n  <h2>Alpha');
-    reads(after, r.items[2].anchor, '<section>\n  <h2>Beta');
-    reads(after, r.items[3].anchor, '<p>Tres</p>');
-    reads(after, r.items[3].slide, '<section>\n  <h2>Beta');
-    assert.deepEqual(r.changed, [true, true, true, true]);
-    assert.ok(r.items.every((it) => it.removed === undefined));
+    // diff() finds the move as the whole slide. in the rotation, the start tag of the first slide
+    // stays in place, and the text of Alpha is moved after the text of Beta
+    const whole = diff(before, after), first = before.indexOf('<section>');
+    assert.ok(whole.some((p) => p.start <= first && first < p.end), 'diff() removes the first start tag');
+    const body = '  <h2>Alpha</h2>\n  <p>Uno</p>\n', seam = '</section>\n<section>\n';
+    const from = before.indexOf(body), to = before.indexOf('  <p>Tres</p>\n') + '  <p>Tres</p>\n'.length;
+    const rotation = [{ start: from, end: from + body.length + seam.length, text: '' }, { start: to, end: to, text: seam + body }];
+    assert.equal(apply(before, rotation), after);
+    // Beta is moved by a shift alone when Alpha is removed whole before it
+    for (const [patches, changed] of [[whole, [true, true, false, false]], [rotation, [true, true, true, true]]]) {
+      const items = [onSlide(before, 'Alpha'), onElement(before, '<p>Uno'), onSlide(before, 'Beta'), onElement(before, '<p>Tres')];
+      const r = moveAnchors(before, patches, after, items);
+      reads(after, r.items[0].anchor, '<section>\n  <h2>Alpha');
+      reads(after, r.items[1].anchor, '<p>Uno</p>');
+      reads(after, r.items[1].slide, '<section>\n  <h2>Alpha');
+      reads(after, r.items[2].anchor, '<section>\n  <h2>Beta');
+      reads(after, r.items[3].anchor, '<p>Tres</p>');
+      reads(after, r.items[3].slide, '<section>\n  <h2>Beta');
+      assert.deepEqual(r.changed, changed);
+      assert.ok(r.items.every((it) => it.removed === undefined));
+    }
   });
 
   await t.test('two elements of equal start tags swapped in a slide', () => {
