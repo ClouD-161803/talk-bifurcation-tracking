@@ -278,14 +278,19 @@ export function install(app: App): Port {
   }
 
   // after the page was changed: the target is the text of the deck, the history is pruned of the
-  // entries that name a changed element, and a text element changed in place is tracked again
-  function settle(target: string, done: Done): void {
+  // entries that name a changed element, apart from the typing of the person in texts, and a text
+  // element changed in place is tracked again, with the typing in it carried over the change
+  function settle(target: string, done: Done, texts: readonly Element[]): void {
     app.saved = target;
     clean = true;
     mine = true;
     try {
-      app.history.prune(done.touched, done.within);
-      for (const el of done.changed) if (app.pairing?.byLive.has(el)) app.history.track(el);
+      app.history.prune(done.touched, done.within, undefined, texts);
+      for (const el of done.changed) {
+        if (!app.pairing?.byLive.has(el)) continue;
+        if (texts.includes(el)) app.history.carry(el);
+        else app.history.track(el);
+      }
     } finally {
       mine = false;
     }
@@ -413,7 +418,9 @@ export function install(app: App): Port {
         p.text = now;
       }
       if (had?.isConnected && !app.current()?.contains(had)) park(had);
-      settle(next, done);
+      // the text elements whose text the apply wrote, where an entry of typing is kept
+      const texts = spot.kind === 'text' && !done.structural ? [spot.live] : done.hosts;
+      settle(next, done, texts);
       typesets.push(typeset(done, mark));
       changed.push(...done.changed);
       return true;

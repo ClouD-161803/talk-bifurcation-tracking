@@ -1,7 +1,9 @@
 // the person on the page of an apply of the synchronous editor, see src/editor/session/apply.ts:
-// the entries of the history that name a changed element are dropped, the caret stays at its
-// character, an unsaved edit is kept, an edit made while the apply waits is merged into it, and an
-// apply into a text with an open composition of an input method waits for its end
+// an entry of typing in a changed text element is kept, and its undo and redo change only the
+// typing of the person, or it is skipped when the change took letters of the typing. the other
+// entries that name a changed element are dropped. the caret stays at its character, an unsaved
+// edit is kept, an edit made while the apply waits is merged into it, and an apply into a text with
+// an open composition of an input method waits for its end
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -24,6 +26,7 @@ const once = (text, from, to) => {
 };
 const status = (page) => page.evaluate(`${E}.status()`);
 const sessionText = (page) => page.evaluate(`${E}.session.text()`);
+const render = (page) => page.evaluate(`${E}.render()`);
 // the text of the first paragraph before the caret, or null when the caret is not in it
 const beforeCaret = (page) => page.evaluate(`(() => {
   const p = ${P1};
@@ -35,7 +38,7 @@ const beforeCaret = (page) => page.evaluate(`(() => {
   return r.toString();
 })()`);
 
-test('an entry of the history is dropped when an apply changes its element, and kept when the apply changes another', async (t) => {
+test('an entry of typing is kept when an apply changes its text element or another, and its undo keeps the change of the apply', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await showSlide(b, 'Show your steps');
@@ -47,8 +50,11 @@ test('an entry of the history is dropped when an apply changes its element, and 
   assert.equal((await status(b)).undo, true, 'the typing in another paragraph is kept');
   text = once(text, 'Design the complete', 'Plan the complete');
   assert.equal((await applyOn(b, text)).reload, false);
-  await applied(b, text, 'the typing dropped');
-  // the typing that follows is a new entry, whose undo gives the text of the apply
+  assert.equal((await status(b)).undo, true, 'the typing in the paragraph of the apply is kept');
+  await b.evaluate(`${E}.undo()`);
+  text = once(text, 'viewer\'s attention. One.</p>', 'viewer\'s attention.</p>');
+  assert.equal(await render(b), text, 'the undo takes the typing and keeps the change of the apply');
+  // the typing that follows is a new entry, whose undo gives the text before it
   await caretAtEnd(b, P1);
   await typeKeys(b, ' Two.');
   await b.waitFor(`${E}.status().undo`);
