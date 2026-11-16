@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, changes, clash, merge, mergeEdits, revert } from '../src/editor/merge.ts';
+import { apply, changes, charEdits, clash, edits, merge, mergeEdits, revert } from '../src/editor/merge.ts';
 import { apply as applyPatches, conflict, shift } from '../src/session/patch.ts';
 
 const base = ['<section>', '  <h2>One</h2>', '  <p>First slide</p>', '</section>', '<section>', '  <h2>Two</h2>', '  <p>Second slide</p>', '</section>', ''].join('\n');
@@ -152,6 +152,16 @@ test('with apart, two insertions at one point are both kept with theirs first, a
   // without apart, an insertion at one point or at an end of a range is a conflict, as before
   assert.deepEqual(mergeEdits(base, [ins(at, 'ours ')], [ins(at, 'theirs ')], 'ours'), { text: 'The ours slide.', conflicts: [ins(at, 'ours ')] });
   assert.deepEqual(mergeEdits(base, [ins(at + 5, '!')], [range], 'theirs'), { text: 'The deck.', conflicts: [ins(at + 5, '!')] });
+});
+
+test('with apart, the edits of each letter keep the keys of two others on both sides of an unread key of the person, which one edit of the line diff drops', () => {
+  const from = '<section>\n  <p>one two three</p>\n</section>\n';
+  const seen = from.replace('two', 'twoA');
+  const text = from.replace('one', 'oneB').replace('three', 'threeC');
+  const want = '<section>\n  <p>oneB twoA threeC</p>\n</section>\n';
+  assert.equal(edits(from, text).length, 1, 'the line diff gives one edit from B to C');
+  assert.equal(mergeEdits(from, edits(from, seen), edits(from, text), 'ours', true).text, from.replace('two', 'twoA'));
+  assert.equal(mergeEdits(from, charEdits(from, seen, 500), charEdits(from, text, 500), 'ours', true).text, want);
 });
 
 test('with apart, the merge of the page gives the text of the authority, which applies the patches in the order of their arrival', () => {
