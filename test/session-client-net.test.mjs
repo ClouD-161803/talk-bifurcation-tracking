@@ -374,6 +374,33 @@ test('a page whose copy holds its edit does not ask before a reload, and its edi
   await until(() => server.read().includes('Inserted') || null, 'the edit to reach index.html', 10_000);
 });
 
+// whether copy.ts wrote a record and none of its records holds part
+const LACKS = (part) => `(${ROWS}).then((rows) => rows.length > 0 && !rows.some((r) => r.mine.includes(${JSON.stringify(part)})))`;
+
+test('a page asks before it unloads after an Undo of an edit that the edit command may hold, also once its copy holds the Undo', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  // the edit reaches the edit command, and neither its answer nor its broadcast reaches the page
+  await page.evaluate(`__net.rule('/.session/op', 'late') && __net.rule('/.session/events', 'cut') && __net.drop('/.session/events')`);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await until(() => paragraph(server.read()) === 'First slide Zed' || null, 'the edit in index.html', 15_000);
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied)`);
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${TEXT}.includes('Zed')`);
+  const undone = await page.evaluate(ASKED(' Zed'));
+  assert.ok(undone.asking || !undone.copied, `the page asks while its copy holds the undone edit: ${JSON.stringify(undone)}`);
+  // a copy without edits cannot undo an edit that the edit command holds
+  await page.waitFor(LACKS(' Zed'));
+  assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks once its copy holds the Undo');
+  assert.equal(await reload(page), true, 'the page asked before it left');
+});
+
 // the time in ms that each listener of beforeunload was on window before its removal, in
 // window.__unload
 const UNLOAD = `{
