@@ -4,7 +4,7 @@
 import { changes, merge } from '../../editor/merge.ts';
 import { cleanPersonName, NAME_MAX, nameKey, type HelloAnswer, type HelloRequest, type Taken } from '../protocol.ts';
 import type { Client } from './client.ts';
-import { accept, beforeJoin, type Copy } from './copy.ts';
+import { accept, beforeJoin, retiring, type Copy } from './copy.ts';
 import { bdi, fitClass, make, style } from './dom.ts';
 import { Failure } from './transport.ts';
 
@@ -175,7 +175,7 @@ export async function join(client: Client, text: string, v: string, copy: Copy |
   } catch {}
   for (;;) {
     if (!name) name = await askName(client, error);
-    const request: HelloRequest = { name, v: copy?.v ?? v, ...(claim ? { claim } : {}) };
+    const request: HelloRequest = { name, v: copy?.v ?? v, retire: retiring(client), ...(claim ? { claim } : {}) };
     const person = stored(PERSON);
     if (person) request.person = person;
     let answer: HelloAnswer | Taken;

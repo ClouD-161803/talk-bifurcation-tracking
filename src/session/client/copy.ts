@@ -6,7 +6,7 @@
 
 import { changes, merge } from '../../editor/merge.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
-import { parseVersion, type Version } from '../protocol.ts';
+import { parseVersion, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Client } from './client.ts';
 import { arm, ask } from './conflicts.ts';
@@ -26,8 +26,10 @@ const OPEN_WAIT = 3000;
 const OLD = 30 * 86_400_000;
 
 type Kept = { path: string; blob: Blob };
-// made is the time of the last change of mine, missing in a record of an older client
-type Row = { id: string; key: string; base: string; v: Version; mine: string; files: Kept[]; beat: number; made?: number };
+// made is the time of the last change of mine, missing in a record of an older client. tokens are
+// of the pages whose operations may hold the edits of the record, i.e. of its page once it joined,
+// and before of the pages of the records that it took over
+type Row = { id: string; key: string; base: string; v: Version; mine: string; files: Kept[]; beat: number; made?: number; tokens?: Token[] };
 export type Copy = { base: string; v: Version; mine: string };
 
 type State = {
@@ -60,6 +62,8 @@ type State = {
   // the time of the last change of mine in a record, and this mine
   made: number;
   madeOf: string | null;
+  // the tokens of the records taken over at the join, which the first hello retires
+  retire: Token[];
 };
 
 const states = new WeakMap<Client, State>();
@@ -139,11 +143,17 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[]; made: number } {
 function stateOf(client: Client): State {
   let st = states.get(client);
   if (!st) {
-    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null };
+    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null, retire: [] };
     states.set(client, st);
   }
   return st;
 }
+
+// the tokens of the closed pages whose records this page took over, which its first hello names, so
+// that an operation of such a page that arrives later is not applied on top of the copy
+export const retiring = (client: Client): Token[] => stateOf(client).retire;
+
+const tokensOf = (client: Client, st: State): Token[] => (client.snapshot() ? [client.token] : st.retire);
 
 // the copy of the page before the first answer of hello, or null once the session has begun
 export function beforeJoin(client: Client, fn: (() => Copy | null) | null): void {
@@ -198,13 +208,15 @@ export async function restore(client: Client): Promise<Copy | null> {
   const here = dead.filter((r) => r.key === key() && !old.includes(r));
   const { copy, taken, made } = here.length ? combine(here) : { copy: null, taken: [], made: 0 };
   st.left = here.length > taken.length;
+  // also of the records left, which rest() merges after the join
+  st.retire = here.flatMap((r) => r.tokens ?? []);
   if (!old.length && !copy) return null;
   const files = taken.flatMap((r) => r.files ?? []);
   if (copy) st.stored = true;
   try {
     await run('readwrite', (s) => {
       for (const r of [...old, ...taken]) s.delete(r.id);
-      if (copy) s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now(), made } satisfies Row);
+      if (copy) s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now(), made, tokens: st.retire } satisfies Row);
     });
     st.kept = copy;
   } catch {
@@ -246,7 +258,8 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
   st.left = false;
   st.merging = true;
   try {
-    const dead = await deadRows(st);
+    // a record of a page closed after the join waits for the next join, which retires its tokens
+    const dead = (await deadRows(st)).filter((r) => (r.tokens ?? []).every((t) => st.retire.includes(t)));
     if (!dead.length) return;
     const { copy, taken, made } = combine(dead);
     st.left = dead.length > taken.length;
@@ -276,7 +289,7 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
     st.stored = true;
     await run('readwrite', (store) => {
       for (const r of taken) store.delete(r.id);
-      store.put({ id: st.id, key: key(), base: now.base, v: now.v, mine, files: client.shell.media.unsaved(mine).map((f) => ({ path: f.path, blob: f.blob })), beat: Date.now(), made } satisfies Row);
+      store.put({ id: st.id, key: key(), base: now.base, v: now.v, mine, files: client.shell.media.unsaved(mine).map((f) => ({ path: f.path, blob: f.blob })), beat: Date.now(), made, tokens: tokensOf(client, st) } satisfies Row);
     });
     update();
   } catch {
@@ -343,7 +356,7 @@ export function install(client: Client): void {
     st.wroteAt = t;
     st.stored = true;
     const files = client.shell.media.unsaved(s.mine).map((f) => ({ path: f.path, blob: f.blob }));
-    run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t, made: st.made } satisfies Row)).then(
+    run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t, made: st.made, tokens: tokensOf(client, st) } satisfies Row)).then(
       () => {
         // the writes commit in order, hence an older record is replaced by this one
         const kept = st.last === s && s.mine !== s.base ? s : null;
