@@ -24,11 +24,11 @@ export type PresenceHooks = {
   source(): string | null;
   // the element whose start tag is at each offset of source(), or null
   elementsAt(offsets: number[]): (Element | null)[];
-  // the shapes of els and of the caret bars, read in one pass of layout. at and from are the focus
-  // and the anchor in the text of the text element el, in which each formula counts as its TeX and
-  // each <br> as one character, and pre and post are the text on each side of at when it was read,
-  // by which at is found after edits
-  shapes(els: Element[], carets: Caret[]): { els: (Shape | null)[]; carets: (Shape | null)[] };
+  // the shapes of els and of the caret bars, read in one pass of layout, and the range of each caret
+  // with a selection. at and from are the focus and the anchor in the text of the text element el,
+  // in which each formula counts as its TeX and each <br> as one character, and pre and post are
+  // the text on each side of at when it was read, by which at is found after edits
+  shapes(els: Element[], carets: Caret[]): { els: (Shape | null)[]; carets: (Shape | null)[]; ranges: (Range | null)[] };
   // the selection of this page in host, or null when its focus is not in host
   selectionIn(host: Element): Omit<Caret, 'el'> | null;
   // the element under the pointer, which frames.ts draws the hover frame on
@@ -50,7 +50,7 @@ export function hooks(app: App): PresenceHooks {
     shapes(els, carets) {
       const slides = app.slides() as HTMLElement | null;
       const W = slides?.offsetWidth ?? 0, H = slides?.offsetHeight ?? 0;
-      if (!slides || !W || !H) return { els: els.map(() => null), carets: carets.map(() => null) };
+      if (!slides || !W || !H) return { els: els.map(() => null), carets: carets.map(() => null), ranges: carets.map(() => null) };
       const f = frameOf(app);
       const shape = (b: { left: number; top: number; width: number; height: number }, deg: number, grow: number): Shape => ({
         x: (b.left - f.left) / f.scale / W,
@@ -60,19 +60,29 @@ export function hooks(app: App): PresenceHooks {
         deg,
         grow,
       });
+      const ranges: (Range | null)[] = carets.map(() => null);
       return {
         els: els.map((el) => {
           if (!el.isConnected) return null;
           const o = orientOf(el, f.scale);
           return o.box.width || o.box.height ? shape(o.box, o.deg, growOf(el)) : null;
         }),
-        carets: carets.map(({ el, at, pre, post }) => {
+        carets: carets.map(({ el, at, from, pre, post }, i) => {
           if (!el.isConnected) return null;
           const math = mathIn(el);
-          const focus = locate(textIn(el, math, true), at, pre, post);
+          const text = textIn(el, math, true);
+          const focus = locate(text, at, pre, post);
+          const anchor = Math.max(0, Math.min(text.length, from + focus - at));
+          if (anchor !== focus) {
+            const range = document.createRange();
+            range.setStart(...pointIn(el, Math.min(anchor, focus), math, true));
+            range.setEnd(...pointIn(el, Math.max(anchor, focus), math, true));
+            ranges[i] = range;
+          }
           const r = caretRect(el, focus, math);
           return r ? shape({ left: r.left, top: r.top, width: 0, height: r.height }, 0, 0) : null;
         }),
+        ranges,
       };
     },
     selectionIn(host) {

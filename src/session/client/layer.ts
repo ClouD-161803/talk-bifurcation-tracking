@@ -1,6 +1,7 @@
 // the presence of the other people on the canvas, as in UI.md section 3: a frame in the tone of a
 // person around each element of the shown slide that the person selected, one around a group, a
-// name flag on its upper left corner, and the caret bar of a person in a text element. the boxes are
+// name flag on its upper left corner, the caret bar of a person in a text element, and the selected
+// text of a person as a highlight of the CSS Custom Highlight API in the tone. the boxes are
 // read in one animation frame in fractions of the slide, and shell/canvas.ts lays .beeson-presence
 // over the slide with the custom properties of .reveal, hence a pointer move, a scroll, or a zoom
 // does not read layout. during a drag of the own selection the boxes of the last read are moved by
@@ -24,6 +25,8 @@ const HIT = 32;
 const FLAG = 21;
 // the classes of html during a drag, a resize, or a turn of the own selection
 const GESTURE = ['beeson-dragging', 'beeson-sizing', 'beeson-rotating'];
+// the custom properties of the tones c0 to c3, as in CSS
+const TONES = ['--data-2', '--data-3', '--data-5', '--data-7'];
 
 const CSS = `
 .beeson-presence-cell { position: fixed; inset: 0; clip-path: var(--ed-cell-clip, none); z-index: 50; pointer-events: none; }
@@ -87,7 +90,25 @@ export function install(client: Client): void {
   // the shapes of the last read: of each element or group by the element that heads it, the
   // members of each group, and each caret by client with its element, its offset, and its angle,
   // with the size of the slide, and the top of the canvas in px of the layer
-  let kept = { els: new Map<Element, Kept>(), groups: new Map<Element, Element[]>(), carets: new Map<string, Kept & { el: Element; offset: number; deg: number; line: number }>(), W: 1, H: 1, edge: -Infinity, height: 0 };
+  let kept = { els: new Map<Element, Kept>(), groups: new Map<Element, Element[]>(), carets: new Map<string, Kept & { el: Element; offset: number; from: number; deg: number; line: number; range: Range | null }>(), W: 1, H: 1, edge: -Infinity, height: 0 };
+  // the highlights of the selected text by tone, where the browser has them
+  const highlights = typeof Highlight === 'function' ? (window.CSS.highlights ?? null) : null;
+  // the highlight takes the literal color of the tone, read again at a change of mode, since a
+  // custom property in ::highlight is not read by every browser
+  const tint = (): void => {
+    const root = getComputedStyle(document.documentElement);
+    const names = TONES.map((_, i) => `::highlight(beeson-c${i})`);
+    const hidden = ['html.beeson-previewing', 'html.beeson-playing', 'html:not(.beeson-editor)'].flatMap((h) => names.map((n) => `${h} ${n}`));
+    style('highlight', '');
+    document.getElementById('beeson-session-highlight')!.textContent = [
+      ...names.map((n, i) => `${n} { background-color: color-mix(in srgb, ${root.getPropertyValue(TONES[i]).trim() || 'transparent'} 30%, transparent); }`),
+      `${hidden.join(', ')} { background-color: transparent; }`,
+    ].join('\n');
+  };
+  if (highlights) {
+    tint();
+    new MutationObserver(tint).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
 
   const schedule = (): void => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -127,12 +148,15 @@ export function install(client: Client): void {
   // selection the last read is kept while it holds every element and caret
   function measure(els: Element[], carets: Resolved[]): void {
     const members = new Set([...kept.groups.values()].flat());
-    const known = els.every((el) => kept.els.has(el) || members.has(el)) && carets.every((r) => kept.carets.get(r.client)?.el === r.caret!.el && kept.carets.get(r.client)?.offset === r.caret!.at);
+    const known = els.every((el) => kept.els.has(el) || members.has(el)) && carets.every((r) => {
+      const k = kept.carets.get(r.client);
+      return k?.el === r.caret!.el && k.offset === r.caret!.at && k.from === r.caret!.from;
+    });
     if (known && GESTURE.some((c) => document.documentElement.classList.contains(c))) return;
     const groups = els.length > 1 ? shell.groups(els) : [];
     const grouped = new Set(groups.flatMap((g) => g.els));
     const singles = els.filter((el) => !grouped.has(el));
-    const shapes = singles.length || carets.length ? shell.presence.shapes(singles, carets.map((r) => r.caret!)) : { els: [], carets: [] };
+    const shapes = singles.length || carets.length ? shell.presence.shapes(singles, carets.map((r) => r.caret!)) : { els: [], carets: [], ranges: [] };
     const slides = app.slides() as HTMLElement;
     const box = els.length ? layer.getBoundingClientRect() : null;
     const top = box ? (app.stage?.viewport.top ?? -Infinity) - box.top : -Infinity;
@@ -147,14 +171,14 @@ export function install(client: Client): void {
     }
     carets.forEach((r, i) => {
       const s = shapes.carets[i];
-      const { el, at } = r.caret!;
+      const { el, at, from } = r.caret!;
       if (!s) return;
       const deg = turnOf(el);
       // a caret in a turned text element, whose box is the upright box of the turned bar, falls
       // back to the line height when it is turned near a right angle
       const cs = deg ? getComputedStyle(el) : null;
       const line = cs ? parseFloat(cs.lineHeight) || 1.2 * parseFloat(cs.fontSize) : 0;
-      kept.carets.set(r.client, { s, at: offset(el), el, offset: at, deg, line });
+      kept.carets.set(r.client, { s, at: offset(el), el, offset: at, from, deg, line, range: shapes.ranges[i] ?? null });
     });
   }
 
@@ -227,9 +251,11 @@ export function install(client: Client): void {
       for (const m of kept.groups.get(el) ?? [el]) next.set(m, flags);
       nodes.push(flags);
     }
+    const ranges: Range[][] = TONES.map(() => []);
     for (const r of carets) {
       const k = kept.carets.get(r.client);
       if (!k) continue;
+      if (k.range) ranges[r.color % 4].push(k.range);
       const s = moved(k, k.el);
       const { W, H } = kept;
       const a = (k.deg * Math.PI) / 180, cos = Math.abs(Math.cos(a)), sin = Math.abs(Math.sin(a));
@@ -253,6 +279,7 @@ export function install(client: Client): void {
       nodes.push(flags);
     }
     layer.replaceChildren(...nodes);
+    if (highlights) ranges.forEach((list, i) => (list.length ? highlights.set(`beeson-c${i}`, new Highlight(...list)) : highlights.delete(`beeson-c${i}`)));
     flagsOf = next;
     chips = placedChips;
     for (const id of [...named.keys()]) if (!list.some((r) => r.client === id)) named.delete(id);
@@ -262,7 +289,10 @@ export function install(client: Client): void {
 
   app.onRefresh(['content', 'selection', 'slide', 'structure'], schedule);
   client.on('resolved', schedule);
-  client.on('ended', () => cell.remove());
+  client.on('ended', () => {
+    cell.remove();
+    TONES.forEach((_, i) => highlights?.delete(`beeson-c${i}`));
+  });
 
   // the flags of the element under the pointer show the names, by a class alone
   window.addEventListener('pointermove', () => {
