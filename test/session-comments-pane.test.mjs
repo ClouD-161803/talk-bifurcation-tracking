@@ -1221,6 +1221,32 @@ ${angles.map((deg, k) => `  <p style="position: absolute; left: ${60 + 370 * k}p
   });
 }
 
+test('at 390 px, the badges of a slide and of elements at its edges stay inside the window and do not overlap', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const places = [[0, 0], [1620, 0], [1620, 4], [0, 1040], [1620, 1040], [700, 500], [700, 504], [700, 508]];
+  const server = await talkWith(t, `<section>
+  <h2>One</h2>
+${places.map(([x, y], k) => `  <p style="position: absolute; left: ${x}px; top: ${y}px; width: 300px; margin: 0">Place ${k + 1}</p>`).join('\n')}
+</section>
+`);
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await a.evaluate(`window.BeesonEditor.exec('view.slideOnly')`);
+  await show(a, 'One');
+  for (const k of places.keys()) await postOn(a, 0, 'p', k, `On paragraph ${k + 1}`);
+  await post(a, 0, 'On the slide');
+  await sees(a, `document.querySelectorAll('.beeson-comment-badge').length`, places.length + 1);
+  const boxes = await a.evaluate(BADGE_RECTS);
+  const size = await a.evaluate(`[innerWidth, innerHeight]`);
+  const pairs = (list) => list.flatMap((b, i) => list.slice(i + 1).filter((o) => meets(b, o))).length;
+  const got = {
+    overlaps: pairs(boxes),
+    outside: boxes.filter((b) => b.left < 0 || b.top < 0 || b.right > size[0] || b.bottom > size[1]).length,
+  };
+  assert.deepEqual(got, { overlaps: 0, outside: 0 }, JSON.stringify(boxes));
+  clean(a);
+});
+
 test('a thread that a person only replied to is listed under For You, and a later reply of another person is unread for them', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   const id = await post(a, 0, 'A thread of Ann');
