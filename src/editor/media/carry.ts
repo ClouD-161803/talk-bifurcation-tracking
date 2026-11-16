@@ -209,7 +209,7 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
   // the files of one deck are all refused once one is
   for (const p of paths) read.set(p, session || [...read.values()].includes('refused') ? 'refused' : await fetched(new URL(p, arrival.origin.deck).href));
   const name = session ? '' : decoded(new URL('.', arrival.origin.deck).pathname.split('/').filter(Boolean).pop() ?? '');
-  const from = session ? 'the talk folder of the session' : name ? `the folder ${name}` : arrival.origin.deck;
+  const from = session ? 'the talk folder of the session that you copied from' : name ? `the folder ${name}` : arrival.origin.deck;
   const refused = paths.filter((p) => read.get(p) === 'refused');
   const folder = refused.length && canPick() ? await folderOf(arrival.origin.deck, session ? from : `the folder ${name ? `${name} ` : ''}of ${arrival.origin.deck}`) : null;
   if (folder) {

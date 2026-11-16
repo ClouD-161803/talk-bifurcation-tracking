@@ -15,7 +15,7 @@ import { stateOf } from '../tags.ts';
 import { RAW_TEXT, type Attr } from '../tokens.ts';
 import { caretOf, mapOffset, putCaret, textIn } from './caret.ts';
 import { refreshHeads } from '../history.ts';
-import { atPath, closing, decodedIn, graft, liveChild, pathOf, retag, retext, textAt, type Spot, type Window } from './tree.ts';
+import { atPath, closing, decodedIn, graft, liveChild, pathOf, retag, retext, startTag, textAt, type Spot, type Window } from './tree.ts';
 
 export const NO_MATH: MathLookup = () => null;
 const SVG = 'http://www.w3.org/2000/svg';
@@ -129,7 +129,8 @@ const shiftPiece = (p: Piece, d: number): Piece =>
 
 // a change inside one text node of the text element, outside its formulas, written into the text
 // node of the page with replaceData, which keeps the caret and the selection of the person. false,
-// with nothing changed, when the change is not one of plain characters in a run of text
+// with nothing changed, when the change is not one of plain characters in a run of text, or leaves
+// the run blank, which may end a text element, see isTextElement()
 function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const at = textAt(textEl.src, w.start, w.endA);
   if (!at) return false;
@@ -137,7 +138,7 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const decoded = decodedIn(at.parent, at.index, ctx.text, d);
   const math = lookupFor(textEl.live);
   const host = decoded === null ? null : liveIn(textEl, at.parent, math);
-  if (decoded === null || !host) return false;
+  if (decoded === null || !/\S/.test(decoded) || !host) return false;
   const k = at.parent.children[at.index] as SrcText;
   const items = virtualChildren(host, math);
   const item = items[at.index];
@@ -199,9 +200,13 @@ function setContent(ctx: Ctx, live: Element, content: string): void {
   ctx.hosts.push(live);
 }
 
-// a change inside a text element, read again as the element and set as its content
-function coarse(ctx: Ctx, textEl: TextElement): ((after: boolean) => void) | null | false {
-  const next = graft(ctx.source, textEl.src, ctx.text);
+// a change inside a text element, read again as the element and set as its content. false when
+// the new bytes are not one element of its tag, and 'reload' when they are not a text element, since
+// its new children are not paired and typing in it would be lost, both with the deck left as it was
+function coarse(ctx: Ctx, textEl: TextElement): ((after: boolean) => void) | null | false | 'reload' {
+  let text = true;
+  const next = graft(ctx.source, textEl.src, ctx.text, (root) => (text = isTextElement(root)));
+  if (!text) return 'reload';
   const range = next && contentRange(next);
   if (!next || !range) return false;
   const caret = keepCaret(ctx.app, textEl.live);
@@ -357,9 +362,15 @@ function makeCtx(app: App, text: string): Ctx {
   return { app, source: app.source!, pairing: app.pairing!, text, touched: new Set(), reordered: new Set(), gone: [], cuts: [], changed: [], hosts: [], placed: [], typeset: [] };
 }
 
+// a deck changed by an apply that then does not read as the text, i.e. neither as before nor as the
+// text. it throws, since a reload is answered only with the deck as it was
+export function partial(): never {
+  throw new Error('the deck does not read as the text after an apply');
+}
+
 // the deck made to read as text, which differs from the text of the source in w, at spot. null when
-// it cannot be done, after which the page is loaded again. the page is changed synchronously, and
-// the formulas of the new content are typeset by the promises of the result
+// it cannot be done, with the deck left as it was, after which the page is loaded again. the page is
+// changed synchronously, and the formulas of the new content are typeset by the promises of the result
 export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | null {
   const ctx = makeCtx(app, text);
   if (spot.kind === 'text') {
@@ -368,7 +379,7 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
     if (inPlace(ctx, textEl, w)) {
       ctx.touched.add(spot.live);
       ctx.changed.push(spot.live);
-      if (!checkText(ctx, textEl.live)) return null;
+      if (!checkText(ctx, textEl.live)) partial();
       refreshText(textEl.live, had);
       return done(ctx, false, null);
     }
@@ -377,15 +388,18 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
     const r = elementRange(textEl.src);
     if (r && closing(text.slice(r.start, r.end + text.length - ctx.source.text.length), textEl.src) === 'open') return null;
     const caret = coarse(ctx, textEl);
+    if (caret === 'reload') return null;
     if (caret === false) return within(ctx, spot.el, spot.live);
-    if (!checkText(ctx, textEl.live)) return null;
+    if (!checkText(ctx, textEl.live)) partial();
     refreshText(textEl.live, had);
     return done(ctx, false, caret && (() => caret(true)));
   }
   if (spot.kind === 'tag') {
     const from = spot.el.attrs;
+    // a reload is answered before retag() sets the source, since the deck reads as before at a reload
+    const t = startTag(ctx.source, spot.el, text);
+    if (t && (redrawn(spot.live, from, t.attrs) || backdropOf(from) !== backdropOf(t.attrs))) return null;
     if (!retag(ctx.source, spot.el, text)) return within(ctx, spot.el, spot.live);
-    if (redrawn(spot.live, from, spot.el.attrs) || backdropOf(from) !== backdropOf(spot.el.attrs)) return null;
     // a class or an attribute may be read by the theme or by reveal.js, e.g. a step, where a place
     // or a size in the style is not
     if (setTag(ctx, spot.live, from, spot.el.attrs)) {
@@ -406,8 +420,7 @@ function within(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   return structural(ctx, parent, up);
 }
 
-// the text element on the page reads as its bytes in the new text. an element that stopped being a
-// text element is a reload, since its new children are not paired, and typing in it would be lost
+// the text element on the page reads as its bytes in the new text
 function checkText(ctx: Ctx, live: Element): boolean {
   const textEl = ctx.pairing.byLive.get(live);
   if (!textEl || !isTextElement(textEl.src)) return false;
@@ -667,7 +680,7 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   app.pairing = pair(next, app.slides(), math);
   ctx.source = next;
   ctx.pairing = app.pairing;
-  if (app.pairing.problems.length > problems || renderDeck(next, app.pairing, math, app.tagEdits).text !== ctx.text) return null;
+  if (app.pairing.problems.length > problems || renderDeck(next, app.pairing, math, app.tagEdits).text !== ctx.text) partial();
   app.typing.attach();
   focus.el?.focus({ preventScroll: true });
   restep(ctx, live);

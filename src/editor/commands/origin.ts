@@ -15,24 +15,29 @@ export type Origin = { deck: string; version: string; macros: OriginMacro[]; ses
 
 const OPEN = '<!--beeson-origin ';
 
-const inSession = (): boolean => new URLSearchParams(location.search).has('session');
+// whether an edit command serves the page, told by the session port once the client has read the
+// answer of the edit command, and kept after the session ends, since the address still has the key.
+// until then an address with session is taken as one of a session, whose key is not written
+let served: boolean | null = null;
+export const setServed = (on: boolean): void => void (served = on);
+const keyed = (): boolean => served ?? new URLSearchParams(location.search).has('session');
 
 // the 32-bit FNV-1a hash of s in base 36, which works also where crypto.subtle is missing, i.e.
 // outside a secure context
-function tag(s: string): string {
+function hash(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
   return (h >>> 0).toString(36);
 }
 
 // the address of this deck, without its query and its slide. the folder of a page of a session is
-// the key of the session, with which anyone can join it, hence a tag of the key takes its place
+// the key of the session, with which anyone can join it, hence a hash of the key takes its place
 export function deckAddress(): string {
   const address = location.href.split(/[?#]/)[0];
-  if (!inSession()) return address;
+  if (!keyed()) return address;
   const end = address.lastIndexOf('/');
   const start = address.lastIndexOf('/', end - 1) + 1;
-  return `${address.slice(0, start)}session-${tag(address.slice(start, end))}${address.slice(end)}`;
+  return `${address.slice(0, start)}session-${hash(address.slice(start, end))}${address.slice(end)}`;
 }
 
 // the macros of the deck that text uses, with the macros that their bodies use
@@ -56,7 +61,7 @@ const themeVersion = (): string => (window as unknown as { Beeson?: { version?: 
 // the comment of the origin of the copied text. a dash and an angle bracket are written as escapes
 // of JSON, hence a URL or a macro does not close the comment early
 export function originComment(text: string): string {
-  const json = JSON.stringify({ deck: deckAddress(), version: themeVersion(), macros: usedMacros(text), ...(inSession() && { session: true }) } satisfies Origin);
+  const json = JSON.stringify({ deck: deckAddress(), version: themeVersion(), macros: usedMacros(text), ...(keyed() && { session: true }) } satisfies Origin);
   return `${OPEN}${json.replace(/[-<>]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}-->`;
 }
 

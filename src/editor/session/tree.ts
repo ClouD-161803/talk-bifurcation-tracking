@@ -2,7 +2,7 @@
 // element is read again without a parse of the whole file. every range of the tree is an offset
 // into source.text, hence the ranges after a change are moved by the change of its length
 
-import { RAW_TEXT, tokenize, type Range } from '../tokens.ts';
+import { RAW_TEXT, tokenize, type Range, type Token } from '../tokens.ts';
 import { contentRange, elementRange, segmentsOf, VOID, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
 import { fragmentRoot, parseFragment } from '../model/fragments.ts';
 import { isTextElement, type Pairing } from '../render.ts';
@@ -93,8 +93,8 @@ export function closing(bytes: string, el: SrcEl): 'closed' | 'open' | 'out' {
 
 // el read again from text, a text that differs from source.text only inside el, as a new node in
 // its place, with the ranges after it moved and source.text set to text. null, with nothing
-// changed, when the new bytes are not one element of the tag of el
-export function graft(source: Source, el: SrcEl, text: string): SrcEl | null {
+// changed, when the new bytes are not one element of the tag of el, or when keep refuses it
+export function graft(source: Source, el: SrcEl, text: string, keep: (root: SrcEl) => boolean = () => true): SrcEl | null {
   const r = elementRange(el);
   const parent = el.parent;
   if (!r || !parent) return null;
@@ -111,7 +111,7 @@ export function graft(source: Source, el: SrcEl, text: string): SrcEl | null {
     return null;
   }
   const fr = root && elementRange(root);
-  if (!root || !fr || kids !== 1 || root.tag !== el.tag || !root.open !== !el.open || !root.close !== !el.close || fr.end - fr.start !== bytes.length) return null;
+  if (!root || !fr || kids !== 1 || root.tag !== el.tag || !root.open !== !el.open || !root.close !== !el.close || fr.end - fr.start !== bytes.length || !keep(root)) return null;
   const index = parent.children.indexOf(el);
   shiftNode(root, r.start - fr.start);
   adopt(root, source);
@@ -122,17 +122,27 @@ export function graft(source: Source, el: SrcEl, text: string): SrcEl | null {
   return root;
 }
 
-// the start tag of el read again from text, a text that differs from source.text only inside this
-// tag, with the ranges after it moved. false, with nothing changed, when the new bytes are not one
-// start tag of the same name
-export function retag(source: Source, el: SrcEl, text: string): boolean {
+type StartTag = Extract<Token, { type: 'start' }>;
+
+// the start tag of el read from text, a text that differs from source.text only inside this tag,
+// at offsets from the start of the tag. null when the new bytes are not one start tag of the same
+// name
+export function startTag(source: Source, el: SrcEl, text: string): StartTag | null {
   const open = el.open;
-  if (!open || !el.parent) return false;
-  const d = text.length - source.text.length;
-  const bytes = text.slice(open.start, open.end + d);
+  if (!open || !el.parent) return null;
+  const bytes = text.slice(open.start, open.end + text.length - source.text.length);
   const tokens = tokenize(bytes);
   const t = tokens[0];
-  if (tokens.length !== 1 || t.type !== 'start' || t.name !== el.tag.toLowerCase() || t.end !== bytes.length) return false;
+  return tokens.length === 1 && t.type === 'start' && t.name === el.tag.toLowerCase() && t.end === bytes.length ? t : null;
+}
+
+// the start tag of el read again from text as startTag() reads it, with the ranges after it moved.
+// false, with nothing changed, when startTag() is null
+export function retag(source: Source, el: SrcEl, text: string): boolean {
+  const t = startTag(source, el, text);
+  const open = el.open;
+  if (!t || !open || !el.parent) return false;
+  const d = text.length - source.text.length;
   move(t, open.start);
   for (const a of t.attrs) move(a, open.start);
   el.open = t;

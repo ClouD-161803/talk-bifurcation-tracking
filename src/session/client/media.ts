@@ -6,7 +6,8 @@
 // poster of a video and the picture of the other mode are files of the store as well, and they are
 // uploaded the same way. a file that the edit command would refuse is refused when it is added.
 // a file refused anyway with a status that another try cannot change is given up, i.e. sent to the
-// others only as its path, and named in the save state while the text names it
+// others only as its path, and named in the save state while the text names it, until the page
+// loads again, after which nothing names the missing file
 
 import type { MediaFile } from '../../editor/media/store.ts';
 import type { SrcEl } from '../../editor/source.ts';
@@ -28,7 +29,7 @@ const VIDEO = /\.(mp4|m4v|webm|mov|ogv)$/i;
 // with the parameter session-upload-wait of the address
 const UPLOAD_WAIT = 30_000;
 const UPLOAD_PER_MB = 1000;
-export const FAILED = (path: string) => `${path} could not be sent. Try again`;
+export const FAILED = (path: string) => `Could not send ${path}. Try again`;
 // the statuses of PUT media/ of the edit command and of the relay that another try cannot change:
 // a file outside the talk folder, too many files of the name, a body or a path too large, and a
 // type that is not taken
@@ -206,7 +207,7 @@ export function install(client: Client): void {
         }
       }
     } catch (e) {
-      st.failed = f?.path || 'A file';
+      st.failed = f?.path || 'a file';
       // a token that the edit command does not know, e.g. after its restart, is known after the hello
       st.network = !(e instanceof Failure) || e.retried || e.status === 404;
     } finally {
@@ -216,15 +217,20 @@ export function install(client: Client): void {
     client.rewrite(renamed ? rename : undefined);
   }
 
+  // the save state set to the line of the first file given up among named, the files of the store
+  // that the text names
+  const lose = (named: MediaFile[]): void => {
+    const lost = named.find((f) => given.has(f));
+    const line = lost ? `${lost.path} is not in the talk folder, since ${given.get(lost)}. Delete it from the deck, or add the file to media/ by hand.` : null;
+    if (line === st.lost) return;
+    st.lost = line;
+    client.refresh();
+  };
+
   client.hooks.ready = (text) => {
     if (client.ended) return true;
     const named = store.unsaved(text);
-    const lost = named.find((f) => given.has(f));
-    const line = lost ? `${lost.path} was not sent to the others, since ${given.get(lost)}` : null;
-    if (line !== st.lost) {
-      st.lost = line;
-      client.refresh();
-    }
+    lose(named);
     const files = named.filter((f) => !given.has(f));
     if (files.length) {
       if (!st.busy && !st.failed) void upload(files);
@@ -245,6 +251,10 @@ export function install(client: Client): void {
   // an upload that failed on the network is tried again once the page is online again, or once its
   // hello is answered, since a 404 may come while the page reads online
   client.on('me', () => st.failed && st.network && retry(client));
+  // a change applied from another page or from outside may take out the last element of a file
+  client.on('applied', () => {
+    if (given.size && !client.ended) lose(store.unsaved(client.port.text()));
+  });
   let was = client.connection;
   client.on('state', () => {
     const now = client.connection;
