@@ -544,20 +544,34 @@ test('an edit of another person does not stop a page from asking before it unloa
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Mine');
   await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
-  // the answer of the next poll, which holds the second edit of the other person, is held in the page
-  await page.evaluate(`__net.rule('/.session/events', 'late')`);
+  // the answer of a poll with the second edit of the other person is held until window.__again()
+  await page.evaluate(`(() => {
+    const fetched = window.fetch;
+    const released = new Promise((done) => (window.__again = () => (done(), true)));
+    window.fetch = function (input, init) {
+      const answer = fetched.call(this, input, init);
+      if (!String(input instanceof Request ? input.url : input).includes('/.session/events')) return answer;
+      return answer.then(async (r) => {
+        if (!(await r.clone().text()).includes('Again')) return r;
+        window.__held = true;
+        await released;
+        return r;
+      });
+    };
+    return true;
+  })()`);
   writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide Remote</p>'));
   await page.waitFor(`${TEXT}.includes('Remote')`);
-  writeFileSync(server.file, server.read().replace('<p>Second slide Remote</p>', '<p>Second slide Remote Again</p>'));
-  await page.waitFor(`__net.held.some((h) => h.url.includes('/.session/events'))`);
-  // copy.ts writes a copy at most every 2 s, and the copy with the first edit of the other person
-  // is the last one written
   await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
+  writeFileSync(server.file, server.read().replace('<p>Second slide Remote</p>', '<p>Second slide Remote Again</p>'));
+  await page.waitFor('window.__held === true');
+  // the copy keeps the first edit of the other person, and never holds the newest edit of the page
+  await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
   await type(page, ' More');
-  await page.evaluate(`__net.clear() && __net.release('/.session/events')`);
-  await page.waitFor(`${TEXT}.includes('Again')`);
-  const after = await page.evaluate(ASKED(' More'));
-  assert.ok(after.asking || after.copied, `the page asks while its copy lacks its newest edit: ${JSON.stringify(after)}`);
+  // asking is read once the client checked the deck after the merge of the second edit
+  await page.evaluate(`(${C}.on('settled', () => ${C}.snapshot().mine.includes('Again') && setTimeout(() => (window.__asking ??= ${C}.asking))), window.__again())`);
+  await page.waitFor(`window.__asking !== undefined && ${TEXT}.includes('Again')`);
+  assert.deepEqual(await page.evaluate(`(${ASKED(' More')}).then((x) => ({ ...x, asking: window.__asking }))`), { asking: true, copied: false });
 });
 
 test('an edit of another person does not make a page that waits to load again ask before it unloads while its copy holds the edit of the page', { timeout: 240_000 }, async (t) => {
