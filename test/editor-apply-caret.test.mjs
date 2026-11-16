@@ -350,3 +350,41 @@ test('a run between two code elements that becomes a space keeps the selection o
   assert.deepEqual(await b.evaluate(`window.__codes.map((c) => c.isConnected && ${LI}.contains(c))`), [true, true], 'the code elements are kept');
   assert.deepEqual(b.errors, []);
 });
+
+// the caret of the person put after the first count characters of the text of P1
+const caretAfter = (b, count) => b.evaluate(`(() => {
+  const p = ${P1};
+  p.focus();
+  getSelection().collapse(p.firstChild, ${count});
+  return document.activeElement === p;
+})()`);
+const CHANGES = [
+  ['on both sides of it', (text) => once(text, LINE, LINE.replace('Design', 'BDesign').replace('attention.', 'attention.C')), 'BDesignA the', 'C</p>'],
+  ['at it, which puts the letters of the other person before it as the authority does', (text) => once(text, LINE, LINE.replace('Design', 'DesignX')), 'DesignXA the', 'attention.</p>'],
+];
+for (const [label, change, typed, end] of CHANGES) {
+  test(`a caret stays at its characters through one apply that changes its text node ${label}`, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    await showSlide(b, 'Show your steps');
+    assert.ok(await caretAfter(b, 'Design'.length));
+    const text = change(b.source);
+    assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+    await type(b, 'A');
+    const line = (await b.evaluate(`${E}.render()`)).split('\n').find((l) => l.includes('the complete slide first'));
+    assert.ok(line.includes(typed) && line.endsWith(end), `the key of the person is at its caret in ${line}`);
+    assert.deepEqual(b.errors, []);
+  });
+}
+
+test('a selection inside its text node keeps its characters through one apply that changes the node on both sides of it', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  assert.ok(await selectComplete(b, false));
+  const text = once(b.source, LINE, LINE.replace('Design', 'BDesign').replace('attention.', 'attention.C'));
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  assert.equal(await b.evaluate(`getSelection().toString()`), 'complete');
+  assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.deepEqual(b.errors, []);
+});
