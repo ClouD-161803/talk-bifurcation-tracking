@@ -16,7 +16,8 @@ export type Origin = { deck: string; version: string; macros: OriginMacro[]; ses
 const OPEN = '<!--beeson-origin ';
 
 // whether an edit command serves the page, told by the session port once the client has read the
-// answer of the edit command, and kept after the session ends, since the address still has the key.
+// answer of the edit command, or at the load of the editor for a page at file:, and kept after the
+// session ends, since the address still has the key.
 // until then an address with session is taken as one of a session, whose key is not written
 let served: boolean | null = null;
 export const setServed = (on: boolean): void => void (served = on);

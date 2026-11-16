@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createReadStream, mkdirSync as mkdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync2, unlinkSync as unlinkSync6, writeFileSync as writeFileSync6 } from "node:fs";
 import { mkdir, readdir, readFile as readFile3, realpath as realpath3, stat as stat4, writeFile as writeFile6 } from "node:fs/promises";
 import { createServer } from "node:http";
-import { createHash, randomBytes as randomBytes7 } from "node:crypto";
+import { createHash as createHash2, randomBytes as randomBytes7 } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join as join7, resolve, sep as sep2 } from "node:path";
 
@@ -3958,7 +3958,7 @@ var People = class {
 // src/edit/tex.ts
 import { readFileSync as readFileSync7, statSync as statSync3 } from "node:fs";
 import { readFile as readFile2, stat as stat3, unlink as unlink4, writeFile as writeFile5 } from "node:fs/promises";
-import { randomBytes as randomBytes6 } from "node:crypto";
+import { createHash, randomBytes as randomBytes6 } from "node:crypto";
 import { join as join6 } from "node:path";
 
 // src/accents.ts
@@ -4608,15 +4608,21 @@ function texScript(tex) {
 
 // src/edit/tex.ts
 var STABLE2 = 300;
+var RETRY2 = 500;
 var keysOf = (html) => citedKeys(html).sort().join(",");
 function deriveTex(dir, html) {
   const files = /* @__PURE__ */ new Map();
   const unread = [];
+  const hash = createHash("sha256");
   const text = (name) => {
     const file = join6(dir, name);
     try {
       files.set(name, signature(statSync3(file)));
-      return readFileSync7(file, "utf8");
+      const read = readFileSync7(file, "utf8");
+      if (name === "preamble.tex" || name === "references.bib") hash.update(`${name}
+${read.length}
+${read}`);
+      return read;
     } catch (e) {
       const code = e.code;
       if (!files.has(name)) files.set(name, "");
@@ -4625,7 +4631,7 @@ function deriveTex(dir, html) {
     }
   };
   const { preamble, bibliography, tex, missing: missing2 } = folderTex(text, html);
-  return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread, skipped: skippedLines(preamble, bibliography, missing2, "index.html") };
+  return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread, skipped: skippedLines(preamble, bibliography, missing2, "index.html"), key: hash.digest("hex") };
 }
 var TexWriter = class {
   // html is the text of index.html at the start. the files are read for their signatures, and
@@ -4641,8 +4647,11 @@ var TexWriter = class {
     this.settled = null;
     this.polling = false;
     this.stopped = false;
-    // the reason of the write of tex.js that failed last, which is tried again at each poll
+    // the reason of the write of tex.js that failed last, the failed writes in a row, and the time
+    // before which a poll does not try the write again
     this.failure = null;
+    this.failures = 0;
+    this.retryAt = 0;
     // the skipped lines and the keys without an entry logged last
     this.skipped = "";
     this.dir = dir;
@@ -4654,9 +4663,12 @@ var TexWriter = class {
     this.onWriteError = options.onWriteError ?? (() => {
     });
     this.stable = options.stable ?? STABLE2;
+    this.retry = options.retry ?? RETRY2;
     this.html = html;
     this.keys = keysOf(html);
-    this.watched = deriveTex(dir, html).files;
+    const derived = deriveTex(dir, html);
+    this.watched = derived.files;
+    this.texts = derived.key;
     this.texSig = sigOf(this.file);
   }
   // index.html holds html on disk. tex.js is derived again when it cites other keys
@@ -4711,7 +4723,7 @@ ${sig}`).join("\n");
       else if (now - this.sourcesSeen.at >= this.stable) this.derive(new Map(sigs));
     } else {
       this.sourcesSeen = null;
-      if (this.failure !== null) this.derive();
+      if (this.failure !== null && now >= this.retryAt) this.derive();
     }
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
@@ -4733,9 +4745,12 @@ ${sig}`).join("\n");
     const settle = () => {
       this.keys = keysOf(html);
       this.watched = derived.files;
+      this.texts = derived.key;
       this.sourcesSeen = null;
       if (this.failure === null) return;
       this.failure = null;
+      this.failures = 0;
+      this.retryAt = 0;
       this.onWriteError(null);
     };
     if (!derived.sources) return settle();
@@ -4750,8 +4765,9 @@ ${sig}`).join("\n");
     }
     const old = await readFile2(this.file, "utf8").catch(() => null);
     if (old === derived.text) {
+      const changed = derived.key !== this.texts;
       settle();
-      if (settled) this.onChange();
+      if (settled && changed) this.onChange();
       return;
     }
     const tmp = join6(this.dir, `.tex.js.${randomBytes6(6).toString("hex")}.tmp`);
@@ -4766,6 +4782,8 @@ ${sig}`).join("\n");
     } catch (e) {
       await unlink4(tmp).catch(() => {
       });
+      this.failures++;
+      this.retryAt = performance.now() + Math.min(5e3, this.retry * 2 ** (this.failures - 1));
       const reason = e.code ?? e.message;
       if (reason === this.failure) return;
       this.failure = reason;
@@ -4876,7 +4894,7 @@ function cleanName(raw) {
   if (/^(con|prn|aux|nul|com\d|lpt\d)$/.test(stem)) stem = `${stem}-file`;
   return `${stem}.${ext}`;
 }
-var sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+var sha256 = (bytes) => createHash2("sha256").update(bytes).digest("hex");
 async function sameFile(dir, name, size2, hash) {
   const dot = name.lastIndexOf(".");
   const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -5181,7 +5199,10 @@ async function start(options = {}) {
   async function handle(request) {
     const prefix = `/${key}/`;
     if (!request.path.startsWith(prefix)) return error(404, "not found");
-    const rest = request.path.slice(prefix.length);
+    const response = await below(request, request.path.slice(prefix.length));
+    return { ...response, headers: { ...response.headers, "x-edit-command": "1" } };
+  }
+  async function below(request, rest) {
     if (rest.startsWith(".session/")) return api(rest.slice(".session/".length), request);
     if (request.method !== "GET" && request.method !== "HEAD") return error(405, "GET or HEAD");
     if (rest === "") return { status: 302, headers: { Location: "index.html" } };
