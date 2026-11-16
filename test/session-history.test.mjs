@@ -884,7 +884,11 @@ test('with many versions a new version writes only its own row, and the rows in 
   await ann.waitFor(`${ROWS}.length === 151`, 20_000);
   const written = await ann.evaluate('[...window.__written]');
   assert.ok(written.length <= 2, `rows written: ${written.length}`);
-  assert.deepEqual(await ann.evaluate(view), before);
+  // the place is held within 1 px, since the pane is scrolled by the height of the new row, which
+  // need not be a whole number of px. on Ubuntu the row was drawn 1 px higher
+  const after = await ann.evaluate(view);
+  assert.equal(after.id, before.id);
+  assert.ok(Math.abs(after.top - before.top) <= 1, `the first row in view moved from ${before.top} px to ${after.top} px`);
   clean(ann);
   clean(ben);
 });
