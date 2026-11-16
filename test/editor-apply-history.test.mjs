@@ -24,6 +24,7 @@ const once = (text, from, to) => {
   assert.equal(text.split(from).length, 2, `${from} is once in the text`);
   return text.replace(from, to);
 };
+const H2 = `[...document.querySelectorAll('.reveal h2')].find((h) => h.textContent.startsWith('Show your steps'))`;
 const status = (page) => page.evaluate(`${E}.status()`);
 const sessionText = (page) => page.evaluate(`${E}.session.text()`);
 const render = (page) => page.evaluate(`${E}.render()`);
@@ -80,6 +81,82 @@ test('an entry of typing is kept when an apply changes its text element or anoth
   text = text.slice(0, start) + text.slice(text.indexOf('\n', start) + 1);
   assert.equal((await applyOn(b, text)).reload, false);
   await applied(b, text, 'the paragraph taken');
+  assert.deepEqual(b.errors, []);
+});
+
+// the caret put after 'Design the' in the first paragraph
+const AFTER_DESIGN = `(() => { const p = ${P1}; p.focus(); getSelection().collapse(p.firstChild, 'Design the'.length); return true; })()`;
+
+test('the keys of one entry typed between applies on both sides of them are undone in one step, which keeps every change of the applies', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await b.evaluate(AFTER_DESIGN);
+  await typeKeys(b, ' whole');
+  await b.waitFor(`${E}.status().undo`);
+  // each apply and the keys after it are sent at once, hence the keys are one entry
+  const typed = (await sessionText(b)).replace('Design the whole', 'Now design the whole');
+  assert.equal(await b.evaluate(`${E}.apply(${JSON.stringify(typed)}).then((r) => (document.execCommand('insertText', false, ' new'), r.reload))`), false);
+  const more = (await sessionText(b)).replace('slide first,', 'slide at first,');
+  assert.equal(await b.evaluate(`${E}.apply(${JSON.stringify(more)}).then((r) => (document.execCommand('insertText', false, ' big'), r.reload))`), false);
+  const text = await sessionText(b);
+  assert.ok(text.includes('<p>Now design the whole new big complete slide at first,'), 'the keys and the applies');
+  await b.evaluate(`${E}.undo()`);
+  assert.equal(await render(b), once(text, 'the whole new big complete', 'the complete'), 'one undo takes every key');
+  assert.equal((await status(b)).undo, false, 'the keys are one entry');
+  await b.evaluate(`${E}.redo()`);
+  assert.equal(await render(b), text);
+  assert.deepEqual(b.errors, []);
+});
+
+test('an undo skips an entry of typing whose letters another person took away, and undoes the entry before it in the same step', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, H2);
+  await typeKeys(b, '!');
+  await b.waitFor(`${E}.status().undo`);
+  await caretAtEnd(b, P1);
+  await typeKeys(b, ' One.');
+  await b.waitFor(`${E}.render().includes('attention. One.')`);
+  const text = once(await sessionText(b), 'viewer\'s attention. One.</p>', 'viewer\'s</p>');
+  assert.equal((await applyOn(b, text)).reload, false);
+  await b.evaluate(`${E}.undo()`);
+  assert.equal(await render(b), once(text, 'one at a time!</h2>', 'one at a time</h2>'), 'the deletion is kept and the heading undone');
+  const s = await status(b);
+  assert.equal(s.undo, false);
+  assert.equal(s.redo, true);
+  await b.evaluate(`${E}.redo()`);
+  assert.equal(await render(b), text);
+  assert.equal((await status(b)).redo, false, 'the skipped entry is not redone');
+  assert.deepEqual(b.errors, []);
+});
+
+test('an entry of typing is kept when another person makes a word before it bold, and its undo takes only the typing', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await typeKeys(b, ' One.');
+  await b.waitFor(`${E}.render().includes('attention. One.')`);
+  const text = once(await sessionText(b), '<p>Design the', '<p><b>Design</b> the');
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal(await b.evaluate(`!!${P1}.querySelector('b')`), true, 'the content of the paragraph is set');
+  assert.equal((await status(b)).undo, true, 'the typing is kept');
+  await b.evaluate(`${E}.undo()`);
+  assert.equal(await render(b), once(text, 'viewer\'s attention. One.</p>', 'viewer\'s attention.</p>'));
+  assert.deepEqual(b.errors, []);
+});
+
+test('an entry of the document model that set the content of a text element is dropped when another person writes into it', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await b.evaluate(`(${E}.doc.setContent(${P1}, 'Set the complete slide.'), true)`);
+  await b.waitFor(`${E}.status().undo && !${E}.doc.busy`);
+  const text = once(await sessionText(b), 'Set the complete slide.', 'Set the complete slide now.');
+  assert.equal((await applyOn(b, text)).reload, false);
+  await applied(b, text, 'the entry dropped');
   assert.deepEqual(b.errors, []);
 });
 
