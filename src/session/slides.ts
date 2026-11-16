@@ -167,18 +167,26 @@ const words = (x: string) => x.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim
 function core(x: string, y: string) {
   if (x.length > y.length) [x, y] = [y, x];
   x = ` ${x} `;
-  // h is the middle of x, k the characters left to read, and b the longest stretch
-  let h = x.length >> 1, k = y.length, b = 0, p = -1;
-  while (k > 0 && ~(p = y.indexOf(x[h], ++p))) {
+  // h is the middle of x, c its character, k the characters left to read, and b the longest
+  // stretch. c is read once, since V8 reads x[h] slowly inside the loop once x is long
+  const h = x.length >> 1, c = x[h];
+  let k = y.length, b = 0, p = -1;
+  while (k > 0 && ~(p = y.indexOf(c, ++p))) {
     // y is trimmed, hence a space at an end of x is not read with an end of y, and both are never
     // read past at once
     let l = h, r = h;
     while (x[--l] === y[l + p - h]);
     while (x[++r] === y[r + p - h]);
-    // the reads are counted, and l and r become the spaces around the whole words read. one word is
-    // often shared by chance, e.g. by two short slides at one place
-    k -= r - l, l = x.indexOf(' ', l + 1), r = x.lastIndexOf(' ', r - 1);
-    if (x.lastIndexOf(' ', r - 1) > l) b = Math.max(b, r - l + 1);
+    // the reads are counted, and l and r become the spaces around the whole words read, found
+    // inside the stretch read, since a search to the next space is not counted and is long in a
+    // run without spaces, e.g. the data of a plot. one word is often shared by chance, e.g. by two
+    // short slides at one place
+    k -= r - l;
+    while (++l < r && x[l] !== ' ');
+    while (--r > l && x[r] !== ' ');
+    let s = r;
+    while (--s > l && x[s] !== ' ');
+    if (s > l) b = Math.max(b, r - l + 1);
   }
   return b;
 }

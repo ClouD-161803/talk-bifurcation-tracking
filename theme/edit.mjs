@@ -1564,13 +1564,18 @@ var words = (x) => x.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 function core(x, y) {
   if (x.length > y.length) [x, y] = [y, x];
   x = ` ${x} `;
-  let h = x.length >> 1, k = y.length, b = 0, p = -1;
-  while (k > 0 && ~(p = y.indexOf(x[h], ++p))) {
+  const h = x.length >> 1, c = x[h];
+  let k = y.length, b = 0, p = -1;
+  while (k > 0 && ~(p = y.indexOf(c, ++p))) {
     let l = h, r = h;
     while (x[--l] === y[l + p - h]) ;
     while (x[++r] === y[r + p - h]) ;
-    k -= r - l, l = x.indexOf(" ", l + 1), r = x.lastIndexOf(" ", r - 1);
-    if (x.lastIndexOf(" ", r - 1) > l) b = Math.max(b, r - l + 1);
+    k -= r - l;
+    while (++l < r && x[l] !== " ") ;
+    while (--r > l && x[r] !== " ") ;
+    let s = r;
+    while (--s > l && x[s] !== " ") ;
+    if (s > l) b = Math.max(b, r - l + 1);
   }
   return b;
 }
