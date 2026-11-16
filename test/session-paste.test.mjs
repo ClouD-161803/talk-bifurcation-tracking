@@ -118,16 +118,16 @@ test('a copy in a session', { timeout: 180_000 }, async (t) => {
     assert.equal((await status(ben)).message.includes('not copied'), false);
   });
 
-  await t.test('asks a plain deck for the talk folder of the session, without its key', async (t) => {
+  await t.test('asks a plain deck for the talk folder of the session that it was copied from, without its key', async (t) => {
     const b = await openDeck(browser, `${stat.origin}/${B}?${QUERY}`, B);
     t.after(() => b.close());
     await pasteSlides(b, FIRST_B, text);
     const asked = await answer(b, 'Paste Without Files');
-    assert.ok(asked.includes('The images, videos, and backdrops that you pasted are files in the talk folder of the session.'), asked);
+    assert.ok(asked.includes('The images, videos, and backdrops that you pasted are files in the talk folder of the session that you copied from.'), asked);
     assert.ok(!asked.includes(server.edit.key), asked);
     await pasted(b);
     const { message } = await status(b);
-    assert.ok(message.endsWith('media/fig.png was not copied from the talk folder of the session.'), message);
+    assert.ok(message.endsWith('media/fig.png was not copied from the talk folder of the session that you copied from.'), message);
     // deck B does not read the file from the address of the copy
     assert.equal(b.errors.filter((e) => e.includes('session-')).length, 0, b.errors.join('\n'));
   });
