@@ -80,3 +80,32 @@ test('a text selection from an item into a held item refuses Backspace, Delete, 
   clean(ana);
   clean(ben);
 });
+
+test('a held paragraph refuses a paragraph style, a list style, and Enter, and the holder keeps typing', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  const before = await ben.evaluate(`${SECOND}.outerHTML`);
+  const cases = [
+    ['text.style.subheading', () => ben.evaluate(`${C}.app.commands.run('text.style.subheading')`)],
+    ['text.list.ul', () => ben.evaluate(`${C}.app.commands.run('text.list.ul')`)],
+    ['Enter', () => press(ben, 'Enter')],
+  ];
+  for (const [what, act] of cases) {
+    await front(ben);
+    await ben.evaluate(`(() => { const p = ${SECOND}; p.focus(); getSelection().collapse(p.firstChild, 3); })()`);
+    await unbubble(ben);
+    await act();
+    await frame(ben);
+    assert.equal(await ben.evaluate(`${SECOND}?.outerHTML`), before, `${what} leaves the paragraph as it was`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, what);
+  }
+  assert.ok(await caretOf(ben, 'Ana', SECOND), 'the caret of Ana stays in her paragraph');
+  await caretAtEnd(ana, SECOND);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<h2>Two<\/h2>\s*<p>Second slide typed more<\/p>\s*<ul>/);
+  clean(ana);
+  clean(ben);
+});
