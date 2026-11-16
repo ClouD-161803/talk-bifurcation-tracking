@@ -25,6 +25,8 @@ export function commentsShell(app: App): CommentsShell {
     frame(el, slide) {
       const at = el ?? slide;
       if (!at) return;
+      // the element is shown on the canvas, which the Slide Sorter covers
+      if (app.commands.state('view.lightTable').checked) app.commands.run('view.lightTable');
       app.showSlide(at);
       if (el) app.selection.set('elements', [el]);
     },
