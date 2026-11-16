@@ -868,6 +868,19 @@ test('two slides or two paragraphs that one replica moves in one drag while anot
   }
 });
 
+test('a slide that one person moves while typing in another slide is in the text once with the key that another person types in it, in both orders and in the merge of the editor', () => {
+  const slide = (n) => `<section>\n  <h2>S${n}</h2>\n  <p>S${n} text</p>\n</section>\n`;
+  const slides = (...n) => n.map(slide).join('');
+  const base = slides(1, 2, 3, 4);
+  for (const moved of [slides(2, 3, 4, 1).replace('S3 text', 'S3 text by Ben'), slides(2, 1, 3, 4).replace('S4 text', 'S4 text by Ben')]) {
+    for (const [how, text] of Object.entries(merges(base, moved, base.replace('S1 text', 'S1 text by Ana')))) {
+      for (const n of [1, 2, 3, 4]) assert.equal(times(text, `<h2>S${n}</h2>`), 1, `${how}: slide S${n} is in the text once`);
+      assert.equal(times(text, 'S1 text by Ana'), 1, `${how}: the key of Ana is in the text`);
+      assert.equal(times(text, ' by Ben'), 1, `${how}: the key of Ben is in the text`);
+    }
+  }
+});
+
 test('a list deleted while another person adds an item to it keeps a new list that someone adds to another slide, in both orders, in the merge of the editor, and in a resync', () => {
   const base = ONE + TWO;
   const ana = base.replace('    <li>Alpha</li>\n', '    <li>Alpha</li>\n    <li>Beta</li>\n');
