@@ -1533,6 +1533,14 @@ test('Show changes tints the children of a slide to which the theme appends a li
   });
 });
 
+test('Show changes tints a paragraph with a dollar or a backslash that MathJax shows as written, and leaves out math', { timeout: 300_000 }, async (t) => {
+  // the deck does not load MathJax, hence the text nodes read as the text, and the math is left out
+  // by its delimiters alone
+  const lines = [String.raw`Costs $5 a seat typed`, String.raw`Run <code>C:\talk\Edit.cmd</code> typed`, String.raw`In the editor, <code>\cite{</code> opens it, typed`, String.raw`Then <code>\refresh</code> typed`, String.raw`A formula \(x^2\) typed`, String.raw`A display \[x^2\] typed`, String.raw`A break \\ typed`, String.raw`A price \$5 typed`, String.raw`An \begin{align}x\end{align} typed`, String.raw`See \ref{e1} typed`, String.raw`See \eqref{e1} typed`, '<MATH><mi>x</mi></MATH> typed', '<script>0</script> typed'];
+  const seen = await tintsOf(t, [{ name: 'math', html: lines.map((l) => `<p>${l}</p>`).join('\n  '), marks: lines.map((_, k) => ['typed', k]) }]);
+  assert.deepEqual(seen, { math: { tints: ['typed in p[0]', 'typed in p[1]', 'typed in p[2]', 'typed in p[3]'], outlined: lines.map((_, k) => `p[${k}]`) } });
+});
+
 const OVERWRITTEN = 'A change of index.html from outside replaced text of this session. The text is kept in Version History.';
 
 // the toasts of the page stay until they are pressed, since a slow runner may take more than their 6 s
