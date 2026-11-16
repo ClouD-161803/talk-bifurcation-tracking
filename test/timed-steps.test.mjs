@@ -5,6 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { isDeepStrictEqual } from 'node:util';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 import { press } from './helpers/editor.mjs';
 
@@ -29,10 +30,26 @@ async function open(t) {
 }
 
 // the slide and the texts of the visible fragments
-const state = (page) => page.evaluate(`({
+const STATE = `({
   slide: Reveal.getIndices().h,
   shown: [...Reveal.getCurrentSlide().querySelectorAll('.fragment.visible')].map((f) => f.textContent).filter(Boolean),
-})`);
+})`;
+const state = (page) => page.evaluate(STATE);
+
+// opens the deck and sends keys, whose last key is meant to reach the page during a delay, at the
+// state at. the state at each key is recorded in the page, since on a slow machine a key may reach
+// it after the delay. a late key is sent again on a new page, twice at most
+async function inDelay(t, keys, at) {
+  for (let n = 0; ; n++) {
+    const page = await open(t);
+    await page.evaluate(`window.addEventListener('keydown', () => (window.keys ??= []).push(${STATE}), true)`);
+    await keys(page);
+    const seen = (await page.evaluate('window.keys')).at(-1);
+    if (isDeepStrictEqual(seen, at)) return page;
+    assert.ok(n < 2, `the last key reaches the page at ${JSON.stringify(seen)} in three tries, and not during the delay at ${JSON.stringify(at)}`);
+    t.diagnostic(`the last key reaches the page late, at ${JSON.stringify(seen)}, and is sent again`);
+  }
+}
 
 // the state once nothing changes for QUIET ms
 async function settled(page) {
@@ -125,11 +142,12 @@ test('the restore step of a slide without a delay on its last step waits for a k
 });
 
 test('a key during a delay shows the next step at once, the later delays still play, and Back lands on the step of the key', async (t) => {
-  const page = await open(t);
-  await press(page, 'ArrowRight');
-  assert.deepEqual(await settled(page), { slide: 1, shown: [] });
-  await press(page, 'ArrowRight');
-  await press(page, 'ArrowRight');
+  const page = await inDelay(t, async (page) => {
+    await press(page, 'ArrowRight');
+    assert.deepEqual(await settled(page), { slide: 1, shown: [] });
+    await press(page, 'ArrowRight');
+    await press(page, 'ArrowRight');
+  }, { slide: 1, shown: ['Click'] });
   assert.deepEqual(await settled(page), { slide: 1, shown: ALL });
   // the second step was reached by the key, and its delay is not started again
   await press(page, 'ArrowLeft');
