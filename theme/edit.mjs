@@ -106,14 +106,53 @@ function diff(a, b, max) {
   }
   return hunks;
 }
-function changes(base, theirs) {
+var SECTION = /^[ \t]*<section[\s>]/m;
+function slidesOf(lines) {
+  const out = /* @__PURE__ */ new Map(), open2 = [];
+  lines.forEach((line, i) => {
+    const t = line.trimStart();
+    if (/^<section[\s>]/.test(t) && !t.includes("</section")) open2.push(i);
+    const from = t.startsWith("</section") ? open2.pop() : void 0;
+    if (from === void 0) return;
+    const text = lines.slice(from, i + 1).join("");
+    out.set(text, [out.has(text) ? -1 : from, i + 1 - from]);
+  });
+  return out;
+}
+function markMoved(a, b) {
+  const inB = slidesOf(b);
+  let end = 0;
+  const pairs2 = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
+  const best = pairs2.map((p) => p[2]), prev = pairs2.map(() => -1);
+  pairs2.forEach((p, i) => pairs2.forEach((q, j) => {
+    if (j < i && q[1] < p[1] && best[j] + p[2] > best[i]) [best[i], prev[i]] = [best[j] + p[2], j];
+  }));
+  const kept = /* @__PURE__ */ new Set();
+  for (let i = best.indexOf(Math.max(...best)); i >= 0; i = prev[i]) kept.add(i);
+  if (kept.size === pairs2.length) return null;
+  const x = [...a], y = [...b];
+  pairs2.forEach(([from, to, n], i) => {
+    for (let k = 0; k < n && !kept.has(i); k++) [x[from + k], y[to + k]] = ["\0a", "\0b"];
+  });
+  return [x, y];
+}
+function changes(base, theirs, marks = true) {
   if (base === theirs) return [];
   const a = linesOf(base), b = linesOf(theirs);
-  let pre = 0;
-  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-  let suf = 0;
-  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-  const hunks = diff(a.slice(pre, a.length - suf), b.slice(pre, b.length - suf), MAX_LINES);
+  let x = a, y = b, pre = 0, suf = 0;
+  const trim = () => {
+    pre = suf = 0;
+    while (pre < x.length && pre < y.length && x[pre] === y[pre]) pre++;
+    while (suf < x.length - pre && suf < y.length - pre && x[x.length - 1 - suf] === y[y.length - 1 - suf]) suf++;
+  };
+  trim();
+  const slides = (l) => l.slice(pre, l.length - suf).join("").split(SECTION).length;
+  const moved2 = marks && slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
+  if (moved2) {
+    [x, y] = moved2;
+    trim();
+  }
+  const hunks = diff(x.slice(pre, x.length - suf), y.slice(pre, y.length - suf), MAX_LINES);
   if (!hunks) return null;
   const oa = offsets(a), ob = offsets(b);
   const out = [];
@@ -132,7 +171,25 @@ function changes(base, theirs) {
     removed += end - start2;
     out.push({ start: start2, end, text });
   }
-  return removed > base.length / 2 ? null : out;
+  const paired = moved2 ? moves(base, out, out, () => true) : [];
+  if (moved2 && out.some((e) => base.slice(e.start, e.end).includes("\n") && !paired.includes(e))) return changes(base, theirs, false);
+  return removed > base.length / 2 && !moved2 ? null : out;
+}
+function moves(base, list, others, hit) {
+  const out = [], cut = /* @__PURE__ */ new Map(), put = new Map(cut);
+  let n = 0;
+  for (const e of list) {
+    const w = !e.text && (base[e.start - 1] ?? "\n") + base[e.end - 1] === "\n\n", by = w ? cut : put;
+    const t = (w ? base.slice(e.start, e.end) : e.start === e.end ? e.text : "").replace(/\s*\n\s*/g, "\n").trim();
+    if (/(^|>)[^<]*[^\s<]/.test(t)) by.set(t, by.has(t) ? null : e);
+  }
+  for (const [t, f] of put) {
+    let r = t + "\n";
+    const g = [f];
+    for (const [k, e] of cut) if (e && r.startsWith(k + "\n")) r = r.slice(g.push(e) && k.length + 1);
+    if (f && !r && (n += g.length) && g.some((x) => others.some((o) => hit(x, o)))) out.push([t, g]);
+  }
+  return out.flatMap(([t, g]) => n === list.length || /^<section[\s>][^]*\/section>$/.test(t) ? g : []);
 }
 
 // src/editor/tokens.ts
@@ -398,7 +455,7 @@ function combine(first2, second) {
   }
   return out;
 }
-function mergePatches(theirs, ours, wins = "ours") {
+function mergePatches(theirs, ours, wins = "ours", base, keep2) {
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
   let k = 0, any = false;
   for (let i = 0; i < ours.length; i++) {
@@ -411,6 +468,8 @@ function mergePatches(theirs, ours, wins = "ours") {
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
+  const gone = new Set(!base ? [] : [[ours, theirs, "ours"], [theirs, ours, "theirs"]].flatMap(([a, b, s]) => keep2 === s ? [] : moves(base, a, b, conflict)));
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, keep2).patches, conflicts };
   const keptTheirs = wins === "ours" ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === "ours" ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
@@ -645,6 +704,7 @@ function aligned(base, a0, a1, text, b0, b1, unit) {
   }
   return out;
 }
+var byWords = (base, p) => aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS);
 function cap(base, patches) {
   if (patches.length <= MAX_PATCHES) return patches;
   const run = Math.ceil(patches.length / MAX_PATCHES);
@@ -1455,7 +1515,7 @@ var visibility = (t) => {
   const a = t.attrs.find((x) => x.name === "data-visibility");
   return a?.value ? decodeAttr(a.value) : "";
 };
-function slidesOf(text, tokens = tokenize(text)) {
+function slidesOf2(text, tokens = tokenize(text)) {
   const tops = [];
   const stack = [];
   for (const t of tokens) {
@@ -1937,12 +1997,12 @@ function shiftedSlides(before2, patches, after, s0) {
   return { s1, to: Int32Array.from(s0.keys()), kept };
 }
 function matchedSlides(before2, s0, after, patches) {
-  const s1 = slidesOf(after);
+  const s1 = slidesOf2(after);
   return { s1, ...matchSlides(before2, s0, after, s1, patches) };
 }
 var squeeze = (text) => text.replace(/\n[ \t]*/g, "\n");
 function slow(before2, patches, after, items, given) {
-  const s0 = given ?? slidesOf(before2);
+  const s0 = given ?? slidesOf2(before2);
   const { s1, to, kept } = shiftedSlides(before2, patches, after, s0) ?? matchedSlides(before2, s0, after, patches);
   const index = new Map(s0.map((s, i) => [s.start, i]));
   const inserted = insertedSpans(patches);
@@ -2120,7 +2180,7 @@ function findChecked(text, a, c) {
   }
   return null;
 }
-function checkAnchors(text, items, slides = slidesOf(text), checks = []) {
+function checkAnchors(text, items, slides = slidesOf2(text), checks = []) {
   const starts = new Map(slides.map((s) => [s.start, s]));
   const out = items.map((it, k) => {
     if (!it.anchor) return withRemoved(null, null, it.removed);
@@ -2264,6 +2324,7 @@ var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeN
 
 // src/edit/relay.ts
 var RELAY_BODY = 16 * 1024 * 1024;
+var RELAY_ANSWER = 64 * 1024 * 1024;
 var PULLS = 4;
 var FILE_ANSWERS = 8;
 function configFile() {
@@ -2426,7 +2487,7 @@ var RelayLink = class {
       response = { status: 502, headers: { "Content-Type": "text/plain" } };
       body = Buffer.from(e.message);
     }
-    if (body.length > RELAY_BODY) {
+    if (body.length > RELAY_ANSWER) {
       response = { status: 413, headers: { "Content-Type": "text/plain" } };
       body = Buffer.from("the answer is too large for the relay");
     }
@@ -2832,7 +2893,7 @@ var Comments = class {
     const a = range(anchor);
     const s = range(slide);
     if (a === void 0 || s === void 0) return fail(400, "anchor and slide must be ranges or null");
-    const slides = slidesOf(text);
+    const slides = slidesOf2(text);
     let slideTag = null;
     if (s) {
       slideTag = slideAnchorAt(slides, s.start);
@@ -3132,6 +3193,48 @@ function moveMarks(marks, patches, author) {
   }
   return tidy(out);
 }
+function compose(a, b) {
+  const out = [];
+  let i = 0;
+  let delta = 0;
+  const next = () => {
+    const p = a[i++];
+    delta += p.text.length - (p.end - p.start);
+    return p;
+  };
+  let [head, tail] = ["", ""];
+  for (const q of b) {
+    while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
+    const before2 = delta;
+    let [low, high, pre, post] = [q.start, q.end, "", ""];
+    const o = out[out.length - 1];
+    if (o && q.start < o.end + delta) {
+      out.pop();
+      high = o.end + delta;
+      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + tail.slice(0, tail.length - (high - q.start)), tail.slice(tail.length - (high - q.end))];
+    }
+    while (i < a.length && a[i].start + delta <= q.end) {
+      const at = a[i].start + delta;
+      const p = next();
+      if (at < low) [low, pre] = [at, p.text.slice(0, q.start - at) + pre];
+      if (at + p.text.length > high) [high, post] = [at + p.text.length, post + p.text.slice(q.end - at)];
+    }
+    [head, tail] = [pre + q.text, post];
+    if (low - before2 < high - delta || head || tail) out.push({ start: low - before2, end: high - delta, text: head + tail });
+  }
+  return out.concat(a.slice(i));
+}
+function overwrites(marks, p) {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) {
+    const m = marks[k];
+    if (m.author !== AUTHOR && (m.start === m.end ? m.start >= p.start : p.start < p.end && p.start < m.end && m.start < p.end)) return true;
+  }
+  return false;
+}
+function touches2(marks, p) {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) if (marks[k].author !== AUTHOR && marks[k].end >= p.start) return true;
+  return false;
+}
 function clip(marks, patches, author) {
   const ranges = rangesOf(patches);
   const out = [];
@@ -3205,6 +3308,9 @@ var History = class {
     this.rev = 0;
     // the count of restores
     this.restores = 0;
+    // the n of the version of the authority made by the last change from outside that replaced text
+    // that a person wrote in this run, or 0
+    this.overwritten = 0;
     // the patches from the text of the last version to index.html at the start, or null when the
     // history began at this start
     this.found = null;
@@ -3228,6 +3334,8 @@ var History = class {
     this.asides = [];
     // the last restore, with the n of the version of the authority that it made
     this.restored = null;
+    // the marks of the closed versions of people of this run, in the text before an open one
+    this.typed = [];
     this.listeners = /* @__PURE__ */ new Set();
     this.dir = dir;
     this.file = join5(dir, "history.jsonl");
@@ -3345,6 +3453,11 @@ var History = class {
     if (!at || !this.restored) return null;
     return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
   }
+  // whether a change from outside replaced text of a person after the version since of a page
+  overwrittenAfter(since) {
+    const at = parseVersion(since);
+    return !!at && at.epoch === this.authority.epoch && at.n < this.overwritten;
+  }
   // a text that a person set aside, or null when it is too large
   setAside(text, author) {
     const bytes = Buffer.from(text, "utf8");
@@ -3383,6 +3496,7 @@ var History = class {
     this.timer = null;
     const open2 = this.open;
     this.open = null;
+    if (open2 && open2.author !== AUTHOR) this.typed = moveMarks(this.typed, open2.ops, open2.author);
     if (text === this.lastText && !empty) {
       if (open2) this.writeAll();
       return null;
@@ -3432,8 +3546,8 @@ var History = class {
   }
   // a new version of text, which patches make from the text of the last version
   version(authors, patches, marks, text, time = this.now()) {
-    this.lastSlides ??= slidesOf(this.lastText);
-    const slides = slidesOf(text);
+    this.lastSlides ??= slidesOf2(this.lastText);
+    const slides = slidesOf2(text);
     const changes2 = slideChanges(this.lastText, this.lastSlides, text, slides, marks);
     this.lastSlides = slides;
     const v = { id: newId2(), time, authors, slides: changes2.slides, patches, marks };
@@ -3457,9 +3571,14 @@ var History = class {
     if (this.stopped) return;
     const t = this.clock();
     const w = this.now();
-    if (this.open && this.due(this.open, t, w)) this.close(false, void 0, this.held);
+    if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
+    if (op.author === AUTHOR) {
+      const patches = op.patches.flatMap((p) => touches2(this.typed, p) ? byWords(this.held, p) : [p]);
+      if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
+      this.typed = moveMarks(this.typed, patches, AUTHOR);
+    }
     this.held = text;
-    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author };
+    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author, ops: [] };
     open2.last = t;
     open2.time = w;
     open2.author = op.author;
@@ -3468,6 +3587,7 @@ var History = class {
       this.append({ kind: "open", author: op.author });
     }
     open2.marks = moveMarks(open2.marks, op.patches, op.author);
+    if (op.author !== AUTHOR) open2.ops = compose(open2.ops, op.patches);
     this.arm();
   }
   // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
@@ -3827,6 +3947,10 @@ var People = class {
     member.state = state;
     this.changed();
     return true;
+  }
+  // the token of a closed page forgotten, hence a later request of it is one of an unknown token
+  retire(token) {
+    this.tokens.delete(token);
   }
   // the page left, and a request of it that arrives later does not bring it back, only a hello
   bye(client) {
@@ -4948,6 +5072,7 @@ var GUEST_MEDIA_MAX = 16 * 1024 * 1024;
 var MEDIA_TYPES = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "bmp", "mp4", "m4v", "webm", "mov", "ogv", "json"]);
 var LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2e3;
 var END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1e3;
+var CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
 var AlreadyRunning = class extends Error {
   constructor(found) {
     super(`the edit command already runs for this folder at ${found.url}`);
@@ -5271,6 +5396,7 @@ async function start(options = {}) {
     }
     if (route === "hello") {
       const hello = body;
+      if (Array.isArray(hello.retire)) for (const token2 of hello.retire.slice(0, 16)) people.retire(token2);
       const joined = people.hello(hello.name, hello.person, hello.token, request.direct, hello.claim === true);
       if ("taken" in joined) return json(200, { taken: joined.taken });
       if ("empty" in joined) return error(400, "the name is empty");
@@ -5463,6 +5589,12 @@ async function start(options = {}) {
       if (restored) answer.restored = restored;
     }
   });
+  people.feed({
+    rev: () => history.overwritten,
+    write: (answer, _seen, since) => {
+      if (history.overwrittenAfter(since)) answer.overwritten = true;
+    }
+  });
   comments = new Comments(join7(root, ".session"), authority, history.found, { ...options.comments, log });
   comments.onChange(() => people.news());
   people.feed({
@@ -5512,8 +5644,8 @@ async function start(options = {}) {
       history.stopSync();
       const all = unwritten2 + (comments.stopSync() ? 0 : 1);
       written(all);
-      await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
-      await new Promise((done) => setTimeout(done, 200));
+      await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
+      await new Promise((done) => setTimeout(done, CLOSE_WAIT));
       await new Promise((done) => {
         server.close(() => done());
         setTimeout(() => {
@@ -5649,7 +5781,7 @@ var Replica = class _Replica {
   // of the last operation of sender that the text holds, as hello answers it. the edits of this
   // browser are merged into it, where the side wins at a conflict. conflicts gets the patches of
   // mine that conflicted
-  resync(text, v, applied, wins = "ours", conflicts = []) {
+  resync(text, v, applied, wins, conflicts = []) {
     const parsed = parseVersion(v);
     if (!parsed) throw new Error(`${v} is not a version`);
     const before2 = this.mine;
@@ -5657,7 +5789,7 @@ var Replica = class _Replica {
     const theirs = diff2(from, text);
     const ours = diff2(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-    const both = mergePatches(kept, ours, wins);
+    const both = mergePatches(kept, ours, wins, from, wins);
     conflicts.push(...both.conflicts);
     const merged = apply(from, both.patches);
     this.base = text;
@@ -5716,7 +5848,7 @@ var Replica = class _Replica {
   merge(text, theirs, wins, conflicts, dedupe) {
     const ours = diff2(text, this.mine);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
-    const merged = mergePatches(kept, ours, wins);
+    const merged = mergePatches(kept, ours, wins, text, dedupe && wins);
     conflicts.push(...merged.conflicts);
     return apply(text, merged.patches);
   }
@@ -5865,7 +5997,7 @@ export {
   slideAnchorAt,
   slideAt,
   slideChanges,
-  slidesOf,
+  slidesOf2 as slidesOf,
   start,
   startTagAt,
   tokenize,

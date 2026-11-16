@@ -7,7 +7,7 @@
 // saved text. the files are given to the page over the DevTools protocol, without the clipboard
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
@@ -31,6 +31,20 @@ const LIGHT = '<img class="for-light" src="../../demo/figure-light.png" alt="A f
 const WHITE_FIGURE = '<img class="white-figure" src="../../demo/figure-light.png" alt="A white raster figure">';
 const CLIP = '<video src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop></video>';
 
+// a deck whose image, video, and PDF figure are shown in dark mode only, each with a step, without a
+// twin for light mode
+const HIDDEN_DECK = 'test/pages/media-hidden.tmp.html';
+const HIDDEN_IMAGE = '<img class="for-dark fragment fade-up faint" src="../../demo/figure-dark.png" style="width: 400px; rotate: 5deg" data-fragment-index="1" alt="A plot">';
+const HIDDEN_PDF = '<img class="for-dark fragment" src="../../demo/figure-dark.png" data-pdf="figure.pdf" data-page="2" alt="A page">';
+const HIDDEN_VIDEO = '<video class="for-dark fragment play" src="../../demo/clip-dark.mp4" poster="../../demo/clip-dark.png" muted loop data-fragment-index="1"></video>';
+function writeHiddenDeck() {
+  const layouts = readFileSync(LAYOUTS, 'utf8');
+  const head = layouts.slice(0, layouts.indexOf('<div class="slides">') + '<div class="slides">'.length);
+  const tail = layouts.slice(layouts.lastIndexOf('</div>\n</div>'));
+  const slide = (title, picture) => `<section class="figure">\n  <h2>${title}</h2>\n  <div class="plate">\n    ${picture}\n  </div>\n</section>\n`;
+  writeFileSync(HIDDEN_DECK, `${head}\n${slide('A hidden image', HIDDEN_IMAGE)}${slide('A hidden video', HIDDEN_VIDEO)}${slide('A hidden PDF figure', HIDDEN_PDF)}${tail}`);
+}
+
 let browser;
 let server;
 before(async () => {
@@ -40,6 +54,7 @@ before(async () => {
 after(async () => {
   await browser?.close();
   server?.close();
+  rmSync(HIDDEN_DECK, { force: true });
 });
 
 let last = null;
@@ -51,7 +66,7 @@ const undo = (page) => page.evaluate('window.BeesonEditor.undo()');
 const redo = (page) => page.evaluate('window.BeesonEditor.redo()');
 const status = (page) => page.evaluate('window.BeesonEditor.status()');
 const frames = (page) => page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
-const url = (platform) => `${server.origin}/${LAYOUTS}?edit&still&edit-platform=${platform}`;
+const url = (platform, deck = LAYOUTS, query = '') => `${server.origin}/${deck}?edit&still&edit-platform=${platform}${query}`;
 
 // the storage of the origin emptied: the drafts, the files kept for them, and the private file system
 const CLEAR = `(async () => {
@@ -96,7 +111,7 @@ const HOLD = `(() => {
 
 // with drafts, the page keeps its unsaved edits in the storage of the browser. with hold, the
 // database of the kept files is opened only once window.__release is called
-async function load(platform, { clear = true, drafts = false, hold = false } = {}) {
+async function load(platform, { clear = true, drafts = false, hold = false, deck = LAYOUTS, query = '' } = {}) {
   await last?.close().catch(() => {});
   const page = await browser.newPage({ drafts });
   last = page;
@@ -106,10 +121,10 @@ async function load(platform, { clear = true, drafts = false, hold = false } = {
     await page.evaluate(CLEAR);
   }
   if (hold) await page.send('Page.addScriptToEvaluateOnNewDocument', { source: HOLD });
-  await page.goto(url(platform));
+  await page.goto(url(platform, deck, query));
   await page.waitFor(deckSettled);
   await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
-  page.source = readFileSync(LAYOUTS, 'utf8');
+  page.source = readFileSync(deck, 'utf8');
   return page;
 }
 
@@ -477,5 +492,35 @@ for (const platform of PLATFORMS) {
     assert.equal(result.draft, 0);
     await page.waitFor(`${ROWS}.then((rows) => rows.length === 0)`);
     assert.deepEqual(errors(page), []);
+  });
+
+  // the twin added for the mode shown shares every attribute, class, and declaration of the hidden
+  // picture other than its files and its mode, as the twin of a PDF figure does
+  test(`${platform}: Replace… on a picture hidden by the mode adds a twin with its step`, async () => {
+    writeHiddenDeck();
+    const cases = [
+      [0, '.plate', IMAGE, HIDDEN_IMAGE, '<img class="for-light fragment fade-up faint" src="media/figure-light.png" style="width: 400px; rotate: 5deg" data-fragment-index="1" alt="A plot">'],
+      [1, '.plate', VIDEO, HIDDEN_VIDEO, '<video class="for-light fragment play" src="media/clip-dark.mp4" poster="media/clip-dark.png" muted loop data-fragment-index="1"></video>'],
+      // an image that is not a render of the PDF is not a PDF figure
+      [2, '.plate', IMAGE, HIDDEN_PDF, '<img class="for-light fragment" src="media/figure-light.png" alt="A page">'],
+    ];
+    for (const [n, slot, file, hidden, twin] of cases) {
+      const page = await mediaPage(platform, n, { deck: HIDDEN_DECK, query: '&theme=light' });
+      await click(page, await centerOf(page, `.reveal section.present ${slot}`));
+      await frames(page);
+      assert.match((await state(page, 'media.replace')).label, /Light Mode/);
+      const replaced = exec(page, 'media.replace');
+      await choose(page, [file]);
+      await replaced;
+      await waitText(page, 'class="for-light');
+      const text = await render(page);
+      const tags = text.match(/<(img|video) class="for-light[^>]*>(<\/video>)?/g);
+      assert.deepEqual(tags, [twin]);
+      assert.equal(text.replace(/\s*<(img|video) class="for-light[^>]*>(<\/video>)?/, ''), page.source);
+      assert.ok(text.includes(`${hidden}\n`), 'the hidden picture was changed');
+      await undoRedo(page, page.source, text);
+      await inScope(page);
+      assert.deepEqual(errors(page), []);
+    }
   });
 }

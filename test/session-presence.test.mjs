@@ -140,6 +140,8 @@ test('a selection is read at its element after another person inserts text and a
   await until(() => ana.evaluate('window.__held.length > 0'), 'the state of Ana with the list item');
   await caretAtEnd(ben, el(1, 'p'));
   await typeKeys(ben, ' with more words');
+  // Ben leaves his text, whose frame the page of Cy would draw as well
+  await ben.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
   await show(cy, 'One');
   await cy.evaluate(`${C}.app.commands.run('slide.new')`);
   await converge(server, [ana, ben, cy]);

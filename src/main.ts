@@ -295,8 +295,9 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   // must be on the page to be edited
   // the show in the frame of the editor posts its events to the editor. the option is not in the
   // address, which the speaker view copies into its frame of the upcoming slide, whose events
-  // would then move the show a step on
-  const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
+  // would then move the show a step on. reveal.js gives the focus to the body when a hidden page is
+  // shown again, for its own keys, which are off in the editor
+  const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
   await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
 
   initChrome();

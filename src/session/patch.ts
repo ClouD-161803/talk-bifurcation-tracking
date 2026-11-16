@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes } from '../editor/merge.ts';
+import { changes, moves } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -146,8 +146,10 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
-// conflict with a patch of theirs
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours'): { patches: Patch[]; conflicts: Patch[] } {
+// conflict with a patch of theirs. with the text base of both, a move of either side that conflicts
+// is left out whole, see mergeEdits(), apart from a move of the side keep, which the dialog after a
+// break decides
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, keep?: 'ours' | 'theirs' | false): { patches: Patch[]; conflicts: Patch[] } {
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
@@ -162,6 +164,8 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
+  const gone = new Set(!base ? [] : ([[ours, theirs, 'ours'], [theirs, ours, 'theirs']] as const).flatMap(([a, b, s]) => (keep === s ? [] : moves(base, a, b, conflict))));
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, keep).patches, conflicts };
   const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
@@ -444,6 +448,9 @@ function aligned(base: string, a0: number, a1: number, text: string, b0: number,
   }
   return out;
 }
+
+// a patch of base aligned again by words, hence narrowed to the words that differ
+export const byWords = (base: string, p: Patch): Patch[] => aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS);
 
 // at most MAX_PATCHES patches, since valid() refuses more, with neighbors joined in runs of one
 // length, hence a conflict covers one run

@@ -76,7 +76,7 @@ export class Sync {
   }
 
   // the whole text of the authority at v, into which the edits of this page are merged
-  resync(text: string, v: Version, wins: Side = 'ours'): string | null {
+  resync(text: string, v: Version, wins?: Side): string | null {
     this.lost = false;
     const applied = this.applied;
     this.applied = undefined;

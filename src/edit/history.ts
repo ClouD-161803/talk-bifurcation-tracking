@@ -15,7 +15,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncat
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
-import { apply, copy, diff } from '../session/patch.ts';
+import { apply, byWords, copy, diff } from '../session/patch.ts';
 import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
@@ -46,7 +46,8 @@ export type HistoryOptions = {
 type Version = VersionInfo & { patches: Patch[]; marks: Mark[] };
 
 // first and last are times of clock, since and time of now
-type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string };
+// ops are the patches of the operations of a version of people as one operation of the text of the version before
+type Open = { first: number; last: number; since: number; time: number; authors: Set<string>; marks: Mark[]; author: string; ops: Patch[] };
 
 type Range = { start: number; end: number };
 
@@ -147,6 +148,66 @@ export function moveMarks(marks: Mark[], patches: Patch[], author: string): Mark
   return tidy(out);
 }
 
+// a and then b as one operation of the text before a, where b is an operation of the text after a.
+// a character is kept unless an operation wrote over it or removed it, whereas the diff of the two
+// texts may place a change at another equal text
+function compose(a: Patch[], b: Patch[]): Patch[] {
+  const out: Patch[] = [];
+  let i = 0;
+  // the length that the patches of a before i add
+  let delta = 0;
+  const next = () => {
+    const p = a[i++];
+    delta += p.text.length - (p.end - p.start);
+    return p;
+  };
+  // the text of the last patch of out is head and then tail, where tail is the end of a patch of a
+  // that a later q may replace. only tail is sliced, since V8 copies a joined string to slice it
+  let [head, tail] = ['', ''];
+  for (const q of b) {
+    while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
+    // low and high are the ends of the text after a that q and the patches of a that meet it
+    // replace
+    const before = delta;
+    let [low, high, pre, post] = [q.start, q.end, '', ''];
+    // q starts before o.end + delta only in the text of a patch of a that o, the last patch, took
+    // in, hence q is joined to o
+    const o = out[out.length - 1];
+    if (o && q.start < o.end + delta) {
+      out.pop();
+      high = o.end + delta;
+      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + tail.slice(0, tail.length - (high - q.start)), tail.slice(tail.length - (high - q.end))];
+    }
+    while (i < a.length && a[i].start + delta <= q.end) {
+      const at = a[i].start + delta;
+      const p = next();
+      if (at < low) [low, pre] = [at, p.text.slice(0, q.start - at) + pre];
+      if (at + p.text.length > high) [high, post] = [at + p.text.length, post + p.text.slice(q.end - at)];
+    }
+    [head, tail] = [pre + q.text, post];
+    if (low - before < high - delta || head || tail) out.push({ start: low - before, end: high - delta, text: head + tail });
+  }
+  return out.concat(a.slice(i));
+}
+
+// whether patch p of a change from outside replaces text of marks that a person wrote, or writes
+// where a person removed text. the marks are sorted, and only an empty mark may lie inside another
+// one, hence the marks are walked back from p to a mark of characters that ends before it
+function overwrites(marks: Mark[], p: Patch): boolean {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) {
+    const m = marks[k];
+    if (m.author !== AUTHOR && (m.start === m.end ? m.start >= p.start : p.start < p.end && p.start < m.end && m.start < p.end)) return true;
+  }
+  return false;
+}
+
+// whether a mark of a person lies in p or touches its ends, walked as in overwrites(). the words
+// of a patch that touches none are not aligned, since they cannot keep a word of a person
+function touches(marks: Mark[], p: Patch): boolean {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) if (marks[k].author !== AUTHOR && marks[k].end >= p.start) return true;
+  return false;
+}
+
 // the marks of a version kept to the ranges that the version changed, since a change made and
 // undone in one version is not a change of it. a range without a mark is given to the author of
 // the nearest mark that was left out, as when the diff of the version places a change at another
@@ -244,6 +305,9 @@ export class History {
   rev = 0;
   // the count of restores
   restores = 0;
+  // the n of the version of the authority made by the last change from outside that replaced text
+  // that a person wrote in this run, or 0
+  overwritten = 0;
   // the patches from the text of the last version to index.html at the start, or null when the
   // history began at this start
   readonly found: { before: string; patches: Patch[] } | null = null;
@@ -283,6 +347,8 @@ export class History {
   private asides: AsideInfo[] = [];
   // the last restore, with the n of the version of the authority that it made
   private restored: { n: number; told: Restored } | null = null;
+  // the marks of the closed versions of people of this run, in the text before an open one
+  private typed: Mark[] = [];
   private listeners = new Set<() => void>();
 
   // dir is the .session folder of the talk
@@ -413,6 +479,12 @@ export class History {
     return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
   }
 
+  // whether a change from outside replaced text of a person after the version since of a page
+  overwrittenAfter(since: unknown): boolean {
+    const at = parseVersion(since);
+    return !!at && at.epoch === this.authority.epoch && at.n < this.overwritten;
+  }
+
   // a text that a person set aside, or null when it is too large
   setAside(text: string, author: string): AsideInfo | null {
     const bytes = Buffer.from(text, 'utf8');
@@ -452,6 +524,10 @@ export class History {
     this.timer = null;
     const open = this.open;
     this.open = null;
+    // typed takes in a version of people when it closes, which a change from outside does first. the
+    // characters of the version are given to its last author, since overwrites() does not tell
+    // people apart. typed is moved over a change from outside at each operation
+    if (open && open.author !== AUTHOR) this.typed = moveMarks(this.typed, open.ops, open.author);
     if (text === this.lastText && !empty) {
       // the lines of the open version are taken out of the file, so that a later start does not
       // give its authors to a change from outside
@@ -537,10 +613,18 @@ export class History {
     if (this.stopped) return;
     const t = this.clock();
     const w = this.now();
-    // the timer is late after a sleep, hence a version that is due is closed on the text before op
-    if (this.open && this.due(this.open, t, w)) this.close(false, undefined, this.held);
+    // the timer is late after a sleep, hence a version that is due is closed on the text before op.
+    // a change from outside is a version of its own, so that the text that it replaces is kept
+    if (this.open && (this.due(this.open, t, w) || (op.author === AUTHOR) !== (this.open.author === AUTHOR))) this.close(false, undefined, this.held);
+    if (op.author === AUTHOR) {
+      // a patch of diff() over a line or a run of cap() keeps words, hence the patches are aligned
+      // again by words, and the words that they keep stay with the people who wrote them
+      const patches = op.patches.flatMap((p) => (touches(this.typed, p) ? byWords(this.held, p) : [p]));
+      if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
+      this.typed = moveMarks(this.typed, patches, AUTHOR);
+    }
     this.held = text;
-    const open = (this.open ??= { first: t, last: t, since: w, time: w, authors: new Set(), marks: [], author: op.author });
+    const open = (this.open ??= { first: t, last: t, since: w, time: w, authors: new Set(), marks: [], author: op.author, ops: [] });
     open.last = t;
     open.time = w;
     open.author = op.author;
@@ -549,6 +633,7 @@ export class History {
       this.append({ kind: 'open', author: op.author });
     }
     open.marks = moveMarks(open.marks, op.patches, op.author);
+    if (op.author !== AUTHOR) open.ops = compose(open.ops, op.patches);
     this.arm();
   }
 

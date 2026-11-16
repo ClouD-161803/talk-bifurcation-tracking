@@ -12,6 +12,7 @@
 // and it is Paste on the slide
 
 import type { App } from '../app.ts';
+import { CLIPBOARD_REGIONS } from '../commands.ts';
 import type { Translate } from '../tags.ts';
 import { insertFiles } from '../media/actions.ts';
 import { kindOf } from '../media/store.ts';
@@ -81,6 +82,13 @@ export function elementsIn(text: string): string[] | null {
   return out.length ? out : null;
 }
 
+// the text of the editor in the HTML of a clipboard, from its mark on, past the tags that the system
+// clipboard puts before it, e.g. the meta of the charset on a Mac and the fragment of Windows, or ''
+function markedHtml(html: string): string {
+  const at = html.indexOf(MARK);
+  return at >= 0 && !html.slice(0, at).replace(/<[^>]*>/g, '').trim() ? html.slice(at) : '';
+}
+
 // the words of the elements or slides of a text of the clipboard, without their notes, on one line
 function wordsOf(text: string): string {
   const body = new DOMParser().parseFromString(text, 'text/html').body;
@@ -111,13 +119,16 @@ function nextKept(el: Element): Node | null {
 // sources. the pastes made while the sources were on the slide are kept for when they are deleted.
 // boxes are the boxes of the sources at the copy, where a copy that is not in the flow is pasted
 type Away = { pastes: Element[][]; base?: Box[] };
-type Clip = { text: string; sources: Element[]; paths: string[][]; pasted: number; html?: string; away?: Map<Element, Away>; boxes?: Box[] };
+// plain is the plain text of a copy whose elements are on the clipboard as HTML only
+type Clip = { text: string; sources: Element[]; paths: string[][]; pasted: number; html?: string; plain?: string; away?: Map<Element, Away>; boxes?: Box[] };
 let clip: Clip | null = null;
 
-function copy(app: App, els: Element[], data: DataTransfer | null): void {
+// plain is the plain text, e.g. the TeX of a display copied from its TeX field, whose elements are
+// then read from the HTML of the clipboard
+function copy(app: App, els: Element[], data: DataTransfer | null, plain?: string): void {
   const text = clipText(app, els);
-  clip = { text, sources: els, paths: els.map(pathOf), pasted: 0, boxes: els.map((el) => boxOf(app, el)) };
-  write(data, text, text);
+  clip = { text, sources: els, paths: els.map(pathOf), pasted: 0, boxes: els.map((el) => boxOf(app, el)), plain };
+  write(data, plain ?? text, text);
 }
 
 function write(data: DataTransfer | null, plain: string, html: string): void {
@@ -418,6 +429,8 @@ async function readMedia(): Promise<File[]> {
 
 export const inText = (app: App) => app.selection.kind === 'text' || app.region() === 'text' || !!fieldOf(app);
 const onSlides = (app: App) => app.region() === 'navigator' || app.selection.kind === 'slides';
+// the focus on the canvas, or on a control of a pane, where the clipboard keys act on the slide
+const onSlide = (app: App) => CLIPBOARD_REGIONS.includes(app.region());
 
 // whether the range of the document is not collapsed, i.e. a text has something to cut or copy, as
 // in both apps, where Cut and Copy are disabled at a caret
@@ -524,7 +537,12 @@ export function install(app: App): void {
       // new table, as by the key. a copy of another tab or of the page before a reload is read
       // from the system clipboard
       const html = (text === clip?.text ? clip.html : '') || (read && text ? await readHtml() : '');
-      if (!(await pasteRange(a, text, html)) && a.region() === 'canvas') await pasteTable(a, text, html);
+      // elements copied with another plain text, e.g. a display from its TeX field, are read from
+      // the HTML, or from the copy of this page where the browser does not give the HTML
+      const marked = markedHtml(html) || (clip?.plain && text === clip.plain ? clip.text : '');
+      const inHtml = elementsIn(marked);
+      if (inHtml) await arrive(a, marked, inHtml, (from) => pasteElements(a, from));
+      else if (!(await pasteRange(a, text, html)) && onSlide(a)) await pasteTable(a, text, html);
     }
   };
   c.define({
@@ -576,27 +594,39 @@ export function install(app: App): void {
     },
   });
 
-  // the keys of the clipboard on the canvas act on the selected elements, and a paste of slides on
-  // the canvas adds them after the current slide. in a text and in the navigator, the events are
-  // left to the browser and to commands/slide.ts
+  // the keys of the clipboard on the canvas, and on a control of a pane, act on the selected
+  // elements, and a paste of slides there adds them after the current slide. in a text, in a field,
+  // and in the navigator, the events are left to the browser and to commands/slide.ts
   const onClip = (ev: ClipboardEvent) => {
     if (ev.defaultPrevented || !ready(app)) return;
     // an image pasted on the slide, or into a text when it comes without a text, e.g. a
     // screenshot, is put on the slide, since a text element of the theme does not hold an image
-    if (ev.type === 'paste' && (app.region() === 'canvas' || app.region() === 'text')) {
+    if (ev.type === 'paste' && (onSlide(app) || app.region() === 'text')) {
       const data = ev.clipboardData;
       const text = data?.getData('text/plain') ?? '';
       const files = mediaFiles(data);
-      if (files.length && !elementsIn(text) && !slidesIn(text)?.length && (app.region() === 'canvas' || !text.trim())) {
+      if (files.length && !elementsIn(text) && !slidesIn(text)?.length && (onSlide(app) || !text.trim())) {
         ev.preventDefault();
         void c.run('edit.paste', files).catch(fail);
         return;
       }
     }
-    if (app.region() !== 'canvas') return;
+    // the TeX field of a framed display, as a click opens it with all of its TeX selected, copies
+    // the display, as Copy does, with its TeX as the plain text, which a field or another app pastes
+    if (ev.type === 'copy' && app.region() === 'dialog') {
+      const formula = app.math.wholeTex();
+      const display = app.selection.only();
+      if (!formula || !display?.matches('div.math') || !display.contains(formula)) return;
+      ev.preventDefault();
+      copy(app, [display], ev.clipboardData, (document.activeElement as HTMLTextAreaElement).value);
+      return;
+    }
+    if (!onSlide(app)) return;
     if (ev.type === 'paste') {
-      const text = ev.clipboardData?.getData('text/plain') || ev.clipboardData?.getData('text/html') || '';
-      if (!elementsIn(text) && !slidesIn(text)?.length) return;
+      // the elements are read from the HTML where the plain text is another text, e.g. the TeX
+      const data = ev.clipboardData;
+      const text = [data?.getData('text/plain') ?? '', markedHtml(data?.getData('text/html') ?? '')].find((t) => elementsIn(t) || slidesIn(t)?.length);
+      if (!text) return;
       ev.preventDefault();
       void c.run('edit.paste', text).catch(fail);
       return;

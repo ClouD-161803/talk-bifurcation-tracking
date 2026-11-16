@@ -283,7 +283,8 @@ export function install(app: App): void {
     }
   }, true);
   typed = (ev) => {
-    if (ev.isComposing || ev.key.length !== 1 || ev.key === ' ' || ev.ctrlKey || ev.metaKey || app.state !== 'loaded' || app.region() !== 'canvas') return;
+    // in Version History, the focus is on the body as well, and the shape selected before it is kept
+    if (ev.isComposing || ev.key.length !== 1 || ev.key === ' ' || ev.ctrlKey || ev.metaKey || app.state !== 'loaded' || app.region() !== 'canvas' || document.documentElement.classList.contains('beeson-history')) return;
     // an Alt key of a command, e.g. Alt+= of Insert Formula on other, runs the command
     if (ev.altKey && app.commands.forKey(ev, 'canvas')) return;
     const el = app.selection.only();

@@ -13,9 +13,10 @@ import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { launch } from '../scripts/chrome.mjs';
-import { front } from './helpers/apply.mjs';
-import { C, clean, HISTORY_KEY, ONLINE, open, sessionUrl, talk, TALK, TEXT } from './helpers/client.mjs';
-import { click, press } from './helpers/editor.mjs';
+import { caretAtEnd, front } from './helpers/apply.mjs';
+import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
+import { click, press, type } from './helpers/editor.mjs';
+import { post, raw, until } from './helpers/session.mjs';
 
 // a version is closed only when the current state is named
 const HELD = { SLIDES_HISTORY: JSON.stringify({ quiet: 3_600_000, longest: 3_600_000 }) };
@@ -250,6 +251,235 @@ test('the preview of a deck whose plugin of reveal.js starts after the page is l
   await press$(ann, BAR, 'Slide 2');
   await ann.waitFor(`${CURRENT} === 'Three'`);
   clean(ann);
+});
+
+// a name of more than about 26 characters is cut on a phone, and the selected row of the pane shows it
+const LONG = 'A much longer name of a version for the review';
+
+test('on a phone of 390 px, the bar of the preview shows a short name and the time of a version by one person in full, and the button of the changed slide next to a long name', { timeout: 720_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await show(ann, 'One');
+  for (const [typed, name] of [[' on a phone', 'Draft for review'], [' again', LONG]]) {
+    await caretAtEnd(ann, `document.querySelector('.reveal .slides > section h2')`);
+    await type(ann, typed);
+    await converge(server, [ann]);
+    await nameNow(ann, name);
+  }
+  await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await ann.waitFor(SHOWN);
+  for (const height of [844, 664]) {
+    await ann.send('Emulation.setDeviceMetricsOverride', { width: 390, height, deviceScaleFactor: 1, mobile: true });
+    await ann.waitFor(`innerWidth === 390 && innerHeight === ${height}`);
+    for (const name of ['Draft for review', LONG]) {
+      if (await ann.evaluate(`!!(${button(PANE, 'Versions')})`)) await press$(ann, PANE, 'Versions');
+      await tapOrClick(ann, rowByTitle(name));
+      await ann.waitFor(`document.querySelector('${BAR} .date').textContent.startsWith(${JSON.stringify(name)}) && document.querySelectorAll('${BAR} button.slide').length === 1`, 60_000);
+      // whether the name is cut, and whether the button of the changed slide is in view next to it
+      const date = `(() => {
+        const d = document.querySelector('${BAR} .date');
+        const strip = document.querySelector('${BAR} .slides').getBoundingClientRect();
+        const slide = document.querySelector('${BAR} button.slide').getBoundingClientRect();
+        return { text: d.textContent, cut: d.scrollWidth > d.clientWidth, who: document.querySelector('${BAR} .who').textContent, slide: slide.left >= strip.left - 0.5 && slide.right <= strip.right + 0.5 };
+      })()`;
+      const m = { ...(await ann.evaluate(MEASURE)), date: await ann.evaluate(date) };
+      assert.ok((name === LONG || !m.date.cut) && m.date.who === 'Ann' && m.date.slide && m.rows <= 2 && m.oneRow, `${name} at 390 by ${height}: ${JSON.stringify(m)}`);
+    }
+  }
+  clean(ann);
+});
+
+// a deck of 4 slides with notes, and the versions of the bar test below: the name of each length,
+// one or two authors, one or three slide buttons, and the line of the notes or none
+const NOTED = HEAD + [1, 2, 3, 4].map((k) => `\n<section>\n  <h2>Slide ${k}</h2>\n  <p>Text ${k}</p>\n  <aside class="notes">Note ${k}</aside>\n</section>\n`).join('') + TAIL;
+const BARS = [10, 26, 60].flatMap((length) => [1, 2].flatMap((authors) => [1, 3].flatMap((slides) => [false, true].map((notes) => ({ length, authors, slides, notes })))));
+
+// what the bar shows of the name, the authors, and the row of the slide buttons, whose items are
+// the buttons and the lines of the notes and of what was removed
+const VIEW = `(() => {
+  const q = (s) => document.querySelector('${BAR} ' + s);
+  const box = (el) => el.getBoundingClientRect();
+  const strip = q('.slides');
+  const items = [...strip.children].filter((c) => c.getClientRects().length && box(c).width > 0);
+  return {
+    cut: q('.date').scrollWidth > q('.date').clientWidth,
+    date: Math.round(box(q('.date')).width),
+    who: box(q('.who')).right <= box(q('.info')).right + 0.5,
+    items: items.length,
+    strip: Math.round(box(strip).width),
+    first: Math.round(box(items[0]).width),
+    second: items[1] ? Math.round(Math.min(box(strip).right, box(items[1]).right) - box(items[1]).left) : null,
+    gap: Math.round(box(strip).left - box(q('.info')).right),
+  };
+})()`;
+
+test('on a phone of 390, 360, and 320 px, the bar of the preview shows the name as far as one slide button allows, and the start of the second item of the row of the slide buttons next to a cut name', { timeout: 1_000_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const { port, base } = server.edit;
+  const api = (route) => `${base}.session/${route}`;
+  const hello = async (name) => ({ ...(await post(port, api('hello'), { name })).json(), seq: 0 });
+  // an operation of person p with the patches of the current text
+  const op = async (p, patches) => {
+    const r = await raw(port, 'GET', `${base}index.html`);
+    assert.equal((await post(port, api('op'), { token: p.token, seq: ++p.seq, base: r.headers['x-session-version'], patches: patches(r.text) })).json().ok, true);
+  };
+  const after = (p, from, to) => op(p, (text) => [{ start: text.indexOf(from) + from.length, end: text.indexOf(from) + from.length, text: to }]);
+  const cy = await open(browser, sessionUrl(server.edit), { name: 'Cy', width: 390, height: 844, mobile: true });
+  const [ann, ben] = [await hello('Ann'), await hello('Ben')];
+  await op(ann, (text) => [{ start: 0, end: text.length, text: NOTED }]);
+  await nameNow(cy, 'Deck');
+  const names = BARS.map((v, i) => `V${i + 1} Draft of the talk for the review of the bar on a phone, with notes`.slice(0, v.length).trimEnd().padEnd(v.length, 'x'));
+  for (const [i, v] of BARS.entries()) {
+    for (const [j, k] of (v.slides === 1 ? [2] : [1, 2, 3]).entries()) await after(v.authors === 2 && j % 2 ? ben : ann, `<h2>Slide ${k}`, ` v${i}`);
+    if (v.authors === 2 && v.slides === 1) await after(ben, '<p>Text 2', ` v${i}`);
+    if (v.notes) await after(ann, '>Note 2', ` v${i}`);
+    await nameNow(cy, names[i]);
+  }
+  await tapOrClick(cy, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(cy, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await cy.waitFor(SHOWN);
+  await cy.waitFor(`!!(${rowByTitle(names.at(-1))})`);
+  const rows = [];
+  const wrong = [];
+  for (const [i, v] of BARS.entries()) {
+    // the rows that the sheet of a phone hides take a click as well
+    await cy.evaluate(`${rowByTitle(names[i])}.click(), true`);
+    const notes = v.notes ? `document.querySelector('${BAR} .notes').textContent === 'Notes of Slide 2 changed'` : 'true';
+    await cy.waitFor(`document.querySelector('${BAR} .date').textContent.startsWith(${JSON.stringify(names[i] + ',')}) && document.querySelectorAll('${BAR} button.slide').length === ${v.slides} && ${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0 && ${notes}`, 20_000);
+    for (const width of [390, 360, 320]) {
+      await cy.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+      await cy.waitFor(`innerWidth === ${width} && Math.round(document.querySelector('${BAR}').getBoundingClientRect().width) === ${width}`, 3000);
+      const m = { ...(await cy.evaluate(VIEW)), rows: (await cy.evaluate(MEASURE)).rows };
+      rows.push({ width, ...v, ...m });
+      const at = `${v.length} characters, ${v.authors} authors, ${v.slides} slides${v.notes ? ', notes' : ''} at ${width} px: ${JSON.stringify(m)}`;
+      // with one slide button the name is cut only where the row holds no more than the button
+      const shown = m.items === 1 ? !m.cut || m.strip <= m.first + 12 : m.second >= 16 && m.date >= 48;
+      if (!(m.rows <= 2 && m.who && m.gap <= 12 && m.items === v.slides + (v.notes ? 1 : 0) && shown)) wrong.push(at);
+    }
+  }
+  for (const r of rows) t.diagnostic(`${r.width} px, ${r.length} characters, ${r.authors} authors, ${r.slides} slides, ${r.notes ? 'notes' : 'no notes'}: name ${r.cut ? 'cut' : 'in full'} in ${r.date} px, row of the slide buttons ${r.strip} px, second item ${r.second ?? '-'} px, ${r.rows} rows`);
+  assert.deepEqual(wrong, []);
+  clean(cy);
+});
+
+// a deck of 13 slides, of which the versions of the bar test below change 2 or 12
+const THIRTEEN = HEAD + Array.from({ length: 13 }, (_, i) => `\n<section>\n  <h2>Slide ${i + 1}</h2>\n  <p>Text ${i + 1}</p>\n</section>\n`).join('') + TAIL;
+// whether every author of the bar is inside the info and drawn in full
+const AUTHORS = `(() => {
+  const info = document.querySelector('${BAR} .info').getBoundingClientRect();
+  return [...document.querySelectorAll('${BAR} .who > *')].every((a) => a.getBoundingClientRect().right <= info.right + 0.5 && a.scrollWidth <= a.clientWidth + 0.5);
+})()`;
+
+// whether the preview is over the canvas in two rows
+const PLACED = `(() => {
+  const preview = document.querySelector('.beeson-session-preview');
+  return preview.classList.contains('two') && Math.round(preview.getBoundingClientRect().width) === Math.round(document.querySelector('.beeson-edit-canvas').getBoundingClientRect().width);
+})()`;
+
+// the waits are 60 s for the edit command to start, 20 s for index.html, 30 s for the change from
+// outside, 15 s for the page and 15 s for the pane, and 20 s per version and 3 s per width of each
+// of three versions
+test('on a phone of 390, 360, and 320 px and in a window of 1000 px, the bar of the preview of a version by four people or by a change from outside shows the date, every author, and the start of the second slide button in two rows', { timeout: 400_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const { port, base } = server.edit;
+  const api = (route) => `${base}.session/${route}`;
+  const hello = async (name) => ({ ...(await post(port, api('hello'), { name })).json(), seq: 0 });
+  const current = async () => (await raw(port, 'GET', `${base}index.html`)).text;
+  const op = async (p, patches) => {
+    const r = await raw(port, 'GET', `${base}index.html`);
+    assert.equal((await post(port, api('op'), { token: p.token, seq: ++p.seq, base: r.headers['x-session-version'], patches: patches(r.text) })).json().ok, true);
+  };
+  const after = (p, from, to) => op(p, (text) => [{ start: text.indexOf(from) + from.length, end: text.indexOf(from) + from.length, text: to }]);
+  const eve = await open(browser, sessionUrl(server.edit), { name: 'Eve', width: 390, height: 844, mobile: true });
+  const people = [await hello('Ann'), await hello('Ben'), await hello('Cy'), await hello('Dee')];
+  await op(people[0], (text) => [{ start: 0, end: text.length, text: THIRTEEN }]);
+  await nameNow(eve, 'Deck');
+  for (const k of [2, 3]) for (const [i, p] of people.entries()) await after(p, `<h2>Slide ${k}`, ` ${i}`);
+  await nameNow(eve, 'Two slides');
+  // an unnamed version, which the change from outside closes
+  for (let k = 2; k <= 13; k++) await after(people[k % 4], `<h2>Slide ${k}`, ' x');
+  const text = await current();
+  await until(() => server.read() === text, 'index.html to hold the version of four people', 20_000);
+  await write(server, eve, text.replace(/<p>Text (\d+)<\/p>/g, (m, k) => (k === '1' ? m : `<p>Text ${k}.</p>`)), 'Text 13.');
+  await nameNow(eve, 'Outside');
+  await tapOrClick(eve, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(eve, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await eve.waitFor(SHOWN);
+  await eve.waitFor(`!!(${rowByTitle('Outside')})`);
+  const versions = [
+    { row: rowByTitle('Two slides'), slides: 2, authors: 4 },
+    { row: `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelectorAll('.author').length === 4 && r.querySelector('.title').textContent !== 'Two slides')`, slides: 12, authors: 4 },
+    { row: rowByTitle('Outside'), slides: 12, authors: 1 },
+  ];
+  const wrong = [];
+  for (const v of versions) {
+    await eve.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await eve.evaluate(`${v.row}.click(), true`);
+    await eve.waitFor(`document.querySelectorAll('${BAR} button.slide').length === ${v.slides} && document.querySelectorAll('${BAR} .who > *').length === ${v.authors} && ${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0`, 20_000);
+    for (const [width, height, mobile] of [[390, 844, true], [360, 780, true], [320, 640, true], [1000, 800, false]]) {
+      await eve.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+      // the preview is laid out again over the canvas at the resize event
+      await eve.waitFor(`innerWidth === ${width} && ${PLACED}`, 3000);
+      const m = { ...(await eve.evaluate(VIEW)), rows: (await eve.evaluate(MEASURE)).rows, authors: await eve.evaluate(AUTHORS) };
+      t.diagnostic(`${v.authors} authors, ${v.slides} slides at ${width} px: ${JSON.stringify(m)}`);
+      // the date keeps 6.5 em of the font of 12 px, the authors wrap, and the bar grows instead
+      if (!(m.date >= 72 && m.who && m.authors && m.second >= 16 && m.rows <= 2)) wrong.push(`${v.authors} authors, ${v.slides} slides at ${width} px: ${JSON.stringify(m)}`);
+    }
+  }
+  assert.deepEqual(wrong, []);
+  clean(eve);
+});
+
+// the authors of the bar whose name is broken inside a word although the author is narrower than
+// the info, i.e. is squeezed next to the date
+const SQUEEZED = `[...document.querySelectorAll('${BAR} .who > *')].filter((a) => {
+  const r = document.createRange();
+  r.selectNodeContents(a);
+  const lines = new Set([...r.getClientRects()].filter((x) => x.width > 1).map((x) => Math.round(x.top)));
+  return lines.size > a.textContent.trim().split(/[\\s-]+/).length && a.getBoundingClientRect().width < document.querySelector('${BAR} .info').getBoundingClientRect().width - 1;
+}).map((a) => a.textContent)`;
+
+// the waits are 60 s for the edit command to start, 15 s for the page and 15 s for the pane, 20 s
+// for the version, and 3 s per size
+test('on a phone, the bar of the preview of a version by three people with long names breaks a name inside a word only when the name has the width of the info to itself', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const { port, base } = server.edit;
+  const api = (route) => `${base}.session/${route}`;
+  const hello = async (name) => ({ ...(await post(port, api('hello'), { name })).json(), seq: 0 });
+  const op = async (p, patches) => {
+    const r = await raw(port, 'GET', `${base}index.html`);
+    assert.equal((await post(port, api('op'), { token: p.token, seq: ++p.seq, base: r.headers['x-session-version'], patches: patches(r.text) })).json().ok, true);
+  };
+  const eve = await open(browser, sessionUrl(server.edit), { name: 'Eve', width: 390, height: 844, mobile: true });
+  const people = [await hello('Alexandra Konstantinopoulou'), await hello('Bartholomew Fitzgerald-Smythe'), await hello('Guinevere Montgomery')];
+  await op(people[0], (text) => [{ start: 0, end: text.length, text: THIRTEEN }]);
+  await nameNow(eve, 'Deck');
+  for (let k = 2; k <= 13; k++) await op(people[k % 3], (text) => [{ start: text.indexOf(`<h2>Slide ${k}`) + `<h2>Slide ${k}`.length, end: text.indexOf(`<h2>Slide ${k}`) + `<h2>Slide ${k}`.length, text: ' x' }]);
+  await nameNow(eve, 'Three');
+  await tapOrClick(eve, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(eve, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await eve.waitFor(SHOWN);
+  await eve.waitFor(`!!(${rowByTitle('Three')})`);
+  await eve.evaluate(`${rowByTitle('Three')}.click(), true`);
+  await eve.waitFor(`document.querySelectorAll('${BAR} button.slide').length === 12 && document.querySelectorAll('${BAR} .who > *').length === 3 && ${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0`, 20_000);
+  const wrong = [];
+  for (const [width, height] of [[390, 844], [320, 640], [664, 390]]) {
+    await eve.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+    await eve.waitFor(`innerWidth === ${width} && innerHeight === ${height} && ${PLACED}`, 3000);
+    const squeezed = await eve.evaluate(SQUEEZED);
+    if (squeezed.length) wrong.push(`${width} by ${height}: ${squeezed.join(', ')}`);
+  }
+  assert.deepEqual(wrong, []);
+  clean(eve);
 });
 
 test('a version that changes only the start tag of a slide outlines the slide itself', { timeout: 180_000 }, async (t) => {

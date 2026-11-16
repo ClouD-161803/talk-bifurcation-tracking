@@ -44,8 +44,10 @@ export type AppliedOp = {
 // claim takes over the person who holds the name, i.e. one person on a second device. a page passes
 // the token of its earlier hello only when the same page reconnects with its Replica in memory,
 // and it keeps its client id. a reloaded page is a new client, and it says hello without a token.
-// was is the client id under which the page sent its operation in flight, passed with the token
-export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string };
+// was is the client id under which the page sent its operation in flight, passed with the token.
+// retire names the tokens of closed pages whose copies the page took over, at most 16 of which the
+// edit command forgets, so that an operation of such a page that arrives later is not applied twice
+export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string; retire?: Token[] };
 // the answer of hello and of name when another person holds the name, and nothing is changed
 export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise.
@@ -98,7 +100,8 @@ export type WriteError = { message: string; unwritten: number; file?: 'tex.js' }
 // a page that was dropped meanwhile. comments holds the threads changed since the last answer to
 // this page. a page reads the history and the comments again after each hello, since what changed
 // before is not sent to it. tex is as in HelloAnswer, and a page draws the deck again with tex.js
-// when it changed
+// when it changed. overwritten is sent as restored is, after a change of index.html from outside
+// that replaced text that a person wrote in the session
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
@@ -111,6 +114,7 @@ export type EventsAnswer = {
   history?: number;
   restored?: Restored;
   comments?: CommentsEvent;
+  overwritten?: true;
 };
 
 // a range of the text of a version that was changed since the version before, with the person id
