@@ -307,8 +307,9 @@ for (const [what, slide, change, typed] of [
 }
 
 // a change from outside into the paragraph of an open composition is held back until it ends, and
-// then cannot be made, with a reload answer or with a rejection. the word that the input method
-// commits at the end is an edit of the person all the same
+// then cannot be made, with a reload answer or with a rejection. the composing text is not sent
+// before the end, and the word that the input method commits at the end is an edit of the person
+// all the same
 for (const [what, change] of [
   ['answers a reload', (text) => text.replace('<p>Second slide', '<p>Second <b>slide')],
   ['is rejected', (text) => text.replace('<p>Second slide', '<p>Second<div>q</div> slide')],
@@ -327,7 +328,8 @@ for (const [what, change] of [
     await caretAtEnd(b, el(1, 'p'));
     await b.send('Input.imeSetComposition', { text: 'ni', selectionStart: 2, selectionEnd: 2 });
     await b.send('Input.imeSetComposition', { text: 'nih', selectionStart: 3, selectionEnd: 3 });
-    await until(() => server.read().includes('<p>Second slidenih</p>'), 'the composing text in index.html');
+    await b.waitFor(`window.BeesonEditor.render().includes('<p>Second slidenih</p>')`);
+    assert.ok(server.read().includes('<p>Second slide</p>'), 'index.html does not hold the composing text');
     // the text of each apply that resolved, to wait for the one that holds the change back
     await b.evaluate(`(() => {
       const port = window.BeesonEditor.session;
@@ -344,7 +346,7 @@ for (const [what, change] of [
     await reloaded(pages, counts);
     const text = await converge(server, pages, 'the pages and index.html to agree', 30_000);
     // the change from outside is kept as well
-    assert.equal(text.match(/<p>Second[^\n]*/)[0], marker.replace('nih', '你好'));
+    assert.equal(text.match(/<p>Second[^\n]*/)[0], marker.replace('</p>', '你好</p>'));
   });
 }
 

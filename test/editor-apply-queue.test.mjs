@@ -251,7 +251,7 @@ test('during a composition, an apply into the composing text resolves at once an
   assert.equal(await b.evaluate(`${THANKS}.textContent`), 'Thank you Y');
   await b.waitFor(`window.__changes > ${told}`);
   const want = once(second, 'viewer\'s attention.</p>', 'viewer\'s attention.q</p>');
-  assert.equal(await sessionText(b), want, 'the text read during the composition');
+  assert.equal(await sessionText(b), second, 'the text read during the composition, without the composing text');
   assert.equal(await b.evaluate(`${P1}.textContent`), 'Design the complete slide first, then break it up into steps. Direct the viewer\'s attention.q', 'the composing text is left as it is');
   await compose(b, 'compositionend');
   await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
@@ -357,7 +357,7 @@ test('an insertion held back at the end of the composing word is kept with the c
   assert.deepEqual(b.errors, []);
 });
 
-test('a composing text that loses the focus without the end of its composition takes the change held back', async (t) => {
+test('a composing text that loses the focus without the end of its composition takes the change held back, and is read from then on', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await showSlide(b, 'Show your steps');
@@ -367,13 +367,17 @@ test('a composing text that loses the focus without the end of its composition t
   await start(b, 'first', text);
   await b.waitFor(`${E}.session.text() === ${JSON.stringify(text)}`);
   assert.equal(await b.evaluate(`${P1}.textContent.startsWith('Design')`), true, 'the change is held back');
+  await b.evaluate(`document.execCommand('insertText', false, 'q')`);
+  assert.equal(await sessionText(b), text, 'the text read during the composition, without the composing text');
+  const want = once(text, 'viewer\'s attention.</p>', 'viewer\'s attention.q</p>');
   await caretAtEnd(b, `[...document.querySelectorAll('.reveal h2')].find((h) => h.textContent.startsWith('Show your steps'))`);
   await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
-  assert.equal(await render(b), text);
+  assert.equal(await render(b), want);
+  assert.equal(await sessionText(b), want, 'the text read after the composition, with the composing text');
   assert.deepEqual(b.errors, []);
 });
 
-test('a composing text on a page that is hidden without the end of its composition takes the change held back', async (t) => {
+test('a composing text on a page that is hidden without the end of its composition takes the change held back, and is read from then on', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await showSlide(b, 'Show your steps');
@@ -383,12 +387,16 @@ test('a composing text on a page that is hidden without the end of its compositi
   await start(b, 'first', text);
   await b.waitFor(`${E}.session.text() === ${JSON.stringify(text)}`);
   assert.equal(await b.evaluate(`${P1}.textContent.startsWith('Design')`), true, 'the change is held back');
+  await b.evaluate(`document.execCommand('insertText', false, 'q')`);
+  assert.equal(await sessionText(b), text, 'the text read during the composition, without the composing text');
+  const want = once(text, 'viewer\'s attention.</p>', 'viewer\'s attention.q</p>');
   const other = await browser.newPage();
   t.after(() => other.close());
   await front(other);
   await b.waitFor('document.hidden');
   await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
-  assert.equal(await render(b), text);
+  assert.equal(await render(b), want);
+  assert.equal(await sessionText(b), want, 'the text read after the composition, with the composing text');
   assert.deepEqual(b.errors, []);
 });
 
