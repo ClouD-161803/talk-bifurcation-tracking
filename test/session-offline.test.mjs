@@ -308,7 +308,7 @@ test('a picture dropped by one page is uploaded into media/ before the operation
     await show(ann, 'One');
     await dropFiles(ann, [IMAGE]);
     // the name of the file is unique to the page while another page is in the session
-    await ann.waitFor(`/^media\\/figure-light-[0-9a-z]{4}\\.png could not be sent\\. Try again$/.test(${STATE})`);
+    await ann.waitFor(`/^Could not send media\\/figure-light-[0-9a-z]{4}\\.png\\. Try again$/.test(${STATE})`);
     assert.equal(await ann.evaluate(ACTION), 'Try again');
     assert.equal(server.read(), before);
     await ann.evaluate('window.__failMedia = false');

@@ -23,7 +23,7 @@ import { post, raw, until } from './helpers/session.mjs';
 
 const LIGHT = readFileSync(resolve('demo/figure-light.png'));
 const DARK = readFileSync(resolve('demo/figure-dark.png'));
-const FAILED = (path) => `${path} could not be sent. Try again`;
+const FAILED = (path) => `Could not send ${path}. Try again`;
 const IMG = /<img [^>]*src="(media\/[^"]+)"[^>]*>/g;
 // the media/ paths of the images of each slide of text
 const sources = (text) => text.split('<section').slice(1).map((s) => [...s.matchAll(IMG)].map((m) => m[1]));
@@ -223,7 +223,7 @@ test('the names that the edit command gives to the files of one drop are written
     await show(bea, 'One');
     await dropFiles(bea, [file(server, 'a', 'plot.png', LIGHT), file(server, 'b', 'plot-2.png', DARK)]);
     // the second file is given another name by the rename of the first
-    await bea.waitFor(`/^media\\/plot\\S*\\.png could not be sent\\. Try again$/.test(${STATE})`);
+    await bea.waitFor(`/^Could not send media\\/plot\\S*\\.png\\. Try again$/.test(${STATE})`);
     await click(bea, '.beeson-session-action');
     const [one] = sources(await converge(server, [bea]));
     assert.equal(new Set(one).size, 2, `each image names a file of its own: ${one}`);

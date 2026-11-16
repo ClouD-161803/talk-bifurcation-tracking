@@ -29,7 +29,7 @@ const VIDEO = /\.(mp4|m4v|webm|mov|ogv)$/i;
 // with the parameter session-upload-wait of the address
 const UPLOAD_WAIT = 30_000;
 const UPLOAD_PER_MB = 1000;
-export const FAILED = (path: string) => `${path} could not be sent. Try again`;
+export const FAILED = (path: string) => `Could not send ${path}. Try again`;
 // the statuses of PUT media/ of the edit command and of the relay that another try cannot change:
 // a file outside the talk folder, too many files of the name, a body or a path too large, and a
 // type that is not taken
@@ -207,7 +207,7 @@ export function install(client: Client): void {
         }
       }
     } catch (e) {
-      st.failed = f?.path || 'A file';
+      st.failed = f?.path || 'a file';
       // a token that the edit command does not know, e.g. after its restart, is known after the hello
       st.network = !(e instanceof Failure) || e.retried || e.status === 404;
     } finally {
