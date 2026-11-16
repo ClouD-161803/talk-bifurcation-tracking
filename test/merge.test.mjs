@@ -537,6 +537,23 @@ test('with twice, the same letter typed at one point by two people is kept twice
   assert.equal(twice('<p>Second slide</p>', '<p>(Second slide)</p>', '<p>(Second slide)</p>'), wrap('<p>(Second slide)</p>'));
 });
 
+// fine() reads the removal of a format as the start tag with the first letter replaced by this
+// letter, which clashes with a deletion of the letter
+test('the merge of an apply in a session takes a format off a word or changes it, and deletes the first letter of the word that another person deleted, as the replica does', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  for (const [p0, off, cut, want] of [
+    ['the <em>moon</em> here', 'the moon here', 'the <em>oon</em> here', 'the oon here'],
+    ['orbit &amp; <strong>table</strong> slide loop', 'orbit &amp; table slide loop', 'orbit &amp; <strong>able</strong> slide loop', 'orbit &amp; able slide loop'],
+    ['see <a href="https://x.org/">table</a> here', 'see table here', 'see <a href="https://x.org/">able</a> here', 'see able here'],
+    ['the <em>moon</em> here', 'the <strong>moon</strong> here', 'the <em>oon</em> here', 'the <strong>oon</strong> here'],
+  ]) {
+    const f = wrap(p0), s = wrap(off), t = wrap(cut);
+    assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(want), `${off} over ${cut}`);
+    assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, wrap(want), `${cut} over ${off}`);
+    assert.equal(applyPatches(f, mergePatches(diff(f, t), diff(f, s), 'ours', f).patches), wrap(want), `replica ${cut} over ${off}`);
+  }
+});
+
 test('the merge of an apply in a session keeps a key of another person inside a word whose bold the person removes', () => {
   // the authority takes the removal of both tags as one patch over the word, which drops the key
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
