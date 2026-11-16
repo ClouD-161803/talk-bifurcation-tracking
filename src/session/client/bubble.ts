@@ -38,11 +38,12 @@ export function bubble(near: Element | null, text: string | (string | Node)[]): 
   const el = make('div', 'beeson-bubble');
   el.append(...parts);
   document.body.append(el);
-  // under near, or over it when the window has no room below, and inside the window
+  // under near, or over it when the window has no room below, and inside the window. without near,
+  // under the title bar and the toolbar, whose buttons More, Undo, and Redo it would cover
   const r = near?.isConnected ? near.getBoundingClientRect() : null;
   const w = el.offsetWidth, h = el.offsetHeight;
   let x = r ? r.left : (innerWidth - w) / 2;
-  let y = r ? r.bottom + 8 : 72;
+  let y = ((r ?? document.querySelector('.beeson-edit-header')?.getBoundingClientRect())?.bottom ?? 64) + 8;
   if (r && y + h > innerHeight - 8) y = r.top - h - 8;
   x = Math.max(8, Math.min(x, innerWidth - w - 8));
   y = Math.max(8, Math.min(y, innerHeight - h - 8));
