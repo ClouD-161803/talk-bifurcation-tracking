@@ -11,7 +11,7 @@
 import { tokenize } from '../editor/tokens.ts';
 import { checksum, shiftOffset } from './patch.ts';
 import type { Anchor, Patch } from './protocol.ts';
-import { pairs, shared, slidesOf, VOID, type Slide } from './slides.ts';
+import { pairs, sameSlide, shared, slidesOf, VOID, type Slide } from './slides.ts';
 
 export type Anchored = { anchor: Anchor | null; slide: Anchor | null; removed?: { text: string | null; slide?: string } };
 // the items in the order given, true in changed for an item moved otherwise than by a shift, and
@@ -198,7 +198,19 @@ function matchSlides(before: string, s0: Slide[], after: string, s1: Slide[], pa
     used[best] = 1;
   }
   const left = restB.filter((j) => !used[j]);
-  for (const p of pairs(restA.map(textA), left.map((j) => after.slice(s1[j].start, s1[j].end)), true)) to[restA[p.i]] = left[p.j];
+  for (const p of pairs(restA.map(textA), left.map((j) => after.slice(s1[j].start, s1[j].end)), true)) {
+    to[restA[p.i]] = left[p.j];
+    used[left[p.j]] = 1;
+  }
+  // a slide left out alone between the same two paired neighbors on both sides, edited in place
+  for (const i of restA) {
+    const j = i === 0 ? 0 : to[i - 1] + 1;
+    if (to[i] >= 0 || (i > 0 && to[i - 1] < 0) || j >= s1.length || used[j]) continue;
+    if (i === s0.length - 1 ? j !== s1.length - 1 : to[i + 1] !== j + 1) continue;
+    if (!sameSlide(textA(i), after.slice(s1[j].start, s1[j].end))) continue;
+    to[i] = j;
+    used[j] = 1;
+  }
   return { to, kept };
 }
 

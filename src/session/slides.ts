@@ -187,6 +187,19 @@ function closePairs(a: string[], b: string[]): [number, number][] {
   return out;
 }
 
+// true when slides x and y, given as their text, left out on both sides between the same two
+// paired neighbors, are one slide edited in place: either is without words, or the words of their
+// first child are equal and not empty
+export function sameSlide(x: string, y: string): boolean {
+  if (!words(x) || !words(y)) return true;
+  const first = (t: string) => {
+    const c = childrenOf(t)[0];
+    return c ? words(t.slice(c.start, c.end)) : '';
+  };
+  const f = first(x);
+  return f !== '' && f === first(y);
+}
+
 // the numbers of the slides of after that hold a mark, and what is gone from before. an empty
 // mark, where text was removed, is on a slide when it falls strictly inside it
 export function slideChanges(before: string, beforeSlides: Slide[], after: string, afterSlides: Slide[], marks: Range[]): SlideChanges {

@@ -1567,6 +1567,15 @@ function closePairs(a, b) {
   }
   return out;
 }
+function sameSlide(x, y) {
+  if (!words(x) || !words(y)) return true;
+  const first2 = (t) => {
+    const c = childrenOf(t)[0];
+    return c ? words(t.slice(c.start, c.end)) : "";
+  };
+  const f = first2(x);
+  return f !== "" && f === first2(y);
+}
 function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const a = beforeSlides.map((s) => before2.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
@@ -1749,7 +1758,18 @@ function matchSlides(before2, s0, after, s1, patches) {
     used[best] = 1;
   }
   const left = restB.filter((j) => !used[j]);
-  for (const p of pairs(restA.map(textA), left.map((j) => after.slice(s1[j].start, s1[j].end)), true)) to[restA[p.i]] = left[p.j];
+  for (const p of pairs(restA.map(textA), left.map((j) => after.slice(s1[j].start, s1[j].end)), true)) {
+    to[restA[p.i]] = left[p.j];
+    used[left[p.j]] = 1;
+  }
+  for (const i of restA) {
+    const j = i === 0 ? 0 : to[i - 1] + 1;
+    if (to[i] >= 0 || i > 0 && to[i - 1] < 0 || j >= s1.length || used[j]) continue;
+    if (i === s0.length - 1 ? j !== s1.length - 1 : to[i + 1] !== j + 1) continue;
+    if (!sameSlide(textA(i), after.slice(s1[j].start, s1[j].end))) continue;
+    to[i] = j;
+    used[j] = 1;
+  }
   return { to, kept };
 }
 function wholeTag(text, start2, end) {
