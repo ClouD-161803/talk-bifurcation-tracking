@@ -401,6 +401,118 @@ test('a page asks before it unloads after an Undo of an edit that the edit comma
   assert.equal(await reload(page), true, 'the page asked before it left');
 });
 
+const REDO = process.platform === 'darwin' ? 'Mod+Shift+Z' : 'Mod+Y';
+
+// a page offline whose copy held ' Zed' on slide One, and then holds its Undo
+async function undone(t) {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${TEXT}.includes('Zed')`);
+  await page.waitFor(LACKS(' Zed'));
+  return page;
+}
+
+test('a page asks before it unloads after a Redo that follows an offline Undo, until its copy holds the Redo', { timeout: 240_000 }, async (t) => {
+  const page = await undone(t);
+  await press(page, REDO);
+  await page.waitFor(`${C}.snapshot().mine.includes(' Zed')`);
+  const redone = await page.evaluate(ASKED(' Zed'));
+  assert.ok(redone.asking || redone.copied, `the page asks while its copy lacks the Redo: ${JSON.stringify(redone)}`);
+});
+
+test('a page asks before it unloads after a Redo that follows an offline Undo, once IndexedDB fails', { timeout: 240_000 }, async (t) => {
+  const page = await undone(t);
+  // every later write of the copy fails, as on a full disk
+  await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
+  await press(page, REDO);
+  await page.waitFor(`${C}.snapshot().mine.includes(' Zed') && /cannot be kept/.test(${STATE})`);
+  assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: true, copied: false });
+});
+
+// the handler of the next write of the copy waits after window.__hold until window.__release(),
+// and after window.__fail every write fails at once, after the handlers that wait. a handler that
+// waits is a write that ends late, e.g. on a slow disk
+const LATE_WRITES = `{
+  const put = IDBObjectStore.prototype.put;
+  const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
+  const held = [];
+  window.__release = () => (held.splice(0).forEach((go) => go()), true);
+  Object.defineProperty(IDBTransaction.prototype, 'oncomplete', {
+    configurable: true,
+    get() { return complete.get.call(this); },
+    set(fn) {
+      const hold = fn && window.__hold && this.mode === 'readwrite' && this.objectStoreNames.contains('copies');
+      if (hold) window.__hold = false;
+      complete.set.call(this, hold ? (ev) => held.push(() => fn.call(this, ev)) : fn);
+    },
+  });
+  IDBObjectStore.prototype.put = function (...args) {
+    const r = put.apply(this, args);
+    if (window.__fail) {
+      window.__release();
+      this.transaction.abort();
+    }
+    return r;
+  };
+}`;
+
+test('a page asks before it unloads after an Undo while its copy holds the undone edit, from a write that ended while the next one failed', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${LATE_WRITES}` });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  await page.evaluate('window.__hold = true');
+  // the typing in another text element is another entry of the history
+  await caretAtEnd(page, el(0, 'h2'));
+  await type(page, ' Two');
+  await page.waitFor(`(${ASKED(' Two')}).then((x) => x.copied)`);
+  await page.evaluate('window.__fail = true');
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${TEXT}.includes('One Two') && /cannot be kept/.test(${STATE})`);
+  const after = await page.evaluate(ASKED(' Two'));
+  assert.ok(after.asking || !after.copied, `the page asks while its copy holds the undone edit: ${JSON.stringify(after)}`);
+});
+
+test('a page asks before it unloads after an Undo and a Redo of an acknowledged edit, also when its copy with the edit was written after the acknowledgment', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${LATE_WRITES}` });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold') && (window.__hold = true)`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied)`);
+  // the acknowledgment deletes the copy before the write of the copy ends
+  await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
+  await page.waitFor(`${C}.acked() && (${ROWS}).then((rows) => rows.length === 0)`);
+  await page.evaluate(`__net.rule('/.session/op', 'hold') && window.__release()`);
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${C}.snapshot().mine.includes('Zed')`);
+  await press(page, REDO);
+  await page.waitFor(`${C}.snapshot().mine.includes(' Zed')`);
+  const redone = await page.evaluate(ASKED(' Zed'));
+  assert.ok(redone.asking || redone.copied, `the page asks while its copy lacks the Redo: ${JSON.stringify(redone)}`);
+});
+
 test('an edit of another person does not make a page ask before it unloads while its copy holds the edit of the page', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
