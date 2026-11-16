@@ -173,7 +173,8 @@ export function install(app: App): void {
   function fit(): void {
     doc.classList.remove('tight', 'gone');
     row.classList.remove('narrow');
-    const cut = () => doc.scrollWidth > doc.clientWidth || fileEl.scrollWidth > fileEl.clientWidth;
+    // the name and the state shrink together, hence a long state is cut before the name is by a pixel
+    const cut = () => doc.scrollWidth > doc.clientWidth || fileEl.scrollWidth > fileEl.clientWidth || stateEl.scrollWidth > stateEl.clientWidth;
     if (!cut()) return;
     doc.classList.add('tight');
     if (cut() && doc.clientWidth < MIN_TITLE) doc.classList.add('gone');
