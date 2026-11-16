@@ -11,7 +11,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { ANSWERS, NET } from './helpers/net.mjs';
 import { ROWS } from './helpers/offline.mjs';
-import { click, press, type } from './helpers/editor.mjs';
+import { click, press, type, typeKeys } from './helpers/editor.mjs';
 import { raw, until } from './helpers/session.mjs';
 
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
@@ -318,6 +318,97 @@ test('a page asks before it unloads only while this browser cannot keep an edit 
     assert.equal(await listeners(), idle);
   }
   clean(page, REFUSED);
+});
+
+// whether the page asks before it unloads, and whether its copy in IndexedDB holds part
+const ASKED = (part) => `(${ROWS}).then((rows) => ({ asking: ${C}.asking, copied: rows.some((r) => r.mine.includes(${JSON.stringify(part)})) }))`;
+
+// page loaded again with each dialog of beforeunload accepted, and whether one was accepted
+async function reload(page) {
+  let accepted = false;
+  const accept = setInterval(() => page.send('Page.handleJavaScriptDialog', { accept: true }).then(() => (accepted = true), () => {}), 100);
+  accept.unref();
+  const count = await loads(page);
+  await page.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(page).catch(() => 0)) > count, 'the page to load again', 30_000);
+  clearInterval(accept);
+  await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await page.waitFor(ONLINE);
+  return accepted;
+}
+
+test('a page asks before it unloads until the copy in this browser holds its newest edit, which a reload right after the edit thus does not lose without a prompt', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'Two');
+  await caretAtEnd(page, el(1, 'p'));
+  await press(page, 'Enter');
+  await typeKeys(page, 'Inserted');
+  await page.waitFor(`__net.held.length > 0 && ${TEXT}.includes('Inserted')`);
+  // copy.ts writes the copy once the edits waited 2 s. a write at pagehide is aborted with the page
+  const before = await page.evaluate(ASKED('Inserted'));
+  assert.ok(before.asking || before.copied, `the page asks while its copy does not hold the edit: ${JSON.stringify(before)}`);
+  const accepted = await reload(page);
+  // an edit left at the prompt is lost
+  const kept = accepted || (await until(() => server.read().includes('Inserted') || null, 'the edit to reach index.html', 10_000).catch(() => false));
+  assert.ok(kept,`the edit is in index.html after the reload, or the page asked before it left: ${JSON.stringify(before)}`);
+});
+
+test('a page whose copy holds its edit does not ask before a reload, and its edit reaches index.html', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'Two');
+  await caretAtEnd(page, el(1, 'p'));
+  await press(page, 'Enter');
+  await typeKeys(page, 'Inserted');
+  await page.waitFor(`(${ASKED('Inserted')}).then((x) => x.copied && !x.asking)`, 10_000);
+  assert.equal(await reload(page), false, 'the page did not ask');
+  await until(() => server.read().includes('Inserted') || null, 'the edit to reach index.html', 10_000);
+});
+
+// the time in ms that each listener of beforeunload was on window before its removal, in
+// window.__unload
+const UNLOAD = `{
+  const add = window.addEventListener;
+  const remove = window.removeEventListener;
+  const added = new Map();
+  window.__unload = [];
+  window.addEventListener = function (type, fn, options) {
+    if (type === 'beforeunload') added.set(fn, performance.now());
+    return add.call(this, type, fn, options);
+  };
+  window.removeEventListener = function (type, fn, options) {
+    if (type === 'beforeunload' && added.has(fn)) {
+      window.__unload.push(performance.now() - added.get(fn));
+      added.delete(fn);
+    }
+    return remove.call(this, type, fn, options);
+  };
+}`;
+
+test('a page whose edits are acknowledged at once does not ask before it unloads once its edit is acknowledged', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: UNLOAD });
+  await converge(server, [page]);
+  const listenersOf = async () => (await page.send('Runtime.evaluate', { expression: `getEventListeners(window).beforeunload?.length ?? 0`, includeCommandLineAPI: true, returnByValue: true })).result.value;
+  const idle = await listenersOf();
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, 'x');
+  await converge(server, [page]);
+  assert.deepEqual({ asking: await page.evaluate(`${C}.asking`), listeners: await listenersOf() }, { asking: false, listeners: idle });
+  t.diagnostic(`the listener of beforeunload was on the page for ${JSON.stringify(await page.evaluate('window.__unload.map(Math.round)'))} ms`);
+  assert.equal(await reload(page), false, 'the page did not ask');
 });
 
 test('the operations of the answer that ends the session are taken before its dialog, which then holds every acknowledged edit', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {

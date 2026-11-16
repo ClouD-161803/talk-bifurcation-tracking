@@ -307,8 +307,13 @@ export function keptLine(client: Client): string | null {
 }
 
 // whether this browser keeps the edits of the page that are not acknowledged, for its next visit.
-// while it cannot, the browser asks before the page unloads
-export const keeps = (client: Client): boolean => !stateOf(client).unavailable;
+// while it cannot, or until a record with the newest of them is written, the browser asks before
+// the page unloads, since the write that hide() starts at pagehide is aborted with the page
+export const keeps = (client: Client): boolean => {
+  const st = stateOf(client);
+  const s = current(client, st);
+  return !st.unavailable && (!s || s.mine === s.base || st.kept?.mine === s.mine);
+};
 
 // the save state once the edits of a copy taken over at the join are sent, until the next edit
 export function restoredLine(client: Client): string | null {
