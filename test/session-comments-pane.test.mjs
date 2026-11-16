@@ -311,6 +311,51 @@ test('while the comments are read only, a draft and a reply stay in their fields
   clean(a, [/status of 503/]);
 });
 
+// the pressed button is disabled while its request runs, and Chrome then moves its focus to the body
+test('after a press of Reply or Comment, the focus is on the thread of a saved reply and in the field of a refused text', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'Before');
+  const id = await a.evaluate(`document.querySelector('${PANE} article').dataset.id`);
+  const FOCUS = `(() => {
+    const a = document.activeElement;
+    return a.matches('${ARTICLE(id)}') ? 'the thread' : a.matches('${ARTICLE(id)} .reply textarea') ? 'the field Reply' : a.matches('${DRAFT}') ? 'the field of the draft' : a.localName;
+  })()`;
+  const answered = (box) => `(() => { const b = document.querySelector(${JSON.stringify(box)}); return !!b && !b.querySelector('.actions .primary').disabled && !!b.querySelector('.error:not([hidden])'); })()`;
+
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await type(a, 'A saved reply');
+  await click(a, `${ARTICLE(id)} .reply .actions .primary`);
+  await sees(a, `[...document.querySelectorAll('${ARTICLE(id)} .text')].map((p) => p.textContent)`, ['Before', 'A saved reply']);
+  await sees(a, FOCUS, 'the thread', 'the focus after a saved reply');
+
+  await a.evaluate(`(() => {
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      if (!(init?.method === 'POST' && /\\/\\.session\\/comments(\\/[^/]+\\/reply)?$/.test(url))) return fetched.call(this, input, init);
+      // the answer comes after two frames, as one of a network does, i.e. after the browser has
+      // moved the focus of the disabled button
+      return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(new Response(JSON.stringify({ error: 'the comments are read only' }), { status: 503, headers: { 'Content-Type': 'application/json' } })))));
+    };
+  })()`);
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await type(a, 'A kept reply');
+  await click(a, `${ARTICLE(id)} .reply .actions .primary`);
+  await sees(a, answered(`${ARTICLE(id)} .reply`), true);
+  await sees(a, FOCUS, 'the field Reply', 'the focus after a refused reply');
+
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await press(a, COMMENT_KEY);
+  await a.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await type(a, 'A kept draft');
+  await click(a, `${PANE} .draft .actions .primary`);
+  await sees(a, answered(`${PANE} .draft`), true);
+  await sees(a, FOCUS, 'the field of the draft', 'the focus after a refused comment');
+  clean(a, [/status of 503/]);
+});
+
 test('the pane groups the threads by their slide, and two slides with one number in the status bar have a heading each', { timeout: 300_000 }, async (t) => {
   const server = await talkWith(t, `<section>
   <h2>One</h2>
