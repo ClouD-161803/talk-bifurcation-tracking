@@ -481,6 +481,35 @@ test('at a start after a crash, a thread is placed by the check of its element, 
   });
 });
 
+test('a thread sent again after it was refused is checked at a start by its element as it was sent again', (t) => {
+  const { renameSync } = fs;
+  t.after(() => {
+    fs.renameSync = renameSync;
+    syncBuiltinESMExports();
+  });
+  // a rename onto comments.json fails while held, as while another program holds it on Windows
+  let held = true;
+  fs.renameSync = (from, to) => {
+    if (held && String(to).endsWith('comments.json')) throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+    return renameSync(from, to);
+  };
+  syncBuiltinESMExports();
+  const dir = sessionDir(t);
+  const { authority, comments } = open(dir, DECK);
+  const id = randomUUID();
+  const send = () => comments.add(ANN, { id, base: authority.version, anchor: tagRange(authority.text, '<p>Second'), slide: slideRange(authority.text, 'Second'), text: 'Look' });
+  assert.equal(send().status, 503);
+  replace(authority, 'Second slide', 'Second slide, edited');
+  held = false;
+  assert.equal(send().id, id);
+  comments.stopSync();
+  // index.html changed while the edit command did not run, and the history does not hold the change
+  const later = authority.text.replace('First slide', 'First slide, typed');
+  const [thread] = open(dir, later).comments.list(ANN).comments;
+  reads(later, thread.anchor, '<p>Second slide, edited</p>');
+  assert.equal(thread.removed, undefined);
+});
+
 test('after the edit command was killed, a start places a thread by the check of its element', (t) => {
   const dir = sessionDir(t);
   const L0 = DECK.replace('<p>Second slide</p>', '<ul>\n    <li>Build</li>\n  </ul>');
