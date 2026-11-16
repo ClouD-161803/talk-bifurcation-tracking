@@ -167,10 +167,13 @@ async function tiles(page, index) {
       marked: t.getAttribute('aria-selected') === 'true',
       markup: t.querySelector('.pic').shadowRoot.querySelector('.slides').innerHTML,
       // the outline of the marked tile is left out, as from the pixels
-      look: [t.querySelector('.pic'), ...t.querySelector('.pic').shadowRoot.querySelectorAll('*')].map((el) => {
-        const s = getComputedStyle(el), b = el.getBoundingClientRect();
-        return [el.localName, b.left - r.left, b.top - r.top, b.width, b.height, ...[...s].filter((k) => !k.startsWith('outline')).map((k) => k + ': ' + s.getPropertyValue(k))].join('; ');
-      }),
+      look: [t.querySelector('.pic'), ...t.querySelector('.pic').shadowRoot.querySelectorAll('*')].flatMap((el, i) => {
+        const b = el.getBoundingClientRect();
+        const of = (s) => [...s].filter((k) => i || !k.startsWith('outline')).map((k) => k + ': ' + s.getPropertyValue(k)).join('; ');
+        return [[el.localName, b.left - r.left, b.top - r.top, b.width, b.height, of(getComputedStyle(el))].join('; '),
+          ...['::before', '::after', '::marker'].map((p) => p + ' ' + of(getComputedStyle(el, p))),
+          ...(el.localName === 'canvas' ? [el.toDataURL()] : [])];
+      }).concat((() => { const up = []; for (let e = t; e && e !== document.documentElement; e = e.parentElement) { const s = getComputedStyle(e); up.push([s.opacity, s.filter, s.mixBlendMode, s.clipPath, s.mask, s.backdropFilter].join(' ')); } return up; })()),
       clip: { x: r.left + 4, y: r.top + 4, width: r.width - 8, height: r.height - 8, scale: 1 },
     };
   })`);
