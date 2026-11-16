@@ -424,7 +424,7 @@ class Pane {
         { label: 'Delete', run: () => void this.remove(t, root ? null : i.id) },
       ];
       // a second press closes the menu
-      const more = this.button('', root ? 'Thread actions' : 'Reply actions', (ev) => {
+      const more = this.button('⋯', root ? 'Thread actions' : 'Reply actions', (ev) => {
         if (this.menu) return this.menu.close();
         const m = this.client.shell.menu(items, {
           anchor: more.getBoundingClientRect(),
@@ -437,7 +437,7 @@ class Pane {
           },
         });
         this.menu = m;
-      }, 'icon more', 'more');
+      }, 'icon more');
       more.setAttribute('aria-haspopup', 'menu');
       head.append(offline(more));
     }
