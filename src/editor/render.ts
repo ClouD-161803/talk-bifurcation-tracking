@@ -55,11 +55,13 @@ const TEXT_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'td', 
 const INLINE_TAGS = new Set(['a', 'abbr', 'b', 'bdi', 'bdo', 'br', 'cite', 'code', 'data', 'dfn', 'em', 'i', 'img', 'kbd', 'mark', 'q', 's', 'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var', 'wbr']);
 
 // a div or a span is a text element when its own text is not only white space and its children are
-// inline, e.g. div.foot, div.caption, div.math, and span.label of the theme
+// inline, e.g. div.foot, div.caption, div.math, and span.label of the theme. a cell or another
+// element of TEXT_TAGS is not a text element when its own text is only white space and it holds a
+// div that is not one, e.g. the box of a plot, hence the elements in it are paired one by one
 export function isTextElement(s: SrcEl): boolean {
-  if (TEXT_TAGS.has(s.tag)) return true;
-  if (s.tag !== 'div' && s.tag !== 'span') return false;
   const own = s.children.some((c) => c.kind === 'text' && /\S/.test(c.decoded));
+  if (TEXT_TAGS.has(s.tag)) return own || !s.children.some((c) => c.kind === 'element' && c.tag === 'div' && !isTextElement(c));
+  if (s.tag !== 'div' && s.tag !== 'span') return false;
   return own && s.children.every((c) => c.kind !== 'element' || INLINE_TAGS.has(c.tag));
 }
 
