@@ -8,7 +8,7 @@
 // or under On the deck. a mention is written @{person id} in the text of a comment
 
 import { allChecked, checkOf, moveAnchors, slideAt, startTagAt, type Anchored, type Check } from '../anchor.ts';
-import { apply, diff, type Patch } from '../patch.ts';
+import { apply, checksum, diff, type Patch } from '../patch.ts';
 import { slidesOf, type Slide } from '../slides.ts';
 import { parseVersion, type Anchor, type AppliedOp, type Comment, type CommentsAnswer, type CommentsEvent, type SeenAnswer, type Version } from '../protocol.ts';
 import type { Client } from './client.ts';
@@ -22,24 +22,33 @@ export type Place = { el: Element | null; slide: Element | null; number: number 
 // of the text that read as at its check, and their count. place is the index of a slide among the
 // slides of the text and their count, and stack is set for a stack, which is kept at the place of
 // its first vertical slide. own is the element in the text with the edits of this page that wait,
-// which are merged again once the page is loaded again
-export type Spot = { at: Anchor; check: Check; twin?: [number, number]; place?: [number, number]; stack?: boolean; own?: Spot };
+// which are merged again once the page is loaded again. left is the checksum of the characters
+// before its start tag, kept only when no other twin has the same
+export type Spot = { at: Anchor; check: Check; twin?: [number, number]; place?: [number, number]; stack?: boolean; own?: Spot; left?: string };
+
+const LEFT = 16;
+const leftOf = (text: string, a: Anchor): string => checksum(text.slice(Math.max(0, a.start - LEFT), a.start));
 
 const spot = (text: string, a: Anchor): Spot => {
   const check = checkOf(text, a);
   const all = allChecked(text, a.tag, check);
-  return { at: a, check, twin: [all.findIndex((x) => x.start === a.start), all.length] };
+  const left = leftOf(text, a);
+  const unique = all.filter((x) => leftOf(text, x) === left).length === 1;
+  return { at: a, check, twin: [all.findIndex((x) => x.start === a.start), all.length], ...(unique ? { left } : {}) };
 };
 
-// the element of a spot in text, or null. the element is taken at its index among the elements
-// that read as at its check while they are as many as before. an element that was changed or
-// removed is thus not found in another one that reads as it did. what was kept by another version
-// of the theme is not read
+// the element of a spot in text, or null. while the elements that read as at its check are as many
+// as before, the element is the one twin with its left, e.g. after a twin before it was removed
+// and one after it added, or else the twin at its index. an element that was changed or removed is
+// thus not found in another one that reads as it did. what was kept by another version of the
+// theme is not read
 function checked(text: string, s: Spot | undefined): Anchor | null {
   if (typeof s?.at?.tag !== 'string' || typeof s.check?.sum !== 'string' || typeof s.check.tag !== 'string' || !Array.isArray(s.twin)) return null;
   const [k, n] = s.twin;
   const all = allChecked(text, s.at.tag, s.check);
-  return all.length === n && Number.isInteger(k) ? all[k] ?? null : null;
+  if (all.length !== n || !Number.isInteger(k)) return null;
+  const same = typeof s.left === 'string' ? all.filter((x) => leftOf(text, x) === s.left) : [];
+  return same.length === 1 ? same[0] : all[k] ?? null;
 }
 
 export type Item = { id: string; author: string; time: number; text: string; edited?: number };
