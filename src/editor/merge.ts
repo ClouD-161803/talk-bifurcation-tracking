@@ -20,9 +20,26 @@ function offsets(lines: string[]): number[] {
 
 type Hunk = { a0: number; a1: number; b0: number; b1: number };
 
+// the length of the slices compared before the texts are compared character by character
+const CHUNK = 2048;
+
+// the lengths of the start and of the end that a and b share, where the end is counted only in
+// the part after the start
+export function shared(a: string, b: string): [number, number] {
+  const n = Math.min(a.length, b.length);
+  let s = 0;
+  while (s + CHUNK <= n && a.slice(s, s + CHUNK) === b.slice(s, s + CHUNK)) s += CHUNK;
+  while (s < n && a.charCodeAt(s) === b.charCodeAt(s)) s += 1;
+  const most = n - s;
+  let t = 0;
+  while (t + CHUNK <= most && a.slice(a.length - t - CHUNK, a.length - t) === b.slice(b.length - t - CHUNK, b.length - t)) t += CHUNK;
+  while (t < most && a.charCodeAt(a.length - 1 - t) === b.charCodeAt(b.length - 1 - t)) t += 1;
+  return [s, t];
+}
+
 // the hunks that turn the lines a into the lines b, each the range a0 to a1 of a replaced by the
 // range b0 to b1 of b, found with the Myers algorithm. null when more than max lines differ
-function diff(a: string[], b: string[], max: number): Hunk[] | null {
+function diff(a: ArrayLike<string>, b: ArrayLike<string>, max: number): Hunk[] | null {
   const n = a.length, m = b.length;
   const limit = Math.min(n + m, max);
   const off = limit + 1;
@@ -155,4 +172,47 @@ export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'our
   const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => overlaps(o, h)));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => equal(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
+}
+
+// the edits that turn a into b, one per run of changed characters, found with the Myers algorithm
+// over the UTF-16 units between the start and the end that they share. null when more than max
+// units differ there and both texts have units there
+export function charEdits(a: string, b: string, max: number): Edit[] | null {
+  const [head, tail] = shared(a, b);
+  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
+  if (!x || !y) return x === y ? [] : [{ start: head, end: a.length - tail, text: y }];
+  const hunks = diff(x, y, max);
+  return hunks && hunks.map((h) => ({ start: head + h.a0, end: head + h.a1, text: y.slice(h.b0, h.b1) }));
+}
+
+// the most units in which another person may have changed a text that revert() is given
+const OTHERS = 500;
+
+// now with the change that turns base into target made again, where now is base with the edits
+// of other people, e.g. an undo of the typing of the person over the keys of another person. the
+// change is one span of base, found by the start and the end that base and target share. an edit
+// of others before the span moves it, and one after it is left as it is. the diff places an
+// insertion among repeated letters at any of them, hence an insertion inside the span is taken
+// before it or after it where the span then reads as in base. null when an edit of others
+// overlaps the span otherwise, or when they are too many to diff
+export function revert(base: string, target: string, now: string): string | null {
+  if (now === base) return target;
+  const [head, tail] = shared(base, target);
+  const s = head, e = base.length - tail;
+  const others = charEdits(base, now, OTHERS);
+  if (!others) return null;
+  let d = 0;
+  const inside: number[] = [];
+  for (const o of others) {
+    if (o.end <= s) d += o.text.length - (o.end - o.start);
+    else if (o.start >= e) break;
+    else if (o.start === o.end) inside.push(o.text.length);
+    else return null;
+  }
+  // the first m insertions inside the span are taken before it, from all of them to none
+  for (let m = inside.length; m >= 0; m--) {
+    const p = s + d + inside.slice(0, m).reduce((n, k) => n + k, 0);
+    if (now.slice(p, p + e - s) === base.slice(s, e)) return now.slice(0, p) + target.slice(head, target.length - tail) + now.slice(p + e - s);
+  }
+  return null;
 }
