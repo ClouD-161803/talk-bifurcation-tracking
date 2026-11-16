@@ -481,16 +481,21 @@ class Pane {
     if (!f) {
       const kept = this.pending.get(t.id);
       this.pending.delete(t.id);
+      const leave = () => {
+        f!.box.classList.remove('open');
+        this.keep();
+        this.nodes.get(t.id)?.focus();
+      };
+      // Cancel discards the text, and Esc keeps it, as in a draft
       f = this.field('Reply', 'Reply', async (text, mentions) => {
         await this.comments.act(t.id, 'reply', { text, mentions });
         // a reply to a thread that another person resolved while it was typed reopens it
         if (this.comments.threads.get(t.id)?.resolved) await this.comments.act(t.id, 'reopen', {});
         this.comments.markRead(t.id);
       }, () => {
-        f!.box.classList.remove('open');
-        this.keep();
-        this.nodes.get(t.id)?.focus();
-      }, kept);
+        f!.reset();
+        leave();
+      }, kept, leave);
       f.box.classList.add('reply');
       if (kept?.text) f.box.classList.add('open');
       const field = f;
