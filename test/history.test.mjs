@@ -251,6 +251,31 @@ test('a redo drops an entry of typing that cannot be redone, tells refused of it
   assert.deepEqual(state, { a: 1 });
 });
 
+// ' one' ends with the letter that ends "slide", and ' two' does not
+for (const word of [' two', ' one']) {
+  test(`a redo of "${word}" right after its undo puts it back before an insertion of another person after the typing had ended`, async () => {
+    const { h } = texts();
+    const el = textEl('Second slide');
+    h.track(el);
+    typeInto(h, el, `Second slide${word}`);
+    h.break();
+    el.content = `Second slide${word}XY`;
+    h.prune((x) => x === el, undefined, undefined, [el]);
+    h.carry(el);
+    await h.undo();
+    assert.equal(el.content, 'Second slideXY');
+    await h.redo();
+    assert.equal(el.content, `Second slide${word}XY`);
+    assert.equal(h.undoLabel, 'typing');
+    // a step after a change of another person goes from the text that the step before wrote
+    el.content = `QSecond slide${word}XY`;
+    await h.undo();
+    assert.equal(el.content, 'QSecond slideXY');
+    await h.redo();
+    assert.equal(el.content, `QSecond slide${word}XY`);
+  });
+}
+
 test('an error of an undo other than a refusal is passed on, and the entry before it is not undone', async () => {
   const { h } = texts();
   const state = { a: 0 };

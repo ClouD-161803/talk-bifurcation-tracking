@@ -364,6 +364,32 @@ for (const [what, keys, made] of [
   });
 }
 
+// ' one' ends with the letter that ends "slide", and ' two' does not
+for (const word of [' two', ' one']) {
+  test(`a redo of "${word}" right after its undo puts it back before the keys that another person typed right after it once the typing had ended`, { timeout: 240_000 }, async (t) => {
+    const { server, pages } = await session(t, ['Ana', 'Ben']);
+    const [ana, ben] = pages;
+    for (const page of pages) await show(page, 'Two');
+    for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await caretAtEnd(ana, p);
+    await typeKeys(ana, word);
+    // Ana types in the heading, hence her typing in the paragraph ends
+    await caretAtEnd(ana, el(1, 'h2'));
+    await typeKeys(ana, ' x');
+    await converge(server, pages);
+    await caretAtEnd(ben, p);
+    await typeKeys(ben, 'XY');
+    await converge(server, pages);
+    await run(ana, 'edit.undo');
+    await run(ana, 'edit.undo');
+    assert.equal(para(await converge(server, pages)), '<p>Second slideXY</p>');
+    await run(ana, 'edit.redo');
+    assert.equal(para(await converge(server, pages)), `<p>Second slide${word}XY</p>`);
+    assert.equal(await ana.evaluate(`${C}.app.history.undoLabel`), 'typing');
+    assert.deepEqual([ana.errors, ben.errors], [[], []]);
+  });
+}
+
 const NOTES = el(1, 'aside.notes');
 const ASIDE = '<aside class="notes">Notes of two<br>x</aside>';
 const aside = (text) => text.match(/<aside class="notes">.*?<\/aside>/s)?.[0] ?? null;
