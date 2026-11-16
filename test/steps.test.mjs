@@ -220,3 +220,30 @@ test('a fragment with data-final is shown last with every fragment restored, in 
   assert.equal(await page.evaluate('Reveal.isLastSlide() && !Reveal.availableFragments().next'), true);
   assert.deepEqual(page.errors, []);
 });
+
+// the style of a fragment is read once it is visible and before it is current, hence a fragment in a
+// shown fragment, which is not dimmed, would start its fade at once without a delay set while it is
+// visible. the milliseconds from the step to the first frame at which the late fragment is drawn are
+// recorded in the page
+test('a fragment of the class late is shown after its delay, also in a shown fragment', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/late.html'));
+  await page.waitFor(deckSettled);
+
+  const start = (late, steps) => page.evaluate(`new Promise((done) => {
+    const el = document.querySelectorAll('.late')[${late}], t0 = performance.now();
+    for (let i = 0; i < ${steps}; i++) Reveal.next();
+    const frame = (now) => (Number(getComputedStyle(el).opacity) > 0 ? done(now - t0) : requestAnimationFrame(frame));
+    requestAnimationFrame(frame);
+  })`);
+  const shown = (late) => `getComputedStyle(document.querySelectorAll('.late')[${late}]).opacity === '1'`;
+  for (const [late, steps] of [[0, 1], [1, 2]]) {
+    const ms = await start(late, steps);
+    // the delay of --delay is 1 s
+    assert.ok(ms >= 950, `the late fragment ${late} is drawn ${ms} ms after its step`);
+    await page.waitFor(shown(late), 10000);
+  }
+  assert.deepEqual(page.errors, []);
+});
