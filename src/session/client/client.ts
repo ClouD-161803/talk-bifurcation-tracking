@@ -239,8 +239,16 @@ export class Client {
     else this.receive(answer.ops);
     this.since = answer.v;
     this.setConnection('online');
+    // the keys that are not read are sent when the page is hidden, since a hidden page draws no
+    // frame that reads them, and a phone may suspend it or close it without pagehide
+    const send = (): void => {
+      if (this.dirty) this.dirty = !this.capture();
+      this.pump();
+    };
+    document.addEventListener('visibilitychange', send);
     window.addEventListener('pagehide', () => {
       if (!this.token || this.ended) return;
+      send();
       this.gone = true;
       this.transport.bye(this.token);
     });
