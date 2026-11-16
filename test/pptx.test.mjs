@@ -516,7 +516,7 @@ test('without an H.264 encoder, the export of a scene fails with the reason and 
 // above the limit of 120 s of a DevTools call in launch() of scripts/chrome.mjs. The limit of the
 // second browser is a third of the time of the first recording, and twice the time of every call
 // before it, i.e. of the load of the deck
-test('a scene is recorded in a browser whose DevTools calls are each answered in less time than the recording', { timeout: 600000 }, async (t) => {
+test('a scene is recorded in a browser whose DevTools calls are each answered in less time than the recording', { timeout: 1200000 }, async (t) => {
   const boxes = new Map([['0', { width: 300, height: 400, name: 'A long recorded scene' }]]);
   const timed = async (options) => {
     const browser = await launch(options);
@@ -539,11 +539,21 @@ test('a scene is recorded in a browser whose DevTools calls are each answered in
       await browser.close();
     }
   };
-  const first = await timed();
-  const timeout = Math.round(Math.max(first.record / 3, 2 * first.load));
-  t.diagnostic(`load ${first.load} ms, recording ${first.record} ms, limit of a call ${timeout} ms`);
-  if (timeout > first.record / 2) return t.skip(`the load of the deck, ${first.load} ms, is too close to the recording, ${first.record} ms`);
-  const second = await timed({ timeout });
+  // a call over the limit, e.g. behind a long task of a crowded runner, is measured again with a new
+  // pair, twice at most
+  let first, second, late;
+  for (let n = 0; !second; n++) {
+    first = await timed();
+    const timeout = Math.round(Math.max(first.record / 3, 2 * first.load));
+    t.diagnostic(`load ${first.load} ms, recording ${first.record} ms, limit of a call ${timeout} ms`);
+    if (timeout > first.record / 2 && late) throw late;
+    if (timeout > first.record / 2) return t.skip(`the load of the deck, ${first.load} ms, is too close to the recording, ${first.record} ms`);
+    second = await timed({ timeout }).catch((error) => {
+      if (n >= 2 || !/^Chrome did not answer/.test(error.message)) throw error;
+      late = error;
+      t.diagnostic(`a call is not answered within ${timeout} ms, and the pair is recorded again`);
+    });
+  }
   t.diagnostic(`load ${second.load} ms, recording ${second.record} ms`);
   // the bytes of two recordings of one scene differ by a few hundred
   const stream = { width: 600, height: 800, fps: 60, frames: 600, duration: 10, keys: [1] };

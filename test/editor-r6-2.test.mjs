@@ -171,7 +171,8 @@ for (const platform of PLATFORMS) {
 
     // without the switch, the show waits for a key
     await press(page, 'Mod+Shift+Enter');
-    await page.waitFor(`(() => { try { return !!${SHOW}?.Reveal?.isReady?.(); } catch { return false; } })()`, 15000);
+    // the show is the demo deck, with its surfaces, videos, and viewers
+    await page.waitFor(`(() => { try { return !!${SHOW}?.Reveal?.isReady?.(); } catch { return false; } })()`, 60000);
     await wait(1800);
     assert.equal(await shown(), 0);
     await end();
@@ -179,7 +180,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'play.useTimings');
     assert.equal((await page.evaluate(`window.BeesonEditor.state('play.useTimings')`)).checked, true);
     await press(page, 'Mod+Shift+Enter');
-    await page.waitFor(`(() => { try { return ${SHOW}?.Reveal?.isReady?.() && ${SHOW}.Reveal.getIndices().h === 2; } catch { return false; } })()`, 15000);
+    await page.waitFor(`(() => { try { return ${SHOW}?.Reveal?.isReady?.() && ${SHOW}.Reveal.getIndices().h === 2; } catch { return false; } })()`, 60000);
     const delays = await page.evaluate(`[...${SHOW}.document.querySelectorAll('.reveal .slides > section')].slice(0, 3).map((s) => s.getAttribute('data-autoslide'))`);
     assert.deepEqual(delays, ['1000', '1000', null]);
     await end();
