@@ -88,8 +88,9 @@ function childrenOf(html: string): Child[] {
 }
 
 // a changed element: the child of a slide by its name and its place among the children of this
-// name, or the slide itself when name is null, with the person id of who changed it
-export type Target = { slide: number; name: string | null; nth: number; author: string };
+// name, or the slide itself when name is null, with the person id of who changed it and its range
+// in the text
+export type Target = { slide: number; name: string | null; nth: number; author: string; start: number; end: number };
 
 const touches = (m: Mark, start: number, end: number) => (m.start < m.end ? m.start < end && start < m.end : start < m.start && m.start < end);
 
@@ -102,7 +103,7 @@ export function targetsOf(text: string, slides: Slide[], marks: Mark[]): Target[
     if (!mine.length) return;
     const tag = mine.find((m) => touches(m, s.start, s.open));
     if (tag) {
-      out.set(`${k}`, { slide: k, name: null, nth: 0, author: tag.author });
+      out.set(`${k}`, { slide: k, name: null, nth: 0, author: tag.author, start: s.start, end: s.end });
       return;
     }
     const counts = new Map<string, number>();
@@ -110,10 +111,41 @@ export function targetsOf(text: string, slides: Slide[], marks: Mark[]): Target[
       const nth = counts.get(c.name) ?? 0;
       counts.set(c.name, nth + 1);
       const m = mine.find((x) => touches(x, s.start + c.start, s.start + c.end));
-      if (m) out.set(`${k} ${c.name} ${nth}`, { slide: k, name: c.name, nth, author: m.author });
+      if (m) out.set(`${k} ${c.name} ${nth}`, { slide: k, name: c.name, nth, author: m.author, start: s.start + c.start, end: s.start + c.end });
     }
   });
   return [...out.values()];
+}
+
+// the ranges of the text nodes of el that the marks add, by author. the text tokens of the range
+// [start, end) of the element in text are put one to one on its text nodes, in order, hence an
+// element whose text the page does not show as written, e.g. with a character reference, math, or a
+// script, is left out
+function addedIn(el: Element, text: string, tokens: Token[], start: number, end: number, marks: Mark[], out: Map<string, Range[]>): void {
+  if (/[&\r\\$]|<(script|math)\b/i.test(text.slice(start, end))) return;
+  let lo = 0;
+  for (let hi = tokens.length; lo < hi; ) {
+    const mid = (lo + hi) >> 1;
+    if (tokens[mid].start < start) lo = mid + 1;
+    else hi = mid;
+  }
+  const texts: Token[] = [];
+  for (let k = lo; k < tokens.length && tokens[k].end <= end; k++) if (tokens[k].type === 'text') texts.push(tokens[k]);
+  const nodes: Text[] = [];
+  const walk = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while (walk.nextNode()) nodes.push(walk.currentNode as Text);
+  if (nodes.length !== texts.length || texts.some((t, i) => text.slice(t.start, t.end) !== nodes[i].data)) return;
+  const mine = marks.filter((m) => m.start < end && start < m.end);
+  texts.forEach((t, i) => {
+    for (const m of mine) {
+      if (m.end <= t.start || t.end <= m.start) continue;
+      const r = el.ownerDocument.createRange();
+      r.setStart(nodes[i], Math.max(m.start, t.start) - t.start);
+      r.setEnd(nodes[i], Math.min(m.end, t.end) - t.start);
+      if (!out.has(m.author)) out.set(m.author, []);
+      out.get(m.author)!.push(r);
+    }
+  });
 }
 
 // the sections of the page that are slides, by the index of the slide in the text. reveal.js takes
@@ -429,15 +461,31 @@ export class Preview {
     doc.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
     const targets = targetsOf(text, this.slides, detail.marks);
     const notes = new Set<number>();
+    const added = new Map<string, Range[]>();
+    const tone = (author: string) => personOf(this.client, author)?.color ?? 'var(--muted)';
+    // without CSS.highlights, e.g. in an older browser, the changed elements are outlined alone
+    const css = (w as Window & typeof globalThis).CSS?.highlights ? (w as Window & typeof globalThis) : null;
     for (const t of targets) {
       const section = this.sections[t.slide];
       const el = !section || t.name === null ? section : [...section.children].filter((c) => c.localName === t.name)[t.nth];
       if (!el) continue;
       el.setAttribute('data-beeson-changed', t.author);
-      (el as HTMLElement).style.setProperty('--beeson-changed', personOf(this.client, t.author)?.color ?? 'var(--muted)');
+      (el as HTMLElement).style.setProperty('--beeson-changed', tone(t.author));
+      if (css) addedIn(el, text, tokens, t.start, t.end, detail.marks, added);
       // the notes are not drawn on the slide, hence their change is named in the bar
       if (el.matches('aside.notes')) notes.add(this.slides[t.slide].number);
     }
+    // the added characters tinted with a highlight of each author, in its tone resolved in the page,
+    // since a highlight does not take the custom properties of the element
+    let rules = '';
+    [...added].forEach(([author, ranges], k) => {
+      css!.CSS.highlights.set(`beeson-changed-${k}`, new css!.Highlight(...ranges));
+      const probe = doc.body.appendChild(doc.createElement('span'));
+      probe.style.color = tone(author);
+      rules += `html:not(.beeson-hide-changes) ::highlight(beeson-changed-${k}) { background-color: color-mix(in srgb, ${w.getComputedStyle(probe).color} 35%, transparent); }\n`;
+      probe.remove();
+    });
+    if (rules) doc.head.appendChild(doc.createElement('style')).textContent = rules;
     if (notes.size && this.versionBar) this.versionBar.notes.textContent = `Notes of ${slidesText([...notes].sort((x, y) => x - y))} changed`;
     // a slide with a changed element first, and of a number without one, a slide of this number
     const marked = (k: number) => targets.some((t) => t.slide === k);
