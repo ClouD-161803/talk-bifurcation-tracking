@@ -229,6 +229,8 @@ export class Comments {
     const undo = () => {
       this.threads.delete(thread.id);
       this.heads.delete(thread.id);
+      // the check that the failed write took, which a thread sent again with this id would keep
+      this.checks.delete(thread.id);
       this.bytes -= head;
     };
     return this.commit([thread.id], undo, NOT_SAVED) ?? thread;

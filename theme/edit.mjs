@@ -2526,6 +2526,7 @@ var Comments = class {
     const undo = () => {
       this.threads.delete(thread.id);
       this.heads.delete(thread.id);
+      this.checks.delete(thread.id);
       this.bytes -= head;
     };
     return this.commit([thread.id], undo, NOT_SAVED) ?? thread;
