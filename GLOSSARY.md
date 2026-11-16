@@ -56,7 +56,7 @@ A rule of slides that is followed by default and may be argued with, as opposed 
 
 ## data-own-keys
 
-The attribute of a field of the editor in which the keys of commands that the field takes for itself are named, separated by spaces. In the field of a comment, it is `Mod+Enter`, which then sends the comment in place of Present.
+The attribute of a field of the editor in which the keys of commands that the field takes for itself are named, separated by spaces. In the field of a comment, it is `Mod+Enter`, i.e. Cmd+Enter on a Mac and Ctrl+Enter elsewhere, which then sends the comment and does not start Present. A key named there is taken with the other of these two modifiers as well, e.g. Ctrl+Enter on a Mac.
 
 
 ## Dialog
