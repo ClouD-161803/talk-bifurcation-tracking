@@ -357,6 +357,40 @@ test('the reason why a dropped file is not added is no longer shown after the ne
   clean(ann);
 });
 
+test('a long reason in a narrow title bar scrolls inside its line, and the current slide stays inside the window of a phone of 320 px', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await open(browser, sessionUrl(server.edit), { width: 320, height: 700, mobile: true });
+  await show(ann, 'Two');
+  // the note of a paste of a slide that names 12 files that a session does not take
+  const names = ['IMG_2041.heic', 'pic.tiff', 'saved.jfif', 'anim.apng', 'song.ogg', 'clip.mkv', 'doc.pdf', 'data.json', 'a.b.heic', 'PHOTO.HEIC', 'photo.', 'scan'];
+  const note = names.map((n) => `figs/${n} was not copied: ${n} cannot be sent to the others, since a session does not take this file. Save a picture as a PNG or a JPEG, and a video as an MP4 or a WebM.`).join(' ');
+  await ann.evaluate(`(${C}.app.note = { text: ${JSON.stringify(note)}, warn: true }, ${C}.app.report(), true)`);
+  const NAME = `document.querySelector('.beeson-session-state .name')`;
+  await ann.waitFor(`${NAME}.textContent === ${JSON.stringify(note)}`);
+  const inside = await ann.evaluate(`(() => {
+    const r = Reveal.getCurrentSlide().getBoundingClientRect();
+    return r.height > 0 && r.top >= document.querySelector('.beeson-edit-titlebar').getBoundingClientRect().bottom && r.bottom <= innerHeight;
+  })()`);
+  assert.ok(inside, `the current slide is not inside the window under a title bar of ${await ann.evaluate(BAR)} px`);
+  // the last word is inside the line and the window once a touch scrolls the line
+  const LAST = `(() => {
+    const el = ${NAME};
+    const range = document.createRange();
+    range.setStart(el.firstChild, el.firstChild.length - 'WebM.'.length);
+    range.setEnd(el.firstChild, el.firstChild.length);
+    const w = range.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    return w.height > 0 && w.top >= r.top - 1 && w.bottom <= r.bottom + 1 && w.bottom <= innerHeight;
+  })()`;
+  assert.equal(await ann.evaluate(LAST), false);
+  const at = await ann.evaluate(`(() => { const r = ${NAME}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  await ann.send('Input.synthesizeScrollGesture', { x: at.x, y: at.y, yDistance: -2000, gestureSourceType: 'touch', speed: 4000 });
+  await ann.waitFor(LAST, 10_000).catch(async () => assert.fail(`the last word is not reached by a scroll of the line, which is scrolled by ${await ann.evaluate(`${NAME}.scrollTop`)} px`));
+  clean(ann);
+});
+
 test('an upload that stalls fails at its deadline, and Try again sends the picture and the edits after it', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
