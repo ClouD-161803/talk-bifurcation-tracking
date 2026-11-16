@@ -326,6 +326,42 @@ test('a caret sent before the typing of another person reaches the page of this 
   clean(ben);
 });
 
+// Chrome writes the space before an element as U+00A0 into the text of the person who types
+// there, and the other pages hold U+0020 at this place
+test('the caret of a person whose browser holds a space as a no-break space is drawn at its characters while the next state is on its way', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second <strong>slide</strong></p>'));
+  const ana = await open(browser, sessionUrl(server.edit), { name: 'Ana' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ana, ben]);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  const text = (page) => page.evaluate(`${p}.textContent`);
+  await front(ben);
+  await ben.evaluate(`(() => { const p = ${p}; p.focus(); getSelection().collapse(p.firstChild, 'Second'.length); })()`);
+  await typeKeys(ben, ' here');
+  await until(async () => (await text(ana)) === 'Second here slide', 'the typing of Ben on the page of Ana');
+  assert.equal(await text(ben), 'Second here\u00a0slide', 'Chrome wrote U+00A0 into the text of Ben');
+  await until(() => ana.evaluate(`${C}.resolved().find((r) => r.name === 'Ben')?.caret?.at === 'Second here'.length`), 'the caret of Ben after here on the page of Ana');
+  // the states of Ben with his caret after too are held back, as on a slow network
+  await hold(ben);
+  await typeKeys(ben, ' too');
+  await until(async () => (await text(ana)) === 'Second here too slide', 'the second typing of Ben on the page of Ana');
+  const x = await xAt(ana, p, 'Second here too'.length);
+  // the center of the bar of Ben on the page of Ana
+  const bar = async () => {
+    const d = await drawn(ana);
+    return d.carets.length === 1 ? d.carets[0].x + d.carets[0].w / 2 : null;
+  };
+  const there = await until(async () => Math.abs((await bar()) - x) < 2, 'the bar', 5000).catch(() => false);
+  assert.ok(there, `the caret of Ben is drawn after Second here too, at ${x}, and it is at ${await bar()}`);
+  clean(ana);
+  clean(ben);
+});
+
 const MATHJAX = '<script src="theme/mathjax-config.js"></script>\n<script src="theme/vendor/mathjax/tex-svg.js"></script>\n</head>';
 
 test('the caret and the selection of another person in a paragraph with a formula are drawn without a lookup of the formulas of the whole deck', { timeout: 300_000 }, async (t) => {
