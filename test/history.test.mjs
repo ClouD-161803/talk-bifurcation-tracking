@@ -270,6 +270,47 @@ test('typing that ended inside a transaction is undone with the transaction afte
   assert.equal(h.redoLabel, 'Two');
 });
 
+// a diff of the text before the redo against the text now may read a letter removed on one side of
+// the place of the typing and the same letter typed on its other side, or the other way round
+test('a redo of typing after another person typed a letter on one side of its place and removed one on the other side is placed right or refused', async () => {
+  for (const c of [
+    { before: 'see', at: 2, typed: 'XYZ', first: 'seXYZde', undone: 'sede', keys: ['sdede', 'sdee'], want: 'sdeXYZe' },
+    { before: 'aaa', at: 2, typed: 'xxx', first: 'aaxxxRa', undone: 'aaRa', keys: ['aRaRa', 'aRaa'], want: 'aRaxxxa' },
+    { before: 'see', at: 2, typed: 'XYZ', first: null, undone: 'see', keys: ['sdee'], want: 'sdeXYZe' },
+    { before: 'sede', at: 2, typed: 'XYZ', first: null, undone: 'sede', keys: ['sdede', 'sdee'], want: 'sdeXYZe' },
+  ]) {
+    const { h } = texts();
+    const el = textEl(c.before);
+    const other = (content) => {
+      el.content = content;
+      h.prune((x) => x === el, undefined, undefined, [el]);
+      h.carry(el);
+    };
+    h.track(el);
+    typeInto(h, el, c.before.slice(0, c.at) + c.typed + c.before.slice(c.at));
+    h.break();
+    if (c.first) other(c.first);
+    await h.undo();
+    assert.equal(el.content, c.undone);
+    for (const k of c.keys) other(k);
+    await h.redo();
+    assert.ok(el.content === c.want || el.content === c.keys.at(-1), `${c.before}: ${el.content}`);
+  }
+});
+
+test('an undo of typing empties the text element when another person removed every letter around the typing', async () => {
+  const { h } = texts();
+  const el = textEl('AB');
+  h.track(el);
+  typeInto(h, el, 'AXB');
+  h.break();
+  el.content = 'X';
+  h.prune((x) => x === el, undefined, undefined, [el]);
+  h.carry(el);
+  await h.undo();
+  assert.equal(el.content, '');
+});
+
 test('an undo drops an entry of typing that cannot be undone, tells refused of it, and keeps the entry before it for the next undo', async () => {
   const { h, changes } = texts();
   const told = [];
