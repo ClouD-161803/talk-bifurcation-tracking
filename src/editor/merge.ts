@@ -239,6 +239,24 @@ export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours'
   return all && mergeEdits(base, ours, all, prefer);
 }
 
+// a deletion d in the list own moved to end or to start at an insertion of others strictly inside
+// it, where base reads the same and no other edit is hit, e.g. 'le stab' of 'unstable stable',
+// which the diff may give as 'stable ', and an insertion before ' point'. d itself when it cannot
+// be moved. the text of a moved deletion is the text of d, hence its markup stays whole
+function slid(base: string, d: Edit, own: Edit[], others: Edit[]): Edit {
+  const at = d.text ? undefined : others.find((e) => e.start === e.end && d.start < e.start && e.start < d.end)?.start;
+  if (at === undefined) return d;
+  const fits = (m: Edit) => ![...own, ...others].some((o) => o !== d && clash(o, m));
+  // a letter before the start or past the end of base is undefined, and stops the move
+  let left = true, right = true;
+  for (let i = 1; left && i <= d.end - at; i++) left = base[d.start - i] === base[d.end - i];
+  const l = { start: d.start - (d.end - at), end: at, text: '' };
+  if (left && fits(l)) return l;
+  for (let i = 0; right && i < at - d.start; i++) right = base[d.start + i] === base[d.end + i];
+  const r = { start: at, end: d.end + (at - d.start), text: '' };
+  return right && fits(r) ? r : d;
+}
+
 // the same merge with the changes of the file, all, given as edits of base. with apart, an edit
 // and a change conflict only when they clash, and of two insertions at one point the change comes
 // first, as the authority of a session orders the operation that arrived first. a format and the
@@ -247,7 +265,11 @@ export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours'
 // when it is the only such edit and an insertion. several equal edits are one change that the diff
 // split, e.g. a word replaced by the same word, which is taken once
 export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs', apart = false, twice = false): Merge {
-  if (apart) [ours, all] = nest(base, ours, all);
+  if (apart) {
+    [ours, all] = nest(base, ours, all);
+    ours = ours.map((d) => slid(base, d, ours, all));
+    all = all.map((d) => slid(base, d, all, ours));
+  }
   const hit = apart ? clash : overlaps;
   const both = ours.filter((o) => all.some((h) => equal(o, h)));
   const keys = twice && both.length === 1 && both[0].start === both[0].end;

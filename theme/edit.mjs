@@ -212,8 +212,24 @@ function nest(base, a, b, first2 = false) {
   const [v, u] = absorb(base, y, x, !first2);
   return [u, v];
 }
+function slid(base, d, own, others) {
+  const at = d.text ? void 0 : others.find((e) => e.start === e.end && d.start < e.start && e.start < d.end)?.start;
+  if (at === void 0) return d;
+  const fits = (m) => ![...own, ...others].some((o) => o !== d && clash(o, m));
+  let left = true, right = true;
+  for (let i = 1; left && i <= d.end - at; i++) left = base[d.start - i] === base[d.end - i];
+  const l = { start: d.start - (d.end - at), end: at, text: "" };
+  if (left && fits(l)) return l;
+  for (let i = 0; right && i < at - d.start; i++) right = base[d.start + i] === base[d.end + i];
+  const r = { start: at, end: d.end + (at - d.start), text: "" };
+  return right && fits(r) ? r : d;
+}
 function mergeEdits(base, ours, all, prefer, apart = false, twice = false) {
-  if (apart) [ours, all] = nest(base, ours, all);
+  if (apart) {
+    [ours, all] = nest(base, ours, all);
+    ours = ours.map((d) => slid(base, d, ours, all));
+    all = all.map((d) => slid(base, d, all, ours));
+  }
   const hit = apart ? clash : overlaps;
   const both = ours.filter((o) => all.some((h) => equal(o, h)));
   const keys = twice && both.length === 1 && both[0].start === both[0].end;
