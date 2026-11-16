@@ -508,7 +508,7 @@ test('a draft and a reply being typed are kept through a reload of the page, and
   clean(a);
 });
 
-test('a mention is toasted once, also after a reload of the page and a later change of its thread', { timeout: 300_000 }, async (t) => {
+test('a mention is toasted once, also after a reload of the page, a reply, and an edit of the comment', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   const id = await post(b, 1, 'Look, @Ann');
   await sees(a, TOASTS, ['Ben mentioned you on slide 2']);
@@ -521,6 +521,10 @@ test('a mention is toasted once, also after a reload of the page and a later cha
   await sees(a, THREADS, [{ anchor: 'On Slide 2', texts: ['Look, @Ann'] }]);
   await act(b, id, 'reply', { text: 'plain reply', mentions: [] });
   await sees(a, THREADS, [{ anchor: 'On Slide 2', texts: ['Look, @Ann', 'plain reply'] }]);
+  assert.deepEqual(await a.evaluate(TOASTS), []);
+  const ann = await a.evaluate(`${C}.person`);
+  await act(b, id, 'edit', { text: `Look again, @{${ann}}`, mentions: [ann] });
+  await sees(a, THREADS, [{ anchor: 'On Slide 2', texts: ['Look again, @Ann', 'plain reply'] }]);
   assert.deepEqual(await a.evaluate(TOASTS), []);
   clean(a);
   clean(b);
