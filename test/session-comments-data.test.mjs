@@ -464,3 +464,28 @@ test('a draft whose element is not found in the source says so and is not sent',
   assert.deepEqual(await a.evaluate(`${C}.transport.comments(${C}.token).then((r) => r.comments.length)`), 0);
   clean(a);
 });
+
+test('a thread refused for a base that left the log is sent again on a new base', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  // the edit command refuses the first thread, as when the version of its anchors left the log
+  await a.evaluate(`(() => {
+    const fetched = window.fetch;
+    let refuse = 1;
+    window.__refused = 0;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      if (refuse && url.endsWith('/.session/comments') && init?.method === 'POST') {
+        refuse--;
+        window.__refused++;
+        return Promise.resolve(new Response(JSON.stringify({ error: 'base is not in the log, read the deck again' }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return fetched.call(this, input, init);
+    };
+  })()`);
+  await show(a, 'One');
+  await click(a, '.reveal .slides > section:nth-child(1) p');
+  await comment(a, 'Sent on a new base');
+  assert.equal(await a.evaluate('window.__refused'), 1, 'the first thread is refused');
+  assert.deepEqual(await a.evaluate(`${C}.transport.comments(${C}.token).then((r) => r.comments.map((c) => c.text))`), ['Sent on a new base']);
+  clean(a);
+});
