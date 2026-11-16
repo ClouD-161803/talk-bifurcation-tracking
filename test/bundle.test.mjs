@@ -1,0 +1,158 @@
+// checks of the strip bundles of src/bundle.ts on the bundle of test/pages/bundle.html: the faults of
+// its JSON script, its states drawn live and in the print view, its compass turned with the camera,
+// a strip grown and shrunk, and the bundle turned and its camera written in the editor
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
+import { parseBundle } from '../src/bundle.ts';
+import { drag, editorPage } from './helpers/editor.mjs';
+
+const DECK = 'test/pages/bundle.html';
+const STATES = ['', 'a', 'a b'];
+const bundle = `Beeson.surfaces.find((s) => s.el.matches('[data-bundle]'))`;
+
+test('a bundle that cannot be drawn is reported with the reason', () => {
+  assert.match(parseBundle('{'), /malformed/);
+  assert.match(parseBundle('{"orbit": [[0, 0, 0]], "strips": []}'), /fewer than three/);
+  const orbit = [[0, 0, 0], [1, 0, 0], [0, 1, 0]];
+  assert.match(parseBundle(JSON.stringify({ orbit, strips: [{ id: 'a', half_width: 1, ribs: [0], directions: [[0, 0, 1]] }] })), /1 directions for 3 points/);
+  assert.match(parseBundle(JSON.stringify({ orbit, strips: [{ id: 'a', half_width: 0, ribs: [0], directions: orbit }] })), /positive half_width/);
+  assert.match(parseBundle(JSON.stringify({ orbit, strips: [{ id: 'a', half_width: 1, ribs: [3], directions: orbit }] })), /not a point of the orbit/);
+  assert.match(parseBundle(JSON.stringify({ orbit, strips: [], arrows: [{ id: 'Sun', toward: [0, 0] }] })), /arrow Sun/);
+  assert.equal(typeof parseBundle(JSON.stringify({ orbit, strips: [] })), 'object');
+});
+
+// the state of each bundle shown, the share of its canvas that is drawn, a digest of the canvas, and
+// the opacities of the labels of the strip a and of the Sun, on the slide or on each page in print
+const shown = `Promise.all([...document.querySelectorAll('.surface[data-bundle]')].filter((s) => s.getClientRects().length).map(async (s) => {
+  const canvas = s.querySelector('canvas'), ctx = canvas.getContext('2d');
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let drawn = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 0) drawn++;
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+  const label = Number(s.querySelector('.label[data-at="a"]').style.opacity);
+  const sun = Number(s.querySelector('.label[data-at="Sun"]').style.opacity);
+  return { state: s.dataset.shown, drawn: drawn / (data.length / 4), digest: [...digest.slice(0, 8)].join('.'), label, sun };
+}))`;
+
+// with the camera at the azimuth az in degrees: the length of the needle of the Sun, its angle in
+// degrees from the direction of the Sun in the scene, whether the canvas is drawn halfway along the
+// needle, and the distances from the middle of the compass to the tip and to the label
+const compass = (az) => `(() => {
+  const b = ${bundle};
+  b.azimuth = ${az} * Math.PI / 180;
+  b.draw();
+  const { needle: [m, t], scene: [a, c] } = b.probe().arrows.find((r) => r.id === 'Sun');
+  const turn = Math.atan2(t[1] - m[1], t[0] - m[0]) - Math.atan2(c[1] - a[1], c[0] - a[0]);
+  const canvas = b.el.querySelector('canvas'), k = canvas.width / b.el.offsetWidth;
+  const px = canvas.getContext('2d').getImageData(Math.round((k * (m[0] + t[0])) / 2) - 1, Math.round((k * (m[1] + t[1])) / 2) - 1, 3, 3).data;
+  const lab = b.el.querySelector('.label[data-at="Sun"]');
+  return {
+    length: Math.hypot(t[0] - m[0], t[1] - m[1]),
+    angle: (Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) * 180) / Math.PI,
+    drawn: px.some((v, i) => i % 4 === 3 && v > 0),
+    label: Math.hypot(parseFloat(lab.style.left) - m[0], parseFloat(lab.style.top) - m[1]),
+  };
+})()`;
+
+test('a bundle is drawn at each of its states, live and in the print view, with its compass toward its arrow', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+
+  const page = await browser.newPage();
+  await page.goto(deckUrl(DECK, 'still'));
+  await page.waitFor(deckSettled);
+  const live = [];
+  for (let f = -1; f <= 1; f++) {
+    await page.evaluate(`Reveal.slide(0, 0, ${f})`);
+    live.push(...(await page.evaluate(shown)));
+  }
+  assert.deepEqual(page.errors, []);
+  assert.deepEqual(live.map((s) => s.state), STATES);
+  // the orbit is drawn before any strip, and more of the canvas is drawn with each strip
+  const at = (state) => live.find((s) => s.state === state);
+  assert.ok(at('').drawn > 0.002, `${(100 * at('').drawn).toFixed(2)}% of the canvas is drawn without a strip`);
+  assert.ok(at('a').drawn > at('').drawn + 0.01 && at('a b').drawn > at('a').drawn, JSON.stringify(live));
+  assert.equal(new Set(live.map((s) => s.digest)).size, STATES.length);
+  assert.deepEqual(live.map((s) => s.label), [0, 1, 1]);
+  assert.ok(live.every((s) => s.sun === 1), 'the label of the Sun is shown at every step');
+
+  // the needle is drawn toward the Sun of the scene, within the error of the perspective, and its
+  // label is past its tip, at four turns of the camera
+  for (const az of [-60, 30, 120, 210]) {
+    const c = await page.evaluate(compass(az));
+    assert.ok(c.length > 20 && c.angle < 5 && c.drawn, `at the azimuth ${az}, the needle is ${JSON.stringify(c)}`);
+    assert.ok(c.label > c.length, `at the azimuth ${az}, the label is ${c.label} from the middle of the compass, and the tip ${c.length}`);
+  }
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl(DECK, 'print-pdf&still'));
+  const pages = await print.evaluate(shown);
+  assert.deepEqual(print.errors, []);
+  // the step added after the last one, which restores the dimmed steps, is printed at the same state
+  assert.deepEqual(pages.map((s) => s.state).filter((state, i, all) => state !== all[i - 1]), STATES);
+  for (const s of pages) {
+    assert.ok(Math.abs(s.drawn - at(s.state).drawn) < 0.002, `a page at the state "${s.state}" is drawn over ${s.drawn}, and the slide over ${at(s.state).drawn}`);
+  }
+});
+
+// the strip a at each frame of the page from the step on, until the bundle has settled
+const sample = (step) => `new Promise((done) => {
+  const b = ${bundle}, seen = [];
+  ${step};
+  const frame = () => {
+    const p = b.probe();
+    seen.push(p.strips[0]);
+    if (p.settled) done({ seen, last: p });
+    else requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+})`;
+
+test('a strip is grown from its first segment to its last and then as a sheet, and shrunk back', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl(DECK));
+  await page.waitFor(deckSettled);
+
+  const grown = await page.evaluate(sample('Reveal.next()'));
+  assert.equal(grown.last.state, 'a');
+  const growing = grown.seen.filter((r) => r.grow > 0 && r.grow < 1);
+  assert.ok(growing.length >= 5, `the growth was seen at ${growing.length} frames`);
+  for (const r of growing) {
+    // a later segment is never ahead of an earlier one, and the sheet waits for the last segment
+    r.ribs.forEach((g, k) => k && assert.ok(g <= r.ribs[k - 1] + 1e-12, `the segment ${k} is at ${g} and the one before at ${r.ribs[k - 1]}`));
+    if (r.sheet > 0) assert.equal(r.ribs.at(-1), 1);
+  }
+  assert.ok(growing.some((r) => r.ribs[0] === 1 && r.ribs.at(-1) < 1), 'the segments are grown one after another');
+  assert.deepEqual(grown.last.strips.map((r) => r.grow), [1, 0]);
+
+  const shrunk = await page.evaluate(sample('Reveal.prev()'));
+  assert.equal(shrunk.last.state, '');
+  assert.ok(shrunk.seen.some((r) => r.grow > 0 && r.grow < 1), 'the strip is shrunk over several frames');
+  assert.deepEqual(shrunk.last.strips.map((r) => r.grow), [0, 0]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a bundle is turned by a drag in the editor, shown in the Surface pane without heights, and its camera is written by Use Current View', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await editorPage(browser, { deck: DECK });
+  if (!(await page.evaluate(`window.BeesonEditor.state('shell.format')`)).checked) await page.evaluate(`window.BeesonEditor.exec('shell.format')`);
+  const camera = () => page.evaluate(`${bundle}.view()`);
+  assert.deepEqual((await camera()).written, { azimuth: -60, elevation: 32, zoom: 1, turn: 90, zscale: 1 });
+  await drag(page, '.surface[data-bundle]', { dx: 80, dy: 30 });
+  const turned = await camera();
+  assert.ok(Math.abs(turned.azimuth + 60) > 10, `the azimuth is ${turned.azimuth}`);
+  assert.ok(turned.elevation > 32, `the elevation is ${turned.elevation}`);
+  const PANES = '#beeson-edit-panel-format .ed-panes';
+  await page.waitFor(`document.querySelector('${PANES}')?.dataset.pane === 'surface'`);
+  const sections = await page.evaluate(`[...document.querySelectorAll('${PANES} .ed-sec > h5')].map((h) => h.textContent)`);
+  assert.ok(sections.includes('Camera') && !sections.includes('Heights'), JSON.stringify(sections));
+  await page.evaluate(`window.BeesonEditor.exec('surface.useView')`);
+  const az = Math.round(turned.azimuth), el = Math.round(turned.elevation);
+  await page.waitFor(`window.BeesonEditor.render().includes('<div class="surface" data-bundle="ring" data-azimuth="${az}" data-elevation="${el}">')`);
+  assert.deepEqual(page.errors, []);
+});
