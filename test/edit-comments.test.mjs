@@ -758,6 +758,23 @@ test('a thread and a reply answered 200 are kept when the edit command is killed
   assert.deepEqual((await second.get(bo)).comments.map((c) => [c.text, c.replies.map((r) => r.text)]), [['Kept?', ['Kept too?']]]);
 });
 
+test('a stop that cannot write comments.json names the file and ends with code 1', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const folder = talkFolder(t);
+  const s = await session(t, folder);
+  const ann = await s.hello('Ann');
+  const { base } = await s.deck();
+  assert.equal((await s.call('comments', ann, { base, anchor: null, slide: null, text: 'Written' })).status, 200);
+  // a folder in place of the file, over which no file is renamed
+  const file = join(folder.talk, '.session', 'comments.json');
+  rmSync(file);
+  fs.mkdirSync(file);
+  assert.equal((await s.call('comments/seen', ann, { time: Date.now() })).status, 200);
+  s.edit.child.kill('SIGTERM');
+  assert.equal(await s.edit.exited, 1);
+  // the edit command names the talk folder by its real path
+  assert.ok(s.edit.stderr.includes(`could not write ${join(fs.realpathSync(folder.talk), '.session', 'comments.json')}: `), s.edit.stderr);
+});
+
 test('a thread or a reply sent again with the id that its page made is made once', { timeout: 120_000 }, async (t) => {
   const s = await session(t);
   const ann = await s.hello('Ann');
