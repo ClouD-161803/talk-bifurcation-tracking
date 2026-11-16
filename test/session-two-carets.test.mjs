@@ -5,11 +5,12 @@
 // in one answer on both sides of an unread key of the person are kept with it, also after a long
 // paste, the same letter typed by both is kept twice, and the same replacement made by both is kept
 // once. an unread key stays whole beside a key of another person, and goes before an element that
-// another person puts around the word after it. two people who take turns at one point each keep a
-// run of their own. an undo next to a space that the browser writes as &nbsp; removes only the
-// typing of the person, and an undo of a word whose trailing space another browser took away is
-// refused. the keys of the person before a composition that starts while the history is busy are
-// kept
+// another person puts around the word after it. a key inside a word stays inside the element that
+// another person puts around this word, whichever of the two the edit command hears first. two
+// people who take turns at one point each keep a run of their own. an undo next to a space that the
+// browser writes as &nbsp; removes only the typing of the person, and an undo of a word whose
+// trailing space another browser took away is refused. the keys of the person before a composition
+// that starts while the history is busy are kept
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -166,9 +167,10 @@ const selectIn = (page, a, b) => page.evaluate(`(() => { const q = ${p}; q.focus
 /**
  * Ana types key at her selection a to b inside the apply whose text holds marker, i.e. after her
  * client read the deck, while her poll is held until the change of the others is in index.html, so
- * that all of it comes in one answer. Returns the paragraph that the pages and index.html agree on.
+ * that all of it comes in one answer. Ana then types more at her caret. Returns the paragraph that
+ * the pages and index.html agree on.
  */
-async function race(t, { names = ['Ana', 'Ben'], edits = [], ana: [a, b, key], marker, ben }) {
+async function race(t, { names = ['Ana', 'Ben'], edits = [], ana: [a, b, key], marker, ben, more = '' }) {
   const { server, pages } = await session(t, names, { edits, pages: [{ script: NET }] });
   const [ana, ...others] = pages;
   for (const page of pages) await show(page, 'Two');
@@ -193,7 +195,12 @@ async function race(t, { names = ['Ana', 'Ben'], edits = [], ana: [a, b, key], m
   await until(() => para(server.read()).includes(marker), 'the change of the others in index.html');
   await ana.evaluate(`__net.clear() && __net.release('/.session/events')`);
   await until(() => ana.evaluate('window.__armed === false'), 'the key of Ana at the apply');
-  const text = para(await converge(server, pages));
+  let text = para(await converge(server, pages));
+  if (more) {
+    await front(ana);
+    await typeKeys(ana, more);
+    text = para(await converge(server, pages));
+  }
   assert.deepEqual(pages.map((page) => page.errors), pages.map(() => []));
   return text;
 }
@@ -283,6 +290,82 @@ test('an unread ampersand that replaces a letter stays one character reference b
 test('an unread key at the start of a word that another person makes italic goes before the new element', { timeout: 240_000 }, async (t) => {
   const text = await race(t, { ana: [7, 7, 'Z'], marker: '<em>slide</em>', ben: format('text.italic') });
   assert.equal(text, '<p>Second Z<em>slide</em></p>');
+});
+
+// a link is put around the selected characters as one inline element, as bold and italic are
+const LINK = '<a href="https://example.org">';
+const link = async (page) => {
+  assert.ok(await selectIn(page, 7, 12));
+  await front(page);
+  await page.evaluate(`${C}.app.commands.run('text.link', { href: 'https://example.org' })`);
+  await page.evaluate(`${C}.app.history.idle().then(() => true)`);
+};
+
+// the formats that Ben puts around the word slide, each with its start tag and its end tag
+const FORMATS = [
+  ['italic', format('text.italic'), '<em>', '</em>'],
+  ['a link', link, LINK, '</a>'],
+];
+
+test('an unread key at the start of a word that another person links goes before the link', { timeout: 240_000 }, async (t) => {
+  const text = await race(t, { ana: [7, 7, 'Z'], marker: `${LINK}slide</a>`, ben: link });
+  assert.equal(text, `<p>Second Z${LINK}slide</a></p>`);
+});
+
+test('an unread key inside a word that another person makes italic or links stays inside the new element, and so does the next key of the person', { timeout: 300_000 }, async (t) => {
+  for (const [name, act, open, close] of FORMATS) {
+    await t.test(name, async (t) => {
+      const text = await race(t, { ana: [9, 9, 'Z'], marker: `${open}slide${close}`, ben: act, more: 'Y' });
+      assert.equal(text, `<p>Second ${open}slZYide${close}</p>`);
+    });
+  }
+});
+
+/**
+ * Ben makes a change that reaches index.html while the poll of Ana is held, and Ana makes hers
+ * before her page hears of it. The authority thus refuses the operation of Ana, and her page merges
+ * the two. Ana then types more at her caret. Returns the paragraph that the pages and index.html
+ * agree on.
+ */
+async function unheard(t, { ben, file, ana, mine, more = '' }) {
+  const { server, pages } = await session(t, ['Ana', 'Ben'], { pages: [{ script: NET }] });
+  const [first] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  await first.evaluate(`__net.rule('/.session/events', 'hold') && __net.drop('/.session/events')`);
+  await until(() => first.evaluate('__net.held.length > 0'), 'a held poll of Ana');
+  await ben(pages[1]);
+  await until(() => para(server.read()) === `<p>Second ${file}</p>`, 'the change of Ben in index.html');
+  await ana(first);
+  await until(() => first.evaluate(`${C}.snapshot().mine.includes(${JSON.stringify(`<p>Second ${mine}</p>`)})`), 'the change of Ana in the text of her client');
+  await first.evaluate(`__net.clear() && __net.release('/.session/events')`);
+  let text = para(await converge(server, pages));
+  if (more) {
+    await front(first);
+    await typeKeys(first, more);
+    text = para(await converge(server, pages));
+  }
+  assert.deepEqual(pages.map((page) => page.errors), pages.map(() => []));
+  return text;
+}
+
+// a key typed inside the word slide
+const inside = async (page) => {
+  assert.ok(await selectIn(page, 9, 9));
+  await typeKeys(page, 'Z');
+};
+
+test('a key inside a word and a format around this word, each made before its page hears of the other, are both kept', { timeout: 480_000 }, async (t) => {
+  for (const [name, act, open, close] of FORMATS) {
+    await t.test(`the key of Ben, then ${name} of Ana`, async (t) => {
+      const text = await unheard(t, { ben: inside, file: 'slZide', ana: act, mine: `${open}slide${close}` });
+      assert.equal(text, `<p>Second ${open}slZide${close}</p>`);
+    });
+    await t.test(`${name} of Ben, then the key of Ana and one more`, async (t) => {
+      const text = await unheard(t, { ben: act, file: `${open}slide${close}`, ana: inside, mine: 'slZide', more: 'Y' });
+      assert.equal(text, `<p>Second ${open}slZYide${close}</p>`);
+    });
+  }
 });
 
 test('a word composed at the start of a word that another person makes bold during the composition goes before the new element', { timeout: 240_000 }, async (t) => {
