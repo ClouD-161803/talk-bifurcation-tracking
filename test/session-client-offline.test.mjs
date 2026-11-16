@@ -15,10 +15,11 @@ import { post, raw, until } from './helpers/session.mjs';
 const SECRET = 'the secret of the group for this test';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const ACTION = `(() => { const b = document.querySelector('.beeson-session-action'); return b && !b.hidden ? b.textContent : null; })()`;
-// a request to an edit command that is not running fails in the console of the page, the first
-// poll after a restart is answered 404, since the token is of the edit command before, and a
-// request after End session through the relay is answered 410
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 410/, /status of 404 .*\/\.session\/events\?/];
+// a request to an edit command that is not running fails in the console of the page, on a Mac also
+// as ERR_SOCKET_NOT_CONNECTED on a kept-alive socket during the stop. the first poll after a restart
+// is answered 404, since the token is of the edit command before, and a request after End session
+// through the relay is answered 410
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 410/, /status of 404 .*\/\.session\/events\?/];
 
 test('a page goes offline when the edit command stops, and Try now sends its edit to the edit command started again', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
@@ -57,7 +58,8 @@ test('a guest is told that the host is not running, and the end of the session b
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const relayed = ['--relay', relay.url];
-  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET } });
+  // a poll without news is answered after 1 s, before the relay of this test gives up after 5 s
+  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000' } });
   const { port, key } = server.edit;
   const guestUrl = `${relay.url}/${key}/index.html?edit&session`;
   await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');

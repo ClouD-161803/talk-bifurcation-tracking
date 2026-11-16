@@ -47,7 +47,8 @@ test('the save state names the slides of the edits that wait, and the dialog of 
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const server = await talk(t, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET } });
+  // a poll without news is answered after 1 s, before the relay of this test gives up after 5 s
+  const server = await talk(t, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000' } });
   const { port, key } = server.edit;
   await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
   const host = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
