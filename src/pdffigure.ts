@@ -135,8 +135,9 @@ export function hashOf(png: Uint8Array): string | null {
     if (type === 'IDAT' || type === 'IEND') return null;
     if (type === 'tEXt') {
       if (crc32(png.subarray(at + 4, at + 8 + length)) !== view.getUint32(at + 8 + length)) return null;
-      const text = String.fromCharCode(...png.subarray(at + 8, at + 8 + length));
-      if (text.startsWith(`${KEY}\0`)) return text.slice(KEY.length + 1);
+      // the keyword is compared byte by byte, since the text of another program may be large
+      const key = latin1(`${KEY}\0`);
+      if (length <= key.length + 64 && key.every((b, i) => png[at + 8 + i] === b)) return String.fromCharCode(...png.subarray(at + 8 + key.length, at + 8 + length));
     }
     at += length + 12;
   }
