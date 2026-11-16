@@ -9,8 +9,6 @@
 // **bold** as a strong, and the marks are taken off
 
 import type { App } from '../app.ts';
-import { refreshHeads } from '../history.ts';
-import { contentWithTex } from '../math.ts';
 import { store, stored } from '../ui/dom.ts';
 
 export type Smart = 'quotes' | 'dashes' | 'links' | 'markdown';
@@ -166,24 +164,18 @@ export function install(app: App): void {
     const node = sel.anchorNode;
     const offset = sel.anchorOffset;
     if (!(node instanceof Text) || !host.contains(node) || node.parentElement?.closest('pre, code, mjx-container')) return;
-    // the substitution is an entry of its own after the typing, which an undo takes back alone
-    const record = (label: string, was: string) => {
-      const now = contentWithTex(host);
-      // the heading of a section slide is written by the theme into the outlines and running heads
-      const put = async (content: string) => {
-        await app.typing.restoreHost(host, content);
-        refreshHeads(host);
-      };
-      app.history.push({ label, undo: () => put(was), redo: () => put(now), touches: [host] });
-      refreshHeads(host);
-      app.history.track(host);
+    // the substitution is an entry of typing of its own after the typing, begun with its label before
+    // the change, which an undo takes back alone, and in a session over the changes of others
+    const record = () => {
+      app.history.afterTyping(host);
+      app.history.break();
       app.markDirty();
       app.invalidate('content');
     };
     // a span of Markdown closed in the text node of the caret, outside a link
     const md = isSmart('markdown') && /^[*_~`]$/.test(data) && !node.parentElement?.closest('a') ? markdownSpan(node.data.slice(0, offset)) : null;
     if (md) {
-      const was = contentWithTex(host);
+      app.history.beforeTyping(host, 'Markdown');
       const el = document.createElement(md.tag);
       el.textContent = md.words;
       const rest = node.splitText(offset);
@@ -195,7 +187,7 @@ export function install(app: App): void {
         sel.collapse(el.parentNode!, [...el.parentNode!.childNodes].indexOf(el) + 1);
       }
       if (!node.data) node.remove();
-      record('Markdown', was);
+      record();
       exit = { host, el };
       return;
     }
@@ -205,7 +197,7 @@ export function install(app: App): void {
     const link = data === ' ' && isSmart('links') && !node.parentElement?.closest('a') ? smartLink(before) : null;
     const from = link ? offset - 1 - (before.length - link.start) : -1;
     if (link && from >= 0) {
-      const was = contentWithTex(host);
+      app.history.beforeTyping(host, 'smart link');
       const range = document.createRange();
       range.setStart(node, from);
       range.setEnd(node, from + link.end - link.start);
@@ -214,14 +206,14 @@ export function install(app: App): void {
       range.surroundContents(a);
       host.normalize();
       if (a.nextSibling instanceof Text) sel.collapse(a.nextSibling, offset - from - (link.end - link.start));
-      record('smart link', was);
+      record();
       return;
     }
     const sub = substitution(before, char, { quotes: isSmart('quotes'), dashes: isSmart('dashes') });
     if (!sub || offset < sub.remove) return;
-    const was = contentWithTex(host);
+    app.history.beforeTyping(host, data === '"' || data === "'" ? 'smart quote' : 'smart dash');
     node.replaceData(offset - sub.remove, sub.remove, sub.insert);
     sel.collapse(node, offset - sub.remove + sub.insert.length);
-    record(data === '"' || data === "'" ? 'smart quote' : 'smart dash', was);
+    record();
   });
 }
