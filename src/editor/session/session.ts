@@ -247,7 +247,8 @@ export function install(app: App): Port {
     const { text, edits } = renderDeck(app.source!, app.pairing!, mathLookup(), app.tagEdits);
     const now = edits.find((e) => e.start === r.start && e.end === r.end)?.text ?? app.source!.text.slice(r.start, r.end);
     const top = edits.filter((e) => !edits.some((o) => o !== e && o.start <= e.start && e.end <= o.end));
-    const span = top.find((e) => e.start <= r.start && r.end <= e.end && r.start < e.end) ?? { ...r, text: now };
+    // the content of an empty element is replaced by an insertion at r.start, which is r itself
+    const span = top.find((e) => e.start <= r.start && r.end <= e.end && (r.start < e.end || e.start === e.end)) ?? { ...r, text: now };
     const at = span.text.indexOf(now);
     if (at < 0 || (span.text !== now && at !== span.text.lastIndexOf(now))) return;
     let p = span.start + at;
