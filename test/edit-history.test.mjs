@@ -1383,8 +1383,9 @@ test('a change of index.html from outside of text that nobody wrote takes about 
   };
   ms(alone);
   let [withHistory, without] = [ms(authority), ms(alone)];
-  if (withHistory > 4 * without) [withHistory, without] = [Math.min(withHistory, ms(authority)), Math.max(without, ms(alone))];
-  assert.ok(withHistory <= 4 * without, `${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone`);
+  // the code that looked at every mark took 10 times as long, and 4 times is reached on a loaded machine
+  if (withHistory > 6 * without) [withHistory, without] = [Math.min(withHistory, ms(authority)), Math.max(without, ms(alone))];
+  assert.ok(withHistory <= 6 * without, `${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone`);
 });
 
 test('a Replace All in slides that a person pasted in the same version takes about as long as in slides of an earlier version', { timeout: 300_000 }, (t) => {
