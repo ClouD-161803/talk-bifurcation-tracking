@@ -314,6 +314,9 @@ export async function rerenderPdf(app: App, el: HTMLImageElement, change: { page
 export async function replaceFile(app: App, el: HTMLImageElement | HTMLVideoElement, file: File): Promise<void> {
   if (!kindOf(file)) throw new Error(`${file.name} is not an image, a PDF, or a video`);
   if (isPdf(file) && el instanceof HTMLImageElement) {
+    // prepare() refuses a file of the other branch
+    const refused = media.refuse?.(file);
+    if (refused) throw new Error(refused);
     const pdf = await preparePdf(app, new Uint8Array(await file.arrayBuffer()), 1, ownColors(el) ? [null] : BOTH, { name: file.name });
     await app.history.selecting('Replace Image', () => setPdf(app, el, pdf, 'Replace Image'));
     app.invalidate('content');
