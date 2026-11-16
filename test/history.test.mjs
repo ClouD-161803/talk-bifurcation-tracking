@@ -226,6 +226,160 @@ test('an entry of typing that has ended is refused, as one in progress is, when 
   assert.deepEqual(told, [['typing', 'undo']]);
 });
 
+// each content of contents written into el by another person, as the session applies it
+function edit(h, el, ...contents) {
+  for (const content of contents) {
+    el.content = content;
+    h.prune((x) => x === el, undefined, undefined, [el]);
+    h.carry(el);
+  }
+}
+
+test('an undo of an earlier entry of typing in a text element is refused when another person removed its letters and typed them again', async () => {
+  const { h } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push(way);
+  const el = textEl('the dog runs');
+  h.track(el);
+  typeInto(h, el, 'the dogs runs');
+  h.break();
+  typeInto(h, el, 'the dogs runs fast');
+  h.break();
+  // the other person selects dogs and types cats over it, key by key
+  edit(h, el, 'the c runs fast', 'the ca runs fast', 'the cat runs fast', 'the cats runs fast');
+  await h.undo();
+  assert.equal(el.content, 'the cats runs');
+  await h.undo();
+  assert.equal(el.content, 'the cats runs', 'the s of the other person is kept');
+  assert.deepEqual(told, ['undo']);
+});
+
+test('an undo of an entry of typing under an undone one is refused when another person removed its letters and typed them again', async () => {
+  const { h } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push(way);
+  const el = textEl('a dog');
+  h.track(el);
+  typeInto(h, el, 'a big dog');
+  h.break();
+  typeInto(h, el, 'a big dog now');
+  h.break();
+  await h.undo();
+  await h.undo();
+  await h.redo();
+  assert.equal(el.content, 'a big dog');
+  // the other person selects all and types over it
+  edit(h, el, '', 'a big cat');
+  await h.undo();
+  assert.equal(el.content, 'a big cat', 'the words of the other person are kept');
+  assert.deepEqual(told, ['undo']);
+});
+
+// the check of each entry reads the text without the entries after it, whose letters beside its
+// own would make its place read two ways
+test('an undo of an entry of typing is not refused for the same letters typed right after it in later entries, after a change of another person', async () => {
+  const { h } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push(way);
+  const el = textEl('x');
+  h.track(el);
+  for (const content of ['x dog', 'x dog dog', 'x dog dog dog']) {
+    typeInto(h, el, content);
+    h.break();
+  }
+  edit(h, el, 'Zx dog dog dog');
+  for (let i = 0; i < 3; i++) await h.undo();
+  assert.equal(el.content, 'Zx');
+  assert.deepEqual(told, []);
+});
+
+// a change of another person checks at most eight entries below the latest one, since a page
+// receives a change for each of his keys
+test('an undo of an entry of typing more than eight entries below the latest one of its text element is refused after a change of another person', async () => {
+  const { h } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push(way);
+  const el = textEl('a');
+  h.track(el);
+  for (let i = 1; i <= 10; i++) {
+    typeInto(h, el, `${el.content} w${i}`);
+    h.break();
+  }
+  edit(h, el, `Z${el.content}`);
+  for (let i = 0; i < 9; i++) await h.undo();
+  assert.equal(el.content, 'Za w1');
+  assert.deepEqual(told, []);
+  await h.undo();
+  assert.equal(el.content, 'Za w1');
+  assert.deepEqual(told, ['undo']);
+});
+
+test('an entry of typing refused at a change of another person is not one of the eight entries that a later change checks', async () => {
+  const { h } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push(way);
+  const el = textEl('a');
+  h.track(el);
+  for (let i = 1; i <= 9; i++) {
+    typeInto(h, el, `${el.content} w${i}`);
+    h.break();
+  }
+  // the other person removes the w of w5, whose entry is then refused
+  edit(h, el, el.content.replace('w5', '5'));
+  typeInto(h, el, `${el.content} w10`);
+  h.break();
+  edit(h, el, `Z${el.content}`);
+  for (let i = 0; i < 10; i++) await h.undo();
+  assert.equal(el.content, 'Za 5');
+  assert.deepEqual(told, ['undo']);
+});
+
+// Ana types zz and then zx and x, and the other person removes letters around them. the second
+// entry is refused, and its letters stay in the text as letters of others
+test('an undo of an entry of typing under a refused one reads the letters of the refused one as letters of another person', async () => {
+  const { h } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push(way);
+  const el = textEl('zaayz');
+  h.track(el);
+  typeInto(h, el, 'zaazzyz');
+  h.break();
+  edit(h, el, 'zzaazzyz', 'zzazzyz');
+  typeInto(h, el, 'zzxzazzyz');
+  edit(h, el, 'zzxzazzxyyyz');
+  typeInto(h, el, 'zzxxzazzxyyyz');
+  h.break();
+  edit(h, el, 'zzxxzzxyyyz', 'zzxxzzxyyz');
+  await h.undo();
+  assert.equal(el.content, 'zzxxzzxyyz');
+  await h.undo();
+  assert.equal(el.content, 'zzxxxyyz');
+  assert.deepEqual(told, ['undo']);
+});
+
+// Ana types x, y, and z, and the other person types over the letters of the text before. the
+// second redo of Ana is refused, and the entry under it reads the y of the other person as hers
+test('undos and redos of two entries of typing, one of them refused, keep the letters of another person', async () => {
+  const { h } = texts();
+  const el = textEl('cbbcec');
+  h.track(el);
+  typeInto(h, el, 'cybbcec');
+  h.break();
+  typeInto(h, el, 'cyzzzybbcec');
+  h.break();
+  edit(h, el, 'cyzzzyycec');
+  await h.undo();
+  edit(h, el, 'cyyzec', 'cyzec');
+  await h.undo();
+  edit(h, el, 'cc');
+  await h.redo();
+  edit(h, el, 'c', 'xyc');
+  await h.redo();
+  edit(h, el, 'xyz');
+  await h.undo();
+  assert.equal(el.content, 'xyz', 'the y of the other person is kept');
+});
+
 test('the typing in progress in one text element goes on when a change of another person ends the typing of another text element', async () => {
   const { h } = texts();
   const el = textEl('X Y');

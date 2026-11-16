@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
-import { press, typeKeys } from './helpers/editor.mjs';
+import { click, press, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { BUBBLE, el, leave, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
@@ -410,6 +410,33 @@ test('an undo of typing followed by typing in another text element keeps a word 
   assert.match(await converge(server, pages), /<li>Alpha<\/li>/);
   await run(ana, 'edit.undo');
   assert.equal(para(await converge(server, pages)), '<p>Second slide to</p>', 'the word typed by Ben is kept');
+  assert.equal(await ana.evaluate(BUBBLE), NOT_UNDONE);
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+// a session of two pages, 140 s, two shows, 30 s, and five converges, 100 s, at most
+test('an undo of an earlier entry of typing in a paragraph keeps a letter that another person removed and typed again after it', { timeout: 300_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>the dog runs</p>']] });
+  const [ana, ben] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  assert.ok(await caretAt(ana, 7));
+  await typeKeys(ana, 's');
+  // Ana types in the heading and clicks at the end of the paragraph, which starts a new entry there
+  await caretAtEnd(ana, el(1, 'h2'));
+  await typeKeys(ana, ' x');
+  await converge(server, pages);
+  await click(ana, await ana.evaluate(`(() => { const r = ${p}.getBoundingClientRect(); return { x: r.right - 4, y: r.top + r.height / 2 }; })()`));
+  await typeKeys(ana, ' fast');
+  assert.equal(para(await converge(server, pages)), '<p>the dogs runs fast</p>');
+  // Ben types cats over dogs, and his c reaches Ana before the rest
+  assert.ok(await selectIn(ben, 4, 8));
+  await typeKeys(ben, 'c');
+  await converge(server, pages);
+  await typeKeys(ben, 'ats');
+  assert.equal(para(await converge(server, pages)), '<p>the cats runs fast</p>');
+  for (let i = 0; i < 3; i++) await run(ana, 'edit.undo');
+  assert.equal(para(await converge(server, pages)), '<p>the cats runs</p>', 'the s of Ben is kept');
   assert.equal(await ana.evaluate(BUBBLE), NOT_UNDONE);
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
