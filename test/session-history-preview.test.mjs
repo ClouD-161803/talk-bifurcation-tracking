@@ -221,6 +221,37 @@ test('the preview of a deck with a hidden slide, a changed step, and changed not
   clean(ann);
 });
 
+// a deck with a plugin of reveal.js whose init ends after the page is loaded. reveal.js takes the
+// hidden slides out of the page only once every plugin is started
+const late = (text) => text.replace('Beeson.start({})', `Beeson.start({ plugins: [{ id: 'late', init: () => new Promise((done) => setTimeout(done, 1500)) }] })`);
+
+test('the preview of a deck whose plugin of reveal.js starts after the page is loaded opens at the first changed slide that is shown', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  writeFileSync(server.file, late(STEPS('Third slide', 'Step text', 'A note')));
+  await server.edit.child.kill();
+  await server.edit.exited;
+  await server.start();
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await write(server, ann, late(STEPS('Third slide changed', 'Step text', 'A note')), 'Third slide changed');
+  await nameNow(ann, 'Changed');
+  await openPane(ann);
+  await tapOrClick(ann, rowByTitle('Changed'));
+  // the hidden slide is still in the page when it is loaded
+  await ann.waitFor(`${FRAME}?.contentDocument?.readyState === 'complete' && ${FRAME}.contentWindow.Reveal?.isReady() === false`, 30_000);
+  assert.equal(await ann.evaluate(`${FRAME}.contentDocument.querySelectorAll('.reveal .slides section').length`), 3);
+  await ann.waitFor(`${FRAME}.contentWindow.Reveal.isReady()`, 30_000);
+  assert.equal(await ann.evaluate(`${FRAME}.contentDocument.querySelectorAll('.reveal .slides section').length`), 2);
+  await ann.waitFor(`${CURRENT} === 'Three'`);
+  assert.deepEqual(await ann.evaluate(`[...${FRAME}.contentDocument.querySelectorAll('[data-beeson-changed]')].map((e) => e.textContent)`), ['Third slide changed']);
+  await ann.evaluate(`${FRAME}.contentWindow.Reveal.slide(0), true`);
+  await ann.waitFor(`${CURRENT} === 'One'`);
+  await press$(ann, BAR, 'Slide 2');
+  await ann.waitFor(`${CURRENT} === 'Three'`);
+  clean(ann);
+});
+
 test('a version that changes only the start tag of a slide outlines the slide itself', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
