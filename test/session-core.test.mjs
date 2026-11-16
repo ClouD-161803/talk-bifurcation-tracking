@@ -917,6 +917,46 @@ test('a vertical stack moved before three slides by one replica and a key of ano
   for (const moveFirst of [true, false]) assert.equal(race(base, moved, base.replace('More of top 2', 'More of top 2 by Bob'), moveFirst), moved.replace('More of top 2', 'More of top 2 by Bob'), `${moveFirst ? 'move' : 'key'} first`);
 });
 
+// the texts of merges(), of the merge of the patches on the page of the change, and of a resync of
+// this page after the key reached the edit command
+function everyMerge(base, changed, typed) {
+  const r = new Replica('benxxxxx', base, 'E.0');
+  r.edit(changed);
+  r.resync(typed, 'E.1');
+  return { ...merges(base, changed, typed), 'the patches of the change': apply(base, mergePatches(diff(base, typed), diff(base, changed), 'ours', base).patches), 'a resync of the change': r.mine };
+}
+
+// each key of keys is in text once, and each line of base at least once
+function keeps(text, base, keys, what) {
+  for (const k of keys) assert.equal(times(text, k), 1, `${what}: ${k} is in the text`);
+  const rest = keys.reduce((t, k) => t.replaceAll(k, ''), text);
+  for (const l of new Set(base.split('\n').map((l) => l.trim()).filter(Boolean))) assert.ok(rest.includes(l), `${what}: ${l} is in the text`);
+}
+
+test('several slides moved in one operation, e.g. by Move Slide Down on slides that are not neighbors, keep a key of another person in a slide that they pass, in both orders, in the merges of the editor and of the patches, and in a resync', () => {
+  const plain = (n, key = '') => `    <section>\n      <h2>Slide ${n}</h2>\n      <p>Text of slide ${n}${key}</p>\n    </section>\n`;
+  const titles = ['Orbit design', 'Results of the transfer', 'A halo family', 'Thank you', 'Method'];
+  const rich = (n, key = '') => `    <section class="s${n}">\n      <h2>${titles[n - 1]}</h2>\n` + (n % 2 ? `      <ul>\n        <li>Point ${n}a${key}</li>\n        <li>Point ${n}b</li>\n      </ul>\n` : `      <p>A paragraph of ${n * 7} words${key}</p>\n      <img src="f${n}.png">\n`) + '    </section>\n';
+  for (const [slide, order, moved, into] of [[plain, [1, 2, 3, 4], [2, 1, 4, 3], 4], [plain, [1, 2, 3], [3, 2, 1], 2], [rich, [1, 2, 3, 4, 5], [3, 1, 2, 5, 4], 4]]) {
+    const deck = (o, key) => o.map((n) => slide(n, n === key ? ' by Ana' : '')).join('');
+    for (const [how, text] of Object.entries(everyMerge(deck(order), deck(moved), deck(order, into)))) keeps(text, deck(order), [' by Ana'], `${moved.join('')} with a key in slide ${into}, ${how}`);
+  }
+});
+
+test('a key and a slide move of one person in one operation keep the key of another person in a slide that nobody moves, in both orders, in the merges of the editor and of the patches, and in a resync', () => {
+  const s = (h, ...ps) => `<section>\n  <h2>${h}</h2>\n${ps.map((p) => `  ${p}\n`).join('')}</section>\n`;
+  const alpha = s('Alpha', '<p>Alpha text</p>'), beta = s('Beta', '<p>Beta text</p>'), gamma = s('Gamma', '<p>Gamma text</p>', '<p>Gamma more</p>');
+  const one = s('One', '<p>First</p>', '<ul>', '  <li>Item</li>', '  <li></li>', '</ul>'), two = s('Two', '<p>Second</p>'), three = s('Three', '<ul>', '  <li>Last item</li>', '</ul>', '<p>Third</p>'), four = s('Four', '<p>Fourth</p>');
+  // gamma moved above a slide with the key of the mover, and one moved below a slide with this key
+  const cases = [
+    [alpha + beta + gamma, gamma + alpha.replace('Alpha text', 'Alpha text mine') + beta, alpha.replace('<h2>Alpha', '<h2>Alpha theirs') + beta + gamma],
+    [one + two + three + four, two.replace('Second', 'Second mine') + three + one + four, one + two + three.replace('Last item', 'Last item theirs') + four],
+  ];
+  for (const [base, mover, typist] of cases) {
+    for (const [how, text] of Object.entries(everyMerge(base, mover, typist))) keeps(text, base, [' mine', ' theirs'], `${base.match(/<h2>(\w+)/)[1]}, ${how}`);
+  }
+});
+
 test('a move that also adds a paragraph keeps this paragraph when another replica types in the moved paragraph, in both orders and in the merge of the editor', () => {
   const [base, moved] = MOVES['inside its slide'];
   const typed = base.replace('Second slide', 'Second slide by Ana');
