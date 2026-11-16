@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, show } from './helpers/client.mjs';
 import { center, click, drag, press, type, typeKeys } from './helpers/editor.mjs';
+import { NET } from './helpers/net.mjs';
 import { BUBBLE, el, keep, leave, HOLDER, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -580,6 +581,31 @@ test('a text element that a page moved, or moved back with Undo, is held on this
   await ben.evaluate(`${C}.app.commands.run('edit.redo')`);
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the redo of the move');
   assert.equal(await ben.evaluate(last), false, 'the paragraph stays where the undo put it');
+  clean(ana);
+  clean(ben);
+});
+
+test('a page whose removal of a paragraph is not acknowledged reads the deck into its source once while another person types in this paragraph', { timeout: 660_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { pages: [{}, { script: NET }] });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await ben.evaluate(`(() => { const port = ${C}.port; const rebase = port.rebase.bind(port); window.__rebases = 0; port.rebase = () => (window.__rebases++, rebase()); return true; })()`);
+  // the removal stays in flight, hence the paragraph that Ana types in is missing on the page of Ben
+  await front(ben);
+  await ben.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await ben.evaluate(`(() => { const p = ${p}; return ${C}.app.doc.remove(p).then(() => true); })()`);
+  await until(() => ben.evaluate(`__net.held.length === 1`), 'the removal of Ben to be held');
+  await front(ana);
+  await caretAtEnd(ana, p);
+  for (let i = 1; i <= 10; i++) {
+    await typeKeys(ana, 'a');
+    await until(() => ben.evaluate(`${C}.base.text.includes('Second slide${'a'.repeat(i)}<')`), 'the key of Ana on the page of Ben');
+    // a state of Ana at the version of her key makes the page of Ben read the paragraph again
+    await until(() => ben.evaluate(`${C}.presence.some((p) => p.client !== ${C}.client && p.state?.v === ${C}.base.v)`), 'the state of Ana after her key on the page of Ben');
+  }
+  assert.ok((await ben.evaluate('window.__rebases')) <= 1, `the deck read into the source ${await ben.evaluate('window.__rebases')} times`);
+  await ben.evaluate(`(__net.clear(), __net.release(''))`);
   clean(ana);
   clean(ben);
 });
