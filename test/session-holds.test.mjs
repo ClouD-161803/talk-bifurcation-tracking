@@ -280,3 +280,24 @@ test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, 
   clean(ana);
   clean(ben);
 });
+
+test('a page that loads after a person stopped typing does not see the text element of their caret as held', { timeout: 120_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  await until(() => ben.evaluate(`${P}.resolved().some((r) => r.name === 'Ana' && r.caret && !r.typing)`), 'Ana to stop typing on the page of Ben');
+  // the 30 s of the hold pass on the clock of Ben
+  await ben.evaluate(`${P}.skew = 31000`);
+  assert.equal(await ben.evaluate(`${P}.holds.size`), 0, 'the hold ends after 30 s');
+  const count = await loads(ben);
+  await ben.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(ben).catch(() => 0)) > count, 'the page of Ben to load again');
+  await ben.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await ben.waitFor(ONLINE);
+  await front(ben);
+  await until(() => caretOf(ben, 'Ana', SECOND), 'the caret of Ana to be read on the new page of Ben');
+  assert.equal(await ben.evaluate(HOLDER(SECOND)), null, 'the paragraph is not held on the new page');
+  clean(ana);
+  clean(ben);
+});
