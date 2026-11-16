@@ -111,8 +111,7 @@ test('revert keeps an insertion of another person on each side of the span, and 
 });
 
 test('revert removes the letters of the person and keeps the same letter typed next to them by another person', () => {
-  // the person typed "aa", and another person typed "a" next to it
-  assert.equal(revert('Xa aaY', 'Xa Y', 'Xa aaaY'), 'Xa aY');
+  // the person typed "aa", and another person typed "a" before the space
   assert.equal(revert('Xa aaY', 'Xa Y', 'Xaa aaY'), 'Xaa Y');
   // the person typed "ab", and another person typed "a" on its left, which the diff of the two
   // texts places between "a" and "b", inside the span of the person
@@ -142,6 +141,17 @@ test('revert removes a word typed with a leading space before a space, and refus
   assert.equal(typed(after.indexOf('big')), null);
   assert.equal(typed(after.indexOf(' world')), null);
   assert.equal(typed(after.indexOf('ig')), null);
+});
+
+test('revert refuses when an edit of another person at an end of the span can be read on the other side of it', () => {
+  // the person typed "this", and another person removed an s after it, which the texts also give
+  // as the s of the person
+  assert.equal(revert('Second thisslide', 'Second slide', 'Second thislide'), null);
+  // the person typed "big ", and another person typed " new" after big, which the texts also give
+  // as "new " after the space of the person
+  assert.equal(revert('Second big slide', 'Second slide', 'Second big new slide'), null);
+  // the person typed "aa", and another person typed "a" after it or inside it
+  assert.equal(revert('Xa aaY', 'Xa Y', 'Xa aaaY'), null);
 });
 
 test('revert gives null for an insertion inside the span that is not beside it, a removal across the span, and too many edits of others', () => {
