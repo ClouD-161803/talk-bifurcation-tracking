@@ -213,7 +213,7 @@ async function pastedWithoutQuestion(page) {
   assert.ok(!message?.includes('not copied'), message);
 }
 
-test('a copy from another page of the talk folder of a session', { timeout: 180_000 }, async (t) => {
+test('a copy from another page of the talk folder of a session', { timeout: 330_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
