@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, changes, charEdits, clash, edits, fine, merge, mergeEdits, revert } from '../src/editor/merge.ts';
+import { apply, changes, charEdits, clash, edits, fine, merge, mergeEdits, moves, revert } from '../src/editor/merge.ts';
 import { apply as applyPatches, conflict, diff, mergePatches, shift } from '../src/session/patch.ts';
 
 const base = ['<section>', '  <h2>One</h2>', '  <p>First slide</p>', '</section>', '<section>', '  <h2>Two</h2>', '  <p>Second slide</p>', '</section>', ''].join('\n');
@@ -707,4 +707,57 @@ test('the merge of an apply in a session keeps a format with keys of its own sid
     assert.equal(mergeEdits(f, fine(f, em), fine(f, here(other)), 'ours', true, true).text, em, other);
     assert.equal(mergeEdits(f, fine(f, here(other)), fine(f, em), 'ours', true, true).text, here(other), `${other} unread`);
   }
+});
+
+test('a vertical stack moved before three slides is the move of the stack, and a key in one of these slides merges with it without a conflict', () => {
+  const top = (n) => `<section>\n  <h2>Top ${n}</h2>\n  <p>Words of top ${n}</p>\n  <p>More of top ${n}</p>\n  <p>End of top ${n}</p>\n</section>\n`;
+  const inner = (n) => `  <section>\n    <h2>Inner ${n}</h2>\n    <p>Words of inner ${n}</p>\n    <p>End of inner ${n}</p>\n  </section>\n`;
+  const stack = `<section>\n${inner(1)}${inner(2)}</section>\n`;
+  const deck = top(1) + top(2) + top(3) + stack, moved = stack + top(1) + top(2) + top(3);
+  const found = changes(deck, moved);
+  assert.equal(apply(deck, found), moved);
+  assert.ok(found.every((e) => !deck.slice(e.start, e.end).includes('Top')), 'a slide that the stack passes is read as moved');
+  const typed = deck.replace('More of top 2', 'More of top 2 by Bob');
+  for (const prefer of ['ours', 'theirs']) assert.deepEqual(merge(deck, changes(deck, typed), moved, prefer), { text: moved.replace('More of top 2', 'More of top 2 by Bob'), conflicts: [] }, prefer);
+});
+
+test('keys of another person on both sides of an unread key are kept when the received text also moves a letter, a word, a paragraph, or a slide', () => {
+  const from = ['<section>', '  <h2>Cats</h2>', '  <p>one two three</p>', '  <p>Spacer</p>', '  <p>The cats sleep</p>', '  <p>Spacer two</p>', '  <p>A dog barks</p>', '</section>', ''].join('\n');
+  const seen = from.replace('two three', 'twoA three');
+  const keys = from.replace('one', 'oneB').replace('three', 'threeC');
+  for (const [how, text] of [['a letter', keys.replace('cats', 'cat').replace('dog barks', 'dogs barks')], ['a word', keys.replace('The cats sleep', 'The cats').replace('A dog barks', 'A dog barks sleep')], ['a paragraph', keys.replace('  <p>Spacer two</p>\n', '').replace('</section>', '  <p>Spacer two</p>\n</section>')]]) {
+    assert.equal(mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text, text.replace('two three', 'twoA three'), how);
+  }
+  const mice = '<section>\n  <h2>Mice</h2>\n  <p>Squeak</p>\n</section>\n', dogs = mice.replace('Mice', 'Dogs').replace('Squeak', 'Barks');
+  const moved = keys + dogs + mice;
+  assert.equal(mergeEdits(from + mice + dogs, fine(from + mice + dogs, seen + mice + dogs), fine(from + mice + dogs, moved), 'ours', true, true).text, moved.replace('two three', 'twoA three'), 'a slide');
+});
+
+test('a move is the removal of whole lines and the insertion of their text in the same order, and gives way only to an edit of someone else inside it', () => {
+  const doc = ['<p>A one</p>', '<p>B two</p>', '<p>C three</p>', '<li></li>', '<section>', '<h2>S</h2>', '</section>', '<section>', '<h2>S</h2>', '</section>', ''].join('\n');
+  const cut = (s, i = 0) => ({ start: doc.indexOf(s, i), end: doc.indexOf(s, i) + s.length, text: '' });
+  const put = (text) => ({ start: doc.length, end: doc.length, text });
+  const key = (s) => ({ start: doc.indexOf(s) + 4, end: doc.indexOf(s) + 4, text: 'x' });
+  const hit = (a, b) => a.start < b.end && b.start < a.end;
+  const of = (list, others) => moves(doc, list, others, hit).map((e) => list.indexOf(e));
+  const a = '<p>A one</p>\n', b = '<p>B two</p>\n', s = '<section>\n<h2>S</h2>\n</section>\n';
+  assert.deepEqual(of([cut(a), put(a)], [key(a)]), [1, 0], 'a paragraph moved to the end');
+  assert.deepEqual(of([cut(a), put(a)], [key('<p>C')]), [], 'a key outside the moved paragraph');
+  assert.deepEqual(of([cut(a), put(a), key('<p>C')], [key(a)]), [], 'a move with another change');
+  assert.deepEqual(of([cut(a.slice(3)), put(a.slice(3))], [key(a)]), [], 'a removal from the middle of a line');
+  assert.deepEqual(of([cut(a.slice(0, -1)), put(a.slice(0, -1))], [key(a)]), [], 'a removal without its line break');
+  assert.deepEqual(of([cut(a), { start: doc.indexOf('<p>C'), end: doc.indexOf('<p>C') + 3, text: a }], [key(a)]), [], 'a replacement with the text of the removal');
+  assert.deepEqual(of([cut('<li></li>\n'), put('<li></li>\n')], [{ start: doc.indexOf('<li>') + 4, end: doc.indexOf('<li>') + 4, text: 'x' }]), [], 'a line without text');
+  assert.deepEqual(of([cut(a), cut(b), put(b + a)], [key(a)]), [], 'two removals inserted in the other order');
+  assert.deepEqual(of([cut(s), cut(s, doc.indexOf(s) + 1), put(s)], [{ start: doc.lastIndexOf('<h2>S') + 4, end: doc.lastIndexOf('<h2>S') + 4, text: 'x' }]), [], 'one of two equal slides');
+  const dos = '<p>A one</p>\r\n<p>B two</p>\r\n<p>C three</p>\r\n';
+  const two = [{ start: 0, end: 14, text: '' }, { start: 28, end: 44, text: '' }, { start: 44, end: 44, text: '<p>A one</p>\r\n<p>C three</p>\r\n' }];
+  assert.equal(moves(dos, two, [{ start: 4, end: 4, text: 'x' }], hit).length, 3, 'two paragraphs in a text with CRLF line ends');
+});
+
+test('outside a session, a key in a paragraph that the file moves is a conflict, hence the page keeps its key and the file its move', () => {
+  const theirs = base.replace('  <p>First slide</p>\n', '').replace('  <p>Second slide</p>\n', '  <p>Second slide</p>\n  <p>First slide</p>\n');
+  const merged = merge(base, [edit('First', 'My first')], theirs, 'ours');
+  assert.equal(merged.conflicts.length, 1);
+  assert.equal(merged.text, theirs.replace('<h2>One</h2>\n', '<h2>One</h2>\n  <p>My first slide</p>\n'));
 });
