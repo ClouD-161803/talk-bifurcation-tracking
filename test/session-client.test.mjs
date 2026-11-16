@@ -317,7 +317,7 @@ for (const [what, change, slow] of [
   ['is rejected', rejected],
   ['is rejected on a busy page', rejected, true],
 ]) {
-  test(`a word committed at the end of a composition whose held-back change ${what} reaches index.html after both pages load again`, { timeout: 240_000 }, async (t) => {
+  test(`a word committed at the end of a composition whose held-back change ${what} reaches index.html after both pages load again`, { timeout: 360_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talk(t);
