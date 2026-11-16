@@ -958,6 +958,56 @@ test('a replica keeps a format with a key of its own in the word, the removal of
   assert.equal(race(base, at('Second slZide hYere'), at('Second <em>slide</em> here')), at('Second <em>slZide</em> hYere'));
 });
 
+// the edits that fine() finds in the two words interleave without a conflict, e.g. near to plane
+// as ne to pl and r to ne, and near to large as n to l and e to rg
+test('one word replaced by two browsers at once is the word of one of them at the authority, and not a mix of their letters', () => {
+  const at = (w) => `<section>\n  <h2>Two</h2>\n  <p>The ${w} point</p>\n</section>\n`;
+  for (const [start, theirs, mine] of [['near', 'plane', 'large'], ['near', 'final', 'lower'], ['halo', 'slow', 'phase'], ['model', 'moon', 'delta'], ['slow', 'second', 'lower']]) {
+    const base = at(start), t = diff(base, at(theirs)), o = diff(base, at(mine));
+    assert.equal(apply(base, mergePatches(t, o, 'ours', base).patches), at(mine), `${theirs} and ${mine}`);
+    assert.equal(apply(base, mergePatches(t, o, 'theirs', base).patches), at(theirs), `${theirs} and ${mine}, theirs wins`);
+    // the operation of the other browser reaches the authority first, and the replica sends its
+    // merged text again after the refusal of its own
+    const a = new Authority(base, { epoch: 'E' });
+    const r = new Replica('me', base, 'E.0');
+    r.edit(at(mine));
+    const sent = r.outgoing();
+    const { op } = a.submit({ client: 'other', seq: 1, base: 'E.0', patches: t }, 'O');
+    r.answer(sent, a.submit(sent, 'me').answer);
+    r.receive(op);
+    a.submit(r.outgoing(), 'me');
+    assert.equal(a.text, at(mine), `${theirs} first, then ${mine}`);
+  }
+});
+
+// the patch of theirs spans from slide to here, hence it conflicts with the patch of ours, and the
+// finer edits are taken where they do not mix the letters of one word
+test('the merge of a replica keeps the edits of two browsers in one word when only one of them removes letters, and in two words when both do', () => {
+  const at = (p) => `<section>\n  <p>${p}</p>\n</section>\n`;
+  for (const [start, theirs, ours, want] of [
+    ['Second slide here', 'Second slde heXre', 'Second slidZe here', 'Second sldZe heXre'],
+    ['Second slide here', 'Second slidZe heXre', 'Second slde here', 'Second sldZe heXre'],
+    ['Second slide here', 'Second slde heXre', 'Second slide ere', 'Second slde eXre'],
+    ['Second slide-here', 'Second slde-heXre', 'Second slide-ere', 'Second slde-eXre'],
+    // a digit is a letter of a word, hence the whole patch of ours wins
+    ['Second slide2here', 'Second slde2heXre', 'Second slide2ere', 'Second slide2ere'],
+    // a tag that is removed, or put around a run that holds a tag, does not remove letters
+    ['Second <em>slide</em>x here', 'Second slidex heYre', 'Second <em>slide</em> here', 'Second slide heYre'],
+    ['Second s<b>li</b>dex here', 'Second <a href="u">s<b>li</b>de</a>x heYre', 'Second s<b>li</b>de here', 'Second <a href="u">s<b>li</b>de</a> heYre'],
+  ]) {
+    const base = at(start);
+    assert.equal(apply(base, mergePatches(diff(base, at(theirs)), diff(base, at(ours)), 'ours', base).patches), at(want), `${theirs} and ${ours}`);
+  }
+});
+
+test('two keys at one point in a word that one browser makes italic keep the order of the authority when the two operations also conflict on another line', () => {
+  const base = '<section>\n  <p>Second slide here</p>\n  <p>First point</p>\n</section>\n';
+  const theirs = base.replace('slide', '<em>slYide</em>').replace('First', 'Opening');
+  for (const ours of [base.replace('slide', 'slZide'), base.replace('slide', 'slZide').replace('First', 'Initial')]) {
+    assert.match(apply(base, mergePatches(diff(base, theirs), diff(base, ours), 'ours', base).patches), /<em>slYZide<\/em>/, ours);
+  }
+});
+
 test('a replica that hears an operation away from its unsent key on a deck of 200,000 characters takes less than 2.5 times as long as one without a key', () => {
   const para = '<section>\n  <h2>Plain</h2>\n  <p>The spacecraft leaves the halo orbit near the second Lagrange point and follows the stable manifold toward the Moon.</p>\n</section>\n\n';
   const long = para.repeat(Math.ceil(200_000 / para.length));
