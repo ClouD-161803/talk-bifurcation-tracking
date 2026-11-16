@@ -94,9 +94,10 @@ function childrenOf(html: string): (Range & { name: string; open: number })[] {
 
 // the pairs of an item of a and an item of b that are one item, matched first by equal text in
 // order, and then, between two equal ones, by the most characters shared at the start and the end.
-// with half, the items are slides, paired only when they share at least half of the shorter text,
-// at the start and the end or, at the same place between two equal ones, through the middle
-export function pairs(a: string[], b: string[], half = false): { i: number; j: number; same: boolean }[] {
+// with half, the items are slides, paired only when they share at least half of the shorter text
+// at the start and the end. with mid, the half may also be shared through the middle, at the same
+// place between two equal ones
+export function pairs(a: string[], b: string[], half = false, mid = false): { i: number; j: number; same: boolean }[] {
   const out: { i: number; j: number; same: boolean }[] = [];
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) out.push({ i: pre, j: pre, same: true }), pre++;
@@ -115,7 +116,7 @@ export function pairs(a: string[], b: string[], half = false): { i: number; j: n
   anchors.push([n, m]);
   let i0 = 0, j0 = 0;
   for (const [ai, aj] of anchors) {
-    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
+    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half, mid)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
     if (ai < n) out.push({ i: pre + ai, j: pre + aj, same: true });
     i0 = ai + 1;
     j0 = aj + 1;
@@ -135,10 +136,10 @@ export const shared = (x: string, y: string) => {
 
 // the pairs in order of an item of a and an item of b, as many as the shorter list holds, that
 // share the most characters in all, found by placing the shorter list into the longer one
-function bestPairs(a: string[], b: string[], half: boolean): [number, number][] {
+function bestPairs(a: string[], b: string[], half: boolean, mid: boolean): [number, number][] {
   const n = a.length, m = b.length;
   if (n === 0 || m === 0) return [];
-  if (half) return closePairs(a, b);
+  if (half) return closePairs(a, b, mid);
   if (n === m) return a.map((_, i) => [i, i]);
   const k = Math.min(n, m);
   const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
@@ -194,19 +195,19 @@ function core(x: string, y: string) {
 
 // the pairs in order of a slide of a and a slide of b that share the most characters in all, where
 // a slide is left out rather than paired with one that shares less than half of the shorter text.
-// two slides share the characters at their start and end, or, at the same place counted from the
-// start or the end of a and b, those of the stretch that core finds, e.g. a slide whose heading
-// and notes changed. the texts are read without tags, since short slides share most of their
+// two slides share the characters at their start and end, or, with mid, at the same place counted
+// from the start or the end of a and b, those of the stretch that core finds, e.g. a slide whose
+// heading and notes changed. the texts are read without tags, since short slides share most of their
 // markup, and the markup inside their sections is read when neither slide has text, e.g. two
 // slides of one picture each
-function closePairs(a: string[], b: string[]): [number, number][] {
+function closePairs(a: string[], b: string[], mid: boolean): [number, number][] {
   const n = a.length, m = b.length;
   const wa = a.map(words), wb = b.map(words);
   const ia = a.map(inner), ib = b.map(inner);
   const gain = (i: number, j: number) => {
     const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
     // the middle is read only at the same place, which keeps the reads linear in the slides
-    const s = Math.max(shared(x, y), i === j || n - i === m - j ? core(x, y) : 0);
+    const s = Math.max(shared(x, y), mid && (i === j || n - i === m - j) ? core(x, y) : 0);
     return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
@@ -282,11 +283,13 @@ export function pairInPlace(to: Int32Array, m: number, textA: (i: number) => str
 // the numbers of the slides of after that hold a mark, and what is gone from before. an empty
 // mark, where text was removed, is on a slide when it falls strictly inside it. slides are paired as
 // matchSlides of anchor.ts pairs them: in order by equal or half-shared text, then a moved slide by
-// its equal text, then by pairInPlace. a slide of before left unpaired is gone
+// its equal text, then by pairInPlace. only here, the half may be shared through the middle, since
+// a wrong pair misnames a change in the bar, while it would hand a thread to another slide. a
+// slide of before left unpaired is gone
 export function slideChanges(before: string, beforeSlides: Slide[], after: string, afterSlides: Slide[], marks: Range[]): SlideChanges {
   const a = beforeSlides.map((s) => before.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
-  const matched = pairs(a, b, true);
+  const matched = pairs(a, b, true, true);
   const to = new Int32Array(a.length).fill(-1);
   for (const p of matched) to[p.i] = p.j;
   // a slide moved past others is left out of the pairs in order, and paired by its equal text, the

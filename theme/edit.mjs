@@ -1507,7 +1507,7 @@ function childrenOf(html) {
   }
   return out;
 }
-function pairs(a, b, half = false) {
+function pairs(a, b, half = false, mid = false) {
   const out = [];
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) out.push({ i: pre, j: pre, same: true }), pre++;
@@ -1525,7 +1525,7 @@ function pairs(a, b, half = false) {
   anchors2.push([n, m]);
   let i0 = 0, j0 = 0;
   for (const [ai, aj] of anchors2) {
-    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
+    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half, mid)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
     if (ai < n) out.push({ i: pre + ai, j: pre + aj, same: true });
     i0 = ai + 1;
     j0 = aj + 1;
@@ -1540,10 +1540,10 @@ var shared = (x, y) => {
   while (s < x.length - p && s < y.length - p && x[x.length - 1 - s] === y[y.length - 1 - s]) s++;
   return p + s;
 };
-function bestPairs(a, b, half) {
+function bestPairs(a, b, half, mid) {
   const n = a.length, m = b.length;
   if (n === 0 || m === 0) return [];
-  if (half) return closePairs(a, b);
+  if (half) return closePairs(a, b, mid);
   if (n === m) return a.map((_, i) => [i, i]);
   const k = Math.min(n, m);
   const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
@@ -1579,13 +1579,13 @@ function core(x, y) {
   }
   return b;
 }
-function closePairs(a, b) {
+function closePairs(a, b, mid) {
   const n = a.length, m = b.length;
   const wa = a.map(words), wb = b.map(words);
   const ia = a.map(inner), ib = b.map(inner);
   const gain = (i, j) => {
     const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
-    const s = Math.max(shared(x, y), i === j || n - i === m - j ? core(x, y) : 0);
+    const s = Math.max(shared(x, y), mid && (i === j || n - i === m - j) ? core(x, y) : 0);
     return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
@@ -1646,7 +1646,7 @@ function pairInPlace(to, m, textA, textB) {
 function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const a = beforeSlides.map((s) => before2.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
-  const matched = pairs(a, b, true);
+  const matched = pairs(a, b, true, true);
   const to = new Int32Array(a.length).fill(-1);
   for (const p of matched) to[p.i] = p.j;
   const free = /* @__PURE__ */ new Map();

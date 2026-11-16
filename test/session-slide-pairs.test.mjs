@@ -23,9 +23,9 @@ function marksOf(before, after) {
   });
 }
 const changes = (before, after) => slideChanges(before, slidesOf(before), after, slidesOf(after), marksOf(before, after));
-// the pairs of the slides of two texts, as [i, j]
+// the pairs of the slides of two texts as the bar of a version pairs them, as [i, j]
 const texts = (text) => slidesOf(text).map((s) => text.slice(s.start, s.end));
-const paired = (before, after) => pairs(texts(before), texts(after), true).map((p) => [p.i, p.j]);
+const paired = (before, after) => pairs(texts(before), texts(after), true, true).map((p) => [p.i, p.j]);
 
 const INTRO = slide('Introduction', '<p>Transfers between libration point orbits cost little fuel.</p>');
 const P1 = '<p>We shoot from the halo orbit along its unstable manifold toward the target.</p>';
@@ -177,31 +177,6 @@ test('a slide replaced by another is removed, and slides moved or edited in plac
   });
 });
 
-// a comment on the first element whose start tag begins with open, with the start tag of its slide
-function onElement(text, open) {
-  const at = text.indexOf(open);
-  assert.ok(at >= 0, `${open} is in the text`);
-  const s = slidesOf(text).find((x) => x.start <= at && at < x.end);
-  return { anchor: startTagAt(text, at), slide: { start: s.start, end: s.open, tag: 'section' } };
-}
-
-test('a slide whose start and end are edited in an operation that edits another slide keeps its threads', async (t) => {
-  for (const [name, [x, y]] of Object.entries(EDITS)) {
-    await t.test(name, () => {
-      const results = slide('Results', '<p>The transfer costs a fourth less than a direct one of the same duration.</p>');
-      const before = deck(INTRO, x, RESULTS, QUESTIONS);
-      const after = deck(INTRO, y, results, QUESTIONS);
-      // an element in the middle of the slide, which every edit keeps
-      const kept = x === LIST ? LIST[3] : P2;
-      const it = onElement(before, kept);
-      const [moved] = moveAnchors(before, diff(before, after), after, [it]).items;
-      assert.equal(moved.removed, undefined, JSON.stringify(moved));
-      assert.ok(after.slice(moved.anchor.start).startsWith(kept), JSON.stringify(moved));
-      assert.equal(moved.slide.start, slidesOf(after)[1].start);
-    });
-  }
-});
-
 // a slide of a picture, with a credit that every such slide repeats between its heading and notes
 const picture = (name, note) => [`<h2>${name}</h2>`, `<img src="media/${name.toLowerCase()}.jpg">`, '<p class="caption">Image credit: NASA/JPL-Caltech/SETI Institute</p>', `<aside class="notes">${note}</aside>`];
 const OCEAN = slide('Ocean worlds', '<p>Three moons hold water under their ice.</p>');
@@ -247,7 +222,7 @@ test('slides replaced by slides of other text are paired in about the time that 
   const a = Array.from({ length: 400 }, (_, k) => text(k));
   const b = Array.from({ length: 399 }, (_, k) => text(400 + k));
   for (let attempt = 1; ; attempt++) {
-    const half = fastest(() => pairs(a, b, true));
+    const half = fastest(() => pairs(a, b, true, true));
     const ends = fastest(() => pairs(a, b, false));
     if (half < 1.5 * ends) break;
     assert.ok(attempt < 3, `${half.toFixed(1)} ms with half against ${ends.toFixed(1)} ms without`);
@@ -259,7 +234,7 @@ test('a long slide of one repeated word, edited at the start and the end, is pai
   const run = (k) => {
     const a = [other, `<section>\n  <p>A ${'0 '.repeat(k)}B</p>\n</section>`];
     const b = [`${other}\n`, `<section>\n  <p>C ${'0 '.repeat(k)}D</p>\n</section>`];
-    return fastest(() => assert.equal(pairs(a, b, true).length, 2));
+    return fastest(() => assert.equal(pairs(a, b, true, true).length, 2));
   };
   for (let attempt = 1; ; attempt++) {
     const small = run(10_000);
@@ -274,7 +249,7 @@ test('a long slide replaced at its place by a slide without the letter at its mi
   const run = (k) => {
     const a = [other, `<section>\n  <p>${'a'.repeat(k)}</p>\n</section>`];
     const b = [`${other}\n`, `<section>\n  <p>${'b'.repeat(2 * k)}</p>\n</section>`];
-    return fastest(() => assert.equal(pairs(a, b, true).length, 1));
+    return fastest(() => assert.equal(pairs(a, b, true, true).length, 1));
   };
   for (let attempt = 1; ; attempt++) {
     const small = run(10_000);
@@ -292,7 +267,7 @@ test('a slide whose long run without spaces is replaced, e.g. the data of a plot
   const run = (k) => {
     const a = [other, plot(k, 1)];
     const b = [`${other}\n`, plot(k, 4001)];
-    return fastest(() => pairs(a, b, true));
+    return fastest(() => pairs(a, b, true, true));
   };
   for (let attempt = 1; ; attempt++) {
     const small = run(2_000);
