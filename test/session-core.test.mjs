@@ -848,6 +848,37 @@ function merges(base, changed, typed) {
   };
 }
 
+test('two slides or two paragraphs that one replica moves in one drag while another types in one of them are each kept with the key, in both orders and in the merge of the editor', () => {
+  const slide = (n) => `<section>\n  <h2>S${n}</h2>\n  <p>S${n} text</p>\n</section>\n`;
+  const slides = (...n) => n.map(slide).join('');
+  const para = (n) => `  <p>Para ${n}</p>\n`;
+  const cases = [
+    [slides(1, 2, 3, 4, 5), slides(2, 4, 5, 1, 3), ['S1 text', 'S2 text', 'S3 text', 'S4 text', 'S5 text']],
+    [ONE + TWO.replace('</ul>\n', `</ul>\n${para(1)}${para(2)}`), ONE.replace('</section>', `${para(1)}${para(2)}</section>`) + TWO, ['First slide', 'Second slide', 'Para 1', 'Para 2']],
+  ];
+  for (const [base, moved, texts] of cases) {
+    for (const into of [texts[0], texts.at(-1)]) {
+      for (const [how, text] of Object.entries(merges(base, moved, base.replace(into, `${into} by Ana`)))) {
+        for (const t of texts) assert.ok(times(text, t) >= 1, `a key in ${into}, ${how}: ${t} is in the text`);
+        assert.equal(times(text, `${into} by Ana`), 1, `a key in ${into}, ${how}: the key is in the text`);
+      }
+    }
+  }
+});
+
+test('a list deleted while another person adds an item to it keeps a new list that someone adds to another slide, in both orders, in the merge of the editor, and in a resync', () => {
+  const base = ONE + TWO;
+  const ana = base.replace('    <li>Alpha</li>\n', '    <li>Alpha</li>\n    <li>Beta</li>\n');
+  const ben = ONE.replace('</section>', '  <ul>\n    <li>New list</li>\n  </ul>\n</section>') + TWO.replace('  <ul>\n    <li>Alpha</li>\n  </ul>\n', '');
+  for (const [how, text] of Object.entries(merges(base, ben, ana))) assert.equal(times(text, 'New list'), 1, `${how}: the new list is in the text`);
+  for (const [theirs, ours] of [[ben, ana], [ana, ben]]) assert.equal(times(apply(base, mergePatches(diff(base, theirs), diff(base, ours), 'ours', base).patches), 'New list'), 1, 'mergePatches(): the new list is in the text');
+  const r = new Replica('anaxxxxx', base, 'E.0');
+  r.edit(ana);
+  r.outgoing();
+  r.resync(ben, 'E.2');
+  assert.equal(times(r.mine, 'New list'), 1, 'the resync: the new list is in the text');
+});
+
 test('a slide moved together with a new slide or a pasted paragraph of the same text by one replica keeps this text and every slide, in both orders, and the key of another replica in the slide beside a pasted paragraph', () => {
   const s = (h, p) => `<section>\n  <h2>${h}</h2>\n  <p>${p}</p>\n</section>\n`;
   const intro = s('Intro', 'Why we fly'), results = s('Results', 'Thank you'), rest = s('Method', 'Shooting') + s('Data', 'Tables');
@@ -864,12 +895,40 @@ test('a slide moved together with a new slide or a pasted paragraph of the same 
   }
 });
 
+test('a slide copied below the next one while its original is changed keeps a letter that another person deletes in the next slide, in both orders and in the merge of the editor', () => {
+  const data = '<section>\n  <h2>Data</h2>\n  <p>First of data</p>\n  <p>Second of data</p>\n  <p>Third of data</p>\n</section>\n';
+  const thanks = '<section>\n  <h2>Thanks</h2>\n  <p>Thank you</p>\n</section>\n';
+  const base = data + thanks;
+  for (const [how, text] of Object.entries(merges(base, data.replace('Third of data', 'Third of dat') + thanks + data, base.replace('Thank you', 'Than you')))) assert.ok(text.includes('<p>Than you</p>'), `${how}: the letter is deleted`);
+});
+
+test('a letter deleted in one paragraph and typed in another is not a move, and the typed letter is kept, in both orders', () => {
+  const base = '<section>\n  <h2>Cats</h2>\n  <p>The cats sleep</p>\n  <p>A dog barks</p>\n</section>\n';
+  const ben = base.replace('sleep', 'slep').replace('barks', 'barkes'), ana = base.replace('sleep', 'slp');
+  for (const benFirst of [true, false]) assert.ok(race(base, ben, ana, benFirst).includes('<p>A dog barkes</p>'), `${benFirst ? 'the letters' : 'the deletion'} first`);
+  for (const [theirs, ours] of [[ben, ana], [ana, ben]]) assert.ok(apply(base, mergePatches(diff(base, theirs), diff(base, ours), 'ours', base).patches).includes('<p>A dog barkes</p>'), 'mergePatches()');
+});
+
 test('a vertical stack moved before three slides by one replica and a key of another in one of these slides are both taken, in both orders', () => {
   const top = (n) => `<section>\n  <h2>Top ${n}</h2>\n  <p>Words of top ${n}</p>\n  <p>More of top ${n}</p>\n  <p>End of top ${n}</p>\n</section>\n`;
   const inner = (n) => `  <section>\n    <h2>Inner ${n}</h2>\n    <p>Words of inner ${n}</p>\n    <p>End of inner ${n}</p>\n  </section>\n`;
   const stack = `<section>\n${inner(1)}${inner(2)}</section>\n`;
   const base = top(1) + top(2) + top(3) + stack, moved = stack + top(1) + top(2) + top(3);
   for (const moveFirst of [true, false]) assert.equal(race(base, moved, base.replace('More of top 2', 'More of top 2 by Bob'), moveFirst), moved.replace('More of top 2', 'More of top 2 by Bob'), `${moveFirst ? 'move' : 'key'} first`);
+});
+
+test('a move that also adds a paragraph keeps this paragraph when another replica types in the moved paragraph, in both orders and in the merge of the editor', () => {
+  const [base, moved] = MOVES['inside its slide'];
+  const typed = base.replace('Second slide', 'Second slide by Ana');
+  for (const [how, text] of Object.entries(merges(base, moved.replace('  <p>Second slide</p>\n', '  <p>Second slide</p>\n  <p>New paragraph</p>\n'), typed))) {
+    assert.equal(times(text, '<p>New paragraph</p>'), 1, `${how}: the new paragraph is in the text`);
+    assert.ok(times(text, 'Second slide') >= 1, `${how}: the moved paragraph is in the text`);
+  }
+  // diff() gives the key in the heading and the removal of the paragraph below as one patch
+  for (const [how, text] of Object.entries(merges(base, moved.replace('<h2>Two</h2>', '<h2>Two by Ben</h2>'), typed))) {
+    assert.ok(times(text, 'Second slide') >= 1, `a key in the heading, ${how}: the moved paragraph is in the text`);
+    assert.ok(text.includes('<h2>Two by Ben</h2>') || text.includes('Second slide by Ana'), `a key in the heading, ${how}: a key is in the text`);
+  }
 });
 
 test('a replace in every paragraph and a word typed at once in one of them are both in the text at the end', () => {
