@@ -385,13 +385,15 @@ export class Comments {
     for (const fn of this.listeners) fn();
   }
 
-  stopSync(): void {
-    if (this.stopped) return;
-    this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    if (this.saved === this.edits || this.locked) return;
-    this.writeNow();
+  // whether the file holds every change, where read only comments are not written by design
+  stopSync(): boolean {
+    if (!this.stopped) {
+      this.stopped = true;
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+      if (this.saved !== this.edits && !this.locked) this.writeNow();
+    }
+    return this.saved === this.edits || this.locked;
   }
 
   // the file written at once, or false when it could not be
@@ -672,8 +674,8 @@ export class Comments {
       renameRetriedSync(tmp, this.file);
       this.saved = Math.max(this.saved, edits);
     } catch (e) {
+      if (!this.stopped) this.log(`could not write ${this.file}, trying again: ${(e as Error).message}`);
       await unlink(tmp).catch(() => {});
-      this.log(`could not write ${this.file}, trying again: ${(e as Error).message}`);
     }
   }
 }

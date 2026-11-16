@@ -50,9 +50,10 @@ export type Running = {
   authority: Authority;
   // the link of the session through the relay, or null
   link: () => string | null;
-  // resolves with the number of operations that are not written into index.html
+  // resolves with the number of operations that are not written into index.html, plus one when
+  // comments.json is not written
   close: () => Promise<number>;
-  // resolves with the same number once close() has written index.html, before the share and the
+  // resolves with the same number once close() has written both files, before the share and the
   // server are closed
   unwritten: Promise<number>;
 };
@@ -682,8 +683,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');
         }
         history.stopSync();
-        comments.stopSync();
-        written(unwritten);
+        // comments.stopSync logs the file and the reason when it is not written
+        const all = unwritten + (comments.stopSync() ? 0 : 1);
+        written(all);
         // a share in progress sees closed and stops its link, hence the stop waits behind it
         await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
         // a poll that arrives in this time is answered with ended, rather than reset by the close
@@ -694,7 +696,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
             server.closeAllConnections();
           }, 300);
         });
-        return unwritten;
+        return all;
       })()),
   };
 }

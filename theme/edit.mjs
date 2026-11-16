@@ -2648,13 +2648,15 @@ var Comments = class {
     this.dirty();
     for (const fn of this.listeners) fn();
   }
+  // whether the file holds every change, where read only comments are not written by design
   stopSync() {
-    if (this.stopped) return;
-    this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    if (this.saved === this.edits || this.locked) return;
-    this.writeNow();
+    if (!this.stopped) {
+      this.stopped = true;
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+      if (this.saved !== this.edits && !this.locked) this.writeNow();
+    }
+    return this.saved === this.edits || this.locked;
   }
   // the file written at once, or false when it could not be
   writeNow() {
@@ -2910,9 +2912,9 @@ var Comments = class {
       renameRetriedSync(tmp, this.file);
       this.saved = Math.max(this.saved, edits);
     } catch (e) {
+      if (!this.stopped) this.log(`could not write ${this.file}, trying again: ${e.message}`);
       await unlink2(tmp).catch(() => {
       });
-      this.log(`could not write ${this.file}, trying again: ${e.message}`);
     }
   }
 };
@@ -5291,8 +5293,8 @@ async function start(options = {}) {
         log(kept ? `the text of the session is kept in ${kept}` : "the text of the session could not be kept in any file");
       }
       history.stopSync();
-      comments.stopSync();
-      written(unwritten2);
+      const all = unwritten2 + (comments.stopSync() ? 0 : 1);
+      written(all);
       await Promise.race([serial(async () => relay?.stop()), new Promise((done) => setTimeout(done, 2500))]);
       await new Promise((done) => setTimeout(done, 200));
       await new Promise((done) => {
@@ -5301,7 +5303,7 @@ async function start(options = {}) {
           server.closeAllConnections();
         }, 300);
       });
-      return unwritten2;
+      return all;
     })()
   };
 }
