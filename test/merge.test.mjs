@@ -321,6 +321,8 @@ test('the merge of an apply in a session gives the text of the authority for pai
   }
 });
 
+const PROSE = 'The spacecraft leaves the halo orbit near the second Lagrange point and follows the stable manifold toward the Moon. ';
+
 test('the merge of an apply in a session keeps a long paste of one person and a key of a third person around an unread key of the person', () => {
   const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
   const rep = (s, n) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
@@ -348,6 +350,15 @@ test('the merge of an apply in a session keeps a long paste of one person and a 
     return mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text !== wrap(`<p>${paste}${para.slice(0, at)}A${para.slice(at)}C</p>`);
   });
   assert.deepEqual(lost.map(([para, , paste]) => `${paste.slice(0, 8)}… of ${paste.length} into ${para}`), []);
+});
+
+// the longest runs in common of the paragraph and the new text are "econd " of the paste and
+// " slide", and after the first of them the parts differ in more than 500 units
+test('the merge of an apply in a session keeps a paste of prose over the first word and a key of a third person around an unread key of the person in the next word', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const paste = PROSE.repeat(6).slice(0, 600);
+  const f = wrap('<p>Second slide</p>'), s = wrap('<p>Second slAide</p>'), t = wrap(`<p>${paste} slideC</p>`);
+  assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, wrap(`<p>${paste} slAideC</p>`));
 });
 
 test('with twice, the same letter typed at one point by two people is kept twice, and the same replacement of a word by two people once', () => {
