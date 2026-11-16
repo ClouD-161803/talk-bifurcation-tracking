@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
-import { typeKeys } from './helpers/editor.mjs';
+import { press, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { el, session } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
@@ -323,4 +323,68 @@ test('the same letter typed at one point by another person and as an unread key 
     },
   });
   assert.equal(text, '<p>Secondee slide</p>');
+});
+
+// two pages in the paragraph, with the focus of each emulated, so that both hold a caret at once
+async function pair(t) {
+  const s = await session(t, ['Ana', 'Ben']);
+  for (const page of s.pages) await show(page, 'Two');
+  for (const page of s.pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  return s;
+}
+
+// Ana composes each step, and act(i) runs on the page of Ben after step i. when act returns true,
+// the step waits until index.html changes and Ana reads it
+async function stepped(server, ana, steps, act) {
+  for (const [i, s] of steps.entries()) {
+    await ana.send('Input.imeSetComposition', { text: s, selectionStart: s.length, selectionEnd: s.length });
+    const was = server.read();
+    if (await act(i)) await until(async () => server.read() !== was && (await ana.evaluate(TEXT)) === server.read(), `the edit of Ben with ${s} composed`);
+  }
+}
+
+test('a key of another person at the caret of a composition that equals the first letter of the reading is kept, at each step', { timeout: 120_000 }, async (t) => {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  assert.ok(await caretAt(ana, 6));
+  assert.ok(await caretAt(ben, 6));
+  await stepped(server, ana, ['n', 'ni', 'nih'], async () => (await typeKeys(ben, 'n'), true));
+  await ana.send('Input.insertText', { text: '你好' });
+  assert.equal(para(await converge(server, pages)), '<p>Secondnnn你好 slide</p>');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+test('two keys of another person at the caret of a composition, the first of which equals the reading, are kept', { timeout: 120_000 }, async (t) => {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  assert.ok(await caretAt(ana, 6));
+  assert.ok(await caretAt(ben, 6));
+  await stepped(server, ana, ['n', 'ni', 'nih'], async (i) => (i === 0 ? (await typeKeys(ben, 'nx'), true) : false));
+  await ana.send('Input.insertText', { text: '你好' });
+  assert.equal(para(await converge(server, pages)), '<p>Secondnx你好 slide</p>');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+test('a letter that another person deletes before the caret of a composition whose reading starts with it stays deleted', { timeout: 120_000 }, async (t) => {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  assert.ok(await caretAt(ana, 6));
+  assert.ok(await caretAt(ben, 6));
+  await stepped(server, ana, ['d', 'da', 'dao'], async (i) => (i === 1 ? (await press(ben, 'Backspace'), true) : false));
+  await ana.send('Input.insertText', { text: '到' });
+  assert.equal(para(await converge(server, pages)), '<p>Secon到 slide</p>');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+test('a sentence that another person pastes over the paragraph around the caret of a composition is kept whole, with the committed word once', { timeout: 120_000 }, async (t) => {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  assert.ok(await caretAt(ana, 6));
+  await ana.send('Input.imeSetComposition', { text: 'ni', selectionStart: 2, selectionEnd: 2 });
+  assert.ok(await ben.evaluate(`(() => { const q = ${p}; q.focus(); getSelection().selectAllChildren(q); return document.activeElement === q; })()`));
+  await ben.send('Input.insertText', { text: 'Secret plan' });
+  await until(async () => para(server.read()) === '<p>Secret plan</p>' && (await ana.evaluate(TEXT)) === server.read(), 'the sentence of Ben in index.html and in the text that Ana reads');
+  await ana.send('Input.insertText', { text: '你好' });
+  assert.equal(para(await converge(server, pages)), '<p>Secret你好 plan</p>');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
