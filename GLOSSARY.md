@@ -48,6 +48,12 @@ The box at the right of a content slide or of a split slide in which a figure is
 
 Avoid "zone", the class of a figure box in an old talk, which is `figure-box`.
 
+## Fly
+
+A step that moves and scales its element from the box of other elements of its slide into its own box, as the Fly In of PowerPoint flies an element in from an edge. It is written as `data-fly-from` on a fragment, with `data-fly-to` and `data-fly-duration`.
+
+Avoid "Magic Move", which matches the elements of two slides.
+
 ## Focus
 
 The step from which every step shown on its slide is held at full opacity, written as `data-focus` on a fragment, e.g. on an empty `span` after the steps of a comparison. It is not the keyboard focus of the editor.
