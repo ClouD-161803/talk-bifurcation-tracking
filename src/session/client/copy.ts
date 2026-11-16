@@ -36,8 +36,8 @@ type State = {
   unavailable: boolean;
   // a record of this page may be in IndexedDB
   stored: boolean;
-  // the last copy with edits that wait written into IndexedDB, or this copy with the operations of
-  // others merged since, whose slides the save state names
+  // the copy with edits that wait that IndexedDB holds, or this copy with the operations of others
+  // merged since, whose slides the save state names
   kept: Copy | null;
   last: Copy | null;
   wroteAt: number;
@@ -345,7 +345,8 @@ export function install(client: Client): void {
     const files = client.shell.media.unsaved(s.mine).map((f) => ({ path: f.path, blob: f.blob }));
     run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t, made: st.made } satisfies Row)).then(
       () => {
-        const kept = st.last === s && st.stored && s.mine !== s.base ? s : st.kept;
+        // the writes commit in order, hence an older record is replaced by this one
+        const kept = st.last === s && s.mine !== s.base ? s : null;
         if (!st.unavailable && kept === st.kept) return;
         st.unavailable = false;
         st.kept = kept;
