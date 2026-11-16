@@ -205,31 +205,49 @@ export function charEdits(a: string, b: string, max: number): Edit[] | null {
 // the most units in which another person may have changed a text that revert() is given
 const OTHERS = 500;
 
+// the offset in text of the at-th character of its copy with each &nbsp; read as one space
+const real = (text: string, at: number): number => {
+  let i = 0;
+  for (let c = 0; c < at; c++) i += text.startsWith('&nbsp;', i) ? 6 : 1;
+  return i;
+};
+
 // now with the change that turns base into target made again, where now is base with the edits
 // of other people, e.g. an undo of the typing of the person over the keys of another person. the
-// change is one span of base, found by the start and the end that base and target share. an edit
+// change is one span of base, found by the start and the end that base and target share, on copies
+// in which &nbsp; reads as a space, since the browser rewrites a space beside the typing. an edit
 // of others before the span moves it, and one after it is left as it is. the diff places an
 // insertion among repeated letters at any of them, hence an insertion inside the span is taken
 // before it or after it where the span then reads as in base. null when an edit of others
 // overlaps the span otherwise, or when they are too many to diff
 export function revert(base: string, target: string, now: string): string | null {
   if (now === base) return target;
-  const [head, tail] = shared(base, target);
-  const s = head, e = base.length - tail;
-  const others = charEdits(base, now, OTHERS);
+  const b = base.replaceAll('&nbsp;', ' '), t = target.replaceAll('&nbsp;', ' '), n = now.replaceAll('&nbsp;', ' ');
+  if (b === t) return now;
+  const others = charEdits(b, n, OTHERS);
   if (!others) return null;
+  const [head, tail] = shared(b, t);
+  const s = head, e = b.length - tail;
+  const p = place(others, b, n, s, e);
+  if (p < 0) return null;
+  return now.slice(0, real(now, p)) + target.slice(real(target, s), real(target, t.length - tail)) + now.slice(real(now, p + e - s));
+}
+
+// the start in n of the span [s, e) of b, where n is b with the edits others, or -1 when one of
+// them overlaps the span. the first m insertions inside the span are taken before it, from all of
+// them to none, until the span reads as in b
+function place(others: Edit[], b: string, n: string, s: number, e: number): number {
   let d = 0;
   const inside: number[] = [];
   for (const o of others) {
     if (o.end <= s) d += o.text.length - (o.end - o.start);
     else if (o.start >= e) break;
     else if (o.start === o.end) inside.push(o.text.length);
-    else return null;
+    else return -1;
   }
-  // the first m insertions inside the span are taken before it, from all of them to none
   for (let m = inside.length; m >= 0; m--) {
-    const p = s + d + inside.slice(0, m).reduce((n, k) => n + k, 0);
-    if (now.slice(p, p + e - s) === base.slice(s, e)) return now.slice(0, p) + target.slice(head, target.length - tail) + now.slice(p + e - s);
+    const p = s + d + inside.slice(0, m).reduce((x, y) => x + y, 0);
+    if (n.slice(p, p + e - s) === b.slice(s, e)) return p;
   }
-  return null;
+  return -1;
 }
