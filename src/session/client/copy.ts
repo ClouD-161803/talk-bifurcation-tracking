@@ -443,7 +443,8 @@ export function install(client: Client): void {
     if (!client.ended && !client.acked() && current(client, st)) write(true);
   };
   window.addEventListener('pagehide', hide);
-  document.addEventListener('visibilitychange', () => {
+  // on window, hence after the client has read and sent the keys at the same event on document
+  window.addEventListener('visibilitychange', () => {
     if (document.hidden) hide();
   });
 }
