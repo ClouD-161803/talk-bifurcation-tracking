@@ -388,3 +388,30 @@ test('a sentence that another person pastes over the paragraph around the caret 
   assert.equal(para(await converge(server, pages)), '<p>Secret你好 plan</p>');
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
+
+test('a key typed right before a composition that starts while an apply waits reaches index.html before the commit', { timeout: 120_000 }, async (t) => {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  assert.ok(await caretAt(ana, 6));
+  assert.ok(await caretAt(ben, 0));
+  // the key x of Ana and the start of her composition come while the apply of the key of Ben waits
+  await ana.evaluate(`(() => {
+    const port = window.BeesonEditor.session;
+    const apply = port.apply;
+    window.__armed = true;
+    port.apply = function (text) {
+      const r = apply.call(this, text);
+      if (window.__armed && text.includes('BSecond')) {
+        window.__armed = false;
+        document.execCommand('insertText', false, 'x');
+        ${p}.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+      }
+      return r;
+    };
+    return true;
+  })()`);
+  await typeKeys(ben, 'B');
+  await until(() => ana.evaluate('window.__armed === false'), 'the key of Ana at the apply');
+  await until(() => para(server.read()) === '<p>BSecondx slide</p>', 'the key of Ana in index.html during the composition');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
