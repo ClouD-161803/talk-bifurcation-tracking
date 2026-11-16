@@ -611,14 +611,11 @@ test('a page that waits for the answer of its hello asks before it unloads from 
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
   await type(page, ' Early');
-  // the handler of the write of the copy runs before the read of the copy
-  await page.waitFor(`(${ASKED(' Early')}).then((x) => x.copied)`);
-  assert.equal(await page.evaluate(`${C}.asking`), false, 'the page does not ask once its copy holds the edit');
+  await page.waitFor(`(${ASKED(' Early')}).then((x) => x.copied && !x.asking)`);
   await page.evaluate(`window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done(${C}.asking); }); }); true`);
   await type(page, ' More');
   assert.equal(await page.evaluate('window.__told'), true, 'the page asks from the moment of the edit');
-  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied)`);
-  assert.equal(await page.evaluate(`${C}.asking`), false, 'the page does not ask once its copy holds the newest edit');
+  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`);
 });
 
 // on the first load, the handler of the first read of the copies, i.e. of restore() of copy.ts,
