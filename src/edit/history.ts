@@ -15,7 +15,7 @@ import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, truncat
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Authority } from '../session/authority.ts';
-import { apply, copy, diff } from '../session/patch.ts';
+import { apply, byWords, copy, diff } from '../session/patch.ts';
 import { parseVersion, shown, VERSION_NAME_MAX, type AsideInfo, type AppliedOp, type HistoryAnswer, type Mark, type Patch, type Restored, type VersionDetail, type VersionInfo } from '../session/protocol.ts';
 import { slideChanges, slidesOf, type Slide } from '../session/slides.ts';
 import { AUTHOR, setAsideSync, renameRetriedSync } from './disk.ts';
@@ -178,14 +178,13 @@ function compose(a: Patch[], b: Patch[]): Patch[] {
   return out.concat(a.slice(i));
 }
 
-// whether the patches of a change from outside replace text of marks that a person wrote, or write
-// where a person removed text. the marks are sorted and do not overlap
-function overwrites(marks: Mark[], patches: Patch[]): boolean {
-  for (const p of patches) {
-    for (let k = first(marks.length, (i) => marks[i].end >= p.start); k < marks.length && marks[k].start <= p.end; k++) {
-      const m = marks[k];
-      if (m.author !== AUTHOR && (m.start === m.end || (p.start < p.end && p.start < m.end && m.start < p.end))) return true;
-    }
+// whether patch p of a change from outside replaces text of marks that a person wrote, or writes
+// where a person removed text. the marks are sorted, and only an empty mark may lie inside another
+// one, hence the marks are walked back from p to a mark of characters that ends before it
+function overwrites(marks: Mark[], p: Patch): boolean {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) {
+    const m = marks[k];
+    if (m.author !== AUTHOR && (m.start === m.end ? m.start >= p.start : p.start < p.end && p.start < m.end && m.start < p.end)) return true;
   }
   return false;
 }
@@ -599,8 +598,11 @@ export class History {
     // a change from outside is a version of its own, so that the text that it replaces is kept
     if (this.open && (this.due(this.open, t, w) || (op.author === AUTHOR) !== (this.open.author === AUTHOR))) this.close(false, undefined, this.held);
     if (op.author === AUTHOR) {
-      if (overwrites(this.typed, op.patches)) this.overwritten = this.authority.n;
-      this.typed = moveMarks(this.typed, op.patches, AUTHOR);
+      // a patch of diff() over a line or a run of cap() keeps words, hence the patches are aligned
+      // again by words, and the words that they keep stay with the people who wrote them
+      const patches = op.patches.flatMap((p) => byWords(this.held, p));
+      if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
+      this.typed = moveMarks(this.typed, patches, AUTHOR);
     }
     this.held = text;
     const open = (this.open ??= { first: t, last: t, since: w, time: w, authors: new Set(), marks: [], author: op.author, ops: [] });

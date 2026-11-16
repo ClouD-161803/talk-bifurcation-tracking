@@ -642,6 +642,7 @@ function aligned(base, a0, a1, text, b0, b1, unit) {
   }
   return out;
 }
+var byWords = (base, p) => aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS);
 function cap(base, patches) {
   if (patches.length <= MAX_PATCHES) return patches;
   const run = Math.ceil(patches.length / MAX_PATCHES);
@@ -1679,12 +1680,10 @@ function compose(a, b) {
   }
   return out.concat(a.slice(i));
 }
-function overwrites(marks, patches) {
-  for (const p of patches) {
-    for (let k = first(marks.length, (i) => marks[i].end >= p.start); k < marks.length && marks[k].start <= p.end; k++) {
-      const m = marks[k];
-      if (m.author !== AUTHOR && (m.start === m.end || p.start < p.end && p.start < m.end && m.start < p.end)) return true;
-    }
+function overwrites(marks, p) {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) {
+    const m = marks[k];
+    if (m.author !== AUTHOR && (m.start === m.end ? m.start >= p.start : p.start < p.end && p.start < m.end && m.start < p.end)) return true;
   }
   return false;
 }
@@ -2026,8 +2025,9 @@ var History = class {
     const w = this.now();
     if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
     if (op.author === AUTHOR) {
-      if (overwrites(this.typed, op.patches)) this.overwritten = this.authority.n;
-      this.typed = moveMarks(this.typed, op.patches, AUTHOR);
+      const patches = op.patches.flatMap((p) => byWords(this.held, p));
+      if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
+      this.typed = moveMarks(this.typed, patches, AUTHOR);
     }
     this.held = text;
     const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author, ops: [] };

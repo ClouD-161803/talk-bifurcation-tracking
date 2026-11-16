@@ -445,6 +445,9 @@ function aligned(base: string, a0: number, a1: number, text: string, b0: number,
   return out;
 }
 
+// a patch of base aligned again by words, hence narrowed to the words that differ
+export const byWords = (base: string, p: Patch): Patch[] => aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS);
+
 // at most MAX_PATCHES patches, since valid() refuses more, with neighbors joined in runs of one
 // length, hence a conflict covers one run
 function cap(base: string, patches: Patch[]): Patch[] {
