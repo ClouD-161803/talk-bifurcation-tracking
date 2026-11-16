@@ -602,6 +602,25 @@ test('a page asks before it unloads from the moment that it is told of an edit, 
   assert.deepEqual(await page.evaluate('window.__told'), { asking: true, read: false });
 });
 
+test('a page that waits for the answer of its hello asks before it unloads from the moment of an edit until its copy holds the edit, and not after', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n__net.rule('/.session/', 'cut');`, wait: false });
+  await page.waitFor(`window.BeesonSession?.client?.()?.connection === 'offline'`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Early');
+  // the handler of the write of the copy runs before the read of the copy
+  await page.waitFor(`(${ASKED(' Early')}).then((x) => x.copied)`);
+  assert.equal(await page.evaluate(`${C}.asking`), false, 'the page does not ask once its copy holds the edit');
+  await page.evaluate(`window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done(${C}.asking); }); }); true`);
+  await type(page, ' More');
+  assert.equal(await page.evaluate('window.__told'), true, 'the page asks from the moment of the edit');
+  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied)`);
+  assert.equal(await page.evaluate(`${C}.asking`), false, 'the page does not ask once its copy holds the newest edit');
+});
+
 // the time in ms that each listener of beforeunload was on window before its removal, in
 // window.__unload
 const UNLOAD = `{
