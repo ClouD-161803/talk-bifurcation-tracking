@@ -200,7 +200,7 @@ const toastTime = (page, ms) => page.evaluate(`(() => { const o = window.BeesonS
 // waits until the clock of page has run ms past now
 const elapse = (page, ms) => page.evaluate(`(() => { window.__until = performance.now() + ${ms}; return true; })()`).then(() => page.waitFor('performance.now() > window.__until', ms + 15_000));
 
-test('a held text element takes a comment from the context menu, and its thread opens without the refusal of the floor rule', { timeout: 300_000 }, async (t) => {
+test('a held text element takes a comment from the context menu, and its thread opens with the element selected and without a bubble', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   const p = el(0, 'p');
   await show(a, 'One');
@@ -225,12 +225,12 @@ test('a held text element takes a comment from the context menu, and its thread 
     await a.waitFor(`!document.querySelector('${PANE} .draft')`);
   });
 
-  await t.test('a thread of a held element opens with its slide shown and the thread focused, without a selection or a bubble', async () => {
+  await t.test('a thread of a held element opens with its slide shown, the thread focused, and the element selected, without a bubble', async () => {
     await show(a, 'Two');
     await a.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
     await click(a, `${ARTICLE(id)} .text`);
     await sees(a, ACTIVE, id);
-    assert.deepEqual(await a.evaluate(`({ slide: Reveal.getIndices().h, selected: ${C}.app.selection.has(${p}), bubble: ${BUBBLE} })`), { slide: 0, selected: false, bubble: null });
+    assert.deepEqual(await a.evaluate(`({ slide: Reveal.getIndices().h, selected: ${C}.app.selection.has(${p}), bubble: ${BUBBLE} })`), { slide: 0, selected: true, bubble: null });
   });
   clean(a);
   clean(b);
