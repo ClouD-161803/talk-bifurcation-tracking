@@ -315,6 +315,36 @@ test('a picture over 16 MB is refused on the host as well, a video of the host u
   clean(ann);
 });
 
+const PDF = resolve('test/pages/figure.pdf');
+// figure.pdf as a file made in the page, for a command that takes its files as an argument
+const PDF_FILE = `new File([Uint8Array.from(atob(${JSON.stringify(readFileSync(PDF).toString('base64'))}), (c) => c.charCodeAt(0))], 'figure.pdf', { type: 'application/pdf' })`;
+const NO_PDF = 'figure.pdf cannot be sent to the others, since a session does not take .pdf files. Add a PDF figure in the editor without a session.';
+// the middle of the image of selector that is drawn
+const middle = (page, selector) =>
+  page.evaluate(`(() => { const r = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+// the answer of the command id run with arg, an expression of the page: taken, or the reason of its refusal
+const run = (page, id, arg) => page.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}, ${arg}).then(() => 'taken', (e) => e.message)`);
+
+test('a PDF that is dropped, or chosen with Replace…, is refused in a session with its reason, and the picture is kept', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const ann = await tab(browser, sessionUrl(server.edit));
+  await show(ann, 'Two');
+  await dropFiles(ann, [PDF]);
+  await ann.waitFor(`(${C}.app.note?.text ?? '') === ${JSON.stringify(NO_PDF)}`).catch(async () => assert.fail(`the reason of the drop reads ${await ann.evaluate(`${C}.app.note?.text ?? null`)}`));
+  assert.equal(await ann.evaluate(IMAGES), 0);
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`${IMAGES} === 1`);
+  const before = await converge(server, [ann]);
+  await click(ann, await middle(ann, '.reveal .slides img'));
+  assert.equal(await ann.evaluate(`${C}.app.commands.enabled('media.replace')`), true);
+  assert.equal(await run(ann, 'media.replace', `{ files: [${PDF_FILE}] }`), NO_PDF);
+  assert.equal(await converge(server, [ann]), before);
+  assert.deepEqual(media(server), ['plot.png']);
+  clean(ann);
+});
+
 test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px, and once in the title of a screen of 1440 px', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
