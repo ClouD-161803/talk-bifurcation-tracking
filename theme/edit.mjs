@@ -1580,6 +1580,12 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const a = beforeSlides.map((s) => before2.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
   const matched = pairs(a, b, true);
+  let pi = -1, pj = -1;
+  for (const p of [...matched, { i: a.length, j: b.length }]) {
+    if (p.i === pi + 2 && p.j === pj + 2 && sameSlide(a[pi + 1], b[pj + 1])) matched.push({ i: pi + 1, j: pj + 1, same: false });
+    pi = p.i;
+    pj = p.j;
+  }
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = /* @__PURE__ */ new Set();
   afterSlides.forEach((s, j) => {

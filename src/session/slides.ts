@@ -206,6 +206,12 @@ export function slideChanges(before: string, beforeSlides: Slide[], after: strin
   const a = beforeSlides.map((s) => before.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
   const matched = pairs(a, b, true);
+  let pi = -1, pj = -1;
+  for (const p of [...matched, { i: a.length, j: b.length }]) {
+    if (p.i === pi + 2 && p.j === pj + 2 && sameSlide(a[pi + 1], b[pj + 1])) matched.push({ i: pi + 1, j: pj + 1, same: false });
+    pi = p.i;
+    pj = p.j;
+  }
   // a slide that reads as before is not changed, although a line diff may have marked its start tag
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = new Set<number>();
