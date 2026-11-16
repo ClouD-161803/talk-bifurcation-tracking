@@ -134,33 +134,35 @@ test('a word typed right before the page is hidden and frozen reaches index.html
 });
 
 // a script for open() that records in window.__kept whether each operation was sent with keepalive,
-// and the length of its body
+// and the size of its body in bytes
 const KEPT = `{
   const fetched = window.fetch;
   window.__kept = [];
   window.fetch = function (input, init) {
-    if (String(input).includes('/.session/op')) window.__kept.push({ keepalive: !!init.keepalive, chars: init.body.length });
+    if (String(input).includes('/.session/op')) window.__kept.push({ keepalive: !!init.keepalive, bytes: new Blob([init.body]).size });
     return fetched.call(this, input, init);
   };
 }`;
 
-test('an operation is sent with keepalive only under 20,000 characters, and a larger paste reaches index.html in one request', { timeout: 240_000 }, async (t) => {
+test('an operation is sent with keepalive only under 60,000 bytes in UTF-8, and a larger paste reaches index.html in one request', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const page = await open(browser, sessionUrl(server.edit), { script: KEPT });
   await converge(server, [page]);
-  // operations of a token that the edit command does not know, which it answers without a change
+  // operations of a token that the edit command does not know, which it answers without a change.
+  // an é is one character and two bytes
   const sent = await page.evaluate(`(async () => {
     window.__kept = [];
-    for (const n of [19999, 20000]) {
+    for (const n of [59999, 60000]) {
       const post = { token: 'none', seq: 1, base: '0', patches: [{ start: 0, end: 0, text: '' }] };
-      post.patches[0].text = 'é'.repeat(n - JSON.stringify(post).length);
+      const more = n - new Blob([JSON.stringify(post)]).size;
+      post.patches[0].text = 'é'.repeat(more >> 1) + 'e'.repeat(more & 1);
       await ${C}.transport.op(post);
     }
     return window.__kept.splice(0);
   })()`);
-  assert.deepEqual(sent, [{ keepalive: true, chars: 19999 }, { keepalive: false, chars: 20000 }]);
+  assert.deepEqual(sent, [{ keepalive: true, bytes: 59999 }, { keepalive: false, bytes: 60000 }]);
 
   await show(page, 'One');
   await caretAtEnd(page, el(0, 'p'));
@@ -191,7 +193,7 @@ test('an operation that the browser refuses with keepalive is sent again without
   await type(page, word);
   await until(() => server.read() === TALK.replace('<p>First slide</p>', `<p>First slide${word}</p>`), 'the word to reach index.html');
   assert.equal((await ops(page)) - before, 2);
-  assert.deepEqual(await page.evaluate('window.__kept.map((k) => k.keepalive && k.chars < 20_000)'), [true, false]);
+  assert.deepEqual(await page.evaluate('window.__kept.map((k) => k.keepalive && k.bytes < 60_000)'), [true, false]);
   assert.equal(net.sent.filter((b) => b.includes('refused')).length, 1);
   clean(page);
 });
@@ -212,6 +214,46 @@ const opPost = (text) => ({ token: 't', seq: 1, base: '0', patches: [{ start: 0,
 const answered = async (transport, post) => {
   for (;;) if (await transport.op(post).then(() => true, () => false)) return;
 };
+
+// an operation whose body has chars characters and bytes bytes in UTF-8. an é is one character and
+// two bytes
+function postOf(chars, bytes = chars) {
+  const post = opPost('');
+  post.patches[0].text = 'a'.repeat(chars - (bytes - chars) - JSON.stringify(post).length) + 'é'.repeat(bytes - chars);
+  return post;
+}
+
+test('an operation is sent with keepalive under 60,000 bytes in UTF-8, and its bytes are counted only for a body of 20,000 to 59,999 characters', async (t) => {
+  const fetched = globalThis.fetch;
+  const Made = globalThis.Blob;
+  t.after(() => ((globalThis.fetch = fetched), (globalThis.Blob = Made)));
+  const sent = [];
+  globalThis.fetch = async (url, init) => {
+    sent.push({ chars: init.body.length, bytes: Buffer.byteLength(init.body), keepalive: !!init.keepalive });
+    return new Response(JSON.stringify({ ok: true, v: '0' }));
+  };
+  let blobs = 0;
+  globalThis.Blob = class extends Made {
+    constructor(...args) {
+      super(...args);
+      blobs++;
+    }
+  };
+  const transport = new Transport('http://127.0.0.1/index.html');
+  for (const post of [postOf(19_999), postOf(20_000), postOf(59_999), postOf(30_100, 59_999), postOf(30_100, 60_000), postOf(60_000)]) {
+    const before = blobs;
+    await transport.op(post);
+    sent.at(-1).counted = blobs > before;
+  }
+  assert.deepEqual(sent, [
+    { chars: 19_999, bytes: 19_999, keepalive: true, counted: false },
+    { chars: 20_000, bytes: 20_000, keepalive: true, counted: true },
+    { chars: 59_999, bytes: 59_999, keepalive: true, counted: true },
+    { chars: 30_100, bytes: 59_999, keepalive: true, counted: true },
+    { chars: 30_100, bytes: 60_000, keepalive: false, counted: true },
+    { chars: 60_000, bytes: 60_000, keepalive: false, counted: false },
+  ]);
+});
 
 test('an operation after a failed and answered one is sent with keepalive again', async (t) => {
   const fetched = globalThis.fetch;
