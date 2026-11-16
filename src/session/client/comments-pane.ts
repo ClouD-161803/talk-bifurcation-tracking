@@ -1092,7 +1092,8 @@ export function install(client: Client): void {
     badges.schedule();
   });
 
-  const online = () => client.connection === 'online';
+  // a draft opened offline is sent once the page is back online
+  const live = () => client.connection !== 'ended';
   shell.define({
     id: 'insert.comment',
     label: 'Comment',
@@ -1102,8 +1103,8 @@ export function install(client: Client): void {
     menu: { bar: 'Insert', group: 'comment', order: 40 },
     toolbar: { group: 'insert', order: 30, icon: 'comment', label: 'Comment' },
     context: ['element', 'text', 'canvas', 'slide'],
-    enabled: online,
-    why: () => (online() ? null : OFFLINE),
+    enabled: live,
+    why: () => (live() ? null : 'The session has ended'),
     // a context menu names its element or slide, which may be one that another person holds and
     // that the selection drops
     run: (_app, arg) => {
