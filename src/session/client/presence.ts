@@ -202,7 +202,9 @@ class Changes {
 }
 
 // the state of another page as this page last heard it, with the times of this page at which it
-// was heard, and at which the page was last seen typing or moving its caret to another element
+// was heard, and at which the page was last seen typing or moving its caret to another element. a
+// page that this page first hears is not active until it types or moves its caret, since its caret
+// may have rested for long
 type Other = {
   raw: string;
   // the offsets and their version, whose change reads the elements again
@@ -528,8 +530,9 @@ export class Presence {
       const raw = JSON.stringify(state);
       let o = this.others.get(p.client);
       if (o && o.raw === raw && o.resolved?.name === p.name && o.resolved?.color === p.color) continue;
+      const known = !!o;
       if (!o) {
-        o = { raw, key: '', state, heardAt: t, activeAt: t, resolved: null, resolvedKey: '', ahead: false };
+        o = { raw, key: '', state, heardAt: t, activeAt: -Infinity, resolved: null, resolvedKey: '', ahead: false };
         this.others.set(p.client, o);
       }
       if (o.raw !== raw) o.heardAt = t;
@@ -538,7 +541,7 @@ export class Presence {
       o.raw = raw;
       o.state = state;
       this.resolve(o, p.client, p.name, p.color);
-      if ((o.resolved?.caret?.el ?? null) !== caretBefore) o.activeAt = t;
+      if (known && (o.resolved?.caret?.el ?? null) !== caretBefore) o.activeAt = t;
       changed = true;
     }
     for (const id of [...this.others.keys()]) {
