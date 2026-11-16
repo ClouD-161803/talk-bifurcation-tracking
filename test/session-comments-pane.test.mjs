@@ -559,6 +559,25 @@ test('only a name picked from the list is a mention, and a name typed by hand is
   clean(b);
 });
 
+test('the list of people at an @ stays open while the field loses the focus and has it again, and closes once the focus leaves', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t);
+  const LIST = `!document.querySelector('${PANE} .draft .people').hidden`;
+  await show(b, 'One');
+  await click(b, '.reveal .slides > section:nth-child(1) p');
+  await press(b, COMMENT_KEY);
+  await b.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await typeKeys(b, '@An');
+  await sees(b, LIST, true);
+  // as at a click on a scroll bar, or when the window loses the focus and has it again
+  await b.evaluate(`(() => { const d = document.querySelector('${DRAFT}'); d.blur(); d.focus(); return true; })()`);
+  await elapse(b, 1000);
+  assert.deepEqual(await b.evaluate(`[${LIST}, document.activeElement?.matches('${DRAFT}')]`), [true, true], 'the list and the focus after the field had the focus again');
+  await b.evaluate(`document.querySelector('${DRAFT}').blur()`);
+  await sees(b, LIST, false, 'the list after the focus left the field');
+  clean(a);
+  clean(b);
+});
+
 test('an edit of a comment keeps two mentions with one shown name apart', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   // two people that never joined, whose names are thus shown as Someone
