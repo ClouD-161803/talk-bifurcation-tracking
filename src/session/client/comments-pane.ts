@@ -1100,7 +1100,7 @@ export function install(client: Client): void {
     badges.schedule();
   });
 
-  // a draft opened offline is sent once the page is back online
+  // a draft opened offline can be sent once the page is back online
   const live = () => client.connection !== 'ended';
   shell.define({
     id: 'insert.comment',
