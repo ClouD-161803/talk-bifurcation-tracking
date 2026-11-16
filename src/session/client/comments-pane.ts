@@ -697,6 +697,9 @@ class Pane {
       } finally {
         busy = false;
         sync();
+        // a browser moves the focus of the pressed button to the body while the button is disabled.
+        // an empty field would open the keyboard of a phone, hence the thread takes it then
+        if (document.activeElement === document.body) (area.value ? area : area.closest('article'))?.focus({ preventScroll: true });
       }
     };
     area.addEventListener('input', (ev) => {
