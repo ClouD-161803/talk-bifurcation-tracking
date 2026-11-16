@@ -5,7 +5,7 @@
 // white page 1 with a black line across its middle, and a blue box on a transparent page 2
 
 import assert from 'node:assert/strict';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
@@ -290,6 +290,105 @@ test('in a deck opened from a file, the PDF of a figure is chosen once and read 
     assert.deepEqual(errors(page), []);
   } finally {
     await page.close();
+  }
+});
+
+// the messages of a new page and of Match the Mode of the PDF figure outside a session, whose PDF is
+// answered with status, or with the promise of the expression answer
+async function refused(status, answer = `Promise.resolve(new Response('', { status: ${status} }))`) {
+  writeDeck();
+  const page = await browser.newPage();
+  await page.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `{ const fetched = window.fetch; window.fetch = function (input, init) { return String(input instanceof Request ? input.url : input).endsWith('.pdf') ? ${answer} : fetched.call(this, input, init); }; }`,
+  });
+  try {
+    await page.goto(`${server.origin}/${DECK}?edit&still&edit-platform=mac`);
+    await page.waitFor(deckSettled);
+    await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+    assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(readFileSync(DECK, 'utf8'))})`)).problems, []);
+    assert.equal(await page.evaluate('!!window.BeesonSession'), false);
+    if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
+    await showSlide(page, 'A PDF figure');
+    await click(page, await centerOf(page, '.reveal section.present figure img'));
+    await frames(page);
+    const message = (id, arg) => page.evaluate(`window.BeesonEditor.exec(${JSON.stringify(id)}${arg ? `, ${JSON.stringify(arg)}` : ''}).then(() => 'taken', (e) => e.message)`);
+    return [await message('media.pdfPage', { page: 2 }), await message('media.matchMode')];
+  } finally {
+    await page.close();
+  }
+}
+
+// a 413 without the header of the edit command is not the limit of the relay
+test('a PDF figure whose PDF is answered with 404, or with 413 by a server other than the edit command, is said to be not found next to the deck', { timeout: 300_000 }, async () => {
+  for (const status of [404, 413]) assert.deepEqual(await refused(status), Array(2).fill('figure.pdf is not found next to the deck'), `status ${status}`);
+});
+
+test('a PDF figure whose PDF is answered with a status of 500 or more cannot be read now, and the message names the status', { timeout: 300_000 }, async () => {
+  for (const status of [500, 502, 503, 504]) {
+    assert.deepEqual(await refused(status), Array(2).fill(`figure.pdf cannot be read now (status ${status}). Try again later`), `status ${status}`);
+  }
+});
+
+test('a PDF figure whose request fails on the network cannot be read now', { timeout: 300_000 }, async () => {
+  assert.deepEqual(await refused(0, "Promise.reject(new TypeError('Failed to fetch'))"), Array(2).fill('figure.pdf cannot be read now (the request failed). Try again later'));
+});
+
+// a talk of index.html with a PDF figure of media/figure.pdf, the names of the case of a talk, whose
+// page is answered the PDF, or the answer that the function window.__pdf returns once it is set
+const TITLED = 'test/pages/pdf-title.tmp';
+function titledPage() {
+  const layouts = readFileSync(LAYOUTS, 'utf8').replaceAll('"../../', '"../../../');
+  const head = layouts.slice(0, layouts.indexOf('<div class="slides">') + '<div class="slides">'.length);
+  const tail = layouts.slice(layouts.lastIndexOf('</div>\n</div>'));
+  const figure = ['dark', 'light'].map((mode) => `<img class="for-${mode}" src="../../../demo/figure-${mode}.png" data-pdf="media/figure.pdf" alt="A plot">`).join('\n  ');
+  mkdirSync(TITLED, { recursive: true });
+  writeFileSync(`${TITLED}/index.html`, `${head}\n<section>\n  <h2>A PDF figure</h2>\n  <figure class="figure-box">\n  ${figure}\n  </figure>\n</section>\n${tail}`);
+  return `{ const fetched = window.fetch; window.fetch = function (input, init) {
+    if (!String(input instanceof Request ? input.url : input).endsWith('.pdf')) return fetched.call(this, input, init);
+    return window.__pdf ? window.__pdf() : fetched.call(this, '/test/pages/figure.pdf');
+  }; }`;
+}
+after(() => rmSync(TITLED, { recursive: true, force: true }));
+
+// the answers of the PDF in the title bar test, with a word of their message
+const TITLED_ANSWERS = [
+  ["Promise.resolve(new Response('', { status: 502 }))", '502'],
+  ["Promise.resolve(new Response('', { status: 413, headers: { 'x-edit-command': '1' } }))", '16 MB'],
+  ["Promise.reject(new TypeError('Failed to fetch'))", 'Try again later'],
+];
+
+// the state of the title bar is left out when it does not fit, hence a message that is too long
+// is never seen. a 413 of the edit command carries its header
+test('the message of a PDF figure whose PDF cannot be read is shown in the title bar of a laptop of 1280 px outside a session, also after an edit', { timeout: 300_000 }, async () => {
+  const script = titledPage();
+  for (const dirty of [false, true]) {
+    const page = await browser.newPage({ width: 1280, height: 800 });
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: script });
+    try {
+      await page.goto(`${server.origin}/${TITLED}/index.html?edit&still&edit-platform=mac`);
+      await page.waitFor(deckSettled);
+      await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+      assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(readFileSync(`${TITLED}/index.html`, 'utf8'))})`)).problems, []);
+      if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
+      await showSlide(page, 'A PDF figure');
+      await click(page, await centerOf(page, '.reveal section.present figure img'));
+      // the checkbox Match the Mode, which an edit may move in the pane
+      const box = () => page.evaluate(`(() => { const r = document.querySelector('input[data-command="media.matchMode"]').closest('label').getBoundingClientRect(); return { x: r.left + 8, y: r.top + r.height / 2 }; })()`);
+      if (dirty) {
+        await click(page, await box());
+        await page.waitFor(`/^Unsaved changes/.test(document.querySelector('.beeson-edit-titlebar .doc .state').textContent)`, 30_000);
+      }
+      for (const [answer, word] of TITLED_ANSWERS) {
+        await page.evaluate(`(window.__pdf = () => ${answer}), true`);
+        await click(page, await box());
+        await page.waitFor(`document.querySelector('.beeson-edit-titlebar .doc .state').textContent.includes(${JSON.stringify(word)})`);
+        await frames(page);
+        const seen = await page.evaluate(`(() => { const e = document.querySelector('.beeson-edit-titlebar .doc .state'); return { text: e.textContent, shown: e.getBoundingClientRect().width > 0 }; })()`);
+        assert.ok(seen.shown, `${dirty ? 'after an edit' : 'before an edit'}, the title bar does not show: ${seen.text}`);
+      }
+    } finally {
+      await page.close();
+    }
   }
 });
 

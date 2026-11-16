@@ -289,6 +289,8 @@ export function install(app: App): void {
   // a task later, until when the next sheet is not seen as open
   let leftOf: (() => void) | null = null;
   let leaving = false;
+  // the field of the open sheet of a formula, with the TeX that it opened with
+  let opened: { field: HTMLTextAreaElement; tex: string } | null = null;
 
   // the keys of an open completion list are taken before the keys of the editor and of the sheet
   window.addEventListener('keydown', (ev) => {
@@ -324,6 +326,7 @@ export function install(app: App): void {
     away = null;
     leftOf = null;
     openFor = null;
+    opened = null;
     const restore = back;
     back = null;
     if (focus) restore?.();
@@ -442,6 +445,7 @@ export function install(app: App): void {
         : null;
     leftOf = sheet.left ?? null;
     openFor = target;
+    opened = target ? { field, tex: sheet.tex } : null;
     const host = target?.closest(HOST);
     const at = host && target ? [...host.querySelectorAll('mjx-container')].indexOf(target) : -1;
     // the focus goes back to the formula, whose object is selected for the keys of the slide, or to
@@ -510,7 +514,12 @@ export function install(app: App): void {
   }
 
   sheetApi = { open: openSheet };
-  const math: MathPop = { isOpen: () => !!popover && !leaving, open: openMath, close: closeMath, setMath, hold };
+  // the formula whose field has the focus with all of its TeX selected, as the field opens
+  const wholeTex = () => {
+    const f = opened?.field;
+    return f && document.activeElement === f && f.value.trim() && f.value === opened?.tex && f.selectionStart === 0 && f.selectionEnd === f.value.length ? openFor : null;
+  };
+  const math: MathPop = { isOpen: () => !!popover && !leaving, open: openMath, close: closeMath, setMath, hold, wholeTex };
   app.math = math;
   document.addEventListener('click', (ev) => {
     const target = ev.target instanceof Element ? ev.target : null;

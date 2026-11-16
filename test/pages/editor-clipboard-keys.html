@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Editor clipboard keys deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<script src="../../theme/mathjax-config.js"></script>
+<script src="../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+<!-- the deck of the tests of the clipboard keys: a slide of a paragraph, a display at a step with
+     a colored symbol, a list with an inline formula, and a figure beside them, and a slide of a
+     paragraph -->
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <h2>Copy and paste</h2>
+  <p style="width: 900px">Alpha paragraph of the slide.</p>
+  <div class="math fragment" data-fragment-index="1" style="width: 900px">\[ E = \class{mass}{m} c^2 \]</div>
+  <ul style="width: 900px">
+    <li>Gamma \(a^2 + b^2\) item.</li>
+  </ul>
+  <figure class="figure-box" style="width: 250px">
+    <img src="../../demo/figure-light.png" alt="A figure">
+  </figure>
+</section>
+
+<section>
+  <h2>Another slide</h2>
+  <p>Beta paragraph.</p>
+</section>
+
+</div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

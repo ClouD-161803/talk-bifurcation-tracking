@@ -374,6 +374,471 @@ test('a page whose copy holds its edit does not ask before a reload, and its edi
   await until(() => server.read().includes('Inserted') || null, 'the edit to reach index.html', 10_000);
 });
 
+// whether copy.ts wrote a record and none of its records holds part
+const LACKS = (part) => `(${ROWS}).then((rows) => rows.length > 0 && !rows.some((r) => r.mine.includes(${JSON.stringify(part)})))`;
+
+test('a page asks before it unloads after an Undo of an edit that the edit command may hold, also once its copy holds the Undo', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  // the edit reaches the edit command, and neither its answer nor its broadcast reaches the page
+  await page.evaluate(`__net.rule('/.session/op', 'late') && __net.rule('/.session/events', 'cut') && __net.drop('/.session/events')`);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await until(() => paragraph(server.read()) === 'First slide Zed' || null, 'the edit in index.html', 15_000);
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied)`);
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${TEXT}.includes('Zed')`);
+  const undone = await page.evaluate(ASKED(' Zed'));
+  assert.ok(undone.asking || !undone.copied, `the page asks while its copy holds the undone edit: ${JSON.stringify(undone)}`);
+  // a copy without edits cannot undo an edit that the edit command holds
+  await page.waitFor(LACKS(' Zed'));
+  assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks once its copy holds the Undo');
+  assert.equal(await reload(page), true, 'the page asked before it left');
+});
+
+const REDO = process.platform === 'darwin' ? 'Mod+Shift+Z' : 'Mod+Y';
+// the question of the page once it read the Redo of ' Zed', before a tick of copy.ts writes again,
+// in window.__asking
+const AT_REDO = `(${C}.on('settled', () => ${C}.snapshot().mine.includes(' Zed') && setTimeout(() => (window.__asking ??= ${C}.asking))), true)`;
+
+// a page offline whose copy held ' Zed' on slide One, and then holds its Undo
+async function undone(t) {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${TEXT}.includes('Zed')`);
+  await page.waitFor(LACKS(' Zed'));
+  return page;
+}
+
+test('a page asks before it unloads after a Redo that follows an offline Undo, until its copy holds the Redo', { timeout: 240_000 }, async (t) => {
+  const page = await undone(t);
+  await page.evaluate(AT_REDO);
+  await press(page, REDO);
+  await page.waitFor('window.__asking !== undefined');
+  assert.equal(await page.evaluate('window.__asking'), true, 'the page asks once it read the Redo');
+});
+
+test('a page asks before it unloads after a Redo that follows an offline Undo, once IndexedDB fails', { timeout: 240_000 }, async (t) => {
+  const page = await undone(t);
+  // every later write of the copy fails, as on a full disk
+  await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
+  await press(page, REDO);
+  await page.waitFor(`${C}.snapshot().mine.includes(' Zed') && /cannot be kept/.test(${STATE})`);
+  assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: true, copied: false });
+});
+
+// the handler of the next write of the copy waits after window.__hold until window.__release(), and
+// the handler of every write while window.__holdAll. after window.__fail every write fails at once,
+// after the handlers that wait. a handler that waits is a write that ends late, e.g. on a slow disk.
+// window.__ended counts the handlers that ran without a wait
+const LATE_WRITES = `{
+  const put = IDBObjectStore.prototype.put;
+  const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
+  const held = [];
+  window.__ended = 0;
+  window.__release = () => (held.splice(0).forEach((go) => go()), true);
+  Object.defineProperty(IDBTransaction.prototype, 'oncomplete', {
+    configurable: true,
+    get() { return complete.get.call(this); },
+    set(fn) {
+      const write = fn && this.mode === 'readwrite' && this.objectStoreNames.contains('copies');
+      const hold = write && (window.__hold || window.__holdAll);
+      if (hold) window.__hold = false;
+      complete.set.call(this, hold ? (ev) => held.push(() => fn.call(this, ev)) : write ? (ev) => (fn.call(this, ev), window.__ended++) : fn);
+    },
+  });
+  IDBObjectStore.prototype.put = function (...args) {
+    const r = put.apply(this, args);
+    if (window.__fail) {
+      window.__release();
+      this.transaction.abort();
+    }
+    return r;
+  };
+}`;
+
+test('a page asks before it unloads after an Undo while its copy holds the undone edit, from a write that ended while the next one failed', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${LATE_WRITES}` });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  await page.evaluate('window.__hold = true');
+  // the typing in another text element is another entry of the history
+  await caretAtEnd(page, el(0, 'h2'));
+  await type(page, ' Two');
+  await page.waitFor(`(${ASKED(' Two')}).then((x) => x.copied)`);
+  await page.evaluate('window.__fail = true');
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${TEXT}.includes('One Two') && /cannot be kept/.test(${STATE})`);
+  const after = await page.evaluate(ASKED(' Two'));
+  assert.ok(after.asking || !after.copied, `the page asks while its copy holds the undone edit: ${JSON.stringify(after)}`);
+});
+
+test('a page asks before it unloads after a Redo that follows an offline Undo, also when the write of the edit ends after the write of the Undo', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${LATE_WRITES}` });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await page.evaluate('window.__hold = true');
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied)`);
+  const ended = await page.evaluate('window.__ended');
+  await press(page, 'Mod+Z');
+  await page.waitFor(`window.__ended > ${ended} && (${LACKS(' Zed')})`);
+  // the record of the edit, at the same version as the Undo, is no longer the copy of the page
+  await page.evaluate('window.__release()');
+  await page.evaluate(AT_REDO);
+  await press(page, REDO);
+  await page.waitFor('window.__asking !== undefined');
+  assert.equal(await page.evaluate('window.__asking'), true, 'the page asks once it read the Redo');
+});
+
+test('a page asks before it unloads after an Undo and a Redo of an acknowledged edit, also when its copy with the edit was written after the acknowledgment', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${LATE_WRITES}` });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold') && (window.__hold = true)`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied)`);
+  // the acknowledgment deletes the copy before the write of the copy ends
+  await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
+  await page.waitFor(`${C}.acked() && (${ROWS}).then((rows) => rows.length === 0)`);
+  // a write of the Undo that ends late, as on a slow runner, is never named by kept
+  await page.evaluate(`__net.rule('/.session/op', 'hold') && window.__release() && (window.__hold = true)`);
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${C}.snapshot().mine.includes('Zed')`);
+  await page.evaluate(AT_REDO);
+  await press(page, REDO);
+  await page.waitFor('window.__asking !== undefined');
+  assert.equal(await page.evaluate('window.__asking'), true, 'the page asks once it read the Redo');
+});
+
+test('an edit of another person does not make a page ask before it unloads while its copy holds the edit of the page', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Mine');
+  await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
+  // the times at which the page asks are recorded with a clock in the page
+  await page.evaluate(`window.__asked = []; window.__clock = setInterval(() => ${C}.asking && window.__asked.push(Math.round(performance.now())), 10); true`);
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide Remote</p>'));
+  await page.waitFor(`${TEXT}.includes('Remote')`);
+  // the next copy holds the edit of the other person
+  await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
+  assert.deepEqual(await page.evaluate('clearInterval(window.__clock), window.__asked'), []);
+});
+
+test('an edit of another person does not stop a page from asking before it unloads while its copy lacks the newest edit of the page', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Mine');
+  await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
+  // the answer of a poll with the second edit of the other person is held until window.__again()
+  await page.evaluate(`(() => {
+    const fetched = window.fetch;
+    const released = new Promise((done) => (window.__again = () => (done(), true)));
+    window.fetch = function (input, init) {
+      const answer = fetched.call(this, input, init);
+      if (!String(input instanceof Request ? input.url : input).includes('/.session/events')) return answer;
+      return answer.then(async (r) => {
+        if (!(await r.clone().text()).includes('Again')) return r;
+        window.__held = true;
+        await released;
+        return r;
+      });
+    };
+    return true;
+  })()`);
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide Remote</p>'));
+  await page.waitFor(`${TEXT}.includes('Remote')`);
+  await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
+  writeFileSync(server.file, server.read().replace('<p>Second slide Remote</p>', '<p>Second slide Remote Again</p>'));
+  await page.waitFor('window.__held === true');
+  // the copy keeps the first edit of the other person, and never holds the newest edit of the page
+  await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
+  await type(page, ' More');
+  // asking is read once the client checked the deck after the merge of the second edit
+  await page.evaluate(`(${C}.on('settled', () => ${C}.snapshot().mine.includes('Again') && setTimeout(() => (window.__asking ??= ${C}.asking))), window.__again())`);
+  await page.waitFor(`window.__asking !== undefined && ${TEXT}.includes('Again')`);
+  assert.deepEqual(await page.evaluate(`(${ASKED(' More')}).then((x) => ({ ...x, asking: window.__asking }))`), { asking: true, copied: false });
+});
+
+test('an edit of another person does not make a page that waits to load again ask before it unloads while its copy holds the edit of the page', { timeout: 240_000 }, async (t) => {
+  const { server, page } = await waiting(t);
+  await page.waitFor(`(${ASKED(' slow')}).then((x) => x.copied && !x.asking)`);
+  await page.evaluate(`window.__asked = []; window.__clock = setInterval(() => ${C}.asking && window.__asked.push(Math.round(performance.now())), 10); true`);
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide Remote</p>'));
+  // the deck of a page that waits to load again is not changed, hence the replica is read
+  await page.waitFor(`${C}.snapshot().mine.includes('Remote')`);
+  await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
+  assert.deepEqual(await page.evaluate('clearInterval(window.__clock), window.__asked'), []);
+});
+
+test('a page asks before it unloads from the moment that it is told of an edit, also while its copy holds an earlier edit', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Mine');
+  await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
+  // a listener of the port added after the one of the client runs before the client reads the deck
+  await page.evaluate(`window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done({ asking: ${C}.asking, read: ${C}.snapshot().mine.includes('Q0q') }); }); }); true`);
+  await type(page, ' Q0q');
+  assert.deepEqual(await page.evaluate('window.__told'), { asking: true, read: false });
+});
+
+test('a page that waits for the answer of its hello asks before it unloads from the moment of an edit until its copy holds the edit, and not after', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n__net.rule('/.session/', 'cut');`, wait: false });
+  await page.waitFor(`window.BeesonSession?.client?.()?.connection === 'offline'`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Early');
+  await page.waitFor(`(${ASKED(' Early')}).then((x) => x.copied && !x.asking)`);
+  await page.evaluate(`window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done(${C}.asking); }); }); true`);
+  await type(page, ' More');
+  assert.equal(await page.evaluate('window.__told'), true, 'the page asks from the moment of the edit');
+  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`);
+});
+
+// on the first load, the handler of the first transaction on the copies, i.e. of restore() of
+// copy.ts, waits until window.__restored(), as on a slow disk
+const SLOW_RESTORE = `{
+  window.__holdRestore = sessionStorage.getItem('__loads') === '1';
+  const complete = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
+  let held = null;
+  window.__restored = () => (held?.(), true);
+  Object.defineProperty(IDBTransaction.prototype, 'oncomplete', {
+    configurable: true,
+    get() { return complete.get.call(this); },
+    set(fn) {
+      const hold = fn && window.__holdRestore && this.objectStoreNames.contains('copies');
+      if (hold) window.__holdRestore = !(window.__restoreHeld = true);
+      complete.set.call(this, hold ? (ev) => (held = () => fn.call(this, ev)) : fn);
+    },
+  });
+}`;
+// the asking of the client once the port has told it of the next change, and the number of hellos
+// that the page has sent by then, i.e. 0 before join.ts has given its copy, in window.__told
+const TOLD = `window.__told = new Promise((done) => { const off = ${C}.port.onChange(() => { off(); done({ asking: ${C}.asking, hellos: __net.count('/.session/hello') }); }); }); true`;
+
+test('a page asks before it unloads for an edit typed while it reads its copies, until its copy holds the edit', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n__net.rule('/.session/', 'cut');\n${SLOW_RESTORE}`, wait: false });
+  await page.waitFor('window.__restoreHeld === true');
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await page.evaluate(TOLD);
+  await type(page, ' Early');
+  assert.deepEqual(await page.evaluate('window.__told'), { asking: true, hellos: 0 });
+  await page.evaluate('window.__restored()');
+  await page.waitFor(`(${ASKED(' Early')}).then((x) => x.copied && !x.asking)`);
+});
+
+test('a page asks before it unloads for an edit typed while IndexedDB does not answer, also once its copy cannot be kept', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // the open of the database of the copies never answers, as for a database blocked by another tab,
+  // and the wait of copy.ts for it, OPEN_WAIT, ends only at window.__openWait()
+  const silent = `{
+    const opened = IDBFactory.prototype.open;
+    IDBFactory.prototype.open = function (name, ...rest) { return name === 'beeson-session' ? {} : opened.call(this, name, ...rest); };
+    const later = window.setTimeout;
+    window.setTimeout = function (fn, ...rest) {
+      if (!String(fn).includes('IndexedDB did not answer')) return later.call(this, fn, ...rest);
+      window.__openWait = () => (fn(), true);
+      return 0;
+    };
+  }`;
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n__net.rule('/.session/', 'cut');\n${silent}`, wait: false });
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await page.evaluate(TOLD);
+  await type(page, ' Early');
+  assert.deepEqual(await page.evaluate('window.__told'), { asking: true, hellos: 0 });
+  await page.evaluate('window.__openWait()');
+  await page.waitFor(`/cannot be kept/.test(${STATE}) && ${C}.connection === 'offline'`);
+  assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks while its copy cannot be kept');
+});
+
+// window.__holdText holds the answer of events whose text includes it until window.__again(), and
+// while window.__holdOp each answer of an operation waits until window.__opGo(), counted in
+// window.__opsHeld
+const HELD = `{
+  const fetched = window.fetch;
+  let again = () => {};
+  const events = new Promise((done) => (again = done));
+  const ops = [];
+  window.__opsHeld = 0;
+  window.__again = () => (again(), true);
+  window.__opGo = () => (ops.splice(0).forEach((go) => go()), true);
+  window.fetch = function (input, init) {
+    const url = String(input instanceof Request ? input.url : input);
+    const answer = fetched.call(this, input, init);
+    if (url.includes('/.session/op')) {
+      if (!window.__holdOp) return answer;
+      return answer.then((r) => new Promise((done) => (window.__opsHeld++, ops.push(() => done(r)))));
+    }
+    if (!url.includes('/.session/events')) return answer;
+    return answer.then(async (r) => {
+      if (!window.__holdText || !(await r.clone().text()).includes(window.__holdText)) return r;
+      window.__eventsHeld = true;
+      await events;
+      return r;
+    });
+  };
+}`;
+
+test('a page asks before it unloads after a Redo of an Undo that the edit command applied, until its copy holds the Redo', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${LATE_WRITES}\n${HELD}` });
+  await converge(server, [page]);
+  const n = Number((await page.evaluate(`${C}.snapshot().v`)).split('.')[1]);
+  await page.evaluate(`window.__holdText = 'Zed'; window.__holdOp = true; true`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`window.__opsHeld === 1 && window.__eventsHeld === true && (${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  // the record of ' Zed' at the version before the edit stays the one that the page keeps
+  await page.evaluate('window.__holdAll = true');
+  await press(page, 'Mod+Z');
+  await page.waitFor(`!${C}.snapshot().mine.includes('Zed')`);
+  // the operation of the edit and its broadcast arrive, and the Undo is sent and applied
+  await page.evaluate('window.__again(), window.__opGo()');
+  await page.waitFor(`window.__opsHeld === 2 && ${C}.snapshot().v.endsWith('.${n + 2}')`);
+  await page.evaluate(AT_REDO);
+  await press(page, REDO);
+  await page.waitFor('window.__asking !== undefined');
+  assert.equal(await page.evaluate('window.__asking'), true, 'the page asks while its copy holds the edit at the version before the Undo');
+  await page.evaluate('(window.__holdAll = false, window.__release())');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+});
+
+test('a page asks before it unloads once its copy is deleted under it and cannot be written again, until its edit is acknowledged', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  // as Clear site data does, with each later write refused, e.g. on a full disk. the next
+  // heartbeat, BEAT of copy.ts (10 s) later, fails
+  await page.send('Storage.clearDataForOrigin', { origin: await page.evaluate('location.origin'), storageTypes: 'indexeddb' });
+  await page.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('The quota was exceeded.', 'QuotaExceededError'); }; true`);
+  await page.waitFor(`/cannot be kept/.test(${STATE})`, 30_000);
+  assert.deepEqual(await page.evaluate(ASKED(' Zed')), { asking: true, copied: false });
+  await page.evaluate(`__net.clear() && (${C}.tryNow(), true)`);
+  await page.waitFor(`${C}.acked() && !${C}.asking`);
+  await until(() => paragraph(server.read()) === 'First slide Zed' || null, 'the edit in index.html', 15_000);
+});
+
+test('a page whose copy is deleted with the data of the site writes its copy again, and then does not ask before it unloads', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(OFFLINE);
+  await page.waitFor(`/^Offline/.test(${STATE})`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Zed');
+  await page.waitFor(`(${ASKED(' Zed')}).then((x) => x.copied && !x.asking)`);
+  // as Clear site data does
+  await page.send('Storage.clearDataForOrigin', { origin: await page.evaluate('location.origin'), storageTypes: 'indexeddb' });
+  await type(page, ' More');
+  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`, 30_000);
+});
+
+// a script for open() that fails the next put once window.__failPut is set. Date.now() of the page
+// then stops 5 s after this failure, i.e. before the heartbeat of copy.ts (BEAT, 10 s) is due
+const FAIL_ONCE = `{
+  const put = IDBObjectStore.prototype.put;
+  const now = Date.now;
+  Date.now = () => Math.min(now(), window.__stop ?? Infinity);
+  IDBObjectStore.prototype.put = function (...args) {
+    if (!window.__failPut) return put.apply(this, args);
+    window.__failPut = false;
+    window.__stop = now() + 5000;
+    throw new DOMException('The quota was exceeded.', 'QuotaExceededError');
+  };
+}`;
+
+test('a page whose write of its copy failed once writes it again before the heartbeat, and then does not ask before it unloads', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${FAIL_ONCE}` });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Mine');
+  await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
+  await page.evaluate('(window.__failPut = true)');
+  await type(page, ' More');
+  await page.waitFor(`window.__stop !== undefined && ${C}.asking`);
+  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`);
+});
+
 // the time in ms that each listener of beforeunload was on window before its removal, in
 // window.__unload
 const UNLOAD = `{
@@ -414,7 +879,7 @@ test('a page whose edits are acknowledged at once does not ask before it unloads
 test('the operations of the answer that ends the session are taken before its dialog, which then holds every acknowledged edit', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const server = await talk(t);
+  const server = await talk(t, { env: { SLIDES_CLOSE_WAIT_MS: '120000' } });
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', script: NET });
   await converge(server, [ann, ben]);
@@ -432,14 +897,17 @@ test('the operations of the answer that ends the session are taken before its di
   await front(ann);
   await type(ann, ' by Ann');
   await until(() => server.read().includes('<p>Second slide first by Ann</p>'), 'the edit of Ann to reach index.html');
-  // the edit command answers every poll with ended for at least 200 ms after it answered the poll of Ann
+  // the poll of Ben is released once Ann is told of the end, which takes two reads of a page by this
+  // test. the edit command of this test therefore answers a poll with ended for 2 min after it was
+  // stopped, in place of 200 ms, and it is killed once Ben has his answer
   server.edit.child.kill('SIGTERM');
   await ann.waitFor(`${C}.connection === 'ended'`);
   await ben.evaluate(`__net.clear() && __net.release('/.session/events')`);
-  await server.edit.exited;
-  server.edit = null;
   await front(ben);
   await ben.waitFor(`${DIALOG}?.querySelector('h3').textContent === 'The session has ended'`);
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  server.edit = null;
   assert.equal(await ben.evaluate(`${DIALOG}.querySelector('p').textContent`), 'Your changes up to now are in index.html.');
   await ben.evaluate(`(${C}.shell.download = (text) => (window.__copy = text), true)`);
   await ben.evaluate(`${button('Download a copy')}.click()`);

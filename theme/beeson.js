@@ -5646,7 +5646,7 @@ void main() {
       hooks.internal = reveal;
       addRestoreSteps(document);
     } });
-    const editing = EDITING ? { showHiddenSlides: true } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
+    const editing = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
     await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
     initChrome();
     initSteps(deck);

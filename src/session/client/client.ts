@@ -10,7 +10,7 @@
 import type { App } from '../../editor/app.ts';
 import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
-import { keeps } from './copy.ts';
+import { early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
 import { FULL, type AppliedOp, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
@@ -40,6 +40,8 @@ export type ClientEvents = {
   // a drive ended, with whether the base moved on after the last applied without an apply, e.g. at
   // the broadcast of an operation of this page
   settled: [moved: boolean];
+  // operations of others were merged into the edits of this page, whose text was before
+  rebased: [before: string];
   // connection, saving, retryAt, blocked, or warning changed
   state: [];
   ended: [Ended];
@@ -246,8 +248,16 @@ export class Client {
     else this.receive(answer.ops);
     this.since = answer.v;
     this.setConnection('online');
+    // the keys that are not read are sent when the page is hidden, since a hidden page draws no
+    // frame that reads them, and a phone may suspend it or close it without pagehide
+    const send = (): void => {
+      if (this.dirty) this.dirty = !this.capture();
+      this.pump();
+    };
+    document.addEventListener('visibilitychange', send);
     window.addEventListener('pagehide', () => {
       if (!this.token || this.ended) return;
+      send();
       this.gone = true;
       this.transport.bye(this.token);
     });
@@ -340,7 +350,10 @@ export class Client {
   }
 
   private unkept(): boolean {
-    return !this.acked() && !this.ended && !keeps(this);
+    // a change that is not read yet is in neither the replica nor the copy. once join.ts has given
+    // the copy before the join, this copy is read from the deck, and join.ts checks again after each
+    // change
+    return !this.acked() && !this.ended && ((this.dirty && (!!this.sync || !early(this))) || !keeps(this));
   }
 
   // resolves once every edit of this page is acknowledged, which is a save in a session
@@ -431,7 +444,7 @@ export class Client {
           for (const fn of this.rewrites.splice(0)) sync.edit(fn(sync.mine));
           if (this.fresh) sync.resync(this.fresh.text, this.fresh.v);
           this.fresh = null;
-          if (this.inbox.length) sync.receive(this.inbox.splice(0));
+          if (this.inbox.length) this.merge(this.inbox.splice(0));
           break;
         }
         let stale = false;
@@ -464,7 +477,7 @@ export class Client {
           this.fresh = null;
           if (sync.resync(text, v) !== null) stale = true;
         }
-        if (this.inbox.length && sync.receive(this.inbox.splice(0)) !== null) stale = true;
+        if (this.inbox.length && this.merge(this.inbox.splice(0)) !== null) stale = true;
         if (!stale) break;
         read = sync.version;
         if (!(await this.applyMine())) break;
@@ -476,6 +489,15 @@ export class Client {
     this.emit('settled', sync.version !== read);
     this.pump();
     this.check();
+  }
+
+  // the operations that waited are taken into the replica, and rebased tells copy.ts what moved
+  private merge(ops: AppliedOp[]): string | null {
+    const sync = this.sync!;
+    const before = sync.mine;
+    const out = sync.receive(ops);
+    this.emit('rebased', before);
+    return out;
   }
 
   private async applyMine(): Promise<boolean> {
@@ -556,7 +578,7 @@ export class Client {
     if (deck === handed) return true;
     const theirs = diff(handed, sync.mine);
     const ours = diff(handed, deck).filter((o) => !theirs.some((t) => t.start === o.start && t.end === o.end && t.text === o.text));
-    sync.edit(apply(handed, mergePatches(theirs, ours, 'ours').patches));
+    sync.edit(apply(handed, mergePatches(theirs, ours, 'ours', handed).patches));
     this.handed = deck;
     return true;
   }

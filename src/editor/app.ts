@@ -120,6 +120,9 @@ export interface MathPop {
   // holds the keys typed until the next open, which types them into its field, and returns the
   // release of the hold for a command that opens nothing
   hold(): () => void;
+  // the formula whose TeX field has the focus with all of its TeX selected and unchanged, as the
+  // field opens, or null
+  wholeTex(): Element | null;
 }
 
 export interface Typing {

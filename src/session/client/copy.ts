@@ -6,7 +6,7 @@
 
 import { changes, merge } from '../../editor/merge.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
-import { parseVersion, type Version } from '../protocol.ts';
+import { parseVersion, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Client } from './client.ts';
 import { arm, ask } from './conflicts.ts';
@@ -26,8 +26,10 @@ const OPEN_WAIT = 3000;
 const OLD = 30 * 86_400_000;
 
 type Kept = { path: string; blob: Blob };
-// made is the time of the last change of mine, missing in a record of an older client
-type Row = { id: string; key: string; base: string; v: Version; mine: string; files: Kept[]; beat: number; made?: number };
+// made is the time of the last change of mine, missing in a record of an older client. tokens are
+// of the pages whose operations may hold the edits of the record, i.e. of its page once it joined,
+// and before of the pages of the records that it took over
+type Row = { id: string; key: string; base: string; v: Version; mine: string; files: Kept[]; beat: number; made?: number; tokens?: Token[] };
 export type Copy = { base: string; v: Version; mine: string };
 
 type State = {
@@ -36,7 +38,8 @@ type State = {
   unavailable: boolean;
   // a record of this page may be in IndexedDB
   stored: boolean;
-  // the last copy with edits that wait written into IndexedDB, whose slides the save state names
+  // the copy with edits that wait that IndexedDB holds, or this copy with the operations of others
+  // merged since, whose slides the save state names
   kept: Copy | null;
   last: Copy | null;
   wroteAt: number;
@@ -59,6 +62,8 @@ type State = {
   // the time of the last change of mine in a record, and this mine
   made: number;
   madeOf: string | null;
+  // the tokens of the records taken over at the join or left for rest(), which the first hello retires
+  retire: Token[];
 };
 
 const states = new WeakMap<Client, State>();
@@ -82,7 +87,11 @@ function db(): Promise<IDBDatabase> {
     setTimeout(() => fail(new Error('IndexedDB did not answer')), OPEN_WAIT);
     const r = indexedDB.open(DB, 1);
     r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' }).createIndex('key', 'key');
-    r.onsuccess = () => done(r.result);
+    r.onsuccess = () => {
+      // the browser closes the database e.g. at Clear site data, and the next write opens it again
+      r.result.onclose = () => (opened = null);
+      done(r.result);
+    };
     r.onerror = () => fail(r.error);
   }));
 }
@@ -138,16 +147,36 @@ function combine(rows: Row[]): { copy: Copy; taken: Row[]; made: number } {
 function stateOf(client: Client): State {
   let st = states.get(client);
   if (!st) {
-    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null };
+    st = { id: pageId(), unavailable: false, stored: false, kept: null, last: null, wroteAt: 0, since: null, timer: 0, soon: false, slides: null, restored: null, note: null, early: null, taken: null, left: false, merging: false, made: 0, madeOf: null, retire: [] };
     states.set(client, st);
   }
   return st;
 }
 
+// the tokens of the closed pages whose records this page took over or merges after its join, which
+// its first hello names, so that an operation of such a page that arrives later is not applied on
+// top of the copy
+export const retiring = (client: Client): Token[] => stateOf(client).retire;
+
+// once the page has joined, its record names its own token, since the hello retired the others
+export function joined(client: Client): void {
+  const st = stateOf(client);
+  void run('readwrite', (s) => {
+    const r = s.get(st.id);
+    r.onsuccess = () => r.result && s.put({ ...r.result, tokens: [client.token] });
+  }).catch(() => {});
+}
+
+const tokensOf = (client: Client, st: State): Token[] => (client.snapshot() ? [client.token] : st.retire);
+
 // the copy of the page before the first answer of hello, or null once the session has begun
 export function beforeJoin(client: Client, fn: (() => Copy | null) | null): void {
   stateOf(client).early = fn;
 }
+
+// whether join.ts has given the copy of the page before the join, which reads each change, hence
+// before it a change that the client has not read counts as not kept
+export const early = (client: Client): boolean => !!states.get(client)?.early;
 
 // the copy for a record: the state of the replica, or before the join the copy of early
 const current = (client: Client, st: State): Copy | null => client.snapshot() ?? st.early?.() ?? null;
@@ -184,31 +213,44 @@ async function askEarlier(client: Client, copy: Copy, made: number): Promise<boo
 // edits are older than OLD are deleted
 export async function restore(client: Client): Promise<Copy | null> {
   const st = stateOf(client);
-  let all: Row[];
-  try {
-    all = ((await run('readonly', (s) => s.getAll())) ?? []) as Row[];
-  } catch {
-    st.unavailable = true;
-    return null;
-  }
+  // a record written after the locks are read is of a page that lives
+  const at = Date.now();
   const gone = await goneOf();
-  const dead = all.filter((r) => r.id !== st.id && gone(r));
-  const old = dead.filter((r) => Date.now() - (r.made ?? r.beat) > OLD);
-  const here = dead.filter((r) => r.key === key() && !old.includes(r));
-  const { copy, taken, made } = here.length ? combine(here) : { copy: null, taken: [], made: 0 };
-  st.left = here.length > taken.length;
-  if (!old.length && !copy) return null;
-  const files = taken.flatMap((r) => r.files ?? []);
-  if (copy) st.stored = true;
+  let copy = null as Copy | null;
+  let files: Kept[] = [];
+  let made = 0;
   try {
+    // one transaction, which another page that loads at the same moment waits for, hence this page
+    // finds the records taken by the other gone
     await run('readwrite', (s) => {
-      for (const r of [...old, ...taken]) s.delete(r.id);
-      if (copy) s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now(), made } satisfies Row);
+      const q = s.getAll();
+      q.onsuccess = () => {
+        const dead = (q.result as Row[]).filter((r) => r.id !== st.id && r.beat < at && gone(r));
+        const old = dead.filter((r) => Date.now() - (r.made ?? r.beat) > OLD);
+        // the edit command retires at most 16 tokens of a hello, hence a record that would make more
+        // waits for the next load
+        let named = new Set<Token>();
+        const here = dead.filter((r) => {
+          const more = new Set([...named, ...(r.tokens ?? [])]);
+          if (r.key !== key() || old.includes(r) || more.size > 16) return false;
+          named = more;
+          return true;
+        });
+        let taken: Row[];
+        ({ copy, taken, made } = here.length ? combine(here) : { copy: null, taken: [], made: 0 });
+        st.left = here.length > taken.length;
+        // also of the records left, which rest() merges after the join
+        st.retire = [...named];
+        files = taken.flatMap((r) => r.files ?? []);
+        for (const r of [...old, ...taken]) s.delete(r.id);
+        if (copy) s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now(), made, tokens: st.retire } satisfies Row);
+      };
     });
     st.kept = copy;
   } catch {
     st.unavailable = true;
   }
+  if (copy) st.stored = true;
   if (!copy) return null;
   st.last = copy;
   st.made = made;
@@ -245,7 +287,8 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
   st.left = false;
   st.merging = true;
   try {
-    const dead = await deadRows(st);
+    // a record of a page closed after the join waits for the next join, which retires its tokens
+    const dead = (await deadRows(st)).filter((r) => (r.tokens ?? []).every((t) => st.retire.includes(t)));
     if (!dead.length) return;
     const { copy, taken, made } = combine(dead);
     st.left = dead.length > taken.length;
@@ -262,7 +305,9 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
     const ours = diff(copy.base, copy.mine);
     const into = (now: string, side: Side) => {
       const theirs = diff(copy.base, now).filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-      const m = mergePatches(theirs, ours, side);
+      // the side is decided by the dialog, hence a move of the side that wins is kept, and a move of
+      // the other side that conflicts is left out whole
+      const m = mergePatches(theirs, ours, side, copy.base, side);
       return { text: apply(copy.base, m.patches), conflicts: m.conflicts };
     };
     const side: Side = into(s.mine, 'ours').conflicts.length ? await ask(client, copy.base, copy.mine, s.mine) : 'ours';
@@ -275,7 +320,7 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
     st.stored = true;
     await run('readwrite', (store) => {
       for (const r of taken) store.delete(r.id);
-      store.put({ id: st.id, key: key(), base: now.base, v: now.v, mine, files: client.shell.media.unsaved(mine).map((f) => ({ path: f.path, blob: f.blob })), beat: Date.now(), made } satisfies Row);
+      store.put({ id: st.id, key: key(), base: now.base, v: now.v, mine, files: client.shell.media.unsaved(mine).map((f) => ({ path: f.path, blob: f.blob })), beat: Date.now(), made, tokens: tokensOf(client, st) } satisfies Row);
     });
     update();
   } catch {
@@ -308,11 +353,15 @@ export function keptLine(client: Client): string | null {
 
 // whether this browser keeps the edits of the page that are not acknowledged, for its next visit.
 // while it cannot, or until a record with the newest of them is written, the browser asks before
-// the page unloads, since the write that hide() starts at pagehide is aborted with the page
+// the page unloads, since the write that hide() starts at pagehide is aborted with the page. kept
+// is set only by a write that succeeded, and never by a write of a record without edits, which
+// cannot undo an edit that the edit command may hold. a record of the same text at an older version
+// does not undo the Undo that the edit command applied since, e.g. after a Redo of it. a write that
+// failed may have found the record deleted, e.g. by Clear site data
 export const keeps = (client: Client): boolean => {
   const st = stateOf(client);
   const s = current(client, st);
-  return !st.unavailable && (!s || s.mine === s.base || st.kept?.mine === s.mine);
+  return !s || (!st.unavailable && st.kept?.mine === s.mine && st.kept.v === s.v);
 };
 
 // the save state once the edits of a copy taken over at the join are sent, until the next edit
@@ -340,15 +389,18 @@ export function install(client: Client): void {
     st.wroteAt = t;
     st.stored = true;
     const files = client.shell.media.unsaved(s.mine).map((f) => ({ path: f.path, blob: f.blob }));
-    run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t, made: st.made } satisfies Row)).then(
+    run('readwrite', (store) => store.put({ id: st.id, key: key(), ...s, files, beat: t, made: st.made, tokens: tokensOf(client, st) } satisfies Row)).then(
       () => {
-        const kept = st.last === s && st.stored && s.mine !== s.base ? s : st.kept;
+        // the writes commit in order, hence an older record is replaced by this one
+        const kept = st.last === s && s.mine !== s.base ? s : null;
         if (!st.unavailable && kept === st.kept) return;
         st.unavailable = false;
         st.kept = kept;
         client.refresh();
       },
       () => {
+        // the next tick writes the same copy again, rather than at the heartbeat
+        st.wroteAt = 0;
         if (st.unavailable) return;
         st.unavailable = true;
         client.refresh();
@@ -411,6 +463,10 @@ export function install(client: Client): void {
   };
 
   client.on('state', update);
+  // operations of others move mine, and the record of the mine before them keeps the same edits
+  client.on('rebased', (before) => {
+    if (st.kept?.mine === before) st.kept = client.snapshot();
+  });
   client.port.onChange(() => {
     if (st.note) {
       st.note = null;
@@ -422,7 +478,8 @@ export function install(client: Client): void {
     if (!client.ended && !client.acked() && current(client, st)) write(true);
   };
   window.addEventListener('pagehide', hide);
-  document.addEventListener('visibilitychange', () => {
+  // on window, hence after the client has read and sent the keys at the same event on document
+  window.addEventListener('visibilitychange', () => {
     if (document.hidden) hide();
   });
 }

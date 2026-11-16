@@ -1132,3 +1132,53 @@ test('a page is answered at most once per GAP of its polls while operations come
   const span = (await polling) - started;
   assert.ok(span >= (answers - 1) * GAP, `${answers} answers in ${Math.round(span)} ms`);
 });
+
+test('a hello that retires the token of a closed page refuses the operations and the polls of this page that arrive after it', { timeout: 90_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const call = async (route, body) => (await post(edit.port, `${edit.base}.session/${route}`, body)).json();
+  const at = DECK.indexOf('First slide') + 'First slide'.length;
+  const both = [{ start: at, end: at, text: ' both' }];
+  const closed = await call('hello', { name: 'Ann' });
+  // the next page sends the edit of the copy of the closed page, whose operation is on its way
+  const next = await call('hello', { name: '', person: closed.person, retire: [closed.token] });
+  assert.equal((await call('op', { token: next.token, seq: 1, base: next.v, patches: both })).ok, true);
+  const late = await call('op', { token: closed.token, seq: 1, base: closed.v, patches: both });
+  assert.deepEqual({ ok: late.ok, reason: late.reason }, { ok: false, reason: 'unknown' });
+  assert.equal((await raw(edit.port, 'GET', `${edit.base}.session/events?token=${closed.token}&since=${closed.v}`)).status, 404);
+  const last = await call('hello', { name: '', person: closed.person, token: next.token });
+  assert.equal(last.text.split(' both').length - 1, 1);
+});
+
+test('a hello retires at most 16 tokens', { timeout: 90_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const call = async (route, body) => (await post(edit.port, `${edit.base}.session/${route}`, body)).json();
+  const pages = [];
+  for (let i = 1; i <= 17; i++) pages.push(await call('hello', { name: `Page ${i}` }));
+  const junk = Array.from({ length: 983 }, (_, i) => `${'x'.repeat(22)}${i}`);
+  await call('hello', { name: 'Next', retire: [...pages.map((p) => p.token), ...junk] });
+  const answers = [];
+  for (const [i, p] of pages.entries()) answers.push((await call('op', { token: p.token, seq: 1, base: p.v, patches: [{ start: 0, end: 0, text: `<!-- ${i} -->` }] })).reason ?? 'ok');
+  assert.deepEqual(answers, [...Array(16).fill('unknown'), 'ok']);
+});
+
+test('a hello that names the client id of another page, or a value that is not a token, in retire does not stop this page', { timeout: 90_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const call = async (route, body) => (await post(edit.port, `${edit.base}.session/${route}`, body)).json();
+  const ann = await call('hello', { name: 'Ann' });
+  // the client id and the person id of a page are public, its token is not
+  const gus = await call('hello', { name: 'Gus', retire: [ann.client, ann.person, 'not a token', 42, null, { token: ann.client }] });
+  assert.ok(gus.token);
+  assert.ok((await call('hello', { name: 'Hal', retire: ann.client })).token);
+  assert.ok((await call('hello', { name: 'Ivy', retire: 42 })).token);
+  const op = await call('op', { token: ann.token, seq: 1, base: ann.v, patches: [{ start: 0, end: 0, text: '<!-- Ann -->' }] });
+  assert.equal(op.ok, true);
+});
