@@ -2,9 +2,9 @@
 // started on a temporary talk folder: a word that an input method composes reaches the others only
 // once it is committed, and the keys that the others type during the composition, at its caret or
 // on both sides of it, are kept. the keys of two people that come in one answer on both sides of an
-// unread key of the person are kept with it. an undo next to a space that the browser writes as
-// &nbsp; removes only the typing of the person, and an undo of a word whose trailing space another
-// browser took away is refused
+// unread key of the person are kept with it. the letters of two people who type at one point stay
+// together. an undo next to a space that the browser writes as &nbsp; removes only the typing of
+// the person, and an undo of a word whose trailing space another browser took away is refused
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -102,6 +102,22 @@ test('a word composed with an input method between the keys of two other people,
   assert.equal(text, '<p>yyyyySecond你好 slidezzzzz</p>');
   unseen(done);
   assert.deepEqual([ana.errors, ben.errors, cleo.errors], [[], [], []]);
+});
+
+test('the letters of two people who type at one point stay together', { timeout: 120_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben']);
+  const [ana, ben] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  assert.ok(await caretAt(ana, 6));
+  assert.ok(await caretAt(ben, 6));
+  // each turn is read by both pages before the next one, hence no key meets an unread key
+  for (const [page, keys] of [[ben, 'ab'], [ana, 'yz'], [ben, 'c'], [ana, 'w']]) {
+    await typeKeys(page, keys);
+    await converge(server, pages);
+  }
+  assert.equal(para(server.read()), '<p>Secondyzwabc slide</p>');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
 test('the keys of two other people that come in one answer on both sides of an unread key of the person are kept with it', { timeout: 120_000 }, async (t) => {

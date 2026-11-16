@@ -360,7 +360,9 @@ const caretAfter = (b, count) => b.evaluate(`(() => {
 })()`);
 const CHANGES = [
   ['on both sides of it', (text) => once(text, LINE, LINE.replace('Design', 'BDesign').replace('attention.', 'attention.C')), 'BDesignA the', 'C</p>'],
-  ['at it, which puts the letters of the other person before it as the authority does', (text) => once(text, LINE, LINE.replace('Design', 'DesignX')), 'DesignXA the', 'attention.</p>'],
+  // a caret that went after such letters would follow the caret of the other person, and the letters
+  // of the two would then alternate
+  ['at it, which leaves it before the letters of the other person', (text) => once(text, LINE, LINE.replace('Design', 'DesignX')), 'DesignAX the', 'attention.</p>'],
 ];
 for (const [label, change, typed, end] of CHANGES) {
   test(`a caret stays at its characters through one apply that changes its text node ${label}`, async (t) => {
