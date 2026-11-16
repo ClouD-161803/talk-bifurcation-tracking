@@ -210,7 +210,8 @@ test('the Share dialog connects a host to the relay, and a guest joins through t
   t.after(() => relay.close());
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  const server = await talk(t);
+  // a poll without news is answered after 1 s, before the relay of this test gives up after 10 s
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
   const host = await open(browser, sessionUrl(server.edit), { name: 'Ann Smith' });
 
   const openShare = async (page) => {

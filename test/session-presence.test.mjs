@@ -32,13 +32,14 @@ async function select(page, ...expressions) {
 }
 
 // what the layer of page draws: each frame and caret bar by its box on the screen, and each flag
-// with its text, its client, and whether it is a chip
+// with its text, its long text, which a chip keeps without showing it, its client, and whether it
+// is a chip
 const DRAWN = `(() => {
   const box = (n) => { const r = n.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
   const layer = document.querySelector('.beeson-presence');
   return {
     frames: [...layer.querySelectorAll('.frame')].map(box),
-    flags: [...layer.querySelectorAll('.flag')].map((f) => ({ text: f.classList.contains('chip') && !f.parentElement.classList.contains('hover') ? f.querySelector('.short').textContent : f.textContent.replace(f.querySelector('.short')?.textContent ?? '', ''), client: f.dataset.client ?? null, chip: f.classList.contains('chip') })),
+    flags: [...layer.querySelectorAll('.flag')].map((f) => ({ text: f.classList.contains('chip') && !f.parentElement.classList.contains('hover') ? f.querySelector('.short').textContent : f.textContent.replace(f.querySelector('.short')?.textContent ?? '', ''), long: f.querySelector('.long')?.textContent ?? null, client: f.dataset.client ?? null, chip: f.classList.contains('chip') })),
     carets: [...layer.querySelectorAll('.caret')].map(box),
   };
 })()`;
@@ -184,8 +185,9 @@ test('the flag of a person who types reads that the person is typing, and the ca
   await ana.evaluate(`(() => { const r = document.createRange(); r.setStart(${el(1, 'p')}.firstChild, 0); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
   const start = await until_(ben, (d) => d.carets.length === 1 && Math.abs(d.carets[0].x - text.x) < 4, 'the caret bar at the start of the text');
   assert.ok(start.carets[0].x < bar.x);
-  // 2 s after the last key the flag reads the name again, and the caret stays
-  const still = await until_(ben, (d) => d.flags[0]?.text === 'Ana', 'the flag of Ana after she stops typing');
+  // 2 s after the last key the flag reads the name again, and the caret stays. the flag is a chip
+  // by then when the keys took over a second, hence its long text is read
+  const still = await until_(ben, (d) => d.flags[0]?.long === 'Ana', 'the flag of Ana after she stops typing');
   assert.equal(still.carets.length, 1);
   // the caret that leaves the text takes the bar away
   await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
