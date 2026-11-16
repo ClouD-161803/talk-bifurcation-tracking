@@ -4,11 +4,12 @@
 // the key of the session, also after the session ends, and a plain deck asks for the talk folder of
 // the session that it was copied from. a deck whose address has session, which no edit command
 // serves, names its own address, also at file://, and another page of the talk folder names its deck
-// by a hash of the key, also in a subfolder. a copy between two pages in one folder of a session
-// is pasted without a question
+// by a hash of the key, also in a subfolder and behind a relay under a path. a copy between two
+// pages in one folder of a session is pasted without a question
 
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer, request as httpRequest } from 'node:http';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
@@ -282,6 +283,69 @@ for (const through of ['the edit command', 'the relay']) {
     assert.equal(origin.session, true);
   });
 }
+
+// a proxy on 127.0.0.1 that serves the relay at target under /pre, as a group may mount a relay on
+// its web server
+async function proxy(t, target) {
+  const to = new URL(target);
+  const server = createServer((req, res) => {
+    if (!req.url.startsWith('/pre/')) return res.writeHead(404).end();
+    const forward = httpRequest({ host: to.hostname, port: to.port, method: req.method, path: req.url.slice('/pre'.length), headers: { ...req.headers, host: to.host } }, (answer) => {
+      res.writeHead(answer.statusCode, answer.headers);
+      answer.pipe(res);
+    });
+    forward.on('error', () => res.destroy());
+    req.pipe(forward);
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  t.after(() => {
+    server.closeAllConnections();
+    return new Promise((done) => server.close(done));
+  });
+  return `http://127.0.0.1:${server.address().port}/pre`;
+}
+
+test('a guest of a relay under a path names its deck by a hash of the key, and a copy between two pages in a folder whose name may be a key is pasted without a question', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const { key } = server.edit;
+  const up = (text) => text.replaceAll('"theme/', '"../theme/').replaceAll('"brand/', '"../brand/');
+  const figure = (text) => text.replace('<p>First slide</p>', '<p>First slide</p>\n  <img src="media/fig.png" alt="A figure">');
+  // a folder whose name matches the pattern of a key
+  const folder = 'drafts_of_the_talk_2026';
+  assert.match(folder, /^[A-Za-z0-9_-]{22,128}$/);
+  mkdirSync(join(server.talk, 'old'));
+  writeFileSync(join(server.talk, 'old/deck.html'), up(TALK));
+  mkdirSync(join(server.talk, folder, 'media'), { recursive: true });
+  writeFileSync(join(server.talk, folder, 'media/fig.png'), readFileSync(resolve('demo/figure-light.png')));
+  writeFileSync(join(server.talk, folder, 'a.html'), up(figure(TALK)));
+  writeFileSync(join(server.talk, folder, 'b.html'), up(TALK));
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const shared = await post(server.edit.port, `${server.edit.base}.session/share`, { relay: await proxy(t, relay.url), secret: SECRET });
+  assert.equal(shared.status, 200, shared.text);
+  const link = shared.json().link;
+  assert.ok(new URL(link).pathname.startsWith(`/pre/${key}/`), link);
+  const keyless = (text) => !text.includes(key) && !text.includes(key.replaceAll('-', '\\u002d'));
+
+  const guest = await open(browser, link, { name: 'Gus' });
+  const text = await copySlide(guest, 'One');
+  assert.ok(keyless(text), text.slice(0, 300));
+  assert.match(ORIGIN(text).deck, /\/pre\/session-[0-9a-z]+\/index\.html$/);
+  const old = await plainPage(browser, link.replace('index.html', 'old/deck.html'));
+  const oldText = await copySlide(old, 'One');
+  assert.ok(keyless(oldText), oldText.slice(0, 300));
+  assert.match(ORIGIN(oldText).deck, /\/pre\/session-[0-9a-z]+\/old\/deck\.html$/);
+
+  const a = await plainPage(browser, link.replace('index.html', `${folder}/a.html`));
+  const b = await plainPage(browser, link.replace('index.html', `${folder}/b.html`));
+  const copied = await copySlide(a, 'One');
+  assert.ok(keyless(copied) && !copied.includes(folder), copied.slice(0, 300));
+  await pasteSlides(b, 'Two', copied);
+  await pastedWithoutQuestion(b);
+  assert.equal((await render(b)).match(/<img src="media\/fig\.png" alt="A figure">/g).length, 1);
+});
 
 // the editor on the deck of file at file://, in a fresh browser, whose storage is empty, since
 // openDeck() of cross-deck.mjs clears the storage of the origin, which file:// does not have
