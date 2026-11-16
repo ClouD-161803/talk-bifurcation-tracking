@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, show } from './helpers/client.mjs';
 import { center, click, drag, press, typeKeys } from './helpers/editor.mjs';
+import { NET } from './helpers/net.mjs';
 import { BUBBLE, el, HOLDER, leave, P, REFUSED, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -745,6 +746,16 @@ test('Insert Backdrop and a drawing of the backdrop are refused on a slide whose
   clean(ben, [/status of 404 .*demo\/broucke-sample\.js/]);
 });
 
+/** page loaded again, online, and in front. */
+async function reload(page) {
+  const count = await loads(page);
+  await page.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(page).catch(() => 0)) > count, 'the page to load again');
+  await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await page.waitFor(ONLINE);
+  await front(page);
+}
+
 // the state of Ana that page last heard was sent after her last key of the paragraph of slide Two
 const PAUSED = `${P}.resolved().some((r) => r.name === 'Ana' && r.caret?.at === 'Second slide typed'.length && !r.typing)`;
 
@@ -754,17 +765,58 @@ test('a page that loads after a person stopped typing does not see the text elem
   await show(ben, 'Two');
   await holding(ana, ben, SECOND, ' typed');
   await until(() => ben.evaluate(PAUSED), 'Ana to stop typing on the page of Ben');
-  // the 30 s of the hold pass on the clock of Ben
+  // the 30 s of the hold pass on the clocks of Ana and Ben, and Ana sends that she is not active
+  await ana.evaluate(`(${P}.skew = 31000, ${P}.set({}), true)`);
+  await until(() => ben.evaluate(`${P}.resolved().some((r) => r.name === 'Ana' && r.active === false)`), 'Ana to be idle on the page of Ben');
   await ben.evaluate(`${P}.skew = 31000`);
   assert.equal(await ben.evaluate(`${P}.holds.size`), 0, 'the hold ends after 30 s');
-  const count = await loads(ben);
-  await ben.evaluate('location.reload()').catch(() => {});
-  await until(async () => (await loads(ben).catch(() => 0)) > count, 'the page of Ben to load again');
-  await ben.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
-  await ben.waitFor(ONLINE);
-  await front(ben);
+  await reload(ben);
   await until(() => caretOf(ben, 'Ana', SECOND), 'the caret of Ana to be read on the new page of Ben');
   assert.equal(await ben.evaluate(HOLDER(SECOND)), null, 'the paragraph is not held on the new page');
   clean(ana);
   clean(ben);
+});
+
+test('a page that loads again, or rejoins after a restart, while a person who typed in the last 30 s pauses, sees the text element of their caret held and refuses its delete', { timeout: 180_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { pages: [{ script: NET }, {}] });
+  const { port } = server.edit;
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  await until(() => ben.evaluate(PAUSED), 'Ana to stop typing on the page of Ben');
+  const refused = async (what) => {
+    await until(() => caretOf(ben, 'Ana', SECOND), `the caret of Ana to be read on the page of Ben ${what}`);
+    assert.equal(await ben.evaluate(HOLDER(SECOND)), 'Ana', `the paragraph is held on the page of Ben ${what}`);
+    await select(ben, SECOND);
+    await unbubble(ben);
+    await ben.evaluate(`${C}.app.commands.run('element.delete')`);
+    await frame(ben);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, `the delete is refused ${what}`);
+    assert.ok(await ben.evaluate(`!!${SECOND}`), `the paragraph stays ${what}`);
+  };
+  await reload(ben);
+  await refused('after it loads again');
+
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  // the hello of Ana is held, hence the page of Ben is read alone and hears Ana anew
+  await ana.evaluate(`__net.rule('/.session/hello', 'hold')`);
+  await until(() => ana.evaluate(`${C}.connection !== 'online'`), 'Ana offline');
+  await until(() => ben.evaluate(`${C}.connection !== 'online'`), 'Ben offline');
+  await server.start(['--port', String(port)]);
+  await ben.evaluate(`${C}.tryNow(); true`);
+  await ben.waitFor(ONLINE, 20_000);
+  await until(() => ben.evaluate(`${C}.people.length === 1 && ${P}.resolved().length === 0`), 'Ben alone at the edit command');
+  await ana.evaluate(`(__net.clear(), __net.release('/.session/hello'), ${C}.tryNow(), true)`);
+  await ana.waitFor(ONLINE, 20_000);
+  await refused('after the restart');
+
+  // bringing the page of Ana to the front can take its caret out
+  await front(ana);
+  await caretAtEnd(ana, SECOND);
+  await typeKeys(ana, ' more');
+  await until(() => server.read().includes('<p>Second slide typed more</p>'), 'the keys of Ana to reach index.html');
+  const lost = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  clean(ana, lost);
+  clean(ben, lost);
 });
