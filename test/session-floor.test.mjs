@@ -291,6 +291,9 @@ test('a text element that a page moved, or moved back with Undo, is locked on th
   await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
   assert.equal(await ben.evaluate(last), false, 'the undo of the move is taken');
   await converge(server, [ana, ben]);
+  // the page of Ben last heard of a hold of Ana more than 30 s ago, and the hold that it reads
+  // late begins when it is read
+  await ben.evaluate(`(${P}.skew += 31_000, true)`);
   await caretAtEnd(ana, p);
   await until(() => ben.evaluate(LOCKED(p)), 'the paragraph that Ana holds again to be locked on the page of Ben');
   await front(ben);
