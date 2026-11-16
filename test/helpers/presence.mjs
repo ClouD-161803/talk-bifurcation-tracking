@@ -79,20 +79,5 @@ export async function untilDrawn(page, holds, what) {
   }, what);
 }
 
-// the states that page sends are held back until release(), which sends the last
-export const hold = (page) => page.evaluate(`(() => {
-  const c = ${C};
-  window.__send = c.sendPresence.bind(c);
-  window.__held = [];
-  c.sendPresence = (s) => window.__held.push(s);
-})()`);
-export const release = (page) => page.evaluate(`(() => {
-  const c = ${C};
-  c.sendPresence = window.__send;
-  const s = window.__held.at(-1);
-  if (s) c.sendPresence(s);
-  return s ?? null;
-})()`);
-
 // the caret of page taken out of every text
 export const leave = (page) => page.evaluate(`(() => { document.activeElement?.blur(); getSelection().removeAllRanges(); })()`);
