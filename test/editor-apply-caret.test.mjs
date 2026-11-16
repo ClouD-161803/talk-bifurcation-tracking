@@ -216,6 +216,58 @@ for (const [label, change] of SAME) {
   });
 }
 
+// the selection of the person in the paragraph of expression, as the offsets of its anchor and its
+// focus in the text of the paragraph, or null when an end is outside it
+const selectionIn = (expression) => `(() => {
+  const p = ${expression};
+  const sel = getSelection();
+  if (!p || !sel.rangeCount || !p.contains(sel.anchorNode) || !p.contains(sel.focusNode)) return null;
+  const at = (node, offset) => { const r = document.createRange(); r.selectNodeContents(p); r.setEnd(node, offset); return r.toString().length; };
+  return { anchor: at(sel.anchorNode, sel.anchorOffset), focus: at(sel.focusNode, sel.focusOffset) };
+})()`;
+// the word complete of the paragraph selected from anchor to focus
+const selectComplete = (b, backward) => b.evaluate(`(() => {
+  const p = ${P1};
+  p.focus();
+  const t = p.firstChild;
+  const s = t.data.indexOf('complete'), e = s + 'complete'.length;
+  if (${backward}) getSelection().setBaseAndExtent(t, e, t, s);
+  else getSelection().setBaseAndExtent(t, s, t, e);
+  return document.activeElement === p ? [s, e] : null;
+})()`);
+
+for (const backward of [false, true]) {
+  test(`a ${backward ? 'backward' : 'forward'} selection keeps its characters and its direction through a tag put before it`, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    await showSlide(b, 'Show your steps');
+    const [s, e] = await selectComplete(b, backward);
+    const text = once(b.source, 'Design the complete', '<b>Hi</b> Design the complete');
+    assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+    const d = '<b>Hi</b> '.length - '<b></b>'.length;
+    assert.deepEqual(await b.evaluate(selectionIn(P1)), backward ? { anchor: e + d, focus: s + d } : { anchor: s + d, focus: e + d });
+    assert.equal(await b.evaluate(`getSelection().toString()`), 'complete');
+    assert.equal(await b.evaluate(`${E}.render()`), text);
+    assert.deepEqual(b.errors, []);
+  });
+}
+
+// a selection in a paragraph moved to a slide that is not shown is parked with its focus alone, see
+// the tests of a parked caret above
+test('a selection keeps both ends when another person moves its paragraph to the end of its slide', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  const [s, e] = await selectComplete(b, true);
+  const notes = '  <aside class="notes">A new element is faded in';
+  const text = once(once(b.source, LINE, ''), notes, LINE + notes);
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal(await b.evaluate(`${P1}.nextElementSibling?.matches('aside.notes')`), true, 'the paragraph is moved to the end of the slide');
+  assert.deepEqual(await b.evaluate(selectionIn(P1)), { anchor: e, focus: s });
+  assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.deepEqual(b.errors, []);
+});
+
 test('on a clean page, a character typed by another person in a paragraph with a formula does not look up the formulas of the whole deck', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
