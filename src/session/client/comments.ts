@@ -7,7 +7,7 @@
 // when its start tag there holds the name of the anchor. a thread is otherwise shown on its slide,
 // or under On the deck. a mention is written @{person id} in the text of a comment
 
-import { checkOf, findChecked, moveAnchors, slideAt, startTagAt, type Anchored, type Check } from '../anchor.ts';
+import { allChecked, checkOf, moveAnchors, slideAt, startTagAt, type Anchored, type Check } from '../anchor.ts';
 import { apply, diff, type Patch } from '../patch.ts';
 import { slidesOf, type Slide } from '../slides.ts';
 import { parseVersion, type Anchor, type AppliedOp, type Comment, type CommentsAnswer, type CommentsEvent, type SeenAnswer, type Version } from '../protocol.ts';
@@ -17,10 +17,30 @@ import { Failure } from './transport.ts';
 // where a thread is shown. el is the element commented on, slide is its slide, and both are null on
 // the deck. number is the number of the slide in the status bar
 export type Place = { el: Element | null; slide: Element | null; number: number | null };
-// an element or a slide as its start tag in the base and its check, by which it is found again in a
-// later text of the deck, e.g. once the page is loaded again. place is the index of a slide among
-// the slides of the base and their count
-export type Spot = { at: Anchor; check: Check; place?: [number, number] };
+// an element or a slide as its start tag in a text of the deck and its check, by which it is found
+// again in a later text, e.g. once the page is loaded again. twin is its index among the elements
+// of the text that read as at its check, and their count. place is the index of a slide among the
+// slides of the text and their count, and stack is set for a stack, which is kept at the place of
+// its first vertical slide. own is the element in the text with the edits of this page that wait,
+// which are merged again once the page is loaded again
+export type Spot = { at: Anchor; check: Check; twin?: [number, number]; place?: [number, number]; stack?: boolean; own?: Spot };
+
+const spot = (text: string, a: Anchor): Spot => {
+  const check = checkOf(text, a);
+  const all = allChecked(text, a.tag, check);
+  return { at: a, check, twin: [all.findIndex((x) => x.start === a.start), all.length] };
+};
+
+// the element of a spot in text, or null. the element is taken at its index among the elements
+// that read as at its check while they are as many as before. an element that was changed or
+// removed is thus not found in another one that reads as it did. what was kept by another version
+// of the theme is not read
+function checked(text: string, s: Spot | undefined): Anchor | null {
+  if (typeof s?.at?.tag !== 'string' || typeof s.check?.sum !== 'string' || typeof s.check.tag !== 'string' || !Array.isArray(s.twin)) return null;
+  const [k, n] = s.twin;
+  const all = allChecked(text, s.at.tag, s.check);
+  return all.length === n && Number.isInteger(k) ? all[k] ?? null : null;
+}
 
 export type Item = { id: string; author: string; time: number; text: string; edited?: number };
 
@@ -383,25 +403,27 @@ export class Comments {
     if (!base || !this.client.app.source) return { el: null, slide: null };
     const item = this.item(el, slide, base.text);
     const { anchor: a, slide: s } = item;
-    const spot = (x: Anchor): Spot => ({ at: x, check: checkOf(base.text, x) });
+    const mine = el ? this.client.port.text() : base.text;
+    const own = mine === base.text ? null : this.item(el, slide, mine);
     const slides = this.slidesOf(base.text);
+    const n = s ? slides.findIndex((x) => x.start >= s.start) : -1;
     return {
-      el: el && a && s && !item.removed && a.start !== s.start ? spot(a) : null,
-      slide: s ? { ...spot(s), place: [slides.findIndex((x) => x.start === s.start), slides.length] } : null,
+      el: el && a && s && !item.removed && a.start !== s.start ? { ...spot(base.text, a), ...(own?.anchor && !own.removed ? { own: spot(mine, own.anchor) } : {}) } : null,
+      slide: s ? { ...spot(base.text, s), place: [n, slides.length], ...(n >= 0 && slides[n].start !== s.start ? { stack: true } : {}) } : null,
     };
   }
 
-  // the element of a spot in the deck as it is now, i.e. the nearest element of its name that reads
-  // as it did, or null. a slide that reads otherwise is taken at its place while the deck has as
-  // many slides as before. what was kept by another version of the theme is not read
+  // the element of a spot in the deck as it is now, or null. a slide that reads otherwise is taken
+  // at its place while the deck has as many slides as before
   spotted(s: Spot): Element | null {
     const text = this.client.app.source?.text;
-    if (text === undefined || typeof s.at?.start !== 'number' || typeof s.at.tag !== 'string' || typeof s.check?.sum !== 'string' || typeof s.check.tag !== 'string') return null;
-    const a = findChecked(text, s.at, s.check);
+    if (text === undefined) return null;
+    const a = checked(text, s) ?? checked(text, s.own);
     if (a) return this.find(a);
     const slides = Array.isArray(s.place) ? this.slidesOf(text) : [];
     const x = slides.length === s.place?.[1] ? slides[s.place[0]] : null;
-    return x ? this.find({ start: x.start, end: x.open, tag: 'section' }) : null;
+    const found = x ? this.find({ start: x.start, end: x.open, tag: 'section' }) : null;
+    return s.stack ? found?.parentElement?.closest('.reveal .slides > section') ?? null : found;
   }
 
   // a thread of an answer to this page, with its anchors of the text at version at
