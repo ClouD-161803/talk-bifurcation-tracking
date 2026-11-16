@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkAnchors, diff, moveAnchors, REMOVED_MAX, slideChanges, slidesOf, startTagAt } from '../theme/edit.mjs';
+import { checkAnchors, checksum, diff, moveAnchors, REMOVED_MAX, slideChanges, slidesOf, startTagAt } from '../theme/edit.mjs';
 
 // a deck of slides, each given as its lines
 const deck = (...slides) => ['<!doctype html>', '<body>', ...slides.flatMap((lines) => ['<section>', ...lines.map((l) => `  ${l}`), '</section>']), '</body>', ''].join('\n');
@@ -23,6 +23,12 @@ const onElement = (text, open) => {
 const onSlide = (text, inside) => {
   const s = slideAround(text, text.indexOf(inside));
   return { anchor: s, slide: s };
+};
+// the whole text of the slide that holds inside
+const slideText = (text, inside) => {
+  const at = text.indexOf(inside);
+  const s = slidesOf(text).find((x) => x.start <= at && at < x.end);
+  return text.slice(s.start, s.end);
 };
 const move = (before, after, items) => moveAnchors(before, diff(before, after), after, items);
 // the text of after from an anchor on, of the length of what
@@ -149,12 +155,124 @@ test('a removed element falls back to its slide, a removed slide to the deck, an
   assert.deepEqual(r.items, items);
   assert.deepEqual(r.changed, [true, false, false]);
 
-  // a removed slide larger than the limit is not kept, and its re-insertion does not attach it
+  // a removed slide larger than the limit is kept as its check, by which its re-insertion attaches it
   const big = deck(['<h2>Big</h2>', `<p>${'x'.repeat(REMOVED_MAX)}</p>`], ['<h2>Small</h2>']);
   const withoutBig = big.replace(/<section>\n {2}<h2>Big[^]*?<\/section>\n/, '');
   r = move(big, withoutBig, [onSlide(big, 'Big')]);
-  assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: null } });
-  assert.deepEqual(move(withoutBig, big, r.items).items[0], r.items[0]);
+  assert.deepEqual(r.items[0], { anchor: null, slide: null, removed: { text: { tag: '<section>', sum: checksum(slideText(big, 'Big')) } } });
+  assert.deepEqual(move(withoutBig, big, r.items).items[0], onSlide(big, 'Big'));
+});
+
+test('a removed element or slide longer than 4 kB is kept as its check, by which its re-insertion attaches it again', async (t) => {
+  const code = (n, k) => `<pre data-k="${k}"><code>${'y'.repeat(n)}</code></pre>`;
+  const long = code(12_000, 1);
+  const checkOf = (tag, text) => ({ tag, sum: checksum(text) });
+
+  await t.test('an element of 12,000 characters, put back by an undo, after another edit, or changed by one character', () => {
+    const v0 = deck(['<h2>Alpha</h2>', long, '<p>After</p>'], ['<h2>Beta</h2>', '<p>Two</p>']);
+    const items = [onElement(v0, '<pre data-k="1">')];
+    const v1 = v0.replace(`  ${long}\n`, '');
+    const r = move(v0, v1, items);
+    reads(v1, r.items[0].anchor, '<section>\n  <h2>Alpha');
+    assert.deepEqual(r.items[0].removed, { text: checkOf('<pre data-k="1">', long) });
+    assert.deepEqual(move(v1, v0, r.items).items, items);
+    const v2 = v1.replace('<p>Two</p>', '<p>Two, typed</p>');
+    const r2 = move(v1, v2, r.items);
+    const v3 = v2.replace('  <p>After</p>', `  ${long}\n  <p>After</p>`);
+    assert.deepEqual(move(v2, v3, r2.items).items, [onElement(v3, '<pre data-k="1">')]);
+    // a version restored: the element back, and the other edit undone, in one operation
+    assert.deepEqual(move(v2, v0, r2.items).items, items);
+    const changed = v1.replace('  <p>After</p>', `  ${long.replace('yy</code>', 'yz</code>')}\n  <p>After</p>`);
+    const [stays] = move(v1, changed, r.items).items;
+    reads(changed, stays.anchor, '<section>\n  <h2>Alpha');
+    assert.deepEqual(stays.removed, r.items[0].removed);
+  });
+
+  await t.test('a slide of 200,000 characters with its threads, put back by an undo or after another edit', () => {
+    const huge = code(200_000, 2);
+    const v0 = deck(['<h2>Alpha</h2>', '<p>One</p>'], ['<h2>Big</h2>', '<p>Short</p>', huge], ['<h2>Gamma</h2>']);
+    const items = [onSlide(v0, '<h2>Big'), onElement(v0, '<p>Short'), onElement(v0, '<pre data-k="2">')];
+    const v1 = v0.replace(/<section>\n {2}<h2>Big[^]*?<\/section>\n/, '');
+    const r = move(v0, v1, items);
+    const slide = checkOf('<section>', slideText(v0, '<h2>Big'));
+    assert.deepEqual(r.items, [
+      { anchor: null, slide: null, removed: { text: slide } },
+      { anchor: null, slide: null, removed: { text: '<p>Short</p>', slide } },
+      { anchor: null, slide: null, removed: { text: checkOf('<pre data-k="2">', huge), slide } },
+    ]);
+    assert.deepEqual(move(v1, v0, r.items).items, items);
+    const v2 = v1.replace('<p>One</p>', '<p>One, typed</p>');
+    const r2 = move(v1, v2, r.items);
+    assert.deepEqual(r2.items, r.items);
+    const v3 = v0.replace('<p>One</p>', '<p>One, typed</p>');
+    assert.deepEqual(move(v2, v3, r2.items).items, [onSlide(v3, '<h2>Big'), onElement(v3, '<p>Short'), onElement(v3, '<pre data-k="2">')]);
+    assert.deepEqual(move(v2, v0, r2.items).items, items);
+  });
+
+  await t.test('a picture whose start tag holds 12,000 characters keeps 256 of them in its check', () => {
+    const img = `<img src="data:image/png;base64,${'A'.repeat(12_000)}">`;
+    const v0 = deck(['<h2>Alpha</h2>', img, '<p>After</p>']);
+    const items = [onElement(v0, '<img')];
+    const v1 = v0.replace(`  ${img}\n`, '');
+    const r = move(v0, v1, items);
+    assert.deepEqual(r.items[0].removed, { text: checkOf(img.slice(0, 256), img) });
+    assert.deepEqual(move(v1, v0, r.items).items, items);
+  });
+
+  await t.test('an element that fell back to its slide before the slide was removed falls back to it again', () => {
+    const v0 = deck(['<h2>Alpha</h2>'], ['<h2>Big</h2>', long, '<p>Short</p>', code(5000, 4)]);
+    const items = [onElement(v0, '<pre data-k="1">')];
+    const v1 = v0.replace(`  ${long}\n`, '');
+    const v2 = v1.replace(/<section>\n {2}<h2>Big[^]*?<\/section>\n/, '');
+    const r1 = move(v0, v1, items);
+    const r2 = move(v1, v2, r1.items);
+    assert.deepEqual(r2.items[0], { anchor: null, slide: null, removed: { text: checkOf('<pre data-k="1">', long), slide: checkOf('<section>', slideText(v1, '<h2>Big')) } });
+    const [back] = move(v2, v1, r2.items).items;
+    assert.deepEqual(back, { ...onSlide(v1, '<h2>Big'), removed: { text: checkOf('<pre data-k="1">', long) } });
+    assert.deepEqual(move(v1, v0, [back]).items, items);
+  });
+
+  await t.test('of two equal elements of 12,000 characters, the one removed and put back gets its thread again', () => {
+    const v0 = deck(['<h2>Alpha</h2>', long, '<p>Middle</p>', long, '<p>End</p>']);
+    const second = v0.indexOf(long, v0.indexOf(long) + 1);
+    const items = [onElement(v0, '<pre data-k="1">'), { anchor: startTagAt(v0, second), slide: slideAround(v0, second) }];
+    const v1 = v0.replace(`  <p>Middle</p>\n  ${long}\n`, '  <p>Middle</p>\n');
+    const r = move(v0, v1, items);
+    assert.deepEqual(r.items.map((it) => !!it.removed), [false, true]);
+    reads(v1, r.items[0].anchor, long);
+    // a paragraph added next to the twin that is left does not take the thread of the other
+    const added = v1.replace('<p>End</p>', '<p>End</p>\n  <p>New</p>');
+    assert.deepEqual(move(v1, added, r.items).items[1], r.items[1]);
+    assert.deepEqual(move(v1, v0, r.items).items, items);
+  });
+
+  await t.test('of two equal slides of 12,000 characters, the one removed and put back gets its thread again', () => {
+    const twin = ['<h2>Twin</h2>', long];
+    const v0 = deck(['<h2>Alpha</h2>'], twin, twin, ['<h2>Omega</h2>']);
+    const tags = slidesOf(v0).map((x) => ({ start: x.start, end: x.open, tag: 'section' }));
+    const items = [1, 2].map((i) => ({ anchor: tags[i], slide: tags[i] }));
+    const v1 = v0.slice(0, tags[2].start) + v0.slice(slidesOf(v0)[2].end + 1);
+    const r = move(v0, v1, items);
+    assert.deepEqual(r.items.map((it) => !!it.removed), [false, true]);
+    assert.deepEqual(r.items[1].removed, { text: checkOf('<section>', slideText(v0, '<h2>Twin')) });
+    const added = v1.replace('<h2>Omega</h2>', '<h2>Omega</h2>\n  <p>New</p>');
+    assert.deepEqual(move(v1, added, r.items).items[1], r.items[1]);
+    assert.deepEqual(move(v1, v0, r.items).items, items);
+  });
+
+  await t.test('an equal element moved into the slide of a removed one keeps its own thread', () => {
+    const v0 = deck(['<h2>Alpha</h2>', long, '<p>A</p>'], ['<h2>Beta</h2>', long, '<p>B</p>']);
+    const second = v0.indexOf(long, v0.indexOf(long) + 1);
+    const items = [onElement(v0, '<pre data-k="1">'), { anchor: startTagAt(v0, second), slide: slideAround(v0, second) }];
+    const v1 = v0.replace(`  ${long}\n  <p>A</p>`, '  <p>A</p>');
+    const r = move(v0, v1, items);
+    assert.deepEqual(r.items[0].removed, { text: checkOf('<pre data-k="1">', long) });
+    const v2 = v1.replace(`  ${long}\n  <p>B</p>`, '  <p>B</p>').replace('  <p>A</p>', `  ${long}\n  <p>A</p>`);
+    const [stays, moved] = move(v1, v2, r.items).items;
+    reads(v2, stays.anchor, '<section>\n  <h2>Alpha');
+    assert.deepEqual(stays.removed, r.items[0].removed);
+    assert.deepEqual(moved, onElement(v2, '<pre data-k="1">'));
+  });
 });
 
 test('a thread of a removed slide is attached again only inside a re-insertion of the whole slide', () => {
@@ -250,11 +368,11 @@ test('an element longer than every inserted text and than 4 kB is not read to it
   reads(grown, r.items[0].anchor, '<div><p>xxx');
   reads(grown, r.items[1].anchor, '<p>After');
   assert.deepEqual(r.changed, [false, false]);
-  // the element removed: it falls back to its slide without its text
+  // the element removed: it falls back to its slide with the check of its text
   const gone = before.replace(`  <div><p>${big}</p></div>\n`, '');
   r = move(before, gone, items);
   reads(gone, r.items[0].anchor, '<section>\n  <h2>Alpha');
-  assert.deepEqual(r.items[0].removed, { text: null });
+  assert.deepEqual(r.items[0].removed, { text: { tag: '<div>', sum: checksum(`<div><p>${big}</p></div>`) } });
   reads(gone, r.items[1].anchor, '<p>After');
 });
 
