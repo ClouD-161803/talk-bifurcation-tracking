@@ -224,6 +224,7 @@ export class App {
       snapshot: contentWithTex,
       restore: (host, content) => this.typing.restoreHost(host, content),
       onChange: () => this.emit('history'),
+      alone: () => !this.session,
       selected: () => (this.selection?.kind === 'elements' ? this.selection.elements() : null),
       reselect: (els) => {
         const live = els.filter((el) => el.isConnected);

@@ -68,6 +68,10 @@ export class History {
   // the entries of typing whose carry was refused. their texts do not hold the changes of the
   // others, hence their undo and redo are refused
   private readonly dead = new WeakSet<Entry>();
+  // whether the text elements are changed by this person only, i.e. outside a session. an undo or a
+  // redo of typing then writes its old text as it is, also over a change that the history was not
+  // told of, which is not an edit of another person
+  private readonly alone: () => boolean;
   private readonly snapshot: (host: Element) => string;
   private readonly restore: (host: Element, content: string) => Promise<void>;
   private readonly onChange: () => void;
@@ -84,7 +88,7 @@ export class History {
   // read before an undo or a redo, the function that selects the one element changed by its entry
   private readonly changed: () => (el: Element) => void;
 
-  constructor(options: { snapshot(host: Element): string; restore(host: Element, content: string): Promise<void>; onChange(): void; selected?(): Element[] | null; reselect?(els: Element[]): void; view?(): (() => void) | null; changed?(): (el: Element) => void }) {
+  constructor(options: { snapshot(host: Element): string; restore(host: Element, content: string): Promise<void>; onChange(): void; selected?(): Element[] | null; reselect?(els: Element[]): void; view?(): (() => void) | null; changed?(): (el: Element) => void; alone?(): boolean }) {
     this.snapshot = options.snapshot;
     this.restore = options.restore;
     this.onChange = options.onChange;
@@ -92,6 +96,7 @@ export class History {
     this.reselect = options.reselect ?? (() => {});
     this.view = options.view ?? (() => null);
     this.changed = options.changed ?? (() => () => {});
+    this.alone = options.alone ?? (() => false);
   }
 
   get canUndo(): boolean {
@@ -325,7 +330,7 @@ export class History {
     // the change from one content to the other made over the changes of others in host since,
     // which a part of a transaction writes over when it cannot be made
     const write = (from: string, to: string, way: 'undo' | 'redo') => {
-      const t = this.dead.has(entry) ? null : (revert(from, to, this.snapshot(host)) ?? (this.typed.has(entry) ? null : to));
+      const t = this.alone() ? to : this.dead.has(entry) ? null : (revert(from, to, this.snapshot(host)) ?? (this.typed.has(entry) ? null : to));
       if (t === null) throw REFUSED;
       return restore(t, way);
     };
