@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { checkAnchors, checkOf, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Check, type Moved } from '../session/anchor.ts';
+import { checkAnchors, checkOf, moveAnchors, slideAnchorAt, startTagAt, type Anchored, type Check, type Kept, type Moved } from '../session/anchor.ts';
 import type { Authority } from '../session/authority.ts';
 import { apply, checksum, copy, type Patch } from '../session/patch.ts';
 import {
@@ -58,7 +58,8 @@ const replyBytes = (r: CommentReply) => bytesOf(r) + 1;
 const tooLarge = () => fail(413, 'the comments of the deck are too large');
 // the texts of a removed element are cut from a whole earlier text of the deck, which a copy does not
 // keep alive
-const copyRemoved = (r: NonNullable<Anchored['removed']>) => (r.slide === undefined ? { text: r.text && copy(r.text) } : { text: r.text && copy(r.text), slide: copy(r.slide) });
+const copyKept = (k: Kept): Kept => (typeof k === 'string' ? copy(k) : { tag: copy(k.tag), sum: k.sum });
+const copyRemoved = (r: NonNullable<Anchored['removed']>) => (r.slide === undefined ? { text: r.text && copyKept(r.text) } : { text: r.text && copyKept(r.text), slide: copyKept(r.slide) });
 const NOT_SAVED = 'The host could not save the comment';
 const readOnly = () => fail(503, 'the comments could not be read at the start, hence they are read only until the edit command is started again');
 

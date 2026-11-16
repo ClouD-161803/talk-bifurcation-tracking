@@ -1677,6 +1677,8 @@ var sameAnchor = (a, b) => a === b || !!a && !!b && a.start === b.start && a.end
 var shiftTag = (a, patches) => ({ start: shiftOffset(a.start, patches, true), end: shiftOffset(a.end, patches, false), tag: a.tag });
 var touches = (p, s, e) => p.start < p.end ? p.start < e && s < p.end : s < p.start && p.start < e;
 var withRemoved = (anchor, slide, removed) => removed ? { anchor, slide, removed } : { anchor, slide };
+var lengthOf = (k) => typeof k === "string" ? k.length : parseInt(k.sum, 16);
+var keep = (text, open2) => text.length <= REMOVED_MAX ? text : { tag: text.slice(0, Math.min(open2, CHECK_TAG)), sum: checksum(text) };
 function startTagAt(text, i) {
   if (!Number.isInteger(i) || i < 0 || text.charCodeAt(i) !== 60 || !/[A-Za-z]/.test(text.charAt(i + 1))) return null;
   for (let size2 = 256; ; size2 *= 4) {
@@ -1747,9 +1749,10 @@ function overlaps(spans, s, e) {
   }
   return false;
 }
-function findInserted(after, text, inserted, near, within = null) {
+function findInserted(after, kept, inserted, near, within = null) {
+  const text = typeof kept === "string" ? kept : kept.tag;
   if (!text || !inserted.length) return -1;
-  const len = text.length;
+  const len = lengthOf(kept);
   const lo = within ? within.start : 0;
   const hi = within ? within.end : after.length;
   let best = -1;
@@ -1758,7 +1761,8 @@ function findInserted(after, text, inserted, near, within = null) {
     const w = from === 0 && to === after.length ? after : after.slice(from, to);
     for (let o = w.indexOf(text); o >= 0 && n < 256; o = w.indexOf(text, o + 1), n++) {
       const at = from + o;
-      if (overlaps(inserted, at, at + len) && (best < 0 || Math.abs(at - near) < Math.abs(best - near))) best = at;
+      if (!overlaps(inserted, at, at + len) || best >= 0 && Math.abs(at - near) >= Math.abs(best - near)) continue;
+      if (typeof kept === "string" || checksum(after.slice(at, at + len)) === kept.sum) best = at;
     }
   };
   let total = 0;
@@ -1925,6 +1929,16 @@ function slow(before2, patches, after, items, given) {
   const inserted = insertedSpans(patches);
   const cap2 = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
   const regions = /* @__PURE__ */ new Map();
+  const slideKept = /* @__PURE__ */ new Map();
+  const keepSlide = (i) => {
+    let k = slideKept.get(i);
+    if (k === void 0) slideKept.set(i, k = keep(before2.slice(s0[i].start, s0[i].end), s0[i].open - s0[i].start));
+    return k;
+  };
+  const keptOf = (a, limit) => {
+    const e = elementEnd(before2, a, limit);
+    return e < 0 ? null : keep(before2.slice(a.start, e), a.end - a.start);
+  };
   const stays = (a, close, end) => {
     const q = patches.find((p) => touches(p, close, end));
     if (!q || q.text) return true;
@@ -1975,19 +1989,26 @@ function slow(before2, patches, after, items, given) {
     const k = old.findIndex((t) => t.start === a.start - from.start);
     return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
   };
+  const placed = /* @__PURE__ */ new Map();
+  const slideOf = (whole) => {
+    if (typeof whole === "string") return findInserted(after, whole, inserted, 0);
+    let s = placed.get(whole.sum + whole.tag);
+    if (s === void 0) placed.set(whole.sum + whole.tag, s = s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
+    return s;
+  };
   const reattach = (it, text) => {
-    const took = (x) => patches.some((p) => p.end - p.start >= x.length && before2.slice(p.start, p.end).includes(x));
+    const took = (x) => patches.some((p) => p.end - p.start >= lengthOf(x) && findInserted(before2, x, [p], p.start, p) >= 0);
     let within = null;
     if (it.slide) {
       const i = index.get(it.slide.start) ?? -1;
       if (i < 0 || to[i] < 0) return null;
       within = s1[to[i]];
     } else {
-      const whole = it.removed?.slide ?? (startTagAt(text, 0)?.tag === "section" ? text : null);
-      const s = whole ? findInserted(after, whole, inserted, 0) : -1;
+      const whole = it.removed?.slide ?? (/^<section[\s/>]/i.test(typeof text === "string" ? text : text.tag) ? text : null);
+      const s = whole ? slideOf(whole) : -1;
       if (s < 0 || took(whole)) return null;
-      within = { start: s, end: s + whole.length };
-      if (!whole.includes(text)) {
+      within = { start: s, end: s + lengthOf(whole) };
+      if (typeof whole === "string" && typeof text === "string" ? !whole.includes(text) : findInserted(after, text, inserted, s, within) < 0) {
         const slide2 = slideAt(s1, s);
         return slide2?.start === s ? { anchor: tagOf(slide2), slide: tagOf(slide2), removed: { text } } : null;
       }
@@ -2011,7 +2032,7 @@ function slow(before2, patches, after, items, given) {
     const j = i >= 0 ? to[i] : -1;
     if (it.slide && a.start === it.slide.start) {
       if (j >= 0) return withRemoved(tagOf(s1[j]), tagOf(s1[j]), it.removed);
-      const whole = i >= 0 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null;
+      const whole = i >= 0 ? keepSlide(i) : null;
       if (!it.removed) return { anchor: null, slide: null, removed: { text: whole } };
       return { anchor: null, slide: null, removed: whole && it.removed.text ? { text: it.removed.text, slide: whole } : it.removed };
     }
@@ -2025,8 +2046,8 @@ function slow(before2, patches, after, items, given) {
       const text = e < 0 ? null : before2.slice(a.start, e);
       const o = text ? findInserted(after, text, inserted, shiftOffset(a.start, patches)) : -1;
       if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, slide: slideAnchorAt(s1, o) };
-      const kept2 = text !== null && text.length <= REMOVED_MAX ? text : null;
-      const whole = kept2 && s0[i].end - s0[i].start <= REMOVED_MAX ? before2.slice(s0[i].start, s0[i].end) : null;
+      const kept2 = text !== null ? keep(text, a.end - a.start) : keptOf(a, s0[i].end);
+      const whole = kept2 && keepSlide(i);
       return { anchor: null, slide: null, removed: whole ? { text: kept2, slide: whole } : { text: kept2 } };
     }
     const found = locate(a, i >= 0 ? s0[i].end : before2.length);
@@ -2036,7 +2057,7 @@ function slow(before2, patches, after, items, given) {
       if (t) return { anchor: t, slide: tagOf(s1[j]) };
     } else if (found.anchor) return { anchor: found.anchor, slide: at };
     const back = j >= 0 ? tagOf(s1[j]) : null;
-    return { anchor: back, slide: back, removed: { text: found.text !== null && found.text.length <= REMOVED_MAX ? found.text : null } };
+    return { anchor: back, slide: back, removed: { text: found.text !== null ? keep(found.text, a.end - a.start) : keptOf(a, i >= 0 ? s0[i].end : before2.length) } };
   };
   const out = items.map(move);
   return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], patches)), slides: s1 };
@@ -2428,7 +2449,8 @@ var bytesOf = (x) => Buffer.byteLength(JSON.stringify(x));
 var headBytes = (t) => bytesOf({ ...t, replies: [] }) + 1;
 var replyBytes = (r) => bytesOf(r) + 1;
 var tooLarge = () => fail(413, "the comments of the deck are too large");
-var copyRemoved = (r) => r.slide === void 0 ? { text: r.text && copy(r.text) } : { text: r.text && copy(r.text), slide: copy(r.slide) };
+var copyKept = (k) => typeof k === "string" ? copy(k) : { tag: copy(k.tag), sum: k.sum };
+var copyRemoved = (r) => r.slide === void 0 ? { text: r.text && copyKept(r.text) } : { text: r.text && copyKept(r.text), slide: copyKept(r.slide) };
 var NOT_SAVED = "The host could not save the comment";
 var readOnly = () => fail(503, "the comments could not be read at the start, hence they are read only until the edit command is started again");
 function cleanText(raw) {
