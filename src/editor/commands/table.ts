@@ -1223,6 +1223,10 @@ function toolbarButton(id: string): DOMRect | null {
 
 // the bars of the table of the caret, drawn again in each frame while it is shown, since the table
 // moves with a drag, a zoom, and a scroll of the canvas
+// whether a refusal refuses a change of table by a drag of its bars or its grips, asked as the
+// command that makes the same change, e.g. while another person types in a cell of the table
+const refusedDrag = (app: App, id: string, table: Element | null): boolean => !!table && app.commands.refused(id, { cell: table, els: [table] });
+
 function installBars(app: App): void {
   const layer = make('div', 'beeson-table-bars');
   layer.hidden = true;
@@ -1380,7 +1384,7 @@ function installBars(app: App): void {
     unlift();
     // a release after the table has left the current slide writes nothing
     const to = ev && m.on && app.current()?.contains(m.table) ? gapAt(m, ev.clientX, ev.clientY) : null;
-    if (to === null) return;
+    if (to === null || refusedDrag(app, m.kind === 'row' ? 'table.moveRowUp' : 'table.moveColumnLeft', m.table)) return;
     const range = cellRange && { ...cellRange };
     void app.history.transact(m.kind === 'row' ? 'Move Row' : 'Move Column', () => moveLines(app, m.table, m.kind, m.lo, m.hi, to)).then(() => {
       if (range) selectCells(app, range.anchor, range.focus);
@@ -1487,7 +1491,7 @@ function installBars(app: App): void {
       c.style.width = r.styles[i];
     });
     // a drag that ends at the widths of the press, e.g. held by the narrowest width, writes nothing
-    if (widths && [...widths].some(([c, w]) => Math.abs(w - r.widths[r.cells.indexOf(c)]) >= 0.5)) {
+    if (widths && [...widths].some(([c, w]) => Math.abs(w - r.widths[r.cells.indexOf(c)]) >= 0.5) && !refusedDrag(app, 'arrange.setSize', r.cells[0].closest('table'))) {
       void app.history.transact('Resize Column', () => writeWidths(app, widths, 'resize column')).catch((e) => app.fail(e));
     }
   };
@@ -1518,7 +1522,7 @@ function installBars(app: App): void {
     reaching = null;
     document.documentElement.classList.remove('beeson-autofilling');
     const to = ev ? reach(f.table, f.from, ev.clientX, ev.clientY) : f.from;
-    if (sameBox(to, f.from)) return;
+    if (sameBox(to, f.from) || refusedDrag(app, 'edit.paste', f.table)) return;
     void app.history.transact('Autofill', () => autofill(app, f.table, f.from, to)).then(() => {
       const a = cellOver(f.table, to.r0, to.c0);
       const b = cellOver(f.table, to.r1, to.c1);
@@ -1586,7 +1590,7 @@ function installBars(app: App): void {
       document.documentElement.classList.remove('beeson-resizing');
       r.cells.forEach((c, i) => (c.style.width = r.styles[i]));
       r.table.style.translate = r.moved;
-      if (!done) return;
+      if (!done || refusedDrag(app, 'arrange.setSize', r.table)) return;
       void app.history.transact('Resize Table', () => {
         writeWidths(app, done.widths, 'resize table');
         const x = r.at[0] + done.shift;

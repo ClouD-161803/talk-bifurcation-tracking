@@ -37,7 +37,8 @@ export function install(client: Client): void {
 
   // a plain press in a container of several objects around a held element, e.g. a plate with a
   // held caption, selects the object under the pointer first, as a second click on the container
-  // would. the drag then takes this object, and only the container stays refused. the editor takes
+  // would. the drag then takes this object, and only a drag of the container or of the object
+  // around the held element is refused, as arrange.setPosition with its elements. the editor takes
   // the press as one on a selected object, whose click selects the picture inside it, hence the
   // object is selected again at the click
   let picked: Element | null = null;
@@ -124,6 +125,15 @@ function refused(app: App, presence: Presence, spanned: () => Element[], c: Comm
       const by = presence.holderOf(el);
       if (by) return by;
     }
+  }
+  // a drag names the elements that it moves, resizes, or turns, as the fields of Arrange do
+  const els = (arg as { els?: unknown } | null | undefined)?.els;
+  if (c.id.startsWith('arrange.') && Array.isArray(els)) {
+    for (const el of els) {
+      const by = el instanceof Element && presence.holderOf(el);
+      if (by) return by;
+    }
+    return null;
   }
   // a join and Tab at the first level of a list also change the text element beside the caret
   if (sel.kind === 'text' && BESIDE.has(c.id)) {

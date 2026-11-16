@@ -36,6 +36,8 @@ function holdGrip(grip: HTMLElement): void {
 
 // a drag shorter than this, in screen pixels, is a click
 const CLICK = 3;
+// the command of Arrange that makes the change of each kind of drag
+const ARRANGE = { move: 'arrange.setPosition', resize: 'arrange.setSize', rotate: 'arrange.setRotation' } as const;
 // a dragged edge snaps to a line within this many screen pixels
 const SNAP = 8;
 
@@ -758,6 +760,13 @@ export function install(app: App): void {
       return;
     }
     if (!p.moved && Math.hypot(ev.clientX - p.x, ev.clientY - p.y) < CLICK) return;
+    // a drag that a refusal refuses as the command of Arrange that makes the same change, e.g. of an
+    // element that another person types in, ends at its first move without its click
+    if (!p.moved && p.kind !== 'marquee' && app.commands.refused(ARRANGE[p.kind], { els: [...p.els, ...(p.sized ?? []), ...(p.followers ?? []).flatMap((m) => m.sized)] })) {
+      p.click = null;
+      onUp(null);
+      return;
+    }
     p.moved = true;
     const f = frameOf(app);
     if (p.kind === 'marquee') {
