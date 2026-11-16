@@ -254,6 +254,17 @@ function charEdits(a, b, max) {
   return hunks && hunks.map((h) => ({ start: head + h.a0, end: head + h.a1, text: y.slice(h.b0, h.b1) }));
 }
 var CELLS = 1 << 20;
+function find(t, p) {
+  const back = new Int32Array(p.length + 1);
+  back[0] = -1;
+  for (let i2 = 0, k = -1; i2 < p.length; back[++i2] = ++k) while (k >= 0 && p.charCodeAt(k) !== p.charCodeAt(i2)) k = back[k];
+  let i = 0;
+  for (let k = 0; k < p.length; i++, k++) {
+    if (i === t.length) return -1;
+    while (k >= 0 && p.charCodeAt(k) !== t.charCodeAt(i)) k = back[k];
+  }
+  return i - p.length;
+}
 function anchored(a, b) {
   const [head, tail] = shared(a, b);
   const whole = [head, a.slice(head, a.length - tail), b.slice(head, b.length - tail)];
@@ -269,7 +280,7 @@ function anchored(a, b) {
     }
     if (tried) cells -= 500 * (x.length + y.length);
     let best = 0, bx = 0, by = 0;
-    const k = y.indexOf(x), j = k < 0 ? x.indexOf(y) : -1;
+    const k = find(y, x), j = k < 0 ? find(x, y) : -1;
     if (k >= 0) [best, bx, by] = [x.length, 0, k];
     else if (j >= 0) [best, bx, by] = [y.length, j, 0];
     else if (x.length * y.length <= cells) {
@@ -624,7 +635,7 @@ function mergePatches(theirs, ours, wins = "ours", base) {
     const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
     const cuts = (p) => {
       const was = base.slice(p.start, p.end).replace(TAG, "");
-      return !p.text.replace(TAG, "").includes(was);
+      return find(p.text.replace(TAG, ""), was) < 0;
     };
     const ct = t.map(cuts), co = o.map(cuts);
     [theirs, ours] = t.some((p, i) => o.some((q, j) => conflict(p, q) || ct[i] && co[j] && sameWord(base, p, q))) ? nest(base, theirs, ours, true) : [t, o];
@@ -4884,14 +4895,14 @@ function folderTex(read, html) {
     package: (name) => [`${name}.sty`],
     class: (name) => [`${name}.cls`]
   };
-  const find = (name, kind) => {
+  const find2 = (name, kind) => {
     for (const file of names[kind](name)) {
       const found = read(file);
       if (found !== null) return { file, text: found };
     }
     return null;
   };
-  const preamble = readPreamble(read("preamble.tex") ?? "", { file: "preamble.tex", resolve: find });
+  const preamble = readPreamble(read("preamble.tex") ?? "", { file: "preamble.tex", resolve: find2 });
   const bibliography = readBibtex(read("references.bib") ?? "");
   return { preamble, bibliography, ...texOf(preamble, bibliography, html) };
 }

@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes, fine, nest, sameWord } from '../editor/merge.ts';
+import { changes, find, fine, nest, sameWord } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -168,7 +168,7 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
     // taken off, and a key, do not remove letters
     const cuts = (p: Patch) => {
       const was = base.slice(p.start, p.end).replace(TAG, '');
-      return !p.text.replace(TAG, '').includes(was);
+      return find(p.text.replace(TAG, ''), was) < 0;
     };
     const ct = t.map(cuts), co = o.map(cuts);
     [theirs, ours] = t.some((p, i) => o.some((q, j) => conflict(p, q) || (ct[i] && co[j] && sameWord(base, p, q)))) ? nest(base, theirs, ours, true) : [t, o];

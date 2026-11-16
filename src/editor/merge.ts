@@ -306,6 +306,20 @@ export function charEdits(a: string, b: string, max: number): Edit[] | null {
 // the most pairs of units that anchored() compares, which take it about 4 ms on a laptop
 const CELLS = 1 << 20;
 
+// t.indexOf(p) by Knuth-Morris-Pratt at a cost linear in both, since indexOf in V8 takes time
+// quadratic in the length of p on a text of a short period, e.g. a run of one letter
+export function find(t: string, p: string): number {
+  const back = new Int32Array(p.length + 1);
+  back[0] = -1;
+  for (let i = 0, k = -1; i < p.length; back[++i] = ++k) while (k >= 0 && p.charCodeAt(k) !== p.charCodeAt(i)) k = back[k];
+  let i = 0;
+  for (let k = 0; k < p.length; i++, k++) {
+    if (i === t.length) return -1;
+    while (k >= 0 && p.charCodeAt(k) !== t.charCodeAt(i)) k = back[k];
+  }
+  return i - p.length;
+}
+
 // the edits that turn a into b around the longest run of units that the parts between their shared
 // start and end have in common, with the parts before and after the run diffed by charEdits(), e.g.
 // for the old text of a paragraph after a long paste and a key at its end. null when the parts are
@@ -332,7 +346,7 @@ function anchored(a: string, b: string): Edit[] | null {
     let best = 0, bx = 0, by = 0;
     // a side that holds the other whole, e.g. a paste around a run that did not change, is split at
     // its first occurrence, which the cells would give as well, at linear cost
-    const k = y.indexOf(x), j = k < 0 ? x.indexOf(y) : -1;
+    const k = find(y, x), j = k < 0 ? find(x, y) : -1;
     if (k >= 0) [best, bx, by] = [x.length, 0, k];
     else if (j >= 0) [best, bx, by] = [y.length, j, 0];
     else if (x.length * y.length <= cells) {
