@@ -216,26 +216,40 @@ const CELLS = 1 << 20;
 // the edits that turn a into b around the longest run of units that the parts between their shared
 // start and end have in common, with the parts before and after the run diffed by charEdits(), e.g.
 // for the old text of a paragraph after a long paste and a key at its end. null when the parts are
-// too long to compare, have no unit in common, or differ in more than 500 units on a side
+// too long to compare or have no unit in common. a side that differs in more than 500 units is
+// anchored again within the cells left, or else is one edit
 function anchored(a: string, b: string): Edit[] | null {
   const [head, tail] = shared(a, b);
-  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
-  if (x.length * y.length > CELLS) return null;
-  let best = 0, bx = 0, by = 0;
-  let prev = new Uint32Array(y.length + 1), row = new Uint32Array(y.length + 1);
-  for (let i = 1; i <= x.length; i++) {
-    for (let j = 1; j <= y.length; j++) {
-      const v = x.charCodeAt(i - 1) === y.charCodeAt(j - 1) ? prev[j - 1] + 1 : 0;
-      row[j] = v;
-      if (v > best) [best, bx, by] = [v, i - v, j - v];
+  const whole: [number, string, string] = [head, a.slice(head, a.length - tail), b.slice(head, b.length - tail)];
+  // the parts left to diff, each at its offset in a, with the next part in the order of a last
+  const parts = [whole], out: Edit[] = [];
+  let cells = CELLS;
+  for (let part = parts.pop(); part; part = parts.pop()) {
+    const [at, x, y] = part;
+    // charEdits() gives up on a part whose sides differ in length by over 500
+    const found = Math.abs(x.length - y.length) <= 500 ? charEdits(x, y, 500) : null;
+    if (found) {
+      out.push(...found.map((e) => ({ start: e.start + at, end: e.end + at, text: e.text })));
+      continue;
     }
-    [prev, row] = [row, prev];
+    let best = 0, bx = 0, by = 0;
+    if (x.length * y.length <= cells) {
+      cells -= x.length * y.length;
+      let prev = new Uint32Array(y.length + 1), row = new Uint32Array(y.length + 1);
+      for (let i = 1; i <= x.length; i++) {
+        for (let j = 1; j <= y.length; j++) {
+          const v = x.charCodeAt(i - 1) === y.charCodeAt(j - 1) ? prev[j - 1] + 1 : 0;
+          row[j] = v;
+          if (v > best) [best, bx, by] = [v, i - v, j - v];
+        }
+        [prev, row] = [row, prev];
+      }
+    }
+    if (best) parts.push([at + bx + best, x.slice(bx + best), y.slice(by + best)], [at, x.slice(0, bx), y.slice(0, by)]);
+    else if (part === whole) return null;
+    else out.push({ start: at, end: at + x.length, text: y });
   }
-  if (!best) return null;
-  const left = charEdits(x.slice(0, bx), y.slice(0, by), 500);
-  const right = charEdits(x.slice(bx + best), y.slice(by + best), 500);
-  const at = (es: Edit[], d: number) => es.map((e) => ({ start: e.start + d, end: e.end + d, text: e.text }));
-  return left && right && [...at(left, head), ...at(right, head + bx + best)];
+  return out;
 }
 
 const WORDS = /\w+|\s+|[^\w\s]+/g;
