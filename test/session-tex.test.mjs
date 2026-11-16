@@ -197,7 +197,7 @@ test('a formula of an open Edit Formula field is applied after the macro that it
 });
 
 const CELL = 'tr[data-case="a macro that is not defined yet"] td';
-const CHANGED = 'Another person changed the formulas of this text. Copy your TeX, close the field, and open the formula again.';
+const CHANGED = 'Another person changed the formulas of this text. Copy your TeX, press Cancel, and open the formula again.';
 const FIELD = `JSON.stringify({ open: !!document.querySelector('.beeson-math'), tex: document.querySelector('.beeson-math textarea')?.value ?? null, message: document.querySelector('.beeson-math .error')?.textContent ?? null })`;
 const cellOf = (server) => server.read().match(/<tr data-case="a macro that is not defined yet"><td>(.*?)<\/td><\/tr>/)[1];
 

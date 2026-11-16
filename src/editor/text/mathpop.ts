@@ -489,7 +489,7 @@ export function install(app: App): void {
       const all = textEl.isConnected ? textEl.querySelectorAll('mjx-container') : [];
       const candidate = all[at];
       if (candidate && all.length === count && mathLookup()(candidate)?.tex === info.tex) return candidate;
-      throw new Error('Another person changed the formulas of this text. Copy your TeX, close the field, and open the formula again.');
+      throw new Error('Another person changed the formulas of this text. Copy your TeX, press Cancel, and open the formula again.');
     };
     openSheet({
       title: fresh ? 'Insert Formula' : 'Edit Formula',
