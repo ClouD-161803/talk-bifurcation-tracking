@@ -1751,7 +1751,7 @@ function overlaps(spans, s, e) {
 }
 function findInserted(after, kept, inserted, near, within = null) {
   const text = typeof kept === "string" ? kept : kept.tag;
-  if (!text || !inserted.length) return -1;
+  if (!text) return -1;
   const len = lengthOf(kept);
   const lo = within ? within.start : 0;
   const hi = within ? within.end : after.length;
@@ -1761,12 +1761,13 @@ function findInserted(after, kept, inserted, near, within = null) {
     const w = from === 0 && to === after.length ? after : after.slice(from, to);
     for (let o = w.indexOf(text); o >= 0 && n < 256; o = w.indexOf(text, o + 1), n++) {
       const at = from + o;
-      if (!overlaps(inserted, at, at + len) || best >= 0 && Math.abs(at - near) >= Math.abs(best - near)) continue;
+      if (at + len > hi || !overlaps(inserted, at, at + len) || best >= 0 && Math.abs(at - near) >= Math.abs(best - near)) continue;
       if (typeof kept === "string" || checksum(after.slice(at, at + len)) === kept.sum) best = at;
     }
   };
   let total = 0;
-  for (const s of inserted) total += s.end - s.start + 2 * len;
+  for (const s of inserted) if (s.start < hi && s.end > lo) total += s.end - s.start + 2 * len;
+  if (!total || len > hi - lo) return -1;
   if (total >= hi - lo) {
     scan(lo, hi);
     return best;
@@ -1996,8 +1997,15 @@ function slow(before2, patches, after, items, given) {
     if (s === void 0) placed.set(whole.sum + whole.tag, s = s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
     return s;
   };
+  const removal = (p, cap3) => {
+    let l = 0;
+    let r = 0;
+    while (!p.text && l < cap3 && before2[p.start - l - 1] === before2[p.end - l - 1]) l++;
+    while (!p.text && r < cap3 && before2[p.start + r] === before2[p.end + r]) r++;
+    return { start: p.start - l, end: p.end + r };
+  };
   const reattach = (it, text) => {
-    const took = (x) => patches.some((p) => p.end - p.start >= lengthOf(x) && findInserted(before2, x, [p], p.start, p) >= 0);
+    const took = (x) => patches.filter((p) => p.end - p.start >= lengthOf(x)).map((p) => removal(p, lengthOf(x))).some((r) => findInserted(before2, x, [r], r.start, r) >= 0);
     let within = null;
     if (it.slide) {
       const i = index.get(it.slide.start) ?? -1;

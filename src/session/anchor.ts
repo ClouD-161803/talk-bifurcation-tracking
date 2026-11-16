@@ -132,7 +132,7 @@ function overlaps(spans: Span[], s: number, e: number): boolean {
 // a check is looked for by its start tag, and read by the checksum of the text of its length there
 function findInserted(after: string, kept: Kept, inserted: Span[], near: number, within: Span | null = null): number {
   const text = typeof kept === 'string' ? kept : kept.tag;
-  if (!text || !inserted.length) return -1;
+  if (!text) return -1;
   const len = lengthOf(kept);
   const lo = within ? within.start : 0;
   const hi = within ? within.end : after.length;
@@ -142,12 +142,14 @@ function findInserted(after: string, kept: Kept, inserted: Span[], near: number,
     const w = from === 0 && to === after.length ? after : after.slice(from, to);
     for (let o = w.indexOf(text); o >= 0 && n < 256; o = w.indexOf(text, o + 1), n++) {
       const at = from + o;
-      if (!overlaps(inserted, at, at + len) || (best >= 0 && Math.abs(at - near) >= Math.abs(best - near))) continue;
+      if (at + len > hi || !overlaps(inserted, at, at + len) || (best >= 0 && Math.abs(at - near) >= Math.abs(best - near))) continue;
       if (typeof kept === 'string' || checksum(after.slice(at, at + len)) === kept.sum) best = at;
     }
   };
+  // a place ends inside within, hence only the spans that reach within count
   let total = 0;
-  for (const s of inserted) total += s.end - s.start + 2 * len;
+  for (const s of inserted) if (s.start < hi && s.end > lo) total += s.end - s.start + 2 * len;
+  if (!total || len > hi - lo) return -1;
   if (total >= hi - lo) {
     scan(lo, hi);
     return best;
@@ -446,10 +448,20 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     return s;
   };
 
+  // the span of before that a removal may stand for, up to cap characters on each side: a line diff
+  // may move it by the characters that it starts with and that follow it, or the reverse
+  const removal = (p: Patch, cap: number): Span => {
+    let l = 0;
+    let r = 0;
+    while (!p.text && l < cap && before[p.start - l - 1] === before[p.end - l - 1]) l++;
+    while (!p.text && r < cap && before[p.start + r] === before[p.end + r]) r++;
+    return { start: p.start - l, end: p.end + r };
+  };
+
   // the element of a removed text that the patches inserted again into the slide of it, or anywhere
   // for a thread of the deck, unless the same operation took the text from elsewhere
   const reattach = (it: Anchored, text: Kept): Anchored | null => {
-    const took = (x: Kept) => patches.some((p) => p.end - p.start >= lengthOf(x) && findInserted(before, x, [p], p.start, p) >= 0);
+    const took = (x: Kept) => patches.filter((p) => p.end - p.start >= lengthOf(x)).map((p) => removal(p, lengthOf(x))).some((r) => findInserted(before, x, [r], r.start, r) >= 0);
     let within: Span | null = null;
     if (it.slide) {
       const i = index.get(it.slide.start) ?? -1;
