@@ -468,7 +468,8 @@ export class Preview {
     const css = (w as Window & typeof globalThis).CSS?.highlights ? (w as Window & typeof globalThis) : null;
     for (const t of targets) {
       const section = this.sections[t.slide];
-      const same = !section || t.name === null ? [section] : [...section.children].filter((c) => c.localName === t.name);
+      // the children that the theme appends, e.g. a running head, are not in the text
+      const same = !section || t.name === null ? [section] : [...section.children].filter((c) => c.localName === t.name && !c.matches('[data-generated], [data-restore]'));
       const el = same[t.nth];
       if (!el) continue;
       el.setAttribute('data-beeson-changed', t.author);
