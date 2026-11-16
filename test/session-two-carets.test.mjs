@@ -275,6 +275,11 @@ test('an unread ampersand that replaces a letter stays one character reference b
   assert.equal(text, '<p>Second c&amp;Zt</p>');
 });
 
+test('an unread key at the start of a word that another person makes italic goes before the new element', { timeout: 240_000 }, async (t) => {
+  const text = await race(t, { ana: [7, 7, 'Z'], marker: '<em>slide</em>', ben: format('text.italic') });
+  assert.equal(text, '<p>Second Z<em>slide</em></p>');
+});
+
 test('a word composed at the start of a word that another person makes bold during the composition goes before the new element', { timeout: 240_000 }, async (t) => {
   const { server, pages } = await session(t, ['Ana', 'Ben']);
   const [ana, ben] = pages;
