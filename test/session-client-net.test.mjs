@@ -402,6 +402,9 @@ test('a page asks before it unloads after an Undo of an edit that the edit comma
 });
 
 const REDO = process.platform === 'darwin' ? 'Mod+Shift+Z' : 'Mod+Y';
+// the question of the page once it read the Redo of ' Zed', before a tick of copy.ts writes again,
+// in window.__asking
+const AT_REDO = `(${C}.on('settled', () => ${C}.snapshot().mine.includes(' Zed') && setTimeout(() => (window.__asking ??= ${C}.asking))), true)`;
 
 // a page offline whose copy held ' Zed' on slide One, and then holds its Undo
 async function undone(t) {
@@ -424,10 +427,10 @@ async function undone(t) {
 
 test('a page asks before it unloads after a Redo that follows an offline Undo, until its copy holds the Redo', { timeout: 240_000 }, async (t) => {
   const page = await undone(t);
+  await page.evaluate(AT_REDO);
   await press(page, REDO);
-  await page.waitFor(`${C}.snapshot().mine.includes(' Zed')`);
-  const redone = await page.evaluate(ASKED(' Zed'));
-  assert.ok(redone.asking || redone.copied, `the page asks while its copy lacks the Redo: ${JSON.stringify(redone)}`);
+  await page.waitFor('window.__asking !== undefined');
+  assert.equal(await page.evaluate('window.__asking'), true, 'the page asks once it read the Redo');
 });
 
 test('a page asks before it unloads after a Redo that follows an offline Undo, once IndexedDB fails', { timeout: 240_000 }, async (t) => {
@@ -504,13 +507,14 @@ test('a page asks before it unloads after an Undo and a Redo of an acknowledged 
   // the acknowledgment deletes the copy before the write of the copy ends
   await page.evaluate(`__net.clear() && __net.release('/.session/op')`);
   await page.waitFor(`${C}.acked() && (${ROWS}).then((rows) => rows.length === 0)`);
-  await page.evaluate(`__net.rule('/.session/op', 'hold') && window.__release()`);
+  // a write of the Undo that ends late, as on a slow runner, is never named by kept
+  await page.evaluate(`__net.rule('/.session/op', 'hold') && window.__release() && (window.__hold = true)`);
   await press(page, 'Mod+Z');
   await page.waitFor(`!${C}.snapshot().mine.includes('Zed')`);
+  await page.evaluate(AT_REDO);
   await press(page, REDO);
-  await page.waitFor(`${C}.snapshot().mine.includes(' Zed')`);
-  const redone = await page.evaluate(ASKED(' Zed'));
-  assert.ok(redone.asking || redone.copied, `the page asks while its copy lacks the Redo: ${JSON.stringify(redone)}`);
+  await page.waitFor('window.__asking !== undefined');
+  assert.equal(await page.evaluate('window.__asking'), true, 'the page asks once it read the Redo');
 });
 
 test('an edit of another person does not make a page ask before it unloads while its copy holds the edit of the page', { timeout: 240_000 }, async (t) => {
@@ -721,7 +725,7 @@ test('a page asks before it unloads after a Redo of an Undo that the edit comman
   // the operation of the edit and its broadcast arrive, and the Undo is sent and applied
   await page.evaluate('window.__again(), window.__opGo()');
   await page.waitFor(`window.__opsHeld === 2 && ${C}.snapshot().v.endsWith('.${n + 2}')`);
-  await page.evaluate(`${C}.on('settled', () => ${C}.snapshot().mine.includes('Zed') && setTimeout(() => (window.__asking ??= ${C}.asking))); true`);
+  await page.evaluate(AT_REDO);
   await press(page, REDO);
   await page.waitFor('window.__asking !== undefined');
   assert.equal(await page.evaluate('window.__asking'), true, 'the page asks while its copy holds the edit at the version before the Undo');
