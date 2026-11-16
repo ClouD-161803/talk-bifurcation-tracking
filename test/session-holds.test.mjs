@@ -146,3 +146,45 @@ test('a drag of the move handle, the rotate handle, or a grip of a held paragrap
   clean(ben);
   clean(cy);
 });
+
+const TABLE = `  <p>First slide</p>
+  <table>
+    <tr><th>A1</th><th>B1</th></tr>
+    <tr><td>A2</td><td>B2</td></tr>
+  </table>`;
+
+test('a drag of the grip of a column, or of the edge of a table, whose cell is held is refused, and the holder keeps typing', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', TABLE]] });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  const a2 = el(0, 'td');
+  const table = el(0, 'table');
+  await holding(ana, ben, a2, ' typed');
+  // each case: how Ben shows the grip, and the grip. the grip of the last column sets its width,
+  // and the grip at the right edge of the table selected as an object sets the widths of all
+  const cases = [
+    [() => click(ben, 'section.present th:nth-child(2)'), '.beeson-table-bars .grip[data-grip="1"]'],
+    [async () => {
+      await click(ben, 'section.present th:nth-child(2)');
+      await press(ben, 'Escape');
+      await press(ben, 'Escape');
+    }, '.beeson-table-bars .beeson-grip[data-handle="e"]'],
+  ];
+  for (const [put, grip] of cases) {
+    await put();
+    await frame(ben);
+    await unbubble(ben);
+    await drag(ben, grip, { dx: 40 });
+    await frame(ben);
+    assert.ok(!(await ben.evaluate(`${table}.outerHTML`)).includes('width'), `a drag of ${grip} leaves the widths of the columns as they were`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, grip);
+  }
+  assert.ok(await caretOf(ben, 'Ana', a2), 'the caret of Ana stays in her cell');
+  await caretAtEnd(ana, a2);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<td>A2 typed more<\/td><td>B2<\/td>/);
+  assert.ok(!text.match(/<table>[\s\S]*?<\/table>/)[0].includes('width'), 'the widths are not saved');
+  clean(ana);
+  clean(ben);
+});
