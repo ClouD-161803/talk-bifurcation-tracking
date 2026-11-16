@@ -16,6 +16,9 @@ import { citedKeys, folderTex, skippedLines, texScript } from '../texfile.ts';
 import { renameRetried, signature } from './disk.ts';
 
 const STABLE = 300;
+// the wait before the first retry of a failed write of tex.js, doubled at each further failure up to
+// 5 s, as for a failed write of index.html in disk.ts
+const RETRY = 500;
 
 // the cited keys of a deck in one order, since a citation moved in the deck does not change tex.js
 const keysOf = (html: string) => citedKeys(html).sort().join(',');
@@ -59,12 +62,14 @@ export function deriveTex(dir: string, html: string): DerivedTex {
 // onChange is called at each change of tex.js on disk, and after a stable change of a source that
 // leaves tex.js as it is. onWriteError is called with the message of a failed write of tex.js,
 // once for each reason, and with null at the next derivation that does not fail. stable is the
-// time in ms that a changed file must not change before it is taken, shorter in the tests
+// time in ms that a changed file must not change before it is taken, and retry the wait in ms before
+// the first retry of a failed write, both set in the tests
 export type TexOptions = {
   log?: (message: string) => void;
   onChange?: () => void;
   onWriteError?: (message: string | null) => void;
   stable?: number;
+  retry?: number;
 };
 
 // a signature that differs from the one taken last, and the time at which it was first seen
@@ -77,6 +82,7 @@ export class TexWriter {
   private onChange: () => void;
   private onWriteError: (message: string | null) => void;
   private stable: number;
+  private retry: number;
   // the text of index.html written last, and the cited keys of the text of the last derivation
   private html: string;
   private keys: string;
@@ -94,8 +100,11 @@ export class TexWriter {
   private settled: Map<string, string> | null = null;
   private polling = false;
   private stopped = false;
-  // the reason of the write of tex.js that failed last, which is tried again at each poll
+  // the reason of the write of tex.js that failed last, the failed writes in a row, and the time
+  // before which a poll does not try the write again
   private failure: string | null = null;
+  private failures = 0;
+  private retryAt = 0;
   // the skipped lines and the keys without an entry logged last
   private skipped = '';
 
@@ -108,6 +117,7 @@ export class TexWriter {
     this.onChange = options.onChange ?? (() => {});
     this.onWriteError = options.onWriteError ?? (() => {});
     this.stable = options.stable ?? STABLE;
+    this.retry = options.retry ?? RETRY;
     this.html = html;
     this.keys = keysOf(html);
     this.watched = deriveTex(dir, html).files;
@@ -170,7 +180,7 @@ export class TexWriter {
       else if (now - this.sourcesSeen.at >= this.stable) this.derive(new Map(sigs));
     } else {
       this.sourcesSeen = null;
-      if (this.failure !== null) this.derive();
+      if (this.failure !== null && now >= this.retryAt) this.derive();
     }
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
@@ -200,6 +210,8 @@ export class TexWriter {
       this.sourcesSeen = null;
       if (this.failure === null) return;
       this.failure = null;
+      this.failures = 0;
+      this.retryAt = 0;
       this.onWriteError(null);
     };
     if (!derived.sources) return settle();
@@ -230,6 +242,8 @@ export class TexWriter {
       this.onChange();
     } catch (e) {
       await unlink(tmp).catch(() => {});
+      this.failures++;
+      this.retryAt = performance.now() + Math.min(5000, this.retry * 2 ** (this.failures - 1));
       // the message names the temporary file, which differs at each try
       const reason = (e as NodeJS.ErrnoException).code ?? (e as Error).message;
       if (reason === this.failure) return;

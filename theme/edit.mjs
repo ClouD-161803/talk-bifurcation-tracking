@@ -2746,6 +2746,7 @@ function texScript(tex) {
 
 // src/edit/tex.ts
 var STABLE2 = 300;
+var RETRY2 = 500;
 var keysOf = (html) => citedKeys(html).sort().join(",");
 function deriveTex(dir, html) {
   const files = /* @__PURE__ */ new Map();
@@ -2779,8 +2780,11 @@ var TexWriter = class {
     this.settled = null;
     this.polling = false;
     this.stopped = false;
-    // the reason of the write of tex.js that failed last, which is tried again at each poll
+    // the reason of the write of tex.js that failed last, the failed writes in a row, and the time
+    // before which a poll does not try the write again
     this.failure = null;
+    this.failures = 0;
+    this.retryAt = 0;
     // the skipped lines and the keys without an entry logged last
     this.skipped = "";
     this.dir = dir;
@@ -2792,6 +2796,7 @@ var TexWriter = class {
     this.onWriteError = options.onWriteError ?? (() => {
     });
     this.stable = options.stable ?? STABLE2;
+    this.retry = options.retry ?? RETRY2;
     this.html = html;
     this.keys = keysOf(html);
     this.watched = deriveTex(dir, html).files;
@@ -2849,7 +2854,7 @@ ${sig}`).join("\n");
       else if (now - this.sourcesSeen.at >= this.stable) this.derive(new Map(sigs));
     } else {
       this.sourcesSeen = null;
-      if (this.failure !== null) this.derive();
+      if (this.failure !== null && now >= this.retryAt) this.derive();
     }
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
@@ -2874,6 +2879,8 @@ ${sig}`).join("\n");
       this.sourcesSeen = null;
       if (this.failure === null) return;
       this.failure = null;
+      this.failures = 0;
+      this.retryAt = 0;
       this.onWriteError(null);
     };
     if (!derived.sources) return settle();
@@ -2904,6 +2911,8 @@ ${sig}`).join("\n");
     } catch (e) {
       await unlink3(tmp).catch(() => {
       });
+      this.failures++;
+      this.retryAt = performance.now() + Math.min(5e3, this.retry * 2 ** (this.failures - 1));
       const reason = e.code ?? e.message;
       if (reason === this.failure) return;
       this.failure = reason;
