@@ -77,6 +77,9 @@ export type TexOptions = {
   retry?: number;
 };
 
+// the line logged while a source, or a file that preamble.tex inputs, cannot be read
+const unreadLine = (unread: string[]) => `tex.js is not written, since ${unread.join(', and ')}`;
+
 // a signature that differs from the one taken last, and the time at which it was first seen
 type Seen = { sig: string; at: number } | null;
 
@@ -131,11 +134,12 @@ export class TexWriter {
     this.watched = derived.files;
     this.texts = derived.key;
     this.texSig = sigOf(this.file);
-    // the skipped lines are logged at the start as well, since the next derivation logs only a change
+    // the skipped lines, or the reason why tex.js is not written, are logged at the start as well,
+    // since the next derivation logs only a change
     if (derived.sources && !derived.unread.length) {
       this.skipped = derived.skipped.join('\n');
       for (const line of derived.skipped) this.log(line);
-    }
+    } else if (derived.sources) this.log(unreadLine(derived.unread));
   }
 
   // index.html holds html on disk. tex.js is derived again when it cites other keys
@@ -233,7 +237,7 @@ export class TexWriter {
     // a tex.js without the macros of a file that is not read would break every page
     if (derived.unread.length) {
       settle();
-      this.log(`tex.js is not written, since ${derived.unread.join(', and ')}`);
+      this.log(unreadLine(derived.unread));
       return;
     }
     if (derived.skipped.join('\n') !== this.skipped) {
