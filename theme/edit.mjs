@@ -286,9 +286,6 @@ function slid(base, d, own, others) {
   const r = { start: at, end: d.end + (at - d.start), text: "" };
   return right && fits(r) ? r : d;
 }
-function sameWord(base, a, b) {
-  return !/[^\p{L}\p{N}]/u.test(base.slice(Math.min(a.end, b.end), Math.max(a.start, b.start)));
-}
 function mergeEdits(base, ours, all, prefer, apart = false, twice = false) {
   if (apart) {
     [ours, all] = nest(base, ours, all);
@@ -304,7 +301,7 @@ function mergeEdits(base, ours, all, prefer, apart = false, twice = false) {
   const same = (a, b) => !keys && equal(a, b);
   const others = all.filter((h) => !ours.some((o) => same(o, h)));
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
-  const keptTheirs = prefer === "theirs" ? all : all.filter((h) => !conflicts.some((o) => hit(o, h) || apart && sameWord(base, o, h)));
+  const keptTheirs = prefer === "theirs" ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
   const keptOurs = (prefer === "ours" ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => same(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
 }

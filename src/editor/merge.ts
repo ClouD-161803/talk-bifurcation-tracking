@@ -348,11 +348,6 @@ function slid(base: string, d: Edit, own: Edit[], others: Edit[]): Edit {
   return right && fits(r) ? r : d;
 }
 
-// whether only letters and digits of base lie between a and b, e.g. two edits of one word
-export function sameWord(base: string, a: Edit, b: Edit): boolean {
-  return !/[^\p{L}\p{N}]/u.test(base.slice(Math.min(a.end, b.end), Math.max(a.start, b.start)));
-}
-
 // the same merge with the changes of the file, all, given as edits of base. with apart, an edit
 // and a change conflict only when they clash, and of two insertions at one point the change comes
 // first, as the authority of a session orders the operation that arrived first. a format and the
@@ -378,9 +373,7 @@ export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'our
   const same = (a: Edit, b: Edit) => !keys && equal(a, b);
   const others = all.filter((h) => !ours.some((o) => same(o, h)));
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
-  // with apart, a change in the word of a conflict is left out with it, hence one word replaced by
-  // two people is the word of one of them, as in mergePatches()
-  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h) || (apart && sameWord(base, o, h))));
+  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => same(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
 }
@@ -401,7 +394,7 @@ const CELLS = 1 << 20;
 
 // t.indexOf(p) by Knuth-Morris-Pratt at a cost linear in both, since indexOf in V8 takes time
 // quadratic in the length of p on a text of a short period, e.g. a run of one letter
-export function find(t: string, p: string): number {
+function find(t: string, p: string): number {
   const back = new Int32Array(p.length + 1);
   back[0] = -1;
   for (let i = 0, k = -1; i < p.length; back[++i] = ++k) while (k >= 0 && p.charCodeAt(k) !== p.charCodeAt(i)) k = back[k];
