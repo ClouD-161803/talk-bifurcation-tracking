@@ -517,7 +517,9 @@ test('fine() of a chain of parts that charEdits() cannot diff costs no more than
   };
   const letters = Array.from({ length: 40 }, (_, i) => String.fromCharCode(0x4e00 + i));
   const chain = () => median(wrap(`<p>${letters.join('U')}U</p>`), wrap(`<p>${letters.join('V')}V${'V'.repeat(500)}</p>`));
-  const cap = () => median(wrap(`<p>${PARA}</p>`), wrap(`<p>${rep(PROSE, 3_194)}${PARA}C</p>`));
+  // one letter of the paste differs from the paragraph, so that the search of the paragraph in the
+  // paste does not find it, and the paste fills the cells of anchored()
+  const cap = () => median(wrap(`<p>${PARA}</p>`), wrap(`<p>${rep(PROSE, 3_194)}${PARA.replace('Earth', 'earth')}C</p>`));
   let ratio = Infinity;
   for (let i = 0; i < 3 && ratio >= 4; i++) ratio = chain() / cap();
   assert.ok(ratio < 4, `the chain costs ${ratio.toFixed(1)} times a paste of 3,194 characters`);
