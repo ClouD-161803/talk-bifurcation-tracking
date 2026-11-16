@@ -314,11 +314,15 @@ function fine(a, b) {
     return { start: start2, end: start2 + e.text.length, text: a.slice(e.start, e.end) };
   }));
   d = 0;
-  return widen(a, wraps(b, back.map((p) => {
+  const out = widen(a, wraps(b, back.map((p) => {
     const start2 = p.start - d;
     d += p.end - p.start - p.text.length;
     return { start: start2, end: start2 + p.text.length, text: b.slice(p.start, p.end) };
   })));
+  return widen(a, out.map((e) => {
+    const [s, t] = shared(a.slice(e.start, e.end), e.text);
+    return { start: e.start + s, end: e.end - t, text: e.text.slice(s, e.text.length - t) };
+  }));
 }
 function wraps(b, es) {
   const at = [];

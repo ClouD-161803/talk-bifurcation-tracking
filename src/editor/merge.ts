@@ -391,11 +391,17 @@ export function fine(a: string, b: string): Edit[] {
     return { start, end: start + e.text.length, text: a.slice(e.start, e.end) };
   }));
   d = 0;
-  return widen(a, wraps(b, back.map((p) => {
+  const out = widen(a, wraps(b, back.map((p) => {
     const start = p.start - d;
     d += p.end - p.start - p.text.length;
     return { start, end: start + p.text.length, text: b.slice(p.start, p.end) };
   })));
+  // each edit without the letters that it keeps at its ends, e.g. the m of moon that the diff
+  // matched with the m of <em>. widen() then makes whole again a tag that this cuts
+  return widen(a, out.map((e) => {
+    const [s, t] = shared(a.slice(e.start, e.end), e.text);
+    return { start: e.start + s, end: e.end - t, text: e.text.slice(s, e.text.length - t) };
+  }));
 }
 
 // the edits of a into b with each pair that wraps a run in a new element, i.e. a start tag in the
