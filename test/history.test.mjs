@@ -204,6 +204,72 @@ test('an entry of typing whose carry was refused is not undone from its old text
   assert.equal(h.undoLabel, 'a');
 });
 
+test('an entry of typing that has ended is refused, as one in progress is, when another person removed its letters and typed them again', async () => {
+  const { h } = texts();
+  const told = [];
+  h.refused = (entry, way) => told.push([entry.label, way]);
+  const el = textEl('Second slide');
+  const other = textEl('Alpha');
+  h.track(el);
+  h.track(other);
+  typeInto(h, el, 'Second slide to');
+  typeInto(h, other, 'Alphax');
+  for (const content of ['Second slide t', 'Second slide ', 'Second slide t', 'Second slide to']) {
+    el.content = content;
+    h.prune((x) => x === el, undefined, undefined, [el]);
+    h.carry(el);
+  }
+  await h.undo();
+  assert.equal(other.content, 'Alpha');
+  await h.undo();
+  assert.equal(el.content, 'Second slide to', 'the word typed by the other person is kept');
+  assert.deepEqual(told, [['typing', 'undo']]);
+});
+
+test('the typing in progress in one text element goes on when a change of another person ends the typing of another text element', async () => {
+  const { h } = texts();
+  const el = textEl('X Y');
+  const other = textEl('Alpha');
+  h.track(el);
+  h.track(other);
+  typeInto(h, el, 'X abc Y');
+  typeInto(h, other, 'Alphax');
+  el.content = 'X aZ';
+  h.prune((x) => x === el, undefined, undefined, [el]);
+  h.carry(el);
+  typeInto(h, other, 'Alphaxy');
+  await h.undo();
+  assert.equal(other.content, 'Alpha', 'the keys before and after the change are one entry');
+});
+
+test('a change of another person after a key that changed nothing is kept at the undo of the typing that goes on', async () => {
+  const { h } = texts();
+  const el = textEl('X Y');
+  h.track(el);
+  typeInto(h, el, 'X Y');
+  el.content = 'Q X Y';
+  h.prune((x) => x === el, undefined, undefined, [el]);
+  h.carry(el);
+  typeInto(h, el, 'Q X aY');
+  await h.undo();
+  assert.equal(el.content, 'Q X Y');
+});
+
+test('typing that ended inside a transaction is undone with the transaction after a change of another person', async () => {
+  const { h } = texts();
+  const el = textEl('X Y');
+  h.track(el);
+  await h.transact('Two', () => {
+    typeInto(h, el, 'X abc Y');
+    h.break();
+    el.content = 'X aZ';
+    h.carry(el);
+  });
+  await h.undo();
+  assert.equal(el.content, 'X Y');
+  assert.equal(h.redoLabel, 'Two');
+});
+
 test('an undo drops an entry of typing that cannot be undone, tells refused of it, and keeps the entry before it for the next undo', async () => {
   const { h, changes } = texts();
   const told = [];

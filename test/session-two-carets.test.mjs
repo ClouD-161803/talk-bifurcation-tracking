@@ -390,6 +390,30 @@ for (const word of [' two', ' one']) {
   });
 }
 
+test('an undo of typing followed by typing in another text element keeps a word that another person removed and typed again', { timeout: 240_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben']);
+  const [ana, ben] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' to');
+  await caretAtEnd(ana, el(1, 'li'));
+  await typeKeys(ana, 'x');
+  await converge(server, pages);
+  await caretAtEnd(ben, p);
+  await press(ben, 'Backspace');
+  await press(ben, 'Backspace');
+  await converge(server, pages);
+  await typeKeys(ben, 'to');
+  assert.equal(para(await converge(server, pages)), '<p>Second slide to</p>');
+  await run(ana, 'edit.undo');
+  assert.match(await converge(server, pages), /<li>Alpha<\/li>/);
+  await run(ana, 'edit.undo');
+  assert.equal(para(await converge(server, pages)), '<p>Second slide to</p>', 'the word typed by Ben is kept');
+  assert.equal(await ana.evaluate(BUBBLE), NOT_UNDONE);
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
 const NOTES = el(1, 'aside.notes');
 const ASIDE = '<aside class="notes">Notes of two<br>x</aside>';
 const aside = (text) => text.match(/<aside class="notes">.*?<\/aside>/s)?.[0] ?? null;
