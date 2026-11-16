@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Plot cell deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<style>.reveal td .plot { width: 240px; height: 240px; }</style>
+</head>
+<body>
+<!-- a table whose second column holds a small plot in each row, beside a cell of text -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>A plot in a cell</h2>
+      <table>
+        <tr><th>Region</th><th style="width: 240px">Circle</th></tr>
+        <tr><td>doubly elliptic</td><td>
+          <div class="plot" data-plot="circle"></div>
+        </td></tr>
+      </table>
+      <script type="application/json" id="circle">{
+        "panels": [
+          { "id": "p", "x": { "range": [-1.5, 1.5] }, "y": { "range": [-1.2, 1.2] }, "axes": false,
+            "curves": [{ "id": "ring", "circle": [0, 0, 1] }],
+            "labels": [{ "at": [0, 0], "text": "$\\lambda$", "anchor": "middle" }] }
+        ],
+        "marks": [{ "id": "m", "panel": "p", "kind": "points" }],
+        "tabs": [{ "name": "a", "values": [0, 1], "data": { "m": [[1, 0], [0, 1]] } }]
+      }</script>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>
