@@ -992,3 +992,28 @@ test('a change of index.html from outside is a version of its own, and the versi
   assert.deepEqual(versions.map((v) => v.authors), [[BO], ['file'], [ANN], ['file'], []]);
   assert.equal(history.textOf(versions[2].id), typed);
 });
+
+test('a change of index.html from outside is told as an overwrite only where it replaces text that a person wrote in the session, or writes where a person removed text', { timeout: 60_000 }, (t) => {
+  const { authority, history } = open(sessionDir(t), DECK);
+  // whether a page at the version before the operation is told of an overwrite
+  const told = (from, to, author = 'file') => {
+    const before = authority.version;
+    replace(authority, from, to, author);
+    return history.overwrittenAfter(before);
+  };
+  assert.equal(told('Two', 'Zwei'), false, 'nobody typed');
+  replace(authority, 'One', 'Uno', ANN);
+  assert.equal(told('Zwei', 'Zwo'), false, 'a change of another slide');
+  history.name('current', 'Typed');
+  assert.equal(told('Uno', 'Eins'), true, 'a word of Ann in a closed version');
+  assert.equal(told('Eins', 'Ein'), false, 'a word of the file');
+  replace(authority, 'First slide', 'First great slide', ANN);
+  assert.equal(told('great', 'grXeat'), false, 'an insertion inside a word of Ann');
+  assert.equal(told('eat slide', 'eat page'), false, 'a change that ends where a word of Ann begins');
+  assert.equal(told('First gr', 'First-gr'), false, 'a change that begins where a word of Ann ends');
+  replace(authority, 'Second slide', 'Second', ANN);
+  assert.equal(told('Second<', 'Second slide<'), true, 'a removal of Ann taken back');
+  // a page of an earlier start says hello again, and is not told
+  assert.deepEqual([history.overwrittenAfter('earlier.0'), history.overwrittenAfter('not a version')], [false, false]);
+  assert.equal(told('First-gr', 'First-Gr', BO), false, 'an operation of a person over a word of Ann');
+});
