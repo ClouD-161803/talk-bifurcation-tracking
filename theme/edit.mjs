@@ -1988,7 +1988,7 @@ function slow(before2, patches, after, items, given) {
     const found = byPatches(a, before2, patches, after, regions);
     if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
     const bound = Math.max(a.end, Math.min(limit, a.start + cap2));
-    const { end: e, close } = elementClose(before2, a, bound);
+    const { end: e, close } = once(`close ${a.start}`, () => elementClose(before2, a, bound));
     if (e < 0 && bound < limit) return { anchor: found, text: null };
     const end = e < 0 ? bound : e;
     const text = before2.slice(a.start, end);

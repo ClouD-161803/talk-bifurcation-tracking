@@ -364,8 +364,9 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     return k;
   };
   // a result stored for all of the threads, by its key: the start of an element for its kept text, a
-  // check for its slide, a checksum, a space, and the start of a slide for its place there, and a kept
-  // text or a checksum for whether a patch took it. a checksum is of a text that starts with its tag
+  // check for its slide, a checksum, a space, and the start of a slide for its place there, a kept
+  // text or a checksum for whether a patch took it, and close with the start of an element for its
+  // end, whose bound follows from the start. a checksum is of a text that starts with its tag
   const stored = new Map<string, unknown>();
   const once = <T>(key: string, f: () => T): T => {
     let v = stored.get(key) as T | undefined;
@@ -422,7 +423,7 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
     const found = byPatches(a, before, patches, after, regions);
     if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
     const bound = Math.max(a.end, Math.min(limit, a.start + cap));
-    const { end: e, close } = elementClose(before, a, bound);
+    const { end: e, close } = once(`close ${a.start}`, () => elementClose(before, a, bound));
     if (e < 0 && bound < limit) return { anchor: found, text: null };
     const end = e < 0 ? bound : e;
     const text = before.slice(a.start, end);
