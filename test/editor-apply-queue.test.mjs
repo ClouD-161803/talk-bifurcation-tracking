@@ -4,7 +4,8 @@
 // through every apply and told through onChange after it: an edit typed between two queued
 // applies, a box inserted, a content set, and slides duplicated while an apply waits, and an edit
 // next to an apply that replaces most of the text. an open composition holds back the change of
-// its own slide only, and a page that does not read as its text after an apply asks for a reload
+// its own slide only, and a page that does not read as its text after an apply asks for a reload,
+// also after a change held back that cannot be made in full at the end of the composition
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -279,6 +280,28 @@ test('a composing text on a page that is hidden without the end of its compositi
   await b.waitFor('document.hidden');
   await b.waitFor(`${P1}?.textContent.startsWith('Plan the complete')`);
   assert.equal(await render(b), text);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a change held back during a composition that cannot be made in full at its end loads the page again through onReload', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await b.evaluate(`(() => {
+    window.__reloads = 0;
+    ${E}.session.onReload(() => window.__reloads++);
+    return true;
+  })()`);
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  // a block element inside a paragraph, which the apply cannot make in full
+  const text = once(b.source, "viewer's attention.</p>", "viewer's attention. <div>q</div></p>");
+  await start(b, 'first', text);
+  await b.waitFor(resolved('first'));
+  assert.equal(await b.evaluate('window.__results.first'), false);
+  assert.equal(await render(b), b.source, 'the change is held back');
+  await compose(b, 'compositionend');
+  await b.waitFor('window.__reloads > 0');
   assert.deepEqual(b.errors, []);
 });
 

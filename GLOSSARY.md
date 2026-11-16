@@ -48,7 +48,7 @@ Avoid "card". The heading over the scrubber of the progress line is not a card e
 
 ## Edit command
 
-The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` is written.
+The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` and `tex.js` are written.
 
 Avoid "server" and "daemon".
 
@@ -84,7 +84,7 @@ Avoid "head" for the heading of a figure slide, since a head is the moving dot a
 
 To be the one person of a session who can type in a text element. You hold a text element from the moment your caret is put into it until the caret leaves, your page is silent for 15 s, or someone else enters it after you have not typed for 30 s.
 
-Avoid "lock", which is the command Lock of the Arrange menu.
+Avoid "lock", which is the command Lock of the Arrange menu. The class `beeson-locked` of an element held by another person is `beeson-held`.
 
 ## Host
 
@@ -186,7 +186,7 @@ The version of the deck of a person that is kept apart from the deck when this p
 
 A panel of the editor in which a source is edited with a live preview, i.e. the Preamble sheet and the Bibliography sheet, and the sheet of a formula.
 
-Avoid "window", "dialog", and "pane".
+Avoid "window", "dialog", and "pane". A dialog of a session that is fitted to the visible part of the page is not a sheet either, and its class is `beeson-session-fit`, not `beeson-session-sheet`.
 
 ## Slide Sorter
 
