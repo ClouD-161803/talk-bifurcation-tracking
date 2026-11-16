@@ -11,10 +11,11 @@ import { launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { deckTex } from '../scripts/tex.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
-import { clean, converge, loads, open, sessionUrl, show } from './helpers/client.mjs';
+import { C, clean, converge, loads, ONLINE, open, sessionUrl, show } from './helpers/client.mjs';
 import { press, type, typeKeys } from './helpers/editor.mjs';
+import { goOffline, goOnline, tab } from './helpers/offline.mjs';
 import { fileMenu } from './helpers/session-mode.mjs';
-import { post, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
+import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const DIR = 'test/pages/tex-sheets';
 const DECK = readFileSync(`${DIR}/index.html`, 'utf8').replaceAll('../../../theme/', 'theme/');
@@ -181,6 +182,33 @@ test('a tex.js replaced from outside, as npm run tex writes it, draws its macros
   assert.equal(server.read('tex.js'), changed, 'the edit command writes over a tex.js changed from outside');
   clean(ann, MISSING);
   clean(ben, MISSING);
+});
+
+test('a page that stays open across a kill and a start of the edit command draws a tex.js changed after the start, also when the new count of the changes reaches the count of the page', { timeout: 300_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const server = await texTalk(t);
+  const page = await tab(browser, sessionUrl(server.edit));
+  t.after(() => page.close());
+  await converge(server, [page]);
+  const add = (name) => server.write('tex.js', server.read('tex.js').replace('  "macros": {\n', `  "macros": {\n    "${name}": "\\\\mathbb{${name}}",\n`));
+  add('Qa');
+  await page.waitFor(`window.beesonTex.macros.Qa === '\\\\mathbb{Qa}'`);
+  // a mark that a load of the page would take away
+  await page.evaluate('(window.__kept = true)');
+  await goOffline(page);
+  const { port } = server.edit;
+  server.edit.child.kill('SIGKILL');
+  await server.edit.exited;
+  server.edit = await startEdit(server.talk, { port, env: { XDG_CONFIG_HOME: server.config, APPDATA: server.config } });
+  // the count of the new edit command, read by a person that the test adds, before and after a change
+  const hello = (await post(port, `${server.edit.base}.session/hello`, { name: 'Probe' })).json();
+  add('Qb');
+  await until(async () => (await raw(port, 'GET', `${server.edit.base}.session/events?token=${hello.token}&since=${hello.v}`)).json().tex !== hello.tex, 'the change of tex.js counted by the new edit command', 60_000);
+  await goOnline(page);
+  await page.waitFor(ONLINE);
+  await page.waitFor(`window.beesonTex.macros.Qb === '\\\\mathbb{Qb}'`, 30_000).catch(async (e) => {
+    throw new Error(`the page holds the count ${await page.evaluate(`${C}.tex`)}, and the edit command ${hello.tex}: ${e.message}`);
+  });
+  assert.equal(await page.evaluate('window.__kept'), true, 'the page is not loaded again');
 });
 
 test('a start of the edit command and a join of two pages do not write any file of the talk folder', { timeout: 180_000 }, async (t) => {
