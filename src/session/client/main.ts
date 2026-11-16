@@ -80,6 +80,7 @@ async function start(given: Handover): Promise<boolean> {
   }
   const v = response.headers.get('x-session-version');
   if (!response.ok) return loadAgain(handover, 'This page cannot join the session', `The edit command answered ${response.status}. Load the page again, or open the address that the host shared.`);
+  port.served(!!v);
   if (!v) {
     const dialog = handover.dialog({
       title: 'This page is not served by an edit command',
