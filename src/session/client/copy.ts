@@ -258,11 +258,12 @@ async function rest(client: Client, st: State, update: () => void): Promise<void
       });
       return;
     }
-    // the edits of the copy merged into now, the text of the deck, as Replica.resync merges
+    // the edits of the copy merged into now, the text of the deck, as Replica.resync merges, hence a
+    // move of the side that the dialog does not keep is left out whole where the other side changes it
     const ours = diff(copy.base, copy.mine);
     const into = (now: string, side: Side) => {
       const theirs = diff(copy.base, now).filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-      const m = mergePatches(theirs, ours, side);
+      const m = mergePatches(theirs, ours, side, copy.base, false, side);
       return { text: apply(copy.base, m.patches), conflicts: m.conflicts };
     };
     const side: Side = into(s.mine, 'ours').conflicts.length ? await ask(client, copy.base, copy.mine, s.mine) : 'ours';
