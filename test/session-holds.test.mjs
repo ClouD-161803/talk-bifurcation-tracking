@@ -188,3 +188,43 @@ test('a drag of the grip of a column, or of the edge of a table, whose cell is h
   clean(ana);
   clean(ben);
 });
+
+const PLATE = `  <p>First slide</p>
+  <div class="plate row">
+    <figure id="first"><img src="brand/logo.png" alt="A"><figcaption class="caption">The first figure.</figcaption></figure>
+    <figure id="second"><img src="brand/logo.png" alt="B"><figcaption class="caption">The second figure.</figcaption></figure>
+  </div>`;
+const SELECTED = `window.BeesonEditor.selection().map((e) => e.localName + (e.id ? '#' + e.id : '') + (e.classList.contains('plate') ? '.plate' : ''))`;
+
+test('a drag of a figure whose caption is held, or of the plate around it, is refused, and a click on the figure is not', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', PLATE]] });
+  await show(ana, 'One');
+  await show(ben, 'One');
+  const caption = el(0, '#first figcaption');
+  await holding(ana, ben, caption, ' typed');
+  const image = 'section.present #first img';
+  for (const [what, before] of [['a drag on the figure', null], ['a drag of the selected plate', () => select(ben, el(0, '.plate'))]]) {
+    await front(ben);
+    await ben.evaluate(`${C}.app.selection.clear()`);
+    await before?.();
+    await unbubble(ben);
+    await drag(ben, image, { dx: 80, dy: 60 });
+    await frame(ben);
+    assert.equal(await ben.evaluate(`${el(0, '.plate')}.outerHTML.includes('style=')`), false, `${what} leaves the plate and its figures in place`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, what);
+  }
+  await ben.evaluate(`${C}.app.selection.clear()`);
+  await unbubble(ben);
+  await click(ben, image);
+  await frame(ben);
+  assert.notDeepEqual(await ben.evaluate(SELECTED), [], 'a click on the figure selects');
+  assert.equal(await ben.evaluate(BUBBLE), null, 'a click is not refused');
+  assert.ok(await caretOf(ben, 'Ana', caption), 'the caret of Ana stays in the caption');
+  await caretAtEnd(ana, caption);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<div class="plate row">\s*<figure id="first">/);
+  assert.match(text, /The first figure\. typed more<\/figcaption>/);
+  clean(ana);
+  clean(ben);
+});
