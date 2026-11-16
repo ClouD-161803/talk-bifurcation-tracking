@@ -967,7 +967,7 @@ test('Mod+Enter in the field of a comment or of a reply sends it, and in another
   clean(a);
 });
 
-test('Esc in a draft with text keeps the text and leaves the field, Cancel discards it, and Esc closes an empty draft', { timeout: 300_000 }, async (t) => {
+test('Esc in a draft or a reply with text keeps the text and leaves the field, Cancel discards it also through a reload, and Esc closes an empty draft', { timeout: 300_000 }, async (t) => {
   const { pages: [a] } = await pair(t, ['Ann']);
   const state = `(() => { const d = document.querySelector('${DRAFT}'); return d && { value: d.value, focused: document.activeElement === d }; })()`;
   await show(a, 'One');
@@ -985,6 +985,26 @@ test('Esc in a draft with text keeps the text and leaves the field, Cancel disca
   await press(a, 'Escape');
   await sees(a, state, null);
   assert.deepEqual(await stored(a), []);
+
+  const id = await post(a, 0, 'A thread');
+  await openPane(a);
+  await sees(a, `!!document.querySelector('${ARTICLE(id)}')`, true, 'the thread in the pane');
+  const reply = `(() => { const r = document.querySelector('${ARTICLE(id)} .reply textarea'); return r && { value: r.value, focused: document.activeElement === r }; })()`;
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await type(a, 'Kept by Esc');
+  await press(a, 'Escape');
+  await sees(a, reply, { value: 'Kept by Esc', focused: false });
+  await click(a, `${ARTICLE(id)} .reply textarea`);
+  await click(a, `${ARTICLE(id)} .reply .actions button:not(.primary)`);
+  await sees(a, reply, { value: '', focused: false });
+  const count = await loads(a);
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again');
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await openPane(a);
+  await sees(a, reply, { value: '', focused: false }, 'the reply after a reload');
+  assert.deepEqual(await stored(a), [{ text: 'A thread', mentions: [], replies: [] }]);
   clean(a);
 });
 
