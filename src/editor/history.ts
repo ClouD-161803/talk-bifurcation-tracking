@@ -81,6 +81,8 @@ export class History {
   // read at the start of a transaction, the function that shows its slide again before its undo and
   // its redo, as Keynote and PowerPoint show the slide of an undone change
   private readonly view: () => (() => void) | null;
+  // called when an undo or a redo of typing is refused, e.g. to tell the person why
+  refused?: (entry: Entry, way: 'undo' | 'redo') => void;
   // the functions run at the end of each transaction, whose changes are part of it
   private readonly settlers: (() => void)[] = [];
   // the functions run after each input recorded into an entry of typing outside a transaction
@@ -392,33 +394,31 @@ export class History {
   // first one takes the entry before it. the turn comes after the end of an open transaction, whose
   // changes are in the file before its entry is in the history, e.g. a dropped picture that is
   // sized. an amend of an entry is not waited for. an entry of typing that cannot be undone or
-  // redone over the changes of others is taken out of the history, and the step goes on to the
-  // entry before it, as in Google Docs
+  // redone over the changes of others is taken out of the history, and refused is told of it. the
+  // next step takes the entry before it
   private step(way: 'undo' | 'redo'): Promise<void> {
     const run = this.queue.then(() => this.closed).then(async () => {
-      for (;;) {
-        // the stacks are read at the turn of the step, since clear() replaces them
-        const [from, to] = way === 'undo' ? [this.done, this.undone] : [this.undone, this.done];
-        const entry = from.pop();
-        if (!entry) return;
-        this.typing = null;
-        this.busy = true;
-        const select = this.changed();
-        try {
-          await entry[way]();
-        } catch (e) {
-          if (e !== REFUSED) throw e;
-          this.onChange();
-          continue;
-        } finally {
-          this.busy = false;
-        }
-        const els = this.touched(entry, way);
-        if (els?.length === 1) select(els[0]);
-        to.push(entry);
+      // the stacks are read at the turn of the step, since clear() replaces them
+      const [from, to] = way === 'undo' ? [this.done, this.undone] : [this.undone, this.done];
+      const entry = from.pop();
+      if (!entry) return;
+      this.typing = null;
+      this.busy = true;
+      const select = this.changed();
+      try {
+        await entry[way]();
+      } catch (e) {
+        if (e !== REFUSED) throw e;
+        this.refused?.(entry, way);
         this.onChange();
         return;
+      } finally {
+        this.busy = false;
       }
+      const els = this.touched(entry, way);
+      if (els?.length === 1) select(els[0]);
+      to.push(entry);
+      this.onChange();
     });
     // a failed step does not stop the steps after it, and its error is passed to its caller
     this.queue = run.catch(() => {});
