@@ -107,6 +107,9 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
   assert.equal(status({ ...ok, text: '😀'.repeat(4000) }), 200);
   assert.equal(status({ ...ok, mentions: ['short'] }), 400);
   assert.equal(status({ ...ok, mentions: 'x' }), 400);
+  const people = Array.from({ length: 51 }, (_, i) => `${i}`.padStart(22, 'P'));
+  assert.equal(status({ ...ok, mentions: people }), 400, 'more than 50 mentions');
+  assert.equal(status({ ...ok, mentions: people.slice(1) }), 200);
   for (let i = 0; i < 3; i++) replace(authority, /First slide[^<]*/, `First slide ${i}`);
   assert.equal(status(ok), 409, 'the base is older than the log');
 });
@@ -652,6 +655,36 @@ test('a file of comments that cannot be read is copied aside when it cannot be m
     assert.equal(comments.add(ANN, onDeck(authority, 'new')).status, 503);
     comments.stopSync();
     assert.equal(readFileSync(file, 'utf8'), 'not json');
+    assert.match(logged.join('\n'), /read only/);
+  });
+
+  await t.test('some threads unreadable, and the file neither moved nor copied', () => {
+    const dir = sessionDir(t);
+    const file = join(dir, 'comments.json');
+    const first = open(dir, DECK);
+    const question = first.comments.add(ANN, onDeck(first.authority, 'Question'));
+    const reply = first.comments.reply(question.id, ANN, { text: 'Reply' }).replies[0];
+    const done = first.comments.add(ANN, onDeck(first.authority, 'Done'));
+    first.comments.resolve(done.id, ANN, true);
+    first.comments.stopSync();
+    const data = readJson(file);
+    data.comments.push({ text: 'not a thread' });
+    writeFileSync(file, JSON.stringify(data));
+    const written = readFileSync(file, 'utf8');
+    const { comments, logged } = open(dir, DECK);
+    assert.deepEqual(comments.list(ANN).comments.map((c) => c.text), ['Question', 'Done']);
+    const refused = (x, what) => assert.deepEqual(x, readOnlyFailure, what);
+    const readOnlyFailure = comments.add(ANN, onDeck(first.authority, 'Lost'));
+    assert.equal(readOnlyFailure.status, 503);
+    refused(comments.reply(question.id, ANN, { text: 'Lost' }), 'reply');
+    refused(comments.edit(question.id, ANN, { text: 'Lost' }), 'edit');
+    refused(comments.edit(question.id, ANN, { reply: reply.id, text: 'Lost' }), 'edit of a reply');
+    refused(comments.remove(question.id, ANN, { reply: reply.id }), 'delete of a reply');
+    refused(comments.remove(question.id, ANN, {}), 'delete');
+    refused(comments.resolve(question.id, ANN, true), 'resolve');
+    refused(comments.resolve(done.id, ANN, false), 'reopen');
+    comments.stopSync();
+    assert.equal(readFileSync(file, 'utf8'), written);
     assert.match(logged.join('\n'), /read only/);
   });
 });
