@@ -363,7 +363,7 @@ class Pane {
     const unread = this.comments.unread(t);
     node.classList.toggle('unread', unread);
     node.classList.toggle('focused', this.focused === t.id);
-    const aria = `Comment by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`;
+    const aria = `Thread by ${this.nameOf(t.author)}${t.resolved ? ', resolved' : ''}${unread ? ', unread' : ''}`;
     // an attribute written with its own value still invalidates the style of the pane
     if (node.getAttribute('aria-label') !== aria) node.setAttribute('aria-label', aria);
     // a reply being typed stays in a thread that another person resolves

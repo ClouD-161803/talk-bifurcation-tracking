@@ -121,7 +121,7 @@ export class Badges {
         y = (r.top + r.bottom) / 2 + w * Math.sin(a) - h * Math.cos(a);
       }
       const badge = old.get(target) ?? this.badge(target);
-      const label = `${g.n} ${g.n === 1 ? 'comment' : 'comments'}${g.unread ? ', unread' : ''}`;
+      const label = `${g.n} ${g.n === 1 ? 'thread' : 'threads'}${g.unread ? ', unread' : ''}`;
       if (badge.textContent !== String(g.n)) badge.textContent = String(g.n);
       badge.setAttribute('aria-label', label);
       badge.title = label;
