@@ -982,6 +982,26 @@ test('a restore that brings back a removed element longer than 4 kB and removes 
   assert.ok(twenty < 2 * one, `20 threads read ${twenty} characters, and one thread ${one}`);
 });
 
+test('a restore that brings back removed columns longer than 4 kB reads each of them a few times, however many removed slides hold a column', () => {
+  for (const [len, kinds] of [
+    [200_000, 1],
+    [50_000, 10],
+  ]) {
+    const bigs = Array.from({ length: kinds }, (_, k) => `<div class="column">${String.fromCharCode(97 + k).repeat(len - 27)}${k}</div>`);
+    const v0 = deck(['<h2>Alpha</h2>', ...bigs], ['<h2>Omega</h2>']);
+    const v1 = deck(['<h2>Alpha</h2>'], ['<h2>Omega</h2>']);
+    // 300 slides added, each with a column of the start tag of the removed ones
+    const v2 = deck(['<h2>Alpha</h2>'], ...Array.from({ length: 300 }, (_, i) => [`<h2>S${i}</h2>`, `<div class="column">${'s'.repeat(1000)}</div>`]), ['<h2>Omega</h2>']);
+    const items = bigs.map((b) => onElement(v0, b));
+    const removed = move(v1, v2, move(v0, v1, items).items).items;
+    assert.ok(removed.every((it) => typeof it.removed?.text === 'object'), 'every thread fell back with a check');
+    const patches = diff(v2, v0);
+    const n = sliced(() => assert.deepEqual(moveAnchors(v2, patches, v0, removed).items, items));
+    // the twins of a column in its own slide are read for each column, as known
+    assert.ok(n < 2 * v2.length + 16 * len * kinds * kinds, `${kinds} columns of ${len} characters: ${n} characters sliced`);
+  }
+});
+
 test('an operation reads no other slide for the threads of removed elements longer than 4 kB, nor its own slide for a check longer than it', () => {
   const column = '<div class="column">';
   const slide = (k) => [`<h2>Slide ${k}</h2>`, ...[0, 1, 2].flatMap((c) => [column, ...Array.from({ length: 30 }, (_, q) => `<p>Paragraph ${q} of column ${c} of slide ${k}, ${'x'.repeat(160)}</p>`), '</div>'])];
