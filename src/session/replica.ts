@@ -171,7 +171,7 @@ export class Replica {
   // of the last operation of sender that the text holds, as hello answers it. the edits of this
   // browser are merged into it, where the side wins at a conflict. conflicts gets the patches of
   // mine that conflicted
-  resync(text: string, v: Version, applied?: number, wins: Side = 'ours', conflicts: Patch[] = []): string | null {
+  resync(text: string, v: Version, applied?: number, wins?: Side, conflicts: Patch[] = []): string | null {
     const parsed = parseVersion(v);
     if (!parsed) throw new Error(`${v} is not a version`);
     const before = this.mine;
@@ -179,7 +179,8 @@ export class Replica {
     const theirs = diff(from, text);
     const ours = diff(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-    const both = mergePatches(kept, ours, wins, from);
+    // a side is given by the dialog after a break, which decides, and mine wins without one
+    const both = mergePatches(kept, ours, wins, from, wins);
     conflicts.push(...both.conflicts);
     const merged = apply(from, both.patches);
     this.base = text;
@@ -244,7 +245,8 @@ export class Replica {
   private merge(text: string, theirs: Patch[], wins: Side, conflicts: Patch[], dedupe: boolean): string {
     const ours = diff(text, this.mine);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
-    const merged = mergePatches(kept, ours, wins, text);
+    // a catch-up is decided
+    const merged = mergePatches(kept, ours, wins, text, dedupe && wins);
     conflicts.push(...merged.conflicts);
     return apply(text, merged.patches);
   }

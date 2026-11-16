@@ -147,8 +147,9 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
 // conflict with a patch of theirs. with the text base of both, a move of either side that conflicts
-// is left out whole, see mergeEdits()
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string): { patches: Patch[]; conflicts: Patch[] } {
+// is left out whole, see mergeEdits(), apart from a move of the side keep, which the dialog after a
+// break decides
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, keep?: 'ours' | 'theirs' | false): { patches: Patch[]; conflicts: Patch[] } {
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
@@ -163,8 +164,8 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
-  const gone = new Set(!base ? [] : [...moves(base, ours, theirs, conflict), ...moves(base, theirs, ours, conflict)]);
-  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base).patches, conflicts };
+  const gone = new Set(!base ? [] : ([[ours, theirs, 'ours'], [theirs, ours, 'theirs']] as const).flatMap(([a, b, s]) => (keep === s ? [] : moves(base, a, b, conflict))));
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, keep).patches, conflicts };
   const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
