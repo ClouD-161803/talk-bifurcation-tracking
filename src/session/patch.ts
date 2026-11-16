@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes, nest } from '../editor/merge.ts';
+import { changes, fine, nest } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -143,6 +143,13 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
   return out;
 }
 
+// the patches of one operation of base with each that conflicts with a patch of the other given
+// as the edits that fine() finds in it, since a patch spans a line from its first change to its
+// last, e.g. a format and a key of the same operation further on the line
+function finer(base: string, patches: Patch[], other: Patch[]): Patch[] {
+  return patches.flatMap((p) => (other.some((o) => conflict(p, o)) ? fine(base, apply(base, [p])) : [p]));
+}
+
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
@@ -150,7 +157,12 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
 // and the edits of plain text of the other side inside its run do not conflict, and both are kept,
 // see nest()
 export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string): { patches: Patch[]; conflicts: Patch[] } {
-  if (base !== undefined) [theirs, ours] = nest(base, theirs, ours);
+  if (base !== undefined) {
+    // the finer edits are taken only when none of them conflicts, since the letters of one word
+    // replaced on both sides would be mixed
+    const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
+    [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours) : [t, o];
+  }
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);

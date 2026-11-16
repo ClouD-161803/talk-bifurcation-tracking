@@ -584,8 +584,14 @@ function combine(first2, second) {
   }
   return out;
 }
+function finer(base, patches, other) {
+  return patches.flatMap((p) => other.some((o) => conflict(p, o)) ? fine(base, apply2(base, [p])) : [p]);
+}
 function mergePatches(theirs, ours, wins = "ours", base) {
-  if (base !== void 0) [theirs, ours] = nest(base, theirs, ours);
+  if (base !== void 0) {
+    const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
+    [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours) : [t, o];
+  }
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
   let k = 0, any = false;
   for (let i = 0; i < ours.length; i++) {
