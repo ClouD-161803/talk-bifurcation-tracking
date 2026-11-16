@@ -255,11 +255,13 @@ function anchored(a, b) {
   let cells = CELLS;
   for (let part = parts.pop(); part; part = parts.pop()) {
     const [at, x, y] = part;
-    const found = part !== whole && Math.abs(x.length - y.length) <= 500 ? charEdits(x, y, 500) : null;
+    const tried = part !== whole && Math.abs(x.length - y.length) <= 500;
+    const found = tried ? charEdits(x, y, 500) : null;
     if (found) {
       out.push(...found.map((e) => ({ start: e.start + at, end: e.end + at, text: e.text })));
       continue;
     }
+    if (tried) cells -= 500 * (x.length + y.length);
     let best = 0, bx = 0, by = 0;
     if (x.length * y.length <= cells) {
       cells -= x.length * y.length;

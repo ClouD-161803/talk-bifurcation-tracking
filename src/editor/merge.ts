@@ -309,11 +309,15 @@ function anchored(a: string, b: string): Edit[] | null {
   for (let part = parts.pop(); part; part = parts.pop()) {
     const [at, x, y] = part;
     // charEdits() gives up on whole in fine(), and on a part whose sides differ in length by over 500
-    const found = part !== whole && Math.abs(x.length - y.length) <= 500 ? charEdits(x, y, 500) : null;
+    const tried = part !== whole && Math.abs(x.length - y.length) <= 500;
+    const found = tried ? charEdits(x, y, 500) : null;
     if (found) {
       out.push(...found.map((e) => ({ start: e.start + at, end: e.end + at, text: e.text })));
       continue;
     }
+    // a charEdits() that gives up has made about 500 rounds over both sides, which are taken from
+    // the cells, hence a chain of parts that each give up ends within the budget
+    if (tried) cells -= 500 * (x.length + y.length);
     let best = 0, bx = 0, by = 0;
     if (x.length * y.length <= cells) {
       cells -= x.length * y.length;
