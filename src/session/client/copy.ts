@@ -199,33 +199,36 @@ async function askEarlier(client: Client, copy: Copy, made: number): Promise<boo
 // edits are older than OLD are deleted
 export async function restore(client: Client): Promise<Copy | null> {
   const st = stateOf(client);
-  let all: Row[];
-  try {
-    all = ((await run('readonly', (s) => s.getAll())) ?? []) as Row[];
-  } catch {
-    st.unavailable = true;
-    return null;
-  }
+  // a record written after the locks are read is of a page that lives
+  const at = Date.now();
   const gone = await goneOf();
-  const dead = all.filter((r) => r.id !== st.id && gone(r));
-  const old = dead.filter((r) => Date.now() - (r.made ?? r.beat) > OLD);
-  const here = dead.filter((r) => r.key === key() && !old.includes(r));
-  const { copy, taken, made } = here.length ? combine(here) : { copy: null, taken: [], made: 0 };
-  st.left = here.length > taken.length;
-  // also of the records left, which rest() merges after the join
-  st.retire = here.flatMap((r) => r.tokens ?? []);
-  if (!old.length && !copy) return null;
-  const files = taken.flatMap((r) => r.files ?? []);
-  if (copy) st.stored = true;
+  let copy = null as Copy | null;
+  let files: Kept[] = [];
+  let made = 0;
   try {
+    // one transaction, which another page that loads at the same moment waits for, hence this page
+    // finds the records taken by the other gone
     await run('readwrite', (s) => {
-      for (const r of [...old, ...taken]) s.delete(r.id);
-      if (copy) s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now(), made, tokens: st.retire } satisfies Row);
+      const q = s.getAll();
+      q.onsuccess = () => {
+        const dead = (q.result as Row[]).filter((r) => r.id !== st.id && r.beat < at && gone(r));
+        const old = dead.filter((r) => Date.now() - (r.made ?? r.beat) > OLD);
+        const here = dead.filter((r) => r.key === key() && !old.includes(r));
+        let taken: Row[];
+        ({ copy, taken, made } = here.length ? combine(here) : { copy: null, taken: [], made: 0 });
+        st.left = here.length > taken.length;
+        // also of the records left, which rest() merges after the join
+        st.retire = here.flatMap((r) => r.tokens ?? []);
+        files = taken.flatMap((r) => r.files ?? []);
+        for (const r of [...old, ...taken]) s.delete(r.id);
+        if (copy) s.put({ id: st.id, key: key(), ...copy, files, beat: Date.now(), made, tokens: st.retire } satisfies Row);
+      };
     });
     st.kept = copy;
   } catch {
     st.unavailable = true;
   }
+  if (copy) st.stored = true;
   if (!copy) return null;
   st.last = copy;
   st.made = made;
