@@ -3,8 +3,9 @@
 // last read from the port, hence an edit of the person that the client has not read yet is kept
 // through every apply and told through onChange after it: an edit typed between two queued
 // applies, a box inserted, a content set, and slides duplicated while an apply waits, and an edit
-// next to an apply that replaces most of the text. an open composition holds back the change of
-// its own slide only, and a page that does not read as its text after an apply asks for a reload
+// next to an apply that replaces most of the text. a key and a remote insertion at one point are
+// both kept, the insertion first. an open composition holds back the change of its own slide only,
+// and a page that does not read as its text after an apply asks for a reload
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -244,6 +245,42 @@ test('during a composition, the changes before and after the composing text are 
   assert.equal(await b.evaluate('window.__results.all'), false);
   assert.equal(await render(b), text);
   assert.deepEqual((await b.evaluate(`${E}.status()`)).problems, []);
+  assert.deepEqual(b.errors, []);
+});
+
+test('a key typed at the point of a remote insertion that waits for its turn is kept after the insertion', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  const text = once(b.source, 'viewer\'s attention.</p>', 'viewer\'s attention.R</p>');
+  const result = await b.evaluate(`(() => {
+    const done = ${E}.apply(${JSON.stringify(text)});
+    document.execCommand('insertText', false, 'k');
+    return done.then((r) => r.reload);
+  })()`);
+  assert.equal(result, false);
+  const want = once(text, 'viewer\'s attention.R</p>', 'viewer\'s attention.Rk</p>');
+  assert.equal(await render(b), want);
+  assert.equal(await sessionText(b), want);
+  assert.deepEqual(b.errors, []);
+});
+
+test('an insertion held back at the end of the composing word is kept with the committed word', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  const text = once(b.source, 'viewer\'s attention.</p>', 'viewer\'s attention. R</p>');
+  await start(b, 'held', text);
+  await b.waitFor(resolved('held'));
+  await b.evaluate(`document.execCommand('insertText', false, 'q')`);
+  const want = once(text, 'viewer\'s attention. R</p>', 'viewer\'s attention. Rq</p>');
+  assert.equal(await b.evaluate(`${E}.session.copy()`), want, 'the text read during the composition');
+  await compose(b, 'compositionend');
+  await b.waitFor(`${P1}?.textContent.endsWith(' Rq')`);
+  assert.equal(await render(b), want);
   assert.deepEqual(b.errors, []);
 });
 
