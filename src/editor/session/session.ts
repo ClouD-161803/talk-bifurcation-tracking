@@ -7,7 +7,7 @@
 import type { App } from '../app.ts';
 import { setServed } from '../commands/origin.ts';
 import { mathLookup, type MathLookup } from '../math.ts';
-import { apply as applyEdits, edits, mergeEdits, type Edit } from '../merge.ts';
+import { apply as applyEdits, charEdits, edits, mergeEdits, type Edit } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
 import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
 import { redrawTex as redrawDeckTex } from '../tex/install.ts';
@@ -123,9 +123,12 @@ export function install(app: App): Port {
   const busy = () => !app.history.settled || app.doc.busy;
   // the text of the deck now, with the edits of the person
   const current = (): string => (clean ? app.source!.text : app.files.render());
+  // the edits from a to b, one per run of changed characters, since one edit of a line around the
+  // keys of two people would clash with an edit of the person between them
+  const fine = (a: string, b: string): Edit[] => charEdits(a, b, 500) ?? edits(a, b);
   // the text of the deck with the changes held back, merged as the authority of the session
   // orders them, since they arrived before the edits of the person
-  const virtual = (deck: string): string => (behind ? mergeEdits(behind.shown, edits(behind.shown, deck), edits(behind.shown, behind.want), 'ours', true).text : deck);
+  const virtual = (deck: string): string => (behind ? mergeEdits(behind.shown, fine(behind.shown, deck), fine(behind.shown, behind.want), 'ours', true).text : deck);
 
   app.listen('open', () => {
     clean = ready();
@@ -397,7 +400,7 @@ export function install(app: App): Port {
     let target = text ?? seen;
     // an edit of the person that the client has not read is kept, and wins at a conflict. the
     // authority orders it after the text, which arrived first
-    if (text !== null && from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours', true).text;
+    if (text !== null && from !== seen) target = mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true).text;
     if (text !== null) handed = text;
     // a rebase that fails has read the source again from the page, which then renders otherwise
     if (rendered && !rebase(rendered, math)) partial(target);
