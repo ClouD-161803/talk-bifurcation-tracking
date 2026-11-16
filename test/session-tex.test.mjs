@@ -39,9 +39,10 @@ before(async () => {
 after(() => browser?.close());
 
 // a talk folder with the deck of test/pages/tex-sheets, the files of names next to it as change
-// returns them, and copies of theme/ and brand/, with the edit command started on it. snapshot()
-// returns the text and the modification time of index.html and of each file of names
-async function texTalk(t, { names = SOURCES, change = (name, text) => text } = {}) {
+// returns them, and copies of theme/ and brand/, with the edit command started on it with the
+// variables of env. snapshot() returns the text and the modification time of index.html and of
+// each file of names
+async function texTalk(t, { names = SOURCES, change = (name, text) => text, env = {} } = {}) {
   const folder = talkFolder(t, DECK);
   for (const name of names) writeFileSync(join(folder.talk, name), change(name, readFileSync(join(DIR, name), 'utf8')));
   for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
@@ -58,7 +59,7 @@ async function texTalk(t, { names = SOURCES, change = (name, text) => text } = {
     if (server.edit) await stopEdit(server.edit);
     rmSync(folder.root, { recursive: true, force: true });
   });
-  server.edit = await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config } });
+  server.edit = await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config, ...env } });
   return server;
 }
 
@@ -254,6 +255,41 @@ test('a page shows that tex.js cannot be written on the host machine, until a wr
   assert.equal(server.read('tex.js'), deckTex(server.file).text, 'tex.js is the one of npm run tex');
   await ann.waitFor(`${STATE} === 'Saved to index.html'`, 30_000);
   clean(ann, MISSING);
+});
+
+test('a page whose fetch of a changed tex.js fails fetches it again, and draws it', { timeout: 300_000 }, async (t) => {
+  // the polls are answered every second, as they are when something changes
+  const server = await texTalk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
+  // window.__texFail of the fetches of tex.js fail, as they do when the page is offline
+  const script = `{
+    window.__texFetches = 0;
+    window.__texFail = 0;
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      if (new URL(input instanceof Request ? input.url : String(input), location.href).pathname.endsWith('/tex.js')) {
+        window.__texFetches++;
+        if (window.__texFail > 0) {
+          window.__texFail--;
+          return Promise.reject(new TypeError('Failed to fetch'));
+        }
+      }
+      return fetched.call(this, input, init);
+    };
+  }`;
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', script });
+  t.after(() => Promise.all([ann.close(), ben.close()]));
+  await converge(server, [ann, ben]);
+  await onEvery([ann, ben], RED);
+  // the fetch of a page that joins, which draws tex.js once
+  await ben.waitFor('window.__texFetches === 1');
+  await ben.evaluate('(window.__texFail = 1)');
+  server.write('tex.js', server.read('tex.js').replace('  "macros": {\n', '  "macros": {\n    "Q": "\\\\mathbb{Q}",\n'));
+  await ben.waitFor('window.__texFetches >= 2 && window.__texFail === 0');
+  await onEvery([ann, ben], `!${RED}`);
+  assert.equal(await ben.evaluate('window.__texFetches'), 3);
+  clean(ann, MISSING);
+  clean(ben, [...MISSING, /Failed to fetch/]);
 });
 
 test('a start of the edit command and a join of two pages do not write any file of the talk folder', { timeout: 180_000 }, async (t) => {
