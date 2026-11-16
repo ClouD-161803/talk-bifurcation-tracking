@@ -117,7 +117,8 @@ function slidesOf(lines) {
 }
 function markMoved(a, b) {
   const inB = slidesOf(b);
-  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]);
+  let end = 0;
+  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
   const best = pairs.map((p) => p[2]), prev = pairs.map(() => -1);
   pairs.forEach((p, i) => pairs.forEach((q, j) => {
     if (j < i && q[1] < p[1] && best[j] + p[2] > best[i]) [best[i], prev[i]] = [best[j] + p[2], j];

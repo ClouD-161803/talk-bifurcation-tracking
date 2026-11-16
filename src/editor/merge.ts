@@ -99,7 +99,10 @@ function slidesOf(lines: string[]): Map<string, number[]> {
 // counted in lines. null when no slide is moved
 function markMoved(a: string[], b: string[]): [string[], string[]] | null {
   const inB = slidesOf(b);
-  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]);
+  // a slide of a stack that is paired whole, which comes before it, moves or stays with the stack,
+  // hence it is not weighed again
+  let end = 0;
+  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
   // the heaviest run in the same order, by dynamic programming over the slides
   const best = pairs.map((p) => p[2]), prev = pairs.map(() => -1);
   pairs.forEach((p, i) => pairs.forEach((q, j) => {
