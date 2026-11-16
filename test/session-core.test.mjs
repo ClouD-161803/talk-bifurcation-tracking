@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { Authority, Replica, apply, changes, checksum, conflict, diff, invert, mergePatches, shift, shiftOffset, tokenize, valid } from '../theme/edit.mjs';
+import { edits, mergeEdits } from '../src/editor/merge.ts';
 import { widen } from '../src/session/patch.ts';
 
 const deck = readFileSync(new URL('../test-deck.html', import.meta.url), 'utf8').replace(/^﻿/, '');
@@ -772,6 +773,22 @@ test('two valid concurrent edits merge into a text with the tag skeleton of one 
     assert.deepEqual(balance(merged), before, `seed ${seed}: a start tag was left without its end`);
   }
   assert.ok(conflicts > 0, 'no two edits conflicted');
+});
+
+const ONE = '<section>\n  <h2>One</h2>\n  <p>First slide</p>\n</section>\n';
+const TWO = '<section>\n  <h2>Two</h2>\n  <p>Second slide</p>\n  <ul>\n    <li>Alpha</li>\n  </ul>\n</section>\n';
+const MOVES = {
+  'inside its slide': [ONE + TWO, ONE + TWO.replace('  <p>Second slide</p>\n', '').replace('</ul>\n', '</ul>\n  <p>Second slide</p>\n')],
+  'to another slide': [ONE + TWO, ONE.replace('</section>', '  <p>Second slide</p>\n</section>') + TWO.replace('  <p>Second slide</p>\n', '')],
+  'back by an undo': [ONE + TWO.replace('  <p>Second slide</p>\n', '').replace('</ul>\n', '</ul>\n  <p>Second slide</p>\n'), ONE + TWO],
+};
+
+test('the merge of the editor keeps a text element that a received text moves, and an unread key in it, once and in its place', () => {
+  for (const [name, [base, moved]] of Object.entries(MOVES)) {
+    const typed = base.replace('Second slide', 'Second slide by Ana');
+    assert.equal(mergeEdits(base, edits(base, typed), edits(base, moved), 'ours', true).text, typed, `moved ${name}, the key unread`);
+    assert.equal(mergeEdits(base, edits(base, moved), edits(base, typed), 'ours', true).text, typed, `moved ${name}, the move unread`);
+  }
 });
 
 test('a replace in every paragraph and a word typed at once in one of them are both in the text at the end', () => {
