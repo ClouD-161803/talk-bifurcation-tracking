@@ -23,7 +23,7 @@ const RESTORE_WAIT = 5000;
 const STYLE = `
 html.beeson-editor.beeson-history { --ed-insp-col: 288px; }
 html.beeson-editor.beeson-history body > .beeson-edit-inspector { display: none; }
-html.beeson-history :is(.beeson-edit-top, .beeson-edit-menubar, .beeson-edit-nav, .beeson-edit-pane, .beeson-edit-bottom) { opacity: 0.45; }
+html.beeson-history :is(.beeson-edit-top, .beeson-edit-menubar, .beeson-edit-nav, .beeson-edit-pane, .beeson-edit-sorter, .beeson-edit-objects, .beeson-edit-bottom) { opacity: 0.45; }
 html.beeson-editor body > .beeson-session-history { grid-area: insp; position: relative; z-index: 50; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; background: var(--ed-panel); border-left: 1px solid var(--ed-line); color: var(--ed-text); font: 12px/1.4 var(--ed-font); }
 html.beeson-editor body > .beeson-session-history[hidden] { display: none; }
 @media (max-width: 855.98px) {

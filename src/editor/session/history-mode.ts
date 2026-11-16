@@ -48,7 +48,7 @@ export function historyShell(app: App): HistoryShell {
     setMode(state, back) {
       on = state;
       esc = back ?? null;
-      for (const el of document.querySelectorAll<HTMLElement>('.beeson-edit-top, .beeson-edit-menubar, .beeson-edit-nav, .beeson-edit-nav-edge, .beeson-edit-canvas, .reveal:not(.beeson-peek), .beeson-edit-pane, .beeson-edit-inspector, .beeson-edit-bottom')) el.inert = state;
+      for (const el of document.querySelectorAll<HTMLElement>('.beeson-edit-top, .beeson-edit-menubar, .beeson-edit-nav, .beeson-edit-nav-edge, .beeson-edit-canvas, .reveal:not(.beeson-peek), .beeson-edit-pane, .beeson-edit-sorter, .beeson-edit-objects, .beeson-edit-inspector, .beeson-edit-bottom')) el.inert = state;
       document.documentElement.classList.toggle('beeson-history', state);
       app.relayout();
     },
