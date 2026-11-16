@@ -400,7 +400,7 @@ export function applyAt(app: App, text: string, w: Window, spot: Spot): Done | n
     // a reload is answered before retag() sets the source, since the deck reads as before at a reload
     const t = startTag(ctx.source, spot.el, text);
     if (t && (redrawn(spot.live, from, t.attrs) || backdropOf(from) !== backdropOf(t.attrs))) return null;
-    if (!retag(ctx.source, spot.el, text)) return within(ctx, spot.el, spot.live);
+    if (!t || !retag(ctx.source, spot.el, text, t)) return within(ctx, spot.el, spot.live);
     // a class or an attribute may be read by the theme or by reveal.js, e.g. a step, where a place
     // or a size in the style is not
     if (setTag(ctx, spot.live, from, spot.el.attrs)) {
