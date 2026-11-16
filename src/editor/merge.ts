@@ -204,12 +204,32 @@ export function charEdits(a: string, b: string, max: number): Edit[] | null {
   return hunks && hunks.map((h) => ({ start: head + h.a0, end: head + h.a1, text: y.slice(h.b0, h.b1) }));
 }
 
-// the edits that turn a into b for a merge of a session, one per run of changed characters, or
-// one per changed line past 500 changed units. an edit is widened so that it cuts neither a tag nor
-// a character reference of b, nor one of a, as the authority widens a patch, hence a merge never
-// writes into a tag that neither side wrote, e.g. a key before a word that another person makes bold
+const WORDS = /\w+|\s+|[^\w\s]+/g;
+
+// the edits that turn a into b, one per run of changed words, each narrowed to the characters that
+// differ, found with the Myers algorithm over the words, spaces, and runs of other characters
+// between the start and the end that a and b share. null when more than max of them differ
+function wordEdits(a: string, b: string, max: number): Edit[] | null {
+  const [head, tail] = shared(a, b);
+  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
+  const xs = x.match(WORDS) ?? [], ys = y.match(WORDS) ?? [];
+  const hunks = diff(xs, ys, max);
+  if (!hunks) return null;
+  const ox = offsets(xs), oy = offsets(ys);
+  return hunks.map((h) => {
+    const old = x.slice(ox[h.a0], ox[h.a1]), text = y.slice(oy[h.b0], oy[h.b1]);
+    const [p, s] = shared(old, text);
+    return { start: head + ox[h.a0] + p, end: head + ox[h.a1] - s, text: text.slice(p, text.length - s) };
+  });
+}
+
+// the edits that turn a into b for a merge of a session, one per run of changed characters, or of
+// changed words past 500 changed units, e.g. for a paste, or of changed lines past 250 changed
+// words. an edit is widened so that it cuts neither a tag nor a character reference of b, nor one
+// of a, as the authority widens a patch, hence a merge never writes into a tag that neither side
+// wrote, e.g. a key before a word that another person makes bold
 export function fine(a: string, b: string): Edit[] {
-  const found = charEdits(a, b, 500) ?? edits(a, b);
+  const found = charEdits(a, b, 500) ?? wordEdits(a, b, 250) ?? edits(a, b);
   if (!found.length) return found;
   // the edits as patches of b back to a, widened to the tokens of b, and turned around again
   let d = 0;
