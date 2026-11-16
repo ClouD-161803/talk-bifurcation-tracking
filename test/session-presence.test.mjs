@@ -467,6 +467,47 @@ test('of two pages that claim one text element at the same time, the smaller cli
   clean(ben);
 });
 
+// the texts of the ranges of each highlight of page by its name, after a frame of the page in front
+const highlights = async (page) => {
+  await front(page);
+  await frame(page);
+  return JSON.stringify(await page.evaluate(`Object.fromEntries([...CSS.highlights].map(([name, h]) => [name, [...h].map((r) => r.toString())]))`));
+};
+// the background of the highlight of name in the element of expression
+const tintOf = (page, expression, name) => page.evaluate(`getComputedStyle(${expression}, '::highlight(${name})').backgroundColor`);
+
+test('the selected text of another person is a highlight in the tone of the person, hidden in a preview, until the selection or the session ends', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  const p = el(1, 'p');
+  await front(ana);
+  await ana.evaluate(`(() => { const p = ${p}; p.focus(); const t = p.firstChild; getSelection().setBaseAndExtent(t, t.length, t, 'Second '.length); })()`);
+  await until(() => ben.evaluate(`${C}.resolved()[0]?.caret?.from === 'Second slide'.length`), 'the selection of Ana on the page of Ben');
+  const name = `beeson-c${await ben.evaluate(`${C}.resolved()[0].color % 4`)}`;
+  await until(async () => (await highlights(ben)) === JSON.stringify({ [name]: ['slide'] }), 'the highlight of the selection of Ana on the page of Ben');
+  assert.notEqual(await tintOf(ben, p, name), 'rgba(0, 0, 0, 0)', 'the highlight has a color');
+  await ben.evaluate(`document.documentElement.classList.add('beeson-previewing')`);
+  assert.equal(await tintOf(ben, p, name), 'rgba(0, 0, 0, 0)', 'the highlight is transparent in a preview');
+  await ben.evaluate(`document.documentElement.classList.remove('beeson-previewing')`);
+  // the highlight is not written into the text
+  assert.ok(!(await ben.evaluate(TEXT)).includes('highlight') && !server.read().includes('highlight'));
+  // a collapsed selection takes the highlight away
+  await front(ana);
+  await ana.evaluate(`getSelection().collapseToEnd()`);
+  await until(async () => (await highlights(ben)) === '{}', 'the highlight to go when Ana collapses the selection');
+  // and Leave Session deletes it
+  await front(ana);
+  await ana.evaluate(`(() => { const t = ${p}.firstChild; getSelection().setBaseAndExtent(t, 0, t, 'Second'.length); })()`);
+  await until(async () => (await highlights(ben)) === JSON.stringify({ [name]: ['Second'] }), 'the highlight of the new selection of Ana');
+  await front(ben);
+  await ben.evaluate(`${C}.leave()`);
+  await until(() => ben.evaluate(`${C}.connection === 'ended'`), 'Ben to leave');
+  assert.equal(await highlights(ben), '{}');
+  clean(ana);
+  clean(ben);
+});
+
 test('the text on each side of a caret is read as 12 characters at most', { timeout: 120_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');

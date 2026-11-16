@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
-import { C, clean, show } from './helpers/client.mjs';
+import { C, clean, converge, show } from './helpers/client.mjs';
 import { boxOf, drawn, el, select, session, untilDrawn } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -196,6 +196,32 @@ test('the caret of a person has a name flag at its top, unless the frame of the 
   assert.ok(Math.abs(e.flag.y + e.flag.h - e.y) < 6 && Math.abs(e.flag.x - e.x) < 6, `the flag sits on the top of the caret, at ${JSON.stringify(e)}`);
   clean(ana);
   clean(ben);
+});
+
+test('two carets in one paragraph are drawn as two bars with the name flags of their people, and a selection of one of them as a highlight outside the text', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy']);
+  for (const page of [ana, ben, cy]) await show(page, 'Two');
+  const p = el(1, 'p');
+  await caretAtEnd(ana, p);
+  await front(ben);
+  await ben.evaluate(`(() => { const p = ${p}; p.focus(); const t = p.firstChild; getSelection().setBaseAndExtent(t, 0, t, 'Second'.length); })()`);
+  await until(() => cy.evaluate(`${C}.resolved().filter((r) => r.caret).length === 2`), 'the carets of Ana and Ben on the page of Cy');
+  const d = await untilDrawn(cy, (d) => d.carets.length === 2, 'the two caret bars on the page of Cy');
+  assert.deepEqual([...new Set(d.flags.map((f) => f.text))].sort(), ['Ana', 'Ben'], 'a name flag of each person');
+  assert.ok(Math.abs(d.carets[0].x - d.carets[1].x) > 20, `the bars are apart, at ${JSON.stringify(d.carets)}`);
+  // the selection of Ben is drawn by the highlight of his tone, which leaves the paragraph as it is
+  const name = `beeson-c${await cy.evaluate(`${C}.resolved().find((r) => r.name === 'Ben').color % 4`)}`;
+  await until(async () => {
+    await front(cy);
+    await frame(cy);
+    return cy.evaluate(`[...(CSS.highlights.get(${JSON.stringify(name)}) ?? [])].map((r) => r.toString()).join() === 'Second'`);
+  }, 'the highlight of the selection of Ben on the page of Cy');
+  assert.equal(await cy.evaluate(`${p}.innerHTML`), 'Second slide');
+  const saved = await converge(server, [ana, ben, cy]);
+  assert.ok(saved.includes('  <p>Second slide</p>') && !saved.includes('beeson-c') && !saved.includes('highlight'), 'the file keeps the paragraph without the highlight');
+  clean(ana);
+  clean(ben);
+  clean(cy);
 });
 
 // the caret of the page in px of the slide: its center, its length, and its angle from upright, from
