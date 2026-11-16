@@ -190,3 +190,30 @@ test('with apart, the merge of the page gives the text of the authority, which a
   }
   assert.ok(cases > 1000, `${cases} pairs of operations that the authority accepts`);
 });
+
+test('a change within one line gives the edit of the line diff, more than half removed gives null, and a change across lines is left to the line diff', () => {
+  let seed = 11;
+  const random = (n) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed % n;
+  };
+  const deck = Array.from({ length: 60 }, (_, i) => `  <p>Line ${i % 7} of a slide, with a word</p>\n`).join('');
+  for (let round = 0; round < 300; round++) {
+    const at = random(deck.length);
+    const end = Math.min(deck.length, at + random(6));
+    const text = Array.from({ length: random(4) }, () => 'aeiow '[random(6)]).join('');
+    if (deck.slice(at, end).includes('\n')) continue;
+    const theirs = deck.slice(0, at) + text + deck.slice(end);
+    const fast = changes(deck, theirs);
+    assert.equal(apply(deck, fast), theirs);
+    assert.ok(fast.length <= 1, `one edit for a change within one line, at ${at}`);
+    // a new first line puts a newline into the part that differs, and the line diff then gives the
+    // same edit for a change of another line
+    if (at <= deck.indexOf('\n')) continue;
+    const lines = changes(deck, `  <p>A new line</p>\n${theirs}`);
+    assert.deepEqual(lines.slice(1), fast, `the edit of the line diff at ${at}`);
+  }
+  assert.equal(changes('  <p>A paragraph of one line</p>\n', '  <p>A</p>\n'), null);
+  const two = changes(deck, deck.replace('Line 1 of', 'Line one of').replace('Line 5 of', 'Line five of'));
+  assert.deepEqual(two.map((e) => e.text), ['one', 'five']);
+});
