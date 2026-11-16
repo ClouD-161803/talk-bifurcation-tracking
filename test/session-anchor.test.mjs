@@ -698,7 +698,7 @@ test('a slide edited in place keeps its threads next to slides inserted, removed
   });
 });
 
-test('a slide replaced by another without words in one operation hands its threads to the deck, unless the two hold the same elements', async (t) => {
+test('a slide replaced by another without words in one operation hands its threads to the deck, unless the two start with the same kind of element', async (t) => {
   const gone = (before, inside, r, k) => {
     const s = slideAround(before, before.indexOf(inside));
     const whole = before.slice(s.start, before.indexOf('</section>', s.start) + 10);
@@ -723,6 +723,20 @@ test('a slide replaced by another without words in one operation hands its threa
     const after = deck(INTRO, MOTIVATION, ['<h2></h2>', '<p></p>'], OUTLOOK2, QUESTIONS);
     const r = move(before, after, [onSlide(before, 'Lower cost')]);
     const slide = slideAround(after, after.indexOf('<h2></h2>'));
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+  });
+  await t.test('a slide of a picture that gains a caption, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<img src="orbit.png">'], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<img src="orbit.png">', '<p>The orbit of the probe.</p>'], OUTLOOK2, QUESTIONS);
+    const r = move(before, after, [onSlide(before, 'orbit.png')]);
+    const slide = slideAround(after, after.indexOf('orbit.png'));
+    assert.deepEqual(r.items[0], { anchor: slide, slide });
+  });
+  await t.test('an empty slide that is filled with other elements under its heading, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<h2></h2>', '<p></p>'], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<h2>Method</h2>', '<ul><li>Shoot from the halo orbit.</li></ul>', '<img src="x.png">'], OUTLOOK2, QUESTIONS);
+    const r = move(before, after, [onSlide(before, '<h2></h2>')]);
+    const slide = slideAround(after, after.indexOf('Method'));
     assert.deepEqual(r.items[0], { anchor: slide, slide });
   });
 });

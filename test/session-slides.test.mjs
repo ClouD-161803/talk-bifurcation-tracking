@@ -142,7 +142,7 @@ test('a slide edited in place next to slides inserted, removed, moved, or edited
   });
 });
 
-test('a slide replaced by another without words is removed in both directions, unless the two hold the same elements', async (t) => {
+test('a slide replaced by another without words is removed in both directions, unless the two start with the same kind of element', async (t) => {
   await t.test('a slide of text replaced by a slide of a picture, and another slide edited', () => {
     const before = deck(INTRO, MOTIVATION, RESULTS, OUTLOOK, QUESTIONS);
     const after = deck(INTRO, MOTIVATION, ['<img src="orbit.png">'], OUTLOOK2, QUESTIONS);
@@ -154,6 +154,18 @@ test('a slide replaced by another without words is removed in both directions, u
     const after = deck(INTRO, MOTIVATION, ['<p></p>', '<img src="x.png">'], OUTLOOK, QUESTIONS);
     assert.deepEqual(changes(before, after), { slides: [3, 4], removed: { slides: [3], elements: 0 } });
     assert.deepEqual(changes(after, before), { slides: [3, 4], removed: { slides: [3], elements: 0 } });
+  });
+  await t.test('a slide of a picture that gains a caption, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<img src="orbit.png">'], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<img src="orbit.png">', '<p>The orbit of the probe.</p>'], OUTLOOK2, QUESTIONS);
+    assert.deepEqual(removedOf(changes(before, after)), []);
+    assert.deepEqual(removedOf(changes(after, before)), []);
+  });
+  await t.test('an empty slide that is filled with other elements under its heading, and another slide edited', () => {
+    const before = deck(INTRO, MOTIVATION, ['<h2></h2>', '<p></p>'], OUTLOOK, QUESTIONS);
+    const after = deck(INTRO, MOTIVATION, ['<h2>Method</h2>', '<ul><li>Shoot from the halo orbit.</li></ul>', '<img src="x.png">'], OUTLOOK2, QUESTIONS);
+    assert.deepEqual(removedOf(changes(before, after)), []);
+    assert.deepEqual(removedOf(changes(after, before)), []);
   });
 });
 
