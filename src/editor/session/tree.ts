@@ -3,7 +3,7 @@
 // into source.text, hence the ranges after a change are moved by the change of its length
 
 import { RAW_TEXT, tokenize, type Range, type Token } from '../tokens.ts';
-import { contentRange, elementRange, segmentsOf, VOID, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
+import { contentRange, decode, elementRange, segmentsOf, VOID, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
 import { fragmentRoot, parseFragment } from '../model/fragments.ts';
 import { isTextElement, type Pairing } from '../render.ts';
 
@@ -158,16 +158,17 @@ export function retag(source: Source, el: SrcEl, text: string): boolean {
 const PRE_LIKE = new Set(['pre', 'textarea', 'listing']);
 
 // the text node at index of parent as the parser reads it from text, a text that differs from
-// source.text only inside the bytes of this node: its decoded text, or null when the change is not
-// one of plain characters, e.g. a character reference, a tag, or a node made empty
+// source.text only inside the bytes of this node: its decoded text, with each character reference
+// decoded as at the parse of the file, or null when the change is a tag or a node made empty
 export function decodedIn(parent: SrcEl, index: number, text: string, d: number): string | null {
   const k = parent.children[index];
   if (k?.kind !== 'text' || RAW_TEXT.has(parent.tag)) return null;
   const raw = text.slice(k.range.start, k.range.end + d);
-  if (raw.includes('<') || raw.includes('&')) return null;
+  if (raw.includes('<')) return null;
   const lead = index === 0 && PRE_LIKE.has(parent.tag) ? (/^\r?\n/.exec(raw)?.[0].length ?? 0) : 0;
   if (lead !== k.lead) return null;
-  const decoded = raw.slice(lead).replace(/\r\n?/g, '\n');
+  const plain = raw.slice(lead).replace(/\r\n?/g, '\n');
+  const decoded = plain.includes('&') ? decode(plain) : plain;
   return decoded ? decoded : null;
 }
 
