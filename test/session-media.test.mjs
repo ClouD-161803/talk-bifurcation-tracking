@@ -487,7 +487,7 @@ test('a guest who changes Match the Mode of a PDF figure whose PDF is over 16 MB
   const before = await converge(server, [ann, gus]);
   await show(gus, 'Two');
   await click(gus, await middle(gus, '.reveal .slides img[data-pdf]'));
-  assert.equal(await run(gus, 'media.matchMode', 'undefined'), 'media/figure.pdf cannot be read on this page, since it is larger than 16 MB, the limit of the relay of the session');
+  assert.equal(await run(gus, 'media.matchMode', 'undefined'), 'media/figure.pdf is over the 16 MB limit of the relay');
   assert.equal(await converge(server, [ann, gus]), before);
   clean(ann);
   clean(gus, [/status of 413 .*media\/figure\.pdf$/]);
@@ -514,7 +514,7 @@ for (const how of ['left the session', 'edits another deck of the talk folder'])
     await gus.waitFor(`[...document.querySelectorAll('.reveal .slides img[data-pdf]')].some((e) => e.getBoundingClientRect().width > 0)`);
     await click(gus, await middle(gus, '.reveal .slides img[data-pdf]'));
     const answer = await gus.evaluate(`window.BeesonEditor.exec('media.matchMode').then(() => 'taken', (e) => e.message)`);
-    assert.equal(answer, 'media/figure.pdf cannot be read on this page, since it is larger than 16 MB, the limit of the relay of the session');
+    assert.equal(answer, 'media/figure.pdf is over the 16 MB limit of the relay');
   });
 }
 
