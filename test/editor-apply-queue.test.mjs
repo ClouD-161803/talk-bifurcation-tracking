@@ -377,6 +377,22 @@ test('a composing text that loses the focus without the end of its composition t
   assert.deepEqual(b.errors, []);
 });
 
+test('a composing text that loses the focus without the end of its composition while nothing is held back is told to the client', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await compose(b, 'compositionstart');
+  await b.evaluate(`document.execCommand('insertText', false, 'q')`);
+  await b.waitFor(`window.__changes > 0`);
+  assert.equal(await b.evaluate(`${E}.session.text().includes("attention.q")`), false, 'the text read during the composition, without the composing text');
+  const told = await b.evaluate('window.__changes');
+  await caretAtEnd(b, `[...document.querySelectorAll('.reveal h2')].find((h) => h.textContent.startsWith('Show your steps'))`);
+  await b.waitFor(`window.__changes > ${told}`, 15_000);
+  assert.equal(await b.evaluate(`${E}.session.text().includes("attention.q")`), true, 'the text read after the focus is lost, with the composing text');
+  assert.deepEqual(b.errors, []);
+});
+
 test('a composing text on a page that is hidden without the end of its composition takes the change held back, and is read from then on', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
