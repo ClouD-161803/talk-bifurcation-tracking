@@ -150,6 +150,44 @@ function changes(base, theirs) {
   }
   return removed > base.length / 2 ? null : out;
 }
+function clash(a, b) {
+  if (a.start < b.end && b.start < a.end) return true;
+  return a.start === a.end && b.start < a.start && a.start < b.end || b.start === b.end && a.start < b.start && b.start < a.end;
+}
+function apply(base, edits2) {
+  const sorted = [...edits2].sort((a, b) => b.start - a.start || b.end - a.end);
+  let text = base;
+  for (const e of sorted) text = text.slice(0, e.start) + e.text + text.slice(e.end);
+  return text;
+}
+function around(base, e) {
+  const run = base.slice(e.start, e.end);
+  if (!run || e.text[0] !== "<") return null;
+  const tag = /<[A-Za-z][^<>]*>/y;
+  while (tag.test(e.text)) {
+    const at = tag.lastIndex;
+    if (e.text.startsWith(run, at) && /^(<\/[^<>]+>)+$/.test(e.text.slice(at + run.length))) return [e.text.slice(0, at), e.text.slice(at + run.length)];
+  }
+  return null;
+}
+function absorb(base, a, b) {
+  let rest = b;
+  const out = a.map((w) => {
+    const tags = around(base, w);
+    const hits = tags ? rest.filter((e) => clash(w, e)) : [];
+    if (!tags || !hits.length || !hits.every((e) => w.start <= e.start && e.end <= w.end && !(e.text + base.slice(e.start, e.end)).includes("<"))) return w;
+    const run = apply(base.slice(w.start, w.end), hits.map((e) => ({ start: e.start - w.start, end: e.end - w.start, text: e.text })));
+    if (!run) return w;
+    rest = rest.filter((e) => !hits.includes(e));
+    return { start: w.start, end: w.end, text: tags[0] + run + tags[1] };
+  });
+  return [out, rest];
+}
+function nest(base, a, b) {
+  const [x, y] = absorb(base, a, b);
+  const [v, u] = absorb(base, y, x);
+  return [u, v];
+}
 var CELLS = 1 << 20;
 
 // src/editor/tokens.ts
@@ -352,7 +390,7 @@ function valid(patches, n, text) {
   }
   return true;
 }
-function apply(text, patches) {
+function apply2(text, patches) {
   if (patches.length === 0) return text;
   const parts = [];
   let at = 0;
@@ -415,7 +453,8 @@ function combine(first2, second) {
   }
   return out;
 }
-function mergePatches(theirs, ours, wins = "ours") {
+function mergePatches(theirs, ours, wins = "ours", base) {
+  if (base !== void 0) [theirs, ours] = nest(base, theirs, ours);
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
   let k = 0, any = false;
   for (let i = 0; i < ours.length; i++) {
@@ -737,7 +776,7 @@ var Authority = class {
     if (n === this.n) return this.text;
     if (!Number.isInteger(n) || n < this.oldest || n > this.n) return null;
     let text = this.text;
-    for (let i = this.log.length - 1; i >= this.log.length - (this.n - n); i--) text = apply(text, this.log[i].inverse);
+    for (let i = this.log.length - 1; i >= this.log.length - (this.n - n); i--) text = apply2(text, this.log[i].inverse);
     return text;
   }
   // the seq of the last operation of client that the text holds, or undefined when the client is not
@@ -816,7 +855,7 @@ var Authority = class {
     patches = patches.filter((p) => p.start !== p.end || p.text !== "");
     const inverse = invert(this.text, patches);
     const lengthBefore = this.text.length;
-    this.text = apply(this.text, patches);
+    this.text = apply2(this.text, patches);
     this.n += 1;
     const op = { v: this.version, client: request.client, seq: request.seq, author: "", time: this.now(), patches, sum: checksum(this.text) };
     const bytes = 64 + patches.reduce((s, p) => s + p.text.length, 0) + inverse.reduce((s, p) => s + p.text.length, 0);
@@ -1313,7 +1352,7 @@ var Disk = class {
       const current = this.authority.text;
       const file = diff2(base, theirs);
       const session = diff2(base, current);
-      const merged = apply(base, mergePatches(session, file, "ours").patches);
+      const merged = apply2(base, mergePatches(session, file, "ours").patches);
       const patches = diff2(current, merged);
       if (patches.length) this.authority.enter(patches, AUTHOR);
     }
@@ -2816,7 +2855,7 @@ var Comments = class {
     let text = this.authority.textAt(n);
     let slides = null;
     for (const op of this.authority.since(formatVersion(this.authority.epoch, n)) ?? []) {
-      const after = apply(text, op.patches);
+      const after = apply2(text, op.patches);
       const r = moveAnchors(text, op.patches, after, [item], slides);
       item = r.items[0];
       slides = r.slides;
@@ -3383,7 +3422,7 @@ var History = class {
     let from = -1;
     for (const k of this.checkpoints.keys()) if (k <= i && k > from) from = k;
     let text = from < 0 ? this.base.text : this.checkpoints.get(from);
-    for (let k = from + 1; k <= i; k++) text = apply(text, this.versions[k].patches);
+    for (let k = from + 1; k <= i; k++) text = apply2(text, this.versions[k].patches);
     return text;
   }
   checkpoint(i, text) {
@@ -3550,7 +3589,7 @@ var History = class {
         this.base = { time: record.time, text: record.text };
         text = record.text;
       } else if (record.kind === "version") {
-        text = apply(text, record.v.patches);
+        text = apply2(text, record.v.patches);
         this.versions.push(record.v);
         this.checkpoint(this.versions.length - 1, text);
         open2 = [];
@@ -5625,7 +5664,7 @@ var Replica = class _Replica {
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
     const both = mergePatches(kept, ours, wins);
     conflicts.push(...both.conflicts);
-    const merged = apply(from, both.patches);
+    const merged = apply2(from, both.patches);
     this.base = text;
     this.mine = merged;
     this.epoch = parsed.epoch;
@@ -5644,7 +5683,7 @@ var Replica = class _Replica {
     const f = this.flight;
     if (!f?.patches) return this.base;
     const accepted = f.accepted !== null && at.epoch === this.epoch && at.n >= f.accepted;
-    return accepted || applied !== void 0 && f.seq <= applied ? apply(this.base, f.patches) : this.base;
+    return accepted || applied !== void 0 && f.seq <= applied ? apply2(this.base, f.patches) : this.base;
   }
   take(op, wins, conflicts, check, dedupe) {
     if (this.needsResync) return;
@@ -5654,7 +5693,7 @@ var Replica = class _Replica {
       this.needsResync = true;
       return;
     }
-    const next = apply(this.base, op.patches);
+    const next = apply2(this.base, op.patches);
     if (op.client === this.flight?.client && op.seq === this.flight.seq) {
       this.flight = null;
     } else if (this.mine === this.base && !this.flight) {
@@ -5664,7 +5703,7 @@ var Replica = class _Replica {
       const flown = this.flight?.patches ? shift(this.flight.patches, theirs, true) : null;
       let merged;
       if (this.flight?.patches && flown) {
-        const mid = apply(this.base, this.flight.patches);
+        const mid = apply2(this.base, this.flight.patches);
         const onMid = shift(theirs, this.flight.patches, false) ?? [];
         merged = this.merge(mid, onMid, wins, conflicts, dedupe);
         this.flight.patches = flown;
@@ -5678,13 +5717,15 @@ var Replica = class _Replica {
     this.n = at.n;
     if (check && checksum(this.base) !== op.sum) this.needsResync = true;
   }
-  // the text with theirs and the patches that turn it into mine
+  // the text with theirs and the patches that turn it into mine. a broadcast operation is merged
+  // with the text, hence a format and the keys of the other side inside its run are both kept, while
+  // the operations missed during a break are shown to the person as conflicts
   merge(text, theirs, wins, conflicts, dedupe) {
     const ours = diff2(text, this.mine);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
-    const merged = mergePatches(kept, ours, wins);
+    const merged = mergePatches(kept, ours, wins, dedupe ? void 0 : text);
     conflicts.push(...merged.conflicts);
-    return apply(text, merged.patches);
+    return apply2(text, merged.patches);
   }
 };
 
@@ -5805,7 +5846,7 @@ export {
   REMOVED_MAX,
   Replica,
   TexWriter,
-  apply,
+  apply2 as apply,
   changes,
   checkAnchors,
   checksum,

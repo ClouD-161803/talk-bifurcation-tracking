@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes } from '../editor/merge.ts';
+import { changes, nest } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -146,8 +146,11 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
-// conflict with a patch of theirs
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours'): { patches: Patch[]; conflicts: Patch[] } {
+// conflict with a patch of theirs. with base, the text of both operations, a format of one side
+// and the edits of plain text of the other side inside its run do not conflict, and both are kept,
+// see nest()
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string): { patches: Patch[]; conflicts: Patch[] } {
+  if (base !== undefined) [theirs, ours] = nest(base, theirs, ours);
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);

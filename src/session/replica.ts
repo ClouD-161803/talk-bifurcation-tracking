@@ -240,11 +240,13 @@ export class Replica {
     if (check && checksum(this.base) !== op.sum) this.needsResync = true;
   }
 
-  // the text with theirs and the patches that turn it into mine
+  // the text with theirs and the patches that turn it into mine. a broadcast operation is merged
+  // with the text, hence a format and the keys of the other side inside its run are both kept, while
+  // the operations missed during a break are shown to the person as conflicts
   private merge(text: string, theirs: Patch[], wins: Side, conflicts: Patch[], dedupe: boolean): string {
     const ours = diff(text, this.mine);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
-    const merged = mergePatches(kept, ours, wins);
+    const merged = mergePatches(kept, ours, wins, dedupe ? undefined : text);
     conflicts.push(...merged.conflicts);
     return apply(text, merged.patches);
   }

@@ -172,6 +172,46 @@ export function edits(base: string, theirs: string): Edit[] {
 
 const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.text === b.text;
 
+// the start tags and the end tags that e puts around the run of base that it replaces, when e does
+// nothing else, i.e. a format such as italic or a link
+function around(base: string, e: Edit): [string, string] | null {
+  const run = base.slice(e.start, e.end);
+  if (!run || e.text[0] !== '<') return null;
+  const tag = /<[A-Za-z][^<>]*>/y;
+  while (tag.test(e.text)) {
+    const at = tag.lastIndex;
+    if (e.text.startsWith(run, at) && /^(<\/[^<>]+>)+$/.test(e.text.slice(at + run.length))) return [e.text.slice(0, at), e.text.slice(at + run.length)];
+  }
+  return null;
+}
+
+// a with each format in it that clashes only with edits of plain text of b inside its run, e.g.
+// keys typed in a word that a makes italic, given these edits in its text, and b without them
+function absorb(base: string, a: Edit[], b: Edit[]): [Edit[], Edit[]] {
+  let rest = b;
+  const out = a.map((w) => {
+    const tags = around(base, w);
+    const hits = tags ? rest.filter((e) => clash(w, e)) : [];
+    if (!tags || !hits.length || !hits.every((e) => w.start <= e.start && e.end <= w.end && !(e.text + base.slice(e.start, e.end)).includes('<'))) return w;
+    const run = apply(base.slice(w.start, w.end), hits.map((e) => ({ start: e.start - w.start, end: e.end - w.start, text: e.text })));
+    // a run that the edits remove is left as a conflict
+    if (!run) return w;
+    rest = rest.filter((e) => !hits.includes(e));
+    return { start: w.start, end: w.end, text: tags[0] + run + tags[1] };
+  });
+  return [out, rest];
+}
+
+// two lists of edits of base in which a format of one list and the edits of plain text of the other
+// list inside the run of this format no longer clash: the format holds these edits, and the other
+// list is left without them. both are thus kept by a merge. two formats of one run, a format
+// inside a run, and a removal of the whole run clash as before
+export function nest(base: string, a: Edit[], b: Edit[]): [Edit[], Edit[]] {
+  const [x, y] = absorb(base, a, b);
+  const [v, u] = absorb(base, y, x);
+  return [u, v];
+}
+
 // the edits of the page, ours, written into theirs. a change of the file equal to an edit of the
 // page is taken once. at a conflict, the edit of the page is kept with prefer set to ours, and the
 // change of the file with prefer set to theirs, and every edit and change outside a conflict is
@@ -183,11 +223,13 @@ export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours'
 
 // the same merge with the changes of the file, all, given as edits of base. with apart, an edit
 // and a change conflict only when they clash, and of two insertions at one point the change comes
-// first, as the authority of a session orders the operation that arrived first. with twice, an
+// first, as the authority of a session orders the operation that arrived first. a format and the
+// edits of plain text inside its run are then both kept, see nest(). with twice, an
 // edit equal to a change is kept as well, e.g. the same letter typed at one point by two people,
 // when it is the only such edit and an insertion. several equal edits are one change that the diff
 // split, e.g. a word replaced by the same word, which is taken once
 export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs', apart = false, twice = false): Merge {
+  if (apart) [ours, all] = nest(base, ours, all);
   const hit = apart ? clash : overlaps;
   const both = ours.filter((o) => all.some((h) => equal(o, h)));
   const keys = twice && both.length === 1 && both[0].start === both[0].end;
