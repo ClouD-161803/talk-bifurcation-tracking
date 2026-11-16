@@ -60,17 +60,24 @@ try {
   <aside class="notes">A new element is faded in, and the earlier ones are dimmed to 45 percent. The last element is first shown alone, and every element is restored to full opacity at one more step, which is added by the theme. At this step, data-complete is set on the section.</aside>
 </section>
 
-<!-- stepped math: a display held with data-keep through the sentence after it, and symbols set with \class
-     colored by a later step with data-highlight, orange for motion and violet with data-tone="violet" for structure -->
-<section>
+<!-- equations: a display with \vb of preamble.tex, whose Coriolis term is colored at a later step with
+     data-highlight, and the Floquet theorem, of a kind defined in preamble.tex, with a citation of references.bib -->
+<section class="wide">
   <h2>Equations are first class citizens</h2>
-  <p>Add a LaTeX equation by clicking the “Formula” icon. Then type it directly in <code>tex</code>.</p>
-  <div class="math fragment" data-fragment-index="2" data-keep style="translate: 0px 150px">\[\ddot x - \class{coriolis}{2\dot y} = -\frac{\partial \class{potential}{\tilde U}}{\partial x},\qquad \ddot y + \class{coriolis}{2\dot x} = -\frac{\partial \class{potential}{\tilde U}}{\partial y},\]</div>
-  <p class="fragment" data-fragment-index="3" style="translate: 0px 146px">where \(\tilde U\) is the effective potential.</p>
-  <p class="fragment" data-fragment-index="4" data-highlight="coriolis" style="translate: 0px 152px">The <span class="coriolis">Coriolis terms</span> couple \(x\) and \(y\).</p>
-  <p class="fragment" data-fragment-index="5" data-highlight="potential" data-tone="violet" style="translate: 0px 158px">The <span class="potential">effective potential</span> gives the dynamics.</p>
-  <p style="translate: 0px -439px" class="fragment" data-fragment-index="1">For instance, the dynamics in the synodic frame of the CR3BP can be expressed as </p>
-  <aside class="notes">The display is held at full opacity through the next step with data-keep, and while a symbol in it is colored at a later step. The Coriolis terms are colored orange, the tone of motion, and the potential violet, the tone of structure.</aside>
+  <ul>
+    <li>Add a LaTeX equation with the “Formula” icon.</li>
+  </ul>
+  <div class="math fragment" data-fragment-index="1" data-keep>\[\ddot{\vb r} + \class{coriolis}{2\,\vb\omega \times \dot{\vb r}} = -\nabla \tilde U\]</div>
+  <ul>
+    <li class="fragment" data-fragment-index="2" data-highlight="coriolis">Color a term at any step, e.g. the <span class="coriolis">Coriolis term</span>.</li>
+    <li class="fragment" data-fragment-index="3">To use your <code>preamble.tex</code>, paste it in File › Preamble.</li>
+    <li class="fragment" data-fragment-index="4">Theorem environments are natively supported.</li>
+  </ul>
+  <p class="theorem fragment" data-fragment-index="4" data-kind="theorem" data-name="Floquet">Every fundamental matrix of \(\dot{\vb x} = \vb A(t)\,\vb x\), with \(\vb A\) of period \(T\), is \(\vb\Phi(t) = \vb P(t)\,e^{\vb B t}\), where \(\vb P\) has period \(T\) and \(\vb B\) is constant<cite data-key="floquet1883"></cite>.</p>
+  <ul>
+    <li class="fragment" data-fragment-index="5">In the editor, <code>\cite{</code> opens a fuzzy search of your <code>references.bib</code>.</li>
+  </ul>
+  <aside class="notes">The equation of motion of the CR3BP in the synodic frame, with its Coriolis term colored orange, the tone of motion. The macro \vb and the kind theorem are defined in preamble.tex. In the Floquet theorem, P(t) is the Floquet change and B the exponent matrix. Each reference is shown at the bottom of the slide with the step of its citation, and a reference with a DOI is a link to its paper.</aside>
 </section>
 
 <section>
@@ -104,9 +111,22 @@ try {
   <aside class="notes">A figure exported with the styles in styles/ is transparent and set in the typeface of the slides.</aside>
 </section>
 
+<!-- a second section slide, which opens the second chapter of the outline, with a backdrop traced from a drawing of src/backdrops.ts -->
+<section class="section">
+  <div class="sec">
+    <h2>Chapter two</h2>
+    <ul class="outline" data-auto></ul>
+  </div>
+  <div class="backdrop" data-backdrop="wideRibbon" data-cx="0.2" data-cy="0" data-half="1.3">
+    <span class="label" data-at="earth" data-dy="36">Earth</span>
+    <span class="label" data-at="moon" data-dy="36">Moon</span>
+  </div>
+  <aside class="notes">Transition slide: unstable and stable manifolds of an \(\mathcal{L}_{1}\) Lyapunov, in orange and violet, respectively.</aside>
+</section>
+
 <!-- code: a box colored by the highlight plugin of reveal.js, with one group of lines per step in data-line-numbers -->
 <section>
-  <h2>Code boxes, you guessed it...</h2>
+  <h2>Embedding code boxes</h2>
   <p>Copy-paste the code into its box, it will be syntax-highlighted. You can animate steps. </p>
   <pre><code class="language-python" data-line-numbers="1-3|4|5-7|8-9">def halo_family():
     members = []
@@ -119,19 +139,6 @@ try {
     return members</code></pre>
   <div class="foot">Natural parameter continuation of a Halo family, from <code>demo/tycho-scene.py</code>.</div>
   <aside class="notes">The groups of lines are given in data-line-numbers, separated by bars, and the first group is lit when the slide is shown. The family is continued in the initial z, and the guess of each member is extrapolated from the two members before it, then corrected by Newton's method.</aside>
-</section>
-
-<!-- a second section slide, which opens the second chapter of the outline, with a backdrop traced from a drawing of src/backdrops.ts -->
-<section class="section">
-  <div class="sec">
-    <h2>Chapter two</h2>
-    <ul class="outline" data-auto></ul>
-  </div>
-  <div class="backdrop" data-backdrop="wideRibbon" data-cx="0.2" data-cy="0" data-half="1.3">
-    <span class="label" data-at="earth" data-dy="36">Earth</span>
-    <span class="label" data-at="moon" data-dy="36">Moon</span>
-  </div>
-  <aside class="notes">Transition slide: unstable and stable manifolds of an \(\mathcal{L}_{1}\) Lyapunov, in orange and violet, respectively.</aside>
 </section>
 
 <!-- a surface: the graph of a function of src/surfaces.ts, whose state is set by the steps with data-surface-state. the terms are colored in blue and red with data-tone and uncolored with data-unhighlight, and the points are picked out with data-surface-points, data-surface-accent, and data-surface-violet -->
@@ -187,61 +194,6 @@ try {
   </div>
   <div class="foot" style="translate: 1064px -20px">A TyCHO mp4 export, see <code>web/scripts/video.mjs</code>.</div>
   <aside class="notes">The stable and the unstable manifolds of an \(\mathcal{L}_{1}\) halo orbit of the Earth–Moon system grow in 20 s and hold for 4 s, in the inertial frame at the top and in the rotating frame at the bottom. The arcs that reach the orbit are blue, the arcs that leave it are orange, the z axis is stretched by five, and the camera turns by 60 degrees in each loop. The clip and its poster are given once for each mode, with the classes for-dark and for-light, since a video does not have a transparent background.</aside>
-</section>
-
-<!-- a preamble: the macros, the environments, and the packages of preamble.tex are written into tex.js by npm run tex and by a save in the editor, and MathJax reads them from there -->
-<section>
-  <h2>Bring your LaTeX preamble</h2>
-  <p>Define the macros of your paper once</p>
-  <pre class="fragment" data-fragment-index="1"><code class="nohighlight">\newcommand{\state}{\boldsymbol{x}}
-\DeclareMathOperator{\Jac}{J}</code></pre>
-  <p class="fragment" data-fragment-index="2">Lines such as these go in <code>preamble.tex</code>, the file next to the deck, and they can be used on every slide.</p>
-  <p class="fragment" data-fragment-index="3">Paste your preamble into the Preamble sheet of the editor. A line that MathJax cannot read is listed there.</p>
-  <aside class="notes">The macros of this deck are in preamble.tex. A macro, an operator, an environment, a kind of theorem, and a package that MathJax has as an extension are read, and a line that is not read is listed by npm run tex and in the Preamble sheet.</aside>
-</section>
-
-<!-- theorems: a paragraph of the class theorem with its kind in data-kind and a name in data-name. the head is drawn by the theme, and a kind defined with \newtheorem in preamble.tex is numbered through the deck -->
-<section class="wide">
-  <h2>State a theorem</h2>
-  <p class="theorem" data-kind="definition">A <em>libration point</em> is a critical point of the effective potential \(\tilde U\).</p>
-  <p class="theorem fragment" data-fragment-index="1" data-kind="theorem" data-name="Euler, Lagrange">The restricted problem has five libration points, three on the axis of the primaries and two at the vertices of equilateral triangles<cite data-key="szebehely1967"></cite>.</p>
-  <p class="theorem fragment" data-fragment-index="2" data-kind="proof">Set \(\nabla \tilde U = 0\). Either \(y = 0\), with one root in each of the three intervals of the axis, or \(\rho_1 = \rho_2 = 1\).</p>
-  <aside class="notes">The head of a theorem is the title of its kind, its number, and its name, in the look of amsthm: a bold head over italic words for a theorem, upright words for a definition, and an italic head and a closing square for a proof. The two kinds of this slide are defined in preamble.tex.</aside>
-</section>
-
-<!-- citations: an empty cite element after the cited words, with the key of an entry of references.bib in data-key. the numbers start at 1 on each slide, and a reference is shown in the footnote line with the step of its citation -->
-<section>
-  <h2>Cite from a .bib file</h2>
-  <p>A citation is the key of an entry of <code>references.bib</code>, and its reference is shown at the bottom of the slide.</p>
-  <ul>
-    <li class="fragment" data-fragment-index="1">Heteroclinic connections join the Lyapunov orbits of \(\mathcal{L}_1\) and \(\mathcal{L}_2\)<cite data-key="koon2000"></cite></li>
-    <li class="fragment" data-fragment-index="2">The same construction is carried to the spatial problem<cite data-key="gomez2004"></cite></li>
-    <li class="fragment" data-fragment-index="3">In the editor, type <code>\cite{</code> to search the bibliography.</li>
-  </ul>
-  <aside class="notes">Each reference is shown with the step of its citation, and a paper cited twice on a slide keeps its number. The references are written into tex.js from references.bib, and a reference with a DOI is a link to its paper.</aside>
-</section>
-
-<!-- TikZ figures: a div.tikz is drawn from figures/name.js, which npm run tex compiles from figures/name.tex, and a span of a part makes the part a step -->
-<section>
-  <h2>TikZ figures in both modes</h2>
-  <p>Keep a <code>tikzpicture</code> in <code>figures/</code>, and run <code>npm run tex</code> to compile it for both modes.</p>
-  <ul>
-    <li class="fragment" data-fragment-index="1">A pgfplots axis is fitted to the box of its figure.</li>
-    <li class="fragment" data-fragment-index="2">A curve with <code>part=y</code> is a step of its slide.</li>
-  </ul>
-  <div class="figure-box tikz" data-figure="decay" style="width: 600px; height: 520px; translate: 0px 140px"><span class="fragment" data-part="x" data-fragment-index="1"></span><span class="fragment" data-part="y" data-fragment-index="2"></span></div>
-  <aside class="notes">The figure is read from figures/decay.tex, whose two curves are read from figures/decay.csv. Each curve is a part, and a span with data-part inside the figure shows it at the step of the span.</aside>
-</section>
-
-<section>
-  <h2>A drawing, with its parts as steps</h2>
-  <p>A drawing without an axis is scaled to the box of its figure, and its text stays at the size of a caption.</p>
-  <ul>
-    <li class="fragment" data-fragment-index="1">The libration points \(\LL{1}\) and \(\LL{2}\) are one part.</li>
-    <li class="fragment" data-fragment-index="2">A loop around \(\LL{2}\) is a second part.</li>
-  </ul>
-  <div class="figure-box tikz" data-figure="libration" style="width: 600px; height: 800px"><span class="fragment" data-part="points" data-fragment-index="1"></span><span class="fragment" data-part="loop" data-fragment-index="2"></span></div>
-  <aside class="notes">The Earth, the Moon, and the libration points of the Earth–Moon system are drawn in the synodic frame, not to scale, and the loop around L2 is drawn as an ellipse. A scope with part=points or part=loop in figures/libration.tex is a part.</aside>
 </section>
 
 <section class="closing">
