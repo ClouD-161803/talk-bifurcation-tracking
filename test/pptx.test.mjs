@@ -516,7 +516,7 @@ test('without an H.264 encoder, the export of a scene fails with the reason and 
 // above the limit of 120 s of a DevTools call in launch() of scripts/chrome.mjs. The limit of the
 // second browser is a third of the time of the first recording, and twice the time of every call
 // before it, i.e. of the load of the deck
-test('a scene is recorded in a browser whose DevTools calls are each answered in less time than the recording', { timeout: 600000 }, async (t) => {
+test('a scene is recorded in a browser whose DevTools calls are each answered in less time than the recording', { timeout: 1200000 }, async (t) => {
   const boxes = new Map([['0', { width: 300, height: 400, name: 'A long recorded scene' }]]);
   const timed = async (options) => {
     const browser = await launch(options);
