@@ -44,8 +44,8 @@ after(() => browser?.close());
 // returns them, and copies of theme/ and brand/, with the edit command started on it with the
 // variables of env. snapshot() returns the text and the modification time of index.html and of
 // each file of names
-async function texTalk(t, { names = SOURCES, change = (name, text) => text, env = {} } = {}) {
-  const folder = talkFolder(t, DECK);
+async function texTalk(t, { names = SOURCES, change = (name, text) => text, env = {}, deck = DECK } = {}) {
+  const folder = talkFolder(t, deck);
   for (const name of names) writeFileSync(join(folder.talk, name), change(name, readFileSync(join(DIR, name), 'utf8')));
   for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
   const server = {
@@ -194,6 +194,90 @@ test('a formula of an open Edit Formula field is applied after the macro that it
     throw new Error(`the field reads ${JSON.stringify(await ann.evaluate(`document.querySelector('.beeson-math')?.innerText ?? null`))}: ${e.message}`);
   });
   clean(ann, MISSING);
+});
+
+const CELL = 'tr[data-case="a macro that is not defined yet"] td';
+const CHANGED = 'Another person changed the formulas of this text. Copy your TeX, close the field, and open the formula again.';
+const FIELD = `JSON.stringify({ open: !!document.querySelector('.beeson-math'), tex: document.querySelector('.beeson-math textarea')?.value ?? null, message: document.querySelector('.beeson-math .error')?.textContent ?? null })`;
+const cellOf = (server) => server.read().match(/<tr data-case="a macro that is not defined yet"><td>(.*?)<\/td><\/tr>/)[1];
+
+// a session of two pages on a deck whose cell of \Q holds cell, with the Edit Formula field of the
+// formula at index of the cell open on the first page, and ^n typed into it
+async function fieldOpen(t, cell, index) {
+  const server = await texTalk(t, { deck: DECK.replace('<td>\\(\\Q\\)</td>', `<td>${cell}</td>`) });
+  const [ann, ben] = await pages(t, server);
+  await show(ben, 'Theorems');
+  await show(ann, 'Macros');
+  await front(ann);
+  await ann.evaluate(`(() => {
+    const c = document.querySelectorAll('${CELL} mjx-container')[${index}];
+    c.focus();
+    c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    return true;
+  })()`);
+  await ann.waitFor(`!!document.querySelector('.beeson-math textarea')`);
+  await press(ann, 'End');
+  await typeKeys(ann, '^n');
+  await ann.waitFor(`document.querySelector('.beeson-math textarea').value.endsWith('^n')`);
+  return { server, ann, ben };
+}
+
+// an operation of a third person, who replaces from with to in the text of index.html
+async function other(server, from, to) {
+  const { port, base } = server.edit;
+  const bo = (await post(port, `${base}.session/hello`, { name: 'Bo' })).json();
+  const at = bo.text.indexOf(from);
+  assert.ok(at >= 0, from);
+  const op = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at + from.length, text: to }] })).json();
+  assert.equal(op.ok, true, JSON.stringify(op));
+}
+
+// Apply of the field of ann, refused with the message of a formula that another person changed
+async function refused(server, ann, ben, cell, tex) {
+  await front(ann);
+  await ann.evaluate(`document.querySelector('.beeson-math textarea').focus(), true`);
+  await press(ann, 'Mod+Enter');
+  await ann.waitFor(`document.querySelector('.beeson-math .error')?.textContent === ${JSON.stringify(CHANGED)}`, 30_000).catch(async (e) => {
+    throw new Error(`the field reads ${await ann.evaluate(FIELD)}, and the cell in index.html ${cellOf(server)}: ${e.message}`);
+  });
+  await converge(server, [ann, ben]);
+  assert.equal(cellOf(server), cell);
+  assert.deepEqual(JSON.parse(await ann.evaluate(FIELD)), { open: true, tex, message: CHANGED });
+}
+
+test('Apply in an open Edit Formula field is refused with a message after another person adds a formula before the edited one in the same text element', { timeout: 300_000 }, async (t) => {
+  const { server, ann, ben } = await fieldOpen(t, '\\(\\half\\) and \\(\\Q\\)', 1);
+  await other(server, '<td>\\(\\half\\) and', '<td>\\(\\vb{y}\\), \\(\\half\\) and');
+  await ann.waitFor(`document.querySelectorAll('${CELL} mjx-container').length === 3`, 30_000);
+  await refused(server, ann, ben, '\\(\\vb{y}\\), \\(\\half\\) and \\(\\Q\\)', '\\Q^n');
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('Apply in an open Edit Formula field is refused with a message after another person removes the edited formula, which leaves another one at its place', { timeout: 300_000 }, async (t) => {
+  const { server, ann, ben } = await fieldOpen(t, '\\(\\Q\\) and \\(\\half\\)', 0);
+  await other(server, '<td>\\(\\Q\\) and ', '<td>');
+  await ann.waitFor(`document.querySelectorAll('${CELL} mjx-container').length === 1`, 30_000);
+  await refused(server, ann, ben, '\\(\\half\\)', '\\Q^n');
+  clean(ann, MISSING);
+  clean(ben, MISSING);
+});
+
+test('Apply in an open Edit Formula field writes the formula after another person changes a different text element', { timeout: 300_000 }, async (t) => {
+  const { server, ann, ben } = await fieldOpen(t, '\\(\\half\\) and \\(\\Q\\)', 1);
+  await other(server, '<td>\\(\\dist\\)</td>', '<td>\\(\\dist\\) and \\(\\vb{y}\\)</td>');
+  await ann.waitFor(`document.querySelectorAll('tr[data-case="a macro of a local package"] mjx-container').length === 2`, 30_000);
+  await front(ann);
+  await ann.evaluate(`document.querySelector('.beeson-math textarea').focus(), true`);
+  await press(ann, 'Mod+Enter');
+  await until(() => cellOf(server) === '\\(\\half\\) and \\(\\Q^n\\)', 'the formula applied in index.html', 30_000).catch(async (e) => {
+    throw new Error(`the field reads ${await ann.evaluate(FIELD)}, and the cell in index.html ${cellOf(server)}: ${e.message}`);
+  });
+  await converge(server, [ann, ben]);
+  assert.ok(server.read().includes('<td>\\(\\dist\\) and \\(\\vb{y}\\)</td>'));
+  assert.equal(await ann.evaluate(`!!document.querySelector('.beeson-math')`), false);
+  clean(ann, MISSING);
+  clean(ben, MISSING);
 });
 
 test('a tex.js replaced from outside, as npm run tex writes it, draws its macros and kinds of theorem on both pages', { timeout: 300_000 }, async (t) => {
