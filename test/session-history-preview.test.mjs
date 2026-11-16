@@ -272,6 +272,27 @@ test('the preview of a text set aside lists the slides on which it differs from 
   clean(ann);
 });
 
+test('the preview of a text set aside that only moved slides lists the slides that read differently at their place', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  // the two slides of the deck in the other order
+  const one = TALK.slice(TALK.indexOf('<section>'), TALK.indexOf('</section>') + '</section>'.length);
+  const two = TALK.slice(TALK.indexOf('<section>', TALK.indexOf('</section>')), TALK.lastIndexOf('</section>') + '</section>'.length);
+  assert.ok(one.includes('<h2>One</h2>') && two.includes('<h2>Two</h2>') && !two.includes('<h2>One</h2>'));
+  const moved = TALK.replace(one, '@@').replace(two, one).replace('@@', two);
+  const aside = await ann.evaluate(`${C}.transport.post('aside', { token: ${C}.token, text: ${JSON.stringify(moved)} })`);
+  await openPane(ann);
+  await tapOrClick(ann, `document.querySelector('${PANE} .row[data-id="aside:${aside.id}"]')`);
+  await ann.waitFor(`!!${FRAME}?.contentWindow?.Reveal?.isReady()`, 30_000);
+  await ann.waitFor(`${CURRENT} === 'Two'`);
+  assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('${BAR} button.slide')].map((b) => b.textContent)`), ['Slide 1', 'Slide 2']);
+  await press$(ann, BAR, 'Slide 2');
+  await ann.waitFor(`${CURRENT} === 'One'`);
+  clean(ann);
+});
+
 test('a new list leaves the bar alone, the text of a version is read once per preview, and a hidden preview keeps nothing', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
