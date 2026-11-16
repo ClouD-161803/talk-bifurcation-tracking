@@ -511,6 +511,12 @@ export class Comments {
     return n;
   }
 
+  // true while an open thread is unread
+  anyUnread(): boolean {
+    for (const t of this.threads.values()) if (!t.resolved && this.unread(t)) return true;
+    return false;
+  }
+
   // the thread of id read by the person. seen is sent up to the oldest comment still unread in
   // another thread, and the time of the thread alone when seen does not reach it
   markRead(id: string): void {

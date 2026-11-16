@@ -972,7 +972,8 @@ const BUTTON_CSS = `
 .beeson-edit-titlebar .right button.beeson-session-comments svg { flex: none; color: var(--ed-muted); }
 .beeson-edit-titlebar .right button.beeson-session-comments[aria-pressed="true"] svg { color: var(--ed-select); }
 .beeson-session-comments .count { min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--ed-select); color: var(--ed-on-select); font: 600 10px/14px var(--ed-font); text-align: center; }
-.beeson-session-comments .count:empty { display: none; }
+.beeson-session-comments .count:empty:not(.dot) { display: none; }
+.beeson-session-comments .count.dot { min-width: 8px; height: 8px; padding: 0; }
 `;
 
 // the comments of a session: the pane in the inspector, the badges, the commands Comment, Comments,
@@ -999,7 +1000,10 @@ export function install(client: Client): void {
   const draw = () => {
     const n = comments.unreadCount();
     if (count.textContent !== (n ? String(n) : '')) count.textContent = n ? String(n) : '';
-    const label = n ? `Comments, ${n} unread` : 'Comments';
+    // a dot in place of the number while only threads outside For You are unread
+    const dot = !n && comments.anyUnread();
+    count.classList.toggle('dot', dot);
+    const label = n ? `Comments, ${n} unread` : dot ? 'Comments, unread threads' : 'Comments';
     button.setAttribute('aria-label', label);
     button.title = label;
     button.setAttribute('aria-pressed', String(shell.tab.shown()));
