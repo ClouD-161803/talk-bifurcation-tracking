@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
-import { Authority, Comments, checksum, diff, slidesOf, startTagAt } from '../theme/edit.mjs';
+import { Authority, Comments, checksum, diff, slidesOf, start, startTagAt } from '../theme/edit.mjs';
 import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const ANN = 'AnnAnnAnnAnnAnnAnnAnn1';
@@ -687,6 +687,78 @@ test('a file of comments that cannot be read is copied aside when it cannot be m
     assert.equal(readFileSync(file, 'utf8'), written);
     assert.match(logged.join('\n'), /read only/);
   });
+});
+
+test('a comments.json that cannot be renamed over refuses a comment at once, lets the edit command answer between the tries of its delayed write, and is written once the rename works', { timeout: 120_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = join(talk, '.session', 'comments.json');
+  // the renames of node:fs for the edit command of this process. a rename onto comments.json fails
+  // with EPERM while held, or for the next busy tries, as while another program holds it on Windows
+  const { renameSync } = fs;
+  const onto = (to) => String(to).endsWith(join('.session', 'comments.json'));
+  let held = false;
+  let busy = 0;
+  let tries = 0;
+  let onTry = null;
+  fs.renameSync = (from, to) => {
+    if (onto(to)) {
+      tries++;
+      onTry?.();
+      if (held || busy > 0) {
+        busy = Math.max(0, busy - 1);
+        throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' });
+      }
+    }
+    return renameSync(from, to);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.renameSync = renameSync;
+    syncBuiltinESMExports();
+  });
+  const running = await start({ folder: talk, port: 0, log: () => {} });
+  t.after(() => running.close());
+  const api = (route) => `/${running.key}/.session/${route}`;
+  const ann = (await post(running.port, api('hello'), { name: 'Ann' })).json();
+  const deck = () => raw(running.port, 'GET', `/${running.key}/index.html`);
+  const base = (await deck()).headers['x-session-version'];
+  const comment = (text) => post(running.port, api('comments'), { token: ann.token, base, anchor: null, slide: null, text });
+  const saved = () => {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+
+  held = true;
+  tries = 0;
+  const refused = await comment('second');
+  assert.equal(refused.status, 503);
+  assert.equal(tries, 3);
+
+  // a read time is written by the delayed write, whose next try waits for its next turn
+  tries = 0;
+  let answeredAfter = null;
+  onTry = () => {
+    if (tries !== 1) return;
+    deck().then((r) => (answeredAfter = r.status === 200 ? tries : r.status));
+  };
+  assert.equal((await post(running.port, api('comments/seen'), { token: ann.token, time: 5 })).status, 200);
+  await until(() => tries >= 2, 'a second try of the delayed write');
+  onTry = null;
+  assert.equal(answeredAfter, 1, 'the deck was answered between the first and the second try of the delayed write');
+  held = false;
+  await until(() => saved()?.seen[ann.person] === 5, 'the read time to be written');
+  assert.equal((await comment('second')).status, 200);
+  assert.deepEqual(saved().comments.map((c) => c.text), ['second']);
+
+  // the last write at a stop is tried again, since nothing waits behind it
+  busy = 5;
+  assert.equal((await post(running.port, api('comments/seen'), { token: ann.token, time: 6 })).status, 200);
+  await running.close();
+  assert.equal(saved().seen[ann.person], 6);
 });
 
 // the comments of a session through its requests. the folder is removed after the edit command
