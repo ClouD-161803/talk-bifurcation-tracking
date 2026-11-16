@@ -246,6 +246,18 @@ test('an agent that changes a line in which a person typed before and after its 
   }
 });
 
+test('a program that changes a line read after a person typed in it keeps the typed words once', { timeout: 60_000 }, async (t) => {
+  for (const [words, line] of [[[' is', ' here'], '<p>The second slide is here now</p>'], [['nih'], '<p>2nd slidenih, see X</p>']]) {
+    const { file, authority, disk } = setup(t, DECK, { quiet: 5, latest: 20, poll: 20 });
+    disk.start();
+    for (const word of words) await typeInto(authority, file, '</p>\n</section>\n</body>', word);
+    const head = authority.text;
+    writeFileSync(file, head.replace(`<p>Second slide${words.join('')}</p>`, line));
+    await until(() => authority.text !== head && readFileSync(file, 'utf8') === authority.text, 'the change of the program to be merged');
+    assert.equal(readFileSync(file, 'utf8').split('\n')[9], `  ${line}`);
+  }
+});
+
 test('an agent that adds a paragraph after a person moved a slide 8 or 9 times keeps each slide once', { timeout: 120_000 }, async (t) => {
   const slides = Array.from({ length: 12 }, (_, i) => `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text of slide ${i}</p>\n</section>\n`);
   const deck = `<!doctype html>\n<html>\n<body>\n${slides.join('')}</body>\n</html>\n`;

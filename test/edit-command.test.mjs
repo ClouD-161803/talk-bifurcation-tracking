@@ -124,6 +124,24 @@ test('the edit command serves a session and writes every edit into index.html', 
     assert.ok((await current()).includes('<h2>Three</h2>'));
   });
 
+  await t.test('a change of a line by another program after an operation in this line keeps the operation once', async () => {
+    await until(async () => text(file) === (await current()), 'the file to be written');
+    const dee = (await post(port, api('hello'), { name: 'Dee' })).json();
+    const at = dee.text.indexOf('Second slide</p>') + 'Second slide'.length;
+    assert.equal((await post(port, api('op'), { token: dee.token, seq: 1, base: dee.v, patches: [{ start: at, end: at, text: 'nih' }] })).json().ok, true);
+    await until(() => text(file).includes('<p>Second slidenih</p>'), 'the operation to be written');
+    const head = await current();
+    writeFileSync(file, head.replace('<p>Second slidenih</p>', '<p>2nd slidenih, see X</p>'));
+    await until(async () => (await current()) !== head && text(file) === (await current()), 'the change of the file to be merged');
+    assert.equal(text(file).split('\n').find((line) => line.includes('2nd')), '  <p>2nd slidenih, see X</p>');
+    // the line is set back, since the next test edits it
+    const again = (await post(port, api('hello'), { name: 'Dee', person: dee.person, client: dee.client })).json();
+    const from = again.text.indexOf('<p>2nd slidenih, see X</p>');
+    const back = { start: from, end: from + '<p>2nd slidenih, see X</p>'.length, text: '<p>Second slide</p>' };
+    assert.equal((await post(port, api('op'), { token: dee.token, seq: 2, base: again.v, patches: [back] })).json().ok, true);
+    await until(async () => text(file).includes('<p>Second slide</p>') && text(file) === (await current()), 'the line to be set back');
+  });
+
   await t.test('an agent that writes a file read before an operation keeps the operation', async () => {
     await until(async () => text(file) === (await current()), 'the file to be written');
     const read = text(file);
