@@ -469,18 +469,30 @@ const real = (text: string, at: number): number => {
 // equal letters at its ends, e.g. " big" or "big " before a space, and each rotation must give the
 // same text. null when an edit of others overlaps the span otherwise, when the span or an
 // insertion of others beside it can be read in two places that give different texts, when an edit
-// of others at an end of the span can be slid over equal letters into it, or when the edits of
-// others are too many to diff
+// of others at an end of the span can be slid over equal letters into it, when the diff of the
+// reversed texts gives another text, or when the edits of others are too many to diff
 export function revert(base: string, target: string, now: string): string | null {
   if (now === base) return target;
   const b = base.replaceAll('&nbsp;', ' '), t = target.replaceAll('&nbsp;', ' '), n = now.replaceAll('&nbsp;', ' ');
   if (b === t) return now;
-  const others = charEdits(b, n, OTHERS);
-  if (!others) return null;
+  // a diff may read a removal and an insertion of equal letters on either side of the span, where
+  // the diff of the reversed texts reads them the other way round. both must give the same text
+  const rev = (s: string) => s.split('').reverse().join('');
+  const ahead = charEdits(b, n, OTHERS), back = charEdits(rev(b), rev(n), OTHERS);
+  if (!ahead || !back) return null;
+  const one = over(ahead, target, now, b, t, n);
+  const two = one === null ? null : over(back.reverse().map((e) => ({ start: b.length - e.end, end: b.length - e.start, text: rev(e.text) })), target, now, b, t, n, false);
+  return two !== null && one!.replaceAll('&nbsp;', ' ') === two.replaceAll('&nbsp;', ' ') ? one : null;
+}
+
+// revert() with the edits others of other people that turn b into n, read by one diff. slid is
+// false for the diff of the reversed texts, which puts an edit at the other end of a run of equal
+// letters, where slides() would refuse it
+function over(others: Edit[], target: string, now: string, b: string, t: string, n: string, slid = true): string | null {
   const [head, tail] = shared(b, t);
   let all = tail;
   while (all < b.length && all < t.length && b[b.length - 1 - all] === t[t.length - 1 - all]) all++;
-  if (slides(others, b, head - Math.min(head, all - tail), b.length - tail)) return null;
+  if (slid && slides(others, b, head - Math.min(head, all - tail), b.length - tail)) return null;
   let got: string | null = null;
   for (let k = 0; k <= Math.min(head, all - tail); k++) {
     const s = head - k, e = b.length - tail - k;
