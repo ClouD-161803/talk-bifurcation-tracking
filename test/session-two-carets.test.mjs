@@ -503,7 +503,7 @@ test('an undo of typing in the speaker notes that cannot be undone says why at t
   assert.equal(await ana.evaluate(`${NOTES}.getClientRects().length`), 0, 'the notes are hidden');
   await run(ana, 'edit.undo');
   const shown = await ana.evaluate(BUBBLE_AT);
-  assert.equal(shown?.text, NOT_UNDONE);
+  assert.equal(shown?.text, NOT_UNDONE.replace('typing', 'typing in the speaker notes'));
   assert.ok(Math.abs(shown.center - shown.middle) < 2 && shown.top < 100, `the bubble is at the top of the window, at ${JSON.stringify(shown)}`);
   assert.equal(aside(await converge(server, pages)), ASIDE.replace('x<', 'x foobar<'));
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
