@@ -639,6 +639,42 @@ test('a draft stays on its element when its page leaves with an edit before it t
   await sees(a, DRAFTED, first, 'the draft after a reload with an edit before it that was not acknowledged');
 });
 
+test('a draft stays on its element when its page leaves without its own edit of the element, which it cannot keep', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // IndexedDB fails, as in a private window, hence the edits that wait are not kept, and the draft
+  // is found only by the start tag of its element in the base
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `IDBFactory.prototype.open = function () { throw new DOMException('refused by the test', 'SecurityError'); };` });
+  await converge(server, [a]);
+  await show(a, 'Two');
+  const first = await drafted(a, el(1, 'li'));
+  assert.deepEqual(first, { label: 'On Item: Alpha', text: 'Half a draft' });
+  await a.evaluate(`(() => {
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      return url.includes('/.session/op') ? new Promise(() => {}) : fetched.call(this, input, init);
+    };
+  })()`);
+  await caretAtEnd(a, el(1, 'li'));
+  await typeKeys(a, ' typed');
+  await a.evaluate(`${C}.port.rebase().then(() => true)`);
+  await a.waitFor(`${C}.app.source.text.includes('Alpha typed') && !${C}.acked()`, 30_000);
+  const count = await loads(a);
+  // the page asks before it leaves with an edit that it cannot keep
+  const accept = setInterval(() => a.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}), 200);
+  accept.unref();
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again', 30_000);
+  clearInterval(accept);
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await converge(server, [a]);
+  assert.ok(!server.read().includes('Alpha typed'), 'the edit that was not kept is gone');
+  await sees(a, DRAFTED, first, 'the draft after a reload that dropped its own edit of the element');
+});
+
 test('a draft goes to its slide, and not to an element that reads the same, when its element is changed or removed while its page is away', { timeout: 660_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
