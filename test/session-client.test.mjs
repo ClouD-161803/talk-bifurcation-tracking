@@ -361,7 +361,7 @@ test('a name held by another person asks whether it is this person, says what Ye
   assert.deepEqual(await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].map((x) => x.textContent)`), ['Use another name', 'Yes, continue']);
   assert.equal(
     await b.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p')?.textContent`),
-    'If you are not this person, choose Use another name. With Yes, continue, you join as this person, and you can edit and delete the comments of this person.',
+    'If you are not this person, choose Use another name. If you continue, you join as this person, and you can edit and delete the comments of this person.',
   );
   await b.evaluate(`[...document.querySelectorAll('dialog.beeson-edit-dialog[open] .row button')].find((x) => x.textContent === 'Use another name').click()`);
   await b.waitFor(`document.querySelector('dialog.beeson-session-join')?.open`);
