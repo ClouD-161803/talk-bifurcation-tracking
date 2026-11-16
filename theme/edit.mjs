@@ -1975,6 +1975,7 @@ import { mkdirSync, readFileSync as readFileSync4, writeFileSync as writeFileSyn
 import { homedir } from "node:os";
 import { join as join3 } from "node:path";
 var RELAY_BODY = 16 * 1024 * 1024;
+var RELAY_ANSWER = 64 * 1024 * 1024;
 var PULLS = 4;
 var FILE_ANSWERS = 8;
 function configFile() {
@@ -2137,7 +2138,7 @@ var RelayLink = class {
       response = { status: 502, headers: { "Content-Type": "text/plain" } };
       body = Buffer.from(e.message);
     }
-    if (body.length > RELAY_BODY) {
+    if (body.length > RELAY_ANSWER) {
       response = { status: 413, headers: { "Content-Type": "text/plain" } };
       body = Buffer.from("the answer is too large for the relay");
     }
