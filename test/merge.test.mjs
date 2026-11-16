@@ -1,10 +1,11 @@
 // the merge of the edits of the page with a file changed since it was read: the changes of the
 // file turn the text that was read into the file, edits and changes in different places are both
-// kept, an overlap is a conflict settled by prefer, and another file is not merged
+// kept, an overlap is a conflict settled by prefer, and another file is not merged. revert()
+// makes the change of an entry of typing again over the edits of other people
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, changes, merge } from '../src/editor/merge.ts';
+import { apply, changes, merge, revert } from '../src/editor/merge.ts';
 
 const base = ['<section>', '  <h2>One</h2>', '  <p>First slide</p>', '</section>', '<section>', '  <h2>Two</h2>', '  <p>Second slide</p>', '</section>', ''].join('\n');
 const at = (text, s) => {
@@ -90,4 +91,46 @@ test('the changes of random edits of a deck turn it into the edited deck', () =>
     const theirs = lines.join('\n');
     assert.equal(apply(deck, changes(deck, theirs)), theirs);
   }
+});
+
+test('revert gives the target when now is the text of the entry, as for a single person', () => {
+  assert.equal(revert('Plan the slide. One.', 'Plan the slide.', 'Plan the slide. One.'), 'Plan the slide.');
+  assert.equal(revert('Plan the slide.', 'Plan the slide. One.', 'Plan the slide.'), 'Plan the slide. One.');
+  assert.equal(revert('Plan', 'Plan', 'Plan'), 'Plan');
+});
+
+test('revert keeps an insertion of another person on each side of the span, and moves the span by the one on its left', () => {
+  // the person typed "complete ", and another person typed "Now " and "first, "
+  const after = 'Design the complete slide, then break it up.';
+  const before = 'Design the slide, then break it up.';
+  const now = 'Now design the complete slide first, then break it up.';
+  assert.equal(revert(after, before, now), 'Now design the slide first, then break it up.');
+  assert.equal(revert(after, before, `Look: ${after.replace('slide,', 'slide first,')}`), 'Look: Design the slide first, then break it up.');
+});
+
+test('revert removes the letters of the person and keeps the same letter typed next to them by another person', () => {
+  // the person typed "aa", and another person typed "a" next to it
+  assert.equal(revert('Xa aaY', 'Xa Y', 'Xa aaaY'), 'Xa aY');
+  assert.equal(revert('Xa aaY', 'Xa Y', 'Xaa aaY'), 'Xaa Y');
+  // the person typed "ab", and another person typed "a" on its left, which the diff of the two
+  // texts places between "a" and "b", inside the span of the person
+  assert.equal(revert('XabY', 'XY', 'XaabY'), 'XaY');
+  assert.equal(revert('Plan the and slide.', 'Plan the slide.', 'Plan the aand slide.'), 'Plan the aslide.');
+});
+
+test('revert gives null for an insertion inside the span that is not beside it, a removal across the span, and too many edits of others', () => {
+  assert.equal(revert('Xabc Y', 'X Y', 'XabZc Y'), null, 'an insertion of another person inside the typing');
+  assert.equal(revert('X abc Y', 'X  Y', 'X aY'), null, 'a removal across the end of the span');
+  assert.equal(revert('X abc Y', 'X  Y', 'Y'), null, 'a removal of the whole span');
+  const after = `${'ab'.repeat(600)}Q`;
+  assert.equal(revert(after, 'ab'.repeat(600), `${'acb'.repeat(600)}Q`), null, 'six hundred insertions of another person');
+  // a long insertion of another person is one edit
+  assert.equal(revert(after, 'ab'.repeat(600), `${'z'.repeat(5000)}${after}`), `${'z'.repeat(5000)}${'ab'.repeat(600)}`);
+});
+
+test('revert in the direction of a redo puts the text of the person back after an insertion of another person on its left', () => {
+  assert.equal(revert('The slide.', 'The complete slide.', 'Look: The slide.'), 'Look: The complete slide.');
+  assert.equal(revert('The slide.', 'The complete slide.', 'The slide. More.'), 'The complete slide. More.');
+  assert.equal(revert('The slide.', 'The complete slide.', 'The side.'), 'The complete side.');
+  assert.equal(revert('The slide.', 'The complete slide.', 'Thlide.'), null, 'a removal across the point of the insertion');
 });
