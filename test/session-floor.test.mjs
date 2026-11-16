@@ -522,6 +522,9 @@ test('a text element that a page moved, or moved back with Undo, is held on this
   await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
   assert.equal(await ben.evaluate(last), false, 'the undo of the move is taken');
   await converge(server, [ana, ben]);
+  // the page of Ben last heard of a hold of Ana more than 30 s ago, and the hold that it reads
+  // late begins when it is read
+  await ben.evaluate(`(${P}.skew += 31_000, true)`);
   await caretAtEnd(ana, p);
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in again to be held on the page of Ben');
   await front(ben);
