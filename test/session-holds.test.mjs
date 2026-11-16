@@ -877,3 +877,47 @@ test('a page that joins while a person pauses ends the hold when the page of thi
   clean(ben);
   clean(cy);
 });
+
+// the next state of the page fails for the page at once, and window.__late.serve() sends it to the
+// edit command afterward, as a request that a relay answered with 504 and that the edit command then
+// serves
+const LATE = `{
+  const fetched = window.fetch;
+  const late = window.__late = { state: 'off', serve: null };
+  window.fetch = function (input, init) {
+    const url = input instanceof Request ? input.url : String(input);
+    if (late.state !== 'armed' || !url.includes('/.session/presence')) return fetched.call(this, input, init);
+    late.state = 'kept';
+    late.serve = () => fetched.call(window, url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: init.body }).then(() => ((late.state = 'served'), true));
+    return Promise.reject(new TypeError('Failed to fetch'));
+  };
+}`;
+
+test('a state of a person who stopped being active that reaches the edit command after a newer state of a key does not end the hold', { timeout: 300_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { pages: [{ script: LATE }, {}] });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  await until(() => ben.evaluate(PAUSED), 'Ana to stop typing on the page of Ben');
+  // the 30 s of Ana pass on her clock, and the state that says so is kept from the edit command
+  await ana.evaluate(`(window.__late.state = 'armed', ${P}.skew += 31000, ${P}.set({}), true)`);
+  await until(() => ana.evaluate(`window.__late.state === 'kept'`), 'the state of Ana that says she is not active to fail for her page');
+  // Ana types again, and the page of Ben hears her key and then the end of her typing
+  await typeKeys(ana, 'X');
+  const typed = `r.name === 'Ana' && r.caret?.at === 'Second slide typedX'.length`;
+  await until(() => ben.evaluate(`${SECOND}.textContent.endsWith('typedX') && ${P}.resolved().some((r) => ${typed} && !r.typing && r.active)`), 'the key of Ana and the end of her typing on the page of Ben');
+  // the kept state now reaches the edit command, and it is the last state of Ana that Ben hears
+  await ana.evaluate(`window.__late.serve()`);
+  await until(() => ben.evaluate(`${P}.resolved().some((r) => r.name === 'Ana' && r.active === false)`), 'the late state of Ana on the page of Ben');
+  assert.equal(await ben.evaluate(HOLDER(SECOND)), 'Ana', 'the paragraph is still held after the late state');
+  await front(ben);
+  await select(ben, SECOND);
+  await unbubble(ben);
+  await ben.evaluate(`${C}.app.commands.run('element.delete')`);
+  await frame(ben);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the delete is refused');
+  await converge(server, [ana, ben]);
+  assert.ok(server.read().includes('Second slide typedX'), 'the paragraph with the key of Ana is in the deck');
+  clean(ana);
+  clean(ben);
+});
