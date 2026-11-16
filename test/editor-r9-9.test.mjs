@@ -12,7 +12,7 @@ import { join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, captured, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -462,16 +462,6 @@ async function selectVideo(page) {
   await page.waitFor(`!!document.querySelector('${PANEL} input[name=poster-frame]:not([disabled])')`, 10000);
 }
 
-// captured waits for the poster captured by a click on the Poster Frame slider, i.e. for a file
-// other than before, and fails with the message of a capture that fails. the capture waits up to
-// 60 s for the video to load and 60 s for its seek, see src/editor/media/poster.ts
-async function captured(page, before) {
-  const failed = `window.BeesonEditor.status().message.includes('video')`;
-  await page.waitFor(`window.BeesonEditor.render() !== ${js(before)} || ${failed}`, 150000);
-  const message = (await page.evaluate('window.BeesonEditor.status()')).message;
-  assert.ok((await render(page)) !== before, `the poster is not captured: ${message}`);
-}
-
 // undoRedoKeys asserts that the keys of Undo and Redo, with the focus left on the control,
 // take the deck back to before and forward to edited
 async function undoRedoKeys(page, platform, before, edited, control) {
@@ -491,7 +481,7 @@ for (const platform of PLATFORMS) {
     const before = await render(page);
     const r = await rectOf(page, `${PANEL} input[name=poster-frame]`);
     await click(page, { x: r.left + r.width * 0.6, y: r.top + r.height / 2 });
-    await captured(page, before);
+    await captured(page, `window.BeesonEditor.render() !== ${js(before)}`);
     const poster = await render(page);
     await undoRedoKeys(page, platform, before, poster, 'input.range');
 
@@ -547,7 +537,7 @@ test('other: a poster is captured from the Poster Frame slider when each seek of
   const before = await render(page);
   const r = await rectOf(page, `${PANEL} input[name=poster-frame]`);
   await click(page, { x: r.left + r.width * 0.6, y: r.top + r.height / 2 });
-  await captured(page, before);
+  await captured(page, `window.BeesonEditor.render() !== ${js(before)}`);
   assert.ok(await page.evaluate('window.__lateSeeks.length > 0'), 'no seek of the capture is delayed');
   assert.match(await render(page), /poster="media\/clip-light\.png"/);
   assert.deepEqual(errors(page), []);
@@ -644,7 +634,7 @@ async function playInPlace(t, platform, late = 0) {
   // the frame at half of the video, captured as the poster
   const r = await rectOf(page, `${PANEL} input[name=poster-frame]`);
   await click(page, { x: r.left + r.width * 0.5, y: r.top + r.height / 2 });
-  await captured(page, page.source);
+  await captured(page, `window.BeesonEditor.render() !== ${js(page.source)}`);
   const edited = await render(page);
   const undo = (await state(page, 'edit.undo')).label;
   const from = (await page.evaluate(PLAYED)).slider;

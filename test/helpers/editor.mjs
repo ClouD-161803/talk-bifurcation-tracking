@@ -207,6 +207,18 @@ export async function previewFrames(page, timeout = 60000) {
 }
 
 /**
+ * Waits for the expression done after a poster is captured by a click on the Poster Frame slider or
+ * by a key, and fails with the message of a capture that fails. The capture waits up to 60 s for its
+ * copy of the video to load and 60 s for each seek, see src/editor/media/poster.ts.
+ */
+export async function captured(page, done) {
+  const failed = `/\\b(the|this) video\\b|the poster/.test(window.BeesonEditor.status().message)`;
+  await page.waitFor(`(${done}) || ${failed}`, 150000);
+  const { message } = await page.evaluate('window.BeesonEditor.status()');
+  assert.ok(await page.evaluate(done), `the poster is not captured: ${message}`);
+}
+
+/**
  * Saves into a file of the origin private file system, opens the saved text again, and returns it
  * with the status after the open, whose problems must be empty. The page must be served over HTTP.
  */

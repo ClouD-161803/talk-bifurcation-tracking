@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { center, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { captured, center, click, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const LISTS = 'test/pages/editor-r13-3.html';
@@ -346,9 +346,7 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`!!document.querySelector('${POSTER}:not([disabled])')`, 10000);
     const r = await page.evaluate(`(() => { const r = document.querySelector(${js(POSTER)}).getBoundingClientRect(); return { x: r.left + r.width * 0.6, y: r.top + r.height / 2 }; })()`);
     await click(page, r);
-    // the capture of the poster waits up to 60 s for the video to load and 60 s for its seek, see
-    // src/editor/media/poster.ts
-    await page.waitFor(`window.BeesonEditor.render() !== ${js(page.source)}`, 150000);
+    await captured(page, `window.BeesonEditor.render() !== ${js(page.source)}`);
     const poster = await render(page);
     assert.deepEqual(await held(page), { els: ['video'], focus: 'input.range', same: false });
     await press(page, 'Mod+Z');
