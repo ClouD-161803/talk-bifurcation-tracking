@@ -289,7 +289,7 @@ test('undo and redo of a picture that the edit command renamed', { timeout: 120_
   clean(ann);
 });
 
-test('a picture over 16 MB is refused on the host as well, and a video of the host up to 64 MB is not', { timeout: 120_000 }, async (t) => {
+test('a picture over 16 MB is refused on the host as well, a video of the host up to 64 MB is not, and a file of another kind is refused by its extension', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -300,6 +300,9 @@ test('a picture over 16 MB is refused on the host as well, and a video of the ho
   assert.equal(await refuse('big.png', 'image/png', 15), null);
   assert.equal(await refuse('big.mp4', 'video/mp4', 17), null);
   assert.equal(await refuse('big.mp4', 'video/mp4', 65), 'big.mp4 is larger than 64 MB, the largest file that can be sent to the others');
+  assert.equal(await refuse('IMG_2041.heic', 'image/heic', 1), 'IMG_2041.heic cannot be sent to the others, since a session does not take .heic files. Save it as a PNG or a JPEG.');
+  assert.equal(await refuse('clip.MKV', 'video/x-matroska', 1), 'clip.MKV cannot be sent to the others, since a session does not take .mkv files. Save it as an MP4 or a WebM.');
+  assert.equal(await refuse('scan', '', 1), 'scan cannot be sent to the others, since a session does not take files without an extension. Save it as a PNG or a JPEG.');
   clean(ann);
 });
 
