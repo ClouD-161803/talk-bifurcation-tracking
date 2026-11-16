@@ -779,3 +779,21 @@ test('the merge of an apply in a session keeps the item or paragraph after one t
     assert.ok(text.includes('Last!') && text.includes('<p>Para</p>'), `${next}: the key of Bob and the paragraph of Alice are kept`);
   }
 });
+
+test('in the merge of the editor, a swap of two list items that differ in one character keeps a key at the end of one item in this item, in both orders', () => {
+  const from = '<section>\n  <h2>Two</h2>\n  <ul>\n    <li>Beta 1</li>\n    <li>Beta 2</li>\n  </ul>\n</section>\n';
+  const moved = from.replace('    <li>Beta 1</li>\n    <li>Beta 2</li>\n', '    <li>Beta 2</li>\n    <li>Beta 1</li>\n');
+  const typed = from.replace('Beta 1', 'Beta 1 by Ana');
+  for (const [ours, all] of [[typed, moved], [moved, typed]]) assert.ok(mergeEdits(from, fine(from, ours), fine(from, all), 'ours', true).text.includes('<li>Beta 1 by Ana</li>'));
+});
+
+test('in the merge of the editor, a paragraph moved together with a long paste on another slide is in the deck once around an unread key in it', () => {
+  const one = '<section>\n  <h2>One</h2>\n  <p>First slide</p>\n</section>\n';
+  const two = '<section>\n  <h2>Two</h2>\n  <p>Second slide</p>\n  <ul>\n    <li>Alpha</li>\n  </ul>\n</section>\n';
+  const from = `${one}\n${two}`;
+  const long = Array.from({ length: 90 }, (_, i) => `word${i}`).join(' ');
+  const moved = `${one.replace('</section>', `  <p>${long}</p>\n</section>`)}\n${two.replace('  <p>Second slide</p>\n', '').replace('</ul>\n', '</ul>\n  <p>Second slide</p>\n')}`;
+  const text = mergeEdits(from, fine(from, from.replace('Second slide', 'Second slide by Ana')), fine(from, moved), 'ours', true).text;
+  assert.equal(text.split('Second slide').length - 1, 1);
+  assert.equal(text.split('word89').length - 1, 1);
+});
