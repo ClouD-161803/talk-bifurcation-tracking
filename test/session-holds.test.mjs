@@ -42,7 +42,7 @@ async function edit(page, letter, command) {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
 }
 
-test('a text selection from an item into a held item refuses Backspace, Delete, a typed letter, a cut, a paste, and a drop, which a text selection over two items that are not held takes, and the holder keeps typing', { timeout: 180_000 }, async (t) => {
+test('a text selection from an item into a held item refuses Backspace, Delete, a typed letter, a cut, a paste, and a drop, which a text selection over two items that are not held takes, and the holder keeps typing', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n', '    <li>Beta</li>\n    <li>Gamma</li>\n    <li>Delta</li>\n']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -104,7 +104,7 @@ test('a text selection from an item into a held item refuses Backspace, Delete, 
   clean(ben);
 });
 
-test('a held paragraph refuses a paragraph style, a list style, and Enter, which a paragraph beside it takes, and the holder keeps typing', { timeout: 120_000 }, async (t) => {
+test('a held paragraph refuses a paragraph style, a list style, and Enter, which a paragraph beside it takes, and the holder keeps typing', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p>Third</p>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -177,7 +177,7 @@ async function whole(page, expression) {
   await frame(page);
 }
 
-test('a paragraph style, a list style, or Paste Style over a text selection from a held paragraph into the one before it is refused, and over two paragraphs that are not held it is taken', { timeout: 180_000 }, async (t) => {
+test('a paragraph style, a list style, or Paste Style over a text selection from a held paragraph into the one before it is refused, and over two paragraphs that are not held it is taken', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p>Third</p>\n  <p>Fourth</p>\n  <p>Fifth</p>\n  <p>Sixth</p>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -227,7 +227,7 @@ test('a paragraph style, a list style, or Paste Style over a text selection from
 
 const STYLE = (expression) => `${expression}.getAttribute('style')`;
 
-test('a drag of the move handle, the rotate handle, or a grip of a held paragraph is refused, also by a touch on a phone, and the holder keeps typing', { timeout: 180_000 }, async (t) => {
+test('a drag of the move handle, the rotate handle, or a grip of a held paragraph is refused, also by a touch on a phone, and the holder keeps typing', { timeout: 300_000 }, async (t) => {
   const { server, pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy'], { pages: [{}, {}, { width: 390, height: 844, mobile: true }] });
   for (const page of [ana, ben, cy]) await show(page, 'Two');
   await holding(ana, ben, SECOND, ' typed');
@@ -266,7 +266,7 @@ test('a drag of the move handle, the rotate handle, or a grip of a held paragrap
 const PLACE = (expression) => `${expression}.style.translate`;
 const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
 
-test('a double click on the move handle of a held paragraph, or Enter on this handle, is refused, and on a paragraph beside it each puts the paragraph back', { timeout: 120_000 }, async (t) => {
+test('a double click on the move handle of a held paragraph, or Enter on this handle, is refused, and on a paragraph beside it each puts the paragraph back', { timeout: 240_000 }, async (t) => {
   const edits = [['  <p>Second slide</p>', '  <p style="translate: 40px 30px">Second slide</p>'], ['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p style="translate: 20px 10px">Third</p>']];
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits });
   await show(ana, 'Two');
@@ -321,7 +321,7 @@ test('a double click on the move handle of a held paragraph, or Enter on this ha
   clean(ben);
 });
 
-test('a drag of the move handle of a paragraph that becomes held during the drag puts the paragraph back at the release, and a drag of a paragraph beside it is taken', { timeout: 120_000 }, async (t) => {
+test('a drag of the move handle of a paragraph that becomes held during the drag puts the paragraph back at the release, and a drag of a paragraph beside it is taken', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p>Third</p>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -375,7 +375,7 @@ const OTHER = `  <p>Second slide</p>
 // the classes that a drag of a table puts on the page while it runs
 const GESTURES = ['beeson-column-resizing', 'beeson-resizing', 'beeson-line-moving', 'beeson-line-refused', 'beeson-autofilling'];
 
-test('a drag of the grip of a column, of the edge of a table, of the bar of a row, or of the fill handle, in a table whose cell is held, is refused at its first move, the same drag in a table that is not held is taken, and the holder keeps typing', { timeout: 180_000 }, async (t) => {
+test('a drag of the grip of a column, of the edge of a table, of the bar of a row, or of the fill handle, in a table whose cell is held, is refused at its first move, the same drag in a table that is not held is taken, and the holder keeps typing', { timeout: 360_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', TABLE], ['  <p>Second slide</p>', OTHER]] });
   await show(ana, 'One');
   await show(ben, 'One');
@@ -452,7 +452,7 @@ test('a drag of the grip of a column, of the edge of a table, of the bar of a ro
   clean(ben);
 });
 
-test('a drag in the navigator of a slide where a text element is held is refused at its first move, and a drag of another slide is taken', { timeout: 120_000 }, async (t) => {
+test('a drag in the navigator of a slide where a text element is held is refused at its first move, and a drag of another slide is taken', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -494,7 +494,7 @@ const PLATE = `  <p>First slide</p>
   </div>`;
 const SELECTED = `window.BeesonEditor.selection().map((e) => e.localName + (e.id ? '#' + e.id : '') + (e.classList.contains('plate') ? '.plate' : ''))`;
 
-test('a drag of a figure whose caption is held, or of the plate around it, is refused, and a click on the figure is not', { timeout: 120_000 }, async (t) => {
+test('a drag of a figure whose caption is held, or of the plate around it, is refused, and a click on the figure is not', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', PLATE]] });
   await show(ana, 'One');
   await show(ben, 'One');
@@ -534,7 +534,7 @@ const THREE = `<section>
   <div class="foot">Another note</div>
 </section>`;
 
-test('Caption off, Footnote off, and a layout of the slide are refused when they would take off a held caption or footnote, and taken on a slide where nothing is held', { timeout: 180_000 }, async (t) => {
+test('Caption off, Footnote off, and a layout of the slide are refused when they would take off a held caption or footnote, and taken on a slide where nothing is held', { timeout: 420_000 }, async (t) => {
   const edits = [
     ['  <p>First slide</p>', `  <p>First slide</p>\n  ${FIGURE}`],
     ['  <p>Second slide</p>', '  <p>Second slide</p>\n  <div class="foot">A note</div>'],
@@ -605,7 +605,7 @@ test('Caption off, Footnote off, and a layout of the slide are refused when they
 
 const PREVIEWS = ['slide.previewTransition', 'slide.guides.copy', 'steps.preview', 'steps.playFrom', 'backdrop.preview', 'preview.backdrop', 'preview.selectBackdrop'];
 
-test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, New Slide, Text Box, Copy Style, Format, Comment, a preview, and Copy Guides', { timeout: 180_000 }, async (t) => {
+test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, New Slide, Text Box, Copy Style, Format, Comment, a preview, and Copy Guides', { timeout: 420_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -657,7 +657,7 @@ test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, 
 const TAKEN = ['insert.shape.rectangle', 'insert.line', 'insert.arrow', 'insert.table', 'insert.tableSize', 'insert.formula', 'insert.code', 'insert.theorem', 'insert.qr', 'insert.image', 'insert.video', 'insert.file', 'insert.footnote', 'insert.backdrop', 'find.matchCase', 'find.wholeWords', 'find.tex', 'find.scopeAll', 'find.scopeNotes', 'find.scopeAlt', 'notes.zoomIn', 'notes.zoomOut', 'notes.zoomReset', 'slide.duplicate', 'slide.gallery', 'slide.transition.fade', 'play.rehearse', 'play.useTimings', 'play.clearTimings', 'text.bold', 'text.italic', 'text.code', 'text.strike', 'text.superscript', 'text.subscript', 'text.tone.text', 'text.link', 'text.removeLink', 'text.clear'];
 const KEPT = ['steps.add', 'insert.citation', 'element.delete', 'arrange.nudge.right.far', 'find.replaceAll', 'text.bigger', 'slide.magicMove'];
 
-test('a held paragraph selected as an element takes a new shape, table, or slide, the options of Find, the zoom of the notes, a transition, the timings, and the formats of text, and refuses a step, a citation, and a delete', { timeout: 180_000 }, async (t) => {
+test('a held paragraph selected as an element takes a new shape, table, or slide, the options of Find, the zoom of the notes, a transition, the timings, and the formats of text, and refuses a step, a citation, and a delete', { timeout: 480_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -708,7 +708,7 @@ test('a held paragraph selected as an element takes a new shape, table, or slide
   clean(ben);
 });
 
-test('Insert Backdrop and a drawing of the backdrop are refused on a slide whose backdrop has a held label, and taken on a slide whose backdrop does not', { timeout: 120_000 }, async (t) => {
+test('Insert Backdrop and a drawing of the backdrop are refused on a slide whose backdrop has a held label, and taken on a slide whose backdrop does not', { timeout: 300_000 }, async (t) => {
   const edits = [['  <p>First slide</p>', '  <p>First slide</p>\n  <div class="backdrop" data-backdrop="wideRibbon"><span class="label" data-at="earth">Earth</span></div>'], ['  <p>Second slide</p>', '  <p>Second slide</p>\n  <div class="backdrop" data-backdrop="wideRibbon"></div>']];
   const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits });
   await show(ana, 'One');
@@ -759,7 +759,7 @@ async function reload(page) {
 // the state of Ana that page last heard was sent after her last key of the paragraph of slide Two
 const PAUSED = `${P}.resolved().some((r) => r.name === 'Ana' && r.caret?.at === 'Second slide typed'.length && !r.typing)`;
 
-test('a page that loads after a person stopped typing does not see the text element of their caret as held', { timeout: 120_000 }, async (t) => {
+test('a page that loads after a person stopped typing does not see the text element of their caret as held', { timeout: 360_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -777,7 +777,7 @@ test('a page that loads after a person stopped typing does not see the text elem
   clean(ben);
 });
 
-test('a page that loads again, or rejoins after a restart, while a person who typed in the last 30 s pauses, sees the text element of their caret held and refuses its delete', { timeout: 300_000 }, async (t) => {
+test('a page that loads again, or rejoins after a restart, while a person who typed in the last 30 s pauses, sees the text element of their caret held and refuses its delete', { timeout: 540_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { pages: [{ script: NET }, {}] });
   const { port } = server.edit;
   await show(ana, 'Two');

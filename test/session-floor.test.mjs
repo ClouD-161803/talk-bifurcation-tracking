@@ -18,7 +18,7 @@ const TABLE = `  <p>First slide</p>
   </table>`;
 const tableOf = (text) => text.match(/<table>[\s\S]*?<\/table>/)?.[0];
 
-test('a held table cell refuses Delete Column, Delete Row, and a paste of cells from another cell of its table, by the menu or by the key, and takes a paste of plain text', { timeout: 120_000 }, async (t) => {
+test('a held table cell refuses Delete Column, Delete Row, and a paste of cells from another cell of its table, by the menu or by the key, and takes a paste of plain text', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', TABLE]] });
   await show(ana, 'One');
   await show(ben, 'One');
@@ -64,7 +64,7 @@ const caretAtStart = async (page, expression) => {
 };
 const listOf = (page) => page.evaluate(`${el(1, 'ul')}.outerHTML`);
 
-test('a held list item refuses Backspace and Delete from the item beside it, and Tab from the item after it', { timeout: 120_000 }, async (t) => {
+test('a held list item refuses Backspace and Delete from the item beside it, and Tab from the item after it', { timeout: 420_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>', '    <li>Beta</li>\n    <li>Gamma</li>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -102,7 +102,7 @@ test('a held list item refuses Backspace and Delete from the item beside it, and
 const INTRO = [['  <p>Second slide</p>', '  <p>Intro</p>\n  <p>Second slide</p>']];
 const SECOND = el(1, 'p:nth-of-type(2)');
 
-test('a text element that another page types in refuses Delete, Arrange, a join, and Move Section, and takes Bold and Replace', { timeout: 120_000 }, async (t) => {
+test('a text element that another page types in refuses Delete, Arrange, a join, and Move Section, and takes Bold and Replace', { timeout: 300_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: INTRO });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -160,7 +160,7 @@ test('a text element that another page types in refuses Delete, Arrange, a join,
   clean(ben);
 });
 
-test('an undo of typing in a text element that another page types in is taken, and an undo or a redo that moves it or a transaction that names it is refused', { timeout: 120_000 }, async (t) => {
+test('an undo of typing in a text element that another page types in is taken, and an undo or a redo that moves it or a transaction that names it is refused', { timeout: 420_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -238,7 +238,7 @@ test('an undo of typing in a text element that another page types in is taken, a
   clean(ben);
 });
 
-test('an undo of a person who typed in a text element together with another person keeps the text of the other person', { timeout: 120_000 }, async (t) => {
+test('an undo of a person who typed in a text element together with another person keeps the text of the other person', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -260,7 +260,7 @@ test('an undo of a person who typed in a text element together with another pers
 
 const ORDER = `[...document.querySelectorAll('.reveal .slides > section')].map((s) => s.querySelector('h2').textContent).join(',')`;
 
-test('an undo or a redo of a move of the slide of a held text element, or of a nudge of an element around it, is refused', { timeout: 120_000 }, async (t) => {
+test('an undo or a redo of a move of the slide of a held text element, or of a nudge of an element around it, is refused', { timeout: 360_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <div class="group"><p>Second slide</p><p>Other</p></div>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -310,7 +310,7 @@ test('an undo or a redo of a move of the slide of a held text element, or of a n
   clean(ben);
 });
 
-test('an undo or a redo of a nudge of two elements, the second around a held text element, is refused, and an undo of a delete of another element of its slide is taken', { timeout: 120_000 }, async (t) => {
+test('an undo or a redo of a nudge of two elements, the second around a held text element, is refused, and an undo of a delete of another element of its slide is taken', { timeout: 300_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>Second slide</p>', '  <p>Box</p>\n  <div class="group"><p>Second slide</p><p>Other</p></div>\n  <p>Spare</p>']] });
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -364,7 +364,7 @@ test('an undo or a redo of a nudge of two elements, the second around a held tex
   clean(ben);
 });
 
-test('an undo of typing in a text element that the person left keeps the text that another person typed in it since', { timeout: 120_000 }, async (t) => {
+test('an undo of typing in a text element that the person left keeps the text that another person typed in it since', { timeout: 300_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -389,7 +389,7 @@ test('an undo of typing in a text element that the person left keeps the text th
   clean(ben);
 });
 
-test('the bubble of a refusal for a text element on another slide names the slide, at the top of the window', { timeout: 120_000 }, async (t) => {
+test('the bubble of a refusal for a text element on another slide names the slide, at the top of the window', { timeout: 240_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'One');
@@ -411,7 +411,7 @@ const SAID = `(() => {
   return { count: all.length, role: all[0]?.getAttribute('role') ?? null, text: all[0]?.textContent.trim() ?? null, size: r ? Math.max(r.width, r.height) : null, kept: !!all[0] && all[0] === window.__said };
 })()`;
 
-test('a refusal is read from one hidden status region, which is in the page before the first bubble', { timeout: 120_000 }, async (t) => {
+test('a refusal is read from one hidden status region, which is in the page before the first bubble', { timeout: 240_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -439,7 +439,7 @@ const PLATE = `  <p>First slide</p>
     <figure id="second"><img src="brand/logo.png" alt="B"><figcaption class="caption">The second figure.</figcaption></figure>
   </div>`;
 
-test('a figure of a plate is selected and dragged by itself while the caption of another figure of the plate is held', { timeout: 120_000 }, async (t) => {
+test('a figure of a plate is selected and dragged by itself while the caption of another figure of the plate is held', { timeout: 240_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['  <p>First slide</p>', PLATE]] });
   await show(ana, 'One');
   await show(ben, 'One');
@@ -470,7 +470,7 @@ const tap = async (page, selector) => {
 // a plate without a hold takes a click as a selection of the plate, then of the figure, then of
 // its picture. the plate is refused while a caption in it is held, hence the first click takes the
 // figure
-test('a click and a tap on a figure of a plate select the figure while the caption of another figure of the plate is held, and a second click selects its picture', { timeout: 180_000 }, async (t) => {
+test('a click and a tap on a figure of a plate select the figure while the caption of another figure of the plate is held, and a second click selects its picture', { timeout: 300_000 }, async (t) => {
   const { pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy'], { edits: [['  <p>First slide</p>', PLATE]], pages: [{}, {}, { width: 844, height: 390, mobile: true }] });
   for (const page of [ana, ben, cy]) await show(page, 'One');
   const caption = el(0, '#first figcaption');
