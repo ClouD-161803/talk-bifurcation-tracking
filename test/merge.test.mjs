@@ -761,3 +761,21 @@ test('outside a session, a key in a paragraph that the file moves is a conflict,
   assert.equal(merged.conflicts.length, 1);
   assert.equal(merged.text, theirs.replace('<h2>One</h2>\n', '<h2>One</h2>\n  <p>My first slide</p>\n'));
 });
+
+test('the merge of an apply in a session keeps the item or paragraph after one that two people delete when one of them also moves a paragraph to the next slide, in both orders', () => {
+  const deck = (...slides) => slides.map((s) => `<section>\n  <h2>${s[0]}</h2>\n${s.slice(1).map((l) => `  ${l}\n`).join('')}</section>\n`).join('');
+  const unread = (from, mine, others) => mergeEdits(from, fine(from, mine), fine(from, others), 'ours', true, true).text;
+  const lists = ['<li></li>', '<li>Same</li>'].map((next) => [next, ['One', '<ul>', '  <li>Method</li>', '  <li>Same words</li>', `  ${next}`, '</ul>', '<p>Para</p>'], '    <li>Same words</li>\n']);
+  for (const [next, one, cut] of [...lists, ['<p>Same words 2</p>', ['One', '<p>Method</p>', '<p>Same words</p>', '<p>Same words 2</p>', '<p>Para</p>'], '  <p>Same words</p>\n']]) {
+    const from = deck(one, ['Two', '<p>Last</p>']);
+    const gone = from.replace(cut, '');
+    const alice = gone.replace('  <p>Para</p>\n', '').replace('  <p>Last</p>\n', '  <p>Last</p>\n  <p>Para</p>\n');
+    const bob = gone.replace('Last', 'Last!');
+    for (const [how, text] of [['the edits of Alice unread', unread(from, alice, bob)], ['the edits of Bob unread', unread(from, bob, alice)]]) {
+      assert.ok(text.includes(`  ${next}\n`), `${next}, ${how}: the next element is kept`);
+      for (const h of ['One', 'Two']) assert.ok(text.includes(`<h2>${h}</h2>`), `${next}, ${how}: the slide ${h} is kept`);
+    }
+    const text = unread(from, alice, bob);
+    assert.ok(text.includes('Last!') && text.includes('<p>Para</p>'), `${next}: the key of Bob and the paragraph of Alice are kept`);
+  }
+});
