@@ -6,7 +6,8 @@
 // poster of a video and the picture of the other mode are files of the store as well, and they are
 // uploaded the same way. a file that the edit command would refuse is refused when it is added.
 // a file refused anyway with a status that another try cannot change is given up, i.e. sent to the
-// others only as its path, and named in the save state while the text names it
+// others only as its path, and named in the save state while the text names it, until the page
+// loads again, after which nothing names the missing file
 
 import type { MediaFile } from '../../editor/media/store.ts';
 import type { SrcEl } from '../../editor/source.ts';
@@ -220,7 +221,7 @@ export function install(client: Client): void {
     if (client.ended) return true;
     const named = store.unsaved(text);
     const lost = named.find((f) => given.has(f));
-    const line = lost ? `${lost.path} was not sent to the others, since ${given.get(lost)}` : null;
+    const line = lost ? `${lost.path} is not in the talk folder, since ${given.get(lost)}. Delete it from the deck, or add the file to media/ by hand.` : null;
     if (line !== st.lost) {
       st.lost = line;
       client.refresh();

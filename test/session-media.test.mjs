@@ -329,6 +329,8 @@ test('the save state of a failed upload is cleared once the deck no longer names
   clean(ann, PROXIED);
 });
 
+const LOST = 'media/plot.png is not in the talk folder, since the body is larger than the limit of the relay. Delete it from the deck, or add the file to media/ by hand.';
+
 test('an upload that the session refuses although the page did not is given up and named in the save state, and the later edits of the page reach index.html', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -338,14 +340,14 @@ test('an upload that the session refuses although the page did not is given up a
   p.next('large');
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
-  await ann.waitFor(`${STATE} === 'media/plot.png was not sent to the others, since the body is larger than the limit of the relay'`, 10_000);
+  await ann.waitFor(`${STATE} === ${JSON.stringify(LOST)}`, 10_000);
   assert.equal(await ann.evaluate(ACTION), null);
   await edit(ann, 1, 'p', ' typed');
   const text = await converge(server, [ann]);
   assert.match(text, /<p>Second slide typed<\/p>/);
   assert.deepEqual(sources(text)[0], ['media/plot.png']);
   assert.equal(p.puts, 1);
-  assert.equal(await ann.evaluate(STATE), 'media/plot.png was not sent to the others, since the body is larger than the limit of the relay');
+  assert.equal(await ann.evaluate(STATE), LOST);
   // the save state is cleared once the deck no longer names the picture
   await keys(ann, 'Mod+Z');
   await keys(ann, 'Mod+Z');
