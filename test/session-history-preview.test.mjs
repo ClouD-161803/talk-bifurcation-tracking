@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
@@ -290,6 +291,56 @@ test('the preview of a text set aside that only moved slides lists the slides th
   assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('${BAR} button.slide')].map((b) => b.textContent)`), ['Slide 1', 'Slide 2']);
   await press$(ann, BAR, 'Slide 2');
   await ann.waitFor(`${CURRENT} === 'One'`);
+  clean(ann);
+});
+
+test('a slide chosen in the bar while the page of a preview is loading is shown once the page is loaded', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  // a picture that is answered only once the test lets it go, which holds the load of the page
+  const waiting = [];
+  let free = false;
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const answer = (res) => res.writeHead(200, { 'content-type': 'image/png' }).end(png);
+  const pictures = createServer((_, res) => (free ? answer(res) : waiting.push(res)));
+  await new Promise((done) => pictures.listen(0, '127.0.0.1', done));
+  const release = () => {
+    free = true;
+    waiting.splice(0).forEach(answer);
+  };
+  t.after(() => {
+    release();
+    pictures.close();
+  });
+  const picture = `\n  <img src="http://127.0.0.1:${pictures.address().port}/held.png" alt="">`;
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const loading = `!!${FRAME}?.contentWindow?.Reveal?.isReady() && ${FRAME}.contentDocument.readyState !== 'complete'`;
+
+  // a text set aside in which both slides differ, and which opens on its first slide
+  const text = TALK.replace('<h2>One</h2>', '<h2>One aside</h2>').replace('<h2>Two</h2>', `<h2>Two aside</h2>${picture}`);
+  const aside = await ann.evaluate(`${C}.transport.post('aside', { token: ${C}.token, text: ${JSON.stringify(text)} })`);
+  await openPane(ann);
+  await tapOrClick(ann, `document.querySelector('${PANE} .row[data-id="aside:${aside.id}"]')`);
+  await ann.waitFor(loading, 30_000);
+  await press$(ann, BAR, 'Slide 2');
+  assert.equal(await ann.evaluate(loading), true, 'the page was still loading at the press');
+  release();
+  await ann.waitFor(`${FRAME}.contentDocument.readyState === 'complete'`, 30_000);
+  await ann.waitFor(`${CURRENT} === 'Two aside'`, 30_000);
+
+  // a version in which both slides changed, shown after the text set aside
+  free = false;
+  await write(server, ann, TALK.replace('<h2>One</h2>', '<h2>One changed</h2>').replace('<h2>Two</h2>', `<h2>Two changed</h2>${picture}`), 'Two changed');
+  await nameNow(ann, 'Both');
+  await tapOrClick(ann, rowByTitle('Both'));
+  await ann.waitFor(loading, 30_000);
+  assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('${BAR} button.slide')].map((b) => b.textContent)`), ['Slide 1', 'Slide 2']);
+  await press$(ann, BAR, 'Slide 2');
+  assert.equal(await ann.evaluate(loading), true, 'the page was still loading at the press');
+  release();
+  await ann.waitFor(`${FRAME}.contentDocument.readyState === 'complete'`, 30_000);
+  await ann.waitFor(`${CURRENT} === 'Two changed'`, 30_000);
   clean(ann);
 });
 
