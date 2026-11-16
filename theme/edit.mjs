@@ -263,14 +263,17 @@ function anchored(a, b) {
     }
     if (tried) cells -= 500 * (x.length + y.length);
     let best = 0, bx = 0, by = 0;
-    if (x.length * y.length <= cells) {
+    const k = y.indexOf(x), j = k < 0 ? x.indexOf(y) : -1;
+    if (k >= 0) [best, bx, by] = [x.length, 0, k];
+    else if (j >= 0) [best, bx, by] = [y.length, j, 0];
+    else if (x.length * y.length <= cells) {
       cells -= x.length * y.length;
       let prev = new Uint32Array(y.length + 1), row = new Uint32Array(y.length + 1);
       for (let i = 1; i <= x.length; i++) {
-        for (let j = 1; j <= y.length; j++) {
-          const v = x.charCodeAt(i - 1) === y.charCodeAt(j - 1) ? prev[j - 1] + 1 : 0;
-          row[j] = v;
-          if (v > best) [best, bx, by] = [v, i - v, j - v];
+        for (let j2 = 1; j2 <= y.length; j2++) {
+          const v = x.charCodeAt(i - 1) === y.charCodeAt(j2 - 1) ? prev[j2 - 1] + 1 : 0;
+          row[j2] = v;
+          if (v > best) [best, bx, by] = [v, i - v, j2 - v];
         }
         [prev, row] = [row, prev];
       }

@@ -319,7 +319,12 @@ function anchored(a: string, b: string): Edit[] | null {
     // the cells, hence a chain of parts that each give up ends within the budget
     if (tried) cells -= 500 * (x.length + y.length);
     let best = 0, bx = 0, by = 0;
-    if (x.length * y.length <= cells) {
+    // a side that holds the other whole, e.g. a paste around a run that did not change, is split at
+    // its first occurrence, which the cells would give as well, at linear cost
+    const k = y.indexOf(x), j = k < 0 ? x.indexOf(y) : -1;
+    if (k >= 0) [best, bx, by] = [x.length, 0, k];
+    else if (j >= 0) [best, bx, by] = [y.length, j, 0];
+    else if (x.length * y.length <= cells) {
       cells -= x.length * y.length;
       let prev = new Uint32Array(y.length + 1), row = new Uint32Array(y.length + 1);
       for (let i = 1; i <= x.length; i++) {
