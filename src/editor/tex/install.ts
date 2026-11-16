@@ -69,10 +69,13 @@ export function citationPane(app: App): Control[] {
 // whether the deck loads the tex.js next to it, rather than the tex.js of another folder
 const ownTex = (): boolean => [...document.scripts].some((s) => s.src === new URL('tex.js', location.href).href);
 
-/** The deck drawn again with the tex.js next to it, after the edit command of a session counted a change of it. */
+/** The deck drawn again with the tex.js next to it, after the edit command of a session counted a change of it. Rejects when it fails. */
 export function redrawTex(app: App): Promise<void> {
   if (!ownTex()) return Promise.resolve();
-  return load().then((s) => s.redraw()).catch((e) => app.fail(e));
+  return load().then((s) => s.redraw()).catch((e) => {
+    app.fail(e);
+    throw e;
+  });
 }
 
 // the text of a slide with the caret, which a citation can be put into
@@ -169,8 +172,8 @@ export function install(app: App): void {
   // folder of the deck to be chosen
   const open = (which: Which) => load().then((s) => void s.open(which).catch((e) => app.fail(e)));
   // in a session, the sources are the files of the talk folder, which the edit command reads
-  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'In a session, the host edits preamble.tex in the talk folder' : null), run: () => open('preamble') });
-  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'In a session, the host edits references.bib in the talk folder' : null), run: () => open('bibliography') });
+  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in preamble.tex' : null), run: () => open('preamble') });
+  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in references.bib' : null), run: () => open('bibliography') });
   app.commands.define({
     id: 'insert.citation',
     label: 'Citation…',

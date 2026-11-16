@@ -120,8 +120,9 @@ export class Client {
 
   // the version after the operations taken from the last answer, which the next poll asks after
   private since: Version = '';
-  // the count of the changes of tex.js of the last answer. a count that differs, also after a
-  // restart of the edit command, draws the deck again with tex.js
+  // the count of the changes of tex.js of the last answer. a count that differs draws the deck again
+  // with tex.js. each run of the edit command counts from the time of its start, hence a page draws
+  // it once when it joins, and once after a restart
   private tex = 0;
   // counts the hellos after the first, so that a poll sent before one is not taken
   private generation = 0;
@@ -707,7 +708,7 @@ export class Client {
       return;
     }
     this.texCount(answer.tex);
-    if (answer.writeError !== undefined) this.setWarning(answer.writeError ? `The deck cannot be written on the host's machine: ${answer.writeError.message}` : null);
+    if (answer.writeError !== undefined) this.setWarning(answer.writeError ? `${answer.writeError.file ?? 'The deck'} cannot be written on the host's machine: ${answer.writeError.message}` : null);
     this.people = answer.people;
     this.presence = answer.presence;
     this.emit('people');
@@ -736,8 +737,12 @@ export class Client {
 
   private texCount(count: number): void {
     if (typeof count !== 'number' || count === this.tex) return;
+    const was = this.tex;
     this.tex = count;
-    void this.port.redrawTex();
+    // a redraw that failed, e.g. at a fetch of tex.js, is tried again at the next answer
+    this.port.redrawTex().catch(() => {
+      if (this.tex === count) this.tex = was;
+    });
   }
 
   private receive(ops: AppliedOp[]): void {

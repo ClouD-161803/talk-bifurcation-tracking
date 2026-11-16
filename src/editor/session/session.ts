@@ -28,8 +28,9 @@ export type Applied = { reload: boolean; changed: Element[] };
 // with the edits of the person at any time, and leaves the text handed to the client as it is.
 // rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
 // into the source, e.g. so that offsetOf knows an element made since the last apply. redrawTex()
-// draws the deck again with the tex.js next to it, after the edit command counted a change of it.
-// served() tells whether an edit command serves the page, see commands/origin.ts
+// draws the deck again with the tex.js next to it, after the edit command counted a change of it,
+// and rejects when it fails. served() tells whether an edit command serves the page, see
+// commands/origin.ts
 export type Port = {
   text(): string;
   copy(): string;

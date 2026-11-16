@@ -2333,8 +2333,11 @@ var People = class {
     // the write of index.html that failed last, or null once a write succeeded, and its revision
     this.writeError = null;
     this.writeRev = 0;
-    // the changes of tex.js on disk, by the edit command or by another program
-    this.texRev = 0;
+    // the message of the write of tex.js that failed last, or null once a write succeeded
+    this.texError = null;
+    // the changes of tex.js on disk, by the edit command or by another program, counted from the time
+    // of the start in ms, which a later run does not repeat
+    this.texRev = Date.now();
     this.ended = null;
     this.saveTimer = null;
     this.savedAt = 0;
@@ -2490,6 +2493,14 @@ var People = class {
     this.writeRev++;
     this.changed();
   }
+  // a write of tex.js that failed, or null once a derivation does not fail, told to every page as a
+  // write of index.html that failed is, when no write of index.html failed
+  texFailed(message) {
+    if (message === this.texError) return;
+    this.texError = message;
+    this.writeRev++;
+    this.changed();
+  }
   // tex.js changed on disk, told to every page, which draws the deck again with it
   texChanged() {
     this.texRev++;
@@ -2610,7 +2621,7 @@ var People = class {
     const presence = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
     const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
-    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
+    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError ?? (this.texError === null ? null : { message: this.texError, unwritten: 0, file: "tex.js" });
     if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i], since));
     return answer;
   }
@@ -3516,6 +3527,31 @@ function texOf(preamble, bibliography, html) {
   const { macros, environments, packages, theorems } = preamble;
   return { tex: { macros, environments, packages, theorems, references }, missing: missing2 };
 }
+function folderTex(read, html) {
+  const names = {
+    input: (name) => /\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name],
+    package: (name) => [`${name}.sty`],
+    class: (name) => [`${name}.cls`]
+  };
+  const find = (name, kind) => {
+    for (const file of names[kind](name)) {
+      const found = read(file);
+      if (found !== null) return { file, text: found };
+    }
+    return null;
+  };
+  const preamble = readPreamble(read("preamble.tex") ?? "", { file: "preamble.tex", resolve: find });
+  const bibliography = readBibtex(read("references.bib") ?? "");
+  return { preamble, bibliography, ...texOf(preamble, bibliography, html) };
+}
+function skippedLines(preamble, bibliography, missing2, deck) {
+  const short = (statement) => statement.length > 100 ? `${statement.slice(0, 99)}\u2026` : statement;
+  return [
+    ...preamble.skipped.map((s) => `${s.file}:${s.line}: ${short(s.text)}: ${s.reason}`),
+    ...bibliography.skipped.map((s) => `references.bib:${s.line}: ${short(s.text)}: ${s.reason}`),
+    ...missing2.map((key) => `${deck}: the key ${key} is cited, and it is not in references.bib`)
+  ];
+}
 var ascii = (value) => JSON.stringify(value).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 function texScript(tex) {
   const lines = ["// written from preamble.tex and references.bib by npm run tex and by a save in the editor.", "// change the two sources, since this file is written again from them", "window.beesonTex = {"];
@@ -3531,7 +3567,6 @@ function texScript(tex) {
 
 // src/edit/tex.ts
 var STABLE2 = 300;
-var signature2 = (s) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 var keysOf = (html) => citedKeys(html).sort().join(",");
 function deriveTex(dir, html) {
   const files = /* @__PURE__ */ new Map();
@@ -3539,7 +3574,7 @@ function deriveTex(dir, html) {
   const text = (name) => {
     const file = join5(dir, name);
     try {
-      files.set(name, signature2(statSync3(file)));
+      files.set(name, signature(statSync3(file)));
       return readFileSync6(file, "utf8");
     } catch (e) {
       const code = e.code;
@@ -3548,22 +3583,8 @@ function deriveTex(dir, html) {
       return null;
     }
   };
-  const names = {
-    input: (name) => /\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name],
-    package: (name) => [`${name}.sty`],
-    class: (name) => [`${name}.cls`]
-  };
-  const find = (name, kind) => {
-    for (const file of names[kind](name)) {
-      const found = text(file);
-      if (found !== null) return { file, text: found };
-    }
-    return null;
-  };
-  const preamble = readPreamble(text("preamble.tex") ?? "", { file: "preamble.tex", resolve: find });
-  const bibliography = readBibtex(text("references.bib") ?? "");
-  const { tex } = texOf(preamble, bibliography, html);
-  return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread };
+  const { preamble, bibliography, tex, missing: missing2 } = folderTex(text, html);
+  return { text: texScript(tex), files, sources: files.get("preamble.tex") !== "" || files.get("references.bib") !== "", unread, skipped: skippedLines(preamble, bibliography, missing2, "index.html") };
 }
 var TexWriter = class {
   // html is the text of index.html at the start. the files are read for their signatures, and
@@ -3574,13 +3595,22 @@ var TexWriter = class {
     // the derivations and the polls run one at a time
     this.chain = Promise.resolve();
     this.due = false;
+    // the signatures of the sources after a stable change of them, which the derivation that is due
+    // follows, or null
+    this.settled = null;
     this.polling = false;
     this.stopped = false;
+    // the reason of the write of tex.js that failed last, which is tried again at each poll
+    this.failure = null;
+    // the skipped lines and the keys without an entry logged last
+    this.skipped = "";
     this.dir = dir;
     this.file = join5(dir, "tex.js");
     this.log = options.log ?? (() => {
     });
     this.onChange = options.onChange ?? (() => {
+    });
+    this.onWriteError = options.onWriteError ?? (() => {
     });
     this.stable = options.stable ?? STABLE2;
     this.html = html;
@@ -3621,7 +3651,8 @@ var TexWriter = class {
   run(task) {
     return this.chain = this.chain.then(task).catch((e) => this.log(`tex.js: ${e.message}`));
   }
-  derive() {
+  derive(settled = null) {
+    this.settled = settled ?? this.settled;
     if (this.due) return;
     this.due = true;
     void this.run(() => {
@@ -3636,8 +3667,11 @@ var TexWriter = class {
 ${sig}`).join("\n");
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
       if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
-      else if (now - this.sourcesSeen.at >= this.stable) this.derive();
-    } else this.sourcesSeen = null;
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive(new Map(sigs));
+    } else {
+      this.sourcesSeen = null;
+      if (this.failure !== null) this.derive();
+    }
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
       if (this.texSeen?.sig !== tex) this.texSeen = { sig: tex, at: now };
@@ -3650,40 +3684,63 @@ ${sig}`).join("\n");
   }
   async write() {
     const html = this.html;
+    const settled = this.settled;
+    this.settled = null;
     const derived = deriveTex(this.dir, html);
-    this.keys = keysOf(html);
-    this.watched = derived.files;
-    this.sourcesSeen = null;
-    if (!derived.sources) return;
+    const base = settled ?? this.watched;
+    if ([...derived.files].some(([name, sig]) => base.has(name) && base.get(name) !== sig)) return;
+    const settle = () => {
+      this.keys = keysOf(html);
+      this.watched = derived.files;
+      this.sourcesSeen = null;
+      if (this.failure === null) return;
+      this.failure = null;
+      this.onWriteError(null);
+    };
+    if (!derived.sources) return settle();
     if (derived.unread.length) {
+      settle();
       this.log(`tex.js is not written, since ${derived.unread.join(", and ")}`);
       return;
     }
+    if (derived.skipped.join("\n") !== this.skipped) {
+      this.skipped = derived.skipped.join("\n");
+      for (const line of derived.skipped) this.log(line);
+    }
     const old = await readFile2(this.file, "utf8").catch(() => null);
-    if (old === derived.text) return;
+    if (old === derived.text) {
+      settle();
+      if (settled) this.onChange();
+      return;
+    }
     const tmp = join5(this.dir, `.tex.js.${randomBytes5(6).toString("hex")}.tmp`);
     try {
       await writeFile4(tmp, derived.text);
       const made = await stat3(tmp);
       await renameRetried(tmp, this.file);
-      this.texSig = signature2(made);
+      settle();
+      this.texSig = signature(made);
       this.texSeen = null;
       this.onChange();
     } catch (e) {
       await unlink3(tmp).catch(() => {
       });
+      const reason = e.code ?? e.message;
+      if (reason === this.failure) return;
+      this.failure = reason;
       this.log(`could not write ${this.file}: ${e.message}`);
+      this.onWriteError(e.message);
     }
   }
 };
 function sigOf(file) {
   try {
-    return signature2(statSync3(file));
+    return signature(statSync3(file));
   } catch {
     return "";
   }
 }
-var statSig = (file) => stat3(file).then(signature2, () => "");
+var statSig = (file) => stat3(file).then(signature, () => "");
 
 // src/edit/command.ts
 var DEFAULT_PORT = 8765;
@@ -3820,7 +3877,7 @@ async function start(options = {}) {
   const appliedFile = join6(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const appliedTable = new AppliedTable(appliedFile, log);
-  const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged() });
+  const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged(), onWriteError: (m) => people.texFailed(m) });
   const onWritten = (n, written2) => {
     if (authority.written(n)) appliedTable.write(authority.table());
     tex.written(written2);

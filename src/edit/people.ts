@@ -90,8 +90,11 @@ export class People {
   // the write of index.html that failed last, or null once a write succeeded, and its revision
   private writeError: WriteError | null = null;
   private writeRev = 0;
-  // the changes of tex.js on disk, by the edit command or by another program
-  private texRev = 0;
+  // the message of the write of tex.js that failed last, or null once a write succeeded
+  private texError: string | null = null;
+  // the changes of tex.js on disk, by the edit command or by another program, counted from the time
+  // of the start in ms, which a later run does not repeat
+  private texRev = Date.now();
   private sweeper: ReturnType<typeof setInterval>;
   private ended: Ended | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -272,6 +275,15 @@ export class People {
     this.changed();
   }
 
+  // a write of tex.js that failed, or null once a derivation does not fail, told to every page as a
+  // write of index.html that failed is, when no write of index.html failed
+  texFailed(message: string | null): void {
+    if (message === this.texError) return;
+    this.texError = message;
+    this.writeRev++;
+    this.changed();
+  }
+
   // tex.js changed on disk, told to every page, which draws the deck again with it
   texChanged(): void {
     this.texRev++;
@@ -406,7 +418,7 @@ export class People {
     const presence: Presence[] = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
     const answer: EventsAnswer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
-    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError;
+    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError ?? (this.texError === null ? null : { message: this.texError, unwritten: 0, file: 'tex.js' });
     if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i], since));
     return answer;
   }
