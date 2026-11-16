@@ -2066,7 +2066,9 @@
       perFrame(points.length);
       const ghost = num(given2.ghost, `${path2}.ghost`, points.length - 1);
       if (!Number.isInteger(ghost) || ghost < 0 || ghost > points.length - 1) fail(`${path2}.ghost`, `a frame from 0 to ${points.length - 1} is expected`);
-      return { points, ghost };
+      const tones = given2.tones === void 0 ? null : list(given2.tones, `${path2}.tones`).map((t, i) => str(t, `${path2}.tones[${i}]`));
+      if (tones && tones.length !== points.length) fail(`${path2}.tones`, `${tones.length} tones are given, and the trace has ${points.length} points`);
+      return { points, ghost, tones };
     }
     if (m.kind === "label") {
       if (!isObject2(v)) fail(path2, "a label { at, text } is expected");
@@ -2109,6 +2111,7 @@
         width: num(m.width, `${p}.width`, 3),
         hollow: m.hollow === true,
         ghost: m.ghost !== false,
+        fade: seconds(m.fade, `${p}.fade`),
         anchor: anchor(m.anchor, `${p}.anchor`),
         dx: num(m.dx, `${p}.dx`, 0),
         dy: num(m.dy, `${p}.dy`, 0)
@@ -2777,17 +2780,42 @@
             });
           });
         } else if (m.kind === "trace") {
-          const { points, ghost } = data, pts = points.map((q) => this.toAxes(b, q));
+          const { points, ghost, tones } = data, pts = points.map((q) => this.toAxes(b, q));
           if (m.ghost && ghost > 0) svg("path", { class: "plot-ghost", d: this.pathS(b, pts.slice(0, ghost + 1)), "stroke-width": m.width }, group2);
           if (fader !== group2) group2.append(fader);
-          const done = svg("path", { class: "plot-trace", "stroke-width": m.width }, fader);
           const head = svg("circle", { class: "plot-dot", r: m.size / 2 }, fader);
-          this.drawers.push((u) => {
-            const p = traceTo(pts, u), [x, y] = p[p.length - 1];
-            done.setAttribute("d", this.pathS(b, p));
-            head.setAttribute("cx", this.XS(b, x).toFixed(1));
-            head.setAttribute("cy", this.YS(b, y).toFixed(1));
-          });
+          if (!tones && !(m.fade > 0)) {
+            const done = svg("path", { class: "plot-trace", "stroke-width": m.width }, fader);
+            fader.insertBefore(done, head);
+            this.drawers.push((u) => {
+              const p = traceTo(pts, u), [x, y] = p[p.length - 1];
+              done.setAttribute("d", this.pathS(b, p));
+              head.setAttribute("cx", this.XS(b, x).toFixed(1));
+              head.setAttribute("cy", this.YS(b, y).toFixed(1));
+            });
+          } else {
+            const parts = [];
+            const tone = (i) => toneColor(tones ? tones[clamp(i, 0, tones.length - 1)] : m.tone);
+            this.drawers.push((u) => {
+              const p = traceTo(pts, u), now = this.timeOf(u);
+              while (parts.length < p.length - 1) parts.push(fader.insertBefore(svg("line", { class: "plot-trace", "stroke-width": m.width }), head));
+              parts.forEach((line, i) => {
+                const on = i < p.length - 1;
+                line.style.display = on ? "" : "none";
+                if (!on) return;
+                line.setAttribute("x1", this.XS(b, p[i][0]).toFixed(1));
+                line.setAttribute("y1", this.YS(b, p[i][1]).toFixed(1));
+                line.setAttribute("x2", this.XS(b, p[i + 1][0]).toFixed(1));
+                line.setAttribute("y2", this.YS(b, p[i + 1][1]).toFixed(1));
+                line.style.color = tone(i);
+                if (m.fade > 0) line.style.opacity = (0.6 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)).toFixed(3);
+              });
+              const [x, y] = p[p.length - 1];
+              head.setAttribute("cx", this.XS(b, x).toFixed(1));
+              head.setAttribute("cy", this.YS(b, y).toFixed(1));
+              head.style.color = tone(Math.round(u));
+            });
+          }
         } else if (m.kind === "label") {
           const d = data, at = d.at.map((q) => this.toAxes(b, q));
           const el = this.label(d.text[0], 0, 0, m.anchor, "plot-mark", [m.panel, m.id], m.tone);
