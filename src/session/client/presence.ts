@@ -273,9 +273,11 @@ export class Presence {
   private activeAt = -Infinity;
   private caretHost: Element | null = null;
   private selection: Omit<Caret, 'el'> = { at: 0, from: 0, pre: '', post: '' };
-  // the source and the version of the base after the last time that the port read the deck into
-  // its source for an offset, and whether it reads it now
-  private refreshed: { source: string | null; v: Version | undefined } | null = null;
+  // the source and the count of the changes of the deck after the last time that the port read the
+  // deck into its source for an offset, and whether it reads it now
+  private refreshed: { source: string | null; edits: number } | null = null;
+  // the count of the changes of the deck by the person
+  private edits = 0;
   private refreshing = false;
   private seen = new Set<string>();
   // a page joined since the end of the last drive
@@ -296,6 +298,8 @@ export class Presence {
       this.due(false);
     };
     client.on('applied', based);
+    // an apply that changes the deck changes the source as well
+    client.port.onChange(() => this.edits++);
     // the base moved without an apply, e.g. at the broadcast of an operation of this page, which
     // can carry an offset that this operation put in doubt, or reach a state of another page
     client.on('settled', (moved) => {
@@ -512,12 +516,13 @@ export class Presence {
     };
   }
 
-  // the deck read into the source of the port, once for a source and a version of the base
+  // the deck read into the source of the port, once for a source and a deck. an operation of
+  // another page that leaves the deck as it is does not read it again
   private refresh(): void {
     const { client } = this;
-    const now = () => ({ source: client.shell.presence.source(), v: client.base?.v });
+    const now = () => ({ source: client.shell.presence.source(), edits: this.edits });
     const at = now();
-    if (this.refreshing || (this.refreshed?.source === at.source && this.refreshed.v === at.v)) return;
+    if (this.refreshing || (this.refreshed?.source === at.source && this.refreshed.edits === at.edits)) return;
     this.refreshing = true;
     void client.port.rebase().catch(() => {}).then(() => {
       this.refreshing = false;
