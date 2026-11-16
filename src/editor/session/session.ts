@@ -7,7 +7,7 @@
 import type { App } from '../app.ts';
 import { setServed } from '../commands/origin.ts';
 import { mathLookup, type MathLookup } from '../math.ts';
-import { apply as applyEdits, edits, fine, mergeEdits, type Edit } from '../merge.ts';
+import { apply as applyEdits, edits, fine, mergeEdits, shared, type Edit } from '../merge.ts';
 import { pair, pairElement, renderDeck, type Pairing, type Rendered } from '../render.ts';
 import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
 import { redrawTex as redrawDeckTex } from '../tex/install.ts';
@@ -110,12 +110,13 @@ export function install(app: App): Port {
   let net = 0;
 
   // the text element of an open composition of an input method. the changes of its text are held
-  // back until the composition ends, while behind holds the text shown and the text wanted. the
-  // client reads prior during the composition, the deck as it was before it with the applies since,
-  // hence the composing word is read once it is committed
+  // back until the composition ends, while behind holds the text shown and the text wanted. rest is
+  // the deck without the composing text, read at the start of the composition and kept through the
+  // applies. the client reads it during the composition, and both merges take it in place of the
+  // deck, hence the composing word is read once it is committed, at its point among the others
   let composing: Element | null = null;
   let behind: { shown: string; want: string } | null = null;
-  let prior: string | null = null;
+  let rest: string | null = null;
 
   // the caret of a text element that an apply moved to a slide that is not shown, as an offset into
   // the text of the element, see park
@@ -134,7 +135,7 @@ export function install(app: App): Port {
     clean = ready();
     handed = clean ? app.source!.text : null;
     behind = null;
-    prior = null;
+    rest = null;
     parked = null;
   });
 
@@ -199,8 +200,8 @@ export function install(app: App): Port {
   // at a reload the deck is as it was, and reads with the changes still held back as the text that
   // it was meant to read
   const ended = (): void => {
-    if (prior !== null) {
-      prior = null;
+    if (rest !== null) {
+      rest = null;
       if (listeners.size) {
         pending = true;
         void flush();
@@ -216,7 +217,9 @@ export function install(app: App): Port {
   document.addEventListener('compositionstart', (ev) => {
     clearTimeout(release);
     composing = app.hostOf(ev.target);
-    prior = composing && ready() ? (handed !== null && (busy() || applying || queued) ? handed : virtual(current())) : null;
+    // a deck changed in part is not rendered, hence while the history or the document model is busy
+    // the edits of the person that the source does not hold yet are held with the composing text
+    rest = composing && ready() ? (busy() ? app.source!.text : current()) : null;
   }, true);
   document.addEventListener('compositionend', () => {
     composing = null;
@@ -403,7 +406,9 @@ export function install(app: App): Port {
     // the deck is rendered once, and not at all while the source reads as it
     const math = clean ? null : mathLookup();
     const rendered = math && renderDeck(app.source!, app.pairing!, math, app.tagEdits);
-    const seen = virtual(rendered ? rendered.text : app.source!.text);
+    const deck = rendered ? rendered.text : app.source!.text;
+    const bare = composition() ? rest : null;
+    const seen = virtual(bare ?? deck);
     if (text === REREAD) text = handed ?? seen;
     const from = handed ?? seen;
     let target = text ?? seen;
@@ -411,10 +416,20 @@ export function install(app: App): Port {
     // authority orders it after the text, which arrived first. the text was written against from,
     // hence a change of it equal to such an edit is the same key typed by another person
     if (text !== null && from !== seen) target = mergeEdits(from, fine(from, seen), fine(from, text), 'ours', true, true).text;
-    if (text !== null && prior !== null) prior = prior === from ? text : mergeEdits(from, fine(from, prior), fine(from, text), 'ours', true).text;
     if (text !== null) handed = text;
+    // the text that a page loaded again is to read, which keeps the composing text as an edit of
+    // the person
+    const kept = (): string => (bare !== null ? mergeEdits(seen, fine(seen, virtual(deck)), fine(seen, target), 'ours', true).text : target);
     // a rebase that fails has read the source again from the page, which then renders otherwise
-    if (rendered && !rebase(rendered, math)) partial(target);
+    if (rendered && !rebase(rendered, math)) partial(kept());
+    // the composing text in the deck, as an edit of rest. the applies go around it, and one before
+    // it moves it by its change of length
+    let reading: Edit | null = null;
+    if (bare !== null) {
+      const now = app.source!.text;
+      const [head, tail] = shared(bare, now);
+      reading = { start: head, end: now.length - tail, text: bare.slice(head, bare.length - tail) };
+    }
     const changed: Element[] = [];
     const typesets: Promise<void>[] = [];
     // the deck made to read as next by one apply: false when the page is loaded again, and null
@@ -432,7 +447,7 @@ export function install(app: App): Port {
         done = applyAt(app, next, w, spot);
       } catch (e) {
         clean = false;
-        throw Object.assign(e as Error, { target });
+        throw Object.assign(e as Error, { target: kept() });
       } finally {
         mine = false;
       }
@@ -440,6 +455,8 @@ export function install(app: App): Port {
         clean = false;
         return false;
       }
+      const r = reading;
+      if (r) reading = w.endA <= r.start ? { start: r.start + w.endB - w.endA, end: r.end + w.endB - w.endA, text: r.text } : w.start >= r.end ? r : null;
       const mark = done.caret ? markOf() : null;
       const p = parked;
       if (p && p.host.isConnected && done.touched(p.host)) {
@@ -475,10 +492,14 @@ export function install(app: App): Port {
     if (first === false) return reload();
     // around() may apply edits before one that it cannot apply, after which the deck reads as neither
     // text
-    if (first === null && !around(edits(app.source!.text, target))) return app.source!.text === was ? reload() : partial(target);
+    if (first === null && !around(edits(app.source!.text, target))) return app.source!.text === was ? reload() : partial(kept());
     const shown = app.source!.text;
     app.saved = shown;
-    behind = shown === target ? null : { shown, want: target };
+    // the changes held back are kept as edits of the deck without the composing text. when an apply
+    // went through it, which a text busy at its start allows, the client reads the deck through
+    const without = reading ? shown.slice(0, reading.start) + reading.text + shown.slice(reading.end) : shown;
+    if (composition()) rest = reading && without;
+    behind = without === target ? null : { shown: without, want: target };
     await Promise.all(typesets);
     if (listeners.size && target !== handed) pending = true;
     return { reload: false, changed: changed.filter((el) => el.isConnected) };
@@ -551,8 +572,8 @@ export function install(app: App): Port {
     text: () => {
       if (!ready()) throw new Error('no file is open');
       if (handed !== null && (busy() || applying || queued)) return handed;
-      if (prior !== null && !composition()) prior = null;
-      return (handed = prior ?? virtual(current()));
+      if (rest !== null && !composition()) rest = null;
+      return (handed = virtual(rest ?? current()));
     },
     copy: () => {
       if (!ready()) throw new Error('no file is open');
