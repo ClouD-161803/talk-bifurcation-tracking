@@ -1475,30 +1475,49 @@ test('Show changes tints a paragraph with a character reference in an attribute,
   });
 });
 
-const OVERWRITTEN = 'A change of index.html from outside replaced text that was edited in this session. The text of the session is kept in Version History.';
+const OVERWRITTEN = 'A change of index.html from outside replaced text of this session. The text is kept in Version History.';
 
-test('a change of index.html from outside over a text that Ann typed is told on every page in a toast, whose Show opens Version History at the version with this text', { timeout: 300_000 }, async (t) => {
+// the toasts of the page stay until they are pressed, since a slow runner may take more than their 6 s
+const HOLD = `(() => { const set = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => set(fn, ms === 6000 ? 3_600_000 : ms, ...rest); return true; })()`;
+const TOAST = `(() => {
+  const span = document.querySelector('.beeson-session-toast span');
+  const lines = Math.round(span.getBoundingClientRect().height / parseFloat(getComputedStyle(span).lineHeight));
+  return { width: Math.round(document.querySelector('.beeson-session-toast').getBoundingClientRect().width), lines, room: innerWidth - 32 };
+})()`;
+
+test('a change of index.html from outside over a text that Ann typed is told on every page in a toast as wide as its text allows, whose Show opens Version History, where the newest closed version has the text of Ann, and keeps the focus in Version History open on a phone', { timeout: 600_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
-  await converge(server, [ann, ben]);
+  const cy = await open(browser, sessionUrl(server.edit), { name: 'Cy', width: 390, height: 844, mobile: true });
+  await converge(server, [ann, ben, cy]);
   // a program reads index.html before Ann types
   const read = server.read();
   await show(ann, 'One');
   // the caret inside the word, which the program changes as a whole
   await ann.evaluate(`(() => { const h = ${el(0, 'h2')}; h.focus(); const r = document.createRange(); r.setStart(h.firstChild, 1); getSelection().removeAllRanges(); getSelection().addRange(r); return document.activeElement === h; })()`);
   await typeKeys(ann, ' by Ann ');
-  await converge(server, [ann, ben]);
+  await converge(server, [ann, ben, cy]);
   assert.ok(server.read().includes('<h2>O by Ann ne</h2>'));
-  for (const page of [ann, ben]) await recordToasts(page);
+  // Cy previews a version in the sheet of a phone, which hides the other rows
+  await openPane(cy);
+  await tapOrClick(cy, `[...document.querySelectorAll('${PANE} .versions .row.version')].find((r) => r.getClientRects().length)`);
+  await cy.waitFor(`document.querySelector('${PANE}').classList.contains('peek')`);
+  for (const page of [ann, ben, cy]) {
+    await recordToasts(page);
+    await page.evaluate(HOLD);
+  }
   writeFileSync(server.file, read.replace('<h2>Two</h2>', '<h2>Two by an agent</h2>'));
   await ann.waitFor(`${TEXT}.includes('Two by an agent')`, 20_000);
   writeFileSync(server.file, read.replace('<h2>One</h2>', '<h2>Uno</h2>'));
-  await converge(server, [ann, ben]);
+  await converge(server, [ann, ben, cy]);
   assert.ok(server.read().includes('<h2>Uno</h2>'));
-  await ben.waitFor(`document.querySelector('.beeson-session-toast span')?.textContent === ${JSON.stringify(OVERWRITTEN)}`, 20_000);
+  for (const page of [ben, cy]) await page.waitFor(`document.querySelector('.beeson-session-toast span')?.textContent === ${JSON.stringify(OVERWRITTEN)}`, 20_000);
+  // on a desktop the toast is one line narrower than the window, and on a phone it takes the window less the gutters
+  const [wide, narrow] = [await ben.evaluate(TOAST), await cy.evaluate(TOAST)];
+  assert.ok(wide.lines === 1 && wide.width < wide.room && narrow.width === narrow.room, JSON.stringify({ wide, narrow }));
   await press$(ben, '.beeson-session-toast', 'Show');
   await ben.waitFor(SHOWN);
   await ben.waitFor(`${LIST}.length > 1`);
@@ -1506,7 +1525,11 @@ test('a change of index.html from outside over a text that Ann typed is told on 
   const [version] = await versionsOf(ben);
   assert.deepEqual(version.authors, [await ann.evaluate(`${C}.person`)]);
   assert.ok((await (await fetch(`${server.edit.url}index.html?version=${version.id}`)).text()).includes('<h2>O by Ann ne</h2>'));
-  for (const page of [ann, ben]) assert.deepEqual(await page.evaluate('window.__toasts'), [`${OVERWRITTEN}|status`]);
+  await press$(cy, '.beeson-session-toast', 'Show');
+  await cy.waitFor(`!document.querySelector('.beeson-session-toast button')`);
+  assert.deepEqual(await cy.evaluate(`[document.activeElement.localName, document.activeElement.matches('${PANE} .row[aria-current="true"]')]`), ['button', true]);
+  for (const page of [ann, ben, cy]) assert.deepEqual(await page.evaluate('window.__toasts'), [`${OVERWRITTEN}|status`]);
   clean(ann);
   clean(ben);
+  clean(cy);
 });
