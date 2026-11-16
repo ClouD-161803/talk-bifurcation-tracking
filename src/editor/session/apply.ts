@@ -150,16 +150,8 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   // then typesets. one that the change leaves apart already failed to start one
   if (/[$\\]/.test(ins + was.slice(q, q + cut) + (now[q - 1] ?? '') + (now[q + ins.length] ?? '')) || !sameText(lp.node.data, was)) return false;
   // one replaceData per edit, from the last, keeps a caret between two edits at its characters. a
-  // caret at an insertion goes after it, since the authority puts the letters of others first
-  const sel = getSelection();
-  const caret = sel?.isCollapsed && sel.anchorNode === lp.node ? sel.anchorOffset : -1;
-  let after = -1;
-  for (const e of (charEdits(was, now, 500) ?? [{ start: q, end: q + cut, text: ins }]).reverse()) {
-    lp.node.replaceData(e.start, e.end - e.start, e.text);
-    if (e.start === caret && e.end === caret) after = e.text.length;
-    else if (after >= 0 && e.end <= caret) after += e.text.length - (e.end - e.start);
-  }
-  if (after >= 0) sel!.collapse(lp.node, caret + after);
+  // caret at an insertion stays before it, hence the letters of two people at one point stay together
+  for (const e of (charEdits(was, now, 500) ?? [{ start: q, end: q + cut, text: ins }]).reverse()) lp.node.replaceData(e.start, e.end - e.start, e.text);
   const grow = ins.length - cut;
   k.pieces = k.pieces.map((q, i) => (i < j ? q : i === j ? { kind: 'text', dec: { start: q.dec.start, end: q.dec.end + grow } } : shiftPiece(q, grow)));
   retext(ctx.source, at.parent, at.index, ctx.text, decoded);
