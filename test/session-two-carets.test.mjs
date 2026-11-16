@@ -521,3 +521,107 @@ for (const [z, removal] of [[null], ['start'], ['end'], ['start', true]]) {
     assert.deepEqual([ana.errors, ben.errors], [[], []]);
   });
 }
+
+const title = (text) => text.match(/<h2>[^\n]*<\/h2>/g)[1];
+const h2 = el(1, 'h2');
+// scripts that type MN at the end of the text element of an expression, or delete the letters MN
+// at the end of the heading of slide Two, which the client reads at its next turn
+const INSERT = (host) => `{ const h = ${host}; h.focus(); const r = document.createRange(); r.selectNodeContents(h); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); document.execCommand('insertText', false, 'MN'); }`;
+const DELETE = `{ const h = ${h2}; h.focus(); getSelection().setBaseAndExtent(h.firstChild, 3, h.firstChild, 5); document.execCommand('delete'); }`;
+
+// MN typed by Ana at the end of the heading of slide Two, read by her client and in index.html,
+// and in typedMNapplied also a key of Ben at the end of the paragraph, which her page applies
+async function typedMN(server, [ana]) {
+  await front(ana);
+  await caretAtEnd(ana, h2);
+  await typeKeys(ana, 'MN');
+  await until(async () => title(server.read()) === '<h2>TwoMN</h2>' && (await ana.evaluate(`${C}.acked()`)), 'MN in index.html');
+  await ana.evaluate(`${C}.app.history.break()`);
+}
+async function typedMNapplied(server, pages) {
+  await typedMN(server, pages);
+  await front(pages[1]);
+  await caretAtEnd(pages[1], p);
+  await typeKeys(pages[1], 'q');
+  await converge(server, pages);
+}
+
+/**
+ * Ana runs the script edit inside the transaction when inside is set, and right before it
+ * otherwise, and starts a composition at the offset 6 of the paragraph, or of the text element of
+ * the expression into, while the transaction is open. The test ends the transaction during the
+ * composition. With at, Ben types Z at this offset of the paragraph during the composition.
+ * Returns the text of index.html during the composition, and once Ana has committed 你好.
+ */
+async function busy(t, { prepare, edit, inside = true, at = null, into = p }) {
+  const { server, pages } = await pair(t);
+  const [ana, ben] = pages;
+  await prepare?.(server, pages);
+  await front(ana);
+  assert.ok(await ana.evaluate(`(async () => {
+    ${inside ? `${HOLD}; ${edit}` : `${edit}; ${HOLD}`};
+    const q = ${into}; q.focus(); getSelection().collapse(q.firstChild, ${into === p ? 6 : 'q.firstChild.length'});
+    return document.activeElement === q;
+  })()`));
+  await ana.send('Input.imeSetComposition', { text: 'K', selectionStart: 1, selectionEnd: 1 });
+  await ana.evaluate(RELEASE);
+  await ana.send('Input.imeSetComposition', { text: 'KJ', selectionStart: 2, selectionEnd: 2 });
+  if (at !== null) {
+    // Ben is not brought to the front, since the page of Ana would then be hidden, which ends her
+    // composition
+    assert.ok(await caretAt(ben, at));
+    await typeKeys(ben, 'Z');
+    await until(async () => para(await ana.evaluate(TEXT)).includes('Z'), 'the key of Ben in the text that Ana reads');
+  }
+  await until(async () => (await ana.evaluate(`${C}.acked()`)) && (await ana.evaluate(TEXT)) === server.read(), 'the text that Ana reads during the composition in index.html');
+  const during = server.read();
+  await ana.send('Input.insertText', { text: '你好' });
+  const end = await converge(server, pages);
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+  return { during, end };
+}
+
+for (const [what, options, want] of [
+  ['an insertion in another text element inside the transaction', { edit: INSERT(h2), at: 0 }, ['<h2>TwoMN</h2>', '<p>ZSecond你好 slide</p>']],
+  ['an insertion in another text element inside the transaction', { edit: INSERT(h2) }, ['<h2>TwoMN</h2>', '<p>Second你好 slide</p>']],
+  ['a deletion in another text element inside the transaction', { prepare: typedMN, edit: DELETE, at: 0 }, ['<h2>Two</h2>', '<p>ZSecond你好 slide</p>']],
+  ['a deletion inside the transaction of letters that an apply wrote into the source', { prepare: typedMNapplied, edit: DELETE, at: 0 }, ['<h2>Two</h2>', '<p>ZSecond你好 slideq</p>']],
+  ['an insertion in another text element right before the transaction', { edit: INSERT(h2), inside: false, at: 0 }, ['<h2>TwoMN</h2>', '<p>ZSecond你好 slide</p>']],
+  ['an insertion in another text element right before the transaction', { edit: INSERT(h2), inside: false }, ['<h2>TwoMN</h2>', '<p>Second你好 slide</p>']],
+  ['an insertion at the end of the composing paragraph inside the transaction', { edit: INSERT(p), at: 9 }, ['<h2>Two</h2>', '<p>Second你好 slZideMN</p>']],
+]) {
+  test(`${what}, which the client has not read when a composition starts while the history is busy, is kept${options.at === undefined ? '' : ', also with a key of another person between it and the composition'}`, { timeout: 300_000 }, async (t) => {
+    const { end } = await busy(t, options);
+    assert.deepEqual([title(end), para(end)], want);
+  });
+}
+
+// the edits of the person that the client has not read are read at its first turn once the history
+// is quiet, and are not held back with the composing word. in a slide with a removal, the edits of
+// its texts are inside the edit of the slide
+for (const [what, edit, slide, want] of [
+  ['an insertion in another text element', INSERT(h2), 1, '<section>\n  <h2>TwoMN</h2>\n  <p>Second slide</p>\n  <ul>\n    <li>Alpha</li>\n    <li>Beta</li>\n  </ul>\n</section>'],
+  ['an insertion in the composing paragraph', INSERT(p), 1, '<section>\n  <h2>TwoMN</h2>\n  <p>Second slideMN</p>\n  <ul>\n    <li>Alpha</li>\n    <li>Beta</li>\n  </ul>\n</section>'.replace('TwoMN', 'Two')],
+  ['an insertion in another text element and a removal of another element of the composing slide', `${INSERT(h2)}; await ${REMOVE_LIST}`, 1, '<section>\n  <h2>TwoMN</h2>\n  <p>Second slide</p>\n</section>'],
+  ['a change of the heading of another slide and a removal of the paragraph of this slide', `${el(0, 'h2')}.textContent = 'OneMN'; await ${C}.app.doc.remove(${el(0, 'p')})`, 0, '<section>\n  <h2>OneMN</h2>\n</section>'],
+]) {
+  test(`${what}, which the client has not read when a composition starts while the history is busy, ${what.includes(' and a ') ? 'reach' : 'reaches'} index.html during the composition`, { timeout: 300_000 }, async (t) => {
+    assert.equal(slideOf((await busy(t, { edit })).during, slide), want);
+  });
+}
+
+// the element is not in the source when the client reads rest, hence the client reads the deck
+// through during the composition
+test('a composition in a text element that the document model inserted while the history is busy keeps the element, the composing word, and a key of another person', { timeout: 300_000 }, async (t) => {
+  const ul = el(1, 'ul');
+  const { during, end } = await busy(t, { edit: `window.__new = (await ${C}.app.doc.insert('<p>New</p>', ${ul}.parentElement, ${ul}))[0]`, into: 'window.__new', at: 0 });
+  assert.ok(slideOf(during, 1).includes('<p>New'));
+  assert.deepEqual([para(end), slideOf(end, 1).match(/<p>New[^<]*<\/p>/)?.[0]], ['<p>ZSecond slide</p>', '<p>New你好</p>']);
+});
+
+// the content of the paragraph, with the reading K or KJ, is also in the heading after the removal,
+// hence twice in the text of the slide, and the client reads the deck through during the composition
+test('a composition in a text element whose content is twice in its slide after a removal while the history is busy keeps both edits and the composing word', { timeout: 300_000 }, async (t) => {
+  const { end } = await busy(t, { edit: `${h2}.textContent = 'SecondKJ slide SecondK slide'; await ${REMOVE_LIST}` });
+  assert.deepEqual([title(end), para(end), slideOf(end, 1).includes('<ul>')], ['<h2>SecondKJ slide SecondK slide</h2>', '<p>Second你好 slide</p>', false]);
+});
