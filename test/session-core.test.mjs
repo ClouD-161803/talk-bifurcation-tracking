@@ -957,3 +957,27 @@ test('a replica keeps a format with a key of its own in the word, the removal of
   assert.equal(race(base, at('Second <em>slide</em> here'), at('Second slZide hYere')), at('Second <em>slZide</em> hYere'));
   assert.equal(race(base, at('Second slZide hYere'), at('Second <em>slide</em> here')), at('Second <em>slZide</em> hYere'));
 });
+
+test('a replica that hears an operation away from its unsent key on a deck of 200,000 characters takes less than 2.5 times as long as one without a key', () => {
+  const para = '<section>\n  <h2>Plain</h2>\n  <p>The spacecraft leaves the halo orbit near the second Lagrange point and follows the stable manifold toward the Moon.</p>\n</section>\n\n';
+  const long = para.repeat(Math.ceil(200_000 / para.length));
+  const mid = long.indexOf('stable', long.length >> 1), other = long.indexOf('stable', mid + 2000);
+  const seen = long.slice(0, mid) + 'Z' + long.slice(mid), text = long.slice(0, other) + 'Q' + long.slice(other);
+  const { op } = new Authority(long, { epoch: 'E' }).submit({ client: 'other', seq: 1, base: 'E.0', patches: diff(long, text) }, 'O');
+  const median = (key) => {
+    const replicas = Array.from({ length: 21 }, () => {
+      const r = new Replica('me', long, 'E.0');
+      if (key) r.edit(seen);
+      return r;
+    });
+    const times = replicas.map((r) => {
+      const t0 = performance.now();
+      r.receive(op);
+      return performance.now() - t0;
+    });
+    return times.sort((a, b) => a - b)[10];
+  };
+  let ratio = Infinity;
+  for (let i = 0; i < 3 && ratio >= 2.5; i++) ratio = median(true) / median(false);
+  assert.ok(ratio < 2.5, `a receive with an unsent key costs ${ratio.toFixed(1)} times one without`);
+});
