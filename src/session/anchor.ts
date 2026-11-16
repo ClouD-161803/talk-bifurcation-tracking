@@ -456,20 +456,12 @@ function slow(before: string, patches: Patch[], after: string, items: Anchored[]
       ? findInserted(after, whole, inserted, 0)
       : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
 
-  // the span of before that a removal may stand for, up to cap characters on each side: a line diff
-  // may move it by the characters that it starts with and that follow it, or the reverse
-  const removal = (p: Patch, cap: number): Span => {
-    let l = 0;
-    let r = 0;
-    while (!p.text && l < cap && before[p.start - l - 1] === before[p.end - l - 1]) l++;
-    while (!p.text && r < cap && before[p.start + r] === before[p.end + r]) r++;
-    return { start: p.start - l, end: p.end + r };
-  };
-  // true when a patch took x from before, as a move does
+  // true when a patch took x from before, as a move does: a place of a kept text lies in the patch,
+  // and so does the start tag of one of a check
   const took = (x: Kept): boolean =>
     once(typeof x === 'string' ? x : x.sum, () => {
       const len = lengthOf(x);
-      return patches.filter((p) => p.end - p.start >= len).map((p) => removal(p, len)).some((r) => findInserted(before, x, [r], r.start, r) >= 0);
+      return patches.some((p) => p.end - p.start >= len && findInserted(before, x, [p], p.start, { start: p.start, end: p.end + len - (typeof x === 'string' ? x : x.tag).length }) >= 0);
     });
   // the place of x in within. a kept text is short, and looked for again. the key of a check is built
   // only for a slide that the patches inserted into, and near follows from the slide of a removed

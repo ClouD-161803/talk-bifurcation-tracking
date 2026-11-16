@@ -2010,16 +2010,9 @@ function slow(before2, patches, after, items, given) {
     return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
   };
   const slideOf = (whole) => typeof whole === "string" ? findInserted(after, whole, inserted, 0) : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
-  const removal = (p, cap3) => {
-    let l = 0;
-    let r = 0;
-    while (!p.text && l < cap3 && before2[p.start - l - 1] === before2[p.end - l - 1]) l++;
-    while (!p.text && r < cap3 && before2[p.start + r] === before2[p.end + r]) r++;
-    return { start: p.start - l, end: p.end + r };
-  };
   const took = (x) => once(typeof x === "string" ? x : x.sum, () => {
     const len = lengthOf(x);
-    return patches.filter((p) => p.end - p.start >= len).map((p) => removal(p, len)).some((r) => findInserted(before2, x, [r], r.start, r) >= 0);
+    return patches.some((p) => p.end - p.start >= len && findInserted(before2, x, [p], p.start, { start: p.start, end: p.end + len - (typeof x === "string" ? x : x.tag).length }) >= 0);
   });
   const find = (x, near, within) => {
     const look = () => findInserted(after, x, inserted, near, within);
