@@ -102,6 +102,9 @@ test('a thread is refused for anchors that are not start tags, a stale base, and
   assert.equal(status({ ...ok, text: null }), 400);
   assert.equal(status({ ...ok, text: 'é'.repeat(4001) }), 413);
   assert.equal(status({ ...ok, text: 'é'.repeat(4000) }), 200);
+  // the limit counts characters, of which an emoji is one and two units of UTF-16
+  assert.equal(status({ ...ok, text: '😀'.repeat(4001) }), 413);
+  assert.equal(status({ ...ok, text: '😀'.repeat(4000) }), 200);
   assert.equal(status({ ...ok, mentions: ['short'] }), 400);
   assert.equal(status({ ...ok, mentions: 'x' }), 400);
   for (let i = 0; i < 3; i++) replace(authority, /First slide[^<]*/, `First slide ${i}`);
