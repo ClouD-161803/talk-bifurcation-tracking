@@ -173,6 +173,16 @@ test('the flag of a person who types reads that the person is typing, and the ca
   await show(ana, 'Two');
   await show(ben, 'Two');
   await caretAtEnd(ana, el(1, 'p'));
+  // a timer of 2 s on the page of Ana, started at each key after the typing timer of presence.ts,
+  // records whether the last state that her page sent by then says that she stopped typing
+  await ana.evaluate(`(() => {
+    const c = ${C};
+    const send = c.sendPresence.bind(c);
+    c.sendPresence = (s) => { window.__typing = s.typing; return send(s); };
+    let timer = 0;
+    document.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { window.__stopped = window.__typing === false; }, 2000); }, true);
+    return true;
+  })()`);
   await typeKeys(ana, ' and more');
   await until(() => ben.evaluate(`${el(1, 'p')}.textContent.endsWith('and more')`), 'the text of Ana on the page of Ben');
   const text = await ben.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(${el(1, 'p')}); const b = r.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; })()`);
@@ -189,6 +199,8 @@ test('the flag of a person who types reads that the person is typing, and the ca
   // by then when the keys took over a second, hence its long text is read
   const still = await until_(ben, (d) => d.flags[0]?.long === 'Ana', 'the flag of Ana after she stops typing');
   assert.equal(still.carets.length, 1);
+  await until(() => ana.evaluate(`window.__stopped !== undefined`), 'the timer of 2 s after the last key of Ana');
+  assert.equal(await ana.evaluate(`window.__stopped`), true, 'the page of Ana sends that she stopped typing 2 s after her last key');
   // the caret that leaves the text takes the bar away
   await ana.evaluate(`(() => { document.activeElement.blur(); getSelection().removeAllRanges(); })()`);
   await until_(ben, (d) => !d.carets.length, 'the caret bar to go');
