@@ -401,6 +401,37 @@ test('a page asks before it unloads after an Undo of an edit that the edit comma
   assert.equal(await reload(page), true, 'the page asked before it left');
 });
 
+test('an edit of another person does not make a page ask before it unloads while its copy holds the edit of the page', { timeout: 240_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  await converge(server, [page]);
+  await page.evaluate(`__net.rule('/.session/op', 'hold')`);
+  await show(page, 'One');
+  await caretAtEnd(page, el(0, 'p'));
+  await type(page, ' Mine');
+  await page.waitFor(`(${ASKED(' Mine')}).then((x) => x.copied && !x.asking)`);
+  // the times at which the page asks are recorded with a clock in the page
+  await page.evaluate(`window.__asked = []; window.__clock = setInterval(() => ${C}.asking && window.__asked.push(Math.round(performance.now())), 10); true`);
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide Remote</p>'));
+  await page.waitFor(`${TEXT}.includes('Remote')`);
+  // the next copy holds the edit of the other person
+  await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
+  assert.deepEqual(await page.evaluate('clearInterval(window.__clock), window.__asked'), []);
+});
+
+test('an edit of another person does not make a page that waits to load again ask before it unloads while its copy holds the edit of the page', { timeout: 240_000 }, async (t) => {
+  const { server, page } = await waiting(t);
+  await page.waitFor(`(${ASKED(' slow')}).then((x) => x.copied && !x.asking)`);
+  await page.evaluate(`window.__asked = []; window.__clock = setInterval(() => ${C}.asking && window.__asked.push(Math.round(performance.now())), 10); true`);
+  writeFileSync(server.file, server.read().replace('<p>Second slide</p>', '<p>Second slide Remote</p>'));
+  // the deck of a page that waits to load again is not changed, hence the replica is read
+  await page.waitFor(`${C}.snapshot().mine.includes('Remote')`);
+  await page.waitFor(`(${ASKED('Remote')}).then((x) => x.copied)`);
+  assert.deepEqual(await page.evaluate('clearInterval(window.__clock), window.__asked'), []);
+});
+
 test('a page asks before it unloads from the moment that it is told of an edit, also while its copy holds an earlier edit', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
