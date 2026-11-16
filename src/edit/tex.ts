@@ -4,13 +4,13 @@
 // that the preamble reads, once the change is stable. it is written only when its text changes,
 // and never in a folder without preamble.tex and references.bib, whose tex.js may be shared with
 // another deck. every change of tex.js on disk, by the edit command or by another program, is
-// counted, and the pages draw the deck again with it. so is a stable change of a source that
-// leaves the text of tex.js as it is, after which the pages read the sources again, e.g. for a
-// paper added to references.bib that the deck does not cite yet
+// counted, and the pages draw the deck again with it. so is a stable change of the text of
+// preamble.tex or references.bib that leaves the text of tex.js as it is, after which the pages read
+// the sources again, e.g. for a paper added to references.bib that the deck does not cite yet
 
 import { readFileSync, statSync } from 'node:fs';
 import { readFile, stat, unlink, writeFile } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { citedKeys, folderTex, skippedLines, texScript } from '../texfile.ts';
 import { renameRetried, signature } from './disk.ts';
@@ -33,6 +33,8 @@ export type DerivedTex = {
   unread: string[];
   // the skipped lines of the sources and the cited keys without an entry, as npm run tex prints them
   skipped: string[];
+  // a hash of the texts of preamble.tex and references.bib, which the pages read
+  key: string;
 };
 
 /**
@@ -42,12 +44,15 @@ export type DerivedTex = {
 export function deriveTex(dir: string, html: string): DerivedTex {
   const files = new Map<string, string>();
   const unread: string[] = [];
+  const hash = createHash('sha256');
   const text = (name: string): string | null => {
     const file = join(dir, name);
     try {
       // the signature before the read, hence a change during the read is found by the next poll
       files.set(name, signature(statSync(file)));
-      return readFileSync(file, 'utf8');
+      const read = readFileSync(file, 'utf8');
+      if (name === 'preamble.tex' || name === 'references.bib') hash.update(`${name}\n${read.length}\n${read}`);
+      return read;
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
       if (!files.has(name)) files.set(name, '');
@@ -56,14 +61,14 @@ export function deriveTex(dir: string, html: string): DerivedTex {
     }
   };
   const { preamble, bibliography, tex, missing } = folderTex(text, html);
-  return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread, skipped: skippedLines(preamble, bibliography, missing, 'index.html') };
+  return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread, skipped: skippedLines(preamble, bibliography, missing, 'index.html'), key: hash.digest('hex') };
 }
 
-// onChange is called at each change of tex.js on disk, and after a stable change of a source that
-// leaves tex.js as it is. onWriteError is called with the message of a failed write of tex.js,
-// once for each reason, and with null at the next derivation that does not fail. stable is the
-// time in ms that a changed file must not change before it is taken, and retry the wait in ms before
-// the first retry of a failed write, both set in the tests
+// onChange is called at each change of tex.js on disk, and after a stable change of the text of
+// preamble.tex or references.bib that leaves tex.js as it is. onWriteError is called with the
+// message of a failed write of tex.js, once for each reason, and with null at the next derivation
+// that does not fail. stable is the time in ms that a changed file must not change before it is
+// taken, and retry the wait in ms before the first retry of a failed write, both set in the tests
 export type TexOptions = {
   log?: (message: string) => void;
   onChange?: () => void;
@@ -89,6 +94,8 @@ export class TexWriter {
   // the files read or looked up by the last derivation, with their signatures, and a change of them
   private watched: Map<string, string>;
   private sourcesSeen: Seen = null;
+  // the key of the texts of the sources of the last derivation
+  private texts: string;
   // the signature of tex.js written or counted last, and a change of it
   private texSig: string;
   private texSeen: Seen = null;
@@ -120,7 +127,9 @@ export class TexWriter {
     this.retry = options.retry ?? RETRY;
     this.html = html;
     this.keys = keysOf(html);
-    this.watched = deriveTex(dir, html).files;
+    const derived = deriveTex(dir, html);
+    this.watched = derived.files;
+    this.texts = derived.key;
     this.texSig = sigOf(this.file);
   }
 
@@ -207,6 +216,7 @@ export class TexWriter {
     const settle = () => {
       this.keys = keysOf(html);
       this.watched = derived.files;
+      this.texts = derived.key;
       this.sourcesSeen = null;
       if (this.failure === null) return;
       this.failure = null;
@@ -227,8 +237,9 @@ export class TexWriter {
     }
     const old = await readFile(this.file, 'utf8').catch(() => null);
     if (old === derived.text) {
+      const changed = derived.key !== this.texts;
       settle();
-      if (settled) this.onChange();
+      if (settled && changed) this.onChange();
       return;
     }
     const tmp = join(this.dir, `.tex.js.${randomBytes(6).toString('hex')}.tmp`);
