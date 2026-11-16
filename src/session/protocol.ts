@@ -49,7 +49,7 @@ export type Taken = { taken: { name: string } };
 // the operations after the v of the request when they are in the log, and the whole text otherwise.
 // applied is the seq of the last operation of the client id was that the text holds, left out when
 // this client id is not known, e.g. after its operations left the table of the edit command. tex is
-// the number of changes of tex.js on disk since the start of the edit command
+// the count of the changes of tex.js on disk, from the time of the start of the edit command in ms
 export type HelloAnswer = {
   client: string;
   token: Token;
@@ -83,8 +83,9 @@ export type OpAnswer = { ok: true; v: Version } | { ok: false; reason: RefusalRe
 // the name of the host, or null when it is not known
 export type Ended = { by: string | null };
 
-// a write of index.html that failed, with the number of operations that are not in the file
-export type WriteError = { message: string; unwritten: number };
+// a write of index.html that failed, with the number of operations that are not in the file, or a
+// write of the file tex.js
+export type WriteError = { message: string; unwritten: number; file?: 'tex.js' };
 
 // GET events?token=&since=. ops is null when since is of another epoch or older than the log,
 // and the browser then says hello again. known is sent only when it changed since the last answer

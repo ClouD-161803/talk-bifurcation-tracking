@@ -328,7 +328,7 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     }
     if (!BIBTEX.test(text)) return false;
     if (app.session) {
-      note(HOST);
+      note(`A BibTeX entry is not added in a session. ${HOST}`);
       return true;
     }
     if (!store.loaded()) {

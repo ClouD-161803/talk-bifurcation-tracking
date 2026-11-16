@@ -23,7 +23,7 @@ import { post, raw, until } from './helpers/session.mjs';
 
 const LIGHT = readFileSync(resolve('demo/figure-light.png'));
 const DARK = readFileSync(resolve('demo/figure-dark.png'));
-const FAILED = (path) => `${path} could not be sent. Try again`;
+const FAILED = (path) => `Could not send ${path}. Try again`;
 const IMG = /<img [^>]*src="(media\/[^"]+)"[^>]*>/g;
 // the media/ paths of the images of each slide of text
 const sources = (text) => text.split('<section').slice(1).map((s) => [...s.matchAll(IMG)].map((m) => m[1]));
@@ -223,7 +223,7 @@ test('the names that the edit command gives to the files of one drop are written
     await show(bea, 'One');
     await dropFiles(bea, [file(server, 'a', 'plot.png', LIGHT), file(server, 'b', 'plot-2.png', DARK)]);
     // the second file is given another name by the rename of the first
-    await bea.waitFor(`/^media\\/plot\\S*\\.png could not be sent\\. Try again$/.test(${STATE})`);
+    await bea.waitFor(`/^Could not send media\\/plot\\S*\\.png\\. Try again$/.test(${STATE})`);
     await click(bea, '.beeson-session-action');
     const [one] = sources(await converge(server, [bea]));
     assert.equal(new Set(one).size, 2, `each image names a file of its own: ${one}`);
@@ -329,6 +329,8 @@ test('the save state of a failed upload is cleared once the deck no longer names
   clean(ann, PROXIED);
 });
 
+const LOST = 'media/plot.png is not in the talk folder, since the body is larger than the limit of the relay. Delete it from the deck, or add the file to media/ by hand.';
+
 test('an upload that the session refuses although the page did not is given up and named in the save state, and the later edits of the page reach index.html', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
@@ -338,14 +340,14 @@ test('an upload that the session refuses although the page did not is given up a
   p.next('large');
   await show(ann, 'One');
   await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
-  await ann.waitFor(`${STATE} === 'media/plot.png was not sent to the others, since the body is larger than the limit of the relay'`, 10_000);
+  await ann.waitFor(`${STATE} === ${JSON.stringify(LOST)}`, 10_000);
   assert.equal(await ann.evaluate(ACTION), null);
   await edit(ann, 1, 'p', ' typed');
   const text = await converge(server, [ann]);
   assert.match(text, /<p>Second slide typed<\/p>/);
   assert.deepEqual(sources(text)[0], ['media/plot.png']);
   assert.equal(p.puts, 1);
-  assert.equal(await ann.evaluate(STATE), 'media/plot.png was not sent to the others, since the body is larger than the limit of the relay');
+  assert.equal(await ann.evaluate(STATE), LOST);
   // the save state is cleared once the deck no longer names the picture
   await keys(ann, 'Mod+Z');
   await keys(ann, 'Mod+Z');
@@ -354,6 +356,33 @@ test('an upload that the session refuses although the page did not is given up a
   await until(() => server.read().includes('<p>First slide typed</p>'), 'the edit in index.html');
   await ann.waitFor(`${STATE} === 'Saved to index.html'`, 10_000);
   clean(ann, [/status of 413/]);
+});
+
+test('the save state of an upload given up is cleared once another page deletes the picture, without an edit of the page', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const p = await proxy(t, server.edit);
+  const ann = await tab(browser, p.url);
+  p.next('large');
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`${STATE}?.startsWith('media/plot.png ')`, 10_000);
+  const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  await show(ben, 'One');
+  await ben.evaluate(`(() => {
+    const img = document.querySelector('.reveal .slides img');
+    ${C}.app.selection.set('elements', [img.closest('figure') ?? img]);
+    ${C}.app.commands.run('element.delete');
+  })()`);
+  const text = await converge(server, [ann, ben]);
+  assert.doesNotMatch(text, /<img /);
+  await front(ann);
+  await ann.waitFor(`${STATE} === 'Saved to index.html'`, 10_000);
+  clean(ann, [/status of 413/]);
+  // the file given up is not in media/, which the page of Ben loads until the deletion
+  clean(ben, [/status of 404 .*media\/plot\.png$/]);
 });
 
 test('an upload whose answer was lost after the write is sent again without a second copy in media/', { timeout: 120_000 }, async (t) => {

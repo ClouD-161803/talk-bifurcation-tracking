@@ -5,9 +5,9 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { caretAtEnd, front } from './helpers/apply.mjs';
+import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, show } from './helpers/client.mjs';
-import { drag, press, typeKeys } from './helpers/editor.mjs';
+import { center, click, drag, press, typeKeys } from './helpers/editor.mjs';
 import { BUBBLE, el, hold, leave, LOCKED, P, REFUSED, release, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -227,4 +227,40 @@ test('a figure of a plate is selected and dragged by itself while the caption of
   assert.match(text, /The first figure\. typed<\/figcaption>/);
   clean(ana);
   clean(ben);
+});
+
+const SELECTED = `window.BeesonEditor.selection().map((e) => e.localName + (e.id ? '#' + e.id : '') + (e.alt ? '[' + e.alt + ']' : ''))`;
+const tap = async (page, selector) => {
+  const point = await center(page, selector);
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+};
+
+// a plate without a hold takes a click as a selection of the plate, then of the figure, then of
+// its picture. the plate is refused while a caption in it is held, hence the first click takes the
+// figure
+test('a click and a tap on a figure of a plate select the figure while the caption of another figure of the plate is held, and a second click selects its picture', { timeout: 180_000 }, async (t) => {
+  const { pages: [ana, ben, cy] } = await session(t, ['Ana', 'Ben', 'Cy'], { edits: [['  <p>First slide</p>', PLATE]], pages: [{}, {}, { width: 844, height: 390, mobile: true }] });
+  for (const page of [ana, ben, cy]) await show(page, 'One');
+  const caption = el(0, '#first figcaption');
+  await caretAtEnd(ana, caption);
+  await typeKeys(ana, ' typed');
+  const image = 'section.present #second img';
+  for (const [page, how] of [[ben, 'a click'], [cy, 'a tap']]) {
+    await until(() => page.evaluate(`${LOCKED(caption)} && ${caption}.textContent === 'The first figure. typed'`), `the caption that Ana holds to be locked on the page of ${how}`);
+    await front(page);
+    await unbubble(page);
+    await (page === cy ? tap(page, image) : click(page, image));
+    await frame(page);
+    assert.deepEqual(await page.evaluate(SELECTED), ['figure#second'], how);
+    assert.equal(await page.evaluate(BUBBLE), null, `${how} is not refused`);
+  }
+  await front(ben);
+  await click(ben, image);
+  await frame(ben);
+  assert.deepEqual(await ben.evaluate(SELECTED), ['img[B]'], 'a second click');
+  assert.equal(await ana.evaluate(`document.activeElement === ${caption}`), true, 'the caret of Ana stays in the caption');
+  clean(ana);
+  clean(ben);
+  clean(cy);
 });

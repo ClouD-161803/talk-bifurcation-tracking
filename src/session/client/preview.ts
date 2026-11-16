@@ -33,14 +33,16 @@ const CSS = `
 .beeson-session-preview.two .actions { flex: 1 0 100%; margin-left: 0; }
 .beeson-session-preview.two .actions .name { display: none; }
 .beeson-session-preview label.changes { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; white-space: nowrap; }
-.beeson-session-preview label.changes input { margin: 0; width: 16px; height: 16px; }
+.beeson-session-preview label.changes input { margin: 0; width: 16px; height: 16px; accent-color: var(--ed-select); }
 .beeson-session-preview .bar button.slide { padding: 0 8px; }
 .beeson-session-preview .bar button.more { min-width: 32px; padding: 0 6px; }
 .beeson-session-preview iframe { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--ed-canvas); }
 `;
 
-// drawn into the page of the iframe
+// drawn into the page of the iframe, which hides the controls of the show as the canvas of the
+// editor does
 const FRAME_CSS = `
+.reveal :is(.progress, .scrub, .slide-number), .theme-switch { display: none !important; }
 [data-beeson-changed] { outline: 6px solid var(--beeson-changed) !important; outline-offset: 6px !important; }
 section[data-beeson-changed] { outline-offset: -6px !important; }
 html.beeson-hide-changes [data-beeson-changed] { outline: none !important; }
@@ -53,13 +55,14 @@ const TWO_ROWS = 600;
 // the keys that reach reveal.js in the preview, which move through its slides
 const NAVIGATION = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
 
-// text with a base element at the start of its head, so that its relative addresses resolve as in
-// a page loaded from href. the address of the page is about:srcdoc, which may not be changed to one
-// of http, hence the history of the page is not written, e.g. the hash of the slide by reveal.js
+// text with a base element and FRAME_CSS at the start of its head, so that its relative addresses
+// resolve as in a page loaded from href. the address of the page is about:srcdoc, which may not be
+// changed to one of http, hence the history of the page is not written, e.g. the hash of the slide
+// by reveal.js
 function withBase(text: string, tokens: Token[], href: string): string {
   const head = tokens.find((t) => t.type === 'start' && t.name === 'head');
   const at = head ? head.end : (tokens.find((t) => t.type === 'start')?.start ?? 0);
-  const base = `<base href="${href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"><script>history.pushState = history.replaceState = () => {};</script>`;
+  const base = `<base href="${href.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"><script>history.pushState = history.replaceState = () => {};</script><style>${FRAME_CSS}</style>`;
   return text.slice(0, at) + base + text.slice(at);
 }
 
@@ -313,7 +316,7 @@ export class Preview {
     if (b.info.parentNode !== this.bar) this.bar.replaceChildren(b.info, b.slides, b.actions);
     const date = v.name ? `${v.name}, ${dayLabel(v.time)}, ${timeOf(v.time)}` : `${dayLabel(v.time)}, ${timeOf(v.time)}`;
     if (b.date.textContent !== date) b.date.textContent = date;
-    const who = authorsOf(this.client, v.authors);
+    const who = v.start ? make('span', 'who', 'Start of the history') : authorsOf(this.client, v.authors);
     if (!who.isEqualNode(b.who)) {
       b.who.replaceWith(who);
       b.who = who;
@@ -346,19 +349,40 @@ export class Preview {
     info.append(make('span', 'date', `Set aside, ${dayLabel(a.time)}, ${timeOf(a.time)}`), authorsOf(this.client, [a.author]));
     const actions = make('div', 'actions');
     actions.append(this.button('Download', () => void this.download('aside', a.id)));
-    this.bar.replaceChildren(info, actions);
+    const slides = make('div', 'slides');
+    this.bar.replaceChildren(info, slides, actions);
     this.text = null;
-    void this.fillAside(a.id, info);
+    void this.fillAside(a.id, info, slides);
   }
 
-  private async fillAside(id: string, info: HTMLElement): Promise<void> {
+  // the page of the text set aside, at the first slide on which it differs from the current deck
+  private async fillAside(id: string, info: HTMLElement, bar: HTMLElement): Promise<void> {
     const key = this.key;
     const frame = this.frameFor('aside');
     try {
       const text = await this.textOf('aside', id);
       if (key !== this.key) return;
-      const w = await this.write(frame, text, tokenize(text), this.url('aside', id));
-      if (key === this.key && w) this.keys(w);
+      const tokens = tokenize(text);
+      const slides = slidesOf(text, tokens);
+      // a slide differs when no slide of the current deck reads as it does. in a text with as many
+      // slides as the current deck, a slide differs as well when the slide at its place reads
+      // differently, which lists a slide that was only moved
+      const now = this.client.snapshot()?.mine ?? text;
+      const current = slidesOf(now).map((s) => now.slice(s.start, s.end));
+      const kept = new Set(current);
+      const placed = current.length === slides.length;
+      const differs = (s: (typeof slides)[number], k: number): boolean => {
+        const t = text.slice(s.start, s.end);
+        return !kept.has(t) || (placed && current[k] !== t);
+      };
+      const differ = [...new Set(slides.filter(differs).map((s) => s.number))];
+      bar.replaceChildren(...differ.map((n) => this.button(slidesText([n]), () => this.go(n), 'slide')));
+      const w = await this.write(frame, text, tokens, this.url('aside', id));
+      if (key !== this.key || !w) return;
+      this.keys(w);
+      this.slides = slides;
+      this.sections = sectionsOf(w.document, text, slides);
+      if (differ.length) this.go(differ[0]);
     } catch (e) {
       if (key === this.key) info.append(make('span', 'removed', (e as Error).message));
     }
@@ -396,9 +420,6 @@ export class Preview {
     this.text = text;
     this.slides = slidesOf(text, tokens);
     this.sections = sectionsOf(doc, text, this.slides);
-    const css = doc.createElement('style');
-    css.textContent = FRAME_CSS;
-    doc.head.append(css);
     doc.documentElement.classList.toggle('beeson-hide-changes', !this.changes);
     const targets = targetsOf(text, this.slides, detail.marks);
     const notes = new Set<number>();

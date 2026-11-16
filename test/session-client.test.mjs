@@ -1,10 +1,12 @@
 // the client of a session in Chrome, on the edit command started on a temporary talk folder: the
 // join, the edits of two pages that reach each other and index.html byte for byte, a structural
 // change, an undo, a change of the file from outside, a change of the head that loads the page
+// again, a change from outside of a tag that the theme reads at a mount, which loads both pages
 // again, and the guard that never sends a text that the deck did not take as an edit
 
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
@@ -201,6 +203,48 @@ test('the edits of two pages reach each other and index.html byte for byte', { t
 
   clean(a);
 });
+
+// a change of a start tag that the theme reads only at a mount is a reload of every page, also of a
+// page that sent an edit before it, and the pages show the new tag after it and take edits
+const FIGURE = '  <div class="figure-box tikz" id="tk" data-figure="two" style="width: 300px; height: 200px"></div>\n  <div id="bd" class="later"></div>\n';
+for (const [what, from, to, shown] of [
+  ['data-figure of a TikZ figure', 'data-figure="two"', 'data-figure="three"', `!!document.querySelector('#tk > svg [id]')?.id.startsWith('tikz-three-')`],
+  ['the class backdrop on an element', 'class="later"', 'class="backdrop"', `document.querySelector('#bd').classList.contains('backdrop')`],
+]) {
+  test(`a change of ${what} by another program loads both pages again, which then show it and take edits`, { timeout: 180_000 }, async (t) => {
+    const browser = await launch({ offline: false });
+    t.after(() => browser.close());
+    const server = await talk(t);
+    mkdirSync(join(server.talk, 'figures'));
+    const two = readFileSync('test/pages/figures/two.js', 'utf8');
+    writeFileSync(join(server.talk, 'figures', 'two.js'), two);
+    writeFileSync(join(server.talk, 'figures', 'three.js'), two.replaceAll('"two"', '"three"').replaceAll('tikz-two-', 'tikz-three-'));
+    writeFileSync(server.file, TALK.replace('  <p>First slide</p>\n', `  <p>First slide</p>\n${FIGURE}`));
+    const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+    const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+    await converge(server, [a, b]);
+    await show(b, 'Two');
+    await caretAtEnd(b, el(1, 'p'));
+    await typeKeys(b, ' early');
+    const before = await converge(server, [a, b]);
+    assert.ok(before.includes('<p>Second slide early</p>'));
+    const counts = [await loads(a), await loads(b)];
+    writeFileSync(server.file, before.replace(from, to));
+    await reloaded([a, b], counts);
+    await converge(server, [a, b]);
+    for (const page of [a, b]) {
+      await front(page);
+      await page.waitFor(`${shown} && ${STATE} === 'Saved to index.html' && !document.querySelector('.reveal .slides').inert`, 20_000);
+    }
+    await show(a, 'One');
+    await caretAtEnd(a, el(0, 'p'));
+    await typeKeys(a, ', later');
+    const text = await converge(server, [a, b]);
+    assert.ok(text.includes(to) && text.includes('<p>First slide, later</p>') && text.includes('<p>Second slide early</p>'), text);
+    clean(a);
+    clean(b);
+  });
+}
 
 test('a name held by another person asks whether it is this person, and Yes takes the person over', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });

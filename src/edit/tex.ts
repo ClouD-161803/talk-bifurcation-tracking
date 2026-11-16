@@ -4,21 +4,18 @@
 // that the preamble reads, once the change is stable. it is written only when its text changes,
 // and never in a folder without preamble.tex and references.bib, whose tex.js may be shared with
 // another deck. every change of tex.js on disk, by the edit command or by another program, is
-// counted, and the pages draw the deck again with it
+// counted, and the pages draw the deck again with it. so is a stable change of a source that
+// leaves the text of tex.js as it is, after which the pages read the sources again, e.g. for a
+// paper added to references.bib that the deck does not cite yet
 
-import { readFileSync, statSync, type Stats } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { readBibtex } from '../bibtex.ts';
-import { readPreamble, type Resolve } from '../preamble.ts';
-import { citedKeys, texOf, texScript } from '../texfile.ts';
-import { renameRetried } from './disk.ts';
+import { citedKeys, folderTex, skippedLines, texScript } from '../texfile.ts';
+import { renameRetried, signature } from './disk.ts';
 
 const STABLE = 300;
-
-// the change time is left out, as in disk.ts, since a rename changes it on some systems
-const signature = (s: Stats) => `${s.size}:${s.mtimeMs}:${s.ino}`;
 
 // the cited keys of a deck in one order, since a citation moved in the deck does not change tex.js
 const keysOf = (html: string) => citedKeys(html).sort().join(',');
@@ -31,10 +28,12 @@ export type DerivedTex = {
   sources: boolean;
   // the files that exist but could not be read, each with its reason
   unread: string[];
+  // the skipped lines of the sources and the cited keys without an entry, as npm run tex prints them
+  skipped: string[];
 };
 
 /**
- * The text of tex.js for the deck html in the folder dir, as deckTex of scripts/tex.mjs derives it
+ * The text of tex.js for the deck html in the folder dir, as npm run tex derives it
  * from the files of the folder, with the signature of each file that was read or looked up.
  */
 export function deriveTex(dir: string, html: string): DerivedTex {
@@ -53,31 +52,18 @@ export function deriveTex(dir: string, html: string): DerivedTex {
       return null;
     }
   };
-  // as in TeX, a file is looked up from the folder of the preamble, and \input adds .tex to a name
-  // without an extension
-  const names = {
-    input: (name: string) => (/\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name]),
-    package: (name: string) => [`${name}.sty`],
-    class: (name: string) => [`${name}.cls`],
-  };
-  const find: Resolve = (name, kind) => {
-    for (const file of names[kind](name)) {
-      const found = text(file);
-      if (found !== null) return { file, text: found };
-    }
-    return null;
-  };
-  const preamble = readPreamble(text('preamble.tex') ?? '', { file: 'preamble.tex', resolve: find });
-  const bibliography = readBibtex(text('references.bib') ?? '');
-  const { tex } = texOf(preamble, bibliography, html);
-  return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread };
+  const { preamble, bibliography, tex, missing } = folderTex(text, html);
+  return { text: texScript(tex), files, sources: files.get('preamble.tex') !== '' || files.get('references.bib') !== '', unread, skipped: skippedLines(preamble, bibliography, missing, 'index.html') };
 }
 
-// onChange is called at each change of tex.js on disk. stable is the time in ms that a changed file
-// must not change before it is taken, shorter in the tests
+// onChange is called at each change of tex.js on disk, and after a stable change of a source that
+// leaves tex.js as it is. onWriteError is called with the message of a failed write of tex.js,
+// once for each reason, and with null at the next derivation that does not fail. stable is the
+// time in ms that a changed file must not change before it is taken, shorter in the tests
 export type TexOptions = {
   log?: (message: string) => void;
   onChange?: () => void;
+  onWriteError?: (message: string | null) => void;
   stable?: number;
 };
 
@@ -89,6 +75,7 @@ export class TexWriter {
   private file: string;
   private log: (message: string) => void;
   private onChange: () => void;
+  private onWriteError: (message: string | null) => void;
   private stable: number;
   // the text of index.html written last, and the cited keys of the text of the last derivation
   private html: string;
@@ -102,8 +89,15 @@ export class TexWriter {
   // the derivations and the polls run one at a time
   private chain: Promise<void> = Promise.resolve();
   private due = false;
+  // the signatures of the sources after a stable change of them, which the derivation that is due
+  // follows, or null
+  private settled: Map<string, string> | null = null;
   private polling = false;
   private stopped = false;
+  // the reason of the write of tex.js that failed last, which is tried again at each poll
+  private failure: string | null = null;
+  // the skipped lines and the keys without an entry logged last
+  private skipped = '';
 
   // html is the text of index.html at the start. the files are read for their signatures, and
   // nothing is written
@@ -112,6 +106,7 @@ export class TexWriter {
     this.file = join(dir, 'tex.js');
     this.log = options.log ?? (() => {});
     this.onChange = options.onChange ?? (() => {});
+    this.onWriteError = options.onWriteError ?? (() => {});
     this.stable = options.stable ?? STABLE;
     this.html = html;
     this.keys = keysOf(html);
@@ -156,7 +151,8 @@ export class TexWriter {
     return (this.chain = this.chain.then(task).catch((e) => this.log(`tex.js: ${(e as Error).message}`)));
   }
 
-  private derive(): void {
+  private derive(settled: Map<string, string> | null = null): void {
+    this.settled = settled ?? this.settled;
     if (this.due) return;
     this.due = true;
     void this.run(() => {
@@ -171,8 +167,11 @@ export class TexWriter {
     const sources = sigs.map(([name, sig]) => `${name}\n${sig}`).join('\n');
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
       if (this.sourcesSeen?.sig !== sources) this.sourcesSeen = { sig: sources, at: now };
-      else if (now - this.sourcesSeen.at >= this.stable) this.derive();
-    } else this.sourcesSeen = null;
+      else if (now - this.sourcesSeen.at >= this.stable) this.derive(new Map(sigs));
+    } else {
+      this.sourcesSeen = null;
+      if (this.failure !== null) this.derive();
+    }
     const tex = await statSig(this.file);
     if (tex !== this.texSig) {
       if (this.texSeen?.sig !== tex) this.texSeen = { sig: tex, at: now };
@@ -186,29 +185,57 @@ export class TexWriter {
 
   private async write(): Promise<void> {
     const html = this.html;
+    const settled = this.settled;
+    this.settled = null;
     const derived = deriveTex(this.dir, html);
-    this.keys = keysOf(html);
-    this.watched = derived.files;
-    this.sourcesSeen = null;
-    if (!derived.sources) return;
+    // a source that changed since it was found stable, or since the last derivation, e.g. one that an
+    // editor is saving now, is taken at a later poll, once it is stable
+    const base = settled ?? this.watched;
+    if ([...derived.files].some(([name, sig]) => base.has(name) && base.get(name) !== sig)) return;
+    // the keys and the files of the derivation are kept once a write is not owed for them, hence a
+    // write that failed is tried again at the next poll
+    const settle = () => {
+      this.keys = keysOf(html);
+      this.watched = derived.files;
+      this.sourcesSeen = null;
+      if (this.failure === null) return;
+      this.failure = null;
+      this.onWriteError(null);
+    };
+    if (!derived.sources) return settle();
     // a tex.js without the macros of a file that is not read would break every page
     if (derived.unread.length) {
+      settle();
       this.log(`tex.js is not written, since ${derived.unread.join(', and ')}`);
       return;
     }
+    if (derived.skipped.join('\n') !== this.skipped) {
+      this.skipped = derived.skipped.join('\n');
+      for (const line of derived.skipped) this.log(line);
+    }
     const old = await readFile(this.file, 'utf8').catch(() => null);
-    if (old === derived.text) return;
+    if (old === derived.text) {
+      settle();
+      if (settled) this.onChange();
+      return;
+    }
     const tmp = join(this.dir, `.tex.js.${randomBytes(6).toString('hex')}.tmp`);
     try {
       await writeFile(tmp, derived.text);
       const made = await stat(tmp);
       await renameRetried(tmp, this.file);
+      settle();
       this.texSig = signature(made);
       this.texSeen = null;
       this.onChange();
     } catch (e) {
       await unlink(tmp).catch(() => {});
+      // the message names the temporary file, which differs at each try
+      const reason = (e as NodeJS.ErrnoException).code ?? (e as Error).message;
+      if (reason === this.failure) return;
+      this.failure = reason;
       this.log(`could not write ${this.file}: ${(e as Error).message}`);
+      this.onWriteError((e as Error).message);
     }
   }
 }

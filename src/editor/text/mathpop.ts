@@ -476,6 +476,9 @@ export function install(app: App): void {
     const fresh = !info.tex.trim();
     // the text element is taken now, since a commit draws the formula again in a new container
     const textEl = textElementOf(container);
+    // so does a redraw of tex.js while the field is open, after which the formula is found by its place
+    const at = [...textEl.querySelectorAll('mjx-container')].indexOf(container);
+    const now = (): Element => (container.isConnected ? container : textEl.querySelectorAll('mjx-container')[at] ?? container);
     openSheet({
       title: fresh ? 'Insert Formula' : 'Edit Formula',
       tex: info.tex,
@@ -486,10 +489,10 @@ export function install(app: App): void {
       textEl: () => textEl,
       commit: into
         ? (tex) => app.history.amend(into, async () => {
-            await setMath(container, tex);
+            await setMath(now(), tex);
             if (textEl.isConnected) app.selection.set('elements', [textEl]);
           })
-        : (tex) => setMath(container, tex),
+        : (tex) => setMath(now(), tex),
       made: into ? textEl : undefined,
     }, container);
   }

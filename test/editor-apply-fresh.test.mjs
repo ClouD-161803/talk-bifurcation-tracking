@@ -23,16 +23,21 @@ const once = (text, from, to) => {
 const sectionsOf = (text) => [...text.matchAll(/^<section[\s\S]*?^<\/section>/gm)].map((m) => m[0]);
 const slideWith = (text, heading) => sectionsOf(text).find((s) => s.includes(`<h2>${heading}`) || s.includes(`<h1>${heading}`));
 
-// each text applied in turn on a session page, with the reload that each apply must ask for, and
-// the page compared with a fresh page after each apply that does not
+// each text applied in turn on a session page, with the reload that each apply must ask for, after
+// which the port reads as before, and the page compared with a fresh page after each apply that does
+// not
 async function steps(t, changes) {
   const b = await sessionPage(browser);
   t.after(() => b.close());
   let text = b.source;
   for (const [label, change, reload] of changes) {
+    const was = text;
     text = change(text);
     assert.equal((await applyOn(b, text)).reload, reload, `${label}: the reload of the apply`);
-    if (reload) return b;
+    if (reload) {
+      assert.equal(await b.evaluate(`${E}.session.text()`), was, `${label}: the port reads as before the reload`);
+      return b;
+    }
     await applied(b, text, label);
     await looksFresh(t, browser, b, text, label);
   }

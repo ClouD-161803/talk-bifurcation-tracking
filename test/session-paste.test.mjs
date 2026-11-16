@@ -1,7 +1,9 @@
 // slides pasted from a plain deck into a page of a session, and slides copied in a session. a file
 // that the session does not take is not added by the paste, which names it with the reason, and the
-// later edits of the page still reach index.html. a copy in a session names its deck by a tag in
-// place of the key of the session, and a plain deck asks for the talk folder of the session
+// later edits of the page still reach index.html. a copy in a session names its deck by a hash of
+// the key of the session, also after the session ends, and a plain deck asks for the talk folder of
+// the session that it was copied from. a deck whose address has session, which no edit command
+// serves, names its own address
 
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,7 +11,7 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { clean, converge, open, sessionUrl, talk, TEXT } from './helpers/client.mjs';
+import { C, clean, converge, open, sessionUrl, talk, TEXT } from './helpers/client.mjs';
 import { A, B, BACKDROP, DIR, FILES, FIRST_B, QUERY, copySlide, openDeck, pasteSlides, pasted, status, withMacrosOfA } from './helpers/cross-deck.mjs';
 import { click } from './helpers/editor.mjs';
 import { edit } from './helpers/offline.mjs';
@@ -100,12 +102,12 @@ test('a copy in a session', { timeout: 180_000 }, async (t) => {
   await converge(server, [ann, ben]);
   const text = await copySlide(ann, 'One');
 
-  await t.test('names the deck by a tag in place of the key of the session', async () => {
+  await t.test('names the deck by a hash of the key of the session', async () => {
     assert.ok(!text.includes(server.edit.key), text.slice(0, 300));
     const origin = ORIGIN(text);
     assert.match(origin.deck, /^http:\/\/127\.0\.0\.1:\d+\/session-[0-9a-z]+\/index\.html$/);
     assert.equal(origin.session, true);
-    // another page of the session derives the same tag from the key
+    // another page of the session derives the same hash from the key
     assert.equal(ORIGIN(await copySlide(ben, 'Two')).deck, origin.deck);
   });
 
@@ -118,20 +120,61 @@ test('a copy in a session', { timeout: 180_000 }, async (t) => {
     assert.equal((await status(ben)).message.includes('not copied'), false);
   });
 
-  await t.test('asks a plain deck for the talk folder of the session, without its key', async (t) => {
+  await t.test('asks a plain deck for the talk folder of the session that it was copied from, without its key', async (t) => {
     const b = await openDeck(browser, `${stat.origin}/${B}?${QUERY}`, B);
     t.after(() => b.close());
     await pasteSlides(b, FIRST_B, text);
     const asked = await answer(b, 'Paste Without Files');
-    assert.ok(asked.includes('The images, videos, and backdrops that you pasted are files in the talk folder of the session.'), asked);
+    assert.ok(asked.includes('The images, videos, and backdrops that you pasted are files in the talk folder of the session that you copied from.'), asked);
     assert.ok(!asked.includes(server.edit.key), asked);
     await pasted(b);
     const { message } = await status(b);
-    assert.ok(message.endsWith('media/fig.png was not copied from the talk folder of the session.'), message);
+    assert.ok(message.endsWith('media/fig.png was not copied from the talk folder of the session that you copied from.'), message);
     // deck B does not read the file from the address of the copy
     assert.equal(b.errors.filter((e) => e.includes('session-')).length, 0, b.errors.join('\n'));
   });
 
   clean(ann);
   clean(ben);
+});
+
+test('a page of a session names its deck by a hash of the key after the edit command stops', { timeout: 120_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const { key } = server.edit;
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const before = ORIGIN(await copySlide(ann, 'One'));
+  server.edit.child.kill('SIGTERM');
+  await server.edit.exited;
+  server.edit = null;
+  await ann.waitFor(`${C}.connection === 'ended'`);
+  await ann.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Close').click()`);
+  await ann.waitFor(`!document.querySelector('dialog[open]')`);
+  const text = await copySlide(ann, 'One');
+  assert.ok(!text.includes(key), text.slice(0, 300));
+  assert.deepEqual(ORIGIN(text), before);
+  clean(ann);
+});
+
+test('a copy from a deck whose address has session, which no edit command serves, names its own address, and a deck of the same origin copies its files without a question', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const stat = await serve('.');
+  t.after(() => stat.close());
+  const a = await openDeck(browser, `${stat.origin}/${A}?${QUERY}&session`, A);
+  await a.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not served by an edit command')`);
+  await a.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
+  await a.waitFor(`!document.querySelector('dialog[open]')`);
+  const text = await copySlide(a, FILES);
+  const origin = ORIGIN(text);
+  assert.equal(origin.deck, `${stat.origin}/${A}`);
+  assert.equal(origin.session, undefined);
+  const b = await withMacrosOfA(await openDeck(browser, `${stat.origin}/${B}?${QUERY}`, B));
+  await pasteSlides(b, FIRST_B, text);
+  await b.waitFor(`!!document.querySelector('${DIALOG}[open]') || window.__pasted !== false`, 30000);
+  assert.equal(await b.evaluate(`document.querySelector('${DIALOG}[open]')?.textContent ?? null`), null);
+  await pasted(b);
+  const { message } = await status(b);
+  assert.ok(!message.includes('not copied'), message);
 });

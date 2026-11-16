@@ -236,6 +236,63 @@ test('a version that changes only the start tag of a slide outlines the slide it
   clean(ann);
 });
 
+test('the preview draws neither the switch of the mode, the slide number, nor the progress bar of the show', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  await write(server, ann, TALK.replace('<h2>Two</h2>', '<h2>Two changed</h2>'), 'Two changed');
+  await nameNow(ann, 'Changed');
+  await openPane(ann);
+  await tapOrClick(ann, rowByTitle('Changed'));
+  await ann.waitFor(`${CURRENT} === 'Two changed'`, 30_000);
+  // each control of the show is in the page of the preview, and is not drawn
+  const controls = `['.theme-switch', '.reveal .slide-number', '.reveal .progress'].map((s) => { const el = ${FRAME}.contentDocument.querySelector(s); return el ? el.getClientRects().length : null; })`;
+  await ann.waitFor(`!${controls}.includes(null)`);
+  assert.deepEqual(await ann.evaluate(controls), [0, 0, 0]);
+  clean(ann);
+});
+
+test('the preview of a text set aside lists the slides on which it differs from the current deck, and opens on the first of them', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const aside = await ann.evaluate(`${C}.transport.post('aside', { token: ${C}.token, text: ${JSON.stringify(TALK.replace('<p>Second slide</p>', '<p>Second slide set aside</p>'))} })`);
+  await openPane(ann);
+  await tapOrClick(ann, `document.querySelector('${PANE} .row[data-id="aside:${aside.id}"]')`);
+  await ann.waitFor(`!!${FRAME}?.contentWindow?.Reveal?.isReady() && !!${FRAME}.contentDocument.querySelector('.theme-switch')`, 30_000);
+  assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('${BAR} button.slide')].map((b) => b.textContent)`), ['Slide 2']);
+  await ann.waitFor(`${CURRENT} === 'Two'`);
+  assert.equal(await ann.evaluate(`${FRAME}.contentDocument.querySelector('.theme-switch').getClientRects().length`), 0);
+  await ann.evaluate(`${FRAME}.contentWindow.Reveal.slide(0), true`);
+  await ann.waitFor(`${CURRENT} === 'One'`);
+  await press$(ann, BAR, 'Slide 2');
+  await ann.waitFor(`${CURRENT} === 'Two'`);
+  clean(ann);
+});
+
+test('the preview of a text set aside that only moved slides lists the slides that read differently at their place', { timeout: 180_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  // the two slides of the deck in the other order
+  const one = TALK.slice(TALK.indexOf('<section>'), TALK.indexOf('</section>') + '</section>'.length);
+  const two = TALK.slice(TALK.indexOf('<section>', TALK.indexOf('</section>')), TALK.lastIndexOf('</section>') + '</section>'.length);
+  assert.ok(one.includes('<h2>One</h2>') && two.includes('<h2>Two</h2>') && !two.includes('<h2>One</h2>'));
+  const moved = TALK.replace(one, '@@').replace(two, one).replace('@@', two);
+  const aside = await ann.evaluate(`${C}.transport.post('aside', { token: ${C}.token, text: ${JSON.stringify(moved)} })`);
+  await openPane(ann);
+  await tapOrClick(ann, `document.querySelector('${PANE} .row[data-id="aside:${aside.id}"]')`);
+  await ann.waitFor(`!!${FRAME}?.contentWindow?.Reveal?.isReady()`, 30_000);
+  await ann.waitFor(`${CURRENT} === 'Two'`);
+  assert.deepEqual(await ann.evaluate(`[...document.querySelectorAll('${BAR} button.slide')].map((b) => b.textContent)`), ['Slide 1', 'Slide 2']);
+  await press$(ann, BAR, 'Slide 2');
+  await ann.waitFor(`${CURRENT} === 'One'`);
+  clean(ann);
+});
+
 test('a new list leaves the bar alone, the text of a version is read once per preview, and a hidden preview keeps nothing', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());

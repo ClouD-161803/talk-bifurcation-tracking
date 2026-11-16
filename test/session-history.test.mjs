@@ -497,7 +497,7 @@ test('the pane of a page offline reads the versions once the page is online agai
   clean(ann, [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/(events|history)\?/]);
 });
 
-test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 px', { timeout: 300_000 }, async (t) => {
+test('on a phone of 390 px the slide of the canvas is above the sheet, and the pane, the bar, and every button take a tap of 32 px', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
@@ -510,6 +510,15 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
   await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
   await ann.waitFor(SHOWN);
+  // the slide is fitted to the room between the toolbar and the sheet
+  const room = `(() => {
+    const slide = document.querySelector('.reveal:not(.beeson-peek)').getBoundingClientRect();
+    const canvas = document.querySelector('.beeson-edit-canvas').getBoundingClientRect();
+    const sheet = document.querySelector('${PANE}').getBoundingClientRect();
+    return { below: slide.top >= canvas.top - 0.5, above: slide.bottom <= sheet.top + 0.5, shown: slide.height >= 100 };
+  })()`;
+  await ann.waitFor(`Object.values(${room}).every(Boolean)`).catch(() => {});
+  assert.deepEqual(await ann.evaluate(room), { below: true, above: true, shown: true });
   await press$(ann, PANE, 'Name this version');
   await nameIt(ann, 'Phone');
   await ann.waitFor(`${LIST}[1]?.title === 'Phone'`);
@@ -536,6 +545,41 @@ test('on a phone of 390 px the pane, the bar, and every button take a tap of 32 
   const dialog = await ann.evaluate(`[...document.querySelectorAll('dialog.beeson-session-history-dialog[open] button')].map((b) => b.getBoundingClientRect().height >= 32)`);
   assert.deepEqual(dialog, [true, true]);
   await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Cancel');
+  await press$(ann, PANE, 'Back to editor');
+  await ann.waitFor(`!(${SHOWN})`);
+  clean(ann);
+});
+
+test('on a phone with the notes open, the slide of the canvas and the preview of a version are drawn above the sheet', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t, { env: HELD });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', width: 390, height: 844, mobile: true });
+  await converge(server, [ann]);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Notes')`);
+  await ann.waitFor(`document.documentElement.classList.contains('beeson-notes')`);
+  await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
+  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Version History')`);
+  await ann.waitFor(SHOWN);
+  // the notes are below the sheet, hence the slide has the room between the toolbar and the sheet
+  const room = `(() => {
+    const slide = document.querySelector('.reveal:not(.beeson-peek)').getBoundingClientRect();
+    const sheet = document.querySelector('${PANE}').getBoundingClientRect();
+    return { above: slide.bottom <= sheet.top + 0.5, shown: slide.height >= 100 };
+  })()`;
+  await ann.waitFor(`Object.values(${room}).every(Boolean)`).catch(() => {});
+  assert.deepEqual(await ann.evaluate(room), { above: true, shown: true });
+  // a version previewed with the whole list shown again
+  await tapOrClick(ann, `document.querySelector('${PANE} .versions .row.version')`);
+  await ann.waitFor(`${FRAME}?.contentDocument?.readyState === 'complete'`, 30_000);
+  await press$(ann, PANE, 'Versions');
+  const frame = `(() => {
+    const frame = ${FRAME}.getBoundingClientRect();
+    const sheet = document.querySelector('${PANE}').getBoundingClientRect();
+    return { above: frame.bottom <= sheet.top + 0.5, shown: frame.height >= 100 };
+  })()`;
+  await ann.waitFor(`Object.values(${frame}).every(Boolean)`).catch(() => {});
+  assert.deepEqual(await ann.evaluate(frame), { above: true, shown: true });
   await press$(ann, PANE, 'Back to editor');
   await ann.waitFor(`!(${SHOWN})`);
   clean(ann);
@@ -738,7 +782,7 @@ test('a fold stays open, and the focus stays on its control, while new versions 
   clean(ann);
 });
 
-test('the start of the history is a row of its own, which reads Start of the history in the place of the authors', { timeout: 180_000 }, async (t) => {
+test('the start of the history is a row of its own, which reads Start of the history in the place of the authors, as the bar of its preview does', { timeout: 180_000 }, async (t) => {
   const now = Date.now();
   const first = Math.max(now - 10 * MIN, new Date(now).setHours(0, 0, 0, 0) + 1000);
   const server = await crafted(t, craft([{ time: first, start: true }, { time: first + MIN }, { time: first + 2 * MIN }]), HELD);
@@ -765,6 +809,7 @@ test('the start of the history is a row of its own, which reads Start of the his
   await tapOrClick(ann, `document.querySelector('${PANE} [data-id="version:v0"]')`);
   await ann.waitFor(`!!${FRAME}?.contentDocument?.body?.textContent.includes('First slide')`, 30_000);
   assert.equal(await ann.evaluate(`${FRAME}.contentDocument.body.textContent.includes('First slidex')`), false);
+  assert.equal(await ann.evaluate(`document.querySelector('${BAR} .who').textContent`), 'Start of the history');
   clean(ann);
 });
 
@@ -839,7 +884,11 @@ test('with many versions a new version writes only its own row, and the rows in 
   await ann.waitFor(`${ROWS}.length === 151`, 20_000);
   const written = await ann.evaluate('[...window.__written]');
   assert.ok(written.length <= 2, `rows written: ${written.length}`);
-  assert.deepEqual(await ann.evaluate(view), before);
+  // the place is held within 1 px, since the pane is scrolled by the height of the new row, which
+  // need not be a whole number of px. on Ubuntu the row was drawn 1 px higher
+  const after = await ann.evaluate(view);
+  assert.equal(after.id, before.id);
+  assert.ok(Math.abs(after.top - before.top) <= 1, `the first row in view moved from ${before.top} px to ${after.top} px`);
   clean(ann);
   clean(ben);
 });
@@ -944,13 +993,15 @@ test('the day headings of an open pane move on at midnight', { timeout: 300_000 
   clean(ann);
 });
 
-test('an apply that needs a reload is held while the mode is on, and the page is loaded again when it ends', { timeout: 300_000 }, async (t) => {
+test('an apply that needs a reload is held while the mode is on, which the row Current version says, and the page is loaded again when it ends', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   await converge(server, [ann]);
   await openPane(ann);
+  const current = `[...document.querySelector('${PANE} .row.current').children].map((c) => c.textContent)`;
+  assert.deepEqual(await ann.evaluate(current), ['Current version']);
   await press$(ann, PANE, 'Name this version');
   await nameIt(ann, 'Seen');
   await ann.waitFor(`${LIST}[1]?.title === 'Seen'`);
@@ -965,6 +1016,7 @@ test('an apply that needs a reload is held while the mode is on, and the page is
   const answer = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at + 17, text: 'Beeson.start({ });' }] })).json();
   assert.equal(answer.ok, true);
   await ann.waitFor(`document.querySelector('${PANE} .row.current .sub')?.textContent === 'The deck changed. It is loaded again when Version History is closed.'`, 20_000);
+  assert.deepEqual(await ann.evaluate(current), ['Current version', 'The deck changed. It is loaded again when Version History is closed.']);
   assert.equal(await ann.evaluate('window.__before'), true);
   assert.equal(await ann.evaluate(`${SHOWN} && !!document.querySelector('.beeson-session-preview:not([hidden])')`), true);
   await press$(ann, PANE, 'Back to editor');
@@ -1172,7 +1224,7 @@ test('Version History takes the caret out of the text, hence another person can 
   await show(ann, 'One');
   await caretAtEnd(ann, el(0, 'h2'));
   await typeKeys(ann, ' typed');
-  await press(ann, 'Mod+Alt+Shift+H');
+  await press(ann, HISTORY_KEY);
   await ann.waitFor(SHOWN);
   // the presence state of Ann as the page of Ben reads it
   const of = `${C}.presence.find((p) => p.name === 'Ann')?.state`;

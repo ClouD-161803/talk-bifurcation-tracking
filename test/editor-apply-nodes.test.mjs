@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { applied, applyOn, sessionPage, showSlide } from './helpers/apply.mjs';
+import { E, applied, applyOn, sessionPage, showSlide } from './helpers/apply.mjs';
 
 let browser;
 before(async () => {
@@ -145,13 +145,14 @@ test('a large apply right after an open makes the deck read as the text in full'
   assert.deepEqual(b.errors, []);
 });
 
-test('a change of data-figure on a TikZ figure is a reload, and a change of data-part on a step of one is not', async (t) => {
+test('a change of data-figure on a TikZ figure is a reload that leaves the port as it was, and a change of data-part on a step of one is not', async (t) => {
   const b = await sessionPage(browser, { deck: 'test/pages/tikz.html' });
   t.after(() => b.close());
   const parted = once(b.source, 'data-part="b" data-fragment-index="2"', 'data-part="a" data-fragment-index="2"');
   assert.equal((await applyOn(b, parted)).reload, false);
   await applied(b, parted, 'data-part');
   assert.equal((await applyOn(b, once(parted, 'data-figure="missing"', 'data-figure="two"'))).reload, true);
+  assert.equal(await b.evaluate(`${E}.session.text()`), parted, 'the port reads as before the reload');
 });
 
 test('a TikZ figure placed by an apply is drawn in a deck without MathJax', async (t) => {
