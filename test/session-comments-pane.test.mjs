@@ -14,7 +14,7 @@ import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
-import { copied, goOffline, tab } from './helpers/offline.mjs';
+import { copied, goOffline, ROWS, tab } from './helpers/offline.mjs';
 import { post as request, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 // the element of selector on the slide at index
@@ -908,6 +908,93 @@ test('a draft stays on its element when its page leaves with an edit of this ele
   await a.waitFor(ONLINE);
   await until(() => server.read().includes('Beta typed'), 'the copy to reach index.html');
   await sees(a, DRAFTED, { label: 'On Item: Beta typed', text: 'Half a draft' }, 'the draft after a reload with an edit of its element that was not acknowledged');
+});
+
+test('a draft goes to its slide, and not to an element that reads the same, when its page leaves with edits that the edit command has not acknowledged, which remove such an element before it and make one after it', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, TWINS.replace('<li>Later</li>', '<li>TB</li>'));
+  const a = await tab(browser, sessionUrl(server.edit));
+  await show(a, 'Two');
+  const item = { label: 'On Item: TBD', text: 'Half a draft' };
+  assert.deepEqual(await drafted(a, el(1, 'li')), item);
+  // the operations of the page fail, and its edits are kept in the copy of the browser, which is
+  // merged once the page has loaded again: the item TBD of slide One becomes TB, and the item TB of
+  // slide Three becomes TBD
+  await a.evaluate('window.__blockOps = true');
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'li:nth-child(2)'));
+  await press(a, 'Backspace');
+  await show(a, 'Three');
+  await caretAtEnd(a, el(2, 'li'));
+  await type(a, 'D');
+  const three = '<h2>Three</h2>\n  <ul>\n    <li>TBD</li>';
+  await a.waitFor(`(${ROWS}).then((rows) => rows.some((r) => r.mine.includes(${JSON.stringify(three)}) && r.mine.includes('<li>Done</li>\\n    <li>TB</li>')))`, 15_000);
+  await a.waitFor(`!${C}.asking`);
+  // a key in the draft writes it again, with the item of the draft as the first of two in the text
+  // with the edits of the page
+  await show(a, 'Two');
+  await a.evaluate(`(() => { const x = document.querySelector('${DRAFT}'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); return true; })()`);
+  await typeKeys(a, '!');
+  const OWN = `JSON.parse(sessionStorage.getItem('beeson-session-comment-texts:' + location.pathname) || 'null')?.draft?.el?.own?.twin`;
+  await a.waitFor(`JSON.stringify(${OWN}) === '[0,2]'`);
+  await a.evaluate('(window.__before = true, location.reload())').catch(() => {});
+  await until(() => a.evaluate('!window.__before && !!window.BeesonEditor').catch(() => false), 'the page to load again');
+  await a.waitFor('window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await until(() => server.read().includes(three), 'the copy to reach index.html');
+  // the item is the first of two in the text with the edits of the page, and the second in the base,
+  // and the page cannot tell whether its edits were merged again
+  await front(a);
+  await a.waitFor(`${DRAFTED}?.text === 'Half a draft!'`);
+  const after = await a.evaluate(DRAFTED);
+  assert.deepEqual(await sentAt(a, server), [{ near: 'section>\n\n<section>\n', slide: 'Two' }], 'the comment is on slide Two');
+  assert.deepEqual(after, { label: 'On Slide 2', text: 'Half a draft!' }, 'the draft after a reload with edits that moved its twins');
+});
+
+test('a draft goes to its slide, and not to an element that reads the same, when its page leaves without its edits, which removed such an element before it and made one after it', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, TWINS.replace('<li>Later</li>', '<li>TB</li>'));
+  // IndexedDB fails, as in a private window, hence the edits that wait are lost at the reload
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: `IDBFactory.prototype.open = function () { throw new DOMException('refused by the test', 'SecurityError'); };` });
+  await converge(server, [a]);
+  await show(a, 'Two');
+  assert.deepEqual(await drafted(a, el(1, 'li')), { label: 'On Item: TBD', text: 'Half a draft' });
+  await a.evaluate(`(() => {
+    const fetched = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : input.url;
+      return url.includes('/.session/op') ? new Promise(() => {}) : fetched.call(this, input, init);
+    };
+  })()`);
+  await show(a, 'One');
+  await caretAtEnd(a, el(0, 'li:nth-child(2)'));
+  await press(a, 'Backspace');
+  await show(a, 'Three');
+  await caretAtEnd(a, el(2, 'li'));
+  await type(a, 'D');
+  await show(a, 'Two');
+  await a.evaluate(`(() => { const x = document.querySelector('${DRAFT}'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); return true; })()`);
+  await typeKeys(a, '!');
+  const OWN = `JSON.parse(sessionStorage.getItem('beeson-session-comment-texts:' + location.pathname) || 'null')?.draft?.el?.own?.twin`;
+  await a.waitFor(`JSON.stringify(${OWN}) === '[0,2]'`);
+  const count = await loads(a);
+  // the page asks before it leaves with edits that it cannot keep
+  const accept = setInterval(() => a.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {}), 200);
+  accept.unref();
+  await a.evaluate('location.reload()').catch(() => {});
+  await until(async () => (await loads(a).catch(() => 0)) > count, 'the page to load again', 30_000);
+  clearInterval(accept);
+  await a.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)');
+  await a.waitFor(ONLINE);
+  await converge(server, [a]);
+  assert.ok(server.read().includes('<li>Done</li>\n    <li>TBD</li>'), 'the edits that were not kept are gone');
+  await front(a);
+  await a.waitFor(`${DRAFTED}?.text === 'Half a draft!'`);
+  const after = await a.evaluate(DRAFTED);
+  assert.deepEqual(await sentAt(a, server), [{ near: 'section>\n\n<section>\n', slide: 'Two' }], 'the comment is on slide Two');
+  assert.deepEqual(after, { label: 'On Slide 2', text: 'Half a draft!' }, 'the draft after a reload without the edits that moved its twins');
 });
 
 test('a mention is toasted once, also after a reload of the page, a reply, and an edit of the comment', { timeout: 300_000 }, async (t) => {
