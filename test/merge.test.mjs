@@ -474,6 +474,32 @@ test('the merge of an apply in a session does not move a deletion off an inserti
   assert.equal(mergeEdits(f, others, mine, 'ours', true, true).text, wrap('R&XD &amp; co'));
 });
 
+// the edits of two words that replace one word interleave, and some of them do not clash, e.g. ial
+// at the end of First, which the page replaced by Opening
+test('the merge of an apply in a session keeps the word of the page whole where another person replaced the same word, as the replica does', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  for (const [p0, ps, pt] of [
+    ['First slide here', 'Opening slide here', 'Initial slide here'],
+    ['Second slide', 'Second deck', 'Second page'],
+    ['the orbit', 'the halo', 'the moon'],
+  ]) {
+    const f = wrap(p0), s = wrap(ps), t = wrap(pt);
+    assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, s, `${ps} over ${pt}`);
+    assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, t, `${pt} over ${ps}`);
+    assert.equal(applyPatches(f, mergePatches(diff(f, t), diff(f, s), 'ours', f).patches), s, `replica ${ps} over ${pt}`);
+  }
+  // edits of letters of one word that do not clash are both kept, and so is a change of the other
+  // person in another word, also when the page wins a conflict
+  const f = wrap('Second slide');
+  assert.equal(mergeEdits(f, fine(f, wrap('Second side')), fine(f, wrap('Second slice')), 'ours', true, true).text, wrap('Second sice'));
+  const g = wrap('First slide here');
+  assert.equal(mergeEdits(g, fine(g, wrap('Opening slide here')), fine(g, wrap('Initial slide hereX')), 'ours', true, true).text, wrap('Opening slide hereX'));
+  // with the merge of a file, a change of the file in the word of a conflict is kept as before
+  const l = g.indexOf('slide') + 1;
+  const page = [{ start: l, end: l + 1, text: 'L' }], file = [{ start: l, end: l + 1, text: 'X' }, { start: l + 3, end: l + 4, text: 'E' }];
+  assert.equal(mergeEdits(g, page, file, 'ours').text, wrap('First sLidE here'));
+});
+
 // x interleaves 40 distinct letters with U, and y the same letters with V, followed by 500 V. each
 // part between two runs in common has sides of over 500 units that charEdits() cannot diff
 test('fine() of a chain of parts that charEdits() cannot diff costs no more than a paste at the cap of anchored()', () => {
