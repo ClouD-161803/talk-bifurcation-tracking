@@ -556,6 +556,9 @@ export class Presence {
       o.state = state;
       this.resolve(o, p.client, p.name, p.color);
       if (known && (o.resolved?.caret?.el ?? null) !== caretBefore) o.activeAt = t;
+      // a page that first heard the person during a pause holds from its own first hearing, hence
+      // a state that says idle ends the hold
+      if (!state.active && !state.typing) o.activeAt = -Infinity;
       changed = true;
     }
     for (const id of [...this.others.keys()]) {
