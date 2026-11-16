@@ -6,7 +6,7 @@
 // a phone of 390 px
 
 import assert from 'node:assert/strict';
-import { cpSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -133,9 +133,12 @@ async function pair(t, names = ['Ann', 'Ben']) {
   return { browser, server, pages };
 }
 
-// a talk folder with the slides of slides in place of those of TALK, and the edit command on it
-async function talkWith(t, slides) {
-  const folder = talkFolder(t, TALK.replace(/<section>[\s\S]*<\/section>\n/, slides));
+// a talk folder with the slides of slides in place of those of TALK, and with tex next to it as
+// tex.js, which the deck loads, when it is given, and the edit command on it
+async function talkWith(t, slides, tex = null) {
+  const deck = TALK.replace(/<section>[\s\S]*<\/section>\n/, slides);
+  const folder = talkFolder(t, tex === null ? deck : deck.replace('<script src="theme/beeson.js">', '<script src="tex.js"></script>\n<script src="theme/beeson.js">'));
+  if (tex !== null) writeFileSync(join(folder.talk, 'tex.js'), tex);
   for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
   const file = join(folder.talk, 'index.html');
   const server = { ...folder, file, read: () => readFileSync(file, 'utf8'), edit: await startEdit(folder.talk, { env: { XDG_CONFIG_HOME: folder.config, APPDATA: folder.config } }) };
@@ -1039,13 +1042,15 @@ test('the badge of the text element of the caret is clear of its grips, and its 
 test('a draft on a theorem is labeled by its kind, on a cell as a table cell, and on a citation by its number or else its key', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
+  // tex.js has the paper of the first citation, which is thus numbered, and not the one of the second
   const server = await talkWith(t, `<section>
   <h2>One</h2>
   <p class="theorem" data-kind="lemma">Every orbit is closed.</p>
   <table><tr><td>A1</td><td>B1</td></tr></table>
   <p>Cited words<cite data-key="koon2000"></cite></p>
+  <p>Other words<cite data-key="nobody1999"></cite></p>
 </section>
-`);
+`, 'window.beesonTex = { "macros": {}, "environments": {}, "packages": [], "theorems": {}, "references": { "koon2000": { "authors": "Koon et al.", "title": "Heteroclinic connections", "venue": "Chaos", "volume": "10", "year": "2000" } } };\n');
   const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
   await show(a, 'One');
   const label = async (selector) => {
@@ -1056,8 +1061,8 @@ test('a draft on a theorem is labeled by its kind, on a cell as a table cell, an
     await a.waitFor(`!document.querySelector('${PANE} .draft')`);
     return got;
   };
-  const n = await a.evaluate(`${el(0, 'cite')}.dataset.n || 'koon2000'`);
-  assert.deepEqual([await label('p.theorem'), await label('td'), await label('cite')], ['On Lemma: Every orbit is closed.', 'On Table cell: A1', `On Citation: ${n}`]);
+  await sees(a, `[...document.querySelectorAll('.reveal .slides cite')].map((c) => c.dataset.n ?? null)`, ['1', 'nobody1999'], 'the labels of the citations on the slide');
+  assert.deepEqual([await label('p.theorem'), await label('td'), await label('cite'), await label('p:last-of-type cite')], ['On Lemma: Every orbit is closed.', 'On Table cell: A1', 'On Citation: 1', 'On Citation: nobody1999']);
   clean(a);
 });
 
