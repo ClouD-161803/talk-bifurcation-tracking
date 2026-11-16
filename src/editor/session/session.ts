@@ -121,8 +121,9 @@ export function install(app: App): Port {
   const busy = () => !app.history.settled || app.doc.busy;
   // the text of the deck now, with the edits of the person
   const current = (): string => (clean ? app.source!.text : app.files.render());
-  // the text of the deck with the changes held back
-  const virtual = (deck: string): string => (behind ? mergeEdits(behind.shown, edits(behind.shown, deck), edits(behind.shown, behind.want), 'ours').text : deck);
+  // the text of the deck with the changes held back, merged as the authority of the session
+  // orders them, since they arrived before the edits of the person
+  const virtual = (deck: string): string => (behind ? mergeEdits(behind.shown, edits(behind.shown, deck), edits(behind.shown, behind.want), 'ours', true).text : deck);
 
   app.listen('open', () => {
     clean = ready();
@@ -380,8 +381,9 @@ export function install(app: App): Port {
     if (text === REREAD) text = handed ?? seen;
     const from = handed ?? seen;
     let target = text ?? seen;
-    // an edit of the person that the client has not read is kept, and wins at a conflict
-    if (text !== null && from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours').text;
+    // an edit of the person that the client has not read is kept, and wins at a conflict. the
+    // authority orders it after the text, which arrived first
+    if (text !== null && from !== seen) target = mergeEdits(from, edits(from, seen), edits(from, text), 'ours', true).text;
     if (text !== null) handed = text;
     // a rebase that fails has read the source again from the page, which then renders otherwise
     if (rendered && !rebase(rendered, math)) partial();
