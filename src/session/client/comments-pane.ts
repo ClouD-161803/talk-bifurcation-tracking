@@ -592,6 +592,15 @@ class Pane {
       marks = marks.filter((m) => !/[\p{L}\p{N}_]/u.test(now[m.end] ?? ''));
       last = now;
     };
+    // a delete that ends at the end of a mark takes out the rest of its @Name as well, since the field
+    // would keep it as plain text. it reads the input event, which a phone keyboard sends too
+    const whole = () => {
+      const at = area.selectionStart ?? 0;
+      const m = marks.find((m) => m.start < at && m.end === at + last.length - area.value.length && area.value.slice(at) === last.slice(m.end));
+      if (!m) return;
+      area.value = area.value.slice(0, m.start) + area.value.slice(at);
+      area.setSelectionRange(m.start, m.start);
+    };
     const query = () => /(?:^|\s)@([^\s@]{0,40})$/.exec(area.value.slice(0, area.selectionStart ?? 0));
     const close = () => {
       people.hidden = true;
@@ -670,9 +679,10 @@ class Pane {
         sync();
       }
     };
-    area.addEventListener('input', () => {
+    area.addEventListener('input', (ev) => {
       error.hidden = true;
       over = false;
+      if ((ev as InputEvent).inputType === 'deleteContentBackward') whole();
       move();
       fit();
       sync();
