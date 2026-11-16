@@ -320,6 +320,45 @@ test('a double click on the move handle of a held paragraph, or Enter on this ha
   clean(ben);
 });
 
+test('a drag of the move handle of a paragraph that becomes held during the drag puts the paragraph back at the release, and a drag of a paragraph beside it is taken', { timeout: 120_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { edits: [['    <li>Beta</li>\n  </ul>', '    <li>Beta</li>\n  </ul>\n  <p>Third</p>']] });
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await select(ben, SECOND);
+  await frame(ben);
+  const h = await center(ben, '.beeson-handle');
+  await mouse(ben, 'mouseMoved', h.x, h.y);
+  await mouse(ben, 'mousePressed', h.x, h.y, { button: 'left', buttons: 1, clickCount: 1 });
+  for (let i = 1; i <= 5; i++) await mouse(ben, 'mouseMoved', h.x + i * 10, h.y + i * 8, { button: 'left', buttons: 1 });
+  assert.notEqual(await ben.evaluate(PLACE(SECOND)), '', 'the paragraph follows the drag before it is held');
+  await holding(ana, ben, SECOND, ' typed');
+  // a clock of Ben far behind keeps the hold for the whole test
+  await ben.evaluate(`${P}.skew = -1e8`);
+  await front(ben);
+  await unbubble(ben);
+  await mouse(ben, 'mouseMoved', h.x + 60, h.y + 48, { button: 'left', buttons: 1 });
+  await mouse(ben, 'mouseReleased', h.x + 60, h.y + 48, { button: 'left', clickCount: 1 });
+  await frame(ben);
+  assert.equal(await ben.evaluate(PLACE(SECOND)), '', 'the release puts the held paragraph back');
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the release of a drag of a held paragraph');
+  const THIRD = LAST('Third');
+  await select(ben, THIRD);
+  await frame(ben);
+  await unbubble(ben);
+  await drag(ben, '.beeson-handle', { dx: 60, dy: 50 });
+  await frame(ben);
+  assert.notEqual(await ben.evaluate(PLACE(THIRD)), '', 'a drag of a paragraph that is not held moves it');
+  assert.equal(await ben.evaluate(BUBBLE), null, 'a drag of a paragraph that is not held');
+  assert.ok(await caretOf(ben, 'Ana', SECOND), 'the caret of Ana stays in her paragraph');
+  await caretAtEnd(ana, SECOND);
+  await typeKeys(ana, ' more');
+  const text = await converge(server, [ana, ben]);
+  assert.match(text, /<p>Second slide typed more<\/p>/);
+  assert.match(text, /<p style="translate: [^"]+">Third<\/p>/);
+  clean(ana);
+  clean(ben);
+});
+
 const TABLE = `  <p>First slide</p>
   <table>
     <tr><th>A1</th><th>B1</th></tr>
