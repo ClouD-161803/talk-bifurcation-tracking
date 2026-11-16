@@ -1027,8 +1027,10 @@ test('Mod+Enter in the field of a comment or of a reply sends it, and in another
     await press(a, 'G');
     await a.waitFor(`document.activeElement?.matches('.beeson-edit-goto input')`);
     await press(a, key);
-    // Esc reaches the show once reveal.js is ready in its frame, which is of the origin of the page
-    await a.waitFor(`!!document.querySelector('.beeson-edit-show iframe')?.contentWindow?.Reveal?.isReady?.()`, 30_000);
+    // Esc ends the show once the deck in its frame has its key bindings, which it adds when reveal.js
+    // announces that it is ready and marks its wrapper. reveal.js answers isReady() a timer earlier,
+    // and an Esc in between opens its overview. the frame is of the origin of the page
+    await a.waitFor(`!!document.querySelector('.beeson-edit-show iframe')?.contentDocument?.querySelector('.reveal.ready')`, 30_000);
     await press(a, 'Escape');
     await a.waitFor(`!${SHOW}`);
   }
