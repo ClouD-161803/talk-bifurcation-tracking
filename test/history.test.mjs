@@ -311,6 +311,28 @@ test('an undo of typing empties the text element when another person removed eve
   assert.equal(el.content, '');
 });
 
+// told-1 of review 12: pins the contents that write() sets after each step in a session
+test('an undo after a redo puts back a word before the letters that another person typed right after it while it was undone', async () => {
+  const { h } = texts();
+  const el = textEl('ab');
+  h.track(el);
+  // Ana deletes the b
+  typeInto(h, el, 'a');
+  h.break();
+  await h.undo();
+  assert.equal(el.content, 'ab');
+  // Ben types a space at the end and aa after the b, while the entry of Ana is undone
+  for (const content of ['ab ', 'abaa ']) {
+    el.content = content;
+    h.prune((x) => x === el, undefined, undefined, [el]);
+    h.carry(el);
+  }
+  await h.redo();
+  assert.equal(el.content, 'aaa ', 'the redo deletes the b of Ana alone');
+  await h.undo();
+  assert.equal(el.content, 'abaa ', 'the undo puts the b back where it was');
+});
+
 test('an undo drops an entry of typing that cannot be undone, tells refused of it, and keeps the entry before it for the next undo', async () => {
   const { h, changes } = texts();
   const told = [];
