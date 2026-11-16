@@ -652,6 +652,61 @@ test('a held paragraph selected as an element takes Enter, Escape, Tab, PageUp, 
   clean(ben);
 });
 
+// the commands that leave a selected element as it is, and those that change it
+const TAKEN = ['insert.shape.rectangle', 'insert.line', 'insert.arrow', 'insert.table', 'insert.tableSize', 'insert.formula', 'insert.code', 'insert.theorem', 'insert.qr', 'insert.image', 'insert.video', 'insert.file', 'insert.footnote', 'insert.backdrop', 'find.matchCase', 'find.wholeWords', 'find.tex', 'find.scopeAll', 'find.scopeNotes', 'find.scopeAlt', 'notes.zoomIn', 'notes.zoomOut', 'notes.zoomReset', 'slide.duplicate', 'slide.gallery', 'slide.transition.fade', 'play.rehearse', 'play.useTimings', 'play.clearTimings', 'text.bold', 'text.italic', 'text.code', 'text.strike', 'text.superscript', 'text.subscript', 'text.tone.text', 'text.link', 'text.removeLink', 'text.clear'];
+const KEPT = ['steps.add', 'insert.citation', 'element.delete', 'arrange.nudge.right.far', 'find.replaceAll', 'text.bigger', 'slide.magicMove'];
+
+test('a held paragraph selected as an element takes a new shape, table, or slide, the options of Find, the zoom of the notes, a transition, the timings, and the formats of text, and refuses a step, a citation, and a delete', { timeout: 180_000 }, async (t) => {
+  const { server, pages: [ana, ben] } = await session(t);
+  await show(ana, 'Two');
+  await show(ben, 'Two');
+  await holding(ana, ben, SECOND, ' typed');
+  // a clock of Ben far behind keeps the hold for the whole test
+  await ben.evaluate(`${P}.skew = -1e8`);
+  const ids = JSON.stringify([...TAKEN, ...KEPT]);
+  assert.deepEqual(await ben.evaluate(`${ids}.filter((id) => !${C}.app.commands.get(id))`), [], 'every command is registered');
+  const parent = `${SECOND}.parentElement === Reveal.getSlides()[1]`;
+  const reselect = async () => {
+    await show(ben, 'Two');
+    await leave(ben);
+    await select(ben, SECOND);
+    await frame(ben);
+    await unbubble(ben);
+  };
+  await reselect();
+  assert.deepEqual(await ben.evaluate(`${JSON.stringify(TAKEN)}.filter((id) => ${C}.app.commands.refused(id))`), [], 'none of the commands that leave the paragraph as it is is refused');
+  for (const id of KEPT) {
+    await reselect();
+    assert.equal(await ben.evaluate(`${C}.app.commands.refused(${JSON.stringify(id)})`), true, `${id} is refused`);
+    assert.equal(await ben.evaluate(BUBBLE), REFUSED, `${id} shows the bubble`);
+  }
+  // each case: what Ben runs with the held paragraph selected, and what holds once it is done
+  const slides = `document.querySelectorAll('.reveal .slides > section').length`;
+  const count = (selector) => `Reveal.getSlides()[1].querySelectorAll(${JSON.stringify(selector)}).length`;
+  const cases = [
+    ['insert.shape.rectangle', { box: { left: 200, top: 600, width: 200, height: 100 } }, `${count('.shape')} === 1`],
+    ['insert.table', { rows: 2, columns: 2 }, `${count('table')} === 1`],
+    ['slide.duplicate', null, `${slides} === 3`],
+    ['find.matchCase', null, `${C}.app.commands.state('find.matchCase').checked === true`],
+    ['text.bold', null, `!!${SECOND}.querySelector('b, strong')`],
+  ];
+  await ben.evaluate(`${C}.app.commands.run('find.open')`);
+  for (const [id, arg, done] of cases) {
+    await reselect();
+    await ben.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}, ${JSON.stringify(arg)} ?? undefined)`);
+    await frame(ben);
+    assert.equal(await ben.evaluate(BUBBLE), null, `${id} is not refused`);
+    await until(() => ben.evaluate(done), `${id} to do what it does without a hold`, 5000);
+    assert.ok(await ben.evaluate(parent), `${id} leaves the paragraph in its slide`);
+  }
+  await front(ana);
+  await caretAtEnd(ana, SECOND);
+  await typeKeys(ana, ' more');
+  await until(() => /<p><(b|strong)>Second slide typed more<\/\1><\/p>|<p><(b|strong)>Second slide typed<\/\2> more<\/p>/.test(server.read()), 'the keys of Ana to reach index.html');
+  clean(ana);
+  clean(ben);
+});
+
 test('a page that loads after a person stopped typing does not see the text element of their caret as held', { timeout: 120_000 }, async (t) => {
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
