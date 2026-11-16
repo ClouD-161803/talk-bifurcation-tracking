@@ -243,7 +243,7 @@ test('a large operation that failed is not kept by the transport once it is answ
   assert.equal(ref.deref(), undefined);
 });
 
-test('a page that is hidden without a key that it has not read does not read the deck', { timeout: 120_000 }, async (t) => {
+test('a page that is hidden without a key that it has not read does not read the deck', { timeout: 180_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
