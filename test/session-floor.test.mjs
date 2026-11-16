@@ -192,6 +192,8 @@ test('an undo of typing in a text element that another page types in is taken, a
   await front(ben);
   await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
   assert.equal(await ben.evaluate(last), false, 'the undo of the move is taken once Ana left the paragraph');
+  // the page of Ana has the undo of the move before she types in the paragraph again
+  await converge(server, [ana, ben]);
   await caretAtEnd(ana, p);
   await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in again to be held on the page of Ben');
   await unbubble(ben);
