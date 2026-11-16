@@ -308,13 +308,13 @@ test('a picture over 16 MB is refused on the host as well, a video of the host u
   clean(ann);
 });
 
-test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px', { timeout: 180_000 }, async (t) => {
+test('the reason why a dropped file is not added is shown in full on a phone of 390 px and on a screen of 1280 px, and once in the title of a screen of 1440 px', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const heic = file(server, 'a', 'IMG_2041.heic', Buffer.alloc(16));
   const big = file(server, 'a', 'big.png', Buffer.alloc(17 * 1024 * 1024));
-  for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1280, 800, false]]) {
+  for (const [name, width, height, mobile] of [['Ann', 390, 844, true], ['Ben', 1280, 800, false], ['Cy', 1440, 900, false]]) {
     const page = await open(browser, sessionUrl(server.edit), { name, width, height, mobile });
     await show(page, 'Two');
     for (const [path, start] of [[heic, 'IMG_2041.heic cannot be sent'], [big, 'big.png is larger than 16 MB']]) {
@@ -322,6 +322,14 @@ test('the reason why a dropped file is not added is shown in full on a phone of 
       await page.waitFor(`(${C}.app.note?.text ?? '').startsWith(${JSON.stringify(start)})`);
       const reason = await page.evaluate(`${C}.app.note.text`);
       await page.waitFor(`${SEEN(reason)} > 0`).catch(async () => assert.fail(`the reason is not seen in full at ${width} px: ${reason}. the save state reads ${await page.evaluate(STATE)}`));
+      if (width === 1440) {
+        const title = await page.evaluate(TITLE);
+        assert.equal(title.split(reason).length - 1, 1, title);
+        assert.doesNotMatch(title, /\.\./);
+        // the save state draws the reason only while the title leaves out its state, which the
+        // wider letters of Linux may need at 1440 px
+        assert.equal(await page.evaluate(`document.querySelector('.beeson-session-state .name').getClientRects().length > 0`), await page.evaluate(`document.querySelector('.beeson-edit-titlebar .doc').classList.contains('tight')`));
+      }
       assert.equal(await page.evaluate(IMAGES), 0);
     }
     assert.ok(!(await converge(server, [page])).includes('<img'));
