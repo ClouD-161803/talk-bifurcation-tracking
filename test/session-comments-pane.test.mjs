@@ -863,6 +863,17 @@ test('the accessibility tree of Chrome holds the field of a mention as a combobo
   clean(b);
 });
 
+test('the button of the actions of a comment is drawn as the ellipsis of More in the bar of Version History', { timeout: 300_000 }, async (t) => {
+  const { pages: [a] } = await pair(t, ['Ann']);
+  const id = await post(a, 0, 'A thread');
+  await openPane(a);
+  await sees(a, `(() => {
+    const b = document.querySelector('${ARTICLE(id)} .head button[aria-haspopup="menu"]');
+    return b && { text: b.textContent, icon: !!b.querySelector('svg'), name: b.getAttribute('aria-label') };
+  })()`, { text: '⋯', icon: false, name: 'Thread actions' });
+  clean(a);
+});
+
 test('the initials and the tone of a person in the pane are those of the avatar', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t, ['Ann 🇮🇹', 'Ben']);
   await post(a, 0, 'With a flag');
