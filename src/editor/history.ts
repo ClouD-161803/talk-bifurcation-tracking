@@ -55,8 +55,9 @@ export class History {
   // the entries of each transaction, for an amend of it
   private readonly parts = new WeakMap<Entry, Entry[]>();
   // the entries of typing that are not part of a transaction, whose undo and redo change only the
-  // typing of the person, and which a change of their text element by others does not drop
-  private readonly typed = new WeakSet<Entry>();
+  // typing of the person, and which a change of their text element by others does not drop, with
+  // their contents before and after
+  private readonly typed = new WeakMap<Entry, { before: string; after: string }>();
   // the entries of typing whose carry was refused. their texts do not hold the changes of the
   // others, hence their undo and redo are refused
   private readonly dead = new WeakSet<Entry>();
@@ -290,14 +291,27 @@ export class History {
     this.known.set(host, now);
     // a typing that ended is carried while its entry is in done
     const t = this.latest.get(host);
-    if (!t || (t !== this.typing && !this.done.includes(t.entry))) return;
-    const before = revert(t.state.after, t.state.before, now);
-    if (before === null) {
-      this.dead.add(t.entry);
-      if (t === this.typing) this.typing = null;
-    } else {
-      t.state.before = before;
-      t.state.after = now;
+    let n = now;
+    if (t && !this.dead.has(t.entry) && (t === this.typing || this.done.includes(t.entry))) {
+      const before = revert(t.state.after, t.state.before, now);
+      if (before === null) {
+        this.dead.add(t.entry);
+        if (t === this.typing) this.typing = null;
+      } else {
+        t.state.before = n = before;
+        t.state.after = now;
+      }
+    }
+    // each earlier typing of host in done, from the latest down, is refused when its undo after the
+    // undos of the typings after it would change letters of others. those past the eighth are
+    // refused unread, since a page carries a change for each key of another person
+    let k = 0;
+    for (const e of [...this.done].reverse()) {
+      const s = this.typed.get(e);
+      if (!s || e.els![0] !== host || e === t?.entry || this.dead.has(e)) continue;
+      const r = k++ < 8 ? revert(s.after, s.before, n) : null;
+      if (r === null) this.dead.add(e);
+      else n = r;
     }
   }
 
@@ -339,7 +353,7 @@ export class History {
       redo: () => write(state.before, state.after, 'redo'),
       els: [host],
     };
-    this.typed.add(entry);
+    this.typed.set(entry, state);
     this.typing = { host, state, entry, at };
     this.latest.set(host, this.typing);
     this.known.set(host, before);
