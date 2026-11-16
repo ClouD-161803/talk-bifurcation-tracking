@@ -312,7 +312,7 @@ const VIEW = `(() => {
     strip: Math.round(box(strip).width),
     first: Math.round(box(items[0]).width),
     second: items[1] ? Math.round(Math.min(box(strip).right, box(items[1]).right) - box(items[1]).left) : null,
-    gap: Math.round(box(strip).left - box(q('.who')).right),
+    gap: Math.round(box(strip).left - box(q('.info')).right),
   };
 })()`;
 
