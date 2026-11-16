@@ -10,8 +10,8 @@ import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { caretAtEnd, front } from './helpers/apply.mjs';
-import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
+import { caretAtEnd, frame, front } from './helpers/apply.mjs';
+import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
 import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
@@ -1250,6 +1250,49 @@ ${places.map(([x, y], k) => `  <p style="position: absolute; left: ${x}px; top: 
   };
   assert.deepEqual(got, { overlaps: 0, outside: 0 }, JSON.stringify(boxes));
   clean(a);
+});
+
+test('a letter typed by another person before the anchors of many threads does not draw the open pane again', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talkWith(t, Array.from({ length: 20 }, (_, k) => `<section>
+  <h2>Slide ${k + 1}</h2>
+  <p>First point of slide ${k + 1}</p>
+  <p>Second point of slide ${k + 1}</p>
+</section>
+`).join('\n'));
+  const a = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const b = await open(browser, sessionUrl(server.edit), { name: 'Ben' });
+  await converge(server, [a, b]);
+  await openPane(a);
+  await a.evaluate(`(() => {
+    window.__changes = 0;
+    new MutationObserver((list) => (window.__changes += list.length)).observe(document.querySelector('${PANE}'), { subtree: true, childList: true, attributes: true, characterData: true });
+    return true;
+  })()`);
+  await show(b, 'Slide 1');
+  // the changes of the pane over ten operations of one letter each, typed by Ben on the first slide,
+  // each drawn by the page of Ann in front. a page brought behind loses its caret
+  const changes = async () => {
+    const was = await a.evaluate('window.__changes');
+    for (let k = 0; k < 10; k++) {
+      await front(b);
+      await caretAtEnd(b, el(0, 'p'));
+      await typeKeys(b, 'x');
+      await front(a);
+      await until(async () => (await b.evaluate(`${C}.acked()`)) && (await a.evaluate(TEXT)) === (await b.evaluate(TEXT)), 'the letter of Ben on the page of Ann');
+      await frame(a);
+      await frame(a);
+    }
+    return (await a.evaluate('window.__changes')) - was;
+  };
+  const none = await changes();
+  for (let k = 0; k < 60; k++) await postOn(a, 1 + (k % 19), 'p', k % 2, `Thread ${k}`);
+  await sees(a, `document.querySelectorAll('${PANE} article').length`, 60);
+  await frame(a);
+  assert.ok((await changes()) <= none, 'the changes of the pane with 60 threads are not more than with none');
+  clean(a);
+  clean(b);
 });
 
 test('a thread that a person only replied to is listed under For You, and a later reply of another person is unread for them', { timeout: 300_000 }, async (t) => {
