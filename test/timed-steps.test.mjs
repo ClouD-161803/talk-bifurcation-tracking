@@ -160,11 +160,12 @@ test('a key during a delay shows the next step at once, the later delays still p
 // a remote sends PageDown, and the space bar moves the talk on as well. reveal.js pauses every
 // later delay of the talk at such a key by default
 test('the keys of a remote during the delay of the last step go on to the next slide, whose delay still plays', async (t) => {
-  const page = await open(t);
-  await page.evaluate('Reveal.slide(4)');
-  await press(page, 'PageDown');
-  await press(page, 'PageDown');
-  await press(page, 'Space');
+  const page = await inDelay(t, async (page) => {
+    await page.evaluate('Reveal.slide(4)');
+    await press(page, 'PageDown');
+    await press(page, 'PageDown');
+    await press(page, 'Space');
+  }, { slide: 4, shown: ['Dims one', 'Dims two'] });
   assert.deepEqual(await settled(page), { slide: 5, shown: [] });
   await press(page, 'PageDown');
   assert.deepEqual(await settled(page), { slide: 5, shown: ['Later', 'Later timed'] });
