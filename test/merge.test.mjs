@@ -453,6 +453,27 @@ test('the merge of an apply in a session moves a deletion off an insertion of an
   }
 });
 
+// the letters that repeat at the ends of each deletion are the ; of a reference before it, the >
+// of the start tag before it, or the &a of a reference after it. a literal & or > is kept as the
+// file has it, e.g. one written by an agent
+test('the merge of an apply in a session does not move a deletion off an insertion of another person into a tag or a character reference', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  <p>${p}</p>\n</section>\n`;
+  for (const [p0, ps, pt] of [
+    ['for i &lt;n; i++', 'for i &lt; i++', 'for i &lt;nm; i++'],
+    ['R&amp;D; costs', 'R&amp; costs', 'R&amp;DX; costs'],
+    ['Oui&nbsp;x; non', 'Oui&nbsp; non', 'Oui&nbsp;xy; non'],
+    ['x> y', ' y', 'xX> y'],
+  ]) {
+    const f = wrap(p0), s = wrap(ps), t = wrap(pt);
+    assert.equal(mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, s, `${pt} over ${ps}`);
+    assert.equal(mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text, t, `${pt} over ${ps} unread`);
+  }
+  const f = wrap('R&D &amp; co'), at = f.indexOf('R&D');
+  const mine = [{ start: at + 1, end: at + 4, text: '' }], others = [{ start: at + 2, end: at + 2, text: 'X' }];
+  assert.equal(mergeEdits(f, mine, others, 'ours', true, true).text, wrap('R&amp; co'));
+  assert.equal(mergeEdits(f, others, mine, 'ours', true, true).text, wrap('R&XD &amp; co'));
+});
+
 // x interleaves 40 distinct letters with U, and y the same letters with V, followed by 500 V. each
 // part between two runs in common has sides of over 500 units that charEdits() cannot diff
 test('fine() of a chain of parts that charEdits() cannot diff costs no more than a paste at the cap of anchored()', () => {
