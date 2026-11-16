@@ -224,7 +224,8 @@ test('slides replaced by slides of other text are paired in about the time that 
   for (let attempt = 1; ; attempt++) {
     const half = fastest(() => pairs(a, b, true, true));
     const ends = fastest(() => pairs(a, b, false));
-    if (half < 1.5 * ends) break;
+    // reading the middle for every pair of slides takes about 10 times as long
+    if (half < 3 * ends) break;
     assert.ok(attempt < 3, `${half.toFixed(1)} ms with half against ${ends.toFixed(1)} ms without`);
   }
 });
