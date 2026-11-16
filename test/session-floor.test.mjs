@@ -146,7 +146,7 @@ test('a text element that another page types in refuses Delete, Arrange, a join,
   clean(ben);
 });
 
-test('an undo of typing in a text element that another page types in is taken, and an undo that moves it or a transaction that names it is refused', { timeout: 120_000 }, async (t) => {
+test('an undo of typing in a text element that another page types in is taken, and an undo or a redo that moves it or a transaction that names it is refused', { timeout: 120_000 }, async (t) => {
   const { server, pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
@@ -171,6 +171,21 @@ test('an undo of typing in a text element that another page types in is taken, a
   assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the undo of the move');
   assert.equal(await ben.evaluate(last), true, 'the paragraph stays at the end of its slide');
   assert.equal(await ben.evaluate(`${C}.app.history.undoLabel`), 'move', 'the entry of the move is kept');
+  // the redo of the move, undone while Ana is not in the paragraph
+  await front(ana);
+  await leave(ana);
+  await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.undo')`);
+  assert.equal(await ben.evaluate(last), false, 'the undo of the move is taken once Ana left the paragraph');
+  await caretAtEnd(ana, p);
+  await until(async () => (await ben.evaluate(HOLDER(p))) === 'Ana', 'the paragraph that Ana is in again to be held on the page of Ben');
+  await unbubble(ben);
+  await front(ben);
+  await ben.evaluate(`${C}.app.commands.run('edit.redo')`);
+  assert.equal(await ben.evaluate(BUBBLE), REFUSED, 'the redo of the move');
+  assert.equal(await ben.evaluate(last), false, 'the paragraph stays where the undo put it');
+  assert.equal(await ben.evaluate(`${C}.app.history.canRedo`), true, 'the entry of the redo is kept');
   // the typing of Ben in the paragraph that Ana types in is undone
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' by Ana');
