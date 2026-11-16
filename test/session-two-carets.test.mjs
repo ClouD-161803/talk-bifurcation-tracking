@@ -18,7 +18,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
 import { press, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
-import { el, session } from './helpers/presence.mjs';
+import { BUBBLE, el, select, session, unbubble } from './helpers/presence.mjs';
 import { until } from './helpers/session.mjs';
 
 const p = el(1, 'p');
@@ -253,6 +253,77 @@ test('an undo of a word whose trailing space the browser of another person took 
   text = await converge(server, pages);
   assert.equal(para(text), '<p>Second slide foobar</p>');
   assert.equal(await ana.evaluate(`${C}.app.history.undoLabel`), null, 'the refused entry is dropped');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+const NOT_UNDONE = 'Your typing cannot be undone without changing the letters of another person.';
+const NOT_REDONE = 'Your typing cannot be redone without changing the letters of another person.';
+// the bubble of a page with its text and its box, and whether it is under or over the paragraph,
+// at its left
+const BUBBLE_AT = `(() => {
+  const b = document.querySelector('.beeson-bubble');
+  if (!b) return null;
+  const r = b.getBoundingClientRect(), q = ${p}.getBoundingClientRect();
+  return { text: b.textContent, top: r.top, center: r.left + r.width / 2, middle: innerWidth / 2, beside: Math.abs(r.left - Math.max(8, q.left)) < 2 && (r.top >= q.bottom || r.bottom <= q.top) };
+})()`;
+const STYLE = (expression) => `${expression}.getAttribute('style') ?? ''`;
+
+test('an undo of typing that cannot be undone keeps the change before it and says why beside the text element, and the next undo takes this change', { timeout: 240_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben']);
+  const [ana, ben] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  const ul = el(1, 'ul');
+  await select(ana, ul);
+  await run(ana, 'arrange.nudge.right.far');
+  assert.match(await ana.evaluate(STYLE(ul)), /translate: 10px/);
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' foo ');
+  await converge(server, pages);
+  await caretAtEnd(ben, p);
+  await typeKeys(ben, 'bar');
+  let text = await converge(server, pages);
+  assert.equal(para(text), '<p>Second slide foobar</p>', 'Chrome of Ben takes away the trailing space of Ana');
+  await run(ana, 'edit.undo');
+  const shown = await ana.evaluate(BUBBLE_AT);
+  assert.equal(shown?.text, NOT_UNDONE);
+  assert.ok(shown.beside, `the bubble is beside the paragraph, at ${JSON.stringify(shown)}`);
+  assert.equal(await ana.evaluate(`${p}.innerHTML`), 'Second slide foobar');
+  assert.match(await ana.evaluate(STYLE(ul)), /translate: 10px/, 'the nudge before the typing is kept');
+  await unbubble(ana);
+  await run(ana, 'edit.undo');
+  assert.doesNotMatch(await ana.evaluate(STYLE(ul)), /translate/, 'the next undo takes the nudge');
+  assert.equal(await ana.evaluate(BUBBLE), null, 'an undo that is made shows no bubble');
+  text = await converge(server, pages);
+  assert.equal(para(text), '<p>Second slide foobar</p>');
+  assert.deepEqual([ana.errors, ben.errors], [[], []]);
+});
+
+test('a redo of typing that cannot be redone says why at the top of the window when its text element is on another slide', { timeout: 240_000 }, async (t) => {
+  const { server, pages } = await session(t, ['Ana', 'Ben']);
+  const [ana, ben] = pages;
+  for (const page of pages) await show(page, 'Two');
+  for (const page of pages) await page.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  await caretAtEnd(ana, p);
+  await typeKeys(ana, ' one');
+  await converge(server, pages);
+  await run(ana, 'edit.undo');
+  assert.equal(await ana.evaluate(BUBBLE), null, 'an undo that is made shows no bubble');
+  let text = await converge(server, pages);
+  assert.equal(para(text), '<p>Second slide</p>');
+  // the letters of Ben right after the point of the typing, which the redo cannot tell apart from
+  // the e of slide
+  await caretAtEnd(ben, p);
+  await typeKeys(ben, 'XY');
+  await converge(server, pages);
+  await show(ana, 'One');
+  await run(ana, 'edit.redo');
+  const shown = await ana.evaluate(BUBBLE_AT);
+  assert.equal(shown?.text, NOT_REDONE);
+  assert.ok(Math.abs(shown.center - shown.middle) < 2 && shown.top < 100, `the bubble is at the top of the window, at ${JSON.stringify(shown)}`);
+  assert.equal(await ana.evaluate(`${C}.app.history.redoLabel`), null, 'the refused entry is dropped');
+  text = await converge(server, pages);
+  assert.equal(para(text), '<p>Second slideXY</p>');
   assert.deepEqual([ana.errors, ben.errors], [[], []]);
 });
 
