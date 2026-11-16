@@ -783,6 +783,36 @@ const MOVES = {
   'back by an undo': [ONE + TWO.replace('  <p>Second slide</p>\n', '').replace('</ul>\n', '</ul>\n  <p>Second slide</p>\n'), ONE + TWO],
 };
 
+test('a text element that one replica moves while another, which has not received the move, types in it stays in its place with the key, in both orders', () => {
+  for (const [name, [base, moved]] of Object.entries(MOVES)) {
+    const typed = base.replace('Second slide', 'Second slide by Ana');
+    for (const moveFirst of [true, false]) assert.equal(race(base, moved, typed, moveFirst), typed, `moved ${name}, ${moveFirst ? 'move' : 'key'} first`);
+  }
+});
+
+for (const [shape, one, two] of [['of another shape', ONE, TWO]]) {
+  test(`a slide swapped with a slide ${shape} by one replica while another, which has not received the swap, types in it keeps every text once and the key, in both orders`, () => {
+    const base = `${one}\n${two}`, swapped = `${two}\n${one}`;
+    for (const into of ['First slide', 'Second slide']) {
+      const typed = base.replace(into, `${into} by Ana`);
+      for (const moveFirst of [true, false]) {
+        const text = race(base, swapped, typed, moveFirst);
+        const what = `a key in ${into}, ${moveFirst ? 'swap' : 'key'} first`;
+        assert.equal(text.split('<section>').length - 1, 2, `${what}: the text has two slides`);
+        for (const p of ['First slide', 'Second slide']) assert.equal(text.split(p).length - 1, 1, `${what}: ${p} is in the text once`);
+        assert.ok(text.includes(`<p>${into} by Ana</p>`), `${what}: the key is in its paragraph`);
+      }
+    }
+  });
+}
+
+test('a move of a text element and a key in another element at once are both taken, in both orders', () => {
+  for (const [name, [base, moved]] of Object.entries(MOVES)) {
+    const typed = base.replace('<h2>Two</h2>', '<h2>Two by Ana</h2>');
+    for (const moveFirst of [true, false]) assert.equal(race(base, moved, typed, moveFirst), moved.replace('<h2>Two</h2>', '<h2>Two by Ana</h2>'), `moved ${name}, ${moveFirst ? 'move' : 'key'} first`);
+  }
+});
+
 test('the merge of the editor keeps a text element that a received text moves, and an unread key in it, once and in its place', () => {
   for (const [name, [base, moved]] of Object.entries(MOVES)) {
     const typed = base.replace('Second slide', 'Second slide by Ana');
