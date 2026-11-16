@@ -1200,3 +1200,76 @@ test('a change of index.html from outside is told whenever it replaces or remove
   }
   assert.equal(missed, 0, `${missed} changes from outside over the text of a person were not told`);
 });
+
+test('a change of index.html from outside is not told where it keeps the words that a person wrote between its changes, and is told where it replaces a part of one', { timeout: 60_000 }, (t) => {
+  const { authority, history } = open(sessionDir(t), DECK.replace('</body>', '<section><p>The quick brown fox jumps</p></section>\n</body>'));
+  const told = (from, to) => {
+    const before = authority.version;
+    replace(authority, from, to, 'file');
+    return history.overwrittenAfter(before);
+  };
+  replace(authority, 'First slide', 'First', ANN);
+  assert.equal(told('Two', 'Zwei'), false, 'a change after a place where Ann removed text');
+  replace(authority, 'brown', 'red', ANN);
+  assert.equal(told('The quick red fox jumps', 'A quick red dog jumps'), false, 'two words of a program around a word of Ann on one line');
+  replace(authority, 'Second slide', 'Second big slide', ANN);
+  assert.equal(told('Second big slide', '2nd big page'), false, 'a patch of the diff over a word of Ann that the program kept');
+  assert.equal(told('2nd big page', '2nd bag page'), true, 'one letter of a word of Ann');
+  assert.equal(told('A quick red dog', 'A quick rex dog'), true, 'the last letter of a word of Ann that a program kept before');
+});
+
+test('a change of index.html from outside that indents more than 2000 lines again is told only where it replaces text that a person wrote', { timeout: 60_000 }, (t) => {
+  let deck = '<!doctype html><html><body><div class="reveal"><div class="slides">\n';
+  for (let i = 0; i < 2400; i++) deck += `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text ${i}</p>\n</section>\n`;
+  const { authority, history } = open(sessionDir(t), `${deck}</div></div></body></html>\n`);
+  const told = (text) => {
+    const before = authority.version;
+    enterText(authority, text, 'file');
+    return history.overwrittenAfter(before);
+  };
+  replace(authority, '<p>Text 1200</p>', '<p>Text by Ann</p>', ANN);
+  assert.equal(told(authority.text.replace(/^ {2}</gm, '    <')), false, 'an indent that keeps the text of Ann');
+  assert.equal(told(authority.text.replace(/^ {4}</gm, '  <').replace('by Ann', 'by Bnn')), true, 'a letter of Ann in an indent');
+});
+
+test('a change of index.html from outside is told where it replaces text of a person after a place where another person removed text', { timeout: 60_000 }, (t) => {
+  const { authority, history } = open(sessionDir(t), DECK);
+  replace(authority, 'Second slide', 'Second bigger slide', ANN);
+  history.close();
+  replace(authority, 'bigger', 'bgger', BO);
+  replace(authority, '</body>', '<p>end</p>\n</body>', BO);
+  history.close();
+  const before = authority.version;
+  replace(authority, 'gger slide', 'ggXr slide', 'file');
+  assert.equal(history.overwrittenAfter(before), true);
+});
+
+test('a change of index.html from outside takes about as long at the end of a deck that people wrote in at many places as at its start', { timeout: 120_000 }, (t) => {
+  let deck = '<!doctype html><html><body><div class="reveal"><div class="slides">\n';
+  for (let i = 0; i < 4800; i++) deck += `<section>\n  <h2>Slide ${i}</h2>\n  <p>Text ${i}</p>\n</section>\n`;
+  const { authority, history } = open(sessionDir(t), `${deck}</div></div></body></html>\n`);
+  // each person writes a letter in each paragraph
+  for (const person of [ANN, BO, 'CyCyCyCyCyCyCyCyCyCyCy']) {
+    for (let from = 0; from < 4800; from += 2000) {
+      const patches = [];
+      for (const m of authority.text.matchAll(/<p>e*Text (\d+)/g)) if (m[1] >= from && m[1] < from + 2000) patches.push({ start: m.index + 3, end: m.index + 3, text: 'e' });
+      authority.enter(patches, person);
+    }
+    history.close();
+  }
+  // the time in ms of a change from outside of the headings of 600 slides from slide `from` on, in
+  // patches of its own, since the diff of the deck would take most of the time
+  const change = (from) => {
+    const patches = [];
+    for (const m of authority.text.matchAll(/<h2>Slide (\d+)/g)) if (m[1] >= from && m[1] < from + 600) patches.push({ start: m.index + 4, end: m.index + 9, text: 'Page' });
+    const start = performance.now();
+    authority.enter(patches, 'file');
+    const ms = performance.now() - start;
+    authority.enter(patches.map((p, k) => ({ start: p.start - k, end: p.end - k - 1, text: 'Slide' })), 'file');
+    return ms;
+  };
+  const early = Math.min(change(0), change(0), change(0));
+  const late = Math.min(change(4200), change(4200), change(4200));
+  t.diagnostic(`${late.toFixed(1)} ms at the end, ${early.toFixed(1)} ms at the start`);
+  assert.ok(late <= 3 * early, `a change at the end of the deck takes ${late.toFixed(1)} ms, and one at its start ${early.toFixed(1)} ms`);
+});
