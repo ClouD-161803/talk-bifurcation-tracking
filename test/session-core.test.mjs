@@ -881,3 +881,46 @@ test('widen gives the same patches when it tokenizes again only the part of a te
     }
   }
 });
+
+test('a format that one browser puts around a word and a key that another browser types inside the word at once are both kept, whichever the authority takes first', () => {
+  const base = '<section>\n  <p>Second slide</p>\n</section>\n';
+  const formatted = base.replace('slide', '<em>slide</em>'), typed = base.replace('slide', 'slZide');
+  const want = base.replace('slide', '<em>slZide</em>');
+  for (const [first, second] of [[typed, formatted], [formatted, typed]]) {
+    const a = new Authority(base, { epoch: 'E' });
+    const r = new Replica('me', base, 'E.0');
+    const { op } = a.submit({ client: 'other', seq: 1, base: 'E.0', patches: diff(base, first) }, 'O');
+    r.edit(second);
+    // the authority refuses the operation of the browser that it hears second
+    const refused = r.outgoing();
+    const answer = a.submit(refused, 'me').answer;
+    assert.equal(answer.reason, 'conflict');
+    r.answer(refused, answer);
+    assert.equal(r.receive(op), want);
+    a.submit(r.outgoing(), 'me');
+    assert.equal(a.text, want);
+    // the broadcast of the operation may also come before the answer
+    const early = new Replica('me', base, 'E.0');
+    early.edit(second);
+    early.outgoing();
+    assert.equal(early.receive(op), want);
+  }
+  const key = diff(base, typed), format = diff(base, formatted);
+  assert.equal(apply(base, mergePatches(key, format, 'ours', base).patches), want);
+  assert.equal(apply(base, mergePatches(format, key, 'ours', base).patches), want);
+  assert.deepEqual(mergePatches(key, format, 'ours', base).conflicts, []);
+  // a key at the start of the word stays before the new element, and one at its end after it
+  for (const [word, kept] of [['Zslide', 'Z<em>slide</em>'], ['slideZ', '<em>slide</em>Z']]) {
+    const edge = diff(base, base.replace('slide', word));
+    assert.equal(apply(base, mergePatches(edge, format, 'ours', base).patches), base.replace('slide', kept));
+  }
+  // without the text of the two operations, the patch of the side that wins is kept alone, and
+  // so is it for a format of the other browser inside the word
+  assert.equal(apply(base, mergePatches(key, format, 'ours').patches), formatted);
+  assert.equal(apply(base, mergePatches(diff(base, base.replace('slide', 's<b>li</b>de')), format, 'ours', base).patches), formatted);
+  // a replica back from a break still shows the two as a conflict
+  const away = new Replica('me', base, 'E.0');
+  away.edit(formatted);
+  const missed = new Authority(base, { epoch: 'E' }).submit({ client: 'other', seq: 1, base: 'E.0', patches: key }, 'O').op;
+  assert.equal(away.conflictsOf([missed]).length, 1);
+});

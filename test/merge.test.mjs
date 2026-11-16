@@ -276,7 +276,8 @@ test('a change within one line gives the edit of the line diff, more than half r
 
 // pairs of edits of two people in one paragraph: the paragraph before, the unread edit of the
 // person, and the edit of the others that arrives first. the merge of an apply in a session, as
-// turn() of session.ts makes it, gives the text that the authority makes of the two operations
+// turn() of session.ts makes it, gives the text that the authority makes of the two operations, or
+// else, where the authority refuses the second, the text that the replica of its page merges
 const PAIRS = [
   ['<p>Second slide</p>', '<p>Second Zslide</p>', '<p>Second <strong>slide</strong></p>'],
   ['<p>Second slide</p>', '<p>Second Zslide</p>', '<p>Second <em>slide</em></p>'],
@@ -316,7 +317,7 @@ test('the merge of an apply in a session gives the text of the authority for pai
     const f = wrap(p0), s = wrap(ps), t = wrap(pt);
     const page = mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text;
     const moved = shift(diff(f, s), diff(f, t), true);
-    const authority = moved ? applyPatches(t, moved) : applyPatches(f, mergePatches(diff(f, t), diff(f, s), 'ours').patches);
+    const authority = moved ? applyPatches(t, moved) : applyPatches(f, mergePatches(diff(f, t), diff(f, s), 'ours', f).patches);
     assert.equal(page, authority, `${ps} over ${pt}`);
   }
 });
@@ -425,5 +426,38 @@ test('the merge of an apply in a session keeps a key of another person inside a 
   const f = wrap('<p>Second <strong>slide</strong></p>'), s = wrap('<p>Second slide</p>');
   for (const [pt, want] of [['<p>Second <strong>sliZde</strong></p>', '<p>Second sliZde</p>'], ['<p>Second <strong>slideZ</strong></p>', '<p>Second slideZ</p>']]) {
     assert.equal(mergeEdits(f, fine(f, s), fine(f, wrap(pt)), 'ours', true, true).text, wrap(want));
+  }
+});
+
+test('the merge of an apply in a session keeps a format that one person puts around a word and the plain edits of another person inside the word, in both orders', () => {
+  const wrap = (p) => `<section>\n  <h2>Two</h2>\n  ${p}\n</section>\n`;
+  const f = wrap('<p>Second slide</p>');
+  // the unread edit of the person is the format and the edit of the other comes with the apply, and
+  // the other way around
+  const both = (formatted, typed) => {
+    const s = wrap(`<p>Second ${formatted}</p>`), t = wrap(`<p>Second ${typed}</p>`);
+    return [mergeEdits(f, fine(f, s), fine(f, t), 'ours', true, true).text, mergeEdits(f, fine(f, t), fine(f, s), 'ours', true, true).text];
+  };
+  for (const [open, close] of [['<em>', '</em>'], ['<a href="https://example.org">', '</a>'], ['<strong><em>', '</em></strong>']]) {
+    const formatted = `${open}slide${close}`;
+    for (const [typed, want] of [
+      // a key inside the word, two keys, a removed letter, a character reference, and other letters
+      ['slZide', `${open}slZide${close}`],
+      ['sZlidYe', `${open}sZlidYe${close}`],
+      ['slid', `${open}slid${close}`],
+      ['sl&amp;ide', `${open}sl&amp;ide${close}`],
+      ['XY', `${open}XY${close}`],
+      // a key at the start of the word goes before the new element, and one at its end after it
+      ['Zslide', `Z${formatted}`],
+      ['slideZ', `${formatted}Z`],
+    ]) {
+      const kept = wrap(`<p>Second ${want}</p>`);
+      assert.deepEqual(both(formatted, typed), [kept, kept], `${formatted} and ${typed}`);
+    }
+  }
+  // a word that the other person removed, and a format of the other person inside the word, are
+  // not plain edits inside it, hence the edit of the person is kept alone
+  for (const other of ['', 's<strong>li</strong>de', '<strong>slide</strong>']) {
+    assert.deepEqual(both('<em>slide</em>', other), [wrap('<p>Second <em>slide</em></p>'), wrap(`<p>Second ${other}</p>`)], `<em>slide</em> and ${other}`);
   }
 });
