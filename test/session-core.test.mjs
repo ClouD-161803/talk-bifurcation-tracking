@@ -835,6 +835,35 @@ test('the merge of the editor keeps each text of two slides that a received text
   }
 });
 
+const times = (text, part) => text.split(part).length - 1;
+
+// the texts of race() of a change and a key in both orders, and of the merge of the editor with
+// either of them unread
+function merges(base, changed, typed) {
+  return {
+    'change first': race(base, changed, typed, true),
+    'key first': race(base, changed, typed, false),
+    'the key unread': mergeEdits(base, edits(base, typed), edits(base, changed), 'ours', true).text,
+    'the change unread': mergeEdits(base, edits(base, changed), edits(base, typed), 'ours', true).text,
+  };
+}
+
+test('a slide moved together with a new slide or a pasted paragraph of the same text by one replica keeps this text and every slide, in both orders, and the key of another replica in the slide beside a pasted paragraph', () => {
+  const s = (h, p) => `<section>\n  <h2>${h}</h2>\n  <p>${p}</p>\n</section>\n`;
+  const intro = s('Intro', 'Why we fly'), results = s('Results', 'Thank you'), rest = s('Method', 'Shooting') + s('Data', 'Tables');
+  const base = intro + results + rest;
+  const typed = base.replace('Thank you', 'Thank you all');
+  for (const [what, moved] of [['a new slide', s('New', 'Thank you') + intro + rest + results], ['a pasted paragraph', intro.replace('</section>', '  <p>Thank you</p>\n</section>') + rest + results]]) {
+    for (const [how, text] of Object.entries(merges(base, moved, typed))) {
+      // a new slide changes the number of slides, hence the moved slide merges as lines
+      if (what === 'a pasted paragraph') assert.equal(times(text, 'Thank you all'), 1, `${how}: the key is in the text`);
+      assert.ok(times(text, '<p>Thank you</p>') >= 1, `${what}, ${how}: ${what} is in the text`);
+      for (const h of ['Intro', 'Results', 'Method', 'Data']) assert.ok(times(text, `<h2>${h}</h2>`) >= 1, `${what}, ${how}: the slide ${h} is in the text`);
+      if (what === 'a new slide') assert.equal(times(text, '<h2>New</h2>'), 1, `${how}: the new slide is in the text`);
+    }
+  }
+});
+
 test('a vertical stack moved before three slides by one replica and a key of another in one of these slides are both taken, in both orders', () => {
   const top = (n) => `<section>\n  <h2>Top ${n}</h2>\n  <p>Words of top ${n}</p>\n  <p>More of top ${n}</p>\n  <p>End of top ${n}</p>\n</section>\n`;
   const inner = (n) => `  <section>\n    <h2>Inner ${n}</h2>\n    <p>Words of inner ${n}</p>\n    <p>End of inner ${n}</p>\n  </section>\n`;
