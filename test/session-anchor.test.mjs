@@ -941,6 +941,24 @@ test('a removal reads each element longer than 4 kB once for all of its threads'
   }
 });
 
+test('a removal of an element, or a paragraph inserted after it in its slide, reads the end of the element once for all of its threads', () => {
+  for (const length of [200_000, 3000]) {
+    const big = `<div class="big">${'z'.repeat(length)}</div>`;
+    const v0 = deck(['<h2>Alpha</h2>', '<p>Holder</p>', big, '<p>Last</p>'], ['<h2>Omega</h2>']);
+    const operations = {
+      'a removal of the element': v0.replace(`  ${big}\n`, ''),
+      'a paragraph inserted after the element': v0.replace('  <p>Last</p>\n', '  <p>Last</p>\n  <p>New</p>\n'),
+    };
+    for (const [what, v1] of Object.entries(operations)) {
+      const patches = diff(v0, v1);
+      const read = (n) => sliced(() => moveAnchors(v0, patches, v1, Array.from({ length: n }, () => onElement(v0, '<div class="big">'))));
+      // a thread of an element up to 4 kB keeps its text, which is sliced once for each thread
+      const each = (read(101) - read(1)) / 100;
+      assert.ok(each < Math.min(length, REMOVED_MAX) + 500, `${what} of ${length} characters: each thread after the first read ${each} characters`);
+    }
+  }
+});
+
 test('an Undo reads an element longer than 4 kB once for all of the threads that it attaches again', () => {
   const big = `<div class="column">${'z'.repeat(200_000)}</div>`;
   const v0 = deck(...Array.from({ length: 10 }, (_, k) => [`<h2>Slide ${k}</h2>`, `<p>${'x'.repeat(5000)}</p>`, ...(k === 5 ? [big] : [])]));
