@@ -265,7 +265,7 @@ const COUNT = `(() => {
   window.__reads = { all: 0, session: 0 };
   const note = () => {
     window.__reads.all++;
-    if (/session\\.js/.test(new Error().stack)) window.__reads.session++;
+    if (/\\/session\\.js/.test(new Error().stack)) window.__reads.session++;
   };
   const wrap = (proto, name) => {
     const f = proto[name];

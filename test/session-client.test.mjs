@@ -65,7 +65,7 @@ test('a page joins with the name typed in the dialog, and again without it', { t
   clean(page);
 });
 
-test('a page with edit and without session does not load theme/session.js', { timeout: 120_000 }, async (t) => {
+test('a page with edit and without session loads neither theme/session.js nor theme/editor-session.js', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);

@@ -15,14 +15,12 @@ import { Dialog } from '../ui/dialog.ts';
 import { groupOf } from '../model/groups.ts';
 import { icon } from '../ui/icons.ts';
 import { openMenu } from '../ui/menu.ts';
+import { script } from '../ui/script.ts';
 import { commentsShell } from './comments-shell.ts';
 import { historyShell } from './history-mode.ts';
 import { hooks, type Shape } from './presence.ts';
 import { slideHooks } from './slides.ts';
 import { loadEngine, type Port } from './port.ts';
-
-// read while editor.js runs, since currentScript is null afterward
-const self = document.currentScript as HTMLScriptElement | null;
 
 // starts the load of session.js, and returns the start of the session, which resolves with false
 // when the page is opened without a session
@@ -36,13 +34,7 @@ export function load(app: App, port: Port): () => Promise<boolean> {
     port.served(false);
     return async () => false;
   }
-  const loaded = given ? Promise.resolve<Entry | null>(given) : new Promise<Entry | null>((done) => {
-    const script = document.createElement('script');
-    script.src = self?.src ? new URL('session.js', self.src).href : 'theme/session.js';
-    script.onload = () => done((window as { BeesonSession?: Entry }).BeesonSession ?? null);
-    script.onerror = () => done(null);
-    document.head.append(script);
-  });
+  const loaded = given ? Promise.resolve(given) : script('session.js').then(() => (window as { BeesonSession?: Entry }).BeesonSession ?? null, () => null);
   const engine = loadEngine();
   return async () => {
     const [entry, installed] = await Promise.all([loaded, engine]);

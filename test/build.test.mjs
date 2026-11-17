@@ -24,7 +24,7 @@ test('the theme is built in a folder with a space in its name', (t) => {
   execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
 
   // a talk runs the compiled files, hence each must be built from the current source
-  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/editor-tex.js', 'theme/edit.mjs', 'theme/session.js']) {
+  for (const file of ['theme/beeson.js', 'theme/editor.js', 'theme/editor-tex.js', 'theme/editor-session.js', 'theme/edit.mjs', 'theme/session.js']) {
     assert.ok(readFileSync(join(root, file), 'utf8') === readFileSync(resolve(file), 'utf8'), `${file} is not built from the current source, run npm run build`);
   }
 });
@@ -102,6 +102,12 @@ test('the theme bundle carries none of the editor, which is all in theme/editor.
 test('theme/editor.js is under 1280 kB', () => {
   const size = statSync(resolve('theme/editor.js')).size;
   assert.ok(size < 1280 * 1024, `theme/editor.js is ${Math.round(size / 1024)} kB`);
+});
+
+// the engine of the port of a session is loaded beside theme/session.js at each ?edit&session
+test('theme/editor-session.js is under 40 kB', () => {
+  const size = statSync(resolve('theme/editor-session.js')).size;
+  assert.ok(size < 40 * 1024, `theme/editor-session.js is ${Math.round(size / 1024)} kB`);
 });
 
 // the edit command is copied into a talk with theme/, and it is imported by the tests of the sync

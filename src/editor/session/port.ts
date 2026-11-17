@@ -16,9 +16,9 @@ import { contentRange, decode, elementRange, parseSource, segmentsOf, VOID } fro
 import { stateOf } from '../tags.ts';
 import { redrawTex as redrawDeckTex } from '../tex/install.ts';
 import { RAW_TEXT, tokenize } from '../tokens.ts';
+import { script } from '../ui/script.ts';
 import { caretOf, mapOffset, markOf, moved, putCaret, textIn } from './caret.ts';
-import { take, type Host } from './host.ts';
-import { install as installEngine } from './session.ts';
+import type { Host } from './host.ts';
 
 const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, fine, mergeEdits, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
 
@@ -65,10 +65,17 @@ export type Engine = Pick<Port, 'text' | 'copy' | 'apply' | 'rebase' | 'onChange
 // handed is the text last handed to the client, see install of session.ts
 export type Tracked = { clean: boolean; handed: string | null };
 
+declare global {
+  interface Window {
+    BeesonEditorSession?: (host: Host, app: App, tracked: Tracked) => Engine;
+  }
+}
+
 let load: () => Promise<Port | null> = () => Promise.resolve(null);
 
-// the engine installed once into the port of install, which resolves with the port, or with null
-// when the engine could not be loaded
+// the engine of theme/editor-session.js loaded and installed once into the port of install, which
+// resolves with the port, or with null when the script does not load, does not define its entry,
+// or throws
 export const loadEngine = (): Promise<Port | null> => load();
 
 export function install(app: App): Port {
@@ -165,12 +172,15 @@ export function install(app: App): Port {
 
   let loading: Promise<Port | null> | null = null;
   load = () =>
-    (loading ??= Promise.resolve().then(() => {
-      take(host);
-      const { reported, ...members } = installEngine(app, { ...tracked });
-      engine = { reported, ...members };
-      Object.assign(port, members);
-      return port;
-    }));
+    (loading ??= script('editor-session.js')
+      .then(() => {
+        const start = window.BeesonEditorSession;
+        if (typeof start !== 'function') return null;
+        const { reported, ...members } = start(host, app, { ...tracked });
+        engine = { reported, ...members };
+        Object.assign(port, members);
+        return port;
+      })
+      .catch(() => null));
   return port;
 }
