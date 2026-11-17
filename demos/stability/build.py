@@ -1300,6 +1300,137 @@ def lyapunov_plot():
     }, frames[crossing]['c'], c_cross
 
 
+# ---- the triangular point L4 across the Routh value, for the appendix slide of slide 4
+
+# the Earth-Moon mass ratio, the Routh value, and the time of the flow whose multipliers are drawn,
+# half a revolution of the primaries, nondimensional
+MU_EM = 0.01215058
+MU_ROUTH = (1 - math.sqrt(23 / 27)) / 2
+ROUTH_TIME = math.pi
+# the cells of the two panels in px of the plot, whose box on the slide is 880 by 840 px with 56 px
+# of it under the panels for the bar
+ROUTH_CELLS = {'circle': [0, 0, 880, 464], 'diagram': [0, 464, 880, 320]}
+# the tones of the planar pairs at L4, the short-period pair in violet and the long-period pair in
+# blue, while both are on the unit circle, and both in orange once they have left it
+SHORT, LONG = 'violet', 'blue'
+
+
+def routh_eigenvalues(mu):
+    """The planar eigenvalues of L4 in the upper half plane, as the short-period one and the
+    long-period one below the Routh value, and above it as lam and -conj(lam), with Re(lam) > 0.
+    They are the roots of lam^4 + lam^2 + 27/4 mu (1 - mu) = 0."""
+    disc = cmath.sqrt(1 - 27 * mu * (1 - mu))
+    roots = [cmath.sqrt((-1 + s * disc) / 2) for s in (1, -1)]
+    roots = [z if z.imag >= 0 else -z for z in roots]
+    if mu <= MU_ROUTH:
+        return sorted(roots, key=lambda z: -z.imag)
+    return sorted(roots, key=lambda z: -z.real)
+
+
+def routh_plot():
+    """The plot of the appendix slide on L4, with two panels moved by one clock over the mass ratio
+    mu from 0 to 0.045. Above, the unit circle with the four planar multipliers exp(pi lam) of L4, at
+    their true radius. Below, the same multipliers as a point of Broucke's diagram. The two pairs
+    meet on the circle at the Routh value, where the point crosses the parabola k1 = k2 from E2
+    into N, and leave the circle as a complex quadruple past it. The Earth-Moon mass ratio and the
+    Routh value are marked in both panels. The vertical pair, +-i at every mass ratio, is left out."""
+    mus = sorted({*(0.045 * i / 180 for i in range(181)), MU_EM, MU_ROUTH})
+    routh = mus.index(MU_ROUTH)
+    earth = mus.index(MU_EM)
+    frames = []
+    for mu in mus:
+        lams = routh_eigenvalues(mu)
+        rhos = [cmath.exp(ROUTH_TIME * z) for z in lams]
+        ks = [r + 1 / r for r in rhos]
+        a1 = -(ks[0] + ks[1])
+        a2 = 2 + ks[0] * ks[1]
+        assert abs(a1.imag) < 1e-12 and abs(a2.imag) < 1e-12, f'a1 or a2 is complex at mu = {mu}'
+        frames.append({'mu': mu, 'lams': lams, 'rhos': rhos, 'a1': a1.real, 'a2': a2.real})
+    tones = [[SHORT if i < routh else 'accent' for i in range(len(mus))],
+             [LONG if i < routh else 'accent' for i in range(len(mus))]]
+
+    window = ((-2.6, 2.6), (-1.62, 1.62))
+    corner = [window[0][1], window[1][1]]
+    circle = {
+        'id': 'circle',
+        'cell': ROUTH_CELLS['circle'],
+        'margin': [8, 0, 0, 0],
+        'equal': True,
+        'axes': False,
+        'x': {'range': list(window[0])},
+        'y': {'range': list(window[1])},
+        'curves': [
+            {'points': [[window[0][0], 0], [window[0][1], 0]], 'tone': 'muted', 'width': 1.5},
+            {'points': [[0, window[1][0]], [0, window[1][1]]], 'tone': 'muted', 'width': 1.5},
+            {'circle': [0, 0, 1], 'tone': 'subtle', 'width': 2},
+        ],
+    }
+    x_range = (-1.0, 5.0)
+    y_range = (-3.0, 7.5)
+    diagram = {
+        'id': 'diagram',
+        'cell': ROUTH_CELLS['diagram'],
+        'margin': [16, 24, 84, 116],
+        'x': {'range': list(x_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (0, 2, 4)], 'title': '$a_1$'},
+        'y': {'range': list(y_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (-2, 2, 6)], 'title': '$a_2$'},
+        'regions': region_fills(x_range, y_range, 'linear'),
+        'curves': [
+            {'id': 'kplus', 'points': curve_points('plus', x_range, y_range, 'linear'), 'tone': 'subtle', 'width': 2.5},
+            {'id': 'kminus', 'points': curve_points('minus', x_range, y_range, 'linear'), 'tone': 'subtle', 'width': 2.5},
+            {'id': 'kequal', 'points': curve_points('equal', x_range, y_range, 'linear'), 'tone': 'subtle', 'width': 2.5},
+        ],
+        'labels': [
+            {'id': 'r1', 'at': [-0.45, 0.6], 'text': SYMBOL[1], 'tone': 'text'},
+            {'id': 'r2', 'at': [0.6, 5.6], 'text': SYMBOL[2], 'tone': 'text'},
+            {'id': 'lequal', 'at': [1.4, 2.49], 'text': '$k_1 = k_2$', 'tone': 'subtle', 'anchor': 'end', 'dx': -14, 'dy': -22},
+        ],
+    }
+    path = [[sig(f['a1']), sig(f['a2'])] for f in frames]
+    upper = lambda j: [[sig(f['rhos'][j].real), sig(f['rhos'][j].imag)] for f in frames]
+    lower = lambda j: [[sig(f['rhos'][j].real), sig(-f['rhos'][j].imag)] for f in frames]
+    meet = cmath.exp(ROUTH_TIME * 1j / math.sqrt(2))
+    lam_text = lambda z: (rf'${z.imag:.4f}\,i$' if abs(z.real) < 5e-5 else f'${z.real:.4f} + {z.imag:.4f}\\,i$')
+    trace = lambda ident, tone: {'id': ident, 'panel': 'circle', 'kind': 'trace', 'tone': tone, 'width': 4, 'size': 14, 'fade': 2.5}
+    row = lambda n: {'panel': 'circle', 'kind': 'label', 'anchor': 'end', 'dx': -12, 'dy': 34 + 40 * n}
+    return {
+        'parameter': {'label': r'$\mu$', 'digits': 4},
+        'duration': 10,
+        'hold': 2,
+        'panels': [circle, diagram],
+        'marks': [
+            trace('short-upper', SHORT),
+            trace('short-lower', SHORT),
+            trace('long-upper', LONG),
+            trace('long-lower', LONG),
+            {'id': 'meet', 'panel': 'circle', 'kind': 'events', 'tone': 'accent', 'size': 30, 'width': 3, 'anchor': 'end', 'dx': -26, 'dy': -18},
+            {'id': 'lshort', 'tone': SHORT, **row(0)},
+            {'id': 'llong', 'tone': LONG, **row(1)},
+            {'id': 'path', 'panel': 'diagram', 'kind': 'trace', 'tone': 'text', 'width': 3, 'size': 8},
+            {'id': 'marked', 'panel': 'diagram', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 22, 'dy': 8},
+            {'id': 'point', 'panel': 'diagram', 'kind': 'points', 'tone': 'accent', 'size': 18},
+        ],
+        'tabs': [{
+            'name': 'L4',
+            'label': r'$\mathcal{L}_4$',
+            'values': [round(mu, 6) for mu in mus],
+            'data': {
+                'short-upper': {'points': upper(0), 'tones': tones[0]},
+                'short-lower': {'points': lower(0), 'tones': tones[0]},
+                'long-upper': {'points': upper(1), 'tones': tones[1]},
+                'long-lower': {'points': lower(1), 'tones': tones[1]},
+                'meet': [{'frame': routh, 'text': r'$\mu_R$', 'at': [sig(meet.real), sig(meet.imag)]},
+                         {'frame': routh, 'text': '', 'at': [sig(meet.real), sig(-meet.imag)]}],
+                'lshort': {'at': corner, 'text': [rf"$\lambda_1 = {lam_text(f['lams'][0])[1:]}" for f in frames]},
+                'llong': {'at': corner, 'text': [rf"$\lambda_2 = {lam_text(f['lams'][1])[1:]}" for f in frames]},
+                'path': path,
+                'marked': [{'frame': earth, 'text': 'Earth–Moon', 'at': path[earth]},
+                           {'frame': routh, 'text': r'$\mu_R$', 'at': path[routh]}],
+                'point': path,
+            },
+        }],
+    }, frames[routh]
+
+
 def inject(page, text, block='stability'):
     html = page.read_text()
     start = f'<script type="application/json" id="{block}">'
@@ -1325,6 +1456,11 @@ def main():
         inject(args.deck, lyapunov, 'lyapunov')
         print(f'{len(lyapunov) / 1e3:.0f} kB of JSON for the block id="lyapunov", with the crossing of k = 2 '
               f'at C = {c_line:.6f} on the line and at C = {c_dylan:.6f} in DyLAN')
+        routh, meet = routh_plot()
+        routh = json.dumps(routh, separators=(',', ':'), ensure_ascii=False)
+        inject(args.deck, routh, 'routh')
+        print(f'{len(routh) / 1e3:.0f} kB of JSON for the block id="routh", with the pairs of L4 meeting at '
+              f"mu_R = {meet['mu']:.6f}, (a1, a2) = ({meet['a1']:.4f}, {meet['a2']:.4f})")
     for name, members in dropped.items():
         if members:
             es = ', '.join(f"{m['e']:g}" for m in members)
