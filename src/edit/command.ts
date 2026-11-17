@@ -826,9 +826,11 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         // a start during the stop begins a new edit command rather than finding this one
         unlock();
         people.end();
+        // a compile that runs is stopped at once, and index.html, the history, and the comments do
+        // not wait for it
+        const figuresStopped = figures.stop();
         const unwritten = await disk.stop();
         await tex.stop();
-        await figures.stop();
         await appliedTable.stop();
         if (unwritten) {
           const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);
@@ -838,6 +840,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         // comments.stopSync logs the file and the reason when it is not written
         const all = unwritten + (comments.stopSync() ? 0 : 1);
         written(all);
+        await figuresStopped;
         // a share in progress sees closed and stops its link, hence the stop waits behind it. the relay
         // keeps the record of the end for a guest who was not waiting at the edit command
         await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);

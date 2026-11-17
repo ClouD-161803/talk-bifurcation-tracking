@@ -228,7 +228,8 @@ test('a preview is compiled before the stale figures and writes nothing, and a n
     c.calls.map((call) => `${call.name}${call.source.slice(DRAWING.length).trim()}`),
     ['a% 1', 'b% other', 'a% 3', 'b% changed'],
   );
-  assert.equal(answers[0].figure.hash, output(f.dir, 'a', `${DRAWING}% 1\n`, { width: 100, height: 100 }).figure.hash);
+  // the first preview ran when a newer one of its page came, and it was stopped
+  assert.deepEqual(answers[0], { superseded: true });
   assert.equal(answers[2].figure.hash, output(f.dir, 'a', `${DRAWING}% 3\n`, { width: 100, height: 100 }).figure.hash);
   assert.equal(f.read('figures/a.tex'), DRAWING);
   assert.equal(f.read('figures/a.js'), output(f.dir, 'a', DRAWING, { width: 600, height: 400 }).text);

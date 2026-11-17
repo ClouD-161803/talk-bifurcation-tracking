@@ -84,9 +84,14 @@ export function findTools(env = process.env) {
 }
 
 // a program run to its end without blocking the event loop, resolved with its status and the last
-// 64 kB of its output, or with error when it does not start or is stopped after PASS_TIME
-function run(command, args, options) {
+// 64 kB of its output, or with error when it does not start, is stopped after PASS_TIME, or is
+// stopped by an abort of signal
+function run(command, args, options, signal) {
   return new Promise((done) => {
+    if (signal?.aborted) {
+      done({ error: new Error('the compile was stopped') });
+      return;
+    }
     let child;
     try {
       child = spawn(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
@@ -103,9 +108,15 @@ function run(command, args, options) {
       out.error = new Error(`it did not end within ${PASS_TIME / 1000} s`);
       child.kill('SIGKILL');
     }, PASS_TIME);
+    const stop = () => {
+      out.error ??= new Error('the compile was stopped');
+      child.kill('SIGKILL');
+    };
+    signal?.addEventListener('abort', stop, { once: true });
     child.once('error', (error) => (out.error ??= error));
     child.once('close', (status) => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', stop);
       done({ ...out, status });
     });
   });
@@ -352,9 +363,10 @@ export function figureScript(name, figure) {
  * dir and line null where TeX does not give one, and inputs the files of the talk that TeX read
  * before an error of TeX, if any. hash, of the figure and of a failed compile, is the figureHash
  * of the texts that the compile read, hence an output is not current for a preamble or an input
- * changed during the compile. Nothing is written into dir.
+ * changed during the compile. An abort of signal kills latex or dvisvgm, and the compile then ends
+ * with an error. Nothing is written into dir.
  */
-export async function compileFigure({ dir, name, source, box = {}, tools = findTools() }) {
+export async function compileFigure({ dir, name, source, box = {}, tools = findTools(), signal }) {
   const started = Date.now();
   dir = resolve(dir);
   source ??= readFileSync(join(dir, 'figures', `${name}.tex`), 'utf8');
@@ -393,7 +405,7 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
     const wrapper = wrapperOf({ mode, preamble: preamble !== null, ...fit });
     writeFileSync(join(temporary, `${WRAPPER}.tex`), wrapper);
     // the folder of the talk is the working folder of TeX, hence a path in a source is read from it
-    const latex = await run(tools.latex, ['-interaction=nonstopmode', '-halt-on-error', '-no-shell-escape', '-file-line-error', '-recorder', `-output-directory=${temporary}`, `${WRAPPER}.tex`], { cwd: dir, env });
+    const latex = await run(tools.latex, ['-interaction=nonstopmode', '-halt-on-error', '-no-shell-escape', '-file-line-error', '-recorder', `-output-directory=${temporary}`, `${WRAPPER}.tex`], { cwd: dir, env }, signal);
     if (latex.error) return { errors: [{ file: null, line: null, message: `latex does not run: ${latex.error.message}` }] };
     const fls = read(join(temporary, `${WRAPPER}.fls`));
     // a refused read is told before an error of TeX, whose message may hold the text that was read
@@ -411,7 +423,7 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
     if (latex.status !== 0) return { errors: errorsOf(read(join(temporary, `${WRAPPER}.log`)) ?? latex.stdout ?? '', { name, dir, texts: { [WRAPPER]: wrapper, [SOURCE]: source, [PREAMBLE]: preamble === null ? null : cutPreamble(preamble) } }), inputs: [...inputs].sort() };
     const file = join(temporary, `${WRAPPER}.svg`);
     // a PostScript special could read a file through Ghostscript
-    const svg = await run(tools.dvisvgm, ['--no-fonts', '--no-specials=ps', '--precision=2', `--output=${file}`, join(temporary, `${WRAPPER}.dvi`)], { cwd: dir, env });
+    const svg = await run(tools.dvisvgm, ['--no-fonts', '--no-specials=ps', '--precision=2', `--output=${file}`, join(temporary, `${WRAPPER}.dvi`)], { cwd: dir, env }, signal);
     const text = read(file);
     if (svg.error || svg.status !== 0 || text === null) {
       return { errors: [{ file: `figures/${name}.tex`, line: null, message: `dvisvgm failed: ${(svg.error?.message ?? svg.stderr ?? '').trim().split(/\r?\n/).pop()}` }] };

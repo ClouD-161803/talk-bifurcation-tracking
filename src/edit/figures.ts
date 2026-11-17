@@ -21,7 +21,7 @@ const LISTING = '\0figures';
 export type Box = { width: number | null; height: number | null };
 type Output = { hash: string; inputs?: string[] };
 type Compiled = { figure: Output; text: string } | { errors: FigureError[]; inputs?: string[]; hash?: string };
-type Compile = (args: { dir: string; name: string; source: string; box: Box; tools: Tools }) => Promise<Compiled>;
+type Compile = (args: { dir: string; name: string; source: string; box: Box; tools: Tools; signal: AbortSignal }) => Promise<Compiled>;
 type Tools = { latex: string | null; dvisvgm: string | null };
 export type PreviewAnswer = { figure: Output } | { errors: FigureError[] } | { superseded: true };
 type Preview = { name: string; source: string; box: Box; done: (answer: PreviewAnswer) => void };
@@ -66,6 +66,8 @@ export class FigureWatcher {
   // the waiting preview of each page
   private previews = new Map<string, Preview>();
   private lane: Promise<void> | null = null;
+  // the compile that runs, with the page of its preview, or null for a compile of an output
+  private running: { controller: AbortController; client: string | null } | null = null;
   private polled: Promise<void> | null = null;
   private stopped = false;
   private last = '';
@@ -119,6 +121,8 @@ export class FigureWatcher {
   // figures, and in place of a preview of this page that waits
   preview(client: string, name: string, source: string, box: Box): Promise<PreviewAnswer> {
     if (this.stopped) return Promise.resolve({ superseded: true });
+    // the preview of this page that runs is stopped, and answered as superseded
+    if (this.running?.client === client) this.running.controller.abort();
     return new Promise((done) => {
       this.previews.get(client)?.done({ superseded: true });
       this.previews.delete(client);
@@ -127,8 +131,10 @@ export class FigureWatcher {
     });
   }
 
+  // the compile that runs is stopped, and its latex or dvisvgm killed
   async stop(): Promise<void> {
     this.stopped = true;
+    this.running?.controller.abort();
     for (const preview of this.previews.values()) preview.done({ superseded: true });
     this.previews.clear();
     await this.idle();
@@ -231,8 +237,8 @@ export class FigureWatcher {
         const [client, preview] = this.previews.entries().next().value ?? [];
         if (preview) {
           this.previews.delete(client!);
-          const out = await this.compile({ dir: this.dir, name: preview.name, source: preview.source, box: preview.box, tools: this.tools });
-          preview.done('errors' in out ? { errors: out.errors } : { figure: out.figure });
+          const out = await this.compileOne(client!, { name: preview.name, source: preview.source, box: preview.box });
+          preview.done(out === null ? { superseded: true } : 'errors' in out ? { errors: out.errors } : { figure: out.figure });
           continue;
         }
         const name = this.stale.values().next().value;
@@ -248,6 +254,19 @@ export class FigureWatcher {
       });
   }
 
+  // a compile for the preview of client, or for an output when client is null, or null when it was
+  // stopped
+  private async compileOne(client: string | null, { name, source, box }: { name: string; source: string; box: Box }): Promise<Compiled | null> {
+    const controller = new AbortController();
+    this.running = { controller, client };
+    try {
+      const out = await this.compile({ dir: this.dir, name, source, box, tools: this.tools, signal: controller.signal });
+      return controller.signal.aborted ? null : out;
+    } finally {
+      this.running = null;
+    }
+  }
+
   private async write(name: string): Promise<void> {
     // the figure is found again, since its files may have changed since it was queued
     const listing = this.listing();
@@ -256,12 +275,14 @@ export class FigureWatcher {
     const tried = this.tried.get(name);
     if (tried && tried.key === this.key(figure, tried.inputs, listing)) return;
     this.update(() => (this.compiling = name));
-    let out: Compiled;
+    let out: Compiled | null;
     try {
-      out = await this.compile({ dir: this.dir, name, source: figure.text!, box: figure.box, tools: this.tools });
+      out = await this.compileOne(null, { name, source: figure.text!, box: figure.box });
     } finally {
       this.update(() => (this.compiling = null));
     }
+    // a stopped compile is not taken as a failure
+    if (out === null) return;
     this.compiled[name] = Date.now();
     const inputs = ('errors' in out ? out.inputs : out.figure.inputs) ?? [];
     // the key of the texts that the compile read, hence a file changed during it is compiled again
