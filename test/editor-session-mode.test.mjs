@@ -1,4 +1,4 @@
-// the session mode of the editor, see src/editor/session/session.ts. a page opened with edit and
+// the session mode of the editor, see src/editor/session/port.ts. a page opened with edit and
 // session is in the mode from its start, and begin() and end() of the port turn it on and off
 // later. in the mode the editor does not save, keep a draft, autosave, or follow its file, it does
 // not ask about unsaved edits, since every edit is already shared, and Open, Open Recent, and Revert

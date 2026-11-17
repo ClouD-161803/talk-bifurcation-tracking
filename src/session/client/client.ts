@@ -8,7 +8,7 @@
 // that text as an edit would undo the work of another person for everyone
 
 import type { App } from '../../editor/app.ts';
-import type { Applied, Port } from '../../editor/session/session.ts';
+import type { Applied, Port } from '../../editor/session/port.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';

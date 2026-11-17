@@ -1,5 +1,5 @@
 // helpers of the tests of the session mode of the editor, in which it does not save, keep drafts,
-// or follow its file by itself, see src/editor/session/session.ts
+// or follow its file by itself, see src/editor/session/port.ts
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
