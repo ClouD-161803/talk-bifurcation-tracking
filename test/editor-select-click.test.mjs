@@ -78,6 +78,10 @@ for (const platform of ['mac', 'other']) {
       order.push(...(await selected(page, [SHAPE, FRONT, BACK])));
     }
     assert.deepEqual(order, [FRONT, BACK, SHAPE], 'Alt-click does not go from front to back and around');
+    // with none of them selected, Alt-click selects the second from the front
+    await press(page, 'Escape');
+    await click(page, at, { modifiers: 'Alt' });
+    assert.deepEqual(await selected(page, [SHAPE, FRONT, BACK]), [FRONT], 'Alt-click without a selection does not select the second from the front');
     assert.equal((await caretIn(page, FRONT)) || (await caretIn(page, BACK)), false, 'Alt-click puts a caret in');
     assert.deepEqual(page.errors, []);
   });
