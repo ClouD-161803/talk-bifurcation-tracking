@@ -243,22 +243,23 @@ test('Return inside a paragraph and an item with a citation, and typing after it
   await roundTrip(page, 'Return in an item', { save: true });
 });
 
-test('Return inside a theorem leaves the theorem and the file as they were', async (t) => {
+// Return does not split a theorem, which is not a plain paragraph, and breaks its line as in a
+// caption. the theorem stays one theorem, and its head and number are not written into the file
+test('Return inside a theorem breaks its line and keeps one theorem', async (t) => {
   const page = await open();
   t.after(() => page.close?.());
   await show(page, 'Theorems');
   await caret(page, 'p.theorem[data-kind="definition"]', 2);
-  const before = await page.evaluate(`document.querySelector('.reveal section.present p.theorem').innerHTML`);
   await press(page, 'Enter');
   await settle(page);
-  assert.equal(await page.evaluate(`document.querySelector('.reveal section.present p.theorem').innerHTML`), before);
   assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present p.theorem').length`), 3);
-  await byteExact(page);
-  assert.equal((await page.evaluate('window.BeesonEditor.status()')).undo, false);
+  const HEAD = '<p class="theorem" data-kind="definition">A ';
+  await byteExact(page, [[`${HEAD}periodic`, `${HEAD}<br>periodic`]]);
+  assert.equal((await page.evaluate('window.BeesonEditor.status()')).undo, true);
   // the caret is kept in the theorem, where typing goes on
   await type(page, 'x');
   await settle(page);
-  await byteExact(page, [['<p class="theorem" data-kind="definition">A periodic', '<p class="theorem" data-kind="definition">A xperiodic']]);
+  await byteExact(page, [[`${HEAD}periodic`, `${HEAD}<br>xperiodic`]]);
 });
 
 test('a change of the tag of a slide with citations, and Reset Slide, write the tag without --refs', async (t) => {

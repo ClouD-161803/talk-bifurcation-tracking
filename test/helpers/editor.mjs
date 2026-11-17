@@ -170,8 +170,10 @@ export async function press(page, keys, count = 1) {
   const modifiers = await maskOf(page, names.join('+'));
   const shift = names.includes('Shift');
   const [key, code, keyCode] = keyOf(name, shift);
-  // a printable key without a command modifier types its character
-  const text = key.length === 1 && !(modifiers & (BITS.Ctrl | BITS.Meta)) ? key : undefined;
+  // a printable key or Enter without a command modifier sends its character, as a keyboard does.
+  // without it, Chrome does not press a focused button or toggle a summary at Enter
+  const command = modifiers & (BITS.Ctrl | BITS.Meta);
+  const text = command ? undefined : key.length === 1 ? key : key === 'Enter' ? '\r' : undefined;
   const base = { key, code, windowsVirtualKeyCode: keyCode, modifiers };
   const down = { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text, unmodifiedText: text } : {}) };
   const sent = [];
