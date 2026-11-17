@@ -74,10 +74,10 @@ await build({
 // the client of a session and the engine of its port run beside theme/editor.js, and they reach the
 // editor only through the handovers of src/session/client/handover.ts and src/editor/session/host.ts.
 // a stateful module of the editor bundled into either would be a second copy with its own state,
-// hence the client may share with the editor only these modules, which hold none (src/qr.ts only
-// constant tables, for the Share dialog), and the modules of src/session/, and the engine none. a
-// path is compared by its real path in lowercase, since a path written in another case is a second
-// module on a file system that ignores case
+// hence the client may share with the editor only src/editor/merge.ts, src/editor/tokens.ts, and
+// src/qr.ts, which hold none (src/qr.ts only constant tables, for the Share dialog), and the
+// modules of src/session/, and the engine none. a path is compared by its real path in lowercase,
+// since a path written in another case is a second module on a file system that ignores case
 const real = (path) => {
   try {
     return realpathSync.native(fileURLToPath(new URL(path, root))).toLowerCase();

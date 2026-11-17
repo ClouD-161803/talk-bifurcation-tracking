@@ -83,8 +83,9 @@ export function install(app: App): Port {
   let status: string | null = null;
   let saver: () => Promise<void> | void = () => {};
   let engine: Engine | null = null;
-  // tracked is kept from the start of the page until the engine is installed, since the deck is
-  // opened before it
+  // tracked is kept from the start of the page until the engine is installed. on a page in a session
+  // the engine is installed before the deck is opened, and on a page that loads the engine with
+  // BeesonEditor.loadSession the deck is opened before it
   const tracked: Tracked = { clean: false, handed: null };
   const ready = () => !!app.source && !!app.pairing && !!app.pairing.root;
   const busy = () => !app.history.settled || app.doc.busy;
