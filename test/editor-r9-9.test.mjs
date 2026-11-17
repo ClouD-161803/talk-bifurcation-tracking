@@ -629,7 +629,20 @@ const RECORD = `(() => {
   document.addEventListener('click', (e) => {
     if (!window.__click && e.target.closest?.('${PANEL} button.ed-play')) window.__click = { at: performance.now(), paused: v.paused, time: v.currentTime };
   });
+  // the callers of pause, for the message of a failed wait
+  window.__pauses = [];
+  const pause = v.pause;
+  v.pause = function () {
+    window.__pauses.push({ at: performance.now(), time: v.currentTime, by: new Error().stack.split('\\n').slice(2, 6).join(' < ') });
+    return pause.call(this);
+  };
   return true;
+})()`;
+// the record and the state of the selected video, for the message of a failed wait
+const RECORDED = `(() => {
+  const v = window.BeesonEditor.selection()[0];
+  const play = document.querySelector('${PANEL} button.ed-play');
+  return JSON.stringify({ click: window.__click, plays: window.__plays.length, last: window.__plays.slice(-3), pauses: window.__pauses, video: v && { paused: v.paused, time: v.currentTime, ready: v.readyState, ended: v.ended }, play: play && { label: play.getAttribute('aria-label'), disabled: play.disabled } });
 })()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
@@ -655,7 +668,7 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   // the updates of the playing video are read from the record, since it plays on until the read.
   // the first is at the frame it plays from, and the slider is compared with an update 0.5 s later
   const later = `window.__plays.find((p) => !p.paused && p.time > ${from + 0.5})`;
-  await page.waitFor(`!!${later}`, 60000);
+  await page.waitFor(`!!${later}`, 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
   await sleep(late);
   const started = await page.evaluate('window.__click');
