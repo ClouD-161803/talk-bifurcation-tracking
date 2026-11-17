@@ -322,8 +322,12 @@ const PDF_FILE = `new File([Uint8Array.from(atob(${JSON.stringify(readFileSync(P
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const NO_PDF = 'figure.pdf cannot be sent to the others, since a session does not take .pdf files. Add a PDF figure in the editor without a session.';
 // the middle of the image of selector that is drawn
-const middle = (page, selector) =>
-  page.evaluate(`(() => { const r = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+const middle = async (page, selector) => {
+  const drawn = `[...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.getBoundingClientRect().width > 0)`;
+  // a picture has a width once its file is loaded, which may be after its slide is shown
+  await page.waitFor(`!!${drawn}`);
+  return page.evaluate(`(() => { const r = ${drawn}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+};
 // the answer of the command id run with arg, an expression of the page: taken, or the reason of its refusal
 const run = (page, id, arg) => page.evaluate(`${C}.app.commands.run(${JSON.stringify(id)}, ${arg}).then(() => 'taken', (e) => e.message)`);
 
