@@ -124,6 +124,31 @@ async function layers(name, { still, tops }, p = page) {
   }
 }
 
+// rec.record() on p, which fails after limit ms with the last call of the recorder on p and the
+// time since it started, so that a recording that hangs names its step within the limit of its test
+async function record(p, steps, options, limit = 100_000) {
+  let last = null;
+  const traced = new Proxy(p, {
+    get(target, key) {
+      const value = target[key];
+      if (typeof value !== 'function') return value;
+      return (...args) => {
+        last = { call: `${String(key)}(${JSON.stringify(args[0] ?? '').slice(0, 80)})`, at: performance.now() };
+        return value.apply(target, args);
+      };
+    },
+  });
+  let timer;
+  const hang = new Promise((_, fail) => {
+    timer = setTimeout(() => fail(new Error(`the recording hangs at ${last?.call}, called ${last ? ((performance.now() - last.at) / 1000).toFixed(1) : '?'} s ago`)), limit);
+  });
+  try {
+    return await Promise.race([rec.record(traced, steps, options), hang]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // the print view of test/pages/record-edges.html, opened by the first test that reads it
 let edges;
 async function edgesPage() {
@@ -142,7 +167,7 @@ before(async () => {
   await page.evaluate(LAB);
   rec = await recorder(browser, { fps: FPS, scale: 2 });
   const steps = await stepsOf('A title with steps');
-  title = await rec.record(page, steps, { keep: [0, 30, 'last'] });
+  title = await record(page, steps, { keep: [0, 30, 'last'] }, 280_000);
 }, { timeout: 300000 });
 
 after(async () => {
@@ -190,7 +215,7 @@ test('a recording plays in Chrome with the composed frames', { timeout: 120000 }
 });
 
 test('two recordings of one backdrop give the same frames', { timeout: 120000 }, async () => {
-  const again = await rec.record(page, await stepsOf('A title with steps'), { keep: [0, 30, 'last'] });
+  const again = await record(page, await stepsOf('A title with steps'), { keep: [0, 30, 'last'] });
   // the traces are drawn alike, and the two screenshots of the layer under them differ by at most
   // 2 in a channel, measured at the edges of the Princeton Engineering lockup
   for (const k of [0, 30, 'last']) {
@@ -201,12 +226,12 @@ test('two recordings of one backdrop give the same frames', { timeout: 120000 },
 
 test('the still with the picture of the words of a step is the step of the print view', { timeout: 300000 }, async () => {
   const slides = [['A title with steps', title]];
-  for (const name of ['A closing slide', 'Two traces from two steps']) slides.push([name, await rec.record(page, await stepsOf(name))]);
+  for (const name of ['A closing slide', 'Two traces from two steps']) slides.push([name, await record(page, await stepsOf(name), {}, 140_000)]);
   for (const [name, result] of slides) await layers(name, result);
 });
 
 test('a loop is recorded over one period', { timeout: 120000 }, async () => {
-  const loop = await rec.record(page, await stepsOf('A loop'), { keep: [0, 'end'] });
+  const loop = await record(page, await stepsOf('A loop'), { keep: [0, 'end'] });
   assert.equal(loop.recording.loop, true);
   // the heads of a loop go round in 9 s, see LOOP in src/orbits.ts
   assert.equal(loop.recording.frames, 9 * FPS);
@@ -217,8 +242,8 @@ test('a loop is recorded over one period', { timeout: 120000 }, async () => {
 
 test('a backdrop that is a step is recorded from its step', { timeout: 120000 }, async () => {
   const steps = await stepsOf('A trace that is a step');
-  await assert.rejects(rec.record(page, steps), /does not trace a backdrop/);
-  const { recording, tops } = await rec.record(page, steps.slice(1));
+  await assert.rejects(record(page, steps), /does not trace a backdrop/);
+  const { recording, tops } = await record(page, steps.slice(1));
   assert.equal(recording.frames, FPS + 1);
   assert.equal(tops.length, 1);
 });
@@ -229,7 +254,7 @@ test('a traced backdrop that is not drawn is not live, and its slide is not reco
   const steps = await stepsOf('A backdrop that is not drawn', p);
   const live = await rec.live(p);
   assert.deepEqual(steps.map((i) => live[i]), [[]]);
-  await assert.rejects(rec.record(p, steps), /does not trace a backdrop/);
+  await assert.rejects(record(p, steps), /does not trace a backdrop/);
 });
 
 test('a step that adds an element to its page keeps the elements under a recorded backdrop under it', { timeout: 120000 }, async () => {
@@ -239,7 +264,7 @@ test('a step that adds an element to its page keeps the elements under a recorde
   const counts = await p.evaluate(`[...document.querySelectorAll('.pdf-page')].map((p) => p.querySelectorAll('*').length)`);
   const steps = await stepsOf(name, p);
   assert.notEqual(counts[steps[0]], counts[steps[1]]);
-  await layers(name, await rec.record(p, steps), p);
+  await layers(name, await record(p, steps), p);
 });
 
 test('an error of the encoder is reported with its reason and the option --still', { timeout: 120000 }, async (t) => {
@@ -263,7 +288,7 @@ test('an error of the encoder is reported with its reason and the option --still
     return true;
   })()`);
   t.after(() => page.evaluate(`(window.VideoEncoder = window.__realEncoder, delete window.__realEncoder)`));
-  await assert.rejects(rec.record(page, await stepsOf('A closing slide')), (e) => {
+  await assert.rejects(record(page, await stepsOf('A closing slide')), (e) => {
     assert.match(e.message, /EncodingError: the stub failed/);
     assert.match(e.message, /--still/);
     return true;

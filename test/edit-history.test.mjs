@@ -1379,16 +1379,23 @@ test('a change of index.html from outside of text that nobody wrote takes about 
   const indented = authority.text.replace(/^ {2}</gm, '    <');
   const there = diff(authority.text, indented);
   const back = diff(indented, authority.text);
+  // each measurement as its wall time and the CPU time of the process, which tells a runner that
+  // took the CPU away from a slower history
+  const measured = [];
   const ms = (a) => {
     const start = performance.now();
+    const cpu = process.cpuUsage();
     for (let i = 0; i < 10; i++) for (const patches of [there, back]) assert.equal(a.enter(patches, 'file').answer.ok, true);
-    return performance.now() - start;
+    const wall = performance.now() - start;
+    const used = process.cpuUsage(cpu);
+    measured.push(`${a === alone ? 'alone' : 'history'} ${wall.toFixed(1)} ms, CPU ${((used.user + used.system) / 1000).toFixed(1)} ms`);
+    return wall;
   };
   ms(alone);
   let [withHistory, without] = [ms(authority), ms(alone)];
   // the code that looked at every mark took 10 times as long, and 4 times is reached on a loaded machine
   if (withHistory > 6 * without) [withHistory, without] = [Math.min(withHistory, ms(authority)), Math.max(without, ms(alone))];
-  assert.ok(withHistory <= 6 * without, `${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone`);
+  assert.ok(withHistory <= 6 * without, `${withHistory.toFixed(1)} ms with the history, and ${without.toFixed(1)} ms for the authority alone, measured as ${measured.join('; ')}`);
 });
 
 test('a Replace All in slides that a person pasted in the same version takes about as long as in slides of an earlier version', { timeout: 300_000 }, (t) => {
