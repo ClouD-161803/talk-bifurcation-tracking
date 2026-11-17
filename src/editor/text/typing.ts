@@ -376,6 +376,8 @@ export function install(app: App): void {
   // the undo of the browser, e.g. from its Edit menu, is taken by the command, which a session
   // may refuse
   function onBeforeInput(ev: InputEvent): void {
+    // an input cancelled before, e.g. by the lock of commands/order.ts, is not applied by hand
+    if (ev.defaultPrevented) return;
     const host = app.hostOf(ev.target);
     if (!host) return;
     const type = ev.inputType;
