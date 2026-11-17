@@ -152,6 +152,9 @@ test('a text element that another page types in refuses Delete, Arrange, a join,
   await front(ana);
   await leave(ana);
   await until(() => ben.evaluate(`${P}.holds.size === 0`), 'the hold to go when Ana leaves the paragraph');
+  // Ben leaves the text as with Escape, since a page that is shown again keeps the focus in a text,
+  // and Delete then removes the selected word in place of the element
+  await leave(ben);
   await select(ben, p);
   await ben.evaluate(`${C}.app.commands.run('element.delete')`);
   assert.equal(await ben.evaluate(BUBBLE), null);
