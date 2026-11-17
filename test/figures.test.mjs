@@ -274,66 +274,7 @@ test('a figure is compiled with a preamble that defines an operator and kinds of
   assert.equal((await compileFigure({ dir, name: 'decay', source })).errors, undefined);
 });
 
-// a folder of a talk as folder() makes, with a path without spaces, which TeX reads as the end of a
-// file name
-const plainFolder = (t, files) => {
-  const root = mkdtempSync(join(tmpdir(), 'figures-fence-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const [name, text] of Object.entries(files)) {
-    mkdirSync(join(root, name, '..'), { recursive: true });
-    writeFileSync(join(root, name), text);
-  }
-  return root;
-};
-
-// a guest of a session may change a figure, hence TeX may read only the files of the talk folder,
-// apart from its hidden ones, and the files of the TeX installation. openin_any of TeX Live has no
-// effect from TeX Live 2026 on, so every file that TeX read is checked as well
-test('TeX reads only the files of the talk folder and of the TeX installation, and the text of another file reaches neither the figure nor its errors', { skip: WITHOUT_TEX }, async (t) => {
-  const root = plainFolder(t, { 'secret.tex': 'SECRETWORD\n', 'talk/.session/key': 'HIDDENKEY\n', 'talk/figures/data.csv': 'x,y\n0,0\n1,1\n' });
-  const dir = join(root, 'talk');
-  // TeX takes / as the separator on every system
-  const secret = join(root, 'secret.tex').split('\\').join('/');
-  const picture = (body) => `\\begin{tikzpicture}\n\\node {${body}};\n\\end{tikzpicture}\n`;
-  const sources = {
-    parent: picture('\\input{../secret}'),
-    absolute: picture(`\\input{${secret}}`),
-    hidden: picture('\\input{.session/key}'),
-    dump: picture(`\\pdffiledump length 10{${secret}}`),
-    // the text of a file read into a macro, and given as the message of an error
-    message: `\\makeatletter\\everyeof{\\noexpand}\\edef\\x{\\@@input ${secret} }\\errmessage{\\x}\n${picture('a')}`,
-  };
-  for (const [name, source] of Object.entries(sources)) {
-    const compiled = await compileFigure({ dir, name, source, box: { width: 300, height: 200 } });
-    assert.equal(compiled.figure, undefined, `${name}: compiled`);
-    assert.ok(!/SECRETWORD|HIDDENKEY|5345435245/.test(JSON.stringify(compiled)), `${name}: ${JSON.stringify(compiled)}`);
-    assert.match(compiled.errors[0].message, /may not read/, name);
-  }
-  // a file of the talk folder and the files of TeX are read
-  const table = '\\begin{tikzpicture}\n\\begin{axis}\n\\addplot table[col sep=comma]{figures/data.csv};\n\\end{axis}\n\\end{tikzpicture}\n';
-  const { errors, figure } = await compileFigure({ dir, name: 'table', source: table, box: { width: 300, height: 200 } });
-  assert.equal(errors, undefined);
-  assert.deepEqual(figure.inputs, ['figures/data.csv']);
-});
-
-test('TeX writes only into its temporary folder, also where the environment allows a write anywhere', { skip: WITHOUT_TEX }, async (t) => {
-  const root = plainFolder(t, { 'talk/figures/.keep': '' });
-  const dir = join(root, 'talk');
-  const was = process.env.openout_any;
-  process.env.openout_any = 'a';
-  t.after(() => (was === undefined ? delete process.env.openout_any : (process.env.openout_any = was)));
-  // the temporary folder of TeX is in the temporary folder of the system, which ../ names
-  const name = `written-${process.pid}-${Date.now()}`;
-  const places = [join(root, `${name}.tex`), join(tmpdir(), `${name}.tex`)];
-  t.after(() => places.forEach((file) => rmSync(file, { force: true })));
-  for (const path of [`../${name}.tex`, places[0].split('\\').join('/')]) {
-    const source = `\\newwrite\\out\\immediate\\openout\\out=${path}\\immediate\\write\\out{x}\\immediate\\closeout\\out\n\\begin{tikzpicture}\n\\node {a};\n\\end{tikzpicture}\n`;
-    await compileFigure({ dir, name: 'write', source });
-    for (const file of places) assert.throws(() => readFileSync(file), `${path} is written into ${file}`);
-  }
-});
-
-test('the demo figure compiles with the demo preamble inside the fence', { skip: WITHOUT_TEX }, async (t) => {
+test('the demo figure compiles with the demo preamble', { skip: WITHOUT_TEX }, async (t) => {
   const dir = folder(t, { 'figures/cr3bp.tex': readFileSync('figures/cr3bp.tex', 'utf8'), 'preamble.tex': readFileSync('preamble.tex', 'utf8') });
   const { errors, figure } = await compileFigure({ dir, name: 'cr3bp', box: { width: 800, height: 700 } });
   assert.equal(errors, undefined, JSON.stringify(errors));

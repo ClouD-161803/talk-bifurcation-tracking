@@ -85,7 +85,7 @@ test('the title bar tells the figure being compiled, the count of the figures no
   t.after(() => page.close());
   await page.waitFor(`${C}.connection === 'online' && !!${C}.figures`);
   // the states are told to the client as the edit command would tell them
-  const tell = (state) => page.evaluate(`${C}.takeFigures(${JSON.stringify({ outputs: { orbit: '1111111111111111' }, compiling: null, errors: {}, compiled: {}, uncompiled: 0, compiler: 'fenced', ...state })})`);
+  const tell = (state) => page.evaluate(`${C}.takeFigures(${JSON.stringify({ outputs: { orbit: '1111111111111111' }, compiling: null, errors: {}, compiled: {}, uncompiled: 0, compiler: 'found', ...state })})`);
   await tell({ compiling: 'orbit', uncompiled: 1 });
   await page.waitFor(`${STATE} === 'Compiling orbit.tex'`);
   await tell({ uncompiled: 1 });

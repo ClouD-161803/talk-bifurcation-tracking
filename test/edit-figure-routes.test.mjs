@@ -1,10 +1,10 @@
 // the routes of the TikZ figures of the edit command: a preview of a source that is not saved, the
 // write of a source against the text it was edited from, the write of a data file, the state of
-// the figures in hello and in the events, and the refusal of a guest where the TeX of the host is
-// MiKTeX. a test that runs TeX is skipped where latex or dvisvgm is not installed
+// the figures in hello and in the events, and the refusal of a guest, since only the host changes a
+// TikZ figure. a test that runs TeX is skipped where latex or dvisvgm is not installed
 
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { startRelay } from '../scripts/relay.mjs';
@@ -110,8 +110,6 @@ test('a preview is compiled without a write, and a saved source is compiled into
   const failed = (await s.send('figures/preview', { name: 'orbit', source: DRAWING.replace('\\draw', '\\drawn'), box })).json();
   assert.equal(failed.errors[0].file, 'figures/orbit.tex');
   assert.equal(failed.errors[0].line, 2);
-  const outside = (await s.send('figures/preview', { name: 'orbit', source: '\\input{/etc/hosts}\n', box })).json();
-  assert.match(outside.errors[0].message, /may not read/);
   for (const body of [{ name: 'orbit', source: DRAWING, box: { width: 'x' } }, { name: '.x', source: DRAWING, box }, { name: 'orbit', box }]) {
     assert.equal((await s.send('figures/preview', body)).status, 400, JSON.stringify(body));
   }
@@ -124,24 +122,22 @@ test('a preview is compiled without a write, and a saved source is compiled into
   }, 'the output of the saved source');
   assert.match(s.read('figures/orbit.js'), new RegExp(state.outputs.orbit));
   assert.equal(state.uncompiled, 0);
-  assert.equal(state.compiler, 'fenced');
+  assert.equal(state.compiler, 'found');
   assert.ok(state.compiled.orbit > 0);
   const again = (await post(s.edit.port, s.api('hello'), { name: 'Bo' })).json();
   assert.equal(again.figures.outputs.orbit, state.outputs.orbit);
 });
 
-test('a guest may not change a figure where the TeX of the host is MiKTeX, and the host may', { skip: process.platform === 'win32' ? 'the fake latex is a shell script' : false, timeout: 60_000 }, async (t) => {
+// TeX reads and writes every file that the account of the host may, hence a source written by a
+// guest could read a file of the host, e.g. through \special{dvisvgm:raw}
+test('only the host changes a TikZ figure, and every route of the figures refuses a guest', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t, DECK);
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const bin = join(root, 'miktex');
-  mkdirSync(bin);
-  writeFileSync(join(bin, 'latex'), '#!/bin/sh\necho "MiKTeX-pdfTeX 4.20 (MiKTeX 25.4)"\nexit 1\n');
-  writeFileSync(join(bin, 'dvisvgm'), '#!/bin/sh\nexit 1\n');
-  for (const name of ['latex', 'dvisvgm']) chmodSync(join(bin, name), 0o755);
+  mkdirSync(join(root, 'no-tex'));
   const secret = 'a secret of the group, long enough';
   const relay = await startRelay({ host: '127.0.0.1', secret });
   t.after(() => relay.close());
-  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config, BEESON_TEXBIN: bin } });
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config, BEESON_TEXBIN: join(root, 'no-tex') } });
   t.after(() => stopEdit(edit));
   const api = (route) => `${edit.base}.session/${route}`;
   const host = (await post(edit.port, api('hello'), { name: 'Ann' })).json();
@@ -156,11 +152,11 @@ test('a guest may not change a figure where the TeX of the host is MiKTeX, and t
   ]) {
     const refused = await guest(route, { token: ben.token, ...body });
     assert.equal(refused.status, 403, route);
-    assert.match((await refused.json()).error, /MiKTeX/);
+    assert.match((await refused.json()).error, /only the host/, route);
   }
+  assert.equal(existsSync(join(talk, 'figures')), false);
   assert.equal((await post(edit.port, api('figures/source'), { token: host.token, name: 'orbit', source: DRAWING, base: null })).status, 200);
   assert.equal(readFileSync(join(talk, 'figures', 'orbit.tex'), 'utf8'), DRAWING);
-  assert.equal((await post(edit.port, api('hello'), { name: 'Cy' })).json().figures.compiler, 'unfenced');
 });
 
 test('a source saved with a byte-order mark is written over the text that a page read from it, and keeps its mark', async (t) => {
@@ -182,11 +178,11 @@ test('a stop of the edit command ends a compile that runs, and the command ends 
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(talk, 'figures'));
   writeFileSync(join(talk, 'figures', 'orbit.tex'), DRAWING);
-  // a latex of TeX Live that does not end, with the id of each of its runs in pids
+  // a latex that does not end, with the id of each of its runs in pids
   const bin = join(root, 'texlive');
   const pids = join(root, 'pids');
   mkdirSync(bin);
-  writeFileSync(join(bin, 'latex'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"; exit 0; fi\necho $$ >> '${pids}'\nexec sleep 600\n`);
+  writeFileSync(join(bin, 'latex'), `#!/bin/sh\necho $$ >> '${pids}'\nexec sleep 600\n`);
   writeFileSync(join(bin, 'dvisvgm'), '#!/bin/sh\nexit 1\n');
   for (const name of ['latex', 'dvisvgm']) chmodSync(join(bin, name), 0o755);
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config, BEESON_TEXBIN: bin } });
