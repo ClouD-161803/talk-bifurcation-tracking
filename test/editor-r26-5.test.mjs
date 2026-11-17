@@ -8,7 +8,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const SLIDE = '.reveal .slides > section.present';
@@ -66,7 +66,7 @@ async function formulaKey(page, platform) {
 // a trusted click on an empty point of the canvas, near the lower right corner of the slide
 async function clickAway(page) {
   const at = await page.evaluate(`(() => { const r = document.querySelector(${js(SLIDE)}).getBoundingClientRect(); return { x: r.right - 30, y: r.bottom - 30 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(300);
 }
 
@@ -81,7 +81,7 @@ const ROUTES = [
     assert.equal(await page.evaluate(`!!document.querySelector(${js(`${SLIDE} .beeson-pending`)})`), true, 'the box is not drawn');
   }, `${SLIDE} .beeson-pending`, true],
   ['the empty words of a shape', 'test/pages/editor-r23-2.html', 3, async (page) => {
-    await click(page, `${SLIDE} > .shape`);
+    await clickText(page, `${SLIDE} > .shape`);
     await frames(page);
     await press(page, 'Enter');
     await frames(page);
@@ -127,7 +127,7 @@ async function caretAt(page, selector, at) {
   const needle = at.replace('|', '');
   const k = at.indexOf('|');
   const point = await page.evaluate(`(() => { const r = ${textElementOf(selector, needle)}.getBoundingClientRect(); return { x: r.left + 4, y: r.top + r.height / 2 }; })()`);
-  await click(page, point);
+  await clickText(page, point);
   await frames(page);
   await page.evaluate(`(() => {
     const el = ${textElementOf(selector, needle)};
@@ -234,7 +234,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, DECK, 0);
     for (const [selector, needle] of [[`${SLIDE} li`, 'Two'], [`${SLIDE} > p`, 'Gone soon']]) {
       const at = await page.evaluate(`(() => { const r = ${textElementOf(selector, needle)}.getBoundingClientRect(); return { x: r.left + 60, y: r.top + r.height / 2 }; })()`);
-      await click(page, at);
+      await clickText(page, at);
       await frames(page);
       await press(page, 'End');
       for (const _ of needle) await press(page, 'Backspace');
@@ -258,7 +258,7 @@ for (const platform of PLATFORMS) {
 // character, and Esc
 async function empty(page, selector, needle) {
   const at = await page.evaluate(`(() => { const r = ${textElementOf(selector, needle)}.getBoundingClientRect(); return { x: r.left + 60, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
   await press(page, 'End');
   for (const _ of needle) await press(page, 'Backspace');

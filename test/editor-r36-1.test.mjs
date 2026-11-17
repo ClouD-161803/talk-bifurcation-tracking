@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const MOD = { mac: 4, other: 2 };
@@ -80,7 +80,7 @@ async function load(t, platform, deck, slide) {
     select: async (selector, { text = true, add = false } = {}) => {
       const [[x, y, w, h]] = await boxes(selector);
       const at = await page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); const r = s.getBoundingClientRect(); const k = r.width / s.offsetWidth; return { x: r.left + ${x + Math.min(20, w / 2)} * k, y: r.top + ${y + h / 2} * k }; })()`);
-      await click(page, at, { modifiers: add ? 'Shift' : '' });
+      await (add ? click(page, at, { modifiers: 'Shift' }) : clickText(page, at));
       await frames(page);
       if (text) {
         await press(page, 'Escape');

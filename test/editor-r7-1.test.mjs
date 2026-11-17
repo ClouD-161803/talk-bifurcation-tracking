@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
 const PLATFORMS = ['mac', 'other'];
@@ -83,7 +83,7 @@ const readoutOf = (page) =>
 for (const platform of PLATFORMS) {
   test(`the readout of a resize of a group gives the size of W and H (${platform})`, async (t) => {
     const page = await load(t, platform, { n: MATH });
-    await click(page, IMG);
+    await clickText(page, IMG);
     await click(page, '.reveal section.present > p', { modifiers: 'Shift' });
     await exec(page, 'arrange.group');
     await frames(page);
@@ -142,7 +142,7 @@ for (const platform of PLATFORMS) {
     test(`a new text box that would be ${name} is put at the center of the visible slide (${platform})`, async (t) => {
       const page = await load(t, platform, { n: 2 });
       // the small paragraph under the list is selected and moved down to the top y
-      await click(page, SMALL);
+      await clickText(page, SMALL);
       await press(page, 'Escape');
       await exec(page, 'arrange.setPosition', { y });
       await frames(page);
@@ -204,7 +204,7 @@ const DEMO_IMG = '.reveal section.present figure.figure-box img:not([hidden])';
 for (const platform of PLATFORMS) {
   test(`the readout, the frame, and W and H give one size during and after a resize of a group (${platform})`, async (t) => {
     const page = await load(t, platform, { deck: 'test-deck.html', n: FIGURES });
-    await click(page, '.reveal section.present > p');
+    await clickText(page, '.reveal section.present > p');
     await press(page, 'Escape');
     await click(page, DEMO_IMG, { modifiers: 'Shift' });
     await exec(page, 'arrange.group');
@@ -212,8 +212,8 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(await grouped(page), ['figure', 'p'], 'the paragraph and the figure are not grouped');
     // a click on an empty point of the slide, then on the image, selects the group
     const empty = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present').getBoundingClientRect(); return { x: r.left + r.width * 0.3, y: r.top + r.height * 0.9 }; })()`);
-    await click(page, empty);
-    await click(page, DEMO_IMG);
+    await clickText(page, empty);
+    await clickText(page, DEMO_IMG);
     await frames(page);
     assert.ok(await frameOf(page), 'the group is not selected');
     await page.evaluate(`[...document.querySelectorAll('#beeson-edit-panel-format button')].find((b) => b.textContent.trim() === 'Arrange')?.click()`);
@@ -255,7 +255,7 @@ const membersOf = (page) =>
 for (const platform of PLATFORMS) {
   test(`X and Y give the corner of a group, and a typed X or Y moves the whole group as one entry (${platform})`, async (t) => {
     const page = await load(t, platform, { deck: 'test-deck.html', n: FIGURES });
-    await click(page, '.reveal section.present > p');
+    await clickText(page, '.reveal section.present > p');
     await press(page, 'Escape');
     await click(page, DEMO_IMG, { modifiers: 'Shift' });
     await exec(page, 'arrange.group');
@@ -304,7 +304,7 @@ for (const platform of PLATFORMS) {
 for (const platform of PLATFORMS) {
   test(`X and Y stay empty for several ungrouped elements at different corners (${platform})`, async (t) => {
     const page = await load(t, platform, { deck: 'test-deck.html', n: FIGURES });
-    await click(page, '.reveal section.present > p');
+    await clickText(page, '.reveal section.present > p');
     await press(page, 'Escape');
     await click(page, DEMO_IMG, { modifiers: 'Shift' });
     await frames(page);

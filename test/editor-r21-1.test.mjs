@@ -11,7 +11,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { themeClasses } from '../src/editor/model/scope.ts';
-import { byteExact, click, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-r21-1.html';
 const PLATFORMS = ['mac', 'other'];
@@ -70,7 +70,7 @@ const caretInShape = (page) => page.evaluate(`(() => { const s = getSelection();
 // as an object
 async function clickShape(page, selector = '.shape') {
   const at = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 
@@ -85,7 +85,7 @@ async function selectShape(page) {
 // the tag that the command id writes on the paragraph of the slide WORDS selected as a block, with
 // the words of the paragraph replaced by those of the shape
 async function blockEdit(page, id) {
-  await click(page, await screen(page, 300, 300));
+  await clickText(page, await screen(page, 300, 300));
   await press(page, 'Escape');
   await frames(page);
   await exec(page, id);

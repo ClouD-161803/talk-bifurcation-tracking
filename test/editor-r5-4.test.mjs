@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, editorPage, press, saveAndReopen, selectFigure, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, editorPage, press, saveAndReopen, selectFigure, type } from './helpers/editor.mjs';
 
 const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
 const PANEL = '#beeson-edit-panel-format';
@@ -110,7 +110,7 @@ for (const platform of ['mac', 'other']) {
     t.after(() => page.close?.());
     await show(page, FIGURES);
     const li = '.reveal section.present ul > li:last-child';
-    await click(page, li);
+    await clickText(page, li);
     await press(page, 'Escape');
     await exec(page, 'insert.table', { rows: 2, columns: 3 });
     await sleep(100);
@@ -258,7 +258,7 @@ for (const platform of ['mac', 'other']) {
     for (const id of CHANGES) assert.equal((await state(page, id)).enabled, false, `${id} is enabled on a locked figure`);
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-panes')?.dataset.pane`), 'image');
     assert.deepEqual((await controls(page)).filter((c) => c.on), [], 'the Image pane has enabled controls');
-    await click(page, `${PANEL} [role=tab]:last-child`);
+    await clickText(page, `${PANEL} [role=tab]:last-child`);
     await settle(page);
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-panes')?.dataset.pane`), 'arrange');
     assert.deepEqual((await controls(page)).filter((c) => c.on).map((c) => c.command), ['arrange.unlock'], 'the Arrange pane has enabled controls other than Unlock');
@@ -271,7 +271,7 @@ for (const platform of ['mac', 'other']) {
     const edited = await roundTrip(page);
     assert.match(edited, /<figure class="figure-box" data-locked>/);
     // Unlock gives the controls back, on the figure selected again after the open of the save
-    await click(page, figure);
+    await clickText(page, figure);
     await settle(page);
     assert.equal((await state(page, 'media.replace')).enabled, false);
     await press(page, platform === 'mac' ? 'Mod+Alt+L' : 'Mod+Shift+L');
@@ -291,7 +291,7 @@ for (const platform of ['mac', 'other']) {
     t.after(() => page.close());
     await show(page, 2);
     const lead = '.reveal section.present > p';
-    await click(page, lead);
+    await clickText(page, lead);
     await press(page, 'Escape');
     await press(page, 'Mod+L');
     await settle(page);
@@ -304,7 +304,7 @@ for (const platform of ['mac', 'other']) {
     await settle(page);
     const typed = await render(page);
     assert.ok(typed === locked, `the text of the locked block was changed: ${typed.match(/<p data-locked>.*<\/p>/)?.[0]}`);
-    await click(page, lead);
+    await clickText(page, lead);
     await press(page, platform === 'mac' ? 'Mod+Alt+L' : 'Mod+Shift+L');
     await settle(page);
     await byteExact(page);
@@ -329,7 +329,7 @@ async function tap(page, name) {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
   assert.ok(at, `the inspector does not have a button ${name}`);
-  await click(page, at);
+  await clickText(page, at);
 }
 
 // the file at path given to the open file chooser of the editor, as a person picks it
@@ -355,7 +355,7 @@ for (const platform of ['mac', 'other']) {
     const mode = await page.evaluate(`[...document.querySelectorAll('.reveal section.present video')].find((v) => v.getClientRects().length && v.getBoundingClientRect().width).classList.contains('for-dark') ? 'dark' : 'light'`);
     const video = `.reveal section.present video.for-${mode}`;
     const clip = `clip-${mode}`;
-    await click(page, video);
+    await clickText(page, video);
     await settle(page);
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-panes')?.dataset.pane`), 'video');
     const button = await page.evaluate(`[...document.querySelectorAll('${PANEL} [data-command="media.poster"]')].map((b) => [b.textContent.trim(), b.title])[0]`);
@@ -370,7 +370,7 @@ for (const platform of ['mac', 'other']) {
     // a chooser opened by a trusted click is cancelled at once in headless Chrome unless the
     // protocol intercepts it, and the input then keeps waiting for its files
     await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
-    await click(page, `${ASK} button.primary`);
+    await clickText(page, `${ASK} button.primary`);
     await choose(page, resolve(`demo/${clip}.mp4`));
     await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}.png"')`);
     const captured = page.source.replace(clipOf(mode), clipOf(mode).replace(`poster="demo/${clip}.png"`, `poster="media/${clip}.png"`));
@@ -383,7 +383,7 @@ for (const platform of ['mac', 'other']) {
     assert.equal(await render(page), captured);
     // a second capture reads the file chosen before, without asking again
     await page.evaluate('window.BeesonEditor.undo()');
-    await click(page, video);
+    await clickText(page, video);
     await settle(page);
     await tap(page, 'Capture Poster');
     await page.waitFor(`window.BeesonEditor.render().includes('poster="media/${clip}')`);

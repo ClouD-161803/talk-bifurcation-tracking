@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { click, editorPage, press } from './helpers/editor.mjs';
+import { click, clickText, editorPage, press } from './helpers/editor.mjs';
 
 const scheme = (page, value) => page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
 const frames = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
@@ -41,7 +41,7 @@ test('a pointer click on Navigator or Steps leaves the focus off the button', as
   const page = await editorPage(browser);
   for (const name of ['Navigator', 'Steps']) {
     const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === ${JSON.stringify(name)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     assert.notEqual(await page.evaluate('document.activeElement.textContent'), name, `the focus is left on ${name}`);
   }
@@ -237,16 +237,16 @@ test('a dialog keeps Tab inside, answers with the button pressed, and gives the 
 test('the labels of the toolbar are kept while they fit, and the late groups go into a menu while they do not', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  for (const [width, labels, more] of [[1440, true, false], [1024, true, false], [900, true, 'file'], [840, true, 'inserts']]) {
+  for (const [width, labels, more] of [[1440, true, false], [1024, true, 'file'], [900, true, 'inserts'], [840, true, 'inserts']]) {
     const page = await editorPage(browser, { page: { width, height: 700 } });
     const bar = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-top .tb')]; return { texts: b.filter((e) => !e.classList.contains('more-groups')).map((e) => e.textContent), label: getComputedStyle(b[0].querySelector('.label')).display !== 'none', more: !!document.querySelector('.beeson-edit-top .more-groups') }; })()`);
     assert.equal(bar.label, labels, `${width}: labels`);
     assert.equal(bar.more, !!more, `${width}: the menu More`);
     // Format and Steps stay after More, since Format opens and closes the inspector, beside which
-    // the navigator is hidden in a narrow window. At 900 px Preview, Present, and Save are folded,
-    // and at 840 px the group of the inserts is folded too
+    // the navigator is hidden in a narrow window. At 1024 px Preview, Present, and Save are folded,
+    // and at 900 and 840 px the group of the inserts is folded too
     const inserts = ['Table', 'Text', 'Formula', 'Shape', 'Media'];
-    assert.deepEqual(bar.texts.map((x) => x.replace(/^\d+%/, '%')), more ? ['View', '%Zoom', 'Undo', 'Redo', 'Add Slide', ...(more === 'file' ? inserts : []), 'Format', 'Steps'] : ['View', '%Zoom', 'Undo', 'Redo', 'Add Slide', 'Table', 'Text', 'Formula', 'Shape', 'Media', 'Preview', 'Present', 'Save', 'Format', 'Steps']);
+    assert.deepEqual(bar.texts.map((x) => x.replace(/^\d+%/, '%')), more ? ['View', '%Zoom', 'Undo', 'Redo', 'Delete', 'Add Slide', ...(more === 'file' ? inserts : []), 'Format', 'Steps'] : ['View', '%Zoom', 'Undo', 'Redo', 'Delete', 'Add Slide', 'Table', 'Text', 'Formula', 'Shape', 'Media', 'Preview', 'Present', 'Save', 'Format', 'Steps']);
     const cell = await boxOf(page, '.beeson-edit-canvas');
     assert.ok(cell.w > 0 && cell.h > 0);
     assert.deepEqual(page.errors, []);

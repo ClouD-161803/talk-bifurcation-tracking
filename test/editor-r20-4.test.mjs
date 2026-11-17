@@ -10,7 +10,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { editProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-r20-4.html';
 const PLATFORMS = ['mac', 'other'];
@@ -274,7 +274,7 @@ for (const platform of PLATFORMS) {
 
   test(`Dashes on a list selected as an object sets its nested plain lists and keeps a nested numbered list (${platform})`, async (t) => {
     const page = await load(t, platform, NESTED);
-    await click(page, await pointOf(page, 'Top two'));
+    await clickText(page, await pointOf(page, 'Top two'));
     await press(page, 'Escape');
     await settle(page);
     assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.localName)'), ['ul']);
@@ -289,7 +289,7 @@ for (const platform of PLATFORMS) {
     assert.equal((await state(page, 'text.list.dashes')).checked, true);
     await roundTrip(page);
     // Arrows takes the class off at both levels
-    await click(page, await pointOf(page, 'Top two'));
+    await clickText(page, await pointOf(page, 'Top two'));
     await press(page, 'Escape');
     await settle(page);
     await exec(page, 'text.list.ul');
@@ -373,7 +373,7 @@ for (const platform of PLATFORMS) {
 
   test(`Bullets on a dot list and a dash list selected together keeps the bullet of each (${platform})`, async (t) => {
     const page = await load(t, platform, KINDS);
-    await click(page, await pointOf(page, 'Dot one'));
+    await clickText(page, await pointOf(page, 'Dot one'));
     await press(page, 'Escape');
     await click(page, await pointOf(page, 'Dash one'), { modifiers: 'Shift' });
     await settle(page);
@@ -403,7 +403,7 @@ for (const platform of PLATFORMS) {
     // the notes take only arrows
     if (!(await state(page, 'view.notes')).checked) await exec(page, 'view.notes');
     await frames(page);
-    await click(page, '.reveal section.present > aside.notes');
+    await clickText(page, '.reveal section.present > aside.notes');
     await settle(page);
     assert.equal((await state(page, 'text.list.ul')).enabled, true, 'the caret is not in the notes');
     for (const id of ['text.list.dots', 'text.list.dashes']) assert.equal((await state(page, id)).enabled, false, `${id} is enabled in the notes`);

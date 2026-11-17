@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 // a deck of five slides whose second slide is hidden
@@ -143,7 +143,7 @@ for (const platform of PLATFORMS) {
     await press(page, 'Mod+Enter');
     await page.waitFor(`[...document.querySelectorAll('dialog[open] button')].some((b) => b.textContent === 'Discard changes')`);
     const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'Discard changes').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, at);
+    await clickText(page, at);
     await page.waitFor(showReady, 20000);
     assert.equal(await page.evaluate('window.__shows.length'), 0, 'Present opens the show in a new tab');
     assert.equal(await page.evaluate(`document.fullscreenElement?.className ?? null`), 'beeson-edit-show', 'the show is not full screen');
@@ -203,7 +203,7 @@ for (const platform of PLATFORMS) {
     })()`));
     assert.ok(toggle?.shown, 'the toggle of the theme is not shown in the show');
     assert.ok(toggle.right, 'the toggle of the theme is not at the top right');
-    await click(page, toggle);
+    await clickText(page, toggle);
     await page.waitFor(inShow(`w.document.documentElement.dataset.theme === 'light'`), 3000);
     await press(page, 'p');
     await page.waitFor(inShow(`!!w.document.querySelector('.pointer-dot')`), 3000);
@@ -316,7 +316,7 @@ for (const platform of PLATFORMS) {
     })()`));
     assert.notEqual(target.h, target.now);
     await move(target.x, 990);
-    await click(page, { x: target.x, y: 990 });
+    await clickText(page, { x: target.x, y: 990 });
     await page.waitFor(`${SHOW}.Reveal.getIndices().h === ${target.h}`, 3000);
     const heading = await showHeading(page);
     await press(page, 'Escape');
@@ -439,14 +439,14 @@ for (const platform of PLATFORMS) {
       await frames(page);
     };
     // Magic Move on slide 3 moves it into slide 4
-    await click(page, segment('magic'));
+    await clickText(page, segment('magic'));
     await frames(page);
     assert.deepEqual(await page.evaluate(SEG), ['magic']);
     assert.deepEqual(await page.evaluate(TAGS), [[null, true], [null, true], [null, false]]);
     // None on slide 4 cuts from slide 4 into slide 5, and the Magic Move into slide 4 is kept
     await goTo(3);
     assert.deepEqual(await page.evaluate(SEG), ['fade'], 'slide 4 does not show the Fade by which the show leaves it');
-    await click(page, segment('none'));
+    await clickText(page, segment('none'));
     await frames(page);
     assert.deepEqual(await page.evaluate(TAGS), [[null, true], [null, true], ['none', false]], 'None on slide 4 is not written as the cut from slide 4 into slide 5');
     assert.deepEqual(await page.evaluate(SEG), ['none']);
@@ -459,7 +459,7 @@ for (const platform of PLATFORMS) {
     // Fade on slide 3 takes the Magic Move off both slides
     await goTo(2);
     assert.deepEqual(await page.evaluate(SEG), ['magic']);
-    await click(page, segment('fade'));
+    await clickText(page, segment('fade'));
     await frames(page);
     assert.deepEqual(await page.evaluate(TAGS), [[null, false], [null, false], ['none', false]]);
     assert.deepEqual(await page.evaluate(SEG), ['fade']);
@@ -481,7 +481,7 @@ const SELECTED_ROWS = `[...document.querySelectorAll('.beeson-edit-side .rows .r
 async function choose(page, label) {
   const item = await pointIn(page, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label').textContent === ${js(label)} && i.getAttribute('aria-disabled') !== 'true')`);
   await sleep(300);
-  await click(page, item);
+  await clickText(page, item);
 }
 const openSteps = async (page) => {
   if (!(await page.evaluate(`window.BeesonEditor.state('view.steps').checked`))) await page.evaluate(`window.BeesonEditor.exec('view.steps')`);
@@ -492,7 +492,7 @@ for (const platform of PLATFORMS) {
   test(`Shift and Mod clicks on rows of the Steps list add their elements to the selection (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 2 });
     await openSteps(page);
-    await click(page, await pointIn(page, ROW(HEADING), 0.7));
+    await clickText(page, await pointIn(page, ROW(HEADING), 0.7));
     await click(page, await pointIn(page, ROW(PARA), 0.7), { modifiers: 'Shift' });
     await frames(page);
     assert.deepEqual(await page.evaluate(SELECTED_ROWS), [HEADING, PARA], 'Shift does not add a row to the selection');
@@ -511,12 +511,12 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, { n: 2 });
     await openSteps(page);
     // the paragraph and the heading selected on the canvas
-    await click(page, '.reveal section.present > p');
+    await clickText(page, '.reveal section.present > p');
     await press(page, 'Escape');
     await click(page, '.reveal section.present > h2', { modifiers: 'Shift' });
     await frames(page);
     assert.deepEqual(await page.evaluate(SELECTED_ROWS), [HEADING, PARA]);
-    await click(page, await pointIn(page, `${ROW(PARA)}.querySelector('.chip')`));
+    await clickText(page, await pointIn(page, `${ROW(PARA)}.querySelector('.chip')`));
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual(await page.evaluate(SELECTED_ROWS), [HEADING, PARA], 'the chip menu selects its row alone');
     await choose(page, 'New Step at End');
@@ -537,7 +537,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, { n: 2 });
     await openSteps(page);
     for (const [row, label] of [[TWO, 'With Previous'], [TWO, 'After Previous'], [LAST, 'Show Last']]) {
-      await click(page, await pointIn(page, `${ROW(row)}.querySelector('.chip')`));
+      await clickText(page, await pointIn(page, `${ROW(row)}.querySelector('.chip')`));
       await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
       await choose(page, label);
       await frames(page);

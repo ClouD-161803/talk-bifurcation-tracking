@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -73,7 +73,7 @@ for (const platform of PLATFORMS) {
       const at = `on slide ${n + 1} with a pause of ${pause} ms`;
       await emptied(page, pause);
       const target = n === 0 ? 'section.present .title-text h1' : 'section.present h2';
-      await click(page, target);
+      await clickText(page, target);
       await sleep(700);
       assert.deepEqual(await page.evaluate(`(() => { const t = document.querySelector(${js(target)}); const a = getSelection().anchorNode; return { slide: Reveal.getIndices().h, caret: !!a && t.contains(a) }; })()`), { slide: n, caret: true }, `the click does not leave the caret in the text ${at}`);
       await press(page, 'End');
@@ -113,7 +113,7 @@ for (const platform of PLATFORMS) {
     for (const leaveBy of ['Escape', 'click']) {
       const page = await load(t, platform, 4);
       // an older entry, which stays undoable
-      await click(page, 'section.present h2');
+      await clickText(page, 'section.present h2');
       await press(page, 'End');
       await type(page, 'Q');
       await sleep(1300);
@@ -127,7 +127,7 @@ for (const platform of PLATFORMS) {
       if (leaveBy === 'Escape') {
         await press(page, 'Escape');
         await press(page, 'Escape');
-      } else await click(page, { x: 1580, y: 600 });
+      } else await clickText(page, { x: 1580, y: 600 });
       await sleep(300);
       assert.equal(await pendings(page), 0, `the box is held outside the file after ${leaveBy}`);
       const left = await render(page);

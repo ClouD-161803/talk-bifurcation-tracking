@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, press, saveAndReopen, selectFigure, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const FIG = '.reveal section.present .figure-box > img';
@@ -151,7 +151,7 @@ for (const platform of PLATFORMS) {
     // Zoom to Selection, by Shift+2 everywhere and by Cmd+Shift+0 on a Mac, wants a selection
     await setZoom(page, null);
     assert.equal(await zoomAfter('Shift+2'), null);
-    await click(page, FIG);
+    await clickText(page, FIG);
     const keys = platform === 'mac' ? ['Shift+2', 'Mod+Shift+0'] : ['Shift+2'];
     for (const k of keys) {
       await setZoom(page, null);
@@ -159,7 +159,7 @@ for (const platform of PLATFORMS) {
     }
     // the zoom keys of the canvas are taken while a text is edited, and not by a field
     await setZoom(page, null);
-    await click(page, '.reveal section.present h2');
+    await clickText(page, '.reveal section.present h2');
     assert.equal(await page.evaluate(`document.activeElement.matches('.reveal section.present h2')`), true);
     assert.ok((await zoomAfter('Mod+=')) > fit);
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), page.source);
@@ -170,7 +170,7 @@ for (const platform of PLATFORMS) {
 test('Zoom to Selection fills the cell with the selected figure and centers it', async (t) => {
   const page = await open(t, 'other');
   await figureSlide(page);
-  await click(page, FIG);
+  await clickText(page, FIG);
   await page.evaluate(`window.BeesonEditor.exec('zoom.selection')`);
   await frames(page);
   const s = await stage(page);
@@ -193,7 +193,7 @@ test('the frames and handles are clipped to the canvas at a zoom', async (t) => 
   await figureSlide(page);
   await setZoom(page, 2);
   await centerOn(page, await (async () => { const r = await rectOf(page, FIG); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })());
-  await click(page, FIG);
+  await clickText(page, FIG);
   await frames(page);
   const look = await page.evaluate(`(() => {
     const v = window.BeesonEditorShell.stage.viewport;
@@ -267,8 +267,8 @@ for (const platform of PLATFORMS) {
       // a free resize of the lower right corner of the image by 80 by 80 slide px, with the image
       // selected by a click on the selected figure
       s = await ready(z);
-      await click(page, FIG);
-      await click(page, FIG);
+      await clickText(page, FIG);
+      await clickText(page, FIG);
       const grip = () => page.evaluate(`(() => { const r = document.querySelector('.beeson-grip[data-handle=se]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
       // the corner is off the window at 200 percent until the canvas is scrolled to it
       if (z !== null) await centerOn(page, await grip());

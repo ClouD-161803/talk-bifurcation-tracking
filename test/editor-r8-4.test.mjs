@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, captured, click, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, captured, click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -101,12 +101,12 @@ for (const platform of PLATFORMS) {
     const mode = await page.evaluate(`[...document.querySelectorAll('.reveal section.present video')].find((v) => v.getBoundingClientRect().width).classList.contains('for-dark') ? 'dark' : 'light'`);
     const video = `.reveal section.present video.for-${mode}`;
     const clip = `clip-${mode}`;
-    await click(page, video);
+    await clickText(page, video);
     await frames(page);
     await page.waitFor(`!!document.querySelector(${js(SLIDER)}) && !document.querySelector(${js(SLIDER)}).disabled`);
     await page.evaluate(SLOW_SEEK);
     const r = await boxOf(page, SLIDER);
-    await click(page, { x: r.left + 8 + (r.width - 16) * 0.5, y: r.top + r.height / 2 });
+    await clickText(page, { x: r.left + 8 + (r.width - 16) * 0.5, y: r.top + r.height / 2 });
     await captured(page, `window.BeesonEditor.render().includes('poster="media/${clip}.png"')`);
     const half = await posterBytes(page, video);
     await page.evaluate(`document.querySelector(${js(SLIDER)}).focus()`);
@@ -172,7 +172,7 @@ for (const platform of PLATFORMS) {
     };
     const IMAGE = '.reveal section.present figure.figure-box > img';
     await context(IMAGE, 'an element');
-    await click(page, IMAGE);
+    await clickText(page, IMAGE);
     await exec(page, 'arrange.lock');
     const locked = await context(IMAGE, 'a locked element');
     assert.ok(locked.some((r) => r.label === 'Unlock'), 'the menu of a locked element does not list Unlock');
@@ -235,7 +235,7 @@ for (const platform of PLATFORMS) {
   test(`every key typed back to back after Insert > Formula in a text reaches the TeX field of its inline formula (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 4, format: false });
     const PARA = '.reveal section.present > p';
-    await click(page, PARA);
+    await clickText(page, PARA);
     await press(page, 'End');
     await frames(page);
     assert.ok(await page.evaluate(`document.activeElement.isContentEditable && !!document.activeElement.closest('.reveal')`), 'the caret is not in the paragraph');
@@ -306,7 +306,7 @@ for (const platform of PLATFORMS) {
       const IMAGE = '.reveal section.present figure.figure-box > img';
       const locks = browserName === 'safari' ? [['Ctrl+Mod+L', 'Ctrl+Mod+Alt+L'], ['Mod+L', 'Mod+Alt+L']] : [['Mod+L', 'Mod+Alt+L'], ['Ctrl+Mod+L', 'Ctrl+Mod+Alt+L']];
       for (const [lock, unlock] of locks) {
-        await click(page, IMAGE);
+        await clickText(page, IMAGE);
         await press(page, lock);
         await frames(page);
         assert.equal((await state(page, 'edit.undo')).label, 'Undo Lock', `${lock} does not lock the picture`);
@@ -383,7 +383,7 @@ for (const platform of PLATFORMS) {
       const page = await load(t, platform, { n: where === 'slide' ? 5 : 4 });
       if (where === 'slide') await exec(page, 'insert.formula');
       else {
-        await click(page, '.reveal section.present > p');
+        await clickText(page, '.reveal section.present > p');
         await press(page, 'End');
         await frames(page);
         await formulaThenType(page, platform, '');
@@ -432,7 +432,7 @@ async function openLayouts(page, from) {
   const row = await layoutRow(page);
   assert.ok(row, `the menu of the ${from} does not have an item Layout`);
   assert.ok(!row.submenu, `Layout in the menu of the ${from} is a submenu of text items`);
-  await click(page, row);
+  await clickText(page, row);
   await sleep(100);
   await frames(page);
   return row;
@@ -505,13 +505,13 @@ for (const platform of PLATFORMS) {
       if (width === 760) {
         assert.equal(b.nav, null, 'the navigator is shown beside the inspector at 760 px');
         assert.ok(b.format, 'the Format button is not in the toolbar at 760 px');
-        await click(page, { x: (b.format.left + b.format.right) / 2, y: (b.format.top + b.format.bottom) / 2 });
+        await clickText(page, { x: (b.format.left + b.format.right) / 2, y: (b.format.top + b.format.bottom) / 2 });
         await sleep(150);
         await frames(page);
         const closed = await shellBoxes(page);
         assert.equal(closed.inspector, null, 'the Format button does not close the inspector');
         assert.ok(closed.nav && Math.abs(closed.nav.width - 140) <= 1, 'the navigator is not shown at its smallest width once the inspector is closed');
-        await click(page, { x: (b.format.left + b.format.right) / 2, y: (b.format.top + b.format.bottom) / 2 });
+        await clickText(page, { x: (b.format.left + b.format.right) / 2, y: (b.format.top + b.format.bottom) / 2 });
         await sleep(150);
         await frames(page);
         assert.ok((await shellBoxes(page)).inspector, 'the Format button does not open the inspector');

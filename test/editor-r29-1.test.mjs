@@ -8,7 +8,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const SLIDE = '.reveal .slides > section.present';
@@ -74,7 +74,7 @@ async function formulaKey(page, platform) {
 // a trusted click on an empty point of the slide, near its lower left corner
 async function clickAway(page) {
   const at = await page.evaluate(`(() => { const r = document.querySelector(${js(SLIDE)}).getBoundingClientRect(); return { x: r.left + 40, y: r.bottom - 30 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(300);
 }
 
@@ -90,7 +90,7 @@ const ROUTES = [
     assert.equal(await page.evaluate(`!!document.querySelector(${js(`${SLIDE} .beeson-pending`)})`), true, 'the box is not drawn');
   }, `${SLIDE} .beeson-pending`, true],
   ['the empty words of a shape', async (page) => {
-    await click(page, `${SLIDE} > .shape`);
+    await clickText(page, `${SLIDE} > .shape`);
     await frames(page);
     await press(page, 'Enter');
     await frames(page);
@@ -108,7 +108,7 @@ for (const platform of PLATFORMS) {
       await page.waitFor(`!!document.querySelector('.beeson-math textarea')`);
       await type(page, 'x^2');
       await sleep(300);
-      await click(page, `${SLIDE} > p mjx-container`);
+      await clickText(page, `${SLIDE} > p mjx-container`);
       await sleep(400);
       assert.equal(await page.evaluate(`document.querySelector('.beeson-math .title')?.textContent ?? null`), 'Edit Formula', 'the sheet of the formula of the slide is not open');
       assert.equal(await page.evaluate(`document.querySelector('.beeson-math textarea').value`), 'a', 'the sheet does not hold the TeX of the formula of the slide');
@@ -152,7 +152,7 @@ for (const platform of PLATFORMS) {
     await page.waitFor(`!!document.querySelector('.beeson-math textarea')`);
     await type(page, 'y');
     await sleep(300);
-    await click(page, `${SLIDE} > p mjx-container`);
+    await clickText(page, `${SLIDE} > p mjx-container`);
     await sleep(400);
     await clickAway(page);
     assert.equal(await render(page), entered, 'the box with its formula is not kept');
@@ -186,7 +186,7 @@ const textElementOf = (selector, needle) => `[...document.querySelectorAll(${js(
 // needle, then Esc
 async function erase(page, selector, needle, count) {
   const at = await page.evaluate(`(() => { const r = ${textElementOf(selector, needle)}.getBoundingClientRect(); return { x: r.right - 4, y: r.bottom - 12 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
   await page.evaluate(`(() => { const el = ${textElementOf(selector, needle)}; const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
   for (let i = 0; i < count; i++) await press(page, 'Backspace');
@@ -270,7 +270,7 @@ for (const platform of PLATFORMS) {
     const end = (box) => [Math.round(box.left + box.width), Math.round(box.top + box.height / 2)];
     assert.deepEqual((await call(page, endsOf, line)).slice(2), end(table), 'the line is not drawn to the table');
     const p = await call(page, boxIn, `${SLIDE} > p`);
-    await click(page, await call(page, screenOf, { x: p.left + p.width - 4, y: p.top + p.height / 2 }));
+    await clickText(page, await call(page, screenOf, { x: p.left + p.width - 4, y: p.top + p.height / 2 }));
     await frames(page);
     await press(page, 'End');
     for (const word of ' and many more words that wrap the paragraph onto a second line and onto a third line of the column'.split(/(?= )/)) {
