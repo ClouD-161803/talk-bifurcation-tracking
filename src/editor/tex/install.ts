@@ -42,6 +42,8 @@ export type TexSheets = {
   // a new TikZ figure of a session made from file, put on the slide, and the sheet Edit Source of a figure
   newFigure(from: Starter, file: File | null): Promise<void>;
   editSource(figure: HTMLElement): void;
+  // the TikZ Figure pane of figure in el, which returns its sync
+  figurePane(el: HTMLElement, figure: HTMLElement): () => void;
 };
 // what editor.js gives theme/editor-tex.js: the app, the folder of the deck shared with the media
 // files, the tex.js of the deck as the page loaded it, and for the TikZ figures of a session the
@@ -74,6 +76,18 @@ export function citationPane(app: App): Control[] {
   };
   sync();
   return [{ el, sync }];
+}
+
+// the TikZ Figure pane of the Format tab, filled by theme/editor-tex.js
+export function tikzPane(app: App): Control[] {
+  const el = make('div', 'ed-tikz');
+  const figure = app.selection.elements()[0] as HTMLElement;
+  let sync = (): void => {};
+  void load().then((s) => {
+    sync = s.figurePane(el, figure);
+    sync();
+  }, (e) => app.fail(e));
+  return [{ el, sync: () => sync() }];
 }
 
 // whether the deck loads the tex.js next to it, rather than the tex.js of another folder

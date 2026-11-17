@@ -1,6 +1,7 @@
 // the Format tab of the inspector, whose panes follow the selection as in the Format inspector of
 // Keynote: the Slide pane with nothing selected, Text and Arrange for a text or a text element, with
 // Citation first for a citation chosen in a text, Image, Video, or QR with Arrange for a picture,
+// TikZ Figure and Arrange for a TikZ figure,
 // Text and Arrange for several text elements, and Arrange alone for a figure around an image or a
 // video, for another element, or for several others.
 // with more than one pane, the panes are tabs of a segmented control, and the tab chosen last is
@@ -29,10 +30,10 @@ import { selectedLines } from '../commands/line.ts';
 import { shapePane } from './shape.ts';
 import { selectedShapes } from '../commands/shape.ts';
 import { lockedSelection } from '../commands/order.ts';
-import { citationOf, citationPane } from '../tex/install.ts';
+import { citationOf, citationPane, tikzPane } from '../tex/install.ts';
 
-export type PaneKind = 'slide' | 'table' | 'text' | 'citation' | 'image' | 'video' | 'qr' | 'formula' | 'code' | 'surface' | 'line' | 'shape' | 'backdrop' | 'arrange';
-const TAB_NAMES: Record<PaneKind, string> = { slide: 'Slide', table: 'Table', text: 'Text', citation: 'Citation', image: 'Image', video: 'Video', qr: 'QR Code', formula: 'Formula', code: 'Code', surface: 'Surface', line: 'Line', shape: 'Shape', backdrop: 'Backdrop', arrange: 'Arrange' };
+export type PaneKind = 'slide' | 'table' | 'text' | 'citation' | 'image' | 'video' | 'qr' | 'formula' | 'code' | 'surface' | 'line' | 'shape' | 'backdrop' | 'tikz' | 'arrange';
+const TAB_NAMES: Record<PaneKind, string> = { slide: 'Slide', table: 'Table', text: 'Text', citation: 'Citation', image: 'Image', video: 'Video', qr: 'QR Code', formula: 'Formula', code: 'Code', surface: 'Surface', line: 'Line', shape: 'Shape', backdrop: 'Backdrop', tikz: 'TikZ Figure', arrange: 'Arrange' };
 const isCode = (el: Element | undefined) => !!el?.closest('pre')?.querySelector(':scope > code');
 // a text element with words, which the Text pane formats together with others, as text boxes in Keynote
 const TEXT_ELEMENT = 'h1, h2, h3, p, ul, ol, div.foot';
@@ -54,6 +55,7 @@ function viewOf(app: App): { tabs: PaneKind[]; items: readonly Element[] } {
   if (el.localName === 'table') return { tabs: ['table', 'arrange'], items: els };
   // a backdrop is placed by the layout of its slide, hence without the Arrange pane
   if (selectedBackdrop(app) === el) return { tabs: ['backdrop'], items: els };
+  if (el.matches('.tikz')) return { tabs: ['tikz', 'arrange'], items: els };
   // a figure is shown with the pane of its picture, as an image with a caption in Keynote
   const img = paneImageOf(app), video = paneVideoOf(app), qr = qrOf(app);
   if (img) return { tabs: ['image', 'arrange'], items: [el, img] };
@@ -84,6 +86,7 @@ function paneOf(app: App, kind: PaneKind, run: ReturnType<typeof runner>): Contr
     case 'line': return linePane(app, run);
     case 'shape': return shapePane(app, run);
     case 'backdrop': return backdropPane(app, run);
+    case 'tikz': return tikzPane(app);
     case 'arrange': return arrangePane(app, run);
   }
 }
