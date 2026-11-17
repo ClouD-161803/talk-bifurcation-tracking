@@ -186,10 +186,12 @@ for (const platform of PLATFORMS) {
     assert.ok((await drawn()).inset > 100, 'the words are not centered after the undo');
     await redo(page);
     await byteExact(page, left);
-    // Center takes the class off, with the caret in the words too
-    await clickShape(page);
+    // Center takes the class off, with the caret in the words too. the shape is still selected
+    // after the redo, hence it is selected again as an object before Enter puts the caret in
+    await selectShape(page);
     await press(page, 'Enter');
     await frames(page);
+    assert.equal(await caretInShape(page), true);
     assert.equal((await state(page, 'text.align.left')).checked, true);
     await exec(page, 'text.align.center');
     await frames(page);
