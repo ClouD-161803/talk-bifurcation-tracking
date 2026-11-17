@@ -3,9 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { split } from '../scripts/shard.mjs';
 
 // the options of node in the test command, before the files
 const command = JSON.parse(readFileSync('package.json', 'utf8')).scripts.test;
@@ -47,13 +49,53 @@ test('a test file that does not end fails after 15 to 30 minutes', () => {
   assert.ok(limit >= 900000 && limit <= 1800000, `the limit of ${command} is ${limit} ms`);
 });
 
-test('the test step of the check workflow is the test command with the shard of its job', () => {
+// the options of node are read from the test command by scripts/shard.mjs, hence they are not
+// written in the workflow
+test('the test step of the check workflow runs the shard of its job', () => {
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
-  const step = /^ +- run: (node --test .*)$/m.exec(workflow)?.[1];
+  const step = /^ +- run: (node scripts\/shard\.mjs .*)$/m.exec(workflow)?.[1];
   // the shards of the matrix are counted, hence a shard is not left out when their number is changed
   const shards = /^ +shard: \[([\d, ]+)\]$/m.exec(workflow)?.[1].split(',').map(Number);
   assert.deepEqual(shards, shards?.map((_, k) => k + 1), 'the shards of the matrix are not 1 to their number');
-  assert.equal(step?.replace(` --test-shard=\${{ matrix.shard }}/${shards.length}`, ''), command.replaceAll('\\"', '"'));
+  assert.equal(step, `node scripts/shard.mjs \${{ matrix.shard }}/${shards.length}`);
+});
+
+// a test file is run in one shard only, and each one is run, also when it is missing from
+// test/timings.json or when the durations of a system are not known
+test('each test file is run in one shard', () => {
+  const files = readdirSync('test').filter((file) => file.endsWith('.test.mjs'));
+  const table = JSON.parse(readFileSync('test/timings.json', 'utf8'));
+  for (const durations of [table.linux, table.win32, {}, { [files[0]]: 1e6 }]) {
+    const shards = [1, 2, 3, 4, 5, 6, 7].map((index) => split(files, durations ?? {}, index, 7));
+    assert.deepEqual(shards.flat().sort(), [...files].sort());
+    assert.ok(shards.every((shard) => shard.length), 'a shard is empty');
+  }
+});
+
+// the durations of a round are read from the line printed by the reporter of scripts/shard.mjs.
+// When the events of node --test are changed, this line is empty, and the shards of the next
+// test/timings.json are no longer balanced
+test('the reporter of scripts/shard.mjs prints the sum of the test durations of each file', { timeout: 60000 }, async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'slides-shard-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(
+    join(root, 'two.test.mjs'),
+    `import { before, test } from 'node:test';
+     before(() => new Promise((done) => setTimeout(done, 200)));
+     test('a', () => new Promise((done) => setTimeout(done, 100)));
+     test('b', async (t) => { await t.test('inner', () => {}); });`,
+  );
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  const reporter = pathToFileURL(resolve('scripts/shard.mjs')).href;
+  const run = spawn(process.execPath, ['--test', `--test-reporter=${reporter}`, '--test-reporter-destination=stdout', 'two.test.mjs'], { cwd: root, env });
+  let out = '';
+  run.stdout.on('data', (chunk) => (out += chunk));
+  await new Promise((done) => run.once('close', done));
+  const line = /^# durations (\w+) (\{.*\})$/m.exec(out);
+  assert.equal(line?.[1], process.platform, out);
+  const sums = JSON.parse(line[2]);
+  assert.deepEqual(Object.keys(sums), ['two.test.mjs']);
+  assert.ok(sums['two.test.mjs'] >= 0.3 && sums['two.test.mjs'] < 10, `the sum is ${sums['two.test.mjs']} s`);
 });
 
 // the result of the shards is reported under test (ubuntu-latest) and test (windows-latest) by a
