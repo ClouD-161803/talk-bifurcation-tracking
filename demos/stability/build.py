@@ -1070,16 +1070,33 @@ LYAPUNOV = HERE.parent.parent / 'data' / 'lyapunov' / 'l1-lyapunov.json'
 HALO = HERE.parent.parent / 'data' / 'lyapunov' / 'l1-halo.json'
 # a tone that hides the head of a trace, i.e. of a Halo branch before the pitchfork
 HIDDEN = 'rgba(0,0,0,0)'
-# the size in px of the box of each panel in the zone of the slide, 880 by 840 px, used to space the
-# ticks of the a1 axis
-LYAPUNOV_BOX = (740, 250)
+# the cell of each panel in px of the plot, whose box on the slide is 1160 by 840 px with 56 px of it
+# under the panels for the bar. the bifurcation diagram and the index are in the lower row. the
+# unit circle and Broucke's diagram are above them, right of the sentence of the slide, and the
+# values of the multipliers are set in the 98 px between the circle and the lower row
+LYAPUNOV_CELLS = {
+    'circle': [260, 0, 424, 350],
+    'family': [684, 0, 476, 350],
+    'pitchfork': [0, 448, 700, 336],
+    'index': [684, 448, 476, 336],
+}
+# the tones of the multipliers: the pair at 1 in blue, the in-plane pair in orange and violet as on
+# the slide on the stability of a periodic orbit, and the vertical pair in the green of k2
+TRIVIAL, UNSTABLE, STABLE, VERTICAL = 'blue', 'accent', 'violet', 'data-3'
+# the place of the in-plane multiplier lam_2, of about 2500, on the real axis of the unit circle,
+# past a dashed part of the axis, since it is far out of the window
+FAR = 1.5
 
 
 def lyapunov_frames():
     """The members of the family from the largest Jacobi constant down, with a frame added where
     the path crosses the line k = 2, on the line itself. The indices are kept as in DyLAN, k1 in
-    the plane and k2 out of it."""
+    the plane and k2 out of it. Each member is checked against a1 = -(k1 + k2) and
+    a2 = 2 + k1 k2, i.e. each index is the sum of a multiplier and its reciprocal."""
     doc = json.loads(LYAPUNOV.read_text())
+    for m in doc['members']:
+        assert abs(m['a1'] + m['k1'] + m['k2']) < 1e-9 * abs(m['a1']), f"a1 of member {m['index']} is not -(k1 + k2)"
+        assert abs(m['a2'] - 2 - m['k1'] * m['k2']) < 1e-9 * abs(m['a2']), f"a2 of member {m['index']} is not 2 + k1 k2"
     frames = [{'c': m['jacobi_constant'], 'a1': m['a1'], 'a2': m['a2'], 'k1': m['k1'], 'k2': m['k2'],
                'region': m['region'], 'cross': False} for m in doc['members']]
     out = [frames[0]]
@@ -1110,14 +1127,25 @@ def halo_z0(c, c_cross):
     return math.sqrt(squares[i - 1] + t * (squares[i] - squares[i - 1]))
 
 
+def multiplier_text(name, z):
+    """The value of the multiplier z in the markup of the plot, real once its imaginary part is
+    below the last digit shown."""
+    if abs(z.imag) < 5e-5:
+        return rf'${name} = {z.real:.4f}$'
+    return rf"${name} = {z.real:.4f} {'+' if z.imag > 0 else '-'} {abs(z.imag):.4f}\,i$"
+
+
 def lyapunov_plot():
-    """The family in Broucke's diagram on linear axes at the scale of the family, above the
-    out-of-plane index k2 against the Jacobi constant C, as the two panels of the stability figure of
-    the demonstration script. The point of the current member is moved along both paths, and the
-    crossing of k = 2 is marked in both panels, with the name of the bifurcation in the upper one.
-    In the lower one, the side of the line k2 = 2 on which the Halo family branches off is labeled
-    Halo and the other one Lyapunov. The third panel is the bifurcation diagram of the pitchfork,
-    drawn by its own plot element beside the lower panel, and its point is moved with the others."""
+    """The plot of the Lyapunov to Halo slide, with four panels moved by one clock over the Jacobi
+    constant C. In the lower row are the bifurcation diagram of the pitchfork, z0 against C, and
+    the out-of-plane index k2 against C. Above them are the unit circle with the six multipliers of
+    the current member over their values, and the family in Broucke's diagram on linear axes at the
+    scale of the family. The point of the current member is moved along every path, and the
+    crossing of k = 2 is marked in each panel.
+
+    The multipliers are the pair at 1, the in-plane pair lam_2 and 1/lam_2 with lam_2 + 1/lam_2 = k1,
+    and the vertical pair lam_3 and 1/lam_3 with lam_3 + 1/lam_3 = k2. The vertical pair is moved
+    along the unit circle to 1, which it reaches at the pitchfork, and along the real axis past it."""
     frames, c_cross = lyapunov_frames()
     crossing = next(i for i, f in enumerate(frames) if f['cross'])
     x_range = (-2720.0, -2200.0)
@@ -1127,9 +1155,9 @@ def lyapunov_plot():
     fills = [r for r in region_fills(x_range, y_range, 'linear') if r['id'] in ('fill-4', 'fill-6')]
     family = {
         'id': 'family',
-        'size': 1.15,
+        'cell': LYAPUNOV_CELLS['family'],
         'margin': [52, 24, 84, 116],
-        'x': {'range': list(x_range), 'ticks': ticks(*x_range, 'linear', LYAPUNOV_BOX[0], SPACING['x'], 'x'), 'title': '$a_1$'},
+        'x': {'range': list(x_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (-2700, -2500, -2300)], 'title': '$a_1$'},
         'y': {'range': list(y_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (4500, 4750, 5000, 5250)], 'title': '$a_2$'},
         'regions': fills,
         'curves': [
@@ -1141,11 +1169,10 @@ def lyapunov_plot():
             {'id': 'lplus', 'class': 'kplus', 'at': [-2470, 4990], 'text': '$k = 2$', 'tone': 'subtle', 'anchor': 'start'},
         ],
     }
-    # the left margin of the index panel leaves the left of its row to the bifurcation diagram, a
-    # separate plot element of the slide, laid beside it by the style of the deck
     index = {
         'id': 'index',
-        'margin': [24, 24, 84, 520],
+        'cell': LYAPUNOV_CELLS['index'],
+        'margin': [24, 24, 84, 116],
         'x': {'range': list(c_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (3.17, 3.18)], 'title': '$C$'},
         'y': {'range': list(k_range), 'ticks': [{'at': v, 'text': f'${v:.2f}$'} for v in (1.97, 1.98, 1.99, 2.0, 2.01, 2.02)], 'title': '$k_2$'},
         'curves': [
@@ -1158,9 +1185,9 @@ def lyapunov_plot():
         ],
     }
     # the bifurcation diagram: z0, the out-of-plane coordinate at the crossing of y = 0, against C.
-    # the Lyapunov family is the line z0 = 0, and the two Halo branches, mirror images under
-    # z -> -z, leave it at the pitchfork. a path is violet where its out-of-plane pair is on the unit
-    # circle, i.e. in the region EH+, and orange in H++
+    # the Lyapunov family is the line z0 = 0, drawn faint and traced up to the current C, and the two
+    # Halo branches, mirror images under z -> -z, are traced from the pitchfork on. a path is violet
+    # where its out-of-plane pair is on the unit circle, i.e. in the region EH+, and orange in H++
     c_pitch = frames[crossing]['c']
     z_range = (-0.034, 0.034)
     halo = [halo_z0(f['c'], c_pitch) for f in frames]
@@ -1169,6 +1196,7 @@ def lyapunov_plot():
     c_name = 3.1728
     pitchfork = {
         'id': 'pitchfork',
+        'cell': LYAPUNOV_CELLS['pitchfork'],
         'margin': [24, 24, 84, 116],
         'x': {'range': list(c_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (3.17, 3.175, 3.18, 3.185)], 'title': '$C$'},
         'y': {'range': list(z_range), 'ticks': [{'at': v, 'text': f'${v}$'} for v in (-0.03, 0, 0.03)], 'title': '$z_0$'},
@@ -1177,29 +1205,62 @@ def lyapunov_plot():
             {'id': 'zelliptic', 'at': [3.1835, 0], 'text': SYMBOL[6], 'tone': 'violet', 'anchor': 'middle', 'dy': 30},
         ],
     }
+    # the unit circle at its true scale, 160 px per unit, with the real axis. lam_2 is drawn at FAR,
+    # and 1/lam_2 at its value, next to 0. the values of the six multipliers are set in two rows
+    # under the circle, from the lower left corner of the window, with a multiplier in the left
+    # columns and its reciprocal in the right one
+    in_plane = [multipliers_of(f['k1'])[0].real for f in frames]
+    vertical = [multipliers_of(f['k2']) for f in frames]
+    window = ((-1.08, 1.57), (-1.06, 1.06))
+    corner = [window[0][0], window[1][0]]
+    row = lambda n, dx: {'panel': 'circle', 'kind': 'label', 'anchor': 'start', 'dx': 12 + dx, 'dy': 26 + 38 * n}
+    circle = {
+        'id': 'circle',
+        'cell': LYAPUNOV_CELLS['circle'],
+        'margin': [4, 0, 0, 0],
+        'equal': True,
+        'axes': False,
+        'x': {'range': list(window[0])},
+        'y': {'range': list(window[1])},
+        'curves': [
+            {'points': [[window[0][0], 0], [1.22, 0]], 'tone': 'muted', 'width': 1.5},
+            {'points': [[1.22, 0], [FAR, 0]], 'tone': 'muted', 'width': 1.5, 'dash': [3, 7]},
+            {'circle': [0, 0, 1], 'tone': 'subtle', 'width': 2},
+        ],
+    }
     return {
         'parameter': {'label': '$C$', 'digits': 4},
         'duration': 10,
         'hold': 2,
-        'layout': 'column',
-        'panels': [family, index, pitchfork],
+        'panels': [family, index, pitchfork, circle],
         'marks': [
             {'id': 'zpath', 'panel': 'pitchfork', 'kind': 'trace', 'tone': 'violet', 'width': 3, 'size': 8},
-            {'id': 'zupper', 'panel': 'pitchfork', 'kind': 'trace', 'tone': 'violet', 'width': 3, 'size': 8},
-            {'id': 'zlower', 'panel': 'pitchfork', 'kind': 'trace', 'tone': 'violet', 'width': 3, 'size': 8},
-            {'id': 'zcross', 'panel': 'pitchfork', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 22, 'dy': -22},
+            {'id': 'zupper', 'panel': 'pitchfork', 'kind': 'trace', 'tone': 'violet', 'width': 3, 'size': 8, 'ghost': False},
+            {'id': 'zlower', 'panel': 'pitchfork', 'kind': 'trace', 'tone': 'violet', 'width': 3, 'size': 8, 'ghost': False},
+            {'id': 'zcross', 'panel': 'pitchfork', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 22, 'dy': -26},
             {'id': 'zpoint', 'panel': 'pitchfork', 'kind': 'points', 'tone': 'accent', 'size': 18},
             {'id': 'zhalo', 'panel': 'pitchfork', 'kind': 'label', 'tone': 'subtle', 'anchor': 'middle', 'dy': -28},
             {'id': 'zhyperbolic', 'panel': 'pitchfork', 'kind': 'label', 'tone': 'accent', 'anchor': 'middle', 'dy': 30},
             {'id': 'path', 'panel': 'family', 'kind': 'trace', 'tone': 'text', 'width': 3, 'size': 8},
-            {'id': 'halo', 'panel': 'family', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 20, 'dy': -24},
+            {'id': 'halo', 'panel': 'family', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3},
             {'id': 'point', 'panel': 'family', 'kind': 'points', 'tone': 'accent', 'size': 18},
             {'id': 'region', 'panel': 'family', 'kind': 'label', 'tone': 'text', 'anchor': 'end', 'dy': -30},
             {'id': 'kpath', 'panel': 'index', 'kind': 'trace', 'tone': 'text', 'width': 3, 'size': 8},
             {'id': 'khalo', 'panel': 'index', 'kind': 'events', 'tone': 'accent', 'size': 26, 'width': 3, 'anchor': 'start', 'dx': 22, 'dy': -22},
             {'id': 'kpoint', 'panel': 'index', 'kind': 'points', 'tone': 'accent', 'size': 18},
-            {'id': 'k1', 'panel': 'index', 'kind': 'label', 'tone': 'data-2', 'anchor': 'start', 'dx': 16, 'dy': -56},
-            {'id': 'k2', 'panel': 'index', 'kind': 'label', 'tone': 'data-3', 'anchor': 'start', 'dx': 16, 'dy': -18},
+            {'id': 'k1', 'panel': 'index', 'kind': 'label', 'tone': 'text', 'anchor': 'start', 'dx': 16, 'dy': -56},
+            {'id': 'k2', 'panel': 'index', 'kind': 'label', 'tone': VERTICAL, 'anchor': 'start', 'dx': 16, 'dy': -18},
+            # the pair at 1 as a ring, into which the vertical pair is moved at the pitchfork
+            {'id': 'mone', 'panel': 'circle', 'kind': 'points', 'tone': TRIVIAL, 'size': 22, 'width': 3, 'hollow': True},
+            {'id': 'mfar', 'panel': 'circle', 'kind': 'points', 'tone': UNSTABLE, 'size': 13},
+            {'id': 'mnear', 'panel': 'circle', 'kind': 'points', 'tone': STABLE, 'size': 13},
+            {'id': 'mupper', 'panel': 'circle', 'kind': 'trace', 'tone': VERTICAL, 'width': 4, 'size': 13, 'ghost': False},
+            {'id': 'mlower', 'panel': 'circle', 'kind': 'trace', 'tone': VERTICAL, 'width': 4, 'size': 13, 'ghost': False},
+            {'id': 'vone', 'tone': TRIVIAL, **row(0, 0)},
+            {'id': 'vfar', 'tone': UNSTABLE, **row(0, 110)},
+            {'id': 'vnear', 'tone': STABLE, **row(0, 330)},
+            {'id': 'vupper', 'tone': VERTICAL, **row(1, 0)},
+            {'id': 'vlower', 'tone': VERTICAL, **row(1, 330)},
         ],
         'tabs': [{
             'name': 'L1',
@@ -1208,7 +1269,7 @@ def lyapunov_plot():
             'data': {
                 'path': [[sig(f['a1']), sig(f['a2'])] for f in frames],
                 'point': [[sig(f['a1']), sig(f['a2'])] for f in frames],
-                'halo': [{'frame': crossing, 'text': 'pitchfork', 'at': [sig(frames[crossing]['a1']), sig(frames[crossing]['a2'])]}],
+                'halo': [{'frame': crossing, 'text': '', 'at': [sig(frames[crossing]['a1']), sig(frames[crossing]['a2'])]}],
                 'region': {'at': [x_range[1], y_range[1]], 'text': [SYMBOL[f['region']] for f in frames]},
                 'kpath': [[round(f['c'], 7), sig(f['k2'], 7)] for f in frames],
                 'kpoint': [[round(f['c'], 7), sig(f['k2'], 7)] for f in frames],
@@ -1216,13 +1277,23 @@ def lyapunov_plot():
                 'k1': {'at': [c_range[0], k_range[0]], 'text': [index_text('k_1', complex(f['k1'])) for f in frames]},
                 'k2': {'at': [c_range[0], k_range[0]], 'text': [rf"$k_2 = {f['k2']:.4f}$" for f in frames]},
                 'zpath': {'points': [[round(f['c'], 7), 0] for f in frames], 'tones': lyapunov_tones},
-                # the faint line of a branch ends at the pitchfork, hence the branch is not shown before it
-                'zupper': {'points': [[round(f['c'], 7), sig(z)] for f, z in zip(frames, halo)], 'ghost': crossing, 'tones': halo_tones},
-                'zlower': {'points': [[round(f['c'], 7), sig(-z)] for f, z in zip(frames, halo)], 'ghost': crossing, 'tones': halo_tones},
-                'zcross': [{'frame': crossing, 'text': '', 'at': [round(c_pitch, 7), 0]}],
+                # a branch is hidden up to the pitchfork by its tones
+                'zupper': {'points': [[round(f['c'], 7), sig(z)] for f, z in zip(frames, halo)], 'tones': halo_tones},
+                'zlower': {'points': [[round(f['c'], 7), sig(-z)] for f, z in zip(frames, halo)], 'tones': halo_tones},
+                'zcross': [{'frame': crossing, 'text': 'pitchfork', 'at': [round(c_pitch, 7), 0]}],
                 'zpoint': [[round(f['c'], 7), 0] for f in frames],
                 'zhalo': {'at': [c_name, sig(halo_z0(c_name, c_pitch))], 'text': ['' if i < crossing else 'Halo' for i in range(len(frames))]},
                 'zhyperbolic': {'at': [3.1700, 0], 'text': ['' if i < crossing else SYMBOL[4] for i in range(len(frames))]},
+                'mone': [[1, 0]],
+                'mfar': [[FAR, 0]],
+                'mnear': [[sig(1 / lam), 0] for lam in in_plane],
+                'mupper': [[sig(z.real), sig(z.imag)] for z, _ in vertical],
+                'mlower': [[sig(z.real), sig(z.imag)] for _, z in vertical],
+                'vone': {'at': corner, 'text': '$1,\\ 1$'},
+                'vfar': {'at': corner, 'text': [rf'$\lambda_2 = {lam:.1f}$' for lam in in_plane]},
+                'vnear': {'at': corner, 'text': [rf'$1/\lambda_2 = {1 / lam:.5f}$' for lam in in_plane]},
+                'vupper': {'at': corner, 'text': [multiplier_text(r'\lambda_3', z) for z, _ in vertical]},
+                'vlower': {'at': corner, 'text': [multiplier_text(r'1/\lambda_3', z) for _, z in vertical]},
             },
             'active': [[f"r{f['region']}"] for f in frames],
         }],
