@@ -98,6 +98,17 @@ const share = `(() => {
   return n / (data.length / 4);
 })()`;
 
+// the share of the image of WebGL that is drawn, without the compass, which is drawn in 2D over it.
+// the bundle is drawn again, and the image is read in the same task, before WebGL clears it
+const webgl = `(() => {
+  ${bundle}.draw();
+  const gl = window.gl, w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(4 * w * h);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  let n = 0;
+  for (let i = 3; i < px.length; i += 4) if (px[i] > 0) n++;
+  return n / (w * h);
+})()`;
+
 // waits until the context of WebGL is not lost, and for a frame after its restore, in which the
 // surfaces are drawn again. on a crowded runner, the context may be lost under the load
 const live = (page) => page.evaluate(`new Promise((done) => {
@@ -117,13 +128,15 @@ test('a bundle is drawn at each of its states, live and in the print view, with 
   for (let f = -1; f <= 1; f++) {
     await page.evaluate(`Reveal.slide(0, 0, ${f})`);
     await live(page);
-    states.push(...(await page.evaluate(shown)));
+    const [s] = await page.evaluate(shown);
+    states.push({ ...s, webgl: await page.evaluate(webgl) });
   }
   assert.deepEqual(page.errors, []);
   assert.deepEqual(states.map((s) => s.state), STATES);
   // the orbit is drawn before any strip, and more of the canvas is drawn with each strip
   const at = (state) => states.find((s) => s.state === state);
-  assert.ok(at('').drawn > 0.002, `${(100 * at('').drawn).toFixed(2)}% of the canvas is drawn without a strip`);
+  assert.ok(at('').webgl > 0.002, `${(100 * at('').webgl).toFixed(2)}% of the image of WebGL is drawn without a strip`);
+  assert.ok(at('a').webgl > at('').webgl + 0.01 && at('a b').webgl > at('a').webgl, JSON.stringify(states));
   assert.ok(at('a').drawn > at('').drawn + 0.01 && at('a b').drawn > at('a').drawn, JSON.stringify(states));
   assert.equal(new Set(states.map((s) => s.digest)).size, STATES.length);
   assert.deepEqual(states.map((s) => s.label), [0, 1, 1]);
