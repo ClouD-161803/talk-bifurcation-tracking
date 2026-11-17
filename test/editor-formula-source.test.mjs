@@ -132,3 +132,15 @@ test('a selection across an inline formula draws the formula selected', async (t
   await press(page, 'ArrowRight');
   await page.waitFor(`getSelection().isCollapsed && ${transparent} === ${js(plain)}`);
 });
+
+test('a sign \\( in code after a formula does not keep the TeX of the formula shown', async (t) => {
+  const page = await load(t);
+  const C = para(2);
+  const formula = await page.evaluate(`(() => { const r = ${C}.querySelector('mjx-container').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  await click(page, formula);
+  await page.waitFor(`!${C}.querySelector('mjx-container') && getSelection().toString() === '\\\\(M\\\\)'`);
+  // the caret at the end of the text, past the sign in code, is not in the TeX
+  await press(page, 'End');
+  await page.waitFor(`!!${C}.querySelector('mjx-container') && getSelection().isCollapsed`);
+  assert.ok((await render(page)).includes(String.raw`The mean anomaly \(M\) is typed after <code>\(</code> in TeX`));
+});
