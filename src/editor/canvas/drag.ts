@@ -37,6 +37,8 @@ function holdGrip(grip: HTMLElement): void {
 
 // a drag shorter than this, in screen pixels, is a click
 const CLICK = 3;
+// the distance in px that a finger may move in a tap
+const TAP = 10;
 // a dragged edge snaps to a line within this many screen pixels
 const SNAP = 8;
 
@@ -486,6 +488,9 @@ export function install(app: App): void {
   // true from a drag or an Alt-click until its click, which is then marked as handled, hence a
   // formula does not open its TeX and a citation is not selected by it
   let quiet = false;
+  // a touch on a text element that is not selected, which selects it at a tap. a swipe from it is left
+  // to the deck, as before the click model of Keynote, since text covers most of a slide on a phone
+  let tapped: { el: Element; id: number; x: number; y: number } | null = null;
   const mac = () => app.platform === 'mac';
   const commandHeld = (ev: MouseEvent) => (mac() ? ev.metaKey : ev.ctrlKey);
   const freeMove = (ev: MouseEvent) => (mac() ? ev.metaKey : ev.altKey);
@@ -749,6 +754,11 @@ export function install(app: App): void {
       // second. a press in the text that is edited, or in another item of its list, puts the
       // caret there or selects words
       const editing = editingIn(el);
+      if (ev.pointerType === 'touch' && !ev.shiftKey && !commandHeld(ev) && boxFirst(el) && sel.only() !== el && !editing) {
+        ev.preventDefault();
+        tapped = { el, id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+        return;
+      }
       if (ev.shiftKey || commandHeld(ev) || (boxFirst(el) && sel.only() !== el && !editing)) pressElement(ev, el, target);
       // a press on the selected text element moves it, and a click without a move puts the caret
       // there. a press on a locked one is left to the browser, which selects its words
@@ -782,6 +792,7 @@ export function install(app: App): void {
   };
 
   const onMove = (ev: PointerEvent) => {
+    if (tapped?.id === ev.pointerId && Math.hypot(ev.clientX - tapped.x, ev.clientY - tapped.y) >= TAP) tapped = null;
     const p = press;
     if (!p) {
       hover(ev);
@@ -1109,6 +1120,12 @@ export function install(app: App): void {
   };
 
   const onUp = (ev: PointerEvent | null) => {
+    const t = tapped;
+    tapped = null;
+    if (t && ev?.pointerId === t.id) {
+      leaveText();
+      app.selection.set('elements', [t.el]);
+    }
     const p = press;
     if (!p) return;
     press = null;
