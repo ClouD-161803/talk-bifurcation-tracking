@@ -22,7 +22,13 @@
    "label": "convergence",
    "axes": [
     "iterate n",
-    "log₁₀ ‖F‖",
+    [
+     "log",
+     {
+      "sub": "10"
+     },
+     " ‖F‖"
+    ],
     ""
    ],
    "parent": "rp"

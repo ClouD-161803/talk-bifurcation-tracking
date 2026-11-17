@@ -25,6 +25,8 @@ import numpy as np
 import pytycho as ty
 
 HERE = Path(__file__).resolve().parent
+# the pages are written with the runtime vendored in the deck, which draws the sub parts of axis titles
+RUNTIME = (HERE.parents[1] / "theme" / "vendor" / "tycho" / "tycho.js").read_text()
 sys.path.insert(0, str(HERE))
 import corrector as c  # noqa: E402
 
@@ -853,7 +855,8 @@ def masses_near(case: str, polylines: list[np.ndarray]) -> list[np.ndarray]:
 def build_correction(refs: dict, runs: dict, out: Path) -> dict:
     scene = ty.Scene(title="Differential correction")
     rp = scene.frame("rp", label="rotating-pulsating", axes=("x", "y"))
-    conv = scene.frame("convergence", label="convergence", axes=("iterate n", "log₁₀ ‖F‖"), parent=rp)
+    conv = scene.frame("convergence", label="convergence", parent=rp)
+    title_axes(scene, conv, "iterate n", ["log", ty.sub("10"), " ‖F‖"])
     # the close-up is drawn in its own units u = (p - t) / w about the target t at the scale w, which the frame zoom
     # maps back to the rotating frame with the channels t_x, t_y, and inv_w = 1 / w of the ticker, so that the orbit
     # panel can outline the area that the close-up shows
@@ -1375,7 +1378,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         {"channel": "logF", "digits": 3},
     )
     scene.write(out / "correction.tys", out / "correction.tyd")
-    return scene.write_html(out / "correction.html")
+    return scene.write_html(out / "correction.html", runtime=RUNTIME)
 
 
 # scene 2
@@ -1432,13 +1435,24 @@ def framed(box, scale: np.ndarray, panel: str) -> tuple[tuple[float, ...], tuple
 METHODS = ("natural", "arclength")
 
 
+def title_axes(scene: ty.Scene, frame, *titles) -> None:
+    """Sets the axis titles of frame, each a string or a list of strings and ty.sub parts.
+
+    scene.frame of pytycho 2196972 takes only strings as axis titles, hence the titles are written
+    into the declared frame of scene.
+    """
+    scene._frames[frame.id]["axes"] = list(titles) + [""] * (3 - len(titles))
+
+
 def build_continuation(pens: dict, curves: dict, out: Path) -> dict:
     scene = ty.Scene(title="Continuation")
     rp = scene.frame("rp", label="rotating-pulsating", axes=("x", "y"))
     diagram_frames = {
-        "lyapunov": scene.frame("lyapunov", label="𝓛₁ Lyapunov family", axes=("Jacobi constant C", "initial x₀"), parent=rp),
-        "family11": scene.frame("family11", label="family 11", axes=("eccentricity e", "initial ẏ₀"), parent=rp),
+        "lyapunov": scene.frame("lyapunov", label="𝓛₁ Lyapunov family", parent=rp),
+        "family11": scene.frame("family11", label="family 11", parent=rp),
     }
+    title_axes(scene, diagram_frames["lyapunov"], "Jacobi constant C", ["initial x", ty.sub("0")])
+    title_axes(scene, diagram_frames["family11"], "eccentricity e", ["initial ẏ", ty.sub("0")])
     body_layers = bodies(scene, rp, l1_below=True)
     label_y = {}
 
@@ -1793,7 +1807,7 @@ def build_continuation(pens: dict, curves: dict, out: Path) -> dict:
         ty.channel("halvings"),
     )
     scene.write(out / "continuation.tys", out / "continuation.tyd")
-    return scene.write_html(out / "continuation.html")
+    return scene.write_html(out / "continuation.html", runtime=RUNTIME)
 
 
 def main(argv: list[str] | None = None) -> None:

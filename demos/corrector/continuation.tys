@@ -19,7 +19,12 @@
    "label": "𝓛₁ Lyapunov family",
    "axes": [
     "Jacobi constant C",
-    "initial x₀",
+    [
+     "initial x",
+     {
+      "sub": "0"
+     }
+    ],
     ""
    ],
    "parent": "rp"
@@ -28,7 +33,12 @@
    "label": "family 11",
    "axes": [
     "eccentricity e",
-    "initial ẏ₀",
+    [
+     "initial ẏ",
+     {
+      "sub": "0"
+     }
+    ],
     ""
    ],
    "parent": "rp"
