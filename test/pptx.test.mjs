@@ -520,9 +520,9 @@ test('a scene is recorded in a browser whose DevTools calls are each answered in
   const boxes = new Map([['0', { width: 300, height: 400, name: 'A long recorded scene' }]]);
   const timed = async (options) => {
     const browser = await launch(options);
+    let started;
     try {
       const start = Date.now();
-      let started;
       const { newPage } = browser;
       browser.newPage = async (...args) => {
         const page = await newPage(...args);
@@ -535,12 +535,16 @@ test('a scene is recorded in a browser whose DevTools calls are each answered in
       };
       const [recording] = (await recordScenes(browser, 'test/pages/scene-long.html', boxes)).values();
       return { recording, load: started - start, record: Date.now() - started };
+    } catch (error) {
+      error.loading = started === undefined;
+      throw error;
     } finally {
       await browser.close();
     }
   };
   // a call over the limit, e.g. behind a long task of a crowded runner, is measured again with a new
-  // pair, twice at most
+  // pair, twice at most. A late call before the recording belongs to the load of the deck, which
+  // this test does not limit, hence the test is still skipped when the next load is too slow
   let first, second, late;
   for (let n = 0; !second; n++) {
     first = await timed();
@@ -550,7 +554,7 @@ test('a scene is recorded in a browser whose DevTools calls are each answered in
     if (timeout > first.record / 2) return t.skip(`the load of the deck, ${first.load} ms, is too close to the recording, ${first.record} ms`);
     second = await timed({ timeout }).catch((error) => {
       if (n >= 2 || !/^Chrome did not answer/.test(error.message)) throw error;
-      late = error;
+      if (!error.loading) late = error;
       t.diagnostic(`a call is not answered within ${timeout} ms, and the pair is recorded again`);
     });
   }
