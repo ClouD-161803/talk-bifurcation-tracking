@@ -56,27 +56,54 @@ const compass = (az) => `(() => {
   };
 })()`;
 
+// the WebGL context of the renderer of the surfaces, kept in window.gl when it is created, as the
+// renderer is not exposed by the theme
+const KEEP_GL = `const get = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+  const c = get.call(this, type, ...rest);
+  if (c && /webgl/.test(type)) window.gl = c;
+  return c;
+};`;
+
+// the share of the canvas of the bundle that is drawn
+const share = `(() => {
+  const canvas = document.querySelector('.surface[data-bundle] canvas');
+  const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  let n = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 0) n++;
+  return n / (data.length / 4);
+})()`;
+
+// waits until the context of WebGL is not lost, and for a frame after its restore, in which the
+// surfaces are drawn again. on a crowded runner, the context may be lost under the load
+const live = (page) => page.evaluate(`new Promise((done) => {
+  if (!window.gl || !window.gl.isContextLost()) return done();
+  window.gl.canvas.addEventListener('webglcontextrestored', () => requestAnimationFrame(() => done()), { once: true });
+})`);
+
 test('a bundle is drawn at each of its states, live and in the print view, with its compass toward its arrow', { timeout: 120000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
 
   const page = await browser.newPage();
+  await page.send('Page.addScriptToEvaluateOnNewDocument', { source: KEEP_GL });
   await page.goto(deckUrl(DECK, 'still'));
   await page.waitFor(deckSettled);
-  const live = [];
+  const states = [];
   for (let f = -1; f <= 1; f++) {
     await page.evaluate(`Reveal.slide(0, 0, ${f})`);
-    live.push(...(await page.evaluate(shown)));
+    await live(page);
+    states.push(...(await page.evaluate(shown)));
   }
   assert.deepEqual(page.errors, []);
-  assert.deepEqual(live.map((s) => s.state), STATES);
+  assert.deepEqual(states.map((s) => s.state), STATES);
   // the orbit is drawn before any strip, and more of the canvas is drawn with each strip
-  const at = (state) => live.find((s) => s.state === state);
+  const at = (state) => states.find((s) => s.state === state);
   assert.ok(at('').drawn > 0.002, `${(100 * at('').drawn).toFixed(2)}% of the canvas is drawn without a strip`);
-  assert.ok(at('a').drawn > at('').drawn + 0.01 && at('a b').drawn > at('a').drawn, JSON.stringify(live));
-  assert.equal(new Set(live.map((s) => s.digest)).size, STATES.length);
-  assert.deepEqual(live.map((s) => s.label), [0, 1, 1]);
-  assert.ok(live.every((s) => s.sun === 1), 'the label of the Sun is shown at every step');
+  assert.ok(at('a').drawn > at('').drawn + 0.01 && at('a b').drawn > at('a').drawn, JSON.stringify(states));
+  assert.equal(new Set(states.map((s) => s.digest)).size, STATES.length);
+  assert.deepEqual(states.map((s) => s.label), [0, 1, 1]);
+  assert.ok(states.every((s) => s.sun === 1), 'the label of the Sun is shown at every step');
 
   // the needle is drawn toward the Sun of the scene, within the error of the perspective, and its
   // label is past its tip, at four turns of the camera
@@ -87,7 +114,9 @@ test('a bundle is drawn at each of its states, live and in the print view, with 
   }
 
   const print = await browser.newPage();
+  await print.send('Page.addScriptToEvaluateOnNewDocument', { source: KEEP_GL });
   await printView(print, deckUrl(DECK, 'print-pdf&still'));
+  await live(print);
   const pages = await print.evaluate(shown);
   assert.deepEqual(print.errors, []);
   // the step added after the last one, which restores the dimmed steps, is printed at the same state
@@ -109,24 +138,6 @@ const sample = (step) => `new Promise((done) => {
   };
   requestAnimationFrame(frame);
 })`;
-
-// the WebGL context of the renderer of the surfaces, kept in window.gl when it is created, as the
-// renderer is not exposed by the theme
-const KEEP_GL = `const get = HTMLCanvasElement.prototype.getContext;
-HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
-  const c = get.call(this, type, ...rest);
-  if (c && /webgl/.test(type)) window.gl = c;
-  return c;
-};`;
-
-// the share of the canvas of the bundle that is drawn
-const share = `(() => {
-  const canvas = document.querySelector('.surface[data-bundle] canvas');
-  const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-  let n = 0;
-  for (let i = 3; i < data.length; i += 4) if (data[i] > 0) n++;
-  return n / (data.length / 4);
-})()`;
 
 // a context of WebGL is lost, e.g. at a reset of the GPU or under a heavy load, and the browser
 // restores it later. the strips shown at a step taken meanwhile are drawn once it is restored
