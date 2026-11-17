@@ -17,7 +17,7 @@ import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, HISTORY_KEY, ONLINE, open, sessionUrl, show, talk, TALK, TEXT } from './helpers/client.mjs';
 import { click, drag, press, type, typeKeys } from './helpers/editor.mjs';
 import { downloads, goOffline, goOnline, press as pressConflict, tab } from './helpers/offline.mjs';
-import { BUBBLE, leave, LOCKED, select, session } from './helpers/presence.mjs';
+import { BUBBLE, HOLDER, leave, select, session } from './helpers/presence.mjs';
 import { post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const SECRET = 'the secret of the group for this test';
@@ -1286,7 +1286,7 @@ test('Version History stops following, and a page that follows the person reads 
   clean(ben);
 });
 
-test('Version History takes the caret out of the text, hence another person can type there at once', { timeout: 180_000 }, async (t) => {
+test('Version History takes the caret out of the text, hence another person can move or delete it at once', { timeout: 180_000 }, async (t) => {
   const { pages: [ann, ben] } = await session(t, ['Ann', 'Ben']);
   await show(ben, 'One');
   await show(ann, 'One');
@@ -1298,9 +1298,9 @@ test('Version History takes the caret out of the text, hence another person can 
   const of = `${C}.presence.find((p) => p.name === 'Ann')?.state`;
   await front(ben);
   await ben.waitFor(`${of}?.mode === 'history'`);
-  assert.deepEqual(await ben.evaluate(`[${of}.caret, ${of}.held]`), [null, null]);
+  assert.equal(await ben.evaluate(`${of}.caret`), null);
   const focused = await ben.evaluate(`(() => { const h = ${el(0, 'h2')}; h.focus(); return document.activeElement === h; })()`);
-  assert.deepEqual([focused, await ben.evaluate(LOCKED(el(0, 'h2'))), await ben.evaluate(BUBBLE)], [true, false, null]);
+  assert.deepEqual([focused, await ben.evaluate(HOLDER(el(0, 'h2'))), await ben.evaluate(BUBBLE)], [true, null, null]);
   clean(ann);
   clean(ben);
 });
@@ -1413,7 +1413,7 @@ test('Show changes tints the characters that each person added to a changed text
   await converge(server, [ann, ben]);
   await leave(ann);
   await show(ben, 'One');
-  await ben.waitFor(`!${LOCKED(el(0, 'p'))}`);
+  await ben.waitFor(`${HOLDER(el(0, 'p'))} === null`);
   await caretAtEnd(ben, el(0, 'p'));
   await typeKeys(ben, ' then Ben');
   await show(ben, 'Two');

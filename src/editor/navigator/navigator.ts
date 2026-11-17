@@ -540,6 +540,7 @@ export class Navigator implements Pane {
     if (!d.on) {
       if (Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < DRAG_START) return;
       this.startDrag(d);
+      if (this.drag !== d) return;
     }
     this.placeGhost(ev.clientX, ev.clientY);
     this.placeDrop(ev.clientY);
@@ -553,6 +554,11 @@ export class Navigator implements Pane {
     d.on = true;
     if (!this.selected().includes(d.slide) || this.app.selection.kind !== 'slides') this.selectOnly(d.slide);
     d.slides = this.selected();
+    // a refused move, e.g. of a slide that another person types on, ends at its first move
+    if (this.app.commands.refused('slide.moveTo', { slides: d.slides, gap: -1 })) {
+      this.endDrag(false);
+      return;
+    }
     try {
       this.list.setPointerCapture(d.id);
     } catch {

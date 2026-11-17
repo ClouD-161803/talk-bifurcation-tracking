@@ -13,7 +13,6 @@ import { stopFollowing } from './follow.ts';
 import { whenOf } from './labels.ts';
 import type { OpenMenu } from '../../editor/ui/menu.ts';
 import { initials, inkOf, toneOf } from './people.ts';
-import { presenceOf } from './presence.ts';
 import { mountToasts, toast, type ToastButton, type ToastKind } from './toast.ts';
 import { Failure } from './transport.ts';
 
@@ -875,9 +874,7 @@ class Pane {
     this.focus(id, true);
     this.render();
     const p = this.comments.places().get(id);
-    // an element that another person holds is shown on its slide without a selection, which the
-    // floor rule refuses
-    if (p) this.shell.frame(p.el && presenceOf(this.client)?.lockOf(p.el) ? null : p.el, p.slide);
+    if (p) this.shell.frame(p.el, p.slide);
     const node = this.nodes.get(id);
     node?.focus({ preventScroll: true });
     node?.scrollIntoView({ block: 'nearest' });

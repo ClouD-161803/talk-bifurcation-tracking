@@ -55,6 +55,18 @@ function offsets(lines) {
   for (const line of lines) out.push(out[out.length - 1] + line.length);
   return out;
 }
+var CHUNK = 2048;
+function shared(a, b) {
+  const n = Math.min(a.length, b.length);
+  let s = 0;
+  while (s + CHUNK <= n && a.slice(s, s + CHUNK) === b.slice(s, s + CHUNK)) s += CHUNK;
+  while (s < n && a.charCodeAt(s) === b.charCodeAt(s)) s += 1;
+  const most = n - s;
+  let t = 0;
+  while (t + CHUNK <= most && a.slice(a.length - t - CHUNK, a.length - t) === b.slice(b.length - t - CHUNK, b.length - t)) t += CHUNK;
+  while (t < most && a.charCodeAt(a.length - 1 - t) === b.charCodeAt(b.length - 1 - t)) t += 1;
+  return [s, t];
+}
 function diff(a, b, max) {
   const n = a.length, m = b.length;
   const limit = Math.min(n + m, max);
@@ -106,14 +118,14 @@ function diff(a, b, max) {
   }
   return hunks;
 }
-var SECTION = /^[ \t]*<section[\s>]/m;
+var SECTION = /^[ \t]*<\/?section[\s>]/m;
 function slidesOf(lines) {
   const out = /* @__PURE__ */ new Map(), open2 = [];
   lines.forEach((line, i) => {
     const t = line.trimStart();
     if (/^<section[\s>]/.test(t) && !t.includes("</section")) open2.push(i);
-    const from = t.startsWith("</section") ? open2.pop() : void 0;
-    if (from === void 0) return;
+    const from = t.startsWith("</section") ? open2.pop() ?? -1 : -1;
+    if (from < 0) return;
     const text = lines.slice(from, i + 1).join("");
     out.set(text, [out.has(text) ? -1 : from, i + 1 - from]);
   });
@@ -122,7 +134,7 @@ function slidesOf(lines) {
 function markMoved(a, b) {
   const inB = slidesOf(b);
   let end = 0;
-  const pairs2 = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
+  const pairs2 = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter((p) => p.every((v) => v >= 0)).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
   const best = pairs2.map((p) => p[2]), prev = pairs2.map(() => -1);
   pairs2.forEach((p, i) => pairs2.forEach((q, j) => {
     if (j < i && q[1] < p[1] && best[j] + p[2] > best[i]) [best[i], prev[i]] = [best[j] + p[2], j];
@@ -136,8 +148,12 @@ function markMoved(a, b) {
   });
   return [x, y];
 }
-function changes(base, theirs, marks = true) {
+function changes(base, theirs, plain) {
   if (base === theirs) return [];
+  const [head, tail] = shared(base, theirs);
+  const end = base.length - tail;
+  const text = theirs.slice(head, theirs.length - tail);
+  if (!base.slice(head, end).includes("\n") && !text.includes("\n")) return end - head > base.length / 2 ? null : [{ start: head, end, text }];
   const a = linesOf(base), b = linesOf(theirs);
   let x = a, y = b, pre = 0, suf = 0;
   const trim = () => {
@@ -147,7 +163,7 @@ function changes(base, theirs, marks = true) {
   };
   trim();
   const slides = (l) => l.slice(pre, l.length - suf).join("").split(SECTION).length;
-  const moved2 = marks && slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
+  const moved2 = !plain && slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
   if (moved2) {
     [x, y] = moved2;
     trim();
@@ -158,24 +174,50 @@ function changes(base, theirs, marks = true) {
   const out = [];
   let removed = 0;
   for (const h of hunks) {
-    let start2 = oa[pre + h.a0], end = oa[pre + h.a1];
-    let text = theirs.slice(ob[pre + h.b0], ob[pre + h.b1]);
-    const old = base.slice(start2, end);
+    let start2 = oa[pre + h.a0], end2 = oa[pre + h.a1];
+    let text2 = theirs.slice(ob[pre + h.b0], ob[pre + h.b1]);
+    const old = base.slice(start2, end2);
     let p = 0;
-    while (p < old.length && p < text.length && old[p] === text[p]) p++;
+    while (p < old.length && p < text2.length && old[p] === text2[p]) p++;
     let s = 0;
-    while (s < old.length - p && s < text.length - p && old[old.length - 1 - s] === text[text.length - 1 - s]) s++;
+    while (s < old.length - p && s < text2.length - p && old[old.length - 1 - s] === text2[text2.length - 1 - s]) s++;
     start2 += p;
-    end -= s;
-    text = text.slice(p, text.length - s);
-    removed += end - start2;
-    out.push({ start: start2, end, text });
+    end2 -= s;
+    text2 = text2.slice(p, text2.length - s);
+    removed += end2 - start2;
+    out.push({ start: start2, end: end2, text: text2 });
   }
-  const paired = moved2 ? moves(base, out, out, () => true) : [];
-  if (moved2 && out.some((e) => base.slice(e.start, e.end).includes("\n") && !paired.includes(e))) return changes(base, theirs, false);
+  if (moved2) {
+    const m = moves(base, out, out);
+    if (hunks.some((h, i) => !m.includes(out[i]) && /\0/.test(`${x.slice(pre + h.a0, pre + h.a1)}${y.slice(pre + h.b0, pre + h.b1)}`))) return changes(base, theirs, true);
+  }
   return removed > base.length / 2 && !moved2 ? null : out;
 }
-function moves(base, list, others, hit) {
+function overlaps(a, b) {
+  if (a.start < b.end && b.start < a.end) return true;
+  return (a.start === a.end || b.start === b.end) && a.start <= b.end && b.start <= a.end;
+}
+function clash(a, b) {
+  if (a.start < b.end && b.start < a.end) return true;
+  return a.start === a.end && b.start < a.start && a.start < b.end || b.start === b.end && a.start < b.start && b.start < a.end;
+}
+function apply(base, edits3) {
+  const sorted = [...edits3].sort((a, b) => b.start - a.start || b.end - a.end);
+  let text = base;
+  for (const e of sorted) text = text.slice(0, e.start) + e.text + text.slice(e.end);
+  return text;
+}
+function edits(base, theirs) {
+  const found = changes(base, theirs);
+  if (found) return found;
+  const n = Math.min(base.length, theirs.length);
+  let s = 0;
+  while (s < n && base[s] === theirs[s]) s++;
+  let t = 0;
+  while (t < n - s && base[base.length - 1 - t] === theirs[theirs.length - 1 - t]) t++;
+  return [{ start: s, end: base.length - t, text: theirs.slice(s, theirs.length - t) }];
+}
+function moves(base, list, others, hit = () => true) {
   const out = [], cut = /* @__PURE__ */ new Map(), put = new Map(cut);
   let n = 0;
   for (const e of list) {
@@ -189,7 +231,205 @@ function moves(base, list, others, hit) {
     for (const [k, e] of cut) if (e && r.startsWith(k + "\n")) r = r.slice(g.push(e) && k.length + 1);
     if (f && !r && (n += g.length) && g.some((x) => others.some((o) => hit(x, o)))) out.push([t, g]);
   }
-  return out.flatMap(([t, g]) => n === list.length || /^<section[\s>][^]*\/section>$/.test(t) ? g : []);
+  return out.flatMap(([t, g]) => n === list.length || others === list || /^<section[\s>][^]*\/section>$/.test(t) ? g : []);
+}
+var equal = (a, b) => a.start === b.start && a.end === b.end && a.text === b.text;
+function tagged(s) {
+  const open2 = /^(?:<[A-Za-z](?:[^<>"']|"[^"]*"|'[^']*')*>)*/.exec(s)[0];
+  const rest = s.slice(open2.length);
+  const close = /(?:<\/[^<>]+>)*$/.exec(rest)[0];
+  return [open2, rest.slice(0, rest.length - close.length), close];
+}
+function around(base, e) {
+  const run = base.slice(e.start, e.end);
+  const tags = e.text.includes("<");
+  const pre = tags ? e.text.slice(0, e.text.indexOf("<")) : "";
+  const post = tags ? e.text.slice(e.text.lastIndexOf(">") + 1) : "";
+  const [open2, inner2, close] = tagged(e.text.slice(pre.length, e.text.length - post.length));
+  const [was, old, shut] = tagged(run);
+  if (open2 === was && close === shut || inner2 !== old && (inner2 + old).includes("<")) return null;
+  return { pre, open: open2, inner: inner2, close, post, lo: e.start + was.length, hi: e.end - shut.length };
+}
+function absorb(base, a, b, first2) {
+  let rest = b;
+  const out = a.map((w) => {
+    const f = around(base, w);
+    const hits = f ? rest.filter((e) => clash(w, e)) : [];
+    if (!f || !hits.length || !hits.every((e) => f.lo <= e.start && e.end <= f.hi && !(e.text + base.slice(e.start, e.end)).includes("<"))) return w;
+    const old = base.slice(f.lo, f.hi);
+    const own = fine(old, f.inner);
+    const others = hits.map((e) => ({ start: e.start - f.lo, end: e.end - f.lo, text: e.text }));
+    const run = first2 ? mergeEdits(old, others, own, "ours", true) : mergeEdits(old, own, others, "ours", true);
+    if (!run.text || run.conflicts.length) return w;
+    rest = rest.filter((e) => !hits.includes(e));
+    return { start: w.start, end: w.end, text: f.pre + f.open + run.text + f.close + f.post };
+  });
+  return [out, rest];
+}
+function nest(base, a, b, first2 = false) {
+  const [x, y] = absorb(base, a, b, first2);
+  const [v, u] = absorb(base, y, x, !first2);
+  return [u, v];
+}
+function slid(base, d, own, others) {
+  const at = d.text ? void 0 : others.find((e) => e.start === e.end && d.start < e.start && e.start < d.end)?.start;
+  if (at === void 0) return d;
+  const fits = (m) => {
+    const [w] = widen(base, [m]);
+    return w.start === m.start && w.end === m.end && ![...own, ...others].some((o) => o !== d && clash(o, m));
+  };
+  let left = true, right = true;
+  for (let i = 1; left && i <= d.end - at; i++) left = base[d.start - i] === base[d.end - i];
+  const l = { start: d.start - (d.end - at), end: at, text: "" };
+  if (left && fits(l)) return l;
+  for (let i = 0; right && i < at - d.start; i++) right = base[d.start + i] === base[d.end + i];
+  const r = { start: at, end: d.end + (at - d.start), text: "" };
+  return right && fits(r) ? r : d;
+}
+function mergeEdits(base, ours, all, prefer, apart = false, twice = false) {
+  if (apart) {
+    [ours, all] = nest(base, ours, all);
+    const others2 = all.filter((h) => !ours.some((o) => equal(o, h)));
+    const moved2 = /* @__PURE__ */ new Set([...moves(base, ours, others2, clash), ...moves(base, others2, ours, clash)]);
+    if (moved2.size) return mergeEdits(base, ours.filter((e) => !moved2.has(e)), all.filter((e) => !moved2.has(e)), prefer, apart, twice);
+    ours = ours.map((d) => slid(base, d, ours, all));
+    all = all.map((d) => slid(base, d, all, ours));
+  }
+  const hit = apart ? clash : overlaps;
+  const both = ours.filter((o) => all.some((h) => equal(o, h)));
+  const keys = twice && both.length === 1 && both[0].start === both[0].end;
+  const same = (a, b) => !keys && equal(a, b);
+  const others = all.filter((h) => !ours.some((o) => same(o, h)));
+  const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
+  const keptTheirs = prefer === "theirs" ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
+  const keptOurs = (prefer === "ours" ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => same(o, h)));
+  return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
+}
+function charEdits(a, b, max) {
+  const [head, tail] = shared(a, b);
+  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
+  if (!x || !y) return x === y ? [] : [{ start: head, end: a.length - tail, text: y }];
+  const hunks = diff(x, y, max);
+  return hunks && hunks.map((h) => ({ start: head + h.a0, end: head + h.a1, text: y.slice(h.b0, h.b1) }));
+}
+var CELLS = 1 << 20;
+function find(t, p) {
+  const back = new Int32Array(p.length + 1);
+  back[0] = -1;
+  for (let i2 = 0, k = -1; i2 < p.length; back[++i2] = ++k) while (k >= 0 && p.charCodeAt(k) !== p.charCodeAt(i2)) k = back[k];
+  let i = 0;
+  for (let k = 0; k < p.length; i++, k++) {
+    if (i === t.length) return -1;
+    while (k >= 0 && p.charCodeAt(k) !== t.charCodeAt(i)) k = back[k];
+  }
+  return i - p.length;
+}
+function anchored(a, b) {
+  const [head, tail] = shared(a, b);
+  const whole = [head, a.slice(head, a.length - tail), b.slice(head, b.length - tail)];
+  const parts = [whole], out = [];
+  let cells = CELLS;
+  for (let part = parts.pop(); part; part = parts.pop()) {
+    const [at, x, y] = part;
+    const tried = part !== whole && Math.abs(x.length - y.length) <= 500;
+    const found = tried ? charEdits(x, y, 500) : null;
+    if (found) {
+      out.push(...found.map((e) => ({ start: e.start + at, end: e.end + at, text: e.text })));
+      continue;
+    }
+    if (tried) cells -= 500 * (x.length + y.length);
+    let best = 0, bx = 0, by = 0;
+    const k = find(y, x), j = k < 0 ? find(x, y) : -1;
+    if (k >= 0) [best, bx, by] = [x.length, 0, k];
+    else if (j >= 0) [best, bx, by] = [y.length, j, 0];
+    else if (x.length * y.length <= cells) {
+      cells -= x.length * y.length;
+      let prev = new Uint32Array(y.length + 1), row = new Uint32Array(y.length + 1);
+      for (let i = 1; i <= x.length; i++) {
+        for (let j2 = 1; j2 <= y.length; j2++) {
+          const v = x.charCodeAt(i - 1) === y.charCodeAt(j2 - 1) ? prev[j2 - 1] + 1 : 0;
+          row[j2] = v;
+          if (v > best) [best, bx, by] = [v, i - v, j2 - v];
+        }
+        [prev, row] = [row, prev];
+      }
+    }
+    if (best) parts.push([at + bx + best, x.slice(bx + best), y.slice(by + best)], [at, x.slice(0, bx), y.slice(0, by)]);
+    else if (part === whole) return null;
+    else out.push({ start: at, end: at + x.length, text: y });
+  }
+  return out;
+}
+var WORDS = /\w+|\s+|[^\w\s]+/g;
+function wordEdits(a, b, max) {
+  const [head, tail] = shared(a, b);
+  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
+  const xs = x.match(WORDS) ?? [], ys = y.match(WORDS) ?? [];
+  const hunks = diff(xs, ys, max);
+  if (!hunks) return null;
+  const ox = offsets(xs), oy = offsets(ys);
+  return hunks.map((h) => {
+    const old = x.slice(ox[h.a0], ox[h.a1]), text = y.slice(oy[h.b0], oy[h.b1]);
+    const [p, s] = shared(old, text);
+    return { start: head + ox[h.a0] + p, end: head + ox[h.a1] - s, text: text.slice(p, text.length - s) };
+  });
+}
+function fine(a, b) {
+  const chars = charEdits(a, b, 500);
+  let found = chars ?? anchored(a, b) ?? wordEdits(a, b, 250) ?? edits(a, b);
+  if (chars?.some((e) => e.end > e.start) && (chars[1] || /\n/.test(chars[0].text + a.slice(chars[0].start, chars[0].end)))) {
+    const lines = changes(a, b) ?? [];
+    const moved2 = moves(a, lines, lines);
+    if (moved2[0]) {
+      const out2 = lines.flatMap((e) => moved2.includes(e) ? [e] : charEdits(a.slice(e.start, e.end), e.text, 500)?.map((x) => ({ ...x, start: x.start + e.start, end: x.end + e.start })) ?? [e]);
+      const read = moves(a, out2, lines);
+      if (moved2.every((e) => read.includes(e))) found = out2;
+    }
+  }
+  if (!found.length) return found;
+  let d = 0;
+  const back = widen(b, found.map((e) => {
+    const start2 = e.start + d;
+    d += e.text.length - (e.end - e.start);
+    return { start: start2, end: start2 + e.text.length, text: a.slice(e.start, e.end) };
+  }));
+  d = 0;
+  const out = widen(a, wraps(b, back.map((p) => {
+    const start2 = p.start - d;
+    d += p.end - p.start - p.text.length;
+    return { start: start2, end: start2 + p.text.length, text: b.slice(p.start, p.end) };
+  })));
+  return widen(a, out.map((e) => {
+    const [s, t] = shared(a.slice(e.start, e.end), e.text);
+    return { start: e.start + s, end: e.end - t, text: e.text.slice(s, e.text.length - t) };
+  }));
+}
+function wraps(b, es) {
+  const at = [];
+  let d = 0;
+  for (const e of es) {
+    at.push(e.start + d);
+    d += e.text.length - (e.end - e.start);
+  }
+  const last = at[at.length - 1] + es[es.length - 1].text.length;
+  const out = [];
+  for (let i = 0; i < es.length; i++) {
+    let k = i;
+    for (const m of es[i].text.matchAll(/<([A-Za-z][\w:-]*)(?:\s[^<>]*)?>/g)) {
+      const tag = new RegExp(`<(/?)${m[1]}(?=[\\s/>])[^<>]*>`, "gi");
+      tag.lastIndex = at[i] + m.index + m[0].length;
+      let depth = 1, end = null;
+      for (let t = tag.exec(b); t && t.index < last; t = tag.exec(b)) if ((depth += t[1] ? -1 : 1) === 0) {
+        end = t;
+        break;
+      }
+      if (!end) continue;
+      for (let j = i + 1; j < es.length; j++) if (at[j] <= end.index && end.index + end[0].length <= at[j] + es[j].text.length) k = Math.max(k, j);
+    }
+    out.push(k === i ? es[i] : { start: es[i].start, end: es[k].end, text: b.slice(at[i], at[k] + es[k].text.length) });
+    i = k;
+  }
+  return out;
 }
 
 // src/editor/tokens.ts
@@ -392,7 +632,7 @@ function valid(patches, n, text) {
   }
   return true;
 }
-function apply(text, patches) {
+function apply2(text, patches) {
   if (patches.length === 0) return text;
   const parts = [];
   let at = 0;
@@ -455,7 +695,18 @@ function combine(first2, second) {
   }
   return out;
 }
-function mergePatches(theirs, ours, wins = "ours", base, keep2) {
+function finer(base, patches, other) {
+  return patches.flatMap((p) => {
+    if (!other.some((o) => conflict(p, o))) return [p];
+    const edits3 = fine(base, apply2(base, [p]));
+    return edits3.every((e) => p.start <= e.start && e.end <= p.end) ? edits3 : [p];
+  });
+}
+function mergePatches(theirs, ours, wins = "ours", base, nested = true, keep2) {
+  if (base !== void 0 && nested) {
+    const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
+    [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours, true) : [t, o];
+  }
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
   let k = 0, any = false;
   for (let i = 0; i < ours.length; i++) {
@@ -469,7 +720,7 @@ function mergePatches(theirs, ours, wins = "ours", base, keep2) {
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
   const gone = new Set(!base ? [] : [[ours, theirs, "ours"], [theirs, ours, "theirs"]].flatMap(([a, b, s]) => keep2 === s ? [] : moves(base, a, b, conflict)));
-  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, keep2).patches, conflicts };
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, false, keep2).patches, conflicts };
   const keptTheirs = wins === "ours" ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === "ours" ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
@@ -642,7 +893,7 @@ function byLine(base, p) {
   return out;
 }
 var LINES = /[^\n]*\n|[^\n]+$/g;
-var WORDS = /\w+|\s+|[^\w\s]+/g;
+var WORDS2 = /\w+|\s+|[^\w\s]+/g;
 var LONG = 1e3;
 function pieces(text, a, b, unit) {
   const parts = [], at = [];
@@ -704,7 +955,7 @@ function aligned(base, a0, a1, text, b0, b1, unit) {
   }
   return out;
 }
-var byWords = (base, p) => aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS);
+var byWords = (base, p) => aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS2);
 function cap(base, patches) {
   if (patches.length <= MAX_PATCHES) return patches;
   const run = Math.ceil(patches.length / MAX_PATCHES);
@@ -720,7 +971,7 @@ function diff2(base, text) {
   if (base === text) return [];
   const found = changes(base, text);
   const lines = found ? found.flatMap((p) => byLine(base, p)) : aligned(base, 0, base.length, text, 0, text.length, LINES);
-  const patches = lines.flatMap((p) => p.end - p.start > LONG ? aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS) : [p]);
+  const patches = lines.flatMap((p) => p.end - p.start > LONG ? aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS2) : [p]);
   return widen(base, cap(base, patches));
 }
 var size = (patches) => patches.reduce((n, p) => n + p.end - p.start + p.text.length, 0);
@@ -780,7 +1031,7 @@ var Authority = class {
     if (n === this.n) return this.text;
     if (!Number.isInteger(n) || n < this.oldest || n > this.n) return null;
     let text = this.text;
-    for (let i = this.log.length - 1; i >= this.log.length - (this.n - n); i--) text = apply(text, this.log[i].inverse);
+    for (let i = this.log.length - 1; i >= this.log.length - (this.n - n); i--) text = apply2(text, this.log[i].inverse);
     return text;
   }
   // the seq of the last operation of client that the text holds, or undefined when the client is not
@@ -859,7 +1110,7 @@ var Authority = class {
     patches = patches.filter((p) => p.start !== p.end || p.text !== "");
     const inverse = invert(this.text, patches);
     const lengthBefore = this.text.length;
-    this.text = apply(this.text, patches);
+    this.text = apply2(this.text, patches);
     this.n += 1;
     const op = { v: this.version, client: request.client, seq: request.seq, author: "", time: this.now(), patches, sum: checksum(this.text) };
     const bytes = 64 + patches.reduce((s, p) => s + p.text.length, 0) + inverse.reduce((s, p) => s + p.text.length, 0);
@@ -1058,11 +1309,11 @@ function measure(a, b, cap2) {
       chars += old.length + now.length + 1;
       continue;
     }
-    chars += edits(old, now);
+    chars += edits2(old, now);
   }
   return { lines: found, chars };
 }
-function edits(old, now) {
+function edits2(old, now) {
   let p = 0;
   while (p < old.length && p < now.length && old.charCodeAt(p) === now.charCodeAt(p)) p++;
   let s = 0;
@@ -1356,7 +1607,7 @@ var Disk = class {
       const current = this.authority.text;
       const file = diff2(base, theirs);
       const session = diff2(base, current);
-      const merged = apply(base, mergePatches(session, file, "ours").patches);
+      const merged = apply2(base, mergePatches(session, file, "ours").patches);
       const patches = diff2(current, merged);
       if (patches.length) this.authority.enter(patches, AUTHOR);
     }
@@ -1593,7 +1844,7 @@ function pairs(a, b, half = false, mid = false) {
   for (let k = suf; k > 0; k--) out.push({ i: a.length - k, j: b.length - k, same: true });
   return out;
 }
-var shared = (x, y) => {
+var shared2 = (x, y) => {
   let p = 0;
   while (p < x.length && p < y.length && x[p] === y[p]) p++;
   let s = 0;
@@ -1609,7 +1860,7 @@ function bestPairs(a, b, half, mid) {
   const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
   const score = Array.from({ length: k + 1 }, () => new Array(long.length + 1).fill(-Infinity));
   for (let j = 0; j <= long.length; j++) score[0][j] = 0;
-  for (let i = 1; i <= k; i++) for (let j = i; j <= long.length; j++) score[i][j] = Math.max(score[i][j - 1], score[i - 1][j - 1] + shared(short[i - 1], long[j - 1]));
+  for (let i = 1; i <= k; i++) for (let j = i; j <= long.length; j++) score[i][j] = Math.max(score[i][j - 1], score[i - 1][j - 1] + shared2(short[i - 1], long[j - 1]));
   const out = [];
   for (let i = k, j = long.length; i > 0; j--) {
     if (score[i][j] !== score[i][j - 1]) {
@@ -1645,7 +1896,7 @@ function closePairs(a, b, mid) {
   const ia = a.map(inner), ib = b.map(inner);
   const gain = (i, j) => {
     const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
-    const s = Math.max(shared(x, y), mid && (i === j || n - i === m - j) ? core(x, y) : 0);
+    const s = Math.max(shared2(x, y), mid && (i === j || n - i === m - j) ? core(x, y) : 0);
     return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
   };
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
@@ -1818,7 +2069,7 @@ function insertedSpans(patches) {
   }
   return out;
 }
-function overlaps(spans, s, e) {
+function overlaps2(spans, s, e) {
   let lo = 0;
   let hi = spans.length - 1;
   while (lo <= hi) {
@@ -1841,7 +2092,7 @@ function findInserted(after, kept, inserted, near, within = null) {
     const w = from === 0 && to === after.length ? after : after.slice(from, to);
     for (let o = w.indexOf(text); o >= 0 && n < 256; o = w.indexOf(text, o + 1), n++) {
       const at = from + o;
-      if (at + len > hi || !overlaps(inserted, at, at + len) || best >= 0 && Math.abs(at - near) >= Math.abs(best - near)) continue;
+      if (at + len > hi || !overlaps2(inserted, at, at + len) || best >= 0 && Math.abs(at - near) >= Math.abs(best - near)) continue;
       if (typeof kept === "string" || checksum(after.slice(at, at + len)) === kept.sum) best = at;
     }
   };
@@ -2041,7 +2292,7 @@ function slow(before2, patches, after, items, given) {
     const inner2 = after.slice(found.end, close);
     const o = found.end + inner2.length - inner2.trimStart().length;
     const t = startTagAt(after, o);
-    return t && t.tag === a.tag && overlaps(inserted, o, close) && squeeze(inner2.trim()) === squeeze(text) ? t : null;
+    return t && t.tag === a.tag && overlaps2(inserted, o, close) && squeeze(inner2.trim()) === squeeze(text) ? t : null;
   };
   const swapped = (a, close, text, found) => {
     const o = findInserted(after, text, inserted, found.start);
@@ -2049,7 +2300,7 @@ function slow(before2, patches, after, items, given) {
     const s = slideAt(s1, found.start);
     const c = elementClose(after, found, s ? s.end : after.length).close;
     const old = before2.slice(a.end, close);
-    return shared(old, c > found.end ? after.slice(found.end, c) : "") < old.length ? { start: o, end: o + a.end - a.start, tag: a.tag } : null;
+    return shared2(old, c > found.end ? after.slice(found.end, c) : "") < old.length ? { start: o, end: o + a.end - a.start, tag: a.tag } : null;
   };
   const locate = (a, limit) => {
     const found = byPatches(a, before2, patches, after, regions);
@@ -2076,15 +2327,15 @@ function slow(before2, patches, after, items, given) {
     const k = old.findIndex((t) => t.start === a.start - from.start);
     return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
   };
-  const slideOf = (whole) => typeof whole === "string" ? findInserted(after, whole, inserted, 0) : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
+  const slideOf = (whole) => typeof whole === "string" ? findInserted(after, whole, inserted, 0) : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps2(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
   const took = (x, at) => once(typeof x === "string" ? x : x.sum, () => {
     const len = lengthOf(x);
     const text = after.slice(at, at + len);
     return patches.some((p) => p.end - p.start >= len && findInserted(before2, text, [p], p.start, { start: p.start, end: p.end + len - (typeof x === "string" ? x : x.tag).length }) >= 0);
   });
-  const find = (x, near, within) => {
+  const find2 = (x, near, within) => {
     const look = () => findInserted(after, x, inserted, near, within);
-    return !overlaps(inserted, within.start, within.end) ? -1 : typeof x === "string" ? look() : once(`${x.sum} ${within.start}`, look);
+    return !overlaps2(inserted, within.start, within.end) ? -1 : typeof x === "string" ? look() : once(`${x.sum} ${within.start}`, look);
   };
   const reattach = (it, text) => {
     let within = null;
@@ -2097,12 +2348,12 @@ function slow(before2, patches, after, items, given) {
       const s = whole ? slideOf(whole) : -1;
       if (s < 0 || took(whole, s)) return null;
       within = { start: s, end: s + lengthOf(whole) };
-      if (typeof whole === "string" && typeof text === "string" ? !whole.includes(text) : find(text, s, within) < 0) {
+      if (typeof whole === "string" && typeof text === "string" ? !whole.includes(text) : find2(text, s, within) < 0) {
         const slide2 = slideAt(s1, s);
         return slide2?.start === s ? { anchor: tagOf(slide2), slide: tagOf(slide2), removed: { text } } : null;
       }
     }
-    const o = find(text, it.anchor ? shiftOffset(it.anchor.start, patches) : within.start, within);
+    const o = find2(text, it.anchor ? shiftOffset(it.anchor.start, patches) : within.start, within);
     const t = o >= 0 ? startTagAt(after, o) : null;
     if (!t || took(text, o)) return null;
     const slide = slideAt(s1, o);
@@ -2913,7 +3164,7 @@ var Comments = class {
     let text = this.authority.textAt(n);
     let slides = null;
     for (const op of this.authority.since(formatVersion(this.authority.epoch, n)) ?? []) {
-      const after = apply(text, op.patches);
+      const after = apply2(text, op.patches);
       const r = moveAnchors(text, op.patches, after, [item], slides);
       item = r.items[0];
       slides = r.slides;
@@ -3089,7 +3340,7 @@ var Comments = class {
   }
   async write() {
     if (this.stopped) return;
-    const edits2 = this.edits;
+    const edits3 = this.edits;
     const writesNow = this.writesNow;
     this.lastWrite = Date.now();
     const tmp = this.tmpName();
@@ -3101,7 +3352,7 @@ var Comments = class {
         return;
       }
       renameRetriedSync(tmp, this.file, 1);
-      this.saved = Math.max(this.saved, edits2);
+      this.saved = Math.max(this.saved, edits3);
       if (this.failing) this.log(`wrote ${this.file} again`);
       this.failing = false;
     } catch (e) {
@@ -3533,7 +3784,7 @@ var History = class {
     let from = -1;
     for (const k of this.checkpoints.keys()) if (k <= i && k > from) from = k;
     let text = from < 0 ? this.base.text : this.checkpoints.get(from);
-    for (let k = from + 1; k <= i; k++) text = apply(text, this.versions[k].patches);
+    for (let k = from + 1; k <= i; k++) text = apply2(text, this.versions[k].patches);
     return text;
   }
   checkpoint(i, text) {
@@ -3706,7 +3957,7 @@ var History = class {
         this.base = { time: record.time, text: record.text };
         text = record.text;
       } else if (record.kind === "version") {
-        text = apply(text, record.v.patches);
+        text = apply2(text, record.v.patches);
         this.versions.push(record.v);
         this.checkpoint(this.versions.length - 1, text);
         open2 = [];
@@ -4670,15 +4921,15 @@ function readPreamble(source, options = {}) {
         case "newtheorem": {
           const [named, a] = group(space(starred ? i2 + 1 : i2));
           const kind = named.trim();
-          const shared2 = bracket(a);
-          const [title, b] = group(space(shared2?.[1] ?? a));
+          const shared3 = bracket(a);
+          const [title, b] = group(space(shared3?.[1] ?? a));
           const within = bracket(b);
           const end = within?.[1] ?? b;
           let counter = starred ? null : kind;
-          if (!starred && shared2) {
-            const other = theorems[shared2[0].trim()]?.counter;
+          if (!starred && shared3) {
+            const other = theorems[shared3[0].trim()]?.counter;
             if (other) counter = other;
-            else note(end, `the counter ${shared2[0].trim()} is not the counter of a kind, hence ${kind} is numbered by itself`);
+            else note(end, `the counter ${shared3[0].trim()} is not the counter of a kind, hence ${kind} is numbered by itself`);
           } else if (!starred && within) note(end, `a number within ${within[0].trim()} is not read, hence ${kind} is numbered through the deck`);
           theorems[kind] = { title: plainText(title), style, counter };
           return end;
@@ -4831,14 +5082,14 @@ function folderTex(read, html) {
     package: (name) => [`${name}.sty`],
     class: (name) => [`${name}.cls`]
   };
-  const find = (name, kind) => {
+  const find2 = (name, kind) => {
     for (const file of names[kind](name)) {
       const found = read(file);
       if (found !== null) return { file, text: found };
     }
     return null;
   };
-  const preamble = readPreamble(read("preamble.tex") ?? "", { file: "preamble.tex", resolve: find });
+  const preamble = readPreamble(read("preamble.tex") ?? "", { file: "preamble.tex", resolve: find2 });
   const bibliography = readBibtex(read("references.bib") ?? "");
   return { preamble, bibliography, ...texOf(preamble, bibliography, html) };
 }
@@ -5791,9 +6042,9 @@ var Replica = class _Replica {
     const theirs = diff2(from, text);
     const ours = diff2(from, this.mine);
     const kept = theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text));
-    const both = mergePatches(kept, ours, wins, from, wins);
+    const both = mergePatches(kept, ours, wins, from, false, wins);
     conflicts.push(...both.conflicts);
-    const merged = apply(from, both.patches);
+    const merged = apply2(from, both.patches);
     this.base = text;
     this.mine = merged;
     this.epoch = parsed.epoch;
@@ -5812,7 +6063,7 @@ var Replica = class _Replica {
     const f = this.flight;
     if (!f?.patches) return this.base;
     const accepted = f.accepted !== null && at.epoch === this.epoch && at.n >= f.accepted;
-    return accepted || applied !== void 0 && f.seq <= applied ? apply(this.base, f.patches) : this.base;
+    return accepted || applied !== void 0 && f.seq <= applied ? apply2(this.base, f.patches) : this.base;
   }
   take(op, wins, conflicts, check, dedupe) {
     if (this.needsResync) return;
@@ -5822,7 +6073,7 @@ var Replica = class _Replica {
       this.needsResync = true;
       return;
     }
-    const next = apply(this.base, op.patches);
+    const next = apply2(this.base, op.patches);
     if (op.client === this.flight?.client && op.seq === this.flight.seq) {
       this.flight = null;
     } else if (this.mine === this.base && !this.flight) {
@@ -5832,7 +6083,7 @@ var Replica = class _Replica {
       const flown = this.flight?.patches ? shift(this.flight.patches, theirs, true) : null;
       let merged;
       if (this.flight?.patches && flown) {
-        const mid = apply(this.base, this.flight.patches);
+        const mid = apply2(this.base, this.flight.patches);
         const onMid = shift(theirs, this.flight.patches, false) ?? [];
         merged = this.merge(mid, onMid, wins, conflicts, dedupe);
         this.flight.patches = flown;
@@ -5846,13 +6097,15 @@ var Replica = class _Replica {
     this.n = at.n;
     if (check && checksum(this.base) !== op.sum) this.needsResync = true;
   }
-  // the text with theirs and the patches that turn it into mine
+  // the text with theirs and the patches that turn it into mine. a broadcast operation is merged
+  // with the text, hence a format and the keys of the other side inside its run are both kept, while
+  // the operations missed during a break are shown to the person as conflicts
   merge(text, theirs, wins, conflicts, dedupe) {
     const ours = diff2(text, this.mine);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
-    const merged = mergePatches(kept, ours, wins, text, dedupe && wins);
+    const merged = mergePatches(kept, ours, wins, text, !dedupe, dedupe && wins);
     conflicts.push(...merged.conflicts);
-    return apply(text, merged.patches);
+    return apply2(text, merged.patches);
   }
 };
 
@@ -5973,7 +6226,7 @@ export {
   REMOVED_MAX,
   Replica,
   TexWriter,
-  apply,
+  apply2 as apply,
   changes,
   checkAnchors,
   checksum,

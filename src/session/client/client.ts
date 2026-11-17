@@ -601,7 +601,7 @@ export class Client {
     if (deck === handed) return true;
     const theirs = diff(handed, sync.mine);
     const ours = diff(handed, deck).filter((o) => !theirs.some((t) => t.start === o.start && t.end === o.end && t.text === o.text));
-    sync.edit(apply(handed, mergePatches(theirs, ours, 'ours', handed).patches));
+    sync.edit(apply(handed, mergePatches(theirs, ours, 'ours', handed, false).patches));
     this.handed = deck;
     return true;
   }

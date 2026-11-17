@@ -307,13 +307,17 @@ for (const [what, slide, change, typed] of [
 }
 
 // a change from outside into the paragraph of an open composition is held back until it ends, and
-// then cannot be made, with a reload answer or with a rejection. the word that the input method
-// commits at the end is an edit of the person all the same
-for (const [what, change] of [
+// then cannot be made, with a reload answer or with a rejection. the composing text is not sent
+// before the end, and the word that the input method commits at the end is an edit of the person
+// all the same. on a busy page, whose frames come after ended() in session.ts, the client reads
+// the committed word only from the target that ended() passes to the listeners of onReload
+const rejected = (text) => text.replace('<p>Second slide</p>', '<p>Second slide<div>q</div></p>');
+for (const [what, change, slow] of [
   ['answers a reload', (text) => text.replace('<p>Second slide', '<p>Second <b>slide')],
-  ['is rejected', (text) => text.replace('slidenih</p>', 'slidenih<div>q</div></p>')],
+  ['is rejected', rejected],
+  ['is rejected on a busy page', rejected, true],
 ]) {
-  test(`a word committed at the end of a composition whose held-back change ${what} reaches index.html after both pages load again`, { timeout: 240_000 }, async (t) => {
+  test(`a word committed at the end of a composition whose held-back change ${what} reaches index.html after both pages load again`, { timeout: 360_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talk(t);
@@ -325,9 +329,22 @@ for (const [what, change] of [
     await show(b, 'Two');
     await front(b);
     await caretAtEnd(b, el(1, 'p'));
+    // the text of a read of the client while the paragraph shows the composing text, which index.html
+    // holds once the client has sent it
+    await b.evaluate(`(() => {
+      const port = window.BeesonEditor.session;
+      const text = port.text;
+      port.text = () => {
+        const r = text();
+        if (${el(1, 'p')}.textContent.includes('nih')) window.__read = r;
+        return r;
+      };
+    })()`);
     await b.send('Input.imeSetComposition', { text: 'ni', selectionStart: 2, selectionEnd: 2 });
     await b.send('Input.imeSetComposition', { text: 'nih', selectionStart: 3, selectionEnd: 3 });
-    await until(() => server.read().includes('<p>Second slidenih</p>'), 'the composing text in index.html');
+    await b.waitFor(`window.BeesonEditor.render().includes('<p>Second slidenih</p>')`);
+    await until(async () => (await b.evaluate('window.__read')) === server.read(), 'a read of the client with the composing text shown, in index.html');
+    assert.ok(server.read().includes('<p>Second slide</p>'), 'index.html does not hold the composing text');
     // the text of each apply that resolved, to wait for the one that holds the change back
     await b.evaluate(`(() => {
       const port = window.BeesonEditor.session;
@@ -340,11 +357,13 @@ for (const [what, change] of [
     const marker = changed.match(/<p>Second[^\n]*/)[0];
     await until(() => b.evaluate(`!!window.__resolved?.includes(${JSON.stringify(marker)})`), 'the apply that holds the change back');
     assert.ok((await b.evaluate('window.BeesonEditor.render()')).includes('<p>Second slidenih</p>'));
+    if (slow) await b.evaluate(`(() => { window.requestAnimationFrame = (f) => setTimeout(() => f(performance.now()), 50); return true; })()`);
     await b.send('Input.insertText', { text: '你好' });
     await reloaded(pages, counts);
     const text = await converge(server, pages, 'the pages and index.html to agree', 30_000);
-    // the change from outside is kept as well
-    assert.equal(text.match(/<p>Second[^\n]*/)[0], marker.replace('nih', '你好'));
+    // the change from outside and the committed word are each kept once
+    const line = text.match(/<p>Second[^\n]*/)[0];
+    assert.deepEqual([line.split('你好').length, line.replace('你好', '')], [2, marker], line);
   });
 }
 

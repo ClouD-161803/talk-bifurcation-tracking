@@ -614,12 +614,15 @@ export function install(app: App): void {
     if (!writing && !leaving) drop();
   });
 
-  // the prompt of a formula whose TeX is empty, as a class of the page only
+  // the prompt of a formula whose TeX is empty, as a class of the page only. the TeX of a formula is
+  // looked up once, since MathJax makes a new container at each typeset
+  const texOf = new WeakMap<Element, string>();
   const markEmpty = () => {
-    const lookup = mathLookup();
-    for (const el of app.slides().querySelectorAll('div.math')) {
-      const tex = [...el.querySelectorAll('mjx-container')].map((m) => lookup(m)?.tex ?? '').join('');
-      el.classList.toggle('beeson-empty', !!el.querySelector('mjx-container') && !tex.trim());
+    const formulas = [...app.slides().querySelectorAll('div.math')].map((el) => [el, [...el.querySelectorAll('mjx-container')]] as const);
+    const lookup = formulas.some(([, ms]) => ms.some((m) => !texOf.has(m))) ? mathLookup() : null;
+    for (const [el, ms] of formulas) {
+      for (const m of ms) if (lookup && !texOf.has(m)) texOf.set(m, lookup(m)?.tex ?? '');
+      el.classList.toggle('beeson-empty', !!ms.length && !ms.map((m) => texOf.get(m)).join('').trim());
     }
   };
   app.onRefresh(['content', 'structure'], markEmpty);

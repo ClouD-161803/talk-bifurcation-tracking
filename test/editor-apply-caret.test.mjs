@@ -217,6 +217,113 @@ for (const [label, change] of SAME) {
   });
 }
 
+// the selection of the person in the paragraph of expression, as the offsets of its anchor and its
+// focus in the text of the paragraph, or null when an end is outside it
+const selectionIn = (expression) => `(() => {
+  const p = ${expression};
+  const sel = getSelection();
+  if (!p || !sel.rangeCount || !p.contains(sel.anchorNode) || !p.contains(sel.focusNode)) return null;
+  const at = (node, offset) => { const r = document.createRange(); r.selectNodeContents(p); r.setEnd(node, offset); return r.toString().length; };
+  return { anchor: at(sel.anchorNode, sel.anchorOffset), focus: at(sel.focusNode, sel.focusOffset) };
+})()`;
+// the word complete of the paragraph selected from anchor to focus
+const selectComplete = (b, backward) => b.evaluate(`(() => {
+  const p = ${P1};
+  p.focus();
+  const t = p.firstChild;
+  const s = t.data.indexOf('complete'), e = s + 'complete'.length;
+  if (${backward}) getSelection().setBaseAndExtent(t, e, t, s);
+  else getSelection().setBaseAndExtent(t, s, t, e);
+  return document.activeElement === p ? [s, e] : null;
+})()`);
+
+for (const backward of [false, true]) {
+  test(`a ${backward ? 'backward' : 'forward'} selection keeps its characters and its direction through a tag put before it`, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    await showSlide(b, 'Show your steps');
+    const [s, e] = await selectComplete(b, backward);
+    const text = once(b.source, 'Design the complete', '<b>Hi</b> Design the complete');
+    assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+    const d = '<b>Hi</b> '.length - '<b></b>'.length;
+    assert.deepEqual(await b.evaluate(selectionIn(P1)), backward ? { anchor: e + d, focus: s + d } : { anchor: s + d, focus: e + d });
+    assert.equal(await b.evaluate(`getSelection().toString()`), 'complete');
+    assert.equal(await b.evaluate(`${E}.render()`), text);
+    assert.deepEqual(b.errors, []);
+  });
+}
+
+// a selection in a paragraph moved to a slide that is not shown is parked with its focus alone, see
+// the tests of a parked caret above
+test('a selection keeps both ends when another person moves its paragraph to the end of its slide', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  const [s, e] = await selectComplete(b, true);
+  const notes = '  <aside class="notes">A new element is faded in';
+  const text = once(once(b.source, LINE, ''), notes, LINE + notes);
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal(await b.evaluate(`${P1}.nextElementSibling?.matches('aside.notes')`), true, 'the paragraph is moved to the end of the slide');
+  assert.deepEqual(await b.evaluate(selectionIn(P1)), { anchor: e, focus: s });
+  assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.deepEqual(b.errors, []);
+});
+
+// the calls of MathJax.typesetPromise from now on, in window.__typesets
+const countTypesets = (b) => b.evaluate(`(() => {
+  const mj = window.MathJax;
+  mj.__counted ??= mj.typesetPromise.bind(mj);
+  window.__typesets = 0;
+  mj.typesetPromise = (els) => (window.__typesets++, mj.__counted(els));
+  return true;
+})()`);
+// the text node of the paragraph that holds needle, kept in window.__node
+const keepNode = (b, needle) => b.evaluate(`(() => {
+  window.__node = [...${P1}.childNodes].find((n) => n.nodeType === 3 && n.data.includes(${JSON.stringify(needle)})) ?? null;
+  return !!window.__node;
+})()`);
+
+test('a character typed away from a literal dollar or backslash of its text keeps the text node, and a dollar typed is set as content', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  const literal = once(b.source, 'Direct the viewer', 'Direct $5 at C:\\temp the viewer');
+  assert.equal((await applyOn(b, literal)).reload, false);
+  assert.ok(await keepNode(b, 'attention.'), 'a text node holds the end of the paragraph');
+  await countTypesets(b);
+  const away = once(literal, 'viewer\'s attention.</p>', 'viewer\'s attention.X</p>');
+  assert.deepEqual(await applyOn(b, away), { reload: false, changed: ['p'] });
+  assert.deepEqual(await b.evaluate(`({ same: window.__node.isConnected && window.__node.data.endsWith('attention.X'), typesets: window.__typesets })`), { same: true, typesets: 0 }, 'the character is written into the text node');
+  assert.equal(await b.evaluate(`${E}.render()`), away);
+  // a dollar typed may begin a formula, and the content of the paragraph is set
+  const dollar = once(away, 'attention.X</p>', 'attention.X$</p>');
+  assert.deepEqual(await applyOn(b, dollar), { reload: false, changed: ['p'] });
+  assert.equal(await b.evaluate('window.__typesets'), 1, 'the paragraph is typeset again');
+  assert.equal(await b.evaluate(`${E}.render()`), dollar);
+  assert.deepEqual(b.errors, []);
+});
+
+test('on a clean page, a character typed by another person in a paragraph with a formula does not look up the formulas of the whole deck', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Equations are first class');
+  await b.evaluate(`(() => {
+    const d = window.MathJax.startup.document;
+    const items = d.getMathItemsWithin.bind(d);
+    window.__whole = 0;
+    d.getMathItemsWithin = (nodes) => (nodes.includes(document.body) && window.__whole++, items(nodes));
+    return true;
+  })()`);
+  let text = b.source;
+  for (const [from, to] of [['potential.</p>', 'potential.!</p>'], ['potential.!</p>', 'potential.!?</p>']]) {
+    text = once(text, `is the effective ${from}`, `is the effective ${to}`);
+    assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  }
+  assert.equal(await b.evaluate('window.__whole'), 0, 'the formulas are looked up in the paragraph alone');
+  assert.equal(await b.evaluate(`${E}.render()`), text);
+  assert.deepEqual(b.errors, []);
+});
+
 // a blank run inside a p or an li cannot end the text element, see isTextElement(), hence it is set
 // in place, as any other run
 test('a run between two code elements that becomes a space keeps the selection of the person and both code elements', async (t) => {
@@ -241,5 +348,45 @@ test('a run between two code elements that becomes a space keeps the selection o
   assert.equal(await b.evaluate(`${E}.render()`), text);
   assert.equal(await b.evaluate('getSelection().toString()'), 'f ap', 'the selection is kept');
   assert.deepEqual(await b.evaluate(`window.__codes.map((c) => c.isConnected && ${LI}.contains(c))`), [true, true], 'the code elements are kept');
+  assert.deepEqual(b.errors, []);
+});
+
+// the caret of the person put after the first count characters of the text of P1
+const caretAfter = (b, count) => b.evaluate(`(() => {
+  const p = ${P1};
+  p.focus();
+  getSelection().collapse(p.firstChild, ${count});
+  return document.activeElement === p;
+})()`);
+const CHANGES = [
+  ['on both sides of it', (text) => once(text, LINE, LINE.replace('Design', 'BDesign').replace('attention.', 'attention.C')), 'BDesignA the', 'C</p>'],
+  // a caret that went after such letters would follow the caret of the other person, and the letters
+  // of the two would then alternate
+  ['at it, which leaves it before the letters of the other person', (text) => once(text, LINE, LINE.replace('Design', 'DesignX')), 'DesignAX the', 'attention.</p>'],
+];
+for (const [label, change, typed, end] of CHANGES) {
+  test(`a caret stays at its characters through one apply that changes its text node ${label}`, async (t) => {
+    const b = await sessionPage(browser);
+    t.after(() => b.close());
+    await showSlide(b, 'Show your steps');
+    assert.ok(await caretAfter(b, 'Design'.length));
+    const text = change(b.source);
+    assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+    await type(b, 'A');
+    const line = (await b.evaluate(`${E}.render()`)).split('\n').find((l) => l.includes('the complete slide first'));
+    assert.ok(line.includes(typed) && line.endsWith(end), `the key of the person is at its caret in ${line}`);
+    assert.deepEqual(b.errors, []);
+  });
+}
+
+test('a selection inside its text node keeps its characters through one apply that changes the node on both sides of it', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  assert.ok(await selectComplete(b, false));
+  const text = once(b.source, LINE, LINE.replace('Design', 'BDesign').replace('attention.', 'attention.C'));
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  assert.equal(await b.evaluate(`getSelection().toString()`), 'complete');
+  assert.equal(await b.evaluate(`${E}.render()`), text);
   assert.deepEqual(b.errors, []);
 });

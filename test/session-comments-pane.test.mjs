@@ -30,7 +30,8 @@ const THREADS = `[...document.querySelectorAll('${PANE} article')].map((a) => ({
 const TOASTS = `[...document.querySelectorAll('.beeson-session-toast > span')].map((s) => s.textContent)`;
 const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('aria-label')`;
 const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
-const LOCKED = (expression) => `${expression}.classList.contains('beeson-held')`;
+// the name of the person who holds the element of expression, or null
+const HOLDER = (expression) => `(window.BeesonSession.presence().holderOf(${expression})?.name ?? null)`;
 // the id of the thread of the focus, or the tag of the focused element outside a thread
 const ACTIVE = `document.activeElement?.closest('article')?.dataset.id ?? document.activeElement?.localName ?? null`;
 const DRAFT = `${PANE} .draft textarea`;
@@ -203,7 +204,7 @@ const toastTime = (page, ms) => page.evaluate(`(() => { const o = window.BeesonS
 // waits until the clock of page has run ms past now
 const elapse = (page, ms) => page.evaluate(`(() => { window.__until = performance.now() + ${ms}; return true; })()`).then(() => page.waitFor('performance.now() > window.__until', ms + 15_000));
 
-test('a held text element takes a comment from the context menu, and its thread opens without the refusal of the floor rule', { timeout: 300_000 }, async (t) => {
+test('a held text element takes a comment from the context menu, and its thread opens with the element selected and without a bubble', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   const p = el(0, 'p');
   await show(a, 'One');
@@ -214,9 +215,9 @@ test('a held text element takes a comment from the context menu, and its thread 
 
   await show(b, 'One');
   // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
-  await until(async () => !(await b.evaluate(LOCKED(p))), 'the paragraph that Ann left to be free on the page of Ben');
+  await until(async () => (await b.evaluate(HOLDER(p))) === null, 'the paragraph that Ann left to be free on the page of Ben');
   await caretAtEnd(b, p);
-  await until(() => a.evaluate(LOCKED(p)), 'the paragraph that Ben holds to be locked on the page of Ann');
+  await until(async () => (await a.evaluate(HOLDER(p))) === 'Ben', 'the hold of Ben on the paragraph to reach the page of Ann');
 
   await t.test('the item Comment of the context menu of a held element anchors the draft on it', async () => {
     await front(a);
@@ -228,12 +229,12 @@ test('a held text element takes a comment from the context menu, and its thread 
     await a.waitFor(`!document.querySelector('${PANE} .draft')`);
   });
 
-  await t.test('a thread of a held element opens with its slide shown and the thread focused, without a selection or a bubble', async () => {
+  await t.test('a thread of a held element opens with its slide shown, the thread focused, and the element selected, without a bubble', async () => {
     await show(a, 'Two');
     await a.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
     await click(a, `${ARTICLE(id)} .text`);
     await sees(a, ACTIVE, id);
-    assert.deepEqual(await a.evaluate(`({ slide: Reveal.getIndices().h, selected: ${C}.app.selection.has(${p}), bubble: ${BUBBLE} })`), { slide: 0, selected: false, bubble: null });
+    assert.deepEqual(await a.evaluate(`({ slide: Reveal.getIndices().h, selected: ${C}.app.selection.has(${p}), bubble: ${BUBBLE} })`), { slide: 0, selected: true, bubble: null });
   });
   clean(a);
   clean(b);
@@ -1682,7 +1683,7 @@ test('a draft whose element another person deletes moves to its slide and is sen
   await show(a, 'One');
   await click(a, '.reveal .slides > section:nth-child(1) > p');
   await press(a, 'Escape');
-  await until(() => b.evaluate(`!document.querySelector('.reveal .slides > section:nth-child(2) > p').classList.contains('beeson-held')`), 'the paragraph that Ann left to be free on the page of Ben');
+  await until(async () => (await b.evaluate(HOLDER(`document.querySelector('.reveal .slides > section:nth-child(2) > p')`))) === null, 'the paragraph that Ann left to be free on the page of Ben');
   await show(b, 'Two');
   await clickText(b, '.reveal section.present > p');
   await press(b, 'Escape');

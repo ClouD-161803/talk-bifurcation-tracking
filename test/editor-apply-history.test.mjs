@@ -1,13 +1,17 @@
 // the person on the page of an apply of the synchronous editor, see src/editor/session/apply.ts:
-// the entries of the history that name a changed element are dropped, the caret stays at its
-// character, an unsaved edit is kept, an edit made while the apply waits is merged into it, and an
-// apply into a text with an open composition of an input method waits for its end
+// an entry of typing in a changed text element is kept, and its undo and redo change only the
+// typing of the person, or it is skipped when the change took letters of the typing. the other
+// entries that name a changed element are dropped. the caret stays at its character, an unsaved
+// edit is kept, an edit made while the apply waits is merged into it, and an apply into a text with
+// an open composition of an input method waits for its end
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { typeKeys } from './helpers/editor.mjs';
 import { E, applied, applyOn, caretAtEnd, sessionPage, showSlide } from './helpers/apply.mjs';
+import { freshDeck } from './helpers/fresh.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 
 let browser;
@@ -22,8 +26,10 @@ const once = (text, from, to) => {
   assert.equal(text.split(from).length, 2, `${from} is once in the text`);
   return text.replace(from, to);
 };
+const H2 = `[...document.querySelectorAll('.reveal h2')].find((h) => h.textContent.startsWith('Show your steps'))`;
 const status = (page) => page.evaluate(`${E}.status()`);
 const sessionText = (page) => page.evaluate(`${E}.session.text()`);
+const render = (page) => page.evaluate(`${E}.render()`);
 // the text of the first paragraph before the caret, or null when the caret is not in it
 const beforeCaret = (page) => page.evaluate(`(() => {
   const p = ${P1};
@@ -35,7 +41,7 @@ const beforeCaret = (page) => page.evaluate(`(() => {
   return r.toString();
 })()`);
 
-test('an entry of the history is dropped when an apply changes its element, and kept when the apply changes another', async (t) => {
+test('an entry of typing is kept when an apply changes its text element or another, and its undo keeps the change of the apply', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await showSlide(b, 'Show your steps');
@@ -47,8 +53,11 @@ test('an entry of the history is dropped when an apply changes its element, and 
   assert.equal((await status(b)).undo, true, 'the typing in another paragraph is kept');
   text = once(text, 'Design the complete', 'Plan the complete');
   assert.equal((await applyOn(b, text)).reload, false);
-  await applied(b, text, 'the typing dropped');
-  // the typing that follows is a new entry, whose undo gives the text of the apply
+  assert.equal((await status(b)).undo, true, 'the typing in the paragraph of the apply is kept');
+  await b.evaluate(`${E}.undo()`);
+  text = once(text, 'viewer\'s attention. One.</p>', 'viewer\'s attention.</p>');
+  assert.equal(await render(b), text, 'the undo takes the typing and keeps the change of the apply');
+  // the typing that follows is a new entry, whose undo gives the text before it
   await caretAtEnd(b, P1);
   await typeKeys(b, ' Two.');
   await b.waitFor(`${E}.status().undo`);
@@ -74,6 +83,106 @@ test('an entry of the history is dropped when an apply changes its element, and 
   text = text.slice(0, start) + text.slice(text.indexOf('\n', start) + 1);
   assert.equal((await applyOn(b, text)).reload, false);
   await applied(b, text, 'the paragraph taken');
+  assert.deepEqual(b.errors, []);
+});
+
+// the caret put after 'Design the' in the first paragraph
+const AFTER_DESIGN = `(() => { const p = ${P1}; p.focus(); getSelection().collapse(p.firstChild, 'Design the'.length); return true; })()`;
+
+test('the keys of one entry typed between applies on both sides of them are undone in one step, which keeps every change of the applies', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await b.evaluate(AFTER_DESIGN);
+  await typeKeys(b, ' whole');
+  await b.waitFor(`${E}.status().undo`);
+  // each apply and the keys after it are sent at once, hence the keys are one entry
+  const typed = (await sessionText(b)).replace('Design the whole', 'Now design the whole');
+  assert.equal(await b.evaluate(`${E}.apply(${JSON.stringify(typed)}).then((r) => (document.execCommand('insertText', false, ' new'), r.reload))`), false);
+  const more = (await sessionText(b)).replace('slide first,', 'slide at first,');
+  assert.equal(await b.evaluate(`${E}.apply(${JSON.stringify(more)}).then((r) => (document.execCommand('insertText', false, ' big'), r.reload))`), false);
+  const text = await sessionText(b);
+  assert.ok(text.includes('<p>Now design the whole new big complete slide at first,'), 'the keys and the applies');
+  await b.evaluate(`${E}.undo()`);
+  assert.equal(await render(b), once(text, 'the whole new big complete', 'the complete'), 'one undo takes every key');
+  assert.equal((await status(b)).undo, false, 'the keys are one entry');
+  await b.evaluate(`${E}.redo()`);
+  assert.equal(await render(b), text);
+  assert.deepEqual(b.errors, []);
+});
+
+test('an undo of an entry of typing whose letters another person took away is refused and changes nothing, and the next undo takes the entry before it', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, H2);
+  await typeKeys(b, '!');
+  await b.waitFor(`${E}.status().undo`);
+  await caretAtEnd(b, P1);
+  await typeKeys(b, ' One.');
+  await b.waitFor(`${E}.render().includes('attention. One.')`);
+  const text = once(await sessionText(b), 'viewer\'s attention. One.</p>', 'viewer\'s</p>');
+  assert.equal((await applyOn(b, text)).reload, false);
+  await b.evaluate(`${E}.undo()`);
+  assert.equal(await render(b), text, 'the refused undo changes nothing');
+  await b.evaluate(`${E}.undo()`);
+  assert.equal(await render(b), once(text, 'one at a time!</h2>', 'one at a time</h2>'), 'the deletion is kept and the heading undone');
+  const s = await status(b);
+  assert.equal(s.undo, false);
+  assert.equal(s.redo, true);
+  await b.evaluate(`${E}.redo()`);
+  assert.equal(await render(b), text);
+  assert.equal((await status(b)).redo, false, 'the skipped entry is not redone');
+  assert.deepEqual(b.errors, []);
+});
+
+test('an entry of typing is kept when another person makes a word before it bold, and its undo takes only the typing', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await caretAtEnd(b, P1);
+  await typeKeys(b, ' One.');
+  await b.waitFor(`${E}.render().includes('attention. One.')`);
+  const text = once(await sessionText(b), '<p>Design the', '<p><b>Design</b> the');
+  assert.equal((await applyOn(b, text)).reload, false);
+  assert.equal(await b.evaluate(`!!${P1}.querySelector('b')`), true, 'the content of the paragraph is set');
+  assert.equal((await status(b)).undo, true, 'the typing is kept');
+  await b.evaluate(`${E}.undo()`);
+  assert.equal(await render(b), once(text, 'viewer\'s attention. One.</p>', 'viewer\'s attention.</p>'));
+  assert.deepEqual(b.errors, []);
+});
+
+test('an entry of the document model that set the content of a text element is dropped when another person writes into it', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  await b.evaluate(`(${E}.doc.setContent(${P1}, 'Set the complete slide.'), true)`);
+  await b.waitFor(`${E}.status().undo && !${E}.doc.busy`);
+  const text = once(await sessionText(b), 'Set the complete slide.', 'Set the complete slide now.');
+  assert.equal((await applyOn(b, text)).reload, false);
+  await applied(b, text, 'the entry dropped');
+  assert.deepEqual(b.errors, []);
+});
+
+test('the undo and the redo of typing by one person give the text before and after it in a text element with a formula and in one with a link', async (t) => {
+  const deck = once(readFileSync('test-deck.html', 'utf8'), '<p>Design the complete slide first,', '<p>Design the <a href="https://example.org/steps">complete slide</a> first,');
+  const b = await sessionPage(browser, { deck: freshDeck(t, deck), text: deck });
+  t.after(() => b.close());
+  const FORMULA = `[...document.querySelectorAll('.reveal p')].find((p) => p.textContent.includes('is the effective potential.'))`;
+  for (const [label, heading, host] of [['a formula', 'Equations are first class', FORMULA], ['a link', 'Show your steps', P1]]) {
+    await showSlide(b, heading);
+    assert.equal(await b.evaluate(`!!${host}.querySelector('${label === 'a link' ? 'a' : 'mjx-container'}')`), true, `the text element has ${label}`);
+    await caretAtEnd(b, host);
+    const before = await render(b);
+    await typeKeys(b, ' Typed');
+    await b.waitFor(`${E}.render().includes(' Typed</p>')`);
+    const typed = await render(b);
+    await b.evaluate(`${E}.undo()`);
+    assert.equal(await render(b), before, `${label}: the undo`);
+    await b.evaluate(`${E}.redo()`);
+    assert.equal(await render(b), typed, `${label}: the redo`);
+    await b.evaluate(`${E}.undo()`);
+  }
   assert.deepEqual(b.errors, []);
 });
 
@@ -108,6 +217,47 @@ test('the caret stays at its character when its text element changes before and 
   assert.equal((await applyOn(b, text)).reload, false);
   assert.equal(await b.evaluate(`${P1} === window.__p`), true);
   assert.equal(await beforeCaret(b), 'Now design the');
+  assert.deepEqual(b.errors, []);
+});
+
+test('a selection and the caret stay at their characters when one apply changes a formatted paragraph before and after them', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  // with a tag in the paragraph, a change on both sides of the tag sets the content of the paragraph
+  let text = once(b.source, 'the complete slide first', 'the <em>complete</em> slide first');
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  await applied(b, text, 'the tag');
+  // the selection of "sli", in the text after the tag
+  await b.evaluate(`(() => {
+    const p = ${P1};
+    p.focus();
+    getSelection().setBaseAndExtent(p.lastChild, ' '.length, p.lastChild, ' sli'.length);
+    return true;
+  })()`);
+  const selected = () => b.evaluate(`(() => {
+    const sel = getSelection();
+    if (!sel.rangeCount || !${P1}.contains(sel.focusNode)) return null;
+    const r = document.createRange();
+    r.setStart(${P1}, 0);
+    r.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+    return [r.toString(), sel.toString()];
+  })()`);
+  assert.deepEqual(await selected(), ['Design the complete ', 'sli']);
+  // two changes of other people arrive in one apply, one before the selection and one after it
+  text = once(once(text, '<p>Design the', '<p>BDesign the'), "viewer's attention.</p>", "viewer's attention.C</p>");
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  await applied(b, text, 'a change on both sides of a selection');
+  assert.deepEqual(await selected(), ['BDesign the complete ', 'sli']);
+  // the same with the caret after "sli", and the next key of the person goes to the caret
+  await b.evaluate(`(getSelection().collapseToEnd(), true)`);
+  assert.equal(await beforeCaret(b), 'BDesign the complete sli');
+  text = once(once(text, '<p>BDesign the', '<p>BBDesign the'), "viewer's attention.C</p>", "viewer's attention.CC</p>");
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  assert.equal(await beforeCaret(b), 'BBDesign the complete sli');
+  await b.evaluate(`((window.__p = ${P1}), true)`);
+  await typeKeys(b, 'A');
+  assert.equal(await b.evaluate(`window.__p.textContent`), "BBDesign the complete sliAde first, then break it up into steps. Direct the viewer's attention.CC");
   assert.deepEqual(b.errors, []);
 });
 

@@ -4,14 +4,17 @@
 // is counted, since the tests run on shared machines, and a time is bounded only with a margin of
 // five over the times measured: on test-deck.html, with 13 slides, an apply costs at most ten times
 // the same apply on a deck of three slides, and at most two opens of the same text, each of which
-// parses the file and pairs it with the page. each time is the median of 21 applies, with the CPU
-// of Chrome at full speed and throttled six times
+// parses the file and pairs it with the page. the same bounds hold for an apply into the text
+// element with a formula in which the person types, which keeps the entry of the typing. each time
+// is the median of 21 applies, with the CPU of Chrome at full speed and throttled six times
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { E, front } from './helpers/apply.mjs';
+import { E, front, showSlide } from './helpers/apply.mjs';
 import { editorPage } from './helpers/editor.mjs';
+import { freshDeck } from './helpers/fresh.mjs';
 
 let browser;
 before(async () => {
@@ -19,14 +22,17 @@ before(async () => {
 });
 after(() => browser?.close());
 
+// the heading of the page that starts with typed
+const headingOf = (typed) => `[...document.querySelectorAll('.reveal h1, .reveal h2')].find((h) => h.textContent.startsWith(${JSON.stringify(typed)}))`;
+
 // the medians in ms of an apply that changes the first character of word, each after a key typed
-// at the end of the heading that starts with typed when typed is given, and of an open
-const measure = (page, word, typed) => page.evaluate(`(async () => {
+// at the end of the text element of the expression host when host is given, and of an open
+const measure = (page, word, host) => page.evaluate(`(async () => {
   const base = ${JSON.stringify(page.source)};
   const at = base.indexOf(${JSON.stringify(word)});
   const median = (a) => [...a].sort((x, y) => x - y)[a.length >> 1];
-  const host = ${typed ? `[...document.querySelectorAll('.reveal h1, .reveal h2')].find((h) => h.textContent.startsWith(${JSON.stringify(typed)}))` : 'null'};
-  if (${!!typed} && !host) return null;
+  const host = ${host ?? 'null'};
+  if (${!!host} && !host) return null;
   const apply = [];
   for (let i = 0; i < 21; i++) {
     if (host) {
@@ -150,7 +156,7 @@ for (const typed of [false, true]) {
           await front(page);
           await page.send('Emulation.setCPUThrottlingRate', { rate });
           try {
-            times.push(await measure(page, DECKS[i][2], typed && DECKS[i][3]));
+            times.push(await measure(page, DECKS[i][2], typed ? headingOf(DECKS[i][3]) : null));
           } finally {
             await page.send('Emulation.setCPUThrottlingRate', { rate: 1 });
           }
@@ -164,4 +170,42 @@ for (const typed of [false, true]) {
       assert.fail(`an apply in ${found}, in each of three rounds`);
     });
   }
+}
+
+// a paragraph with a formula, in which the person types at the end and another person changes the
+// first character of a word, on test-deck.html and on the deck of three slides with MathJax
+const FORMULA = `[...document.querySelectorAll('.reveal p')].find((p) => p.textContent.includes('is the effective potential.'))`;
+const SMALL = readFileSync('test/pages/editor-hidden.html', 'utf8')
+  .replaceAll('../../theme/', 'theme/')
+  .replace('</head>', '<script src="theme/mathjax-config.js"></script>\n<script src="theme/vendor/mathjax/tex-svg.js"></script>\n</head>')
+  .replace('<p>The first slide.</p>', '<p>The first slide.</p>\n      <p>where \\(\\tilde U\\) is the effective potential.</p>');
+
+for (const rate of [1, 6]) {
+  test(`an apply of one character into the text element with a formula in which the person types costs less than two opens, and grows little with the deck, with the CPU throttled ${rate} times`, { timeout: 300000 }, async (t) => {
+    const pages = [];
+    t.after(() => Promise.all(pages.map((p) => p.close())));
+    pages.push(await editorPage(browser));
+    pages.push(await editorPage(browser, { deck: freshDeck(t, SMALL), text: SMALL }));
+    const decks = [['test-deck.html', 'Equations are first class'], ['a deck of three slides', 'Shown']];
+    let found = '';
+    for (let round = 1; round <= 3; round++) {
+      const times = [];
+      for (const [i, page] of pages.entries()) {
+        await front(page);
+        await showSlide(page, decks[i][1]);
+        await page.send('Emulation.setCPUThrottlingRate', { rate });
+        try {
+          times.push(await measure(page, 'effective potential.', FORMULA));
+        } finally {
+          await page.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        }
+        assert.ok(times[i], `${decks[i][0]}: the apply did not need a reload, and kept the keys typed`);
+      }
+      const [deck, small] = times;
+      found = `${deck.apply.toFixed(1)} ms on test-deck.html against ${small.apply.toFixed(1)} ms on a deck of three slides, and an open of test-deck.html in ${deck.open.toFixed(1)} ms`;
+      t.diagnostic(`round ${round}: an apply in ${found}`);
+      if (deck.apply <= 10 * Math.max(small.apply, 0.1) && deck.apply <= 2 * deck.open) return;
+    }
+    assert.fail(`an apply in ${found}, in each of three rounds`);
+  });
 }

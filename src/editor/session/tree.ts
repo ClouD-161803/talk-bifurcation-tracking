@@ -3,27 +3,18 @@
 // into source.text, hence the ranges after a change are moved by the change of its length
 
 import { RAW_TEXT, tokenize, type Range, type Token } from '../tokens.ts';
-import { contentRange, elementRange, segmentsOf, VOID, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
+import { contentRange, decode, elementRange, segmentsOf, VOID, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
 import { fragmentRoot, parseFragment } from '../model/fragments.ts';
 import { isTextElement, type Pairing } from '../render.ts';
+import { shared } from '../merge.ts';
 
 // the part in which two texts differ: a and b are equal before start, and a after endA is equal
 // to b after endB
 export type Window = { start: number; endA: number; endB: number };
 
-// the length of the slices compared before the texts are compared character by character
-const CHUNK = 2048;
-
 export function windowOf(a: string, b: string): Window | null {
   if (a === b) return null;
-  const n = Math.min(a.length, b.length);
-  let s = 0;
-  while (s + CHUNK <= n && a.slice(s, s + CHUNK) === b.slice(s, s + CHUNK)) s += CHUNK;
-  while (s < n && a.charCodeAt(s) === b.charCodeAt(s)) s += 1;
-  const most = n - s;
-  let t = 0;
-  while (t + CHUNK <= most && a.slice(a.length - t - CHUNK, a.length - t) === b.slice(b.length - t - CHUNK, b.length - t)) t += CHUNK;
-  while (t < most && a.charCodeAt(a.length - 1 - t) === b.charCodeAt(b.length - 1 - t)) t += 1;
+  const [s, t] = shared(a, b);
   return { start: s, endA: a.length - t, endB: b.length - t };
 }
 
@@ -157,16 +148,17 @@ export function retag(source: Source, el: SrcEl, text: string, t = startTag(sour
 const PRE_LIKE = new Set(['pre', 'textarea', 'listing']);
 
 // the text node at index of parent as the parser reads it from text, a text that differs from
-// source.text only inside the bytes of this node: its decoded text, or null when the change is not
-// one of plain characters, e.g. a character reference, a tag, or a node made empty
+// source.text only inside the bytes of this node: its decoded text, with each character reference
+// decoded as at the parse of the file, or null when the change is a tag or a node made empty
 export function decodedIn(parent: SrcEl, index: number, text: string, d: number): string | null {
   const k = parent.children[index];
   if (k?.kind !== 'text' || RAW_TEXT.has(parent.tag)) return null;
   const raw = text.slice(k.range.start, k.range.end + d);
-  if (raw.includes('<') || raw.includes('&')) return null;
+  if (raw.includes('<')) return null;
   const lead = index === 0 && PRE_LIKE.has(parent.tag) ? (/^\r?\n/.exec(raw)?.[0].length ?? 0) : 0;
   if (lead !== k.lead) return null;
-  const decoded = raw.slice(lead).replace(/\r\n?/g, '\n');
+  const plain = raw.slice(lead).replace(/\r\n?/g, '\n');
+  const decoded = plain.includes('&') ? decode(plain) : plain;
   return decoded ? decoded : null;
 }
 

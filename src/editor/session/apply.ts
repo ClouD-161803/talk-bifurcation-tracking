@@ -7,7 +7,7 @@
 // the work is planned before the page is changed, and a change that cannot be planned is a reload
 
 import type { App } from '../app.ts';
-import { mathLookup, setContentWithTex, type MathInfo, type MathLookup } from '../math.ts';
+import { mathIn, mathLookup, setContentWithTex, type MathLookup } from '../math.ts';
 import { media } from '../media/store.ts';
 import { detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, type Pairing, type TextElement } from '../render.ts';
 import { contentRange, elementRange, parseSource, VOID, type Piece, type Source, type SrcEl, type SrcText } from '../source.ts';
@@ -15,6 +15,7 @@ import { stateOf } from '../tags.ts';
 import { RAW_TEXT, type Attr } from '../tokens.ts';
 import { caretOf, mapOffset, putCaret, textIn } from './caret.ts';
 import { refreshHeads } from '../history.ts';
+import { charEdits } from '../merge.ts';
 import { atPath, closing, decodedIn, graft, liveChild, pathOf, retag, retext, startTag, textAt, type Spot, type Window } from './tree.ts';
 
 export const NO_MATH: MathLookup = () => null;
@@ -67,19 +68,6 @@ const done = (ctx: Ctx, structural: boolean, caret: (() => void) | null): Done =
   };
 };
 
-type Jax = { MathJax?: { startup?: { document?: { getMathItemsWithin(els: Element[]): { typesetRoot?: Element; math: string; display: boolean; start: { delim?: string }; end: { delim?: string } }[] } } } };
-
-// the formulas of el, read from MathJax for el alone, since mathLookup() reads those of the whole
-// deck, which is too slow for an apply at each character typed
-function lookupFor(el: Element): MathLookup {
-  if (!el.querySelector('mjx-container')) return NO_MATH;
-  const doc = (window as unknown as Jax).MathJax?.startup?.document;
-  if (!doc) return mathLookup();
-  const map = new Map<Element, MathInfo>();
-  for (const item of doc.getMathItemsWithin([el])) if (item.typesetRoot) map.set(item.typesetRoot, { tex: item.math, display: item.display, open: item.start.delim ?? '', close: item.end.delim ?? '' });
-  return (e) => map.get(e) ?? null;
-}
-
 // a text of the page reads as the text of the file, where a space typed at the end of a line is a
 // no-break space on the page, as render.ts writes it
 const sameText = (live: string, file: string): boolean => live === file || (!file.includes(' ') && live.replace(/ /g, ' ') === file);
@@ -87,7 +75,7 @@ const sameText = (live: string, file: string): boolean => live === file || (!fil
 // the caret of the person in host, put back at its character after the content of host is set
 function keepCaret(app: App, host: Element): ((after: boolean) => void) | null {
   if (app.caretHost() !== host) return null;
-  const before = caretOf(host, lookupFor(host));
+  const before = caretOf(host, mathIn(host));
   if (!before) return null;
   let inputs = -1;
   return (after) => {
@@ -95,8 +83,9 @@ function keepCaret(app: App, host: Element): ((after: boolean) => void) | null {
     // after MathJax, the caret is put back only when the person did not type meanwhile
     if (after && inputs !== typed) return;
     inputs = typed;
-    const math = lookupFor(host);
-    putCaret(host, mapOffset(before.offset, before.text, textIn(host, math)), math);
+    const math = mathIn(host);
+    const text = textIn(host, math);
+    putCaret(host, mapOffset(before.offset, before.text, text), math, mapOffset(before.anchor, before.text, text));
   };
 }
 
@@ -136,7 +125,7 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   if (!at) return false;
   const d = ctx.text.length - ctx.source.text.length;
   const decoded = decodedIn(at.parent, at.index, ctx.text, d);
-  const math = lookupFor(textEl.live);
+  const math = mathIn(textEl.live);
   const host = decoded === null ? null : liveIn(textEl, at.parent, math);
   if (decoded === null || (!/\S/.test(decoded) && at.parent === textEl.src && (textEl.src.tag === 'div' || textEl.src.tag === 'span')) || !host) return false;
   const k = at.parent.children[at.index] as SrcText;
@@ -155,10 +144,15 @@ function inPlace(ctx: Ctx, textEl: TextElement, w: Window): boolean {
   const lp = item.pieces[j];
   if (j < 0 || lp.kind !== 'text') return false;
   const was = old.slice(piece.dec.start, piece.dec.end);
-  const now = was.slice(0, p - piece.dec.start) + ins + was.slice(p - piece.dec.start + cut);
-  // a dollar or a backslash may start a formula, which MathJax then typesets
-  if (/[$\\]/.test(now) || !sameText(lp.node.data, was)) return false;
-  lp.node.replaceData(p - piece.dec.start, cut, ins);
+  const q = p - piece.dec.start;
+  const now = was.slice(0, q) + ins + was.slice(q + cut);
+  // a dollar or a backslash typed, removed, or beside the change may start a formula, which MathJax
+  // then typesets. one that the change leaves apart already failed to start one
+  if (/[$\\]/.test(ins + was.slice(q, q + cut) + (now[q - 1] ?? '') + (now[q + ins.length] ?? '')) || !sameText(lp.node.data, was)) return false;
+  // one replaceData per edit, from the last, keeps a caret between two edits at its characters. a
+  // caret at an insertion stays before it, hence two people who take turns at one point each keep a
+  // run of their own
+  for (const e of (charEdits(was, now, 500) ?? [{ start: q, end: q + cut, text: ins }]).reverse()) lp.node.replaceData(e.start, e.end - e.start, e.text);
   const grow = ins.length - cut;
   k.pieces = k.pieces.map((q, i) => (i < j ? q : i === j ? { kind: 'text', dec: { start: q.dec.start, end: q.dec.end + grow } } : shiftPiece(q, grow)));
   retext(ctx.source, at.parent, at.index, ctx.text, decoded);
@@ -426,7 +420,7 @@ function checkText(ctx: Ctx, live: Element): boolean {
   const textEl = ctx.pairing.byLive.get(live);
   if (!textEl || !isTextElement(textEl.src)) return false;
   const range = contentRange(textEl.src);
-  return !!range && ctx.source.text === ctx.text && renderTextElement(ctx.source, textEl, lookupFor(live), ctx.app.tagEdits) === ctx.text.slice(range.start, range.end);
+  return !!range && ctx.source.text === ctx.text && renderTextElement(ctx.source, textEl, mathIn(live), ctx.app.tagEdits) === ctx.text.slice(range.start, range.end);
 }
 
 // a unit of a container in the plan of its new children: one kept, possibly moved, one placed from
@@ -661,7 +655,7 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   const current = app.current();
   const at = current && deck ? deck.getIndices(current) : null;
   const host = pl.caretHost;
-  const caret = host ? caretOf(host, lookupFor(host)) : null;
+  const caret = host ? caretOf(host, mathIn(host)) : null;
   const problems = ctx.pairing.problems.length;
   for (const d of pl.drops) {
     if (reused.has(d.node)) {
@@ -695,8 +689,9 @@ function structural(ctx: Ctx, el: SrcEl, live: Element): Done | null {
   const put = () => {
     if (!host?.isConnected || !caret) return;
     if (app.caretHost() === host && !ctx.hosts.includes(host)) return;
-    const m = lookupFor(host);
-    putCaret(host, mapOffset(caret.offset, caret.text, textIn(host, m)), m);
+    const m = mathIn(host);
+    const text = textIn(host, m);
+    putCaret(host, mapOffset(caret.offset, caret.text, text), m, mapOffset(caret.anchor, caret.text, text));
   };
   put();
   if (ctx.reordered.size) app.history.prune(() => false, () => false, (el) => ctx.reordered.has(el));

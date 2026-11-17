@@ -5,7 +5,7 @@
 // the operation ordered first comes first. an insertion at the start of a replaced range comes
 // before the new text of the range, and one at its end after it
 
-import { changes, moves } from '../editor/merge.ts';
+import { changes, fine, moves, nest } from '../editor/merge.ts';
 import { tokenize, type Token } from '../editor/tokens.ts';
 import type { Patch } from './protocol.ts';
 
@@ -143,13 +143,33 @@ export function combine(first: Patch[], second: Patch[]): Patch[] {
   return out;
 }
 
+// the patches of one operation of base with each that conflicts with a patch of the other given
+// as the edits that fine() finds in it, since a patch spans a line from its first change to its
+// last, e.g. a format and a key of the same operation further on the line. a patch is kept whole
+// when one of these edits is not inside it, since fine() finds the removal of a line some characters
+// further on when the next line starts with the same characters
+function finer(base: string, patches: Patch[], other: Patch[]): Patch[] {
+  return patches.flatMap((p) => {
+    if (!other.some((o) => conflict(p, o))) return [p];
+    const edits = fine(base, apply(base, [p]));
+    return edits.every((e) => p.start <= e.start && e.end <= p.end) ? edits : [p];
+  });
+}
+
 // the patches of theirs and ours, two operations of one text, in one operation, where a patch of
 // the side that wins is kept at a conflict and the patches of the other side that it conflicts
 // with are left out. theirs is ordered first at a tie. conflicts are the patches of ours that
-// conflict with a patch of theirs. with the text base of both, a move of either side that conflicts
-// is left out whole, see mergeEdits(), apart from a move of the side keep, which the dialog after a
-// break decides
-export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, keep?: 'ours' | 'theirs' | false): { patches: Patch[]; conflicts: Patch[] } {
+// conflict with a patch of theirs. with base, the text of both operations, a move of either side
+// that conflicts is left out whole, see mergeEdits(), apart from a move of the side keep, which the
+// dialog after a break decides, and with nested as well, a format of one side and the edits of plain
+// text of the other side inside its run do not conflict, and both are kept, see nest()
+export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'theirs' = 'ours', base?: string, nested = true, keep?: 'ours' | 'theirs' | false): { patches: Patch[]; conflicts: Patch[] } {
+  if (base !== undefined && nested) {
+    // the finer edits are taken only when none of them conflicts, since the letters of one word
+    // replaced on both sides would be mixed
+    const [t, o] = nest(base, finer(base, theirs, ours), finer(base, ours, theirs), true);
+    [theirs, ours] = t.some((p) => o.some((q) => conflict(p, q))) ? nest(base, theirs, ours, true) : [t, o];
+  }
   // both lists are sorted, hence the patches of theirs near a patch of ours are found in one walk,
   // as in shift()
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
@@ -165,7 +185,7 @@ export function mergePatches(theirs: Patch[], ours: Patch[], wins: 'ours' | 'the
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
   const gone = new Set(!base ? [] : ([[ours, theirs, 'ours'], [theirs, ours, 'theirs']] as const).flatMap(([a, b, s]) => (keep === s ? [] : moves(base, a, b, conflict))));
-  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, keep).patches, conflicts };
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, false, keep).patches, conflicts };
   const keptTheirs = wins === 'ours' ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === 'ours' ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };

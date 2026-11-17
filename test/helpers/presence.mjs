@@ -1,4 +1,4 @@
-// helpers of the browser tests of presence and the floor rule, test/session-floor.test.mjs and
+// helpers of the browser tests of presence and the holds, test/session-floor.test.mjs and
 // test/session-layer.test.mjs: a session of pages on the edit command, the elements of its deck,
 // what the layer of presence draws, and the bubble of a refusal
 
@@ -14,8 +14,26 @@ export const P = 'window.BeesonSession.presence()';
 export const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 
 export const BUBBLE = `document.querySelector('.beeson-bubble')?.textContent ?? null`;
-export const REFUSED = 'Ana is typing here. You can edit this text once they leave it or stop for 30 s.';
-export const LOCKED = (expression) => `${expression}.classList.contains('beeson-held')`;
+export const REFUSED = 'Ana is typing here. You can do this once they leave it or stop for 30 s.';
+// the name of the person who holds the element of expression, or null
+export const HOLDER = (expression) => `(${P}.holderOf(${expression})?.name ?? null)`;
+/**
+ * The holds on page kept however long a test takes: the time at which page last heard each person
+ * active no longer changes, hence a person holds the text element of their caret until the caret
+ * leaves it, and neither the clock of page nor a state of the person ends the hold.
+ */
+export async function keep(page) {
+  const kept = await page.evaluate(`(() => {
+    let n = 0;
+    for (const o of ${P}.others.values()) {
+      if (typeof o.activeAt !== 'number') continue;
+      Object.defineProperty(o, 'activeAt', { get: () => Infinity, set() {} });
+      n++;
+    }
+    return n;
+  })()`);
+  assert.ok(kept > 0, 'the page heard a person whose holds are kept');
+}
 // the bubble of page cleared, so that the next one can be told from it
 export const unbubble = (page) => page.evaluate(`document.querySelector('.beeson-bubble')?.remove()`);
 
@@ -77,21 +95,6 @@ export async function untilDrawn(page, holds, what) {
     return holds(d) ? d : null;
   }, what);
 }
-
-// the states that page sends are held back until release(), which sends the last
-export const hold = (page) => page.evaluate(`(() => {
-  const c = ${C};
-  window.__send = c.sendPresence.bind(c);
-  window.__held = [];
-  c.sendPresence = (s) => window.__held.push(s);
-})()`);
-export const release = (page) => page.evaluate(`(() => {
-  const c = ${C};
-  c.sendPresence = window.__send;
-  const s = window.__held.at(-1);
-  if (s) c.sendPresence(s);
-  return s ?? null;
-})()`);
 
 // the caret of page taken out of every text
 export const leave = (page) => page.evaluate(`(() => { document.activeElement?.blur(); getSelection().removeAllRanges(); })()`);

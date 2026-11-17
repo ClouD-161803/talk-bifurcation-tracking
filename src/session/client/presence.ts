@@ -1,8 +1,8 @@
-// the presence of each page of a session: its slide, its selected elements, its caret, and the
-// text element that it holds, sent as offsets of the text of the authority at a version, and read
-// back by every other page as its own elements, for layer.ts, the avatars, and the navigator. the
-// floor rule, which lets one person at a time type in a text element, is decided here, and
-// floor.ts refuses the actions on a held element.
+// the presence of each page of a session: its slide, its selected elements, and its caret, sent as
+// offsets of the text of the authority at a version, and read back by every other page as its own
+// elements, for layer.ts, the avatars, and the navigator. another person holds a text element
+// while their caret is in it and they were active in the last IDLE ms, and floor.ts refuses the
+// commands of this page that would move, delete, split, retag, or replace a held element.
 //
 // an offset is carried twice. the sender carries it from the source of its port, which offsetOf
 // refers to, to the text of the authority at v. the receiver carries it through the operations
@@ -14,33 +14,34 @@
 import type { AppliedOp, Patch, Version } from '../protocol.ts';
 import { parseVersion } from '../protocol.ts';
 import { apply, diff } from '../patch.ts';
+import type { Caret } from '../../editor/session/presence.ts';
 import type { Client } from './client.ts';
 
 export type PresenceState = {
   v: Version;
   slide: number | null;
   selected: number[];
-  caret: { el: number; at: number } | null;
+  // the focus and the anchor of the selection in the text element at el, with the text on each side
+  // of the focus, see shapes() of the editor
+  caret: (Omit<Caret, 'el'> & { el: number }) | null;
   typing: boolean;
+  // the person typed or moved the caret to another element in the last IDLE ms, by the clock of the
+  // page, which a page that first hears the state holds by
+  active: boolean;
   following: string | null;
   mode: 'edit' | 'present' | 'history';
-  held: number | null;
   // the page is hidden, e.g. in a tab behind another
   away: boolean;
-  // counts the heartbeats of a hold, since the edit command relays a state without a time, and a
-  // state sent again unchanged cannot be told from the last one
-  beat: number;
 };
 
-export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret' | 'held'> & {
+export type Resolved = Omit<PresenceState, 'slide' | 'selected' | 'caret'> & {
   client: string;
   person: string;
   name: string;
   color: number;
   slide: Element | null;
   selected: Element[];
-  caret: { el: Element; at: number } | null;
-  held: Element | null;
+  caret: Caret | null;
 };
 
 // in ms: the shortest gap between two states sent for a change of offsets alone, the rest of the
@@ -52,10 +53,8 @@ const TYPING = 2000;
 // just before or just after its bye, and a state that reaches the edit command after the bye
 // brings the page back
 const HIDING = 1000;
-// in ms, the floor rule of UI.md section 3: the heartbeat of a hold, the silence after which a hold
-// is lost, and the time without typing after which another person may take the element
-const BEAT = 5000;
-const STALE = 15000;
+// in ms, the time after which a person who neither typed nor moved the caret to another element
+// does not hold the element of the caret
 const IDLE = 30000;
 // the operations kept for carrying an offset, and the farthest that a change is slid
 const LOG = 256;
@@ -63,6 +62,8 @@ const SLIDE = 4096;
 // a state is sent again with the newest version when the one sent is this many operations behind
 const BEHIND = 64;
 const MAX_SELECTED = 500;
+// the characters on each side of a caret that a state keeps, as selectionIn() of the editor reads them
+const NEAR = 12;
 
 // a change of the text, as it moves an offset: an offset at hi or after it moves by delta, an
 // offset in lo to hi is in doubt, and one before lo stays
@@ -203,15 +204,17 @@ class Changes {
   }
 }
 
-// the state of another page as this page last heard it, with the times of this page at which it
-// was heard, and at which the page was last seen typing or began its hold
+// the state of another page as this page last heard it, with the time of this page at which the
+// page was last seen typing or moving its caret to another element. a page that this page first
+// hears is active when its state says so, since its caret may have rested for long
 type Other = {
   raw: string;
   // the offsets and their version, whose change reads the elements again
   key: string;
   state: PresenceState;
-  heardAt: number;
   activeAt: number;
+  // the time of this page at which the page was last heard typing
+  typedAt: number;
   resolved: Resolved | null;
   // the key under which the elements of resolved were read, which an offset in doubt keeps
   resolvedKey: string;
@@ -225,35 +228,34 @@ function parseState(raw: unknown): PresenceState | null {
   if (!raw || typeof raw !== 'object') return null;
   const s = raw as Record<string, unknown>;
   if (typeof s.v !== 'string' || !parseVersion(s.v)) return null;
-  const caret = s.caret as { el?: unknown; at?: unknown } | null;
+  const caret = s.caret as { el?: unknown; at?: unknown; from?: unknown; pre?: unknown; post?: unknown } | null;
+  // the characters next to the caret, i.e. the end of pre and the start of post
+  const near = (t: unknown, end: boolean): string => (typeof t !== 'string' ? '' : end ? t.slice(Math.max(0, t.length - NEAR)) : t.slice(0, NEAR));
   const mode = s.mode === 'present' || s.mode === 'history' ? s.mode : 'edit';
   return {
     v: s.v,
     slide: isInt(s.slide) ? s.slide : null,
     selected: Array.isArray(s.selected) ? s.selected.filter(isInt).slice(0, MAX_SELECTED) : [],
-    caret: caret && typeof caret === 'object' && isInt(caret.el) && isInt(caret.at) ? { el: caret.el, at: caret.at } : null,
+    caret: caret && typeof caret === 'object' && isInt(caret.el) && isInt(caret.at) ? { el: caret.el, at: caret.at, from: isInt(caret.from) ? caret.from : caret.at, pre: near(caret.pre, true), post: near(caret.post, false) } : null,
     typing: s.typing === true,
+    active: s.active === true,
     following: typeof s.following === 'string' ? s.following : null,
     mode,
-    held: isInt(s.held) ? s.held : null,
-    beat: isInt(s.beat) ? s.beat : 0,
     away: s.away === true,
   };
 }
 
-const keyOf = (s: PresenceState): string => JSON.stringify([s.v, s.slide, s.selected, s.caret?.el ?? null, s.held]);
+const keyOf = (s: PresenceState): string => JSON.stringify([s.v, s.slide, s.selected, s.caret?.el ?? null]);
 
 export class Presence {
   readonly client: Client;
-  // added to performance.now(), e.g. by a test that moves the clock of the floor rule. the clock of
-  // the machine is not read, since it can be set back
+  // added to performance.now(), e.g. by a test that moves the clock of the holds. the clock of the
+  // machine is not read, since it can be set back
   skew = 0;
   private readonly log = new Log();
   private readonly changes = new Changes();
   private readonly others = new Map<string, Other>();
   private list: Resolved[] = [];
-  private locked = new Map<Element, Resolved>();
-  private readonly lockListeners = new Set<(why: { yielded: Resolved | null; refused: Resolved | null }) => void>();
 
   // what this page sends
   private fields: { following: string | null; mode: PresenceState['mode'] } = { following: null, mode: 'edit' };
@@ -267,16 +269,15 @@ export class Presence {
   private restTimer = 0;
   private typingTimer = 0;
   private typedAt = -Infinity;
+  private idleTimer = 0;
+  private activeAt = -Infinity;
   private caretHost: Element | null = null;
-  private at = 0;
-  private holding: Element | null = null;
-  private holdAt = 0;
-  private beat = 0;
-  private beatAt = 0;
-  private ticker = 0;
-  // the source and the version of the base after the last time that the port read the deck into
-  // its source for an offset, and whether it reads it now
-  private refreshed: { source: string | null; v: Version | undefined } | null = null;
+  private selection: Omit<Caret, 'el'> = { at: 0, from: 0, pre: '', post: '' };
+  // the source and the count of the changes of the deck after the last time that the port read the
+  // deck into its source for an offset, and whether it reads it now
+  private refreshed: { source: string | null; edits: number } | null = null;
+  // the count of the changes of the deck by the person
+  private edits = 0;
   private refreshing = false;
   private seen = new Set<string>();
   // a page joined since the end of the last drive
@@ -293,11 +294,12 @@ export class Presence {
     client.on('presence', () => this.hear());
     const based = () => {
       if (!this.log.seeded || (client.base && this.log.behind(client.base.v))) this.seedLog();
-      this.lost();
       this.reread();
       this.due(false);
     };
     client.on('applied', based);
+    // an apply that changes the deck changes the source as well
+    client.port.onChange(() => this.edits++);
     // the base moved without an apply, e.g. at the broadcast of an operation of this page, which
     // can carry an offset that this operation put in doubt, or reach a state of another page
     client.on('settled', (moved) => {
@@ -334,15 +336,15 @@ export class Presence {
       }
       joined = true;
     });
-    // after the end of the session nothing is held or locked, and no timer runs
+    // after the end of the session nothing is held, and no timer runs
     client.on('ended', () => {
       this.others.clear();
-      this.holding = null;
       this.caretHost = null;
       clearTimeout(this.timer);
       clearTimeout(this.restTimer);
       clearTimeout(this.typingTimer);
-      this.timer = this.restTimer = this.typingTimer = 0;
+      clearTimeout(this.idleTimer);
+      this.timer = this.restTimer = this.typingTimer = this.idleTimer = 0;
       this.publish();
     });
     app.selection.listen(() => this.moved());
@@ -368,30 +370,22 @@ export class Presence {
     return this.list;
   }
 
-  // the page that holds el against this page, while el is locked
-  holder(el: Element): Resolved | null {
-    return this.locked.get(el) ?? null;
+  // the elements that other people hold, i.e. their caret elements while they were active in the
+  // last IDLE ms, read now
+  get holds(): ReadonlyMap<Element, Resolved> {
+    const t = this.now();
+    const holds = new Map<Element, Resolved>();
+    for (const o of this.others.values()) {
+      const el = o.resolved?.caret?.el;
+      if (el?.isConnected && t - o.activeAt < IDLE && !holds.has(el)) holds.set(el, o.resolved!);
+    }
+    return holds;
   }
 
-  // the page that holds a locked element that el is or lies in, or with containing, that el holds
-  lockOf(el: Element, containing = true): Resolved | null {
-    for (const [held, by] of this.locked) if (held.contains(el) || (containing && el.contains(held))) return by;
+  // the holder of el or of an element that contains el, or with containing, of an element in el
+  holderOf(el: Element, containing = true): Resolved | null {
+    for (const [at, by] of this.holds) if (at.contains(el) || (containing && el.contains(at))) return by;
     return null;
-  }
-
-  get locks(): ReadonlyMap<Element, Resolved> {
-    return this.locked;
-  }
-
-  // the text element that this page holds
-  get held(): Element | null {
-    return this.holding;
-  }
-
-  // called after the locks changed, with the page that this page yielded a text element to, or
-  // that it lost a tie to
-  onLocks(fn: (why: { yielded: Resolved | null; refused: Resolved | null }) => void): void {
-    this.lockListeners.add(fn);
   }
 
   // e.g. by the part that follows a person
@@ -400,26 +394,6 @@ export class Presence {
     // the selection is read now, since its selectionchange comes after this state
     this.moved();
     this.due(true);
-  }
-
-  // a hold of an element that left the page ends, e.g. after another person deleted it
-  private lost(): void {
-    if (!this.holding || this.holding.isConnected) return;
-    this.caretHost = null;
-    this.hold(null);
-    this.due(true);
-  }
-
-  // the deadlines of the floor rule taken now, e.g. by a test after it moved skew
-  check(): void {
-    this.lost();
-    const t = this.now();
-    if (this.holding && t - this.beatAt >= BEAT) {
-      this.beat++;
-      this.beatAt = t;
-      this.due(true);
-    }
-    this.floor();
   }
 
   private seedLog(): void {
@@ -442,8 +416,8 @@ export class Presence {
     clearTimeout(this.restTimer);
     this.restTimer = 0;
     if (!same) {
+      if (host && host !== this.caretHost) this.active();
       this.caretHost = host;
-      this.hold(host);
       this.due(true);
     } else if (host) this.restTimer = window.setTimeout(() => this.due(true), REST);
   }
@@ -453,21 +427,17 @@ export class Presence {
     const t = this.now();
     const was = t - this.typedAt < TYPING;
     this.typedAt = t;
+    this.active();
     clearTimeout(this.typingTimer);
     this.typingTimer = window.setTimeout(() => this.due(true), TYPING);
     this.due(!was);
   }
 
-  // the hold of host begins, or the hold ends when host is null. a locked host is not held, since
-  // floor.ts takes the caret out of it
-  private hold(host: Element | null): void {
-    if (host && this.locked.has(host)) host = null;
-    if (host === this.holding) return;
-    this.holding = host;
-    const t = this.now();
-    this.holdAt = t;
-    this.beatAt = t;
-    this.tick();
+  // the state is sent again when the person stops being active
+  private active(): void {
+    this.activeAt = this.now();
+    clearTimeout(this.idleTimer);
+    this.idleTimer = window.setTimeout(() => this.due(true), IDLE);
   }
 
   // a state is sent now, or for a change of offsets alone at most every THROTTLE ms
@@ -504,7 +474,7 @@ export class Presence {
     const was = this.sentV;
     const carried = (o: number | null): boolean => o === null || (!!was && this.log.carry(o, was, v.n) === o);
     const last = this.sent;
-    if (key === this.sentKey && was && was.epoch === v.epoch && v.n - was.n < BEHIND && last && [last.slide, ...last.selected, last.caret?.el ?? null, last.held].every(carried)) return;
+    if (key === this.sentKey && was && was.epoch === v.epoch && v.n - was.n < BEHIND && last && [last.slide, ...last.selected, last.caret?.el ?? null].every(carried)) return;
     this.sentKey = key;
     this.sentV = v;
     this.sent = state;
@@ -530,29 +500,29 @@ export class Presence {
       return c;
     };
     const host = this.caretHost?.isConnected ? this.caretHost : null;
-    if (host) this.at = shell.presence.caretIn(host) ?? this.at;
+    if (host) this.selection = shell.presence.selectionIn(host) ?? this.selection;
     const caretEl = offset(host);
     const typing = this.now() - this.typedAt < TYPING && !!host;
     return {
       v: base.v,
       slide: offset(app.current()),
       selected: this.selectedNow().map(offset).filter((o): o is number => o !== null),
-      caret: caretEl === null ? null : { el: caretEl, at: this.at },
+      caret: caretEl === null ? null : { el: caretEl, ...this.selection },
       typing,
+      active: this.now() - this.activeAt < IDLE,
       following: this.fields.following,
       mode: this.fields.mode,
-      held: this.holding && this.holding === host ? caretEl : null,
-      beat: this.beat,
       away: document.visibilityState === 'hidden',
     };
   }
 
-  // the deck read into the source of the port, once for a source and a version of the base
+  // the deck read into the source of the port, once for a source and a deck. an operation of
+  // another page that leaves the deck as it is does not read it again
   private refresh(): void {
     const { client } = this;
-    const now = () => ({ source: client.shell.presence.source(), v: client.base?.v });
+    const now = () => ({ source: client.shell.presence.source(), edits: this.edits });
     const at = now();
-    if (this.refreshing || (this.refreshed?.source === at.source && this.refreshed.v === at.v)) return;
+    if (this.refreshing || (this.refreshed?.source === at.source && this.refreshed.edits === at.edits)) return;
     this.refreshing = true;
     void client.port.rebase().catch(() => {}).then(() => {
       this.refreshing = false;
@@ -583,18 +553,23 @@ export class Presence {
       const raw = JSON.stringify(state);
       let o = this.others.get(p.client);
       if (o && o.raw === raw && o.resolved?.name === p.name && o.resolved?.color === p.color) continue;
+      const known = !!o;
       if (!o) {
-        o = { raw, key: '', state, heardAt: t, activeAt: t, resolved: null, resolvedKey: '', ahead: false };
+        o = { raw, key: '', state, activeAt: state.active || state.typing ? t : -Infinity, typedAt: -Infinity, resolved: null, resolvedKey: '', ahead: false };
         this.others.set(p.client, o);
       }
-      if (o.raw !== raw) o.heardAt = t;
-      if (state.typing || o.state.typing) o.activeAt = t;
-      const heldBefore = o.resolved?.held ?? null;
+      // the last key of a person who stopped typing is at most TYPING ms older than their state
+      if (state.typing || (o.state.typing && state.active)) o.typedAt = o.activeAt = t;
+      const caretBefore = o.resolved?.caret?.el ?? null;
       o.raw = raw;
       o.state = state;
       this.resolve(o, p.client, p.name, p.color);
-      // a hold begins when the page holds another element, or one after none
-      if ((o.resolved?.held ?? null) !== heldBefore) o.activeAt = t;
+      if (known && (o.resolved?.caret?.el ?? null) !== caretBefore) o.activeAt = t;
+      // a page that first heard the person during a pause holds from its own first hearing, hence
+      // a state that says idle ends the hold. a hold of a key that this page heard lasts its IDLE
+      // ms by the clock of this page, since an older state can reach the edit command after a
+      // newer one
+      if (!state.active && !state.typing) o.activeAt = o.typedAt;
       changed = true;
     }
     for (const id of [...this.others.keys()]) {
@@ -615,11 +590,11 @@ export class Presence {
     let changed = false;
     for (const [id, o] of this.others) {
       const r = o.resolved;
-      const gone = !!r && (r.selected.some((el) => !el.isConnected) || (r.slide && !r.slide.isConnected) || (r.caret && !r.caret.el.isConnected) || (r.held && !r.held.isConnected));
+      const gone = !!r && (r.selected.some((el) => !el.isConnected) || (r.slide && !r.slide.isConnected) || (r.caret && !r.caret.el.isConnected));
       if (!all && !gone && !o.ahead) continue;
       this.resolve(o, id, r?.name ?? '', r?.color ?? 0);
       // a hold that this page could not read when it heard of it begins now
-      if (!r?.held && o.resolved?.held) o.activeAt = this.now();
+      if (!r?.caret && o.resolved?.caret && (o.state.active || o.state.typing)) o.activeAt = this.now();
       changed = true;
     }
     if (changed) this.publish();
@@ -633,13 +608,13 @@ export class Presence {
     const s = o.state;
     const key = keyOf(s);
     o.key = key;
-    const offsets = [s.slide, s.held, s.caret?.el ?? null, ...s.selected];
+    const offsets = [s.slide, s.caret?.el ?? null, ...s.selected];
     const els = this.read(offsets, s.v);
     o.ahead = els === 'ahead';
     const prev = o.resolvedKey === key || o.ahead || els === null ? o.resolved : null;
     if (!o.ahead) o.resolvedKey = key;
     if (o.ahead && prev) {
-      o.resolved = { ...prev, name, color, typing: s.typing, following: s.following, mode: s.mode, beat: s.beat, away: s.away };
+      o.resolved = { ...prev, name, color, typing: s.typing, active: s.active, following: s.following, mode: s.mode, away: s.away };
       return;
     }
     const at = (i: number, before: Element | null | undefined): Element | null => {
@@ -649,10 +624,10 @@ export class Presence {
     };
     const selected: Element[] = [];
     s.selected.forEach((_, i) => {
-      const el = at(3 + i, prev?.selected[i]);
+      const el = at(2 + i, prev?.selected[i]);
       if (el && !selected.includes(el)) selected.push(el);
     });
-    const caretEl = at(2, prev?.caret?.el);
+    const caretEl = at(1, prev?.caret?.el);
     o.resolved = {
       client: id,
       person: client.people.find((p) => p.client === id)?.person ?? '',
@@ -661,12 +636,11 @@ export class Presence {
       v: s.v,
       slide: at(0, prev?.slide),
       selected,
-      caret: caretEl && s.caret ? { el: caretEl, at: s.caret.at } : null,
+      caret: caretEl && s.caret ? { ...s.caret, el: caretEl } : null,
       typing: s.typing,
+      active: s.active,
       following: s.following,
       mode: s.mode,
-      held: at(1, prev?.held),
-      beat: s.beat,
       away: s.away,
     };
   }
@@ -694,52 +668,8 @@ export class Presence {
     return els;
   }
 
-  // the floor rule: the locks of this page, and whether it yields the text element that it holds
-  private floor(): void {
-    const t = this.now();
-    const locked = new Map<Element, Resolved>();
-    let yielded: Resolved | null = null;
-    let refused: Resolved | null = null;
-    const ids = [...this.others.keys()].sort();
-    for (const id of ids) {
-      const o = this.others.get(id)!;
-      const r = o.resolved;
-      if (!r?.held || !r.held.isConnected || t - o.heardAt >= STALE) continue;
-      const theirIdle = t - o.activeAt >= IDLE;
-      if (this.holding === r.held) {
-        if (theirIdle) continue;
-        const mine = Math.max(this.holdAt, this.typedAt);
-        // both pages hold it. this page yields it after IDLE ms without typing, and else the
-        // smaller client id keeps it, which both pages agree on however late they hear each other
-        if (t - mine >= IDLE) yielded = r;
-        else if (id < this.client.client) refused = r;
-        else continue;
-        locked.set(r.held, r);
-      } else if (!theirIdle && !locked.has(r.held)) locked.set(r.held, r);
-    }
-    const before = this.locked;
-    this.locked = locked;
-    for (const el of before.keys()) if (!locked.has(el)) el.classList.remove('beeson-held');
-    for (const el of locked.keys()) el.classList.add('beeson-held');
-    if (yielded || refused) this.hold(null);
-    const same = before.size === locked.size && [...locked].every(([el, r]) => before.get(el) === r);
-    if (!same || yielded || refused) for (const fn of [...this.lockListeners]) fn({ yielded, refused });
-    this.tick();
-  }
-
-  // the heartbeat and the deadlines run while a hold or a claim of another page is known
-  private tick(): void {
-    const needed = !!this.holding || [...this.others.values()].some((o) => o.resolved?.held);
-    if (needed && !this.ticker) this.ticker = window.setInterval(() => this.check(), 1000);
-    else if (!needed && this.ticker) {
-      clearInterval(this.ticker);
-      this.ticker = 0;
-    }
-  }
-
   private publish(): void {
     this.list = [...this.others.values()].map((o) => o.resolved).filter((r): r is Resolved => !!r);
-    this.floor();
     this.client.emit('resolved');
   }
 }

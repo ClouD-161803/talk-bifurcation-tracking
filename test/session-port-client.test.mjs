@@ -15,7 +15,7 @@ import { until } from './helpers/session.mjs';
 const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > section')[${slide}].querySelector(${JSON.stringify(selector)})`;
 const SETTLED = `(${ONLINE} && ${C}.acked()) ? ${TEXT} : null`;
 
-test('during a composition on one page, a change of index.html into the composing text is held back, the edits of both people reach the file and both pages, and the composing text takes the change at its end', { timeout: 120_000 }, async (t) => {
+test('during a composition on one page, a change of index.html into the composing text is held back, the edit of the other person reaches the file and both pages, and the composing text takes the change at its end and is sent then', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
@@ -37,9 +37,9 @@ test('during a composition on one page, a change of index.html into the composin
   let state = null;
   await until(async () => {
     const file = server.read();
-    state = { file: ['<p>Very First slideq</p>', '<li>Alpha later</li>'].map((s) => file.includes(s)), a: (await a.evaluate(SETTLED)) === file, b: (await b.evaluate(SETTLED)) === file };
+    state = { file: ['<p>Very First slide</p>', '<li>Alpha later</li>'].map((s) => file.includes(s)), a: (await a.evaluate(SETTLED)) === file, b: (await b.evaluate(SETTLED)) === file };
     return state.file.every(Boolean) && state.a && state.b;
-  }, 'the edits of both people to reach the file and both pages during the composition').catch((e) => assert.fail(`${e.message}: ${JSON.stringify(state)}`));
+  }, 'the edit of b to reach the file and both pages during the composition, without the composing text').catch((e) => assert.fail(`${e.message}: ${JSON.stringify(state)}`));
   assert.deepEqual(await a.evaluate(`[${el(0, 'p')}.textContent, ${el(1, 'li')}.textContent]`), ['First slideq', 'Alpha later'], 'the composing text of a is left as it is, and the other text takes the edit of b');
   await a.evaluate(`${el(0, 'p')}.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '' }))`);
   const end = await converge(server, [a, b]);

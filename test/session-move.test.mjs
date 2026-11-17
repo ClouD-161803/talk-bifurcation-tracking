@@ -73,7 +73,7 @@ async function start(t, held, { edits = [], before }) {
   await typeKeys(other, ' 1');
   await converge(server, pages);
   await leave(other);
-  await until(() => page.evaluate(`${P}.locks.size === 0`), 'the hold of the heading to end');
+  await until(() => page.evaluate(`${P}.holds.size === 0`), 'the hold of the heading to end');
   if (before) {
     await front(ben);
     assert.ok(await ben.evaluate(before));

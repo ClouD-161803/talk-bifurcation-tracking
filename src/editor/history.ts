@@ -5,22 +5,15 @@
 // and after. the typing into one text element within a short time is one entry. an undo or a redo asked
 // for while another one runs is queued, and the changes made in a transaction are one entry
 
+import { revert } from './merge.ts';
+
 // els are the elements that the entry changes, and selects is the step at which a part of a
 // transaction puts a selection back. touches are further elements that its undo or redo changes,
 // which do not take the selection after it, and detaches are the elements that its undo or its redo
-// takes off the page with everything inside them. orders are the elements whose children its undo
-// or redo puts back in an order
-// the caret put at the end of the last text of host, before the white space of the layout
-function caretAtEnd(host: Element): void {
-  const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
-  let last: Text | null = null;
-  for (let n = w.nextNode(); n; n = w.nextNode()) if ((n as Text).data.trim()) last = n as Text;
-  (host as HTMLElement).focus({ preventScroll: true });
-  if (last) getSelection()?.collapse(last, last.data.trimEnd().length);
-  else getSelection()?.collapse(host, 0);
-}
-
-export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; detaches?: readonly Element[]; orders?: readonly Element[]; selects?: 'undo' | 'redo' };
+// takes off the page with everything inside them. parents are the elements of touches whose
+// children alone its undo or redo changes, and orders are the elements whose children its undo or
+// redo puts back in an order
+export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; parents?: readonly Element[]; detaches?: readonly Element[]; orders?: readonly Element[]; selects?: 'undo' | 'redo' };
 
 type Page = { Beeson?: { refreshChrome?(): void } };
 
@@ -37,11 +30,17 @@ export function refreshHeads(host: Element): void {
 // the typing into a text element is coalesced while the keystrokes are closer than this, in ms
 const PAUSE = 1000;
 
+// thrown by the undo or the redo of typing that cannot be made over the changes of other people,
+// before the page is changed
+const REFUSED = new Error('the typing cannot be undone over the changes of others');
+
 export class History {
   private done: Entry[] = [];
   private undone: Entry[] = [];
   // the typing in progress: the text element, its content before and after, and the time of the last key
   private typing: { host: Element; state: { before: string; after: string }; entry: Entry; at: number } | null = null;
+  // the last typing of each text element, which carry() takes also after it ended
+  private readonly latest = new WeakMap<Element, NonNullable<History['typing']>>();
   private busy = false;
   private still = false;
   // the undos and redos asked for, run one after the other
@@ -55,6 +54,17 @@ export class History {
   private readonly known = new WeakMap<Element, string>();
   // the entries of each transaction, for an amend of it
   private readonly parts = new WeakMap<Entry, Entry[]>();
+  // the entries of typing that are not part of a transaction, whose undo and redo change only the
+  // typing of the person, and which a change of their text element by others does not drop, with
+  // their contents before and after
+  private readonly typed = new WeakMap<Entry, { before: string; after: string }>();
+  // the entries of typing whose carry was refused. their texts do not hold the changes of the
+  // others, hence their undo and redo are refused
+  private readonly dead = new WeakSet<Entry>();
+  // whether the text elements are changed by this person only, i.e. outside a session. an undo or a
+  // redo of typing then writes its old text as it is, also over a change that the history was not
+  // told of, which is not an edit of another person
+  private readonly alone: () => boolean;
   private readonly snapshot: (host: Element) => string;
   private readonly restore: (host: Element, content: string) => Promise<void>;
   private readonly onChange: () => void;
@@ -64,6 +74,8 @@ export class History {
   // read at the start of a transaction, the function that shows its slide again before its undo and
   // its redo, as Keynote and PowerPoint show the slide of an undone change
   private readonly view: () => (() => void) | null;
+  // called when an undo or a redo of typing is refused, e.g. to tell the person why
+  refused?: (entry: Entry, way: 'undo' | 'redo') => void;
   // the functions run at the end of each transaction, whose changes are part of it
   private readonly settlers: (() => void)[] = [];
   // the functions run after each input recorded into an entry of typing outside a transaction
@@ -71,7 +83,7 @@ export class History {
   // read before an undo or a redo, the function that selects the one element changed by its entry
   private readonly changed: () => (el: Element) => void;
 
-  constructor(options: { snapshot(host: Element): string; restore(host: Element, content: string): Promise<void>; onChange(): void; selected?(): Element[] | null; reselect?(els: Element[]): void; view?(): (() => void) | null; changed?(): (el: Element) => void }) {
+  constructor(options: { snapshot(host: Element): string; restore(host: Element, content: string): Promise<void>; onChange(): void; selected?(): Element[] | null; reselect?(els: Element[]): void; view?(): (() => void) | null; changed?(): (el: Element) => void; alone?(): boolean }) {
     this.snapshot = options.snapshot;
     this.restore = options.restore;
     this.onChange = options.onChange;
@@ -79,6 +91,7 @@ export class History {
     this.reselect = options.reselect ?? (() => {});
     this.view = options.view ?? (() => null);
     this.changed = options.changed ?? (() => () => {});
+    this.alone = options.alone ?? (() => false);
   }
 
   get canUndo(): boolean {
@@ -152,6 +165,8 @@ export class History {
 
   private record(entry: Entry): void {
     if (this.open) {
+      // a part is undone with the other parts of its transaction, hence it is never refused
+      this.typed.delete(entry);
       this.open.push(entry);
       return;
     }
@@ -267,6 +282,39 @@ export class History {
     this.known.set(host, this.snapshot(host));
   }
 
+  // track() after other people changed host, where the typing in progress goes on. its content
+  // before is given the changes of the others too, hence the keys after them are added to its
+  // entry and its undo keeps the changes. it ends when the changes overlap its keys, and its undo
+  // and redo are then refused
+  carry(host: Element): void {
+    const now = this.snapshot(host);
+    this.known.set(host, now);
+    // a typing that ended is carried while its entry is in done
+    const t = this.latest.get(host);
+    let n = now;
+    if (t && !this.dead.has(t.entry) && (t === this.typing || this.done.includes(t.entry))) {
+      const before = revert(t.state.after, t.state.before, now);
+      if (before === null) {
+        this.dead.add(t.entry);
+        if (t === this.typing) this.typing = null;
+      } else {
+        t.state.before = n = before;
+        t.state.after = now;
+      }
+    }
+    // each earlier typing of host in done, from the latest down, is refused when its undo after the
+    // undos of the typings after it would change letters of others. those past the eighth are
+    // refused unread, since a page carries a change for each key of another person
+    let k = 0;
+    for (const e of [...this.done].reverse()) {
+      const s = this.typed.get(e);
+      if (!s || e.els![0] !== host || e === t?.entry || this.dead.has(e)) continue;
+      const r = k++ < 8 ? revert(s.after, s.before, n) : null;
+      if (r === null) this.dead.add(e);
+      else n = r;
+    }
+  }
+
   // called before an input into host, with the content that the input changes. an input with a
   // label of its own, e.g. Paste, is an entry apart from the typing around it
   beforeTyping(host: Element, label = 'typing'): void {
@@ -281,20 +329,33 @@ export class History {
     const state = { before, after: before };
     // a caret in another text of the slides goes into host at the step, as in Keynote, where
     // otherwise host is selected as an element
-    const step = async (content: string, way: 'undo' | 'redo') => {
+    const restore = async (content: string, way: 'undo' | 'redo') => {
       const a = document.activeElement;
       const moves = !!a && a !== host && a.matches('[contenteditable="true"]') && !!a.closest('.reveal .slides');
       await this.put(host, content);
       entry.selects = moves && host.isConnected ? way : undefined;
-      if (entry.selects) caretAtEnd(host);
+    };
+    // the change from one content to the other made over the changes of others in host since,
+    // which a part of a transaction writes over when it cannot be made. in a session, the contents
+    // before and after are then the ones met and written, hence the next step starts from them
+    const write = async (from: string, to: string, way: 'undo' | 'redo') => {
+      if (this.alone()) return restore(to, way);
+      const now = this.snapshot(host);
+      const t = this.dead.has(entry) ? null : (revert(from, to, now) ?? (this.typed.has(entry) ? null : to));
+      if (t === null) throw REFUSED;
+      await restore(t, way);
+      state[way === 'undo' ? 'after' : 'before'] = now;
+      state[way === 'undo' ? 'before' : 'after'] = this.snapshot(host);
     };
     const entry: Entry = {
       label,
-      undo: () => step(state.before, 'undo'),
-      redo: () => step(state.after, 'redo'),
+      undo: () => write(state.after, state.before, 'undo'),
+      redo: () => write(state.before, state.after, 'redo'),
       els: [host],
     };
+    this.typed.set(entry, state);
     this.typing = { host, state, entry, at };
+    this.latest.set(host, this.typing);
     this.known.set(host, before);
   }
 
@@ -344,7 +405,9 @@ export class History {
   // the entry is taken when its turn in the queue comes, hence a second undo asked for during the
   // first one takes the entry before it. the turn comes after the end of an open transaction, whose
   // changes are in the file before its entry is in the history, e.g. a dropped picture that is
-  // sized. an amend of an entry is not waited for
+  // sized. an amend of an entry is not waited for. an entry of typing that cannot be undone or
+  // redone over the changes of others is taken out of the history, and refused is told of it. the
+  // next step takes the entry before it
   private step(way: 'undo' | 'redo'): Promise<void> {
     const run = this.queue.then(() => this.closed).then(async () => {
       // the stacks are read at the turn of the step, since clear() replaces them
@@ -356,6 +419,11 @@ export class History {
       const select = this.changed();
       try {
         await entry[way]();
+      } catch (e) {
+        if (e !== REFUSED) throw e;
+        this.refused?.(entry, way);
+        this.onChange();
+        return;
       } finally {
         this.busy = false;
       }
@@ -394,7 +462,8 @@ export class History {
   }
 
   // entry, if it is still the last one, is undone and taken out of the history without a redo,
-  // e.g. a new formula left empty. the slide shown is kept at a quiet retract
+  // e.g. a new formula left empty. the slide shown is kept at a quiet retract. typing that cannot
+  // be undone over the changes of others is taken out as it is
   retract(entry: Entry, quiet = false): Promise<void> {
     const run = this.queue.then(async () => {
       if (this.done.at(-1) !== entry) return;
@@ -404,6 +473,8 @@ export class History {
       this.still = quiet;
       try {
         await entry.undo();
+      } catch (e) {
+        if (e !== REFUSED) throw e;
       } finally {
         this.busy = false;
         this.still = false;
@@ -432,10 +503,14 @@ export class History {
   // the entries that name an element for which touched holds are taken out, e.g. after a change of
   // the deck by another person, and the typing in progress in such an element ends. so are the
   // entries that would detach an element inside which within holds, with the change made there, and
-  // the entries that would put back an order of the children of an element for which reordered holds
-  prune(touched: (el: Element) => boolean, within: (root: Element) => boolean = () => false, reordered: (el: Element) => boolean = () => false): void {
-    const hits = (e: Entry) => (this.parts.get(e) ?? [e]).some((p) => p.els?.some(touched) || p.touches?.some(touched) || p.detaches?.some(within) || p.orders?.some(reordered));
-    if (this.typing && touched(this.typing.host)) this.typing = null;
+  // the entries that would put back an order of the children of an element for which reordered holds.
+  // texts are the text elements that the change wrote into, where an entry of typing is kept, since
+  // its undo changes only the typing of the person, and so is the typing in progress
+  prune(touched: (el: Element) => boolean, within: (root: Element) => boolean = () => false, reordered: (el: Element) => boolean = () => false, texts: readonly Element[] = []): void {
+    const kept = (e: Entry) => this.typed.has(e) && !!e.els?.[0]?.isConnected && texts.includes(e.els[0]);
+    const hits = (e: Entry) => (this.parts.get(e) ?? [e]).some((p) => (!kept(p) && p.els?.some(touched)) || p.touches?.some(touched) || p.detaches?.some(within) || p.orders?.some(reordered));
+    const t = this.typing;
+    if (t && ((touched(t.host) && !texts.includes(t.host)) || hits(t.entry))) this.typing = null;
     const done = this.done.filter((e) => !hits(e));
     const undone = this.undone.filter((e) => !hits(e));
     if (done.length === this.done.length && undone.length === this.undone.length) return;

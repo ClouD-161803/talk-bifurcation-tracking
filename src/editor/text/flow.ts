@@ -366,11 +366,13 @@ export function install(app: App): void {
     }, 0);
   }, true);
 
-  // typing replaces the span, as one entry of the history
+  // typing replaces the span, as one entry of the history, unless a refusal refuses the delete of
+  // the span, e.g. while another person types in one of its text elements
   document.addEventListener('beforeinput', (ev) => {
     if (!span || !/^(insert|delete)/.test(ev.inputType)) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();
+    if (app.commands.refused('text.flow.delete')) return;
     const text = ev.inputType.startsWith('insert') ? (ev.data ?? ev.dataTransfer?.getData('text/plain') ?? '') : '';
     void app.history.transact(ev.inputType === 'insertFromPaste' ? 'Paste' : 'typing', () => removeSpan(app, text)).catch((e) => app.fail(e));
   }, true);
@@ -379,6 +381,7 @@ export function install(app: App): void {
       if (!span) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
+      if (kind === 'cut' && app.commands.refused('text.flow.delete')) return;
       ev.clipboardData?.setData('text/plain', spanTargets(app).map((t) => rangeWords(t.host, t.range).trim()).join('\n'));
       if (kind === 'cut') void app.history.transact('Cut', () => removeSpan(app)).catch((e) => app.fail(e));
     }, true);
