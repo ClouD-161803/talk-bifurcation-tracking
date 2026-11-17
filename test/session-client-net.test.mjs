@@ -280,7 +280,9 @@ test('a page whose theme/session.js does not load either, or whose theme/editor-
   const broken = await open(browser, sessionUrl(server.edit), { ready: false, script: throwing });
   await broken.waitFor(STARTED);
   assert.deepEqual(await failure(broken), { dialogs: 1, text: 'theme/editor-session.js could not be loaded. Load the page again to join the session.', buttons: ['Load again'] });
-  clean(broken);
+  // the error of the engine is reported, since the dialog does not tell a file that threw from one that is missing
+  assert.ok(broken.errors.some((e) => /a broken engine/.test(e)), `the error of the engine is not reported: ${JSON.stringify(broken.errors)}`);
+  clean(broken, [/a broken engine/]);
 });
 
 test('a page is online as soon as a request after an outage succeeds, while the edit command holds its poll', { timeout: 120_000 }, async (t) => {
