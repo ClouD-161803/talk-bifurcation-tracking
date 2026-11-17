@@ -3726,6 +3726,32 @@
     return done;
   }
   var figuresReady = () => pending;
+  async function reloadFigure(name, hash) {
+    if (!/^[\w-]+$/.test(name)) return false;
+    await loads.get(name);
+    if (window.beesonFigures?.[name]?.hash === hash) return true;
+    const was = window.beesonFigures?.[name];
+    const loading = new Promise((done) => {
+      const script2 = document.createElement("script");
+      script2.src = `figures/${name}.js?v=${encodeURIComponent(hash)}`;
+      script2.onload = script2.onerror = () => {
+        script2.remove();
+        done();
+      };
+      document.head.append(script2);
+    });
+    loads.set(name, loading);
+    await loading;
+    if (window.beesonFigures?.[name] !== was) {
+      for (const el of figuresUnder(document)) {
+        const state = drawn.get(el);
+        if (el.dataset.figure !== name || !state) continue;
+        state.key = "";
+        draw2(el, latest);
+      }
+    }
+    return window.beesonFigures?.[name]?.hash === hash;
+  }
   function redrawFigures(mode2) {
     latest = mode2;
     for (const el of figuresUnder(document)) if (drawn.has(el)) draw2(el, mode2);
@@ -6555,10 +6581,11 @@ void main() {
     animated,
     surfaces,
     plots,
-    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs
+    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs. reload is
+    // called by the editor after the edit command wrote an output
     figures: { get ready() {
       return figuresReady();
-    } },
+    }, reload: reloadFigure },
     // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
     trajectories: register,
     // called by the editor after a structural change of the slides

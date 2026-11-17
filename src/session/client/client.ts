@@ -12,7 +12,7 @@ import type { Applied, Port } from '../../editor/session/port.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
-import { FULL, type AppliedOp, type CommentsEvent, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
+import { FULL, type AppliedOp, type CommentsEvent, type Ended, type EventsAnswer, type FigureState, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
@@ -39,6 +39,8 @@ export type ClientEvents = {
   applied: [Element[]];
   // the deck was drawn again with a new tex.js, e.g. with new numbers of its citations
   tex: [];
+  // the state of the TikZ figures changed, or an answer of hello told it
+  figures: [FigureState];
   // a drive ended, with whether the base moved on after the last applied without an apply, e.g. at
   // the broadcast of an operation of this page
   settled: [moved: boolean];
@@ -135,6 +137,9 @@ export class Client {
   // with tex.js. each run of the edit command counts from the time of its start, hence a page draws
   // it once when it joins, and once after a restart
   private tex = 0;
+  // the state of the TikZ figures told last, and the hash of each output being loaded or loaded
+  figures: FigureState | null = null;
+  private figureLoads = new Map<string, string>();
   // counts the hellos after the first, so that a poll sent before one is not taken
   private generation = 0;
   private readonly listeners = new Map<keyof ClientEvents, Set<(...args: never[]) => void>>();
@@ -383,6 +388,7 @@ export class Client {
     this.people = a.people;
     this.known = a.known;
     this.texCount(a.tex);
+    this.takeFigures(a.figures);
     this.emit('me');
     this.emit('people');
     this.emit('known');
@@ -766,6 +772,7 @@ export class Client {
       return;
     }
     this.texCount(answer.tex);
+    this.takeFigures(answer.figures);
     if (answer.writeError !== undefined) this.setWarning(answer.writeError ? `${answer.writeError.file ?? 'The deck'} cannot be written on the host's machine: ${answer.writeError.message}` : null);
     this.people = answer.people;
     this.presence = answer.presence;
@@ -803,6 +810,20 @@ export class Client {
     this.port.redrawTex().then(() => this.emit('tex'), () => {
       if (this.tex === count) this.tex = was;
     });
+  }
+
+  // every output of a figure whose hash differs from the one loaded is loaded again. a load that
+  // failed is tried again at the next state
+  private takeFigures(state: FigureState | undefined): void {
+    if (!state) return;
+    this.figures = state;
+    for (const [name, hash] of Object.entries(state.outputs)) {
+      if (!hash || this.figureLoads.get(name) === hash) continue;
+      this.figureLoads.set(name, hash);
+      const forget = () => this.figureLoads.get(name) === hash && this.figureLoads.delete(name);
+      this.port.reloadFigure(name, hash).then((loaded) => loaded || forget(), forget);
+    }
+    this.emit('figures', state);
   }
 
   private receive(ops: AppliedOp[]): void {

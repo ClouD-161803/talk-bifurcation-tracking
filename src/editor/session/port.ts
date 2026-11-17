@@ -38,7 +38,8 @@ export type Applied = { reload: boolean; changed: Element[] };
 // rebase() is an apply of the text handed to the client when its turn comes, which reads the deck
 // into the source, e.g. so that offsetOf knows an element made since the last apply. redrawTex()
 // draws the deck again with the tex.js next to it, after the edit command counted a change of it,
-// and rejects when it fails. served() tells whether an edit command serves the page, see
+// and rejects when it fails. reloadFigure() loads the output of a TikZ figure again unless the one
+// loaded has hash, and draws the figure again, see reloadFigure of src/tikz.ts. served() tells whether an edit command serves the page, see
 // commands/origin.ts
 export type Port = {
   text(): string;
@@ -55,6 +56,7 @@ export type Port = {
   setStatus(text: string | null): void;
   onSave(fn: () => Promise<void> | void): void;
   redrawTex(): Promise<void>;
+  reloadFigure(name: string, hash: string): Promise<boolean>;
 };
 
 // the members of the port from the engine, and reported(), which resolves once every change of the
@@ -169,6 +171,7 @@ export function install(app: App): Port {
       saver = fn;
     },
     redrawTex: () => redrawDeckTex(app),
+    reloadFigure: async (name, hash) => (await window.Beeson?.figures?.reload?.(name, hash)) ?? false,
   };
 
   let loading: Promise<Port | null> | null = null;

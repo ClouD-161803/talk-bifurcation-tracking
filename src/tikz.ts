@@ -127,6 +127,39 @@ export function mountFigures(root: ParentNode, mode: Mode): Promise<void> {
 /** Resolves once every figure that mountFigures has started to draw is drawn. */
 export const figuresReady = (): Promise<void> => pending;
 
+/**
+ * Loads figures/name.js again unless the output loaded has hash, e.g. after the edit command
+ * compiled the figure, and draws every drawn instance of the figure again with it. Resolves with
+ * whether the output loaded has hash then.
+ */
+export async function reloadFigure(name: string, hash: string): Promise<boolean> {
+  if (!/^[\w-]+$/.test(name)) return false;
+  await loads.get(name);
+  if (window.beesonFigures?.[name]?.hash === hash) return true;
+  const was = window.beesonFigures?.[name];
+  const loading = new Promise<void>((done) => {
+    const script = document.createElement('script');
+    // the hash in the address passes over a copy that a cache holds
+    script.src = `figures/${name}.js?v=${encodeURIComponent(hash)}`;
+    script.onload = script.onerror = () => {
+      script.remove();
+      done();
+    };
+    document.head.append(script);
+  });
+  loads.set(name, loading);
+  await loading;
+  if (window.beesonFigures?.[name] !== was) {
+    for (const el of figuresUnder(document)) {
+      const state = drawn.get(el);
+      if (el.dataset.figure !== name || !state) continue;
+      state.key = '';
+      draw(el, latest);
+    }
+  }
+  return window.beesonFigures?.[name]?.hash === hash;
+}
+
 /** Draws every TikZ figure of the page again in mode, after a flip of the mode. */
 export function redrawFigures(mode: Mode): void {
   latest = mode;
