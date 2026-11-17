@@ -117,15 +117,24 @@ const sheetGrowth = (g: number): number => ease(clamp((g - SHEET_START) / (1 - S
 export function parseBundle(text: string): BundleData | string {
   let data: BundleData;
   try { data = JSON.parse(text); } catch (error) { return `its JSON is malformed, ${String(error)}`; }
-  const n = data?.orbit?.length ?? 0;
+  const n = Array.isArray(data?.orbit) ? data.orbit.length : 0;
   if (n < 3) return 'its orbit has fewer than three points';
-  for (const r of data.strips ?? []) {
-    if (r.directions?.length !== n) return `the strip ${r.id} has ${r.directions?.length ?? 0} directions for ${n} points of the orbit`;
+  const point = (p: unknown) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+  const bad = data.orbit.findIndex((p) => !point(p));
+  if (bad >= 0) return `the point ${bad} of the orbit is not three numbers`;
+  if (data.libration_point !== undefined && !point(data.libration_point)) return 'its libration_point is not three numbers';
+  if (!Array.isArray(data.strips)) return 'it does not have a list of strips';
+  for (const r of data.strips) {
+    if (r?.directions?.length !== n) return `the strip ${r?.id} has ${r?.directions?.length ?? 0} directions for ${n} points of the orbit`;
+    const d = r.directions.findIndex((p) => !point(p));
+    if (d >= 0) return `the direction ${d} of the strip ${r.id} is not three numbers`;
     if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
-    if (r.ribs.some((i) => !(i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
+    if (!Array.isArray(r.ribs)) return `the ribs of the strip ${r.id} are not a list`;
+    if (r.ribs.some((i) => !(Number.isInteger(i) && i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
   }
+  if (data.arrows !== undefined && !Array.isArray(data.arrows)) return 'its arrows are not a list';
   for (const a of data.arrows ?? []) {
-    if (!(a.toward?.length === 3 && a.toward.every(Number.isFinite))) return `the arrow ${a.id} does not have a point toward of three numbers`;
+    if (!point(a?.toward)) return `the arrow ${a?.id} does not have a point toward of three numbers`;
   }
   return data;
 }
@@ -688,7 +697,8 @@ export function mount(root: ParentNode): Bundle[] {
       continue;
     }
     if (!renderer() || !window.THREE) continue;
-    out.push(new Bundle(el, data, window.THREE));
+    // a fault the parser does not catch leaves this bundle blank, and the deck is started
+    try { out.push(new Bundle(el, data, window.THREE)); } catch (error) { console.error(`beeson: the bundle ${id} is not drawn, since ${String(error)}`); }
   }
   return out;
 }

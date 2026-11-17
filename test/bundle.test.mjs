@@ -30,6 +30,7 @@ test('a bundle without strips, or with a strip without ribs or with a malformed 
   assert.match(parseBundle(JSON.stringify({ orbit, strips: [{ id: 'a', half_width: 1, ribs: [0], directions: [[0, 0, 1], [0, 0], [0, 0, 1]] }] })), /direction 1 of the strip a/);
   assert.match(parseBundle(JSON.stringify({ orbit: [[0, 0, 0], [1, 0], [0, 1, 0]], strips: [] })), /point 1 of the orbit/);
   assert.match(parseBundle(JSON.stringify({ orbit, libration_point: [0, 0], strips: [] })), /libration_point/);
+  assert.match(parseBundle(JSON.stringify({ orbit, strips: [], arrows: { id: 'Sun' } })), /arrows/);
 });
 
 test('a deck with malformed bundles is started, and each bundle is reported and left blank', { timeout: 60000 }, async (t) => {
