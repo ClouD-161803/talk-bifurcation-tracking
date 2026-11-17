@@ -52,7 +52,7 @@ const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('
 const TOASTS = `[...document.querySelectorAll('.beeson-session-toast > span')].map((s) => s.textContent)`;
 const TABS = `[...document.querySelectorAll('.beeson-edit-inspector .tabs button')].filter((b) => !b.hidden).map((b) => b.textContent)`;
 const TAB = `document.querySelector('.beeson-edit-inspector .tabs button[aria-selected="true"]')?.textContent ?? null`;
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 
 // the controls of selector that are shown and take a tap on less than 32 by 32 px, counting a
 // pseudo-element ::after placed around a control

@@ -36,7 +36,7 @@ const BUTTON = `(() => {
   return [b.title === b.getAttribute('aria-label') ? b.title : null, c.textContent, drawn ? (r.width < 14 ? 'dot' : 'number') : null];
 })()`;
 // the requests of a page that is offline fail in its console
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 const TWINS = TALK.replace('<p>First slide</p>', '<p>TBD</p>\n  <p>TBD</p>\n  <p>TBD</p>');
 
 // the text of the badge of the element of expression, as in session-comments.test.mjs

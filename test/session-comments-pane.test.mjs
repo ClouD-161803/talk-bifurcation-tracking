@@ -22,7 +22,7 @@ const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > se
 const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments can be sent once you are back online';
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 const THREADS = `[...document.querySelectorAll('${PANE} article')].map((a) => ({
   anchor: a.querySelector('.anchor')?.textContent ?? null,
   texts: [...a.querySelectorAll('.item .text')].map((p) => p.textContent),
