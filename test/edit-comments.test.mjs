@@ -440,6 +440,17 @@ test('a file of comments that cannot be read is moved aside', async (t) => {
 test('a thread sent with an old base is moved to the current text in less than half the time that the operations since took', (t) => {
   const slide = (k) => ['<section>', `  <h2>Slide ${k}</h2>`, ...Array.from({ length: 4 }, (_, i) => `  <p style="left: ${i}px">Paragraph ${i} of slide ${k}, on the manifold.</p>`), '</section>'].join('\n');
   const deck = ['<!doctype html>', '<body>', ...Array.from({ length: 200 }, (_, k) => slide(k)), '</body>', ''].join('\n');
+  const { writeFileSync: write } = fs;
+  t.after(() => {
+    fs.writeFileSync = write;
+    syncBuiltinESMExports();
+  });
+  // each write of comments.json is held for 40 ms, as on a slow disk of a Windows runner
+  fs.writeFileSync = (file, ...rest) => {
+    if (String(file).includes('.comments.json.')) for (const end = performance.now() + 40; performance.now() < end; );
+    return write(file, ...rest);
+  };
+  syncBuiltinESMExports();
   const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 1000 } });
   const read = authority.text;
   const base = authority.version;
