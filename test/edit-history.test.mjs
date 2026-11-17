@@ -6,6 +6,7 @@
 // as a child process for the requests
 
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import fs, { appendFileSync, chmodSync, closeSync, existsSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -14,7 +15,9 @@ import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
+import { Worker } from 'node:worker_threads';
 import { Authority, History, diff, slideChanges, slidesOf } from '../theme/edit.mjs';
+import { longRun } from './helpers/long-run.mjs';
 import { DECK, post, raw, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const ANN = 'AnnAnnAnnAnnAnnAnnAnn1';
@@ -1056,37 +1059,37 @@ test('every page is told when a change of index.html from outside replaces text 
   assert.equal(events.overwritten, undefined);
 });
 
-test('an operation of a person late in a long run takes about as long as one early in it', { timeout: 300_000 }, (t) => {
-  let seed = 12345;
-  const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff;
-  const words = 'alpha beta gamma delta orbit halo moon earth transfer manifold'.split(' ');
-  let deck = '<!doctype html><html><body><div class="reveal"><div class="slides">\n';
-  for (let i = 0; deck.length < 200_000; i++) deck += `<section>\n  <h2>Slide ${i}</h2>\n  <p>${Array.from({ length: 30 }, () => words[Math.floor(rnd() * words.length)]).join(' ')}</p>\n</section>\n`;
-  deck += '</div></div></body></html>\n';
-  let now = 0;
-  const { authority, history } = open(sessionDir(t), deck, { quiet: 60_000, longest: 300_000, clock: () => now, now: () => 1e12 + now });
-  t.after(() => history.stopSync());
-  const people = [ANN, BO, 'CyCyCyCyCyCyCyCyCyCyCy'];
-  // the mean time in ms of n operations of one character at random places, one second apart
-  const run = (n) => {
-    let sum = 0;
-    for (let i = 0; i < n; i++) {
-      now += 1000;
-      const at = Math.floor(rnd() * (authority.text.length - 10)) + 1;
-      const patch = rnd() < 0.6 ? { start: at, end: at, text: 'e' } : { start: at, end: at + 1, text: '' };
-      const author = people[Math.floor(rnd() * people.length)];
-      const start = performance.now();
-      authority.enter([patch], author);
-      sum += performance.now() - start;
-    }
-    return sum / n;
-  };
+test('an operation of a person late in a long run takes about as long as one early in it', { timeout: 300_000 }, async (t) => {
+  const { run, stop } = longRun(sessionDir(t));
+  t.after(stop);
   run(1000);
-  const early = Math.min(run(1000), run(1000));
+  let early = Math.min(run(1000), run(1000));
   run(30_000);
   let late = run(1000);
-  if (late > 2 * early) late = Math.min(late, run(1000));
-  assert.ok(late <= 2 * early, `an operation takes ${late.toFixed(3)} ms after 33,000 operations, and ${early.toFixed(3)} ms early in the run`);
+  if (late > 2 * early) {
+    // a runner that is busier late in the test than early in it gives these two times without a
+    // slower edit command. the late operations are therefore timed again, in turns with the early
+    // operations of a worker, which has a fresh copy of the modules of the edit command and a fresh
+    // heap. the worker is stopped before its folder is removed
+    let fresh;
+    t.after(() => fresh?.terminate());
+    fresh = new Worker(new URL('./helpers/long-run.mjs', import.meta.url), { workerData: { longRun: sessionDir(t) } });
+    let done = false;
+    const gone = once(fresh, 'exit').then(() => assert.ok(done, 'the worker of the early operations exited'));
+    const answer = () => Promise.race([once(fresh, 'message'), gone]);
+    await answer();
+    early = late = 0;
+    for (let turn = 0; turn < 20; turn++) {
+      late += run(100) / 20;
+      const mean = answer();
+      fresh.postMessage(100);
+      early += (await mean)[0] / 20;
+    }
+    done = true;
+    fresh.postMessage(0);
+    await gone;
+  }
+  assert.ok(late <= 2 * early, `an operation takes ${late.toFixed(3)} ms after 33,000 operations, and ${early.toFixed(3)} ms early in a run`);
 });
 
 test('a change of index.html from outside is told by the characters that people wrote, and not by a word that a person typed and removed', { timeout: 60_000 }, (t) => {
