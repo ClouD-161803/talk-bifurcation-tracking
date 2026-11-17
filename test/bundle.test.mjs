@@ -1,7 +1,8 @@
 // checks of the bundles of src/bundle.ts. the eigendirections of data/lyapunov/l1-eigendirections.json
 // are checked against their copy in the deck. the bundle of the Floquet slide is stepped in Chrome
 // through its stages, live and in the print view, its compass is turned with the camera, and it is
-// grown and shrunk with the animation
+// grown and shrunk with the animation. the families of the Lyapunov to Halo slide are moved by the
+// clock of the plot of their slide
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -173,5 +174,49 @@ test('a strip is grown from its first segment to its last and then as a sheet, a
   const shrunk = await watch('flow');
   assert.ok(seen.some((r) => r.grow > 0 && r.grow < 1), 'the strip is shrunk over several frames');
   assert.deepEqual(shrunk.strips.map((r) => r.grow), [0, 0]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the families of the Lyapunov to Halo slide follow the clock of the plot of their slide, and no other', { timeout: 120000 }, async (t) => {
+  const file = readFileSync('data/lyapunov/l1-family-orbits.json', 'utf8');
+  const block = readFileSync('index.html', 'utf8').match(/<script type="application\/json" id="family-orbits">(.*?)<\/script>/s);
+  assert.ok(block, 'the deck has the block id="family-orbits"');
+  assert.equal(block[1], file.trim());
+  const data = parseBundle(file);
+  assert.equal(typeof data, 'object', String(data));
+  const values = Object.fromEntries(data.families.map((f) => [f.id, f.values]));
+  assert.deepEqual(Object.keys(values), ['lyapunov-elliptic', 'lyapunov-hyperbolic', 'halo-north', 'halo-south']);
+  const first = values['lyapunov-elliptic'][0], pitchfork = values['lyapunov-elliptic'].at(-1);
+  const count = (id) => values[id].length;
+
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('index.html', 'still'));
+  await page.waitFor(deckSettled);
+  const h = await page.evaluate(`${sections}.findIndex((s) => s.querySelector('.surface[data-bundle="family-orbits"]'))`);
+  assert.ok(h >= 0, 'the deck has the bundle of the families');
+  // for each family, the members passed and whether its member at the clock is drawn
+  const probe = `Object.fromEntries(Beeson.surfaces.find((s) => s.el.dataset.bundle === 'family-orbits').probe().families.map((f) => [f.id, [f.passed, f.member]]))`;
+  // a still drawing is drawn at once, hence the probe is read right after the frame
+  const frame = (plot, value) => page.evaluate(`(() => {
+    ${plot}.dispatchEvent(new CustomEvent('beeson:plot-frame', { bubbles: true, detail: { value: ${value} } }));
+    return ${probe};
+  })()`);
+  const own = `${sections}[${h}].querySelector('.plot')`;
+  const other = `${sections}.filter((s, i) => i !== ${h}).map((s) => s.querySelector('.plot')).find(Boolean)`;
+
+  // in the still view, the plot is drawn at the end of its clock, at values rounded to its digits
+  await page.evaluate(`Reveal.slide(${h}, 0, 1)`);
+  await page.waitFor(`${probe}['lyapunov-hyperbolic'][0] > 1`);
+  const end = await page.evaluate(probe);
+  for (const id of ['lyapunov-elliptic', 'lyapunov-hyperbolic']) assert.equal(end[id][0], count(id), `the family ${id} is passed up to ${end[id][0]} of ${count(id)} members at the end of the clock`);
+  for (const id of ['halo-north', 'halo-south']) assert.ok(end[id][0] > 1 && end[id][1], `the branch ${id} is drawn as ${end[id]} at the end of the clock`);
+
+  const start = Number(first.toFixed(7));
+  assert.deepEqual(await frame(own, start), { 'lyapunov-elliptic': [1, true], 'lyapunov-hyperbolic': [0, false], 'halo-north': [0, false], 'halo-south': [0, false] });
+  const atPitchfork = { 'lyapunov-elliptic': [count('lyapunov-elliptic'), true], 'lyapunov-hyperbolic': [1, true], 'halo-north': [1, true], 'halo-south': [1, true] };
+  assert.deepEqual(await frame(own, pitchfork), atPitchfork);
+  assert.deepEqual(await frame(other, start), atPitchfork, 'a frame of the plot of another slide moves the families');
   assert.deepEqual(page.errors, []);
 });
