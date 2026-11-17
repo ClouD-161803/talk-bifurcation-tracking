@@ -5,14 +5,15 @@
 // entry of the history, mark the deck as changed, keep a draft, or start a save
 
 import type { App } from '../app.ts';
-import { mathLookup, type MathLookup } from '../math.ts';
-import { apply as applyEdits, edits, fine, mergeEdits, shared, type Edit } from '../merge.ts';
-import { pair, pairElement, renderDeck, renderTextElement, type Pairing, type Rendered } from '../render.ts';
-import { contentRange, elementRange, parseSource, type Source } from '../source.ts';
-import { applyAt, partial, refresh, repairText, type Done } from './apply.ts';
-import { caretOf, mapOffset, markOf, moved, putCaret, textIn, type Mark } from './caret.ts';
-import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
+import type { MathLookup } from '../math.ts';
+import type { Edit } from '../merge.ts';
+import type { Pairing, Rendered } from '../render.ts';
+import type { Source } from '../source.ts';
+import type { Mark } from './caret.ts';
 import type { Applied, Engine, Tracked } from './port.ts';
+import { apply as applyEdits, caretOf, contentRange, edits, elementRange, fine, mapOffset, markOf, mathLookup, mergeEdits, moved, pair, pairElement, parseSource, putCaret, renderDeck, renderTextElement, shared, textIn } from './host.ts';
+import { applyAt, partial, refresh, repairText, type Done } from './apply.ts';
+import { graft, locate, retag, windowOf, type Spot, type Window } from './tree.ts';
 
 type Page = { MathJax?: { typesetPromise?(els: Element[]): Promise<unknown> } };
 
