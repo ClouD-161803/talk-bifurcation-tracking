@@ -753,6 +753,7 @@ test('a page asks before it unloads for an edit typed while IndexedDB does not a
   await page.evaluate(TOLD);
   await type(page, ' Early');
   assert.deepEqual(await page.evaluate('window.__told'), { asking: true, hellos: 0 });
+  await page.waitFor(`typeof window.__openWait === 'function'`);
   await page.evaluate('window.__openWait()');
   await page.waitFor(`/cannot be kept/.test(${STATE}) && ${C}.connection === 'offline'`);
   assert.equal(await page.evaluate(`${C}.asking`), true, 'the page asks while its copy cannot be kept');
