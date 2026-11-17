@@ -1145,6 +1145,8 @@ export class Steps {
   private select(r: Row): void {
     this.current = r;
     const line = this.model?.lines[r.i];
+    // a change of the steps shown drops the selection, hence it is made first
+    this.app?.shownSteps.reveal(r.el);
     this.app?.selection.set('elements', [line ? (r.el.parentElement as Element) : r.el]);
   }
 

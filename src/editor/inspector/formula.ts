@@ -23,6 +23,11 @@ const CSS = `
 .beeson-edit-inspector .ed-tex textarea:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 1px; }
 .beeson-edit-inspector .ed-tex .preview { min-height: 44px; font-size: 20px; overflow: hidden; }
 .beeson-edit-inspector .ed-tex .preview svg { max-width: 100%; height: auto; }
+`;
+
+// the rules of the tones, the pop-up of the steps, and the list of colors at a step, which the
+// Text pane shares
+export const COLOR_CSS = `
 .beeson-edit-inspector .ed-tones { display: flex; gap: 10px; }
 .beeson-edit-inspector .ed-tones button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 0 0 1px var(--ed-edge); cursor: default; }
 .beeson-edit-inspector .ed-tones button[aria-pressed="true"] { outline: 2px solid var(--ed-select); outline-offset: 2px; }
@@ -45,7 +50,7 @@ const swatchOf = (app: App, tone: Tone): string => {
   return (slide ? getComputedStyle(slide).getPropertyValue(`--${tone}`).trim() : '') || 'transparent';
 };
 
-const toneName = (tone: Tone): string => TONES.find(([t]) => t === tone)?.[1] ?? tone;
+export const toneName = (tone: Tone): string => TONES.find(([t]) => t === tone)?.[1] ?? tone;
 
 // the formula and the selection or caret in its TeX field, shared by the parts of the pane
 type Shared = { formula: () => Element | null; field: HTMLTextAreaElement | null; changed: (() => void)[] };
@@ -120,13 +125,7 @@ function colorPart(app: App, run: Run, shared: Shared): Control {
     return { b, tone };
   });
   const stepRow = make('div', 'ed-row');
-  const step = make('button', 'ed-step');
-  step.type = 'button';
-  step.setAttribute('aria-haspopup', 'menu');
-  step.setAttribute('aria-label', 'Step of the color');
-  const stepText = make('span');
-  step.append(stepText, glyph('chevron-down', 14));
-  keepFocus(step);
+  const { el: step, text: stepText } = stepButton((keyboard) => openSteps(app, step, keyboard, options, current(), (o) => ((chosenStep = o?.label ?? null), sync())));
   const apply = make('button', 'ed-btn', 'Color Symbol');
   apply.type = 'button';
   apply.dataset.command = 'math.color';
@@ -145,19 +144,6 @@ function colorPart(app: App, run: Run, shared: Shared): Control {
     const part = f.value.slice(f.selectionStart, f.selectionEnd);
     return part.trim() && balanced(part) ? { start: f.selectionStart, end: f.selectionEnd } : null;
   };
-  const openSteps = (keyboard: boolean) => {
-    const items: MenuItem[] = [];
-    const later = options.filter((o) => o.step !== null);
-    const fresh = options.filter((o) => o.step === null);
-    for (const o of later) items.push({ label: o.label, checked: o === current(), run: () => ((chosenStep = o.label), sync()) });
-    if (later.length && fresh.length) items.push({ rule: true });
-    for (const o of fresh) items.push({ label: o.label, checked: o === current(), run: () => ((chosenStep = o.label), sync()) });
-    openMenu(app, items, { anchor: step.getBoundingClientRect(), placement: 'below', owner: step, keyboard, label: 'Step of the color', className: 'select' });
-  };
-  step.addEventListener('pointerdown', () => openSteps(false));
-  step.addEventListener('click', (ev) => {
-    if (ev.detail === 0) openSteps(true);
-  });
   apply.addEventListener('click', () => {
     const f = shared.formula();
     const sel = selected();
@@ -186,27 +172,14 @@ function colorPart(app: App, run: Run, shared: Shared): Control {
     const colored = f ? coloredOf(app, f) : [];
     list.hidden = !colored.length;
     list.replaceChildren(...colored.map((c) => {
-      const li = make('li');
-      const dot = make('span', 'dot');
-      dot.style.setProperty('--swatch', c.tone ? swatchOf(app, c.tone) : 'transparent');
-      const sym = make('span', 'sym', c.body);
-      sym.title = `\\class{${c.name}}{${c.body}}`;
-      const at = make('span', 'at', c.step === null ? 'not colored' : `${toneName(c.tone ?? 'accent')}, Step ${c.step + 1}`);
-      const remove = make('button');
-      remove.type = 'button';
-      remove.title = `Remove the color of ${c.name}`;
-      remove.setAttribute('aria-label', `Remove the color of ${c.name}`);
-      remove.dataset.command = 'math.uncolor';
-      remove.append(glyph('remove', 14));
-      keepFocus(remove);
-      remove.addEventListener('click', () => void run('math.uncolor', { el: f, name: c.name }));
+      const li = coloredItem(app, c, c.step === null ? 'not colored' : `${toneName(c.tone ?? 'accent')}, Step ${c.step + 1}`, () => void run('math.uncolor', { el: f, name: c.name }), 'math.uncolor');
+      li.querySelector('.sym')!.setAttribute('title', `\\class{${c.name}}{${c.body}}`);
       li.addEventListener('click', (ev) => {
         if (ev.target instanceof Element && ev.target.closest('button')) return;
         shared.field?.focus();
         shared.field?.setSelectionRange(c.start, c.end);
         sync();
       });
-      li.append(dot, sym, at, remove);
       return li;
     }));
   };
@@ -215,8 +188,54 @@ function colorPart(app: App, run: Run, shared: Shared): Control {
   return { el, sync };
 }
 
+// the pop-up button of the step of a color, which open opens
+export function stepButton(open: (keyboard: boolean) => void): { el: HTMLButtonElement; text: HTMLElement } {
+  const el = make('button', 'ed-step');
+  el.type = 'button';
+  el.setAttribute('aria-haspopup', 'menu');
+  el.setAttribute('aria-label', 'Step of the color');
+  const text = make('span');
+  el.append(text, glyph('chevron-down', 14));
+  keepFocus(el);
+  el.addEventListener('pointerdown', () => open(false));
+  el.addEventListener('click', (ev) => {
+    if (ev.detail === 0) open(true);
+  });
+  return { el, text };
+}
+
+// the menu of the later steps of options and of the elements that can be made a new step, under
+// owner. with start, From the Start is offered first, and chosen as null
+export function openSteps(app: App, owner: HTMLElement, keyboard: boolean, options: ColorStep[], current: ColorStep | null, choose: (o: ColorStep | null) => void, start = false): void {
+  const items: MenuItem[] = start ? [{ label: 'From the Start', checked: !current, run: () => choose(null) }] : [];
+  for (const group of [options.filter((o) => o.step !== null), options.filter((o) => o.step === null)]) {
+    if (items.length && group.length) items.push({ rule: true });
+    for (const o of group) items.push({ label: o.label, checked: o === current, run: () => choose(o) });
+  }
+  openMenu(app, items, { anchor: owner.getBoundingClientRect(), placement: 'below', owner, keyboard, label: 'Step of the color', className: 'select' });
+}
+
+// a row of the list of colors at a step: the dot of its tone, its symbol or words, its tone and
+// step in at, and a button that runs remove, which runs command
+export function coloredItem(app: App, c: { name: string; body: string; tone: Tone | null }, at: string, remove: () => void, command: string): HTMLLIElement {
+  const li = make('li');
+  const dot = make('span', 'dot');
+  dot.style.setProperty('--swatch', c.tone ? swatchOf(app, c.tone) : 'transparent');
+  const b = make('button');
+  b.type = 'button';
+  b.title = `Remove the color of ${c.name}`;
+  b.setAttribute('aria-label', b.title);
+  b.dataset.command = command;
+  b.append(glyph('remove', 14));
+  keepFocus(b);
+  b.addEventListener('click', remove);
+  li.append(dot, make('span', 'sym', c.body), make('span', 'at', at), b);
+  return li;
+}
+
 export function formulaPane(app: App, run: Run): Control[] {
   injectStyle('inspector-formula', CSS);
+  injectStyle('inspector-color', COLOR_CSS);
   const shared: Shared = { formula: () => formulaOf(app), field: null, changed: [] };
   const tex = texPart(app, run, shared);
   const display = !!displayOf(shared.formula());

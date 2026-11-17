@@ -1,4 +1,4 @@
-// the text tools of Keynote and PowerPoint on both platforms: Strikethrough, Change Case, Copy
+// the text tools of Keynote and PowerPoint on both platforms: Strikethrough, Underline, Change Case, Copy
 // Style and Paste Style with the Format Painter, the smart quotes and dashes, and the kinds Email
 // and Phone of the link popover. each edit is checked byte for byte, after an undo and a redo,
 // against the scope rule, and after a save and an open of the saved text. the clipboard of the
@@ -232,6 +232,10 @@ test('a struck word, written as s, is in the scope rule', () => {
   assert.deepEqual(textProblems('<p>A <s>struck</s> word.</p>', THEME), []);
 });
 
+test('an underlined word, written as u, is in the scope rule', () => {
+  assert.deepEqual(textProblems('<p>An <u>underlined</u> word.</p>', THEME), []);
+});
+
 for (const platform of PLATFORMS) {
   const mod = platform === 'mac' ? 4 : 2;
 
@@ -256,6 +260,40 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page, [word('<s>paragraph</s>')]);
     await saved(page, [word('<s>paragraph</s>')]);
+    assert.deepEqual(errors(page), []);
+  });
+
+  test(`Underline is set by its key and by the U of the Text pane, drawn in the color of the text, and taken off again on ${platform}`, async () => {
+    const page = await textPage(platform);
+    await select(page, P, 'A paragraph', 2, 11);
+    await press(page, 'Mod+U');
+    await roundTrip(page, [word('<u>paragraph</u>')], 'Underline');
+    const line = await page.evaluate(`(() => {
+      const style = getComputedStyle(document.querySelector('.reveal section.present > p u'));
+      return { line: style.textDecorationLine, inTextColor: style.textDecorationColor === style.color };
+    })()`);
+    assert.deepEqual(line, { line: 'underline', inTextColor: true });
+    await select(page, P, 'A paragraph', 2, 11);
+    assert.equal((await state(page, 'text.underline')).checked, true);
+    await tap(page, '[data-command="text.underline"]');
+    await byteExact(page);
+    assert.equal(await page.evaluate(`document.querySelector('${PANEL} [data-command="text.underline"]').getAttribute('aria-pressed')`), 'false');
+    // the Underline of a menu of the browser, e.g. of the selection menu on a phone, is an input
+    await select(page, P, 'A paragraph', 2, 11);
+    await page.evaluate(`(document.querySelector(${JSON.stringify(P)}).dispatchEvent(new InputEvent('beforeinput', { inputType: 'formatUnderline', bubbles: true, cancelable: true })), true)`);
+    await byteExact(page, [word('<u>paragraph</u>')]);
+    await undo(page);
+    await byteExact(page);
+    // the caret in a word underlines the word, and Clear Formatting takes it off
+    await select(page, P, 'A paragraph', 5);
+    await tap(page, '[data-command="text.underline"]');
+    await byteExact(page, [word('<u>paragraph</u>')]);
+    await select(page, P, 'A paragraph', 0, 11);
+    await exec(page, 'text.clear');
+    await byteExact(page);
+    await undo(page);
+    await byteExact(page, [word('<u>paragraph</u>')]);
+    await saved(page, [word('<u>paragraph</u>')]);
     assert.deepEqual(errors(page), []);
   });
 
