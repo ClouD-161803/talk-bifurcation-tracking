@@ -2,17 +2,19 @@
 // the Format menu and by a double click on the figure. a pause in typing draws a preview on the
 // slide, or lists the errors at their lines, Cancel draws the output again, and Apply writes the
 // source over the text that the sheet opened with, which another person may have changed since.
-// Blank opens the sheet with Insert, whose Cancel takes the new figure off the slide. the sheet
-// fits the screen of a phone. a test that runs TeX is skipped without latex and dvisvgm
+// after Apply, the slide shows the output of the source, or the last good output when its compile
+// fails, and a preview is compiled in the box of the style, as the output is. Blank opens the sheet
+// with Insert, whose Cancel takes the new figure off the slide. the sheet fits the screen of a
+// phone. a test that runs TeX is skipped without latex and dvisvgm
 
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { findTools } from '../scripts/figures.mjs';
 import { front } from './helpers/apply.mjs';
-import { open, sessionUrl, TALK } from './helpers/client.mjs';
+import { C, open, sessionUrl, TALK } from './helpers/client.mjs';
 import { center, click, press } from './helpers/editor.mjs';
 import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
@@ -54,8 +56,8 @@ async function button(page, label) {
   await wait(page);
 }
 
-async function session(t) {
-  const folder = talkFolder(t, DECK);
+async function session(t, deck = DECK) {
+  const folder = talkFolder(t, deck);
   for (const dir of ['theme', 'brand']) cpSync(resolve(dir), join(folder.talk, dir), { recursive: true });
   mkdirSync(join(folder.talk, 'figures'));
   writeFileSync(join(folder.talk, 'figures', 'orbit.tex'), ORBIT);
@@ -66,7 +68,7 @@ async function session(t) {
   });
   const read = (name) => readFileSync(join(folder.talk, name), 'utf8');
   const write = (name, text) => writeFileSync(join(folder.talk, name), text);
-  return { edit, read, write };
+  return { edit, read, write, remove: (name) => unlinkSync(join(folder.talk, name)) };
 }
 
 async function page(t, edit, options = {}) {
@@ -143,6 +145,48 @@ test('Apply writes the source over the text that the sheet opened with, and offe
   await button(p, 'Apply');
   await until(() => read('figures/orbit.tex') === theirs.replace('(2,2)', '(3,2)'), 'the source to be written over their text');
   assert.equal(await sheet(p), null);
+});
+
+test('after Apply the slide shows the last good output when the compile of the source fails, and a preview is compiled in the box of the style', { skip: WITHOUT_TEX, timeout: 240000 }, async (t) => {
+  const bare = '<div class="tikz" data-figure="bare" style="translate: 700px -300px"></div>';
+  const { edit, read, write, remove } = await session(t, DECK.replace('translate: 0px 120px"></div>', `translate: 0px 120px"></div>\n  ${bare}`));
+  write('figures/part.tex', '\\draw[blue] (0,0) rectangle (3,1);\n');
+  write('figures/bare.tex', ORBIT);
+  const p = await page(t, edit);
+  const output = await p.evaluate(DRAWN);
+  // the box of each preview asked for
+  await p.evaluate(`(() => {
+    window.boxes = [];
+    const send = window.fetch;
+    window.fetch = (url, options) => {
+      if (String(url).includes('figures/preview')) window.boxes.push(JSON.parse(options.body).box);
+      return send(url, options);
+    };
+  })()`);
+  await click(p, await center(p, FIGURE));
+  await wait(p);
+  await p.evaluate(`${E}.exec('format.tikzSource')`);
+  await p.waitFor(`document.querySelector('${SHEET}')?.open && document.querySelector('${SHEET} textarea').value !== ''`);
+  const input = '\\begin{tikzpicture}\n\\input{figures/part.tex}\n\\end{tikzpicture}\n';
+  await typeSource(p, input);
+  await p.waitFor(`(${DRAWN}) !== ${JSON.stringify(output)} && (${DRAWN}) !== ''`, 60_000);
+  assert.deepEqual(await p.evaluate('window.boxes'), [{ width: 600, height: 400 }]);
+
+  // the file that the source reads is taken away before the source is applied
+  remove('figures/part.tex');
+  await button(p, 'Apply');
+  await until(() => read('figures/orbit.tex') === input, 'the source to be written');
+  await p.waitFor(`${C}.figures?.errors.orbit?.length > 0 && ${C}.figures.compiling === null`, 60_000);
+  await p.waitFor(`(${DRAWN}) === ${JSON.stringify(output)}`, 10_000);
+
+  // a figure without a size in its style is compiled without a box
+  await p.evaluate(`${C}.app.selection.set('elements', [document.querySelector('.reveal .slides > section.present .tikz[data-figure="bare"]')])`);
+  await p.evaluate(`${E}.exec('format.tikzSource')`);
+  await p.waitFor(`document.querySelector('${SHEET}')?.open && document.querySelector('${SHEET} textarea').value !== ''`);
+  await typeSource(p, ORBIT.replace('accent', 'blue'));
+  await p.waitFor('window.boxes.length === 2', 60_000);
+  assert.deepEqual(await p.evaluate('window.boxes[1]'), { width: null, height: null });
+  await press(p, 'Escape');
 });
 
 test('Blank opens the sheet with Insert, whose Cancel takes the new figure off the slide, and the sheet fits a phone', { skip: WITHOUT_TEX, timeout: 240000 }, async (t) => {
