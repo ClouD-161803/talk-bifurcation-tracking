@@ -58,8 +58,11 @@ test('a guest is told that the host is not running, and the end of the session b
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const relayed = ['--relay', relay.url];
-  // a poll without news is answered after 1 s, before the relay of this test gives up after 5 s
-  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000' } });
+  // a poll without news is answered after 1 s, before the relay of this test gives up after 5 s. the
+  // host is thus between two polls once a second. the edit command of this test therefore answers a
+  // poll with ended until it exits, 3 s after index.html is written, in place of 200 ms, and it is
+  // killed once the host is told the end
+  const server = await talk(t, { args: relayed, env: { SLIDES_RELAY_SECRET: SECRET, SLIDES_POLL_HOLD_MS: '1000', SLIDES_CLOSE_WAIT_MS: '120000' } });
   const { port, key } = server.edit;
   const guestUrl = `${relay.url}/${key}/index.html?edit&session`;
   await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
@@ -108,9 +111,10 @@ test('a guest is told that the host is not running, and the end of the session b
 
   await t.test('the host is told that the session has ended when the edit command stops', { skip: process.platform === 'win32' && 'signals' }, async () => {
     server.edit.child.kill('SIGTERM');
+    await host.waitFor(`document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent === 'The session has ended'`);
+    server.edit.child.kill('SIGKILL');
     await server.edit.exited;
     server.edit = null;
-    await host.waitFor(`document.querySelector('dialog.beeson-edit-dialog[open] h3')?.textContent === 'The session has ended'`);
     assert.equal(await host.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), 'Your changes up to now are in index.html.');
     assert.equal(await host.evaluate(`${C}.connection`), 'ended');
   });
