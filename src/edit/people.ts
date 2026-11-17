@@ -38,8 +38,10 @@ type Member = Person & { state: unknown; lastSeen: number; joined: number; polle
 // a source of news for the answers of events beside the operations and the people, e.g. the
 // version history. rev grows with each change, and write adds to an answer the news after the rev
 // that the page has had, which is -1 when it may have missed news, or after the version since of
-// its poll
-export type Feed = { rev: () => number; write: (answer: EventsAnswer, seen: number, since: string) => void };
+// its poll. of is the rev of a feed that differs between people, given instead of rev for the pages
+// of person
+export type Feed = { rev: () => number; of?: (person: string) => number; write: (answer: EventsAnswer, seen: number, since: string, person: string) => void };
+const revOf = (f: Feed, person: string) => (f.of ? f.of(person) : f.rev());
 
 type Poll = {
   client: string;
@@ -172,7 +174,7 @@ export class People {
     }
     let member = this.members.get(id);
     // a page reads the feeds again after a hello, hence it is sent only what changes later
-    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0, feeds: this.feedList.map((f) => f.rev()) };
+    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0, feeds: this.feedList.map((f) => revOf(f, person)) };
     if (member) Object.assign(member, fields);
     else this.members.set(id, (member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 }));
     this.renamed(person);
@@ -245,7 +247,7 @@ export class People {
   // a source of news for every page from now on
   feed(f: Feed): void {
     this.feedList.push(f);
-    for (const m of this.members.values()) m.feeds.push(f.rev());
+    for (const m of this.members.values()) m.feeds.push(revOf(f, m.person));
   }
 
   // the waiting polls woken after a change of a feed
@@ -403,7 +405,7 @@ export class People {
   private hasNews(poll: Poll): boolean {
     const member = this.members.get(poll.client);
     const at = this.authority.reach(poll.since);
-    return at === null || at < this.authority.n || !member || member.seen < this.rev || this.feedList.some((f, i) => member.feeds[i] < f.rev());
+    return at === null || at < this.authority.n || !member || member.seen < this.rev || this.feedList.some((f, i) => member.feeds[i] < revOf(f, member.person));
   }
 
   private wake(): void {
@@ -424,7 +426,7 @@ export class People {
     const answer: EventsAnswer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
     if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
     if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError ?? (this.texError === null ? null : { message: this.texError, unwritten: 0, file: 'tex.js' });
-    if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i], since));
+    if (member) this.feedList.forEach((f, i) => member.feeds[i] < revOf(f, member.person) && f.write(answer, member.feeds[i], since, member.person));
     return answer;
   }
 
@@ -438,7 +440,7 @@ export class People {
       member.seen = this.rev;
       member.knownSeen = this.knownRev;
       member.writeSeen = this.writeRev;
-      member.feeds = this.feedList.map((f) => f.rev());
+      member.feeds = this.feedList.map((f) => revOf(f, member.person));
       member.lastAnswer = Date.now();
       member.polls--;
     }

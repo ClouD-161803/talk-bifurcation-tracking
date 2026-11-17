@@ -6,15 +6,18 @@ import { realpathSync as realpathSync3 } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
-import { createReadStream, mkdirSync as mkdirSync3, readFileSync as readFileSync7, realpathSync as realpathSync2, unlinkSync as unlinkSync5, writeFileSync as writeFileSync5 } from "node:fs";
-import { mkdir, readdir, readFile as readFile3, realpath as realpath3, stat as stat4, writeFile as writeFile5 } from "node:fs/promises";
+import { createReadStream, mkdirSync as mkdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync2, unlinkSync as unlinkSync6, writeFileSync as writeFileSync6 } from "node:fs";
+import { mkdir, readdir, readFile as readFile3, realpath as realpath3, stat as stat4, writeFile as writeFile6 } from "node:fs/promises";
 import { createServer } from "node:http";
-import { createHash as createHash2, randomBytes as randomBytes6 } from "node:crypto";
+import { createHash as createHash2, randomBytes as randomBytes7 } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join as join6, resolve, sep as sep2 } from "node:path";
+import { join as join7, resolve, sep as sep2 } from "node:path";
 
 // src/session/protocol.ts
 var VERSION_NAME_MAX = 80;
+var COMMENT_MAX = 4e3;
+var REPLIES_MAX = 200;
+var THREADS_MAX = 2e3;
 var COLORS = ["--data-2", "--data-3", "--data-5", "--data-7"];
 var HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}\p{Cf}]$/u;
 var SELECTOR = /^[\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
@@ -452,7 +455,7 @@ function combine(first2, second) {
   }
   return out;
 }
-function mergePatches(theirs, ours, wins = "ours", base, keep) {
+function mergePatches(theirs, ours, wins = "ours", base, keep2) {
   const hitOurs = new Uint8Array(ours.length), hitTheirs = new Uint8Array(theirs.length);
   let k = 0, any = false;
   for (let i = 0; i < ours.length; i++) {
@@ -465,8 +468,8 @@ function mergePatches(theirs, ours, wins = "ours", base, keep) {
   }
   const conflicts = ours.filter((_, i) => hitOurs[i]);
   if (!any) return { patches: combine(theirs, ours), conflicts };
-  const gone = new Set(!base ? [] : [[ours, theirs, "ours"], [theirs, ours, "theirs"]].flatMap(([a, b, s]) => keep === s ? [] : moves(base, a, b, conflict)));
-  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, keep).patches, conflicts };
+  const gone = new Set(!base ? [] : [[ours, theirs, "ours"], [theirs, ours, "theirs"]].flatMap(([a, b, s]) => keep2 === s ? [] : moves(base, a, b, conflict)));
+  if (gone.size) return { patches: mergePatches(theirs.filter((p) => !gone.has(p)), ours.filter((p) => !gone.has(p)), wins, base, keep2).patches, conflicts };
   const keptTheirs = wins === "ours" ? theirs.filter((_, j) => !hitTheirs[j]) : theirs;
   const keptOurs = wins === "ours" ? ours : ours.filter((_, i) => !hitOurs[i]);
   return { patches: combine(keptTheirs, keptOurs), conflicts };
@@ -921,13 +924,13 @@ async function renameRetried(from, to) {
     }
   }
 }
-function renameRetriedSync(from, to) {
+function renameRetriedSync(from, to, tries = 21) {
   const wait = new Int32Array(new SharedArrayBuffer(4));
   for (let attempt = 0; ; attempt++) {
     try {
       return renameSync(from, to);
     } catch (e) {
-      if (attempt >= 20 || !RETRY.has(e.code ?? "")) throw e;
+      if (attempt + 1 >= tries || !RETRY.has(e.code ?? "")) throw e;
       Atomics.wait(wait, 0, 0, 10 * (attempt + 1));
     }
   }
@@ -1499,10 +1502,11 @@ var AppliedTable = class {
   }
 };
 
-// src/edit/history.ts
-import { appendFileSync, mkdirSync, readdirSync as readdirSync2, readFileSync as readFileSync3, statSync as statSync2, truncateSync, unlinkSync as unlinkSync3, writeFileSync as writeFileSync2 } from "node:fs";
+// src/edit/comments.ts
 import { randomBytes as randomBytes3 } from "node:crypto";
-import { join as join2 } from "node:path";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync4, unlinkSync as unlinkSync3, writeFileSync as writeFileSync3 } from "node:fs";
+import { unlink as unlink2, writeFile as writeFile3 } from "node:fs/promises";
+import { join as join4 } from "node:path";
 
 // src/session/slides.ts
 var VOID = /* @__PURE__ */ new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
@@ -1552,18 +1556,18 @@ function childrenOf(html) {
   const stack = [];
   for (const t of tokenize(html)) {
     if (t.type === "start") {
-      if (stack.length === 1 && (VOID.has(t.name) || t.selfClosing)) out.push({ start: t.start, end: t.end });
-      if (!VOID.has(t.name) && !t.selfClosing) stack.push({ name: t.name, start: t.start });
+      if (stack.length === 1 && (VOID.has(t.name) || t.selfClosing)) out.push({ start: t.start, end: t.end, name: t.name, open: t.end });
+      if (!VOID.has(t.name) && !t.selfClosing) stack.push({ name: t.name, start: t.start, open: t.end });
     } else if (t.type === "end") {
       const at = stack.map((s) => s.name).lastIndexOf(t.name);
       if (at < 0) continue;
-      if (at === 1) out.push({ start: stack[1].start, end: t.end });
+      if (at === 1) out.push({ start: stack[1].start, end: t.end, name: t.name, open: stack[1].open });
       stack.length = at;
     }
   }
   return out;
 }
-function pairs(a, b) {
+function pairs(a, b, half = false, mid = false) {
   const out = [];
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) out.push({ i: pre, j: pre, same: true }), pre++;
@@ -1581,7 +1585,7 @@ function pairs(a, b) {
   anchors2.push([n, m]);
   let i0 = 0, j0 = 0;
   for (const [ai, aj] of anchors2) {
-    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj))) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
+    for (const [x, y] of bestPairs(a.slice(pre + i0, pre + ai), b.slice(pre + j0, pre + aj), half, mid)) out.push({ i: pre + i0 + x, j: pre + j0 + y, same: false });
     if (ai < n) out.push({ i: pre + ai, j: pre + aj, same: true });
     i0 = ai + 1;
     j0 = aj + 1;
@@ -1596,9 +1600,10 @@ var shared = (x, y) => {
   while (s < x.length - p && s < y.length - p && x[x.length - 1 - s] === y[y.length - 1 - s]) s++;
   return p + s;
 };
-function bestPairs(a, b) {
+function bestPairs(a, b, half, mid) {
   const n = a.length, m = b.length;
   if (n === 0 || m === 0) return [];
+  if (half) return closePairs(a, b, mid);
   if (n === m) return a.map((_, i) => [i, i]);
   const k = Math.min(n, m);
   const [short, long, flip] = n < m ? [a, b, false] : [b, a, true];
@@ -1614,17 +1619,124 @@ function bestPairs(a, b) {
   }
   return out.reverse();
 }
+var inner = (x) => x.slice(x.indexOf(">") + 1, x.lastIndexOf("<")).replace(/\s+/g, " ").trim();
+var words = (x) => x.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+function core(x, y) {
+  if (x.length > y.length) [x, y] = [y, x];
+  x = ` ${x} `;
+  const h = x.length >> 1, c = x[h];
+  let k = y.length, b = 0, p = -1;
+  while (k > 0 && ~(p = y.indexOf(c, ++p))) {
+    let l = h, r = h;
+    while (x[--l] === y[l + p - h]) ;
+    while (x[++r] === y[r + p - h]) ;
+    k -= r - l;
+    while (++l < r && x[l] !== " ") ;
+    while (--r > l && x[r] !== " ") ;
+    let s = r, w = 2;
+    while (w && --s > l) if (x[s] === " ") w--;
+    if (!w) b = Math.max(b, r - l + 1);
+  }
+  return b;
+}
+function closePairs(a, b, mid) {
+  const n = a.length, m = b.length;
+  const wa = a.map(words), wb = b.map(words);
+  const ia = a.map(inner), ib = b.map(inner);
+  const gain = (i, j) => {
+    const [x, y] = wa[i] || wb[j] ? [wa[i], wb[j]] : [ia[i], ib[j]];
+    const s = Math.max(shared(x, y), mid && (i === j || n - i === m - j) ? core(x, y) : 0);
+    return s > 0 && 2 * s >= Math.min(x.length, y.length) ? s : -1;
+  };
+  const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      const g = gain(i, j);
+      score[i][j] = Math.max(score[i + 1][j], score[i][j + 1], g < 0 ? -1 : g + score[i + 1][j + 1]);
+    }
+  }
+  const out = [];
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    const g = gain(i, j);
+    if (g >= 0 && score[i][j] === g + score[i + 1][j + 1]) out.push([i++, j++]);
+    else if (score[i][j] === score[i + 1][j]) i++;
+    else j++;
+  }
+  return out;
+}
+function keyOf(x) {
+  const c = childrenOf(x)[0];
+  const first2 = c ? words(x.slice(c.start, c.end)) : "";
+  return { bare: !words(x), name: c?.name ?? "", first: first2, tag: c && !first2 ? x.slice(c.start, c.open) : "" };
+}
+var sameSlide = (x, y) => x.bare || y.bare ? x.name === y.name : x.first ? x.first === y.first : !y.first && x.tag !== "" && x.tag === y.tag;
+function pairInPlace(to, m, textA, textB) {
+  const n = to.length;
+  const used = new Uint8Array(m);
+  let free = 0;
+  for (let i = 0; i < n; i++) {
+    if (to[i] >= 0) used[to[i]] = 1;
+    else free++;
+  }
+  if (!free || n - free === m) return;
+  const keysB = /* @__PURE__ */ new Map();
+  const keyB = (j) => keysB.get(j) ?? keysB.set(j, keyOf(textB(j))).get(j);
+  let prev = -1;
+  let after = -1;
+  for (let i = 0; i < n; i++) {
+    if (to[i] >= 0) {
+      prev = to[i];
+      after = -1;
+      continue;
+    }
+    if (after <= i) for (after = i + 1; after < n && !(to[after] > prev); ) after++;
+    const end = after < n ? to[after] : m;
+    let key = null;
+    for (let j = prev + 1; j < end; j++) {
+      if (used[j]) continue;
+      key ??= keyOf(textA(i));
+      if (!sameSlide(key, keyB(j))) continue;
+      to[i] = j;
+      used[j] = 1;
+      prev = j;
+      break;
+    }
+  }
+}
 function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   const a = beforeSlides.map((s) => before2.slice(s.start, s.end));
   const b = afterSlides.map((s) => after.slice(s.start, s.end));
-  const matched = pairs(a, b);
+  const matched = pairs(a, b, true, true);
+  const to = new Int32Array(a.length).fill(-1);
+  for (const p of matched) to[p.i] = p.j;
+  const free = /* @__PURE__ */ new Map();
+  const paired = new Set(matched.map((p) => p.j));
+  b.forEach((t, j) => {
+    if (paired.has(j)) return;
+    const list = free.get(t);
+    if (list) list.push(j);
+    else free.set(t, [j]);
+  });
+  const past = /* @__PURE__ */ new Set();
+  a.forEach((t, i) => {
+    const list = to[i] < 0 ? free.get(t) : void 0;
+    if (!list?.length) return;
+    let k = 0;
+    for (let x = 1; x < list.length; x++) if (Math.abs(list[x] - i) < Math.abs(list[k] - i)) k = x;
+    past.add(to[i] = list.splice(k, 1)[0]);
+  });
+  const moved2 = Int32Array.from(to);
+  pairInPlace(to, b.length, (i) => a[i], (j) => b[j]);
+  to.forEach((j, i) => {
+    if (j >= 0 && moved2[i] < 0) matched.push({ i, j, same: false });
+  });
   const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = /* @__PURE__ */ new Set();
   afterSlides.forEach((s, j) => {
+    if (past.has(j)) slides.add(s.number);
     if (!same.has(j) && marks.some((m) => m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end)) slides.add(s.number);
   });
-  const kept = new Set(matched.map((p) => p.i));
-  const gone = beforeSlides.filter((_, i) => !kept.has(i)).map((s) => s.number);
+  const gone = beforeSlides.filter((_, i) => to[i] < 0).map((s) => s.number);
   let elements = 0;
   for (const p of matched) {
     if (p.same) continue;
@@ -1637,670 +1749,463 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   return out;
 }
 
-// src/edit/history.ts
-var isVersionId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
-var newId = () => randomBytes3(9).toString("base64url");
-var ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
-var STEP = 50;
-var CHECKPOINTS = 64;
-function rangesOf(patches) {
-  let delta = 0;
-  return patches.map((p) => {
-    const start2 = p.start + delta;
-    delta += p.text.length - (p.end - p.start);
-    return { start: start2, end: start2 + p.text.length };
-  });
+// src/session/anchor.ts
+var REMOVED_MAX = 4096;
+var CHECK_TAG = 256;
+var tagOf = (s) => ({ start: s.start, end: s.open, tag: "section" });
+var sameAnchor = (a, b) => a === b || !!a && !!b && a.start === b.start && a.end === b.end && a.tag === b.tag;
+var shiftTag = (a, patches) => ({ start: shiftOffset(a.start, patches, true), end: shiftOffset(a.end, patches, false), tag: a.tag });
+var touches = (p, s, e) => p.start < p.end ? p.start < e && s < p.end : s < p.start && p.start < e;
+var withRemoved = (anchor, slide, removed) => removed ? { anchor, slide, removed } : { anchor, slide };
+var lengthOf = (k) => typeof k === "string" ? k.length : parseInt(k.sum, 16);
+var keep = (text, open2) => text.length <= REMOVED_MAX ? text : { tag: text.slice(0, Math.min(open2, CHECK_TAG)), sum: checksum(text) };
+function startTagAt(text, i) {
+  if (!Number.isInteger(i) || i < 0 || text.charCodeAt(i) !== 60 || !/[A-Za-z]/.test(text.charAt(i + 1))) return null;
+  for (let size2 = 256; ; size2 *= 4) {
+    const whole = i + size2 >= text.length;
+    const t = tokenize(text.slice(i, i + size2))[0];
+    if (t?.type === "start" && (whole || t.end < size2)) return text.charCodeAt(i + t.end - 1) === 62 ? { start: i, end: i + t.end, tag: t.name } : null;
+    if (whole || t && t.type !== "start" && t.type !== "text") return null;
+  }
 }
-function tidy(marks) {
-  marks.sort((a, b) => a.start - b.start || a.end - b.end);
+function slideAt(slides, i) {
+  let lo = 0;
+  let hi = slides.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = lo + hi >> 1;
+    if (slides[mid].start <= i) {
+      found = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return found >= 0 && i < slides[found].end ? slides[found] : null;
+}
+function slideAnchorAt(slides, i) {
+  const s = slideAt(slides, i);
+  return s ? tagOf(s) : null;
+}
+function elementClose(text, at, limit) {
+  if (VOID.has(at.tag)) return { end: at.end, close: at.end };
+  for (let size2 = Math.max(1024, 2 * (at.end - at.start)); ; size2 *= 4) {
+    const whole = at.start + size2 >= limit;
+    const tokens = tokenize(text.slice(at.start, whole ? limit : at.start + size2));
+    const first2 = tokens[0];
+    if (!first2 || first2.type !== "start" || first2.selfClosing) return { end: at.end, close: at.end };
+    const n = whole ? tokens.length : tokens.length - 1;
+    const open2 = [];
+    for (let k = 0; k < n; k++) {
+      const t = tokens[k];
+      if (t.type === "start") {
+        if (!t.selfClosing && !VOID.has(t.name)) open2.push(t.name);
+      } else if (t.type === "end") {
+        const i = open2.lastIndexOf(t.name);
+        if (i < 0) return { end: at.start + t.start, close: at.start + t.start };
+        open2.length = i;
+        if (i === 0) return { end: at.start + t.end, close: at.start + t.start };
+      }
+    }
+    if (whole) return { end: -1, close: -1 };
+  }
+}
+var elementEnd = (text, at, limit) => elementClose(text, at, limit).end;
+function insertedSpans(patches) {
   const out = [];
-  for (const m of marks) {
-    const last = out[out.length - 1];
-    if (last && last.author === m.author && m.start <= last.end) last.end = Math.max(last.end, m.end);
-    else out.push({ ...m });
+  let delta = 0;
+  for (const p of patches) {
+    if (p.text) out.push({ start: p.start + delta, end: p.start + delta + p.text.length });
+    delta += p.text.length - (p.end - p.start);
   }
   return out;
 }
-function first(n, at) {
+function overlaps(spans, s, e) {
   let lo = 0;
-  let hi = n;
-  while (lo < hi) {
+  let hi = spans.length - 1;
+  while (lo <= hi) {
     const mid = lo + hi >> 1;
-    if (at(mid)) hi = mid;
-    else lo = mid + 1;
+    if (spans[mid].end <= s) lo = mid + 1;
+    else if (spans[mid].start >= e) hi = mid - 1;
+    else return true;
   }
-  return lo;
+  return false;
 }
-function shifter(patches) {
-  const deltas = [0];
-  for (const p of patches) deltas.push(deltas[deltas.length - 1] + p.text.length - (p.end - p.start));
-  return (offset, after) => {
-    const i = first(patches.length, (k) => {
-      const p = patches[k];
-      return !(p.end < offset || p.end === offset && (p.start < p.end || after));
-    });
-    return i < patches.length && patches[i].start < offset ? patches[i].start + deltas[i] : offset + deltas[i];
+function findInserted(after, kept, inserted, near, within = null) {
+  const text = typeof kept === "string" ? kept : kept.tag;
+  if (!text) return -1;
+  const len = lengthOf(kept);
+  const lo = within ? within.start : 0;
+  const hi = within ? within.end : after.length;
+  let best = -1;
+  let n = 0;
+  const scan = (from, to) => {
+    const w = from === 0 && to === after.length ? after : after.slice(from, to);
+    for (let o = w.indexOf(text); o >= 0 && n < 256; o = w.indexOf(text, o + 1), n++) {
+      const at = from + o;
+      if (at + len > hi || !overlaps(inserted, at, at + len) || best >= 0 && Math.abs(at - near) >= Math.abs(best - near)) continue;
+      if (typeof kept === "string" || checksum(after.slice(at, at + len)) === kept.sum) best = at;
+    }
   };
+  let total = 0;
+  for (const s of inserted) if (s.start < hi && s.end > lo) total += s.end - s.start + 2 * len;
+  if (!total || len > hi - lo) return -1;
+  if (total >= hi - lo) {
+    scan(lo, hi);
+    return best;
+  }
+  for (let k = 0; k < inserted.length; k++) {
+    const from = Math.max(lo, inserted[k].start - len + 1);
+    let to = inserted[k].end + len - 1;
+    while (k + 1 < inserted.length && inserted[k + 1].start - len + 1 < to) to = inserted[++k].end + len - 1;
+    if (from < Math.min(hi, to)) scan(from, Math.min(hi, to));
+  }
+  return best;
 }
-function moveMarks(marks, patches, author) {
-  if (patches.length === 0) return marks;
-  const ranges = rangesOf(patches);
-  const written = ranges.filter((r) => r.start < r.end);
-  const shift2 = shifter(patches);
-  const out = [];
-  for (const m of marks) {
-    const start2 = shift2(m.start, true);
-    const end = m.start === m.end ? start2 : Math.max(start2, shift2(m.end, false));
-    if (start2 === end) {
-      const r = written[first(written.length, (k2) => written[k2].end >= start2)];
-      if (!r || r.start > start2) out.push({ start: start2, end, author: m.author });
+function matchSlides(before2, s0, after, s1, patches) {
+  const to = new Int32Array(s0.length).fill(-1);
+  const kept = new Uint8Array(s0.length);
+  const used = new Uint8Array(s1.length);
+  const starts = new Map(s1.map((s, j) => [s.start, j]));
+  let k = 0;
+  let delta = 0;
+  for (let i = 0; i < s0.length; i++) {
+    const s = s0[i];
+    for (; k < patches.length && patches[k].end <= s.start; k++) delta += patches[k].text.length - (patches[k].end - patches[k].start);
+    let touched = false;
+    for (let q = k; q < patches.length && patches[q].start < s.end && !touched; q++) touched = touches(patches[q], s.start, s.end);
+    const j = touched ? void 0 : starts.get(s.start + delta);
+    if (j === void 0 || used[j] || s1[j].end - s1[j].start !== s.end - s.start) continue;
+    to[i] = j;
+    kept[i] = 1;
+    used[j] = 1;
+  }
+  const textA = (i) => before2.slice(s0[i].start, s0[i].end);
+  const restB = [...s1.keys()].filter((j) => !used[j]);
+  const textB = restB.map((j) => after.slice(s1[j].start, s1[j].end));
+  const byText = /* @__PURE__ */ new Map();
+  restB.forEach((j, x) => {
+    const list = byText.get(textB[x]);
+    if (list) list.push(j);
+    else byText.set(textB[x], [j]);
+  });
+  const restA = [];
+  for (let i = 0; i < s0.length; i++) {
+    if (to[i] >= 0) continue;
+    const t = textA(i);
+    let best = -1;
+    for (const j of byText.get(t) ?? []) if (!used[j] && (best < 0 || Math.abs(j - i) < Math.abs(best - i))) best = j;
+    if (best < 0) {
+      restA.push(i);
       continue;
     }
-    let at = start2;
-    for (let k2 = first(written.length, (i) => written[i].end > start2); k2 < written.length && written[k2].start < end; k2++) {
-      if (written[k2].start > at) out.push({ start: at, end: written[k2].start, author: m.author });
-      at = Math.max(at, written[k2].end);
-    }
-    if (at < end) out.push({ start: at, end, author: m.author });
+    to[i] = best;
+    kept[i] = 1;
+    used[best] = 1;
   }
-  const mine = out.filter((m) => m.author === author).sort((a, b) => a.start - b.start);
-  let k = 0;
-  let reach = -1;
-  for (const r of ranges) {
-    if (r.start === r.end) {
-      while (k < mine.length && mine[k].start <= r.start) reach = Math.max(reach, mine[k++].end);
-      if (reach >= r.start) continue;
-    }
-    out.push({ start: r.start, end: r.end, author });
-    reach = Math.max(reach, r.end);
+  const left = restB.filter((j) => !used[j]);
+  for (const p of pairs(restA.map(textA), left.map((j) => after.slice(s1[j].start, s1[j].end)), true)) {
+    to[restA[p.i]] = left[p.j];
+    used[left[p.j]] = 1;
   }
-  return tidy(out);
+  pairInPlace(to, s1.length, textA, (j) => after.slice(s1[j].start, s1[j].end));
+  return { to, kept };
 }
-function compose(a, b) {
-  const out = [];
-  let i = 0;
+function wholeTag(text, start2, end) {
+  const t = startTagAt(text, start2);
+  return t && t.end === end ? t : null;
+}
+function byPatches(a, before2, patches, after, regions) {
+  let first2 = -1;
+  let last = -1;
+  for (let k = 0; k < patches.length && patches[k].start <= a.end; k++) {
+    if (!touches(patches[k], a.start, a.end)) continue;
+    if (first2 < 0) first2 = k;
+    last = k;
+  }
+  if (first2 < 0) return shiftTag(a, patches);
+  let inside = true;
+  for (let k = first2; k <= last; k++) if (!(patches[k].start > a.start && patches[k].end < a.end)) inside = false;
+  if (inside) return startTagAt(after, shiftOffset(a.start, patches, true));
+  const a0 = Math.min(a.start, patches[first2].start);
+  const b0 = Math.max(a.end, patches[last].end);
   let delta = 0;
-  const next = () => {
-    const p = a[i++];
-    delta += p.text.length - (p.end - p.start);
-    return p;
-  };
-  let [head, tail] = ["", ""];
-  for (const q of b) {
-    while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
-    const before2 = delta;
-    let [low, high, pre, post] = [q.start, q.end, "", ""];
-    const o = out[out.length - 1];
-    if (o && q.start < o.end + delta) {
-      out.pop();
-      high = o.end + delta;
-      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + tail.slice(0, tail.length - (high - q.start)), tail.slice(tail.length - (high - q.end))];
-    }
-    while (i < a.length && a[i].start + delta <= q.end) {
-      const at = a[i].start + delta;
-      const p = next();
-      if (at < low) [low, pre] = [at, p.text.slice(0, q.start - at) + pre];
-      if (at + p.text.length > high) [high, post] = [at + p.text.length, post + p.text.slice(q.end - at)];
-    }
-    [head, tail] = [pre + q.text, post];
-    if (low - before2 < high - delta || head || tail) out.push({ start: low - before2, end: high - delta, text: head + tail });
+  for (let k = 0; k < first2; k++) delta += patches[k].text.length - (patches[k].end - patches[k].start);
+  let grow = 0;
+  for (let k = first2; k <= last; k++) grow += patches[k].text.length - (patches[k].end - patches[k].start);
+  const a1 = a0 + delta;
+  const b1 = b0 + delta + grow;
+  const key = `${a0}:${b0}`;
+  let region = regions.get(key);
+  if (!region) regions.set(key, region = { tokens: tokenize(before2.slice(a0, b0)), fresh: tokenize(after.slice(a1, b1)) });
+  const fresh = region.fresh;
+  const t0 = fresh[0];
+  if (a0 === a.start && b0 === a.end && fresh.length === 1 && t0.type === "start" && t0.end === b1 - a1) return wholeTag(after, a1, b1);
+  for (const named of [true, false]) {
+    const old = region.tokens.filter((t2) => t2.type === "start" && (!named || t2.name === a.tag));
+    const now = fresh.filter((t2) => t2.type === "start" && (!named || t2.name === a.tag));
+    const k = old.findIndex((t2) => t2.start === a.start - a0);
+    const t = now[k];
+    if (k >= 0 && old.length === now.length && t.type === "start") return wholeTag(after, a1 + t.start, a1 + t.end);
   }
-  return out.concat(a.slice(i));
+  return null;
 }
-function overwrites(marks, p) {
-  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) {
-    const m = marks[k];
-    if (m.author !== AUTHOR && (m.start === m.end ? m.start >= p.start : p.start < p.end && p.start < m.end && m.start < p.end)) return true;
-  }
-  return false;
+function keepsTag(after, a, patches) {
+  const t = startTagAt(after, shiftOffset(a.start, patches, true));
+  return !!t && t.tag === a.tag && t.end === shiftOffset(a.end, patches, false);
 }
-function touches(marks, p) {
-  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) if (marks[k].author !== AUTHOR && marks[k].end >= p.start) return true;
-  return false;
+var changedFrom = (it, next, patches) => !sameAnchor(next.anchor, it.anchor && shiftTag(it.anchor, patches)) || !sameAnchor(next.slide, it.slide && shiftTag(it.slide, patches)) || !!next.removed !== !!it.removed || next.removed?.text !== it.removed?.text || next.removed?.slide !== it.removed?.slide;
+function betweenTags(text, p) {
+  if (p.start > 0 && text.lastIndexOf("<", p.start - 1) > text.lastIndexOf(">", p.start - 1)) return false;
+  const gt = text.indexOf(">", p.end);
+  if (gt < 0) return true;
+  const lt = text.indexOf("<", p.end);
+  return lt >= 0 && lt < gt;
 }
-function clip(marks, patches, author) {
-  const ranges = rangesOf(patches);
-  const out = [];
-  const dropped = [];
-  for (const m of marks) {
-    const n = out.length;
-    for (let k2 = first(ranges.length, (i) => ranges[i].end >= m.start); k2 < ranges.length && ranges[k2].start <= m.end; k2++) {
-      const r = ranges[k2];
-      if (m.start === m.end || r.start === r.end) {
-        if (m.start === m.end && r.start <= m.start && m.start <= r.end) out.push({ ...m });
-        else if (r.start === r.end && m.start <= r.start && r.start <= m.end) out.push({ start: r.start, end: r.start, author: m.author });
-      } else if (m.start < r.end && r.start < m.end) {
-        out.push({ start: Math.max(m.start, r.start), end: Math.min(m.end, r.end), author: m.author });
+function moveAnchors(before2, patches, after, items, slides = null) {
+  if (!patches.length) return { items, changed: items.map(() => false), slides };
+  if (!items.length) return { items, changed: [], slides: null };
+  const p = patches[0];
+  if (patches.length === 1 && !/[<>]/.test(p.text) && !/[<>]/.test(before2.slice(p.start, p.end)) && betweenTags(before2, p)) {
+    const out = new Array(items.length);
+    for (let k = 0; k < items.length; k++) {
+      const it = items[k];
+      if (it.anchor && touches(p, it.anchor.start, it.anchor.end) && !keepsTag(after, it.anchor, patches) || it.slide && touches(p, it.slide.start, it.slide.end) && !keepsTag(after, it.slide, patches)) {
+        return slow(before2, patches, after, items, slides);
       }
+      out[k] = withRemoved(it.anchor && shiftTag(it.anchor, patches), it.slide && shiftTag(it.slide, patches), it.removed);
     }
-    if (out.length === n) dropped.push(m);
+    const shifted = slides && slides.map((s) => ({ start: shiftOffset(s.start, patches, true), end: shiftOffset(s.end, patches, false), open: shiftOffset(s.open, patches, false), number: s.number }));
+    return { items: out, changed: items.map(() => false), slides: shifted };
   }
-  const kept = tidy(out);
-  dropped.sort((a, b) => a.start - b.start);
-  const furthest = [];
-  dropped.forEach((m, i) => furthest.push(i > 0 && dropped[furthest[i - 1]].end >= m.end ? furthest[i - 1] : i));
-  const gap = (m, r) => Math.max(0, m.start - r.end, r.start - m.end);
-  const nearest = (r) => {
-    const i = first(dropped.length, (k2) => dropped[k2].start > r.start);
-    const before2 = i > 0 ? dropped[furthest[i - 1]] : null;
-    const after = i < dropped.length ? dropped[i] : null;
-    if (before2 && (!after || gap(before2, r) <= gap(after, r))) return before2.author;
-    return after?.author ?? author;
+  return slow(before2, patches, after, items, slides);
+}
+function shiftedSlides(before2, patches, after, s0) {
+  const s = slideAt(s0, patches[0].start);
+  if (!s || patches[0].start < s.open) return null;
+  const close = before2.lastIndexOf("</", s.end - 1);
+  if (close < s.open || patches[patches.length - 1].end > close) return null;
+  const growth = patches.reduce((n, q) => n + q.text.length - (q.end - q.start), 0);
+  const end = s.end + growth;
+  const tokens = tokenize(after.slice(s.open, end));
+  const last = tokens[tokens.length - 1];
+  if (!last || last.type !== "end" || last.name !== "section" || last.start !== close + growth - s.open || last.end !== end - s.open) return null;
+  for (let k = 0; k < tokens.length - 1; k++) {
+    const t = tokens[k];
+    if ((t.type === "start" || t.type === "end") && t.name === "section") return null;
+  }
+  const i = s0.indexOf(s);
+  const s1 = s0.map((x, k) => k < i ? x : k === i ? { ...x, end } : { start: x.start + growth, end: x.end + growth, open: x.open + growth, number: x.number });
+  const kept = new Uint8Array(s0.length).fill(1);
+  kept[i] = before2.slice(s.start, s.end) === after.slice(s.start, end) ? 1 : 0;
+  return { s1, to: Int32Array.from(s0.keys()), kept };
+}
+function matchedSlides(before2, s0, after, patches) {
+  const s1 = slidesOf2(after);
+  return { s1, ...matchSlides(before2, s0, after, s1, patches) };
+}
+var squeeze = (text) => text.replace(/\n[ \t]*/g, "\n");
+function slow(before2, patches, after, items, given) {
+  const s0 = given ?? slidesOf2(before2);
+  const { s1, to, kept } = shiftedSlides(before2, patches, after, s0) ?? matchedSlides(before2, s0, after, patches);
+  const index = new Map(s0.map((s, i) => [s.start, i]));
+  const inserted = insertedSpans(patches);
+  const cap2 = inserted.reduce((n, s) => Math.max(n, s.end - s.start), REMOVED_MAX) + 1;
+  const regions = /* @__PURE__ */ new Map();
+  const slideKept = /* @__PURE__ */ new Map();
+  const keepSlide = (i) => {
+    let k = slideKept.get(i);
+    if (k === void 0) slideKept.set(i, k = keep(before2.slice(s0[i].start, s0[i].end), s0[i].open - s0[i].start));
+    return k;
   };
-  const added = [];
-  let k = 0;
-  let reach = -1;
-  for (const r of ranges) {
-    const empty = r.start === r.end;
-    while (k < kept.length && (empty ? kept[k].start <= r.start : kept[k].start < r.end)) reach = Math.max(reach, kept[k++].end);
-    if (empty ? reach >= r.start : reach > r.start) continue;
-    added.push({ start: r.start, end: r.end, author: nearest(r) });
-    reach = Math.max(reach, r.end);
-  }
-  return added.length ? tidy([...kept, ...added]) : kept;
-}
-var copied = (patches) => patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
-var validPatches = (patches, n) => {
-  if (!Array.isArray(patches)) return false;
-  let at = 0;
-  for (const p of patches) {
-    if (!p || typeof p.text !== "string" || !Number.isInteger(p.start) || !Number.isInteger(p.end) || p.start < at || p.end < p.start || p.end > n) return false;
-    at = p.end;
-  }
-  return true;
-};
-var MAX_PATCHES2 = 2e3;
-function operationOf(a, b) {
-  const patches = diff2(a, b);
-  if (patches.length <= MAX_PATCHES2) return patches;
-  return [{ start: patches[0].start, end: patches[patches.length - 1].end, text: b.slice(patches[0].start, b.length - (a.length - patches[patches.length - 1].end)) }];
-}
-var validMarks = (marks, n) => Array.isArray(marks) && marks.every((m) => m && Number.isInteger(m.start) && Number.isInteger(m.end) && 0 <= m.start && m.start <= m.end && m.end <= n && typeof m.author === "string");
-var numbers = (x) => Array.isArray(x) && x.every((n) => Number.isInteger(n));
-function cleanVersionName(raw) {
-  if (typeof raw !== "string") return null;
-  const name = shown(raw).replace(new RegExp("(?!\\s)\\p{Cc}", "gu"), "").replace(/\s+/g, " ").trim();
-  return Array.from(name).length > VERSION_NAME_MAX ? null : name;
-}
-var Unreadable = class extends Error {
-};
-var History = class {
-  // dir is the .session folder of the talk
-  constructor(dir, authority, options = {}) {
-    // grows with every change of the list of versions or of the texts set aside
-    this.rev = 0;
-    // the count of restores
-    this.restores = 0;
-    // the n of the version of the authority made by the last change from outside that replaced text
-    // that a person wrote in this run, or 0
-    this.overwritten = 0;
-    // the patches from the text of the last version to index.html at the start, or null when the
-    // history began at this start
-    this.found = null;
-    this.base = { time: 0, text: "" };
-    this.versions = [];
-    // the texts after some versions, by index, as starting points of a rebuild
-    this.checkpoints = /* @__PURE__ */ new Map();
-    this.step = STEP;
-    this.lastText = "";
-    this.lastSlides = null;
-    this.open = null;
-    this.timer = null;
-    this.bytes = 0;
-    // true when the file may not hold every line, after a write that failed
-    this.broken = false;
-    // true when the file could not be read nor set aside, hence it is not written in this run
-    this.frozen = false;
-    // the lines of a name in the file, which is written anew once they are many more than the versions
-    this.names = 0;
-    this.stopped = false;
-    this.asides = [];
-    // the last restore, with the n of the version of the authority that it made
-    this.restored = null;
-    // the marks of the closed versions of people of this run, in the text before an open one
-    this.typed = [];
-    this.listeners = /* @__PURE__ */ new Set();
-    this.dir = dir;
-    this.file = join2(dir, "history.jsonl");
-    this.asideDir = join2(dir, "aside");
-    this.authority = authority;
-    this.quiet = options.quiet ?? 6e4;
-    this.longest = options.longest ?? 3e5;
-    this.maxBytes = options.maxBytes ?? 32 * 1024 * 1024;
-    this.keep = options.keep ?? 30 * 24 * 3600 * 1e3;
-    this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
-    this.asideFiles = options.asideFiles ?? 50;
-    this.checkpointBytes = options.checkpointBytes ?? 16 * 1024 * 1024;
-    this.now = options.now ?? Date.now;
-    this.clock = options.clock ?? (() => performance.now());
-    this.log = options.log ?? (() => {
-    });
-    try {
-      mkdirSync(dir, { recursive: true });
-    } catch {
+  const stored = /* @__PURE__ */ new Map();
+  const once = (key, f) => {
+    let v = stored.get(key);
+    if (v === void 0) stored.set(key, v = f());
+    return v;
+  };
+  const keptOf = (a, limit) => once(`${a.start}`, () => {
+    const e = elementEnd(before2, a, limit);
+    return e < 0 ? null : keep(before2.slice(a.start, e), a.end - a.start);
+  });
+  const stays = (a, close, end) => {
+    const q = patches.find((p) => touches(p, close, end));
+    if (!q || q.text) return true;
+    if (q.start <= a.start) return q.end < end;
+    const k = q.start - a.start;
+    if (patches.some((p) => p !== q && touches(p, a.start, q.start))) return true;
+    return !(q.end - k >= end && before2.startsWith(before2.slice(a.start, q.start), q.end - k));
+  };
+  const wrapped = (a, text, found) => {
+    const s = slideAt(s1, found.start);
+    const { close } = elementClose(after, found, s ? s.end : after.length);
+    if (close <= found.end) return null;
+    const inner2 = after.slice(found.end, close);
+    const o = found.end + inner2.length - inner2.trimStart().length;
+    const t = startTagAt(after, o);
+    return t && t.tag === a.tag && overlaps(inserted, o, close) && squeeze(inner2.trim()) === squeeze(text) ? t : null;
+  };
+  const swapped = (a, close, text, found) => {
+    const o = findInserted(after, text, inserted, found.start);
+    if (o < 0) return null;
+    const s = slideAt(s1, found.start);
+    const c = elementClose(after, found, s ? s.end : after.length).close;
+    const old = before2.slice(a.end, close);
+    return shared(old, c > found.end ? after.slice(found.end, c) : "") < old.length ? { start: o, end: o + a.end - a.start, tag: a.tag } : null;
+  };
+  const locate = (a, limit) => {
+    const found = byPatches(a, before2, patches, after, regions);
+    if (found && !patches.some((q) => touches(q, a.start, limit))) return { anchor: found, text: null };
+    const bound = Math.max(a.end, Math.min(limit, a.start + cap2));
+    const { end: e, close } = once(`close ${a.start}`, () => elementClose(before2, a, bound));
+    if (e < 0 && bound < limit) return { anchor: found, text: null };
+    const end = e < 0 ? bound : e;
+    const text = before2.slice(a.start, end);
+    if (!patches.some((q) => touches(q, a.start, end)) || found && after.startsWith(text, found.start)) return { anchor: found, text };
+    if (found && e > a.end) {
+      if (stays(a, close, end)) return { anchor: wrapped(a, text, found) ?? swapped(a, close, text, found) ?? found, text };
+      const o2 = findInserted(after, text, inserted, found.start);
+      return { anchor: o2 >= 0 ? { start: o2, end: o2 + a.end - a.start, tag: a.tag } : null, text };
     }
-    let loaded = null;
-    try {
-      loaded = this.load();
-    } catch (e) {
-      if (!(e instanceof Unreadable)) this.log(`could not read ${this.file}: ${e.message}`);
-      const aside = join2(dir, `history-unreadable-${Date.now()}.jsonl`);
-      if (setAsideSync(this.file, aside)) this.log(`the version history could not be read, hence it was kept in ${aside} and a new history begins`);
-      else {
-        this.frozen = true;
-        this.log(`the version history could not be read nor kept in ${aside}, hence ${this.file} is left as it is and the history of this run is not written`);
-      }
-      this.versions = [];
-      this.checkpoints.clear();
-      this.step = STEP;
-    }
-    const text = authority.text;
-    if (!loaded) {
-      this.base = { time: this.now(), text };
-      this.lastText = text;
-      const start2 = this.version([], [], [], text);
-      start2.start = true;
-      this.versions.push(start2);
-      this.writeAll();
+    const o = findInserted(after, text, inserted, found?.start ?? shiftOffset(a.start, patches));
+    if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, text };
+    return { anchor: found, text };
+  };
+  const samePlace = (a, from, to2) => {
+    const named = (text, s) => tokenize(text.slice(s.start, s.end)).filter((t) => t.type === "start" && t.name === a.tag);
+    const old = named(before2, from);
+    const now = named(after, to2);
+    const k = old.findIndex((t) => t.start === a.start - from.start);
+    return k >= 0 && old.length === now.length ? wholeTag(after, to2.start + now[k].start, to2.start + now[k].end) : null;
+  };
+  const slideOf = (whole) => typeof whole === "string" ? findInserted(after, whole, inserted, 0) : once(whole.sum + whole.tag, () => s1.find((x) => x.end - x.start === lengthOf(whole) && overlaps(inserted, x.start, x.end) && checksum(after.slice(x.start, x.end)) === whole.sum)?.start ?? -1);
+  const took = (x, at) => once(typeof x === "string" ? x : x.sum, () => {
+    const len = lengthOf(x);
+    const text = after.slice(at, at + len);
+    return patches.some((p) => p.end - p.start >= len && findInserted(before2, text, [p], p.start, { start: p.start, end: p.end + len - (typeof x === "string" ? x : x.tag).length }) >= 0);
+  });
+  const find = (x, near, within) => {
+    const look = () => findInserted(after, x, inserted, near, within);
+    return !overlaps(inserted, within.start, within.end) ? -1 : typeof x === "string" ? look() : once(`${x.sum} ${within.start}`, look);
+  };
+  const reattach = (it, text) => {
+    let within = null;
+    if (it.slide) {
+      const i = index.get(it.slide.start) ?? -1;
+      if (i < 0 || to[i] < 0) return null;
+      within = s1[to[i]];
     } else {
-      this.found = { before: this.lastText, patches: copied(diff2(this.lastText, text)) };
-      if (this.found.patches.length) {
-        const patches = this.found.patches;
-        const authors = loaded.length ? loaded : [AUTHOR];
-        this.push(this.version(authors, patches, clip([], patches, authors.length > 1 ? "" : authors[0]), text), text);
-      } else if (loaded.length) this.writeAll();
-      if (this.bytes > this.maxBytes) this.compact();
-    }
-    this.held = text;
-    this.readAsides();
-    authority.observe((op, after) => this.operation(op, after));
-  }
-  // calls fn after every change of rev
-  onChange(fn) {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-  list() {
-    return { rev: this.rev, versions: this.versions.map(info).reverse(), aside: [...this.asides].reverse() };
-  }
-  get(id) {
-    const v = this.find(id);
-    return v ? { ...info(v), marks: v.marks } : null;
-  }
-  // the text of the deck at version id, or null for an unknown id
-  textOf(id) {
-    const i = this.indexOf(id);
-    return i < 0 ? null : this.textAt(i);
-  }
-  // the version of the current state closed at once and named. name is cleaned, and an empty name
-  // takes the name off. null for an unknown id, and 'long' for a name over VERSION_NAME_MAX
-  name(id, raw) {
-    const name = cleanVersionName(raw);
-    if (name === null) return "long";
-    let v;
-    if (id === "current") {
-      this.close();
-      v = this.versions[this.versions.length - 1] ?? this.close(true);
-    } else v = this.find(id);
-    if (!v) return null;
-    if ((v.name ?? "") !== name) {
-      if (name) v.name = name;
-      else delete v.name;
-      this.append({ kind: "name", id: v.id, name });
-      if (++this.names > this.versions.length + 1e3) this.writeAll();
-      this.changed();
-    }
-    return info(v);
-  }
-  // the deck made to read as version id by one operation of person, between a version of the
-  // current state and a version of the restore. null for an unknown id. id is null in the answer
-  // when the deck already reads as the version
-  restore(id, person) {
-    const i = this.indexOf(id);
-    if (i < 0) return null;
-    const target = this.textAt(i);
-    const was = this.versions[i];
-    this.close();
-    if (this.authority.text === target) return { id: null };
-    this.authority.enter(operationOf(this.authority.text, target), person);
-    const v = this.close(false, was.id);
-    this.restored = { n: this.authority.n, told: { by: person, id: was.id, time: was.time } };
-    this.restores++;
-    this.changed();
-    return { id: v?.id ?? null };
-  }
-  // the last restore when it is after the version since of a page, which is the latest restore
-  // that the page has not had. every restore is after a version of an earlier start
-  restoredAfter(since) {
-    const at = parseVersion(since);
-    if (!at || !this.restored) return null;
-    return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
-  }
-  // whether a change from outside replaced text of a person after the version since of a page
-  overwrittenAfter(since) {
-    const at = parseVersion(since);
-    return !!at && at.epoch === this.authority.epoch && at.n < this.overwritten;
-  }
-  // a text that a person set aside, or null when it is too large
-  setAside(text, author) {
-    const bytes = Buffer.from(text, "utf8");
-    if (bytes.length > this.asideBytes) return null;
-    const aside = { id: newId(), time: this.now(), author };
-    mkdirSync(this.asideDir, { recursive: true });
-    const tmp = join2(this.asideDir, `.${asideName(aside)}.tmp`);
-    writeFileSync2(tmp, bytes);
-    renameRetriedSync(tmp, join2(this.asideDir, asideName(aside)));
-    this.asides.push(aside);
-    const theirs = this.asides.filter((a) => a.author === author);
-    for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) {
-      this.asides.splice(this.asides.indexOf(old), 1);
-      try {
-        unlinkSync3(join2(this.asideDir, asideName(old)));
-      } catch {
+      const whole = it.removed?.slide ?? (/^<section[\s/>]/i.test(typeof text === "string" ? text : text.tag) ? text : null);
+      const s = whole ? slideOf(whole) : -1;
+      if (s < 0 || took(whole, s)) return null;
+      within = { start: s, end: s + lengthOf(whole) };
+      if (typeof whole === "string" && typeof text === "string" ? !whole.includes(text) : find(text, s, within) < 0) {
+        const slide2 = slideAt(s1, s);
+        return slide2?.start === s ? { anchor: tagOf(slide2), slide: tagOf(slide2), removed: { text } } : null;
       }
     }
-    this.changed();
-    return aside;
-  }
-  // the text set aside as id, or null
-  asideText(id) {
-    const aside = this.asides.find((a) => a.id === id);
-    if (!aside) return null;
-    try {
-      return readFileSync3(join2(this.asideDir, asideName(aside)), "utf8");
-    } catch {
-      return null;
+    const o = find(text, it.anchor ? shiftOffset(it.anchor.start, patches) : within.start, within);
+    const t = o >= 0 ? startTagAt(after, o) : null;
+    if (!t || took(text, o)) return null;
+    const slide = slideAt(s1, o);
+    return slide?.start === o ? { anchor: tagOf(slide), slide: tagOf(slide) } : { anchor: t, slide: slide && tagOf(slide) };
+  };
+  const move = (it) => {
+    const again = it.removed?.text ? reattach(it, it.removed.text) : null;
+    if (again) return again;
+    const a = it.anchor;
+    if (!a) return withRemoved(null, null, it.removed);
+    let i = it.slide ? index.get(it.slide.start) ?? -1 : -1;
+    if (i < 0) {
+      const s = slideAt(s0, a.start);
+      i = s ? index.get(s.start) : -1;
     }
-  }
-  // the open version closed, e.g. at a stop. empty closes a version without a change when there
-  // is not any, so that it can be named. restored is the id of the version that it restores
-  close(empty = false, restored, text = this.authority.text) {
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    const open2 = this.open;
-    this.open = null;
-    if (open2 && open2.author !== AUTHOR) this.typed = moveMarks(this.typed, open2.ops, open2.author);
-    if (text === this.lastText && !empty) {
-      if (open2) this.writeAll();
-      return null;
+    const j = i >= 0 ? to[i] : -1;
+    if (it.slide && a.start === it.slide.start) {
+      if (j >= 0) return withRemoved(tagOf(s1[j]), tagOf(s1[j]), it.removed);
+      const whole = i >= 0 ? keepSlide(i) : null;
+      if (!it.removed) return { anchor: null, slide: null, removed: { text: whole } };
+      return { anchor: null, slide: null, removed: whole && it.removed.text ? { text: it.removed.text, slide: whole } : it.removed };
     }
-    const patches = copied(diff2(this.lastText, text));
-    const author = open2?.author ?? AUTHOR;
-    const v = this.version(open2 ? [...open2.authors] : [], patches, clip(open2?.marks ?? [], patches, author), text, open2?.time);
-    if (restored) v.restored = restored;
-    this.push(v, text);
-    return v;
-  }
-  stopSync() {
-    if (this.stopped) return;
-    this.close();
-    this.stopped = true;
-  }
-  changed() {
-    this.rev++;
-    for (const fn of this.listeners) fn();
-  }
-  find(id) {
-    const i = this.indexOf(id);
-    return i < 0 ? null : this.versions[i];
-  }
-  indexOf(id) {
-    if (!isVersionId(id)) return -1;
-    for (let i = this.versions.length - 1; i >= 0; i--) if (this.versions[i].id === id) return i;
-    return -1;
-  }
-  textAt(i) {
-    if (i === this.versions.length - 1) return this.lastText;
-    let from = -1;
-    for (const k of this.checkpoints.keys()) if (k <= i && k > from) from = k;
-    let text = from < 0 ? this.base.text : this.checkpoints.get(from);
-    for (let k = from + 1; k <= i; k++) text = apply(text, this.versions[k].patches);
-    return text;
-  }
-  checkpoint(i, text) {
-    if ((i + 1) % this.step !== 0) return;
-    this.checkpoints.set(i, text);
-    const budget = Math.max(this.checkpointBytes, 4 * 2 * text.length);
-    const bytes = () => [...this.checkpoints.values()].reduce((sum, t) => sum + 2 * t.length, 0);
-    while (this.checkpoints.size > CHECKPOINTS || bytes() > budget) {
-      this.step *= 2;
-      for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+    if (j >= 0 && kept[i]) {
+      const d = s1[j].start - s0[i].start;
+      return { anchor: { start: a.start + d, end: a.end + d, tag: a.tag }, slide: tagOf(s1[j]) };
     }
-  }
-  // a new version of text, which patches make from the text of the last version
-  version(authors, patches, marks, text, time = this.now()) {
-    this.lastSlides ??= slidesOf2(this.lastText);
-    const slides = slidesOf2(text);
-    const changes2 = slideChanges(this.lastText, this.lastSlides, text, slides, marks);
-    this.lastSlides = slides;
-    const v = { id: newId(), time, authors, slides: changes2.slides, patches, marks };
-    if (changes2.removed) v.removed = changes2.removed;
-    return v;
-  }
-  push(v, text) {
-    this.versions.push(v);
-    this.lastText = text;
-    this.checkpoint(this.versions.length - 1, text);
-    const { name, ...line } = v;
-    this.append({ kind: "version", ...line });
-    if (name) {
-      this.append({ kind: "name", id: v.id, name });
-      this.names++;
+    if (i >= 0 && j < 0) {
+      const bound = Math.max(a.end, Math.min(s0[i].end, a.start + cap2));
+      const e = elementEnd(before2, a, bound);
+      const text = e < 0 ? null : before2.slice(a.start, e);
+      const o = text ? findInserted(after, text, inserted, shiftOffset(a.start, patches)) : -1;
+      if (o >= 0) return { anchor: { start: o, end: o + a.end - a.start, tag: a.tag }, slide: slideAnchorAt(s1, o) };
+      const kept2 = text !== null ? keep(text, a.end - a.start) : keptOf(a, s0[i].end);
+      const whole = kept2 && keepSlide(i);
+      return { anchor: null, slide: null, removed: whole ? { text: kept2, slide: whole } : { text: kept2 } };
     }
-    if (this.bytes > this.maxBytes) this.compact();
-    this.changed();
-  }
-  operation(op, text) {
-    if (this.stopped) return;
-    const t = this.clock();
-    const w = this.now();
-    if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
-    if (op.author === AUTHOR) {
-      const patches = op.patches.flatMap((p) => touches(this.typed, p) ? byWords(this.held, p) : [p]);
-      if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
-      this.typed = moveMarks(this.typed, patches, AUTHOR);
-    }
-    this.held = text;
-    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author, ops: [] };
-    open2.last = t;
-    open2.time = w;
-    open2.author = op.author;
-    if (!open2.authors.has(op.author)) {
-      open2.authors.add(op.author);
-      this.append({ kind: "open", author: op.author });
-    }
-    open2.marks = moveMarks(open2.marks, op.patches, op.author);
-    if (op.author !== AUTHOR) open2.ops = compose(open2.ops, op.patches);
-    this.arm();
-  }
-  // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
-  // not hold it open, and one that jumped ahead in a sleep closes it
-  due(open2, t, w) {
-    return t - open2.last >= this.quiet || t - open2.first >= this.longest || w - open2.time >= this.quiet || w - open2.since >= this.longest;
-  }
-  // one timer at a time, which looks again at the times of the open version when it fires
-  arm() {
-    if (this.timer || !this.open) return;
-    const wait = Math.max(0, Math.min(this.open.last + this.quiet, this.open.first + this.longest) - this.clock());
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      if (!this.open) return;
-      if (this.due(this.open, this.clock(), this.now())) this.close();
-      else this.arm();
-    }, wait);
-    this.timer.unref?.();
-  }
-  append(line) {
-    if (this.frozen) return;
-    if (this.broken) {
-      this.writeAll();
-      return;
-    }
-    const data = `${JSON.stringify(line)}
-`;
-    try {
-      appendFileSync(this.file, data);
-      this.bytes += Buffer.byteLength(data);
-    } catch (e) {
-      this.log(`could not write ${this.file}: ${e.message}`);
-      this.broken = true;
-    }
-  }
-  // the file written anew from memory, by a temporary file and a rename
-  writeAll() {
-    if (this.frozen) return;
-    const lines = [JSON.stringify({ kind: "base", ...this.base })];
-    for (const v of this.versions) {
-      const { name, ...line } = v;
-      lines.push(JSON.stringify({ kind: "version", ...line }));
-    }
-    const named = this.versions.filter((v) => v.name);
-    for (const v of named) lines.push(JSON.stringify({ kind: "name", id: v.id, name: v.name }));
-    for (const author of this.open?.authors ?? []) lines.push(JSON.stringify({ kind: "open", author }));
-    const data = `${lines.join("\n")}
-`;
-    const tmp = join2(this.dir, `.history.jsonl.${randomBytes3(6).toString("hex")}.tmp`);
-    try {
-      writeFileSync2(tmp, data);
-      renameRetriedSync(tmp, this.file);
-      this.bytes = Buffer.byteLength(data);
-      this.names = named.length;
-      this.broken = false;
-    } catch (e) {
-      this.log(`could not write ${this.file}: ${e.message}`);
-      this.broken = true;
-      try {
-        unlinkSync3(tmp);
-      } catch {
-      }
-    }
-  }
-  // the versions before the oldest of the last keep ms and before the oldest named one left out,
-  // the version before them becoming the base
-  compact() {
-    const cutoff = this.now() - this.keep;
-    let k = this.versions.findIndex((v) => v.time >= cutoff);
-    if (k < 0) k = this.versions.length - 1;
-    const named = this.versions.findIndex((v) => v.name);
-    if (named >= 0) k = Math.min(k, named);
-    if (k <= 0) return;
-    this.base = { time: this.versions[k - 1].time, text: this.textAt(k - 1) };
-    this.versions = this.versions.slice(k);
-    const kept = /* @__PURE__ */ new Map();
-    for (const [i, text] of this.checkpoints) if (i >= k) kept.set(i - k, text);
-    this.checkpoints = kept;
-    this.step = STEP;
-    this.writeAll();
-    this.changed();
-  }
-  // the authors of the lines open after the last version line when the file was read, and null
-  // when it does not exist or is empty. throws Unreadable for a file without a base, or with a line
-  // other than the last that cannot be read
-  load() {
-    let content;
-    try {
-      content = readFileSync3(this.file, "utf8");
-    } catch (e) {
-      if (e.code === "ENOENT") return null;
-      throw e;
-    }
-    if (content === "") return null;
-    const lines = content.split("\n");
-    let last = lines.length - 1;
-    if (lines[last] === "") last--;
-    let good = 0;
-    let text = "";
-    const names = /* @__PURE__ */ new Map();
-    let open2 = [];
-    for (let i = 0; i <= last; i++) {
-      const record = this.parse(lines[i], i, text);
-      if (record === null) {
-        if (i < last || i === 0) throw new Unreadable();
-        try {
-          truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
-        } catch {
-          this.broken = true;
-        }
-        break;
-      }
-      if (record.kind === "base") {
-        this.base = { time: record.time, text: record.text };
-        text = record.text;
-      } else if (record.kind === "version") {
-        text = apply(text, record.v.patches);
-        this.versions.push(record.v);
-        this.checkpoint(this.versions.length - 1, text);
-        open2 = [];
-      } else if (record.kind === "open") {
-        if (!open2.includes(record.author)) open2.push(record.author);
-      } else {
-        names.set(record.id, record.name);
-        this.names++;
-      }
-      good += lines[i].length + 1;
-    }
-    if (good > content.length) {
-      try {
-        appendFileSync(this.file, "\n");
-      } catch {
-        this.broken = true;
-      }
-    }
-    for (const v of this.versions) {
-      const name = names.get(v.id);
-      if (name) v.name = name;
-    }
-    this.lastText = text;
-    this.bytes = statSync2(this.file).size;
-    return open2;
-  }
-  parse(line, i, text) {
-    let r;
-    try {
-      r = JSON.parse(line);
-    } catch {
-      return null;
-    }
-    if (!r || typeof r !== "object") return null;
-    if (i === 0) return r.kind === "base" && Number.isFinite(r.time) && typeof r.text === "string" ? { kind: "base", time: r.time, text: r.text } : null;
-    if (r.kind === "name") return isVersionId(r.id) && typeof r.name === "string" ? { kind: "name", id: r.id, name: r.name } : null;
-    if (r.kind === "open") return typeof r.author === "string" ? { kind: "open", author: r.author } : null;
-    if (r.kind !== "version" || !isVersionId(r.id) || !Number.isFinite(r.time) || !Array.isArray(r.authors) || !r.authors.every((a) => typeof a === "string")) return null;
-    if (!validPatches(r.patches, text.length) || !numbers(r.slides)) return null;
-    const after = text.length + r.patches.reduce((s, p) => s + p.text.length - (p.end - p.start), 0);
-    const v = { id: r.id, time: r.time, authors: r.authors, slides: r.slides, patches: r.patches, marks: validMarks(r.marks, after) ? r.marks : [] };
-    const removed = r.removed;
-    if (removed && numbers(removed.slides) && Number.isInteger(removed.elements)) v.removed = { slides: removed.slides, elements: removed.elements };
-    if (isVersionId(r.restored)) v.restored = r.restored;
-    if (r.start === true) v.start = true;
-    return { kind: "version", v };
-  }
-  readAsides() {
-    let names = [];
-    try {
-      names = readdirSync2(this.asideDir);
-    } catch {
-    }
-    for (const name of names) {
-      const m = ASIDE.exec(name);
-      if (m) this.asides.push({ id: m[2], time: Number(m[1]), author: m[3] });
-    }
-    this.asides.sort((a, b) => a.time - b.time);
-  }
-};
-var asideName = (a) => `${a.time}.${a.id}.${a.author}.html`;
-function info(v) {
-  const out = { id: v.id, time: v.time, authors: v.authors, slides: v.slides };
-  if (v.name) out.name = v.name;
-  if (v.removed) out.removed = v.removed;
-  if (v.restored) out.restored = v.restored;
-  if (v.start) out.start = true;
-  return out;
+    const found = locate(a, i >= 0 ? s0[i].end : before2.length);
+    const at = found.anchor && slideAnchorAt(s1, found.anchor.start);
+    if (found.anchor && j >= 0 && at?.start !== s1[j].start && found.text !== null && !after.startsWith(found.text, found.anchor.start)) {
+      const t = samePlace(a, s0[i], s1[j]);
+      if (t) return { anchor: t, slide: tagOf(s1[j]) };
+    } else if (found.anchor) return { anchor: found.anchor, slide: at };
+    const back = j >= 0 ? tagOf(s1[j]) : null;
+    return { anchor: back, slide: back, removed: { text: found.text !== null ? keep(found.text, a.end - a.start) : keptOf(a, i >= 0 ? s0[i].end : before2.length) } };
+  };
+  const out = items.map(move);
+  return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], patches)), slides: s1 };
 }
+function checkOf(text, a) {
+  const limit = Math.min(text.length, a.start + REMOVED_MAX);
+  const e = elementEnd(text, a, limit);
+  return { tag: text.slice(a.start, Math.min(a.end, a.start + CHECK_TAG)), sum: checksum(text.slice(a.start, e < 0 ? limit : e)) };
+}
+function findChecked(text, a, c) {
+  const len = parseInt(c.sum, 16);
+  const at = (o) => {
+    if (checksum(text.slice(o, o + len)) !== c.sum) return null;
+    const t = startTagAt(text, o);
+    return t && t.tag === a.tag ? t : null;
+  };
+  if (text.startsWith(c.tag, a.start)) {
+    const t = at(a.start);
+    if (t) return t;
+  }
+  let l = a.start > 0 ? text.lastIndexOf(c.tag, a.start - 1) : -1;
+  let h = text.indexOf(c.tag, a.start + 1);
+  for (let n = 0; n < 256 && (l >= 0 || h >= 0); n++) {
+    if (h < 0 || l >= 0 && a.start - l <= h - a.start) {
+      const t = at(l);
+      if (t) return t;
+      l = l > 0 ? text.lastIndexOf(c.tag, l - 1) : -1;
+    } else {
+      const t = at(h);
+      if (t) return t;
+      h = text.indexOf(c.tag, h + 1);
+    }
+  }
+  return null;
+}
+function checkAnchors(text, items, slides = slidesOf2(text), checks = []) {
+  const starts = new Map(slides.map((s) => [s.start, s]));
+  const out = items.map((it, k) => {
+    if (!it.anchor) return withRemoved(null, null, it.removed);
+    const c = checks[k];
+    const found = c ? findChecked(text, it.anchor, c) : null;
+    if (found) return withRemoved(found, slideAnchorAt(slides, found.start), it.removed);
+    const onSlide = !!it.slide && it.slide.start === it.anchor.start;
+    const t = !c || onSlide ? startTagAt(text, it.anchor.start) : null;
+    if (t && t.end === it.anchor.end && t.tag === it.anchor.tag) return withRemoved(t, slideAnchorAt(slides, t.start), it.removed);
+    const back = it.slide && it.slide.tag === "section" && starts.get(it.slide.start)?.open === it.slide.end ? it.slide : null;
+    return { anchor: back, slide: back, removed: it.removed ?? { text: null } };
+  });
+  return { items: out, changed: items.map((it, k) => changedFrom(it, out[k], [])), slides };
+}
+
+// src/edit/relay.ts
+import { mkdirSync, readFileSync as readFileSync3, writeFileSync as writeFileSync2, chmodSync } from "node:fs";
+import { homedir } from "node:os";
+import { join as join3 } from "node:path";
 
 // src/edit/http.ts
 import { open, realpath as realpath2, stat as stat2 } from "node:fs/promises";
-import { extname, join as join3, relative, sep } from "node:path";
+import { extname, join as join2, relative, sep } from "node:path";
 var MIME = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -2353,7 +2258,7 @@ function segmentsOf(rest) {
 }
 async function fileInside(root, segments) {
   try {
-    const real = await realpath2(join3(root, ...segments));
+    const real = await realpath2(join2(root, ...segments));
     if (!real.startsWith(root + sep) || relative(root, real).split(sep).some(hiddenSegment)) return null;
     return (await stat2(real)).isFile() ? real : null;
   } catch {
@@ -2419,455 +2324,18 @@ var decodeName = (part) => {
 };
 var paramNames = (query) => new Set(query.split("&").filter(Boolean).map(decodeName));
 
-// src/edit/people.ts
-import { randomBytes as randomBytes4 } from "node:crypto";
-import { readFileSync as readFileSync4, unlinkSync as unlinkSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { unlink as unlink2, writeFile as writeFile3 } from "node:fs/promises";
-var HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25e3;
-var GAP = 100;
-var GONE = Number(process.env.SLIDES_GONE_MS) || 4e4;
-var FIRST_POLL = 5e3;
-var MAX_PEOPLE = 64;
-var MAX_GUESTS = 48;
-var MAX_PAGES = 8;
-var MAX_CLIENTS = 1024;
-var MAX_KNOWN = 1024;
-var SAVE_GAP = 1e3;
-var MAX_STATE = 8 * 1024;
-var newId2 = () => randomBytes4(16).toString("base64url");
-function readPeople(file) {
-  try {
-    const value = JSON.parse(readFileSync4(file, "utf8"));
-    if (!Array.isArray(value)) return [];
-    return value.filter(
-      (r) => r && isPersonId(r.person) && cleanPersonName(r.name) && Number.isInteger(r.color) && r.color >= 0 && r.color < COLORS.length && Number.isFinite(r.first) && Number.isFinite(r.last)
-    );
-  } catch {
-    return [];
-  }
-}
-var People = class {
-  // file is the people.json of the talk folder, or null to keep the people in memory alone
-  constructor(authority, file = null, log = () => {
-  }) {
-    this.members = /* @__PURE__ */ new Map();
-    // the person, the kind, and the token of every page that said hello, so that a browser back
-    // from a sleep keeps its person, and whether the page said bye since
-    this.clients = /* @__PURE__ */ new Map();
-    // the client id of each token
-    this.tokens = /* @__PURE__ */ new Map();
-    this.records = /* @__PURE__ */ new Map();
-    // the pages whose session ended, answered with ended until they say hello again
-    this.ends = /* @__PURE__ */ new Map();
-    // the guests present at the last end of sharing that have not been answered with ended yet, and
-    // the callers that wait until none is left
-    this.untold = /* @__PURE__ */ new Set();
-    this.toldWaiters = [];
-    this.hostPerson = null;
-    this.polls = /* @__PURE__ */ new Set();
-    this.feedList = [];
-    this.rev = 0;
-    this.knownRev = 0;
-    // the write of index.html that failed last, or null once a write succeeded, and its revision
-    this.writeError = null;
-    this.writeRev = 0;
-    // the message of the write of tex.js that failed last, or null once a write succeeded
-    this.texError = null;
-    // the changes of tex.js on disk, by the edit command or by another program, counted from the time
-    // of the start in ms, which a later run does not repeat
-    this.texRev = Date.now();
-    this.ended = null;
-    this.saveTimer = null;
-    this.savedAt = 0;
-    this.dirty = false;
-    this.saving = null;
-    this.authority = authority;
-    this.file = file;
-    this.log = log;
-    if (file) for (const r of readPeople(file)) this.records.set(r.person, r);
-    authority.observe(() => this.wake());
-    this.sweeper = setInterval(() => this.sweep(), 1e3);
-    this.sweeper.unref?.();
-  }
-  // a page joins as the person of the id, or as a new person. a name held by another person is
-  // refused unless claim is true, and the page then continues as this person. the token of an
-  // earlier hello keeps its client id
-  hello(rawName, rawPerson, rawToken, host, claim = false) {
-    let person = isPersonId(rawPerson) ? rawPerson : newId2();
-    const name = cleanPersonName(rawName) || this.records.get(person)?.name || "";
-    if (!name) return { empty: true };
-    const holder = this.holderOf(name);
-    if (holder && holder.person !== person) {
-      if (!claim) return { taken: { name: holder.name } };
-      person = holder.person;
-    }
-    const earlier = isToken(rawToken) ? this.tokens.get(rawToken) : void 0;
-    const id = earlier ?? randomBytes4(12).toString("base64url");
-    const token = earlier ? rawToken : newId2();
-    if (!this.members.has(id)) {
-      const pages = [...this.members.values()].filter((m) => m.person === person);
-      const dropped = pages.length < MAX_PAGES ? void 0 : pages.find((m) => m.host === host) ?? (host ? pages[0] : void 0);
-      if (pages.length >= MAX_PAGES && !dropped) return { full: true };
-      if (!this.hasPlace(host, dropped)) return { full: true };
-      if (dropped) this.members.delete(dropped.client);
-    }
-    const now = Date.now();
-    let record = this.records.get(person);
-    if (!record) {
-      record = { person, name, color: this.freeColor(), first: now, last: now };
-      this.records.set(person, record);
-      this.trimRecords();
-      this.knownRev++;
-    } else {
-      const own = host || earlier !== void 0 && this.clients.get(earlier)?.person === person;
-      if (record.name !== name && !claim && own) {
-        record.name = name;
-        this.knownRev++;
-      }
-      record.last = now;
-    }
-    this.save();
-    if (host) this.hostPerson = person;
-    this.ends.delete(id);
-    this.clients.delete(id);
-    this.clients.set(id, { person, host, token });
-    this.tokens.set(token, id);
-    if (this.clients.size > MAX_CLIENTS) {
-      for (const [client, { token: old }] of this.clients) {
-        if (this.members.has(client)) continue;
-        this.clients.delete(client);
-        this.tokens.delete(old);
-        break;
-      }
-    }
-    let member = this.members.get(id);
-    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0, feeds: this.feedList.map((f) => f.rev()) };
-    if (member) Object.assign(member, fields);
-    else this.members.set(id, member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 });
-    this.renamed(person);
-    this.changed();
-    return { member, token };
-  }
-  // a new name of the person of the page client, or null when the page did not say hello
-  rename(client, rawName) {
-    const member = this.revive(client);
-    if (!member) return null;
-    const name = cleanPersonName(rawName);
-    if (!name) return { empty: true };
-    const holder = this.holderOf(name);
-    if (holder && holder.person !== member.person) return { taken: { name: holder.name } };
-    const record = this.records.get(member.person);
-    if (record.name !== name) {
-      record.name = name;
-      this.knownRev++;
-      this.save();
-      this.renamed(member.person);
-      this.changed();
-    }
-    return { name };
-  }
-  // whether the page client is in the session, i.e. said hello and neither left nor was dropped
-  present(client) {
-    return this.members.has(client);
-  }
-  // the client id of the page of token, or null
-  clientOf(token) {
-    return isToken(token) ? this.tokens.get(token) ?? null : null;
-  }
-  // the person id of a page that said hello, or null
-  personOf(client) {
-    return typeof client === "string" ? this.clients.get(client)?.person ?? null : null;
-  }
-  list() {
-    return [...this.members.values()].map(({ client, person, name, color, host }) => ({ client, person, name, color, host }));
-  }
-  known() {
-    return [...this.records.values()].map(({ person, name, color }) => ({ person, name, color }));
-  }
-  presence(client, state) {
-    const member = this.revive(client);
-    if (!member) return false;
-    member.state = state;
-    this.changed();
-    return true;
-  }
-  // the token of a closed page forgotten, hence a later request of it is one of an unknown token
-  retire(token) {
-    this.tokens.delete(token);
-  }
-  // the page left, and a request of it that arrives later does not bring it back, only a hello
-  bye(client) {
-    const known = this.clients.get(client);
-    if (known) known.left = true;
-    if (this.members.delete(client)) this.changed();
-  }
-  // a source of news for every page from now on
-  feed(f) {
-    this.feedList.push(f);
-    for (const m of this.members.values()) m.feeds.push(f.rev());
-  }
-  // the waiting polls woken after a change of a feed
-  news() {
-    this.wake();
-  }
-  // a long poll of client for the news after the version since
-  events(client, since) {
-    const end = this.ends.get(client);
-    if (end) {
-      this.told(client);
-      return Promise.resolve({ ...this.state(since, null), ended: end });
-    }
-    const member = this.revive(client);
-    if (!member) return null;
-    return new Promise((done) => {
-      const poll = { client, since, done, hold: setTimeout(() => this.answer(poll), HOLD), gap: null };
-      this.polls.add(poll);
-      member.polls++;
-      member.polled = true;
-      if (this.ended || this.hasNews(poll)) this.soon(poll);
-    });
-  }
-  // a write of index.html that failed, or null at the first write that succeeds after it, told to
-  // every page when it changed
-  writeFailed(error2) {
-    if (JSON.stringify(error2) === JSON.stringify(this.writeError)) return;
-    this.writeError = error2 && { message: error2.message, unwritten: error2.unwritten };
-    this.writeRev++;
-    this.changed();
-  }
-  // a write of tex.js that failed, or null once a derivation does not fail, told to every page as a
-  // write of index.html that failed is, when no write of index.html failed
-  texFailed(message) {
-    if (message === this.texError) return;
-    this.texError = message;
-    this.writeRev++;
-    this.changed();
-  }
-  // tex.js changed on disk, told to every page, which draws the deck again with it
-  texChanged() {
-    this.texRev++;
-    this.changed();
-  }
-  // the number of changes of tex.js on disk, for the answer of hello
-  tex() {
-    return this.texRev;
-  }
-  // the waiting polls answered with ended, at a stop of the edit command, and people.json written
-  end() {
-    this.ended = this.endedBy();
-    clearInterval(this.sweeper);
-    for (const poll of [...this.polls]) this.answer(poll);
-    this.saveSync();
-  }
-  // the session ended for every page that came through the relay. their waiting polls are
-  // answered with ended, while the pages of the host go on. resolves once every guest present has
-  // been answered with ended, by a waiting poll or by a poll that arrives later
-  endGuests() {
-    const end = this.endedBy();
-    this.untold = new Set([...this.members.values()].filter((m) => !m.host).map((m) => m.client));
-    const told = new Promise((done) => this.toldWaiters.push(done));
-    for (const [client, { host }] of this.clients) if (!host) this.ends.set(client, end);
-    for (const client of this.ends.keys()) if (this.ends.size > MAX_CLIENTS) this.ends.delete(client);
-    for (const poll of [...this.polls]) if (this.ends.has(poll.client)) this.answer(poll);
-    let gone = false;
-    for (const [client, member] of this.members) {
-      if (!member.host) {
-        this.members.delete(client);
-        gone = true;
-      }
-    }
-    if (gone) this.changed();
-    this.told(null);
-    return told;
-  }
-  told(client) {
-    if (client !== null) this.untold.delete(client);
-    if (!this.untold.size) for (const done of this.toldWaiters.splice(0)) done();
-  }
-  endedBy() {
-    return { by: this.hostPerson && this.records.get(this.hostPerson)?.name || null };
-  }
-  holderOf(name) {
-    const key = nameKey(name);
-    for (const r of this.records.values()) if (nameKey(r.name) === key) return r;
-    return null;
-  }
-  // the tone that the fewest people now present hold, the lowest at a tie
-  freeColor() {
-    const count = COLORS.map(() => 0);
-    const present = new Set([...this.members.values()].map((m) => m.person));
-    for (const person of present) {
-      const color = this.records.get(person)?.color;
-      if (color !== void 0) count[color]++;
-    }
-    return count.indexOf(Math.min(...count));
-  }
-  // the absent people who joined least lately dropped from a list over MAX_KNOWN
-  trimRecords() {
-    if (this.records.size <= MAX_KNOWN) return;
-    const present = new Set([...this.members.values()].map((m) => m.person));
-    const absent = [...this.records.values()].filter((r) => !present.has(r.person)).sort((a, b) => a.last - b.last);
-    for (const r of absent.slice(0, this.records.size - MAX_KNOWN)) this.records.delete(r.person);
-  }
-  renamed(person) {
-    const record = this.records.get(person);
-    if (record) {
-      for (const m of this.members.values()) if (m.person === person) m.name = record.name;
-    }
-  }
-  revive(client) {
-    let member = this.members.get(client);
-    const known = this.clients.get(client);
-    const record = known && this.records.get(known.person);
-    const pages = known ? [...this.members.values()].filter((m) => m.person === known.person).length : 0;
-    if (known) {
-      this.clients.delete(client);
-      this.clients.set(client, known);
-    }
-    if (!member && known && !known.left && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
-      const { person, name, color } = record;
-      const now = Date.now();
-      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, writeSeen: 0, feeds: this.feedList.map(() => -1), lastAnswer: 0, polls: 0 };
-      this.members.set(client, member);
-      this.changed();
-    }
-    if (member) member.lastSeen = Date.now();
-    return member ?? null;
-  }
-  // whether a page of the kind of host has a place, once the page leaving is dropped
-  hasPlace(host, leaving) {
-    if (this.members.size - (leaving ? 1 : 0) >= MAX_PEOPLE) return false;
-    return host || [...this.members.values()].filter((m) => !m.host && m !== leaving).length < MAX_GUESTS;
-  }
-  changed() {
-    this.rev++;
-    this.wake();
-  }
-  hasNews(poll) {
-    const member = this.members.get(poll.client);
-    const at = this.authority.reach(poll.since);
-    return at === null || at < this.authority.n || !member || member.seen < this.rev || this.feedList.some((f, i) => member.feeds[i] < f.rev());
-  }
-  wake() {
-    for (const poll of this.polls) if (this.hasNews(poll)) this.soon(poll);
-  }
-  // the poll answered now, or once GAP ms have passed since the last answer to its browser
-  soon(poll) {
-    if (poll.gap) return;
-    const member = this.members.get(poll.client);
-    const wait = this.ended || !member ? 0 : Math.max(0, member.lastAnswer + GAP - Date.now());
-    poll.gap = setTimeout(() => this.answer(poll), wait);
-  }
-  // known is left out when the page has had the list since its last change
-  state(since, member) {
-    const presence = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
-    const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
-    if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
-    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError ?? (this.texError === null ? null : { message: this.texError, unwritten: 0, file: "tex.js" });
-    if (member) this.feedList.forEach((f, i) => member.feeds[i] < f.rev() && f.write(answer, member.feeds[i], since));
-    return answer;
-  }
-  answer(poll) {
-    if (!this.polls.delete(poll)) return;
-    clearTimeout(poll.hold);
-    if (poll.gap) clearTimeout(poll.gap);
-    const member = this.members.get(poll.client) ?? null;
-    const answer = this.state(poll.since, member);
-    if (member) {
-      member.seen = this.rev;
-      member.knownSeen = this.knownRev;
-      member.writeSeen = this.writeRev;
-      member.feeds = this.feedList.map((f) => f.rev());
-      member.lastAnswer = Date.now();
-      member.polls--;
-    }
-    const end = this.ended ?? this.ends.get(poll.client);
-    if (end) {
-      answer.ended = end;
-      this.told(poll.client);
-    }
-    poll.done(answer);
-  }
-  sweep() {
-    const now = Date.now();
-    let gone = false;
-    for (const [client, member] of this.members) {
-      if (member.polls === 0 && (now - member.lastSeen > GONE || !member.polled && now - member.joined > FIRST_POLL)) {
-        this.members.delete(client);
-        gone = true;
-      }
-    }
-    if (gone) this.changed();
-  }
-  json() {
-    return `${JSON.stringify([...this.records.values()], null, 1)}
-`;
-  }
-  // people.json written by a temporary file and a rename, at most once a second
-  save() {
-    if (!this.file) return;
-    this.dirty = true;
-    if (this.saveTimer || this.saving) return;
-    this.saveTimer = setTimeout(() => {
-      this.saveTimer = null;
-      void this.flush();
-    }, Math.max(0, this.savedAt + SAVE_GAP - Date.now()));
-    this.saveTimer.unref?.();
-  }
-  async flush() {
-    if (!this.file || !this.dirty) return;
-    this.dirty = false;
-    this.savedAt = Date.now();
-    const tmp = `${this.file}.${randomBytes4(6).toString("hex")}.tmp`;
-    this.saving = (async () => {
-      try {
-        await writeFile3(tmp, this.json());
-        await renameRetried(tmp, this.file);
-      } catch (e) {
-        await unlink2(tmp).catch(() => {
-        });
-        this.log(`could not write ${this.file}: ${e.message}`);
-        this.dirty = true;
-      }
-    })();
-    await this.saving;
-    this.saving = null;
-    if (this.dirty) this.save();
-  }
-  saveSync() {
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = null;
-    if (!this.file || !this.dirty && !this.saving) return;
-    this.dirty = false;
-    const tmp = `${this.file}.${randomBytes4(6).toString("hex")}.tmp`;
-    try {
-      writeFileSync3(tmp, this.json());
-      renameRetriedSync(tmp, this.file);
-    } catch (e) {
-      this.log(`could not write ${this.file}: ${e.message}`);
-      try {
-        unlinkSync4(tmp);
-      } catch {
-      }
-    }
-  }
-};
-
 // src/edit/relay.ts
-import { mkdirSync as mkdirSync2, readFileSync as readFileSync5, writeFileSync as writeFileSync4, chmodSync } from "node:fs";
-import { homedir } from "node:os";
-import { join as join4 } from "node:path";
 var RELAY_BODY = 16 * 1024 * 1024;
 var RELAY_ANSWER = 64 * 1024 * 1024;
 var PULLS = 4;
 var FILE_ANSWERS = 8;
 function configFile() {
-  if (process.platform === "win32") return join4(process.env.APPDATA || join4(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
-  return join4(process.env.XDG_CONFIG_HOME || join4(homedir(), ".config"), "beeson-slides", "relay.json");
+  if (process.platform === "win32") return join3(process.env.APPDATA || join3(homedir(), "AppData", "Roaming"), "beeson-slides", "relay.json");
+  return join3(process.env.XDG_CONFIG_HOME || join3(homedir(), ".config"), "beeson-slides", "relay.json");
 }
 function loadConfig() {
   try {
-    const value = JSON.parse(readFileSync5(configFile(), "utf8"));
+    const value = JSON.parse(readFileSync3(configFile(), "utf8"));
     return { relay: typeof value.relay === "string" ? value.relay : void 0, secret: typeof value.secret === "string" ? value.secret : void 0 };
   } catch {
     return {};
@@ -2875,8 +2343,8 @@ function loadConfig() {
 }
 function saveConfig(config) {
   const file = configFile();
-  mkdirSync2(join4(file, ".."), { recursive: true, mode: 448 });
-  writeFileSync4(file, `${JSON.stringify(config, null, 2)}
+  mkdirSync(join3(file, ".."), { recursive: true, mode: 448 });
+  writeFileSync2(file, `${JSON.stringify(config, null, 2)}
 `, { mode: 384 });
   try {
     chmodSync(file, 384);
@@ -3057,11 +2525,1698 @@ var RelayLink = class {
   }
 };
 
-// src/edit/tex.ts
-import { readFileSync as readFileSync6, statSync as statSync3 } from "node:fs";
-import { readFile as readFile2, stat as stat3, unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
-import { createHash, randomBytes as randomBytes5 } from "node:crypto";
+// src/edit/comments.ts
+var MENTIONS_MAX = 50;
+var LOG_MAX = 4e3;
+var isCommentId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
+var newId = () => randomBytes3(9).toString("base64url");
+var isPageId = (id) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id);
+var fail = (status, error2) => ({ status, error: error2 });
+var isFailure = (x) => !!x && typeof x.error === "string" && typeof x.status === "number";
+var isNumber = (x) => typeof x === "number" && Number.isFinite(x);
+var isInt = (x) => Number.isSafeInteger(x) && x >= 0;
+var bytesOf = (x) => Buffer.byteLength(JSON.stringify(x));
+var headBytes = (t) => bytesOf({ ...t, replies: [] }) + 1;
+var replyBytes = (r) => bytesOf(r) + 1;
+var tooLarge = () => fail(413, "the comments of the deck are too large");
+var copyKept = (k) => typeof k === "string" ? copy(k) : { tag: copy(k.tag), sum: k.sum };
+var copyRemoved = (r) => r.slide === void 0 ? { text: r.text && copyKept(r.text) } : { text: r.text && copyKept(r.text), slide: copyKept(r.slide) };
+var NOT_SAVED = "The host could not save the comment";
+var readOnly = () => fail(503, "the comments could not be read at the start, hence they are read only until the edit command is started again");
+function cleanText(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return fail(400, "the text is empty");
+  if (Array.from(raw).length > COMMENT_MAX) return fail(413, `the text is longer than ${COMMENT_MAX} characters`);
+  return raw;
+}
+function cleanMentions(raw) {
+  if (raw === void 0 || raw === null) return [];
+  if (Array.isArray(raw) && raw.length > MENTIONS_MAX) return fail(413, `the comment has more than ${MENTIONS_MAX} mentions`);
+  if (!Array.isArray(raw) || !raw.every(isPersonId)) return fail(400, "mentions must be person ids");
+  return [...new Set(raw)];
+}
+var isAnchor = (a) => !!a && isInt(a.start) && isInt(a.end) && a.start < a.end && typeof a.tag === "string" && a.tag.length > 0;
+var isCheck = (c) => !!c && typeof c === "object" && typeof c.tag === "string" && c.tag.length > 0 && typeof c.sum === "string" && /^[0-9a-f]{1,8}-[0-9a-f]{8}$/.test(c.sum);
+var readCheck = (t) => {
+  const c = t.check;
+  return isCheck(c) ? { tag: c.tag, sum: c.sum } : null;
+};
+var isKept = (k) => typeof k === "string" || isCheck(k);
+var isReply = (r) => !!r && isCommentId(r.id) && isPersonId(r.author) && isNumber(r.time) && typeof r.text === "string" && (r.edited === void 0 || isNumber(r.edited));
+function readThread(t) {
+  if (!t || typeof t !== "object") return null;
+  const c = t;
+  if (!isCommentId(c.id) || !isPersonId(c.author) || !isNumber(c.time) || typeof c.text !== "string") return null;
+  if (!(c.anchor === null || isAnchor(c.anchor)) || !(c.slide === null || isAnchor(c.slide))) return null;
+  if (!Array.isArray(c.replies) || c.replies.length > REPLIES_MAX || !c.replies.every(isReply)) return null;
+  if (!Array.isArray(c.mentions) || !c.mentions.every(isPersonId)) return null;
+  if (c.edited !== void 0 && !isNumber(c.edited)) return null;
+  if (c.resolved !== void 0 && !(c.resolved && isPersonId(c.resolved.by) && isNumber(c.resolved.time))) return null;
+  if (c.removed !== void 0 && !(c.removed && (c.removed.text === null || isKept(c.removed.text)) && (c.removed.slide === void 0 || isKept(c.removed.slide)))) return null;
+  const out = { id: c.id, anchor: c.anchor, slide: c.slide, author: c.author, time: c.time, text: c.text, replies: c.replies.map((r) => ({ ...r })), mentions: [...c.mentions] };
+  if (c.removed) out.removed = copyRemoved(c.removed);
+  if (c.edited !== void 0) out.edited = c.edited;
+  if (c.resolved) out.resolved = { by: c.resolved.by, time: c.resolved.time };
+  return out;
+}
+var Comments = class {
+  // dir is the .session folder of the talk, and found the patches from the text of the last version
+  // of the history to index.html at this start
+  constructor(dir, authority, found, options = {}) {
+    // grows with every change of a thread, but not with a shift of its anchors
+    this.v = 0;
+    this.threads = /* @__PURE__ */ new Map();
+    this.seenBy = /* @__PURE__ */ new Map();
+    // the bytes of every thread, and of the head of each as last counted, since a shift of its anchors
+    // is not counted again
+    this.bytes = 0;
+    this.heads = /* @__PURE__ */ new Map();
+    // the checks of the elements of the threads: those of the file until the anchors are placed, and
+    // then those of the current text, each kept while no patch comes near its element
+    this.checks = /* @__PURE__ */ new Map();
+    // true when the file could not be read nor set aside, hence it is neither written nor changed
+    this.locked = false;
+    // the time up to which each person read each thread, kept only while it is after the seen of the
+    // person, hence at most one time per thread and person
+    this.readBy = /* @__PURE__ */ new Map();
+    // the count of changes of the times of reading, and the count at the last change of each person
+    this.reads = 0;
+    this.readsBy = /* @__PURE__ */ new Map();
+    this.slides = null;
+    // the changes after v = logStart, in order
+    this.changes = [];
+    this.logStart = 0;
+    this.listeners = /* @__PURE__ */ new Set();
+    this.timer = null;
+    this.writing = null;
+    this.lastWrite = 0;
+    // the count of writes made at once, after which a write in progress is older than the file
+    this.writesNow = 0;
+    // the count of changes, and the count that the file holds
+    this.edits = 0;
+    this.saved = 0;
+    this.stopped = false;
+    // true from a failed delayed write to the next one that succeeds, which log once each
+    this.failing = false;
+    this.file = join4(dir, "comments.json");
+    this.authority = authority;
+    this.now = options.now ?? Date.now;
+    this.log = options.log ?? (() => {
+    });
+    this.every = options.every ?? 1e3;
+    this.maxBytes = options.maxBytes ?? RELAY_BODY / 2;
+    this.text = authority.text;
+    this.sum = checksum(this.text);
+    try {
+      mkdirSync2(dir, { recursive: true });
+    } catch {
+    }
+    const saved = this.load();
+    if (saved) this.place(saved.sum, found);
+    authority.observe((op, text) => this.operation(op, text));
+  }
+  onChange(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  list(person) {
+    return { v: this.v, at: this.authority.version, comments: [...this.threads.values()], ...this.times(person) };
+  }
+  // the time up to which person read the comments, and each thread read after it
+  times(person) {
+    return { seen: this.seenBy.get(person) ?? 0, read: Object.fromEntries(this.readBy.get(person) ?? []) };
+  }
+  readsOf(person) {
+    return this.readsBy.get(person) ?? 0;
+  }
+  // the changes after rev seen of a page, which holds -1 when it may have missed some
+  since(seen) {
+    if (seen < this.logStart) return { v: this.v, changed: null, removed: null };
+    const changed = /* @__PURE__ */ new Set();
+    const removed = /* @__PURE__ */ new Set();
+    for (let k = this.changes.length - 1; k >= 0 && this.changes[k].v > seen; k--) {
+      const { id, gone } = this.changes[k];
+      if (changed.has(id) || removed.has(id)) continue;
+      if (gone || !this.threads.has(id)) removed.add(id);
+      else changed.add(id);
+    }
+    return { v: this.v, changed: [...this.threads.values()].filter((t) => changed.has(t.id)), removed: [...removed] };
+  }
+  // a new thread of person. anchor and slide are of the text at version base
+  add(person, body) {
+    if (body.id !== void 0 && !isPageId(body.id)) return fail(400, "id must be made by crypto.randomUUID()");
+    const held = body.id === void 0 ? void 0 : this.threads.get(body.id);
+    if (held) return held.author === person ? held : fail(409, "the id is taken");
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (this.locked) return readOnly();
+    if (this.threads.size >= THREADS_MAX) return fail(409, `a deck holds at most ${THREADS_MAX} threads`);
+    if (this.bytes + bytesOf(text) > this.maxBytes) return tooLarge();
+    const n = typeof body.base === "string" ? this.authority.reach(body.base) : null;
+    if (n === null) return fail(409, "base is not in the log, read the deck again");
+    const at = this.anchorsAt(n, body.anchor, body.slide);
+    if (isFailure(at)) return at;
+    const item = this.toCurrent(n, at);
+    const thread = { id: body.id ?? newId(), anchor: item.anchor, slide: item.slide, author: person, time: this.now(), text, replies: [], mentions };
+    if (item.removed) thread.removed = copyRemoved(item.removed);
+    if (thread.removed?.text && this.bytes + headBytes(thread) > this.maxBytes) thread.removed = { text: null };
+    const head = headBytes(thread);
+    if (this.bytes + head > this.maxBytes) return tooLarge();
+    this.threads.set(thread.id, thread);
+    this.heads.set(thread.id, head);
+    this.bytes += head;
+    const undo = () => {
+      this.threads.delete(thread.id);
+      this.heads.delete(thread.id);
+      this.checks.delete(thread.id);
+      this.bytes -= head;
+    };
+    return this.commit([thread.id], undo, NOT_SAVED) ?? thread;
+  }
+  reply(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    if (body.id !== void 0 && !isPageId(body.id)) return fail(400, "id must be made by crypto.randomUUID()");
+    const held = body.id === void 0 ? void 0 : thread.replies.find((r) => r.id === body.id);
+    if (held) return held.author === person ? thread : fail(409, "the id is taken");
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (thread.replies.length >= REPLIES_MAX) return fail(409, `a thread holds at most ${REPLIES_MAX} replies`);
+    if (this.locked) return readOnly();
+    const reply = { id: body.id ?? newId(), author: person, time: this.now(), text };
+    const size2 = replyBytes(reply);
+    if (this.bytes + size2 > this.maxBytes) return tooLarge();
+    const mentioned = thread.mentions.length;
+    thread.replies.push(reply);
+    this.bytes += size2;
+    this.mention(thread, mentions);
+    this.recount(thread);
+    const undo = () => {
+      thread.replies.pop();
+      this.bytes -= size2;
+      thread.mentions.length = mentioned;
+      this.recount(thread);
+    };
+    return this.commit([id], undo, NOT_SAVED) ?? thread;
+  }
+  // a new text of the thread, or of its reply of id body.reply, by its author
+  edit(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    const target = this.target(thread, body.reply);
+    if (isFailure(target)) return target;
+    if (target.author !== person) return fail(403, "only the author may edit a comment");
+    const text = cleanText(body.text);
+    if (isFailure(text)) return text;
+    const mentions = cleanMentions(body.mentions);
+    if (isFailure(mentions)) return mentions;
+    if (this.locked) return readOnly();
+    const edited = this.now();
+    const grow = target === thread ? headBytes({ ...thread, text, edited }) - this.heads.get(id) : replyBytes({ ...target, text, edited }) - replyBytes(target);
+    if (grow > 0 && this.bytes + grow > this.maxBytes) return tooLarge();
+    const was = { text: target.text, edited: target.edited, mentioned: thread.mentions.length };
+    if (target !== thread) this.bytes += grow;
+    target.text = text;
+    target.edited = edited;
+    this.mention(thread, mentions);
+    this.recount(thread);
+    const undo = () => {
+      target.text = was.text;
+      if (was.edited === void 0) delete target.edited;
+      else target.edited = was.edited;
+      if (target !== thread) this.bytes -= grow;
+      thread.mentions.length = was.mentioned;
+      this.recount(thread);
+    };
+    return this.commit([id], undo, NOT_SAVED) ?? thread;
+  }
+  // the thread, or its reply of id body.reply, deleted by its author. null when the thread is gone
+  remove(id, person, body) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    const target = this.target(thread, body.reply);
+    if (isFailure(target)) return target;
+    if (target.author !== person) return fail(403, "only the author may delete a comment");
+    if (this.locked) return readOnly();
+    const error2 = "The host could not delete the comment";
+    if (target === thread) {
+      const threads = [...this.threads];
+      const head = this.heads.get(id);
+      const size2 = head + thread.replies.reduce((n, r) => n + replyBytes(r), 0);
+      const check = this.checks.get(id);
+      const reads = [...this.readBy].filter(([, read]) => read.has(id)).map(([p, read]) => [p, read.get(id)]);
+      this.threads.delete(id);
+      this.bytes -= size2;
+      this.heads.delete(id);
+      this.checks.delete(id);
+      for (const [p, read] of this.readBy) if (read.delete(id) && !read.size) this.readBy.delete(p);
+      const undo2 = () => {
+        this.threads = new Map(threads);
+        this.bytes += size2;
+        this.heads.set(id, head);
+        if (check) this.checks.set(id, check);
+        for (const [p, at] of reads) this.readBy.set(p, (this.readBy.get(p) ?? /* @__PURE__ */ new Map()).set(id, at));
+      };
+      return this.commit([id], undo2, error2, true) ?? null;
+    }
+    const replies = thread.replies;
+    thread.replies = replies.filter((r) => r !== target);
+    this.bytes -= replyBytes(target);
+    const undo = () => {
+      thread.replies = replies;
+      this.bytes += replyBytes(target);
+    };
+    return this.commit([id], undo, error2) ?? thread;
+  }
+  resolve(id, person, resolved) {
+    const thread = this.threads.get(id);
+    if (!thread) return fail(404, "there is no such thread");
+    if (resolved === !!thread.resolved) return thread;
+    if (this.locked) return readOnly();
+    const was = thread.resolved;
+    if (resolved) thread.resolved = { by: person, time: this.now() };
+    else delete thread.resolved;
+    this.recount(thread);
+    const undo = () => {
+      if (was) thread.resolved = was;
+      else delete thread.resolved;
+      this.recount(thread);
+    };
+    return this.commit([id], undo, resolved ? "The host could not resolve the thread" : "The host could not reopen the thread") ?? thread;
+  }
+  // the time up to which person has read the comments, which only grows
+  seen(person, time) {
+    if (!isNumber(time) || time < 0) return fail(400, "time must be a time in ms");
+    const seen = Math.max(this.seenBy.get(person) ?? 0, Math.min(time, this.now()));
+    if (seen !== this.seenBy.get(person)) {
+      this.seenBy.set(person, seen);
+      const read = this.readBy.get(person);
+      for (const [id, at] of read ?? []) if (at <= seen) read.delete(id);
+      if (read && !read.size) this.readBy.delete(person);
+      this.readChanged(person);
+    }
+    return seen;
+  }
+  // the time up to which person has read the thread of id, which only grows
+  seenThread(person, id, time) {
+    if (!isNumber(time) || time < 0) return fail(400, "time must be a time in ms");
+    if (typeof id !== "string" || !this.threads.has(id)) return fail(404, "there is no such thread");
+    const read = this.readBy.get(person) ?? /* @__PURE__ */ new Map();
+    const at = Math.min(time, this.now());
+    if (at <= (this.seenBy.get(person) ?? 0) || at <= (read.get(id) ?? 0)) return read.get(id) ?? 0;
+    read.set(id, at);
+    this.readBy.set(person, read);
+    this.readChanged(person);
+    return at;
+  }
+  // the other pages of person are told the times, and the file is written
+  readChanged(person) {
+    this.readsBy.set(person, ++this.reads);
+    this.dirty();
+    for (const fn of this.listeners) fn();
+  }
+  // whether the file holds every change, where read only comments are not written by design
+  stopSync() {
+    if (!this.stopped) {
+      this.stopped = true;
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+      if (this.saved !== this.edits && !this.locked) this.writeNow();
+    }
+    return this.saved === this.edits || this.locked;
+  }
+  // the file written at once, or false when it could not be. a change of a thread tries the rename 3
+  // times, which holds the edit command for 30 ms at most, and a stop as often as other files
+  writeNow(tries) {
+    const tmp = this.tmpName();
+    try {
+      writeFileSync3(tmp, this.serialize());
+      renameRetriedSync(tmp, this.file, tries);
+      this.saved = this.edits;
+      this.writesNow++;
+      return true;
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      try {
+        unlinkSync3(tmp);
+      } catch {
+      }
+      return false;
+    }
+  }
+  // a change of the threads written before it is told and answered, since a page drops a comment
+  // that the host answered and then lost, or else taken back by undo and refused with error
+  commit(ids, undo, error2, gone = false) {
+    if (!this.writeNow(3)) {
+      undo();
+      return fail(503, error2);
+    }
+    this.changed(ids, gone, true);
+    return null;
+  }
+  // resolves once a write in progress is over
+  async idle() {
+    while (this.writing) await this.writing;
+  }
+  target(thread, reply) {
+    if (reply === void 0 || reply === null) return thread;
+    return thread.replies.find((r) => r.id === reply) ?? fail(404, "there is no such reply");
+  }
+  mention(thread, mentions) {
+    for (const m of mentions) if (!thread.mentions.includes(m) && thread.mentions.length < 4 * MENTIONS_MAX) thread.mentions.push(m);
+  }
+  // the anchors of a request, checked against the text at version n
+  anchorsAt(n, anchor, slide) {
+    const text = this.authority.textAt(n);
+    const range = (x) => x === null || x === void 0 ? null : x && typeof x === "object" && isInt(x.start) && isInt(x.end) ? x : void 0;
+    const a = range(anchor);
+    const s = range(slide);
+    if (a === void 0 || s === void 0) return fail(400, "anchor and slide must be ranges or null");
+    const slides = slidesOf2(text);
+    let slideTag = null;
+    if (s) {
+      slideTag = slideAnchorAt(slides, s.start);
+      if (!slideTag || slideTag.start !== s.start || slideTag.end !== s.end) return fail(400, "slide is not the start tag of a slide");
+    }
+    if (!a) return { anchor: slideTag, slide: slideTag };
+    const tag = startTagAt(text, a.start);
+    if (!tag || tag.end !== a.end) return fail(400, "anchor is not a start tag");
+    const holder = slideAnchorAt(slides, tag.start);
+    if (s && holder?.start !== slideTag.start) return fail(400, "slide does not hold the anchor");
+    return { anchor: tag, slide: holder };
+  }
+  // anchors of the text at version n moved to the current text
+  toCurrent(n, item) {
+    let text = this.authority.textAt(n);
+    let slides = null;
+    for (const op of this.authority.since(formatVersion(this.authority.epoch, n)) ?? []) {
+      const after = apply(text, op.patches);
+      const r = moveAnchors(text, op.patches, after, [item], slides);
+      item = r.items[0];
+      slides = r.slides;
+      text = after;
+    }
+    return item;
+  }
+  // the threads read from the file, or null when there is none or it cannot be read
+  load() {
+    let data;
+    try {
+      data = JSON.parse(readFileSync4(this.file, "utf8"));
+    } catch (e) {
+      if (e.code === "ENOENT") return null;
+      return this.unreadable();
+    }
+    const d = data;
+    if (!d || typeof d !== "object" || typeof d.sum !== "string" || !Array.isArray(d.comments) || d.comments.length > THREADS_MAX || !d.seen || typeof d.seen !== "object") return this.unreadable();
+    let bad = 0;
+    for (const raw of d.comments) {
+      const t = readThread(raw);
+      if (!t) {
+        bad++;
+        continue;
+      }
+      this.threads.set(t.id, t);
+      const check = readCheck(raw);
+      if (check) this.checks.set(t.id, check);
+      else this.checks.delete(t.id);
+    }
+    for (const t of this.threads.values()) {
+      this.recount(t);
+      for (const r of t.replies) this.bytes += replyBytes(r);
+    }
+    for (const [person, time] of Object.entries(d.seen)) if (isPersonId(person) && isNumber(time)) this.seenBy.set(person, time);
+    const read = data.read;
+    for (const [person, times] of Object.entries(read && typeof read === "object" ? read : {})) {
+      if (!isPersonId(person) || !times || typeof times !== "object") continue;
+      const seen = this.seenBy.get(person) ?? 0;
+      const kept = new Map(Object.entries(times).filter((e) => this.threads.has(e[0]) && isNumber(e[1]) && e[1] > seen));
+      if (kept.size) this.readBy.set(person, kept);
+    }
+    if (bad) this.setAside(false, `${bad} of the threads could not be read, hence they were left out`);
+    return { sum: d.sum };
+  }
+  unreadable() {
+    this.setAside(true, "the comments could not be read");
+    return null;
+  }
+  // the file set aside before it is written again, or else kept and never written in this run
+  setAside(move, why) {
+    const aside = join4(this.file, "..", `comments-unreadable-${Date.now()}.json`);
+    if (setAsideSync(this.file, aside, move)) {
+      this.log(`${why}, and the file was set aside as ${aside}`);
+      this.dirty();
+    } else {
+      this.locked = true;
+      this.log(`${why}, and the file could not be set aside, hence the comments are read only until the next start`);
+    }
+  }
+  // the bytes of the head of t counted again, after a change of it
+  recount(t) {
+    const head = headBytes(t);
+    this.bytes += head - (this.heads.get(t.id) ?? 0);
+    this.heads.set(t.id, head);
+  }
+  // the anchors of the file placed on the text of this start
+  place(sum, found) {
+    const threads = [...this.threads.values()];
+    let items = threads;
+    let moved2 = threads.map(() => false);
+    const movable = sum !== this.sum && !!found && found.patches.length > 0 && checksum(found.before) === sum;
+    if (movable) {
+      const r = moveAnchors(found.before, found.patches, this.text, items);
+      items = r.items;
+      moved2 = r.changed;
+    }
+    const checks = sum === this.sum || movable ? [] : threads.map((t) => this.checks.get(t.id));
+    this.checks.clear();
+    const checked = checkAnchors(this.text, items, void 0, checks);
+    this.slides = checked.slides;
+    threads.forEach((t, k) => this.setAnchors(t, checked.items[k]));
+    const ids = threads.filter((_, k) => moved2[k] || checked.changed[k]).map((t) => t.id);
+    if (ids.length || sum !== this.sum) this.changed(ids);
+  }
+  setAnchors(t, item) {
+    t.anchor = item.anchor;
+    t.slide = item.slide;
+    if (item.removed === t.removed) return;
+    if (item.removed) t.removed = copyRemoved(item.removed);
+    else delete t.removed;
+    this.recount(t);
+    if (t.removed?.text && this.bytes > this.maxBytes) {
+      t.removed = { text: null };
+      this.recount(t);
+    }
+  }
+  operation(op, after) {
+    const threads = [...this.threads.values()];
+    let r;
+    try {
+      r = moveAnchors(this.text, op.patches, after, threads, this.slides);
+    } catch (e) {
+      this.log(`the anchors of the comments could not be moved, hence they were checked: ${e.message}`);
+      r = checkAnchors(after, threads);
+      this.checks.clear();
+    }
+    this.text = after;
+    this.sum = op.sum;
+    this.slides = r.slides;
+    const ids = [];
+    threads.forEach((t, k) => {
+      if (r.changed[k] || this.near(t, op.patches)) this.checks.delete(t.id);
+      this.setAnchors(t, r.items[k]);
+      if (r.changed[k]) ids.push(t.id);
+    });
+    if (ids.length) this.changed(ids);
+    else if (threads.length) this.dirty();
+  }
+  // written is true when the file holds the changes already
+  changed(ids, gone = false, written = false) {
+    for (const id of ids) this.changes.push({ v: ++this.v, id, gone });
+    if (this.changes.length > LOG_MAX) {
+      const cut = this.changes.length - LOG_MAX;
+      this.logStart = this.changes[cut - 1].v;
+      this.changes = this.changes.slice(cut);
+    }
+    if (!written) this.dirty();
+    if (ids.length) for (const fn of this.listeners) fn();
+  }
+  // true when a patch touches the element of the check of t, or ends or starts at it
+  near(t, patches) {
+    const c = this.checks.get(t.id);
+    if (!c || !t.anchor) return false;
+    const start2 = t.anchor.start;
+    let lo = 0;
+    let hi = patches.length;
+    while (lo < hi) {
+      const mid = lo + hi >> 1;
+      if (patches[mid].end < start2) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < patches.length && patches[lo].start <= start2 + parseInt(c.sum, 16);
+  }
+  serialize() {
+    const checked = (t) => {
+      let c = this.checks.get(t.id);
+      if (!c) this.checks.set(t.id, c = checkOf(this.text, t.anchor));
+      return c;
+    };
+    const comments = [...this.threads.values()].map((t) => t.anchor ? { ...t, check: checked(t) } : t);
+    const read = Object.fromEntries([...this.readBy].map(([person, times]) => [person, Object.fromEntries(times)]));
+    return JSON.stringify({ sum: this.sum, comments, seen: Object.fromEntries(this.seenBy), read });
+  }
+  tmpName() {
+    return join4(this.file, "..", `.comments.json.${randomBytes3(6).toString("hex")}.tmp`);
+  }
+  dirty() {
+    this.edits++;
+    this.schedule();
+  }
+  // a write at most once in every ms, one at a time
+  schedule() {
+    if (this.stopped || this.locked || this.timer || this.writing) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.writing = this.write().finally(() => {
+        this.writing = null;
+        if (this.saved !== this.edits) this.schedule();
+      });
+    }, Math.max(0, this.lastWrite + this.every - Date.now()));
+    this.timer.unref?.();
+  }
+  async write() {
+    if (this.stopped) return;
+    const edits2 = this.edits;
+    const writesNow = this.writesNow;
+    this.lastWrite = Date.now();
+    const tmp = this.tmpName();
+    try {
+      await writeFile3(tmp, this.serialize());
+      if (this.stopped || this.writesNow !== writesNow) {
+        await unlink2(tmp).catch(() => {
+        });
+        return;
+      }
+      renameRetriedSync(tmp, this.file, 1);
+      this.saved = Math.max(this.saved, edits2);
+      if (this.failing) this.log(`wrote ${this.file} again`);
+      this.failing = false;
+    } catch (e) {
+      if (!this.stopped && !this.failing) this.log(`could not write ${this.file}, trying again: ${e.message}`);
+      this.failing = true;
+      await unlink2(tmp).catch(() => {
+      });
+    }
+  }
+};
+
+// src/edit/history.ts
+import { appendFileSync, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync5, statSync as statSync2, truncateSync, unlinkSync as unlinkSync4, writeFileSync as writeFileSync4 } from "node:fs";
+import { randomBytes as randomBytes4 } from "node:crypto";
 import { join as join5 } from "node:path";
+var isVersionId = (id) => typeof id === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(id);
+var newId2 = () => randomBytes4(9).toString("base64url");
+var ASIDE = /^([0-9]{1,16})\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9_-]{1,64})\.html$/;
+var STEP = 50;
+var CHECKPOINTS = 64;
+function rangesOf(patches) {
+  let delta = 0;
+  return patches.map((p) => {
+    const start2 = p.start + delta;
+    delta += p.text.length - (p.end - p.start);
+    return { start: start2, end: start2 + p.text.length };
+  });
+}
+function tidy(marks) {
+  marks.sort((a, b) => a.start - b.start || a.end - b.end);
+  const out = [];
+  for (const m of marks) {
+    const last = out[out.length - 1];
+    if (last && last.author === m.author && m.start <= last.end) last.end = Math.max(last.end, m.end);
+    else out.push({ ...m });
+  }
+  return out;
+}
+function first(n, at) {
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const mid = lo + hi >> 1;
+    if (at(mid)) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+function shifter(patches) {
+  const deltas = [0];
+  for (const p of patches) deltas.push(deltas[deltas.length - 1] + p.text.length - (p.end - p.start));
+  return (offset, after) => {
+    const i = first(patches.length, (k) => {
+      const p = patches[k];
+      return !(p.end < offset || p.end === offset && (p.start < p.end || after));
+    });
+    return i < patches.length && patches[i].start < offset ? patches[i].start + deltas[i] : offset + deltas[i];
+  };
+}
+function moveMarks(marks, patches, author) {
+  if (patches.length === 0) return marks;
+  const ranges = rangesOf(patches);
+  const written = ranges.filter((r) => r.start < r.end);
+  const shift2 = shifter(patches);
+  const out = [];
+  for (const m of marks) {
+    const start2 = shift2(m.start, true);
+    const end = m.start === m.end ? start2 : Math.max(start2, shift2(m.end, false));
+    if (start2 === end) {
+      const r = written[first(written.length, (k2) => written[k2].end >= start2)];
+      if (!r || r.start > start2) out.push({ start: start2, end, author: m.author });
+      continue;
+    }
+    let at = start2;
+    for (let k2 = first(written.length, (i) => written[i].end > start2); k2 < written.length && written[k2].start < end; k2++) {
+      if (written[k2].start > at) out.push({ start: at, end: written[k2].start, author: m.author });
+      at = Math.max(at, written[k2].end);
+    }
+    if (at < end) out.push({ start: at, end, author: m.author });
+  }
+  const mine = out.filter((m) => m.author === author).sort((a, b) => a.start - b.start);
+  let k = 0;
+  let reach = -1;
+  for (const r of ranges) {
+    if (r.start === r.end) {
+      while (k < mine.length && mine[k].start <= r.start) reach = Math.max(reach, mine[k++].end);
+      if (reach >= r.start) continue;
+    }
+    out.push({ start: r.start, end: r.end, author });
+    reach = Math.max(reach, r.end);
+  }
+  return tidy(out);
+}
+function compose(a, b) {
+  const out = [];
+  let i = 0;
+  let delta = 0;
+  const next = () => {
+    const p = a[i++];
+    delta += p.text.length - (p.end - p.start);
+    return p;
+  };
+  let [head, tail] = ["", ""];
+  for (const q of b) {
+    while (i < a.length && a[i].start + delta + a[i].text.length < q.start) out.push(next());
+    const before2 = delta;
+    let [low, high, pre, post] = [q.start, q.end, "", ""];
+    const o = out[out.length - 1];
+    if (o && q.start < o.end + delta) {
+      out.pop();
+      high = o.end + delta;
+      [low, high, pre, post] = [o.start + delta, Math.max(high, q.end), head + tail.slice(0, tail.length - (high - q.start)), tail.slice(tail.length - (high - q.end))];
+    }
+    while (i < a.length && a[i].start + delta <= q.end) {
+      const at = a[i].start + delta;
+      const p = next();
+      if (at < low) [low, pre] = [at, p.text.slice(0, q.start - at) + pre];
+      if (at + p.text.length > high) [high, post] = [at + p.text.length, post + p.text.slice(q.end - at)];
+    }
+    [head, tail] = [pre + q.text, post];
+    if (low - before2 < high - delta || head || tail) out.push({ start: low - before2, end: high - delta, text: head + tail });
+  }
+  return out.concat(a.slice(i));
+}
+function overwrites(marks, p) {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) {
+    const m = marks[k];
+    if (m.author !== AUTHOR && (m.start === m.end ? m.start >= p.start : p.start < p.end && p.start < m.end && m.start < p.end)) return true;
+  }
+  return false;
+}
+function touches2(marks, p) {
+  for (let k = first(marks.length, (i) => marks[i].start > p.end) - 1; k >= 0 && (marks[k].start === marks[k].end || marks[k].end >= p.start); k--) if (marks[k].author !== AUTHOR && marks[k].end >= p.start) return true;
+  return false;
+}
+function clip(marks, patches, author) {
+  const ranges = rangesOf(patches);
+  const out = [];
+  const dropped = [];
+  for (const m of marks) {
+    const n = out.length;
+    for (let k2 = first(ranges.length, (i) => ranges[i].end >= m.start); k2 < ranges.length && ranges[k2].start <= m.end; k2++) {
+      const r = ranges[k2];
+      if (m.start === m.end || r.start === r.end) {
+        if (m.start === m.end && r.start <= m.start && m.start <= r.end) out.push({ ...m });
+        else if (r.start === r.end && m.start <= r.start && r.start <= m.end) out.push({ start: r.start, end: r.start, author: m.author });
+      } else if (m.start < r.end && r.start < m.end) {
+        out.push({ start: Math.max(m.start, r.start), end: Math.min(m.end, r.end), author: m.author });
+      }
+    }
+    if (out.length === n) dropped.push(m);
+  }
+  const kept = tidy(out);
+  dropped.sort((a, b) => a.start - b.start);
+  const furthest = [];
+  dropped.forEach((m, i) => furthest.push(i > 0 && dropped[furthest[i - 1]].end >= m.end ? furthest[i - 1] : i));
+  const gap = (m, r) => Math.max(0, m.start - r.end, r.start - m.end);
+  const nearest = (r) => {
+    const i = first(dropped.length, (k2) => dropped[k2].start > r.start);
+    const before2 = i > 0 ? dropped[furthest[i - 1]] : null;
+    const after = i < dropped.length ? dropped[i] : null;
+    if (before2 && (!after || gap(before2, r) <= gap(after, r))) return before2.author;
+    return after?.author ?? author;
+  };
+  const added = [];
+  let k = 0;
+  let reach = -1;
+  for (const r of ranges) {
+    const empty = r.start === r.end;
+    while (k < kept.length && (empty ? kept[k].start <= r.start : kept[k].start < r.end)) reach = Math.max(reach, kept[k++].end);
+    if (empty ? reach >= r.start : reach > r.start) continue;
+    added.push({ start: r.start, end: r.end, author: nearest(r) });
+    reach = Math.max(reach, r.end);
+  }
+  return added.length ? tidy([...kept, ...added]) : kept;
+}
+var copied = (patches) => patches.map((p) => ({ start: p.start, end: p.end, text: copy(p.text) }));
+var validPatches = (patches, n) => {
+  if (!Array.isArray(patches)) return false;
+  let at = 0;
+  for (const p of patches) {
+    if (!p || typeof p.text !== "string" || !Number.isInteger(p.start) || !Number.isInteger(p.end) || p.start < at || p.end < p.start || p.end > n) return false;
+    at = p.end;
+  }
+  return true;
+};
+var MAX_PATCHES2 = 2e3;
+function operationOf(a, b) {
+  const patches = diff2(a, b);
+  if (patches.length <= MAX_PATCHES2) return patches;
+  return [{ start: patches[0].start, end: patches[patches.length - 1].end, text: b.slice(patches[0].start, b.length - (a.length - patches[patches.length - 1].end)) }];
+}
+var validMarks = (marks, n) => Array.isArray(marks) && marks.every((m) => m && Number.isInteger(m.start) && Number.isInteger(m.end) && 0 <= m.start && m.start <= m.end && m.end <= n && typeof m.author === "string");
+var numbers = (x) => Array.isArray(x) && x.every((n) => Number.isInteger(n));
+function cleanVersionName(raw) {
+  if (typeof raw !== "string") return null;
+  const name = shown(raw).replace(new RegExp("(?!\\s)\\p{Cc}", "gu"), "").replace(/\s+/g, " ").trim();
+  return Array.from(name).length > VERSION_NAME_MAX ? null : name;
+}
+var Unreadable = class extends Error {
+};
+var History = class {
+  // dir is the .session folder of the talk
+  constructor(dir, authority, options = {}) {
+    // grows with every change of the list of versions or of the texts set aside
+    this.rev = 0;
+    // the count of restores
+    this.restores = 0;
+    // the n of the version of the authority made by the last change from outside that replaced text
+    // that a person wrote in this run, or 0
+    this.overwritten = 0;
+    // the patches from the text of the last version to index.html at the start, or null when the
+    // history began at this start
+    this.found = null;
+    this.base = { time: 0, text: "" };
+    this.versions = [];
+    // the texts after some versions, by index, as starting points of a rebuild
+    this.checkpoints = /* @__PURE__ */ new Map();
+    this.step = STEP;
+    this.lastText = "";
+    this.lastSlides = null;
+    this.open = null;
+    this.timer = null;
+    this.bytes = 0;
+    // true when the file may not hold every line, after a write that failed
+    this.broken = false;
+    // true when the file could not be read nor set aside, hence it is not written in this run
+    this.frozen = false;
+    // the lines of a name in the file, which is written anew once they are many more than the versions
+    this.names = 0;
+    this.stopped = false;
+    this.asides = [];
+    // the last restore, with the n of the version of the authority that it made
+    this.restored = null;
+    // the marks of the closed versions of people of this run, in the text before an open one
+    this.typed = [];
+    this.listeners = /* @__PURE__ */ new Set();
+    this.dir = dir;
+    this.file = join5(dir, "history.jsonl");
+    this.asideDir = join5(dir, "aside");
+    this.authority = authority;
+    this.quiet = options.quiet ?? 6e4;
+    this.longest = options.longest ?? 3e5;
+    this.maxBytes = options.maxBytes ?? 32 * 1024 * 1024;
+    this.keep = options.keep ?? 30 * 24 * 3600 * 1e3;
+    this.asideBytes = options.asideBytes ?? 8 * 1024 * 1024;
+    this.asideFiles = options.asideFiles ?? 50;
+    this.checkpointBytes = options.checkpointBytes ?? 16 * 1024 * 1024;
+    this.now = options.now ?? Date.now;
+    this.clock = options.clock ?? (() => performance.now());
+    this.log = options.log ?? (() => {
+    });
+    try {
+      mkdirSync3(dir, { recursive: true });
+    } catch {
+    }
+    let loaded = null;
+    try {
+      loaded = this.load();
+    } catch (e) {
+      if (!(e instanceof Unreadable)) this.log(`could not read ${this.file}: ${e.message}`);
+      const aside = join5(dir, `history-unreadable-${Date.now()}.jsonl`);
+      if (setAsideSync(this.file, aside)) this.log(`the version history could not be read, hence it was kept in ${aside} and a new history begins`);
+      else {
+        this.frozen = true;
+        this.log(`the version history could not be read nor kept in ${aside}, hence ${this.file} is left as it is and the history of this run is not written`);
+      }
+      this.versions = [];
+      this.checkpoints.clear();
+      this.step = STEP;
+    }
+    const text = authority.text;
+    if (!loaded) {
+      this.base = { time: this.now(), text };
+      this.lastText = text;
+      const start2 = this.version([], [], [], text);
+      start2.start = true;
+      this.versions.push(start2);
+      this.writeAll();
+    } else {
+      this.found = { before: this.lastText, patches: copied(diff2(this.lastText, text)) };
+      if (this.found.patches.length) {
+        const patches = this.found.patches;
+        const authors = loaded.length ? loaded : [AUTHOR];
+        this.push(this.version(authors, patches, clip([], patches, authors.length > 1 ? "" : authors[0]), text), text);
+      } else if (loaded.length) this.writeAll();
+      if (this.bytes > this.maxBytes) this.compact();
+    }
+    this.held = text;
+    this.readAsides();
+    authority.observe((op, after) => this.operation(op, after));
+  }
+  // calls fn after every change of rev
+  onChange(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  list() {
+    return { rev: this.rev, versions: this.versions.map(info).reverse(), aside: [...this.asides].reverse() };
+  }
+  get(id) {
+    const v = this.find(id);
+    return v ? { ...info(v), marks: v.marks } : null;
+  }
+  // the text of the deck at version id, or null for an unknown id
+  textOf(id) {
+    const i = this.indexOf(id);
+    return i < 0 ? null : this.textAt(i);
+  }
+  // the version of the current state closed at once and named. name is cleaned, and an empty name
+  // takes the name off. null for an unknown id, and 'long' for a name over VERSION_NAME_MAX
+  name(id, raw) {
+    const name = cleanVersionName(raw);
+    if (name === null) return "long";
+    let v;
+    if (id === "current") {
+      this.close();
+      v = this.versions[this.versions.length - 1] ?? this.close(true);
+    } else v = this.find(id);
+    if (!v) return null;
+    if ((v.name ?? "") !== name) {
+      if (name) v.name = name;
+      else delete v.name;
+      this.append({ kind: "name", id: v.id, name });
+      if (++this.names > this.versions.length + 1e3) this.writeAll();
+      this.changed();
+    }
+    return info(v);
+  }
+  // the deck made to read as version id by one operation of person, between a version of the
+  // current state and a version of the restore. null for an unknown id. id is null in the answer
+  // when the deck already reads as the version
+  restore(id, person) {
+    const i = this.indexOf(id);
+    if (i < 0) return null;
+    const target = this.textAt(i);
+    const was = this.versions[i];
+    this.close();
+    if (this.authority.text === target) return { id: null };
+    this.authority.enter(operationOf(this.authority.text, target), person);
+    const v = this.close(false, was.id);
+    this.restored = { n: this.authority.n, told: { by: person, id: was.id, time: was.time } };
+    this.restores++;
+    this.changed();
+    return { id: v?.id ?? null };
+  }
+  // the last restore when it is after the version since of a page, which is the latest restore
+  // that the page has not had. every restore is after a version of an earlier start
+  restoredAfter(since) {
+    const at = parseVersion(since);
+    if (!at || !this.restored) return null;
+    return at.epoch !== this.authority.epoch || at.n < this.restored.n ? this.restored.told : null;
+  }
+  // whether a change from outside replaced text of a person after the version since of a page
+  overwrittenAfter(since) {
+    const at = parseVersion(since);
+    return !!at && at.epoch === this.authority.epoch && at.n < this.overwritten;
+  }
+  // a text that a person set aside, or null when it is too large
+  setAside(text, author) {
+    const bytes = Buffer.from(text, "utf8");
+    if (bytes.length > this.asideBytes) return null;
+    const aside = { id: newId2(), time: this.now(), author };
+    mkdirSync3(this.asideDir, { recursive: true });
+    const tmp = join5(this.asideDir, `.${asideName(aside)}.tmp`);
+    writeFileSync4(tmp, bytes);
+    renameRetriedSync(tmp, join5(this.asideDir, asideName(aside)));
+    this.asides.push(aside);
+    const theirs = this.asides.filter((a) => a.author === author);
+    for (const old of theirs.slice(0, Math.max(0, theirs.length - this.asideFiles))) {
+      this.asides.splice(this.asides.indexOf(old), 1);
+      try {
+        unlinkSync4(join5(this.asideDir, asideName(old)));
+      } catch {
+      }
+    }
+    this.changed();
+    return aside;
+  }
+  // the text set aside as id, or null
+  asideText(id) {
+    const aside = this.asides.find((a) => a.id === id);
+    if (!aside) return null;
+    try {
+      return readFileSync5(join5(this.asideDir, asideName(aside)), "utf8");
+    } catch {
+      return null;
+    }
+  }
+  // the open version closed, e.g. at a stop. empty closes a version without a change when there
+  // is not any, so that it can be named. restored is the id of the version that it restores
+  close(empty = false, restored, text = this.authority.text) {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    const open2 = this.open;
+    this.open = null;
+    if (open2 && open2.author !== AUTHOR) this.typed = moveMarks(this.typed, open2.ops, open2.author);
+    if (text === this.lastText && !empty) {
+      if (open2) this.writeAll();
+      return null;
+    }
+    const patches = copied(diff2(this.lastText, text));
+    const author = open2?.author ?? AUTHOR;
+    const v = this.version(open2 ? [...open2.authors] : [], patches, clip(open2?.marks ?? [], patches, author), text, open2?.time);
+    if (restored) v.restored = restored;
+    this.push(v, text);
+    return v;
+  }
+  stopSync() {
+    if (this.stopped) return;
+    this.close();
+    this.stopped = true;
+  }
+  changed() {
+    this.rev++;
+    for (const fn of this.listeners) fn();
+  }
+  find(id) {
+    const i = this.indexOf(id);
+    return i < 0 ? null : this.versions[i];
+  }
+  indexOf(id) {
+    if (!isVersionId(id)) return -1;
+    for (let i = this.versions.length - 1; i >= 0; i--) if (this.versions[i].id === id) return i;
+    return -1;
+  }
+  textAt(i) {
+    if (i === this.versions.length - 1) return this.lastText;
+    let from = -1;
+    for (const k of this.checkpoints.keys()) if (k <= i && k > from) from = k;
+    let text = from < 0 ? this.base.text : this.checkpoints.get(from);
+    for (let k = from + 1; k <= i; k++) text = apply(text, this.versions[k].patches);
+    return text;
+  }
+  checkpoint(i, text) {
+    if ((i + 1) % this.step !== 0) return;
+    this.checkpoints.set(i, text);
+    const budget = Math.max(this.checkpointBytes, 4 * 2 * text.length);
+    const bytes = () => [...this.checkpoints.values()].reduce((sum, t) => sum + 2 * t.length, 0);
+    while (this.checkpoints.size > CHECKPOINTS || bytes() > budget) {
+      this.step *= 2;
+      for (const k of [...this.checkpoints.keys()]) if ((k + 1) % this.step !== 0) this.checkpoints.delete(k);
+    }
+  }
+  // a new version of text, which patches make from the text of the last version
+  version(authors, patches, marks, text, time = this.now()) {
+    this.lastSlides ??= slidesOf2(this.lastText);
+    const slides = slidesOf2(text);
+    const changes2 = slideChanges(this.lastText, this.lastSlides, text, slides, marks);
+    this.lastSlides = slides;
+    const v = { id: newId2(), time, authors, slides: changes2.slides, patches, marks };
+    if (changes2.removed) v.removed = changes2.removed;
+    return v;
+  }
+  push(v, text) {
+    this.versions.push(v);
+    this.lastText = text;
+    this.checkpoint(this.versions.length - 1, text);
+    const { name, ...line } = v;
+    this.append({ kind: "version", ...line });
+    if (name) {
+      this.append({ kind: "name", id: v.id, name });
+      this.names++;
+    }
+    if (this.bytes > this.maxBytes) this.compact();
+    this.changed();
+  }
+  operation(op, text) {
+    if (this.stopped) return;
+    const t = this.clock();
+    const w = this.now();
+    if (this.open && (this.due(this.open, t, w) || op.author === AUTHOR !== (this.open.author === AUTHOR))) this.close(false, void 0, this.held);
+    if (op.author === AUTHOR) {
+      const patches = op.patches.flatMap((p) => touches2(this.typed, p) ? byWords(this.held, p) : [p]);
+      if (patches.some((p) => overwrites(this.typed, p))) this.overwritten = this.authority.n;
+      this.typed = moveMarks(this.typed, patches, AUTHOR);
+    }
+    this.held = text;
+    const open2 = this.open ??= { first: t, last: t, since: w, time: w, authors: /* @__PURE__ */ new Set(), marks: [], author: op.author, ops: [] };
+    open2.last = t;
+    open2.time = w;
+    open2.author = op.author;
+    if (!open2.authors.has(op.author)) {
+      open2.authors.add(op.author);
+      this.append({ kind: "open", author: op.author });
+    }
+    open2.marks = moveMarks(open2.marks, op.patches, op.author);
+    if (op.author !== AUTHOR) open2.ops = compose(open2.ops, op.patches);
+    this.arm();
+  }
+  // whether open is to be closed at the times t of clock and w of now. a wall clock set back does
+  // not hold it open, and one that jumped ahead in a sleep closes it
+  due(open2, t, w) {
+    return t - open2.last >= this.quiet || t - open2.first >= this.longest || w - open2.time >= this.quiet || w - open2.since >= this.longest;
+  }
+  // one timer at a time, which looks again at the times of the open version when it fires
+  arm() {
+    if (this.timer || !this.open) return;
+    const wait = Math.max(0, Math.min(this.open.last + this.quiet, this.open.first + this.longest) - this.clock());
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (!this.open) return;
+      if (this.due(this.open, this.clock(), this.now())) this.close();
+      else this.arm();
+    }, wait);
+    this.timer.unref?.();
+  }
+  append(line) {
+    if (this.frozen) return;
+    if (this.broken) {
+      this.writeAll();
+      return;
+    }
+    const data = `${JSON.stringify(line)}
+`;
+    try {
+      appendFileSync(this.file, data);
+      this.bytes += Buffer.byteLength(data);
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      this.broken = true;
+    }
+  }
+  // the file written anew from memory, by a temporary file and a rename
+  writeAll() {
+    if (this.frozen) return;
+    const lines = [JSON.stringify({ kind: "base", ...this.base })];
+    for (const v of this.versions) {
+      const { name, ...line } = v;
+      lines.push(JSON.stringify({ kind: "version", ...line }));
+    }
+    const named = this.versions.filter((v) => v.name);
+    for (const v of named) lines.push(JSON.stringify({ kind: "name", id: v.id, name: v.name }));
+    for (const author of this.open?.authors ?? []) lines.push(JSON.stringify({ kind: "open", author }));
+    const data = `${lines.join("\n")}
+`;
+    const tmp = join5(this.dir, `.history.jsonl.${randomBytes4(6).toString("hex")}.tmp`);
+    try {
+      writeFileSync4(tmp, data);
+      renameRetriedSync(tmp, this.file);
+      this.bytes = Buffer.byteLength(data);
+      this.names = named.length;
+      this.broken = false;
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      this.broken = true;
+      try {
+        unlinkSync4(tmp);
+      } catch {
+      }
+    }
+  }
+  // the versions before the oldest of the last keep ms and before the oldest named one left out,
+  // the version before them becoming the base
+  compact() {
+    const cutoff = this.now() - this.keep;
+    let k = this.versions.findIndex((v) => v.time >= cutoff);
+    if (k < 0) k = this.versions.length - 1;
+    const named = this.versions.findIndex((v) => v.name);
+    if (named >= 0) k = Math.min(k, named);
+    if (k <= 0) return;
+    this.base = { time: this.versions[k - 1].time, text: this.textAt(k - 1) };
+    this.versions = this.versions.slice(k);
+    const kept = /* @__PURE__ */ new Map();
+    for (const [i, text] of this.checkpoints) if (i >= k) kept.set(i - k, text);
+    this.checkpoints = kept;
+    this.step = STEP;
+    this.writeAll();
+    this.changed();
+  }
+  // the authors of the lines open after the last version line when the file was read, and null
+  // when it does not exist or is empty. throws Unreadable for a file without a base, or with a line
+  // other than the last that cannot be read
+  load() {
+    let content;
+    try {
+      content = readFileSync5(this.file, "utf8");
+    } catch (e) {
+      if (e.code === "ENOENT") return null;
+      throw e;
+    }
+    if (content === "") return null;
+    const lines = content.split("\n");
+    let last = lines.length - 1;
+    if (lines[last] === "") last--;
+    let good = 0;
+    let text = "";
+    const names = /* @__PURE__ */ new Map();
+    let open2 = [];
+    for (let i = 0; i <= last; i++) {
+      const record = this.parse(lines[i], i, text);
+      if (record === null) {
+        if (i < last || i === 0) throw new Unreadable();
+        try {
+          truncateSync(this.file, Buffer.byteLength(content.slice(0, good)));
+        } catch {
+          this.broken = true;
+        }
+        break;
+      }
+      if (record.kind === "base") {
+        this.base = { time: record.time, text: record.text };
+        text = record.text;
+      } else if (record.kind === "version") {
+        text = apply(text, record.v.patches);
+        this.versions.push(record.v);
+        this.checkpoint(this.versions.length - 1, text);
+        open2 = [];
+      } else if (record.kind === "open") {
+        if (!open2.includes(record.author)) open2.push(record.author);
+      } else {
+        names.set(record.id, record.name);
+        this.names++;
+      }
+      good += lines[i].length + 1;
+    }
+    if (good > content.length) {
+      try {
+        appendFileSync(this.file, "\n");
+      } catch {
+        this.broken = true;
+      }
+    }
+    for (const v of this.versions) {
+      const name = names.get(v.id);
+      if (name) v.name = name;
+    }
+    this.lastText = text;
+    this.bytes = statSync2(this.file).size;
+    return open2;
+  }
+  parse(line, i, text) {
+    let r;
+    try {
+      r = JSON.parse(line);
+    } catch {
+      return null;
+    }
+    if (!r || typeof r !== "object") return null;
+    if (i === 0) return r.kind === "base" && Number.isFinite(r.time) && typeof r.text === "string" ? { kind: "base", time: r.time, text: r.text } : null;
+    if (r.kind === "name") return isVersionId(r.id) && typeof r.name === "string" ? { kind: "name", id: r.id, name: r.name } : null;
+    if (r.kind === "open") return typeof r.author === "string" ? { kind: "open", author: r.author } : null;
+    if (r.kind !== "version" || !isVersionId(r.id) || !Number.isFinite(r.time) || !Array.isArray(r.authors) || !r.authors.every((a) => typeof a === "string")) return null;
+    if (!validPatches(r.patches, text.length) || !numbers(r.slides)) return null;
+    const after = text.length + r.patches.reduce((s, p) => s + p.text.length - (p.end - p.start), 0);
+    const v = { id: r.id, time: r.time, authors: r.authors, slides: r.slides, patches: r.patches, marks: validMarks(r.marks, after) ? r.marks : [] };
+    const removed = r.removed;
+    if (removed && numbers(removed.slides) && Number.isInteger(removed.elements)) v.removed = { slides: removed.slides, elements: removed.elements };
+    if (isVersionId(r.restored)) v.restored = r.restored;
+    if (r.start === true) v.start = true;
+    return { kind: "version", v };
+  }
+  readAsides() {
+    let names = [];
+    try {
+      names = readdirSync2(this.asideDir);
+    } catch {
+    }
+    for (const name of names) {
+      const m = ASIDE.exec(name);
+      if (m) this.asides.push({ id: m[2], time: Number(m[1]), author: m[3] });
+    }
+    this.asides.sort((a, b) => a.time - b.time);
+  }
+};
+var asideName = (a) => `${a.time}.${a.id}.${a.author}.html`;
+function info(v) {
+  const out = { id: v.id, time: v.time, authors: v.authors, slides: v.slides };
+  if (v.name) out.name = v.name;
+  if (v.removed) out.removed = v.removed;
+  if (v.restored) out.restored = v.restored;
+  if (v.start) out.start = true;
+  return out;
+}
+
+// src/edit/people.ts
+import { randomBytes as randomBytes5 } from "node:crypto";
+import { readFileSync as readFileSync6, unlinkSync as unlinkSync5, writeFileSync as writeFileSync5 } from "node:fs";
+import { unlink as unlink3, writeFile as writeFile4 } from "node:fs/promises";
+var HOLD = Number(process.env.SLIDES_POLL_HOLD_MS) || 25e3;
+var GAP = 100;
+var GONE = Number(process.env.SLIDES_GONE_MS) || 4e4;
+var FIRST_POLL = 5e3;
+var MAX_PEOPLE = 64;
+var MAX_GUESTS = 48;
+var MAX_PAGES = 8;
+var MAX_CLIENTS = 1024;
+var MAX_KNOWN = 1024;
+var SAVE_GAP = 1e3;
+var MAX_STATE = 8 * 1024;
+var revOf = (f, person) => f.of ? f.of(person) : f.rev();
+var newId3 = () => randomBytes5(16).toString("base64url");
+function readPeople(file) {
+  try {
+    const value = JSON.parse(readFileSync6(file, "utf8"));
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (r) => r && isPersonId(r.person) && cleanPersonName(r.name) && Number.isInteger(r.color) && r.color >= 0 && r.color < COLORS.length && Number.isFinite(r.first) && Number.isFinite(r.last)
+    );
+  } catch {
+    return [];
+  }
+}
+var People = class {
+  // file is the people.json of the talk folder, or null to keep the people in memory alone
+  constructor(authority, file = null, log = () => {
+  }) {
+    this.members = /* @__PURE__ */ new Map();
+    // the person, the kind, and the token of every page that said hello, so that a browser back
+    // from a sleep keeps its person, and whether the page said bye since
+    this.clients = /* @__PURE__ */ new Map();
+    // the client id of each token
+    this.tokens = /* @__PURE__ */ new Map();
+    this.records = /* @__PURE__ */ new Map();
+    // the pages whose session ended, answered with ended until they say hello again
+    this.ends = /* @__PURE__ */ new Map();
+    // the guests present at the last end of sharing that have not been answered with ended yet, and
+    // the callers that wait until none is left
+    this.untold = /* @__PURE__ */ new Set();
+    this.toldWaiters = [];
+    this.hostPerson = null;
+    this.polls = /* @__PURE__ */ new Set();
+    this.feedList = [];
+    this.rev = 0;
+    this.knownRev = 0;
+    // the write of index.html that failed last, or null once a write succeeded, and its revision
+    this.writeError = null;
+    this.writeRev = 0;
+    // the message of the write of tex.js that failed last, or null once a write succeeded
+    this.texError = null;
+    // the changes of tex.js on disk, by the edit command or by another program, counted from the time
+    // of the start in ms, which a later run does not repeat
+    this.texRev = Date.now();
+    this.ended = null;
+    this.saveTimer = null;
+    this.savedAt = 0;
+    this.dirty = false;
+    this.saving = null;
+    this.authority = authority;
+    this.file = file;
+    this.log = log;
+    if (file) for (const r of readPeople(file)) this.records.set(r.person, r);
+    authority.observe(() => this.wake());
+    this.sweeper = setInterval(() => this.sweep(), 1e3);
+    this.sweeper.unref?.();
+  }
+  // a page joins as the person of the id, or as a new person. a name held by another person is
+  // refused unless claim is true, and the page then continues as this person. the token of an
+  // earlier hello keeps its client id
+  hello(rawName, rawPerson, rawToken, host, claim = false) {
+    let person = isPersonId(rawPerson) ? rawPerson : newId3();
+    const name = cleanPersonName(rawName) || this.records.get(person)?.name || "";
+    if (!name) return { empty: true };
+    const holder = this.holderOf(name);
+    if (holder && holder.person !== person) {
+      if (!claim) return { taken: { name: holder.name } };
+      person = holder.person;
+    }
+    const earlier = isToken(rawToken) ? this.tokens.get(rawToken) : void 0;
+    const id = earlier ?? randomBytes5(12).toString("base64url");
+    const token = earlier ? rawToken : newId3();
+    if (!this.members.has(id)) {
+      const pages = [...this.members.values()].filter((m) => m.person === person);
+      const dropped = pages.length < MAX_PAGES ? void 0 : pages.find((m) => m.host === host) ?? (host ? pages[0] : void 0);
+      if (pages.length >= MAX_PAGES && !dropped) return { full: true };
+      if (!this.hasPlace(host, dropped)) return { full: true };
+      if (dropped) this.members.delete(dropped.client);
+    }
+    const now = Date.now();
+    let record = this.records.get(person);
+    if (!record) {
+      record = { person, name, color: this.freeColor(), first: now, last: now };
+      this.records.set(person, record);
+      this.trimRecords();
+      this.knownRev++;
+    } else {
+      const own = host || earlier !== void 0 && this.clients.get(earlier)?.person === person;
+      if (record.name !== name && !claim && own) {
+        record.name = name;
+        this.knownRev++;
+      }
+      record.last = now;
+    }
+    this.save();
+    if (host) this.hostPerson = person;
+    this.ends.delete(id);
+    this.clients.delete(id);
+    this.clients.set(id, { person, host, token });
+    this.tokens.set(token, id);
+    if (this.clients.size > MAX_CLIENTS) {
+      for (const [client, { token: old }] of this.clients) {
+        if (this.members.has(client)) continue;
+        this.clients.delete(client);
+        this.tokens.delete(old);
+        break;
+      }
+    }
+    let member = this.members.get(id);
+    const fields = { person, name: record.name, color: record.color, host, lastSeen: now, joined: now, seen: -1, knownSeen: this.knownRev, writeSeen: 0, feeds: this.feedList.map((f) => revOf(f, person)) };
+    if (member) Object.assign(member, fields);
+    else this.members.set(id, member = { client: id, ...fields, polled: false, state: null, lastAnswer: 0, polls: 0 });
+    this.renamed(person);
+    this.changed();
+    return { member, token };
+  }
+  // a new name of the person of the page client, or null when the page did not say hello
+  rename(client, rawName) {
+    const member = this.revive(client);
+    if (!member) return null;
+    const name = cleanPersonName(rawName);
+    if (!name) return { empty: true };
+    const holder = this.holderOf(name);
+    if (holder && holder.person !== member.person) return { taken: { name: holder.name } };
+    const record = this.records.get(member.person);
+    if (record.name !== name) {
+      record.name = name;
+      this.knownRev++;
+      this.save();
+      this.renamed(member.person);
+      this.changed();
+    }
+    return { name };
+  }
+  // whether the page client is in the session, i.e. said hello and neither left nor was dropped
+  present(client) {
+    return this.members.has(client);
+  }
+  // the client id of the page of token, or null
+  clientOf(token) {
+    return isToken(token) ? this.tokens.get(token) ?? null : null;
+  }
+  // the person id of a page that said hello, or null
+  personOf(client) {
+    return typeof client === "string" ? this.clients.get(client)?.person ?? null : null;
+  }
+  list() {
+    return [...this.members.values()].map(({ client, person, name, color, host }) => ({ client, person, name, color, host }));
+  }
+  known() {
+    return [...this.records.values()].map(({ person, name, color }) => ({ person, name, color }));
+  }
+  presence(client, state) {
+    const member = this.revive(client);
+    if (!member) return false;
+    member.state = state;
+    this.changed();
+    return true;
+  }
+  // the token of a closed page forgotten, hence a later request of it is one of an unknown token
+  retire(token) {
+    this.tokens.delete(token);
+  }
+  // the page left, and a request of it that arrives later does not bring it back, only a hello
+  bye(client) {
+    const known = this.clients.get(client);
+    if (known) known.left = true;
+    if (this.members.delete(client)) this.changed();
+  }
+  // a source of news for every page from now on
+  feed(f) {
+    this.feedList.push(f);
+    for (const m of this.members.values()) m.feeds.push(revOf(f, m.person));
+  }
+  // the waiting polls woken after a change of a feed
+  news() {
+    this.wake();
+  }
+  // a long poll of client for the news after the version since
+  events(client, since) {
+    const end = this.ends.get(client);
+    if (end) {
+      this.told(client);
+      return Promise.resolve({ ...this.state(since, null), ended: end });
+    }
+    const member = this.revive(client);
+    if (!member) return null;
+    return new Promise((done) => {
+      const poll = { client, since, done, hold: setTimeout(() => this.answer(poll), HOLD), gap: null };
+      this.polls.add(poll);
+      member.polls++;
+      member.polled = true;
+      if (this.ended || this.hasNews(poll)) this.soon(poll);
+    });
+  }
+  // a write of index.html that failed, or null at the first write that succeeds after it, told to
+  // every page when it changed
+  writeFailed(error2) {
+    if (JSON.stringify(error2) === JSON.stringify(this.writeError)) return;
+    this.writeError = error2 && { message: error2.message, unwritten: error2.unwritten };
+    this.writeRev++;
+    this.changed();
+  }
+  // a write of tex.js that failed, or null once a derivation does not fail, told to every page as a
+  // write of index.html that failed is, when no write of index.html failed
+  texFailed(message) {
+    if (message === this.texError) return;
+    this.texError = message;
+    this.writeRev++;
+    this.changed();
+  }
+  // tex.js changed on disk, told to every page, which draws the deck again with it
+  texChanged() {
+    this.texRev++;
+    this.changed();
+  }
+  // the number of changes of tex.js on disk, for the answer of hello
+  tex() {
+    return this.texRev;
+  }
+  // the waiting polls answered with ended, at a stop of the edit command, and people.json written
+  end() {
+    this.ended = this.endedBy();
+    clearInterval(this.sweeper);
+    for (const poll of [...this.polls]) this.answer(poll);
+    this.saveSync();
+  }
+  // the session ended for every page that came through the relay. their waiting polls are
+  // answered with ended, while the pages of the host go on. resolves once every guest present has
+  // been answered with ended, by a waiting poll or by a poll that arrives later
+  endGuests() {
+    const end = this.endedBy();
+    this.untold = new Set([...this.members.values()].filter((m) => !m.host).map((m) => m.client));
+    const told = new Promise((done) => this.toldWaiters.push(done));
+    for (const [client, { host }] of this.clients) if (!host) this.ends.set(client, end);
+    for (const client of this.ends.keys()) if (this.ends.size > MAX_CLIENTS) this.ends.delete(client);
+    for (const poll of [...this.polls]) if (this.ends.has(poll.client)) this.answer(poll);
+    let gone = false;
+    for (const [client, member] of this.members) {
+      if (!member.host) {
+        this.members.delete(client);
+        gone = true;
+      }
+    }
+    if (gone) this.changed();
+    this.told(null);
+    return told;
+  }
+  told(client) {
+    if (client !== null) this.untold.delete(client);
+    if (!this.untold.size) for (const done of this.toldWaiters.splice(0)) done();
+  }
+  endedBy() {
+    return { by: this.hostPerson && this.records.get(this.hostPerson)?.name || null };
+  }
+  holderOf(name) {
+    const key = nameKey(name);
+    for (const r of this.records.values()) if (nameKey(r.name) === key) return r;
+    return null;
+  }
+  // the tone that the fewest people now present hold, the lowest at a tie
+  freeColor() {
+    const count = COLORS.map(() => 0);
+    const present = new Set([...this.members.values()].map((m) => m.person));
+    for (const person of present) {
+      const color = this.records.get(person)?.color;
+      if (color !== void 0) count[color]++;
+    }
+    return count.indexOf(Math.min(...count));
+  }
+  // the absent people who joined least lately dropped from a list over MAX_KNOWN
+  trimRecords() {
+    if (this.records.size <= MAX_KNOWN) return;
+    const present = new Set([...this.members.values()].map((m) => m.person));
+    const absent = [...this.records.values()].filter((r) => !present.has(r.person)).sort((a, b) => a.last - b.last);
+    for (const r of absent.slice(0, this.records.size - MAX_KNOWN)) this.records.delete(r.person);
+  }
+  renamed(person) {
+    const record = this.records.get(person);
+    if (record) {
+      for (const m of this.members.values()) if (m.person === person) m.name = record.name;
+    }
+  }
+  revive(client) {
+    let member = this.members.get(client);
+    const known = this.clients.get(client);
+    const record = known && this.records.get(known.person);
+    const pages = known ? [...this.members.values()].filter((m) => m.person === known.person).length : 0;
+    if (known) {
+      this.clients.delete(client);
+      this.clients.set(client, known);
+    }
+    if (!member && known && !known.left && record && this.hasPlace(known.host) && pages < MAX_PAGES) {
+      const { person, name, color } = record;
+      const now = Date.now();
+      member = { client, person, name, color, host: known.host, state: null, lastSeen: now, joined: now, polled: false, seen: -1, knownSeen: -1, writeSeen: 0, feeds: this.feedList.map(() => -1), lastAnswer: 0, polls: 0 };
+      this.members.set(client, member);
+      this.changed();
+    }
+    if (member) member.lastSeen = Date.now();
+    return member ?? null;
+  }
+  // whether a page of the kind of host has a place, once the page leaving is dropped
+  hasPlace(host, leaving) {
+    if (this.members.size - (leaving ? 1 : 0) >= MAX_PEOPLE) return false;
+    return host || [...this.members.values()].filter((m) => !m.host && m !== leaving).length < MAX_GUESTS;
+  }
+  changed() {
+    this.rev++;
+    this.wake();
+  }
+  hasNews(poll) {
+    const member = this.members.get(poll.client);
+    const at = this.authority.reach(poll.since);
+    return at === null || at < this.authority.n || !member || member.seen < this.rev || this.feedList.some((f, i) => member.feeds[i] < revOf(f, member.person));
+  }
+  wake() {
+    for (const poll of this.polls) if (this.hasNews(poll)) this.soon(poll);
+  }
+  // the poll answered now, or once GAP ms have passed since the last answer to its browser
+  soon(poll) {
+    if (poll.gap) return;
+    const member = this.members.get(poll.client);
+    const wait = this.ended || !member ? 0 : Math.max(0, member.lastAnswer + GAP - Date.now());
+    poll.gap = setTimeout(() => this.answer(poll), wait);
+  }
+  // known is left out when the page has had the list since its last change
+  state(since, member) {
+    const presence = [...this.members.values()].map(({ client, name, color, state }) => ({ client, name, color, state }));
+    const answer = { v: this.authority.version, ops: this.authority.since(since), presence, people: this.list(), tex: this.texRev };
+    if (!member || member.knownSeen < this.knownRev) answer.known = this.known();
+    if (this.writeRev && (!member || member.writeSeen < this.writeRev)) answer.writeError = this.writeError ?? (this.texError === null ? null : { message: this.texError, unwritten: 0, file: "tex.js" });
+    if (member) this.feedList.forEach((f, i) => member.feeds[i] < revOf(f, member.person) && f.write(answer, member.feeds[i], since, member.person));
+    return answer;
+  }
+  answer(poll) {
+    if (!this.polls.delete(poll)) return;
+    clearTimeout(poll.hold);
+    if (poll.gap) clearTimeout(poll.gap);
+    const member = this.members.get(poll.client) ?? null;
+    const answer = this.state(poll.since, member);
+    if (member) {
+      member.seen = this.rev;
+      member.knownSeen = this.knownRev;
+      member.writeSeen = this.writeRev;
+      member.feeds = this.feedList.map((f) => revOf(f, member.person));
+      member.lastAnswer = Date.now();
+      member.polls--;
+    }
+    const end = this.ended ?? this.ends.get(poll.client);
+    if (end) {
+      answer.ended = end;
+      this.told(poll.client);
+    }
+    poll.done(answer);
+  }
+  sweep() {
+    const now = Date.now();
+    let gone = false;
+    for (const [client, member] of this.members) {
+      if (member.polls === 0 && (now - member.lastSeen > GONE || !member.polled && now - member.joined > FIRST_POLL)) {
+        this.members.delete(client);
+        gone = true;
+      }
+    }
+    if (gone) this.changed();
+  }
+  json() {
+    return `${JSON.stringify([...this.records.values()], null, 1)}
+`;
+  }
+  // people.json written by a temporary file and a rename, at most once a second
+  save() {
+    if (!this.file) return;
+    this.dirty = true;
+    if (this.saveTimer || this.saving) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      void this.flush();
+    }, Math.max(0, this.savedAt + SAVE_GAP - Date.now()));
+    this.saveTimer.unref?.();
+  }
+  async flush() {
+    if (!this.file || !this.dirty) return;
+    this.dirty = false;
+    this.savedAt = Date.now();
+    const tmp = `${this.file}.${randomBytes5(6).toString("hex")}.tmp`;
+    this.saving = (async () => {
+      try {
+        await writeFile4(tmp, this.json());
+        await renameRetried(tmp, this.file);
+      } catch (e) {
+        await unlink3(tmp).catch(() => {
+        });
+        this.log(`could not write ${this.file}: ${e.message}`);
+        this.dirty = true;
+      }
+    })();
+    await this.saving;
+    this.saving = null;
+    if (this.dirty) this.save();
+  }
+  saveSync() {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    if (!this.file || !this.dirty && !this.saving) return;
+    this.dirty = false;
+    const tmp = `${this.file}.${randomBytes5(6).toString("hex")}.tmp`;
+    try {
+      writeFileSync5(tmp, this.json());
+      renameRetriedSync(tmp, this.file);
+    } catch (e) {
+      this.log(`could not write ${this.file}: ${e.message}`);
+      try {
+        unlinkSync5(tmp);
+      } catch {
+      }
+    }
+  }
+};
+
+// src/edit/tex.ts
+import { readFileSync as readFileSync7, statSync as statSync3 } from "node:fs";
+import { readFile as readFile2, stat as stat3, unlink as unlink4, writeFile as writeFile5 } from "node:fs/promises";
+import { createHash, randomBytes as randomBytes6 } from "node:crypto";
+import { join as join6 } from "node:path";
 
 // src/accents.ts
 var ACCENT = {
@@ -3089,12 +4244,12 @@ var accented = (_, accent, braced, bare2) => {
   const base = (braced ?? bare2 ?? "").replace("\\", "");
   return (base + ACCENT[accent]).normalize("NFC");
 };
-function words(tex) {
+function words2(tex) {
   return tex.replace(SYMBOL_ACCENT, accented).replace(LETTER_ACCENT, accented).replace(/\\(ss|ae|AE|oe|OE|aa|AA|o|O|l|L|i|j)(?![A-Za-z])\s*/g, (_, name) => LETTER[name]).replace(/\\([{}])/g, (_, brace) => brace === "{" ? "" : "").replace(/\\([&%#_])/g, "$1").replace(/\\[,;: ]|~/g, " ").replace(/---/g, "\u2014").replace(/--/g, "\u2013").replace(/``/g, "\u201C").replace(/''/g, "\u201D").replace(/\\[A-Za-z@]+\*?\s*/g, "").replace(/[{}]/g, "").replace(/\u0001/g, "{").replace(/\u0002/g, "}");
 }
 function plainText(tex) {
   const parts = tex.replace(/\\\$/g, "").split(/(\$[^$]*\$)/);
-  return parts.map((part, index) => index % 2 ? part : words(part)).join("").replace(/\u0003/g, "$").replace(/\s+/g, " ").trim();
+  return parts.map((part, index) => index % 2 ? part : words2(part)).join("").replace(/\u0003/g, "$").replace(/\s+/g, " ").trim();
 }
 
 // src/bibtex.ts
@@ -3369,8 +4524,8 @@ function readPreamble(source, options = {}) {
       const start2 = space(i2);
       if (start2 >= n) throw new Skip2("an argument is missing");
       if (text[start2] === "{") {
-        const [inner, end2] = group(start2);
-        return [tidy3(inner), end2];
+        const [inner2, end2] = group(start2);
+        return [tidy3(inner2), end2];
       }
       if (text[start2] !== "\\") return [text[start2], start2 + 1];
       const [name, end] = control(start2);
@@ -3611,10 +4766,10 @@ function namesOf(field) {
       names.push({ family: plainText(parts[0]), given: plainText(parts[parts.length - 1]) });
       continue;
     }
-    const words2 = split(text, /[\s~]+/g).filter(Boolean);
-    const first2 = words2.slice(0, -1).findIndex(particle);
-    const cut = first2 < 0 ? words2.length - 1 : first2;
-    names.push({ family: plainText(words2.slice(cut).join(" ")), given: plainText(words2.slice(0, cut).join(" ")) });
+    const words3 = split(text, /[\s~]+/g).filter(Boolean);
+    const first2 = words3.slice(0, -1).findIndex(particle);
+    const cut = first2 < 0 ? words3.length - 1 : first2;
+    names.push({ family: plainText(words3.slice(cut).join(" ")), given: plainText(words3.slice(0, cut).join(" ")) });
   }
   return { names, others };
 }
@@ -3717,10 +4872,10 @@ function deriveTex(dir, html) {
   const unread = [];
   const hash = createHash("sha256");
   const text = (name) => {
-    const file = join5(dir, name);
+    const file = join6(dir, name);
     try {
       files.set(name, signature(statSync3(file)));
-      const read = readFileSync6(file, "utf8");
+      const read = readFileSync7(file, "utf8");
       if (name === "preamble.tex" || name === "references.bib") hash.update(`${name}
 ${read.length}
 ${read}`);
@@ -3758,7 +4913,7 @@ var TexWriter = class {
     // the skipped lines and the keys without an entry logged last
     this.skipped = "";
     this.dir = dir;
-    this.file = join5(dir, "tex.js");
+    this.file = join6(dir, "tex.js");
     this.log = options.log ?? (() => {
     });
     this.onChange = options.onChange ?? (() => {
@@ -3822,7 +4977,7 @@ var TexWriter = class {
   }
   async look() {
     const now = performance.now();
-    const sigs = await Promise.all([...this.watched.keys()].map(async (name) => [name, await statSig(join5(this.dir, name))]));
+    const sigs = await Promise.all([...this.watched.keys()].map(async (name) => [name, await statSig(join6(this.dir, name))]));
     const sources = sigs.map(([name, sig]) => `${name}
 ${sig}`).join("\n");
     if (sigs.some(([name, sig]) => this.watched.get(name) !== sig)) {
@@ -3877,9 +5032,9 @@ ${sig}`).join("\n");
       if (settled && changed) this.onChange();
       return;
     }
-    const tmp = join5(this.dir, `.tex.js.${randomBytes5(6).toString("hex")}.tmp`);
+    const tmp = join6(this.dir, `.tex.js.${randomBytes6(6).toString("hex")}.tmp`);
     try {
-      await writeFile4(tmp, derived.text);
+      await writeFile5(tmp, derived.text);
       const made = await stat3(tmp);
       await renameRetried(tmp, this.file);
       settle();
@@ -3887,7 +5042,7 @@ ${sig}`).join("\n");
       this.texSeen = null;
       this.onChange();
     } catch (e) {
-      await unlink3(tmp).catch(() => {
+      await unlink4(tmp).catch(() => {
       });
       this.keys = keysOf(html);
       this.watched = derived.files;
@@ -3929,7 +5084,7 @@ var AlreadyRunning = class extends Error {
 async function holderOf(file, root, key, log) {
   let lock;
   try {
-    lock = JSON.parse(readFileSync7(file, "utf8"));
+    lock = JSON.parse(readFileSync8(file, "utf8"));
   } catch {
     return null;
   }
@@ -3952,37 +5107,37 @@ async function holderOf(file, root, key, log) {
 }
 function keepUnwritten(root, text) {
   const name = `unwritten-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.html`;
-  for (const dir of [join6(root, ".session"), tmpdir()]) {
+  for (const dir of [join7(root, ".session"), tmpdir()]) {
     try {
-      const file = join6(dir, name);
-      writeFileSync5(file, text, { flag: "wx" });
+      const file = join7(dir, name);
+      writeFileSync6(file, text, { flag: "wx" });
       return file;
     } catch {
     }
   }
   return null;
 }
-function keyOf(root) {
-  const dir = join6(root, ".session");
-  mkdirSync3(dir, { recursive: true });
+function keyOf2(root) {
+  const dir = join7(root, ".session");
+  mkdirSync4(dir, { recursive: true });
   try {
-    writeFileSync5(join6(dir, ".gitignore"), "*\n", { flag: "wx" });
+    writeFileSync6(join7(dir, ".gitignore"), "*\n", { flag: "wx" });
   } catch {
   }
-  const file = join6(dir, "key");
+  const file = join7(dir, "key");
   try {
-    const key2 = readFileSync7(file, "utf8").trim();
+    const key2 = readFileSync8(file, "utf8").trim();
     if (/^[A-Za-z0-9_-]{22,128}$/.test(key2)) return key2;
   } catch {
   }
-  const key = randomBytes6(16).toString("base64url");
-  writeFileSync5(file, `${key}
+  const key = randomBytes7(16).toString("base64url");
+  writeFileSync6(file, `${key}
 `, { mode: 384 });
   return key;
 }
 function savedPort(root) {
   try {
-    const port = Number(readFileSync7(join6(root, ".session", "port"), "utf8").trim());
+    const port = Number(readFileSync8(join7(root, ".session", "port"), "utf8").trim());
     return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
   } catch {
     return null;
@@ -4015,7 +5170,7 @@ async function sameFile(dir, name, size2, hash) {
     return m ? [{ name: d.name, n: Number(m[1] ?? 1) }] : [];
   });
   for (const f of found.sort((a, b) => a.n - b.n)) {
-    const file = join6(dir, f.name);
+    const file = join7(dir, f.name);
     try {
       if ((await stat4(file)).size === size2 && sha256(await readFile3(file)) === hash) return f.name;
     } catch {
@@ -4038,13 +5193,13 @@ async function start(options = {}) {
   const log = options.log ?? ((m) => process.stderr.write(`${m}
 `));
   const root = realpathSync2.native(resolve(options.folder ?? "."));
-  const index = join6(root, "index.html");
+  const index = join7(root, "index.html");
   const { text, bom } = readText(index);
-  const key = keyOf(root);
-  const lockFile = join6(root, ".session", "lock");
+  const key = keyOf2(root);
+  const lockFile = join7(root, ".session", "lock");
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
-  const appliedFile = join6(root, ".session", "applied.json");
+  const appliedFile = join7(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const appliedTable = new AppliedTable(appliedFile, log);
   const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged(), onWriteError: (m) => people.texFailed(m) });
@@ -4053,8 +5208,9 @@ async function start(options = {}) {
     tex.written(written2);
   };
   const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
-  const people = new People(authority, join6(root, ".session", "people.json"), log);
+  const people = new People(authority, join7(root, ".session", "people.json"), log);
   let history;
+  let comments;
   let port = 0;
   let relay = null;
   let closed = false;
@@ -4126,7 +5282,7 @@ async function start(options = {}) {
     if (!clean) return error(415, "the file must be an image, a video, or json");
     if (request.body.length > MEDIA_MAX) return error(413, "the file is larger than 64 MB");
     if (!request.direct && request.body.length > GUEST_MEDIA_MAX) return error(413, "the file is larger than 16 MB, the limit of an upload through the relay");
-    const dir = join6(root, "media");
+    const dir = join7(root, "media");
     await mkdir(dir, { recursive: true });
     const real = await realpath3(dir);
     if (!real.startsWith(root + sep2)) return error(403, "media/ leaves the talk folder");
@@ -4141,7 +5297,7 @@ async function start(options = {}) {
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
       try {
-        await writeFile5(join6(real, candidate), request.body, { flag: "wx" });
+        await writeFile6(join7(real, candidate), request.body, { flag: "wx" });
         return json(200, { path: `media/${candidate}` });
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -4181,9 +5337,47 @@ async function start(options = {}) {
     }
     return error(404, "not found");
   }
+  function commentsApi(route, request) {
+    const parts = route.split("/");
+    if (request.method === "GET") {
+      const client2 = people.clientOf(new URLSearchParams(request.query).get("token"));
+      const person2 = client2 === null ? null : people.personOf(client2);
+      if (route !== "comments") return error(404, "not found");
+      return person2 === null ? error(404, "say hello first") : json(200, comments.list(person2));
+    }
+    if (request.method !== "POST") return error(405, "GET or POST");
+    if (closed) return error(503, "the edit command is stopping");
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    const person = client === null ? null : people.personOf(client);
+    if (person === null) return error(404, "say hello first");
+    const answer = (x) => isFailure(x) ? error(x.status, x.error) : json(200, x);
+    if (route === "comments") return answer(comments.add(person, body));
+    if (route === "comments/seen") {
+      const seen = body.thread === void 0 ? comments.seen(person, body.time) : comments.seenThread(person, body.thread, body.time);
+      return isFailure(seen) ? answer(seen) : json(200, comments.times(person));
+    }
+    if (parts.length !== 3 || !isCommentId(parts[1])) return error(404, "not found");
+    const id = parts[1];
+    switch (parts[2]) {
+      case "reply":
+        return answer(comments.reply(id, person, body));
+      case "edit":
+        return answer(comments.edit(id, person, body));
+      case "delete":
+        return answer(comments.remove(id, person, body) ?? {});
+      case "resolve":
+        return answer(comments.resolve(id, person, true));
+      case "reopen":
+        return answer(comments.resolve(id, person, false));
+    }
+    return error(404, "not found");
+  }
   async function api(route, request) {
     if (route.startsWith("media/")) return media(route.slice(6), request);
     if (route === "history" || route.startsWith("history/") || route === "aside") return historyApi(route, request);
+    if (route === "comments" || route.startsWith("comments/")) return commentsApi(route, request);
     if (route === "share") return share(request);
     if (route === "events") {
       if (request.method !== "GET") return error(405, "GET");
@@ -4343,11 +5537,11 @@ async function start(options = {}) {
   server.headersTimeout = 2e4;
   server.requestTimeout = 12e4;
   const ports = options.port !== void 0 ? [options.port] : [.../* @__PURE__ */ new Set([savedPort(root) ?? DEFAULT_PORT, DEFAULT_PORT, 0])];
-  await new Promise((done, fail) => {
+  await new Promise((done, fail2) => {
     const tryListen = (i) => {
       server.once("error", (e) => {
         if ((e.code === "EADDRINUSE" || e.code === "EACCES") && i + 1 < ports.length) tryListen(i + 1);
-        else fail(e);
+        else fail2(e);
       });
       server.listen(ports[i], "127.0.0.1", () => {
         server.removeAllListeners("error");
@@ -4359,7 +5553,7 @@ async function start(options = {}) {
   port = server.address().port;
   const lock = JSON.stringify({ pid: process.pid, port, root });
   try {
-    writeFileSync5(lockFile, lock, { flag: "wx" });
+    writeFileSync6(lockFile, lock, { flag: "wx" });
   } catch {
     const other = await holderOf(lockFile, root, key, log);
     if (other && other.port !== port) {
@@ -4367,22 +5561,22 @@ async function start(options = {}) {
       await new Promise((done) => server.close(done));
       throw new AlreadyRunning(other);
     }
-    const tmp = `${lockFile}.${randomBytes6(6).toString("hex")}.tmp`;
-    writeFileSync5(tmp, lock);
+    const tmp = `${lockFile}.${randomBytes7(6).toString("hex")}.tmp`;
+    writeFileSync6(tmp, lock);
     renameRetriedSync(tmp, lockFile);
   }
   const unlock = () => {
     try {
-      if (readFileSync7(lockFile, "utf8") === lock) unlinkSync5(lockFile);
+      if (readFileSync8(lockFile, "utf8") === lock) unlinkSync6(lockFile);
     } catch {
     }
   };
   try {
-    writeFileSync5(join6(root, ".session", "port"), `${port}
+    writeFileSync6(join7(root, ".session", "port"), `${port}
 `);
   } catch {
   }
-  history = new History(join6(root, ".session"), authority, { ...options.history, log });
+  history = new History(join7(root, ".session"), authority, { ...options.history, log });
   history.onChange(() => people.news());
   people.feed({
     rev: () => history.rev,
@@ -4401,6 +5595,21 @@ async function start(options = {}) {
     rev: () => history.overwritten,
     write: (answer, _seen, since) => {
       if (history.overwrittenAfter(since)) answer.overwritten = true;
+    }
+  });
+  comments = new Comments(join7(root, ".session"), authority, history.found, { ...options.comments, log });
+  comments.onChange(() => people.news());
+  people.feed({
+    rev: () => comments.v,
+    write: (answer, seen) => {
+      answer.comments = comments.since(seen);
+    }
+  });
+  people.feed({
+    rev: () => comments.reads,
+    of: (person) => comments.readsOf(person),
+    write: (answer, _seen, _since, person) => {
+      answer.comments = { ...answer.comments ?? { v: comments.v, changed: [], removed: [] }, ...comments.times(person) };
     }
   });
   disk.start();
@@ -4435,7 +5644,8 @@ async function start(options = {}) {
         log(kept ? `the text of the session is kept in ${kept}` : "the text of the session could not be kept in any file");
       }
       history.stopSync();
-      written(unwritten2);
+      const all = unwritten2 + (comments.stopSync() ? 0 : 1);
+      written(all);
       await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
       await new Promise((done) => setTimeout(done, CLOSE_WAIT));
       await new Promise((done) => {
@@ -4444,7 +5654,7 @@ async function start(options = {}) {
           server.closeAllConnections();
         }, 300);
       });
-      return unwritten2;
+      return all;
     })()
   };
 }
@@ -4730,14 +5940,14 @@ Keep this window open while you edit, and close it or press Ctrl+C to stop.
     void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
     void running.unwritten.then((unwritten) => setTimeout(() => process.exit(unwritten ? 1 : 0), 3e3).unref());
   };
-  const fail = (e) => {
+  const fail2 = (e) => {
     process.stderr.write(`The edit command failed: ${e?.stack ?? e}
 `);
     void running.close().finally(() => process.exit(1));
     void running.unwritten.then(() => setTimeout(() => process.exit(1), 3e3).unref());
   };
-  process.on("uncaughtException", fail);
-  process.on("unhandledRejection", fail);
+  process.on("uncaughtException", fail2);
+  process.on("unhandledRejection", fail2);
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
     try {
       process.on(signal, stop);
@@ -4756,13 +5966,16 @@ if (isMain) void main(process.argv.slice(2));
 export {
   Authority,
   COLORS,
+  Comments,
   Disk,
   History,
   NAME_MAX,
+  REMOVED_MAX,
   Replica,
   TexWriter,
   apply,
   changes,
+  checkAnchors,
   checksum,
   cleanName,
   cleanPersonName,
@@ -4775,6 +5988,7 @@ export {
   invert,
   isPersonId,
   mergePatches,
+  moveAnchors,
   moveMarks,
   nameKey,
   operationOf,
@@ -4782,9 +5996,12 @@ export {
   shift,
   shiftOffset,
   size,
+  slideAnchorAt,
+  slideAt,
   slideChanges,
   slidesOf2 as slidesOf,
   start,
+  startTagAt,
   tokenize,
   valid,
   widen

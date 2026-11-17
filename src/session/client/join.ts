@@ -92,7 +92,7 @@ function askName(client: Client, error = ''): Promise<string> {
   return new Promise((done) => {
     const dialog = client.shell.dialog({
       title: 'Join the session',
-      text: 'Type the name that the others will see on your edits.',
+      text: 'Type the name that the others will see on your edits and comments.',
       body,
       className: `beeson-session-join ${fitClass()}`,
       dismissable: false,
@@ -119,6 +119,7 @@ function askName(client: Client, error = ''): Promise<string> {
 export async function askTaken(client: Client, name: string): Promise<boolean> {
   const dialog = client.shell.dialog({
     title: `${name} has joined this deck before. Is that you?`,
+    text: 'If you are not this person, choose Use another name. If you continue, you join as this person, and you can edit and delete the comments of this person.',
     buttons: [
       { label: 'Use another name', value: 'other' },
       { label: 'Yes, continue', value: 'claim', primary: true },

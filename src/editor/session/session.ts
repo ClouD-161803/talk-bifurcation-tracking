@@ -41,6 +41,7 @@ export type Port = {
   onChange(fn: () => void): () => void;
   onReload(fn: (target?: string) => void): () => void;
   offsetOf(el: Element): number | null;
+  elementAt(offset: number): Element | null;
   begin(): void;
   served(on: boolean): void;
   end(): void;
@@ -493,6 +494,14 @@ export function install(app: App): Port {
     if (app.files.render() !== app.source!.text) for (const fn of [...reloaders]) fn();
   }
 
+  // the element of the page whose start tag is at offset of the text last applied or opened
+  function elementAt(offset: number): Element | null {
+    const pairing = app.pairing;
+    if (!pairing) return null;
+    for (const map of [pairing.elements, pairing.inner]) for (const [live, s] of map) if (s.source === app.source && s.open?.start === offset && live.isConnected) return live;
+    return null;
+  }
+
   function offsetOf(el: Element): number | null {
     const s = app.pairing?.elements.get(el) ?? app.pairing?.inner.get(el);
     return s && s.source === app.source && s.open ? s.open.start : null;
@@ -531,6 +540,7 @@ export function install(app: App): Port {
       return () => void reloaders.delete(fn);
     },
     offsetOf,
+    elementAt,
     served: setServed,
     begin() {
       if (active) return;

@@ -12,6 +12,7 @@ import { join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
 import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { AppliedTable, readApplied } from './applied.ts';
+import { Comments, isCommentId, isFailure, type CommentsOptions, type Failure } from './comments.ts';
 import { Disk, readText, renameRetriedSync } from './disk.ts';
 import { History, type HistoryOptions } from './history.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
@@ -40,6 +41,7 @@ export type StartOptions = {
   relay?: string;
   log?: (message: string) => void;
   history?: Omit<HistoryOptions, 'now' | 'clock' | 'log'>;
+  comments?: Omit<CommentsOptions, 'now' | 'log'>;
 };
 
 export type Running = {
@@ -50,9 +52,10 @@ export type Running = {
   authority: Authority;
   // the link of the session through the relay, or null
   link: () => string | null;
-  // resolves with the number of operations that are not written into index.html
+  // resolves with the number of operations that are not written into index.html, plus one when
+  // comments.json is not written
   close: () => Promise<number>;
-  // resolves with the same number once close() has written index.html, before the share and the
+  // resolves with the same number once close() has written both files, before the share and the
   // server are closed
   unwritten: Promise<number>;
 };
@@ -223,6 +226,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const people = new People(authority, join(root, '.session', 'people.json'), log);
   // made once this command holds the lock, so that a second start does not write the history
   let history!: History;
+  let comments!: Comments;
   let port = 0;
   let relay: RelayLink | null = null;
   let closed = false;
@@ -362,9 +366,49 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     return error(404, 'not found');
   }
 
+  // the comments, for every page with a token
+  function commentsApi(route: string, request: Request): Response {
+    const parts = route.split('/');
+    if (request.method === 'GET') {
+      const client = people.clientOf(new URLSearchParams(request.query).get('token'));
+      const person = client === null ? null : people.personOf(client);
+      if (route !== 'comments') return error(404, 'not found');
+      return person === null ? error(404, 'say hello first') : json(200, comments.list(person));
+    }
+    if (request.method !== 'POST') return error(405, 'GET or POST');
+    if (closed) return error(503, 'the edit command is stopping');
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    const person = client === null ? null : people.personOf(client);
+    if (person === null) return error(404, 'say hello first');
+    const answer = (x: unknown) => (isFailure(x) ? error((x as Failure).status, (x as Failure).error) : json(200, x));
+    if (route === 'comments') return answer(comments.add(person, body));
+    if (route === 'comments/seen') {
+      const seen = body.thread === undefined ? comments.seen(person, body.time) : comments.seenThread(person, body.thread, body.time);
+      return isFailure(seen) ? answer(seen) : json(200, comments.times(person));
+    }
+    if (parts.length !== 3 || !isCommentId(parts[1])) return error(404, 'not found');
+    const id = parts[1];
+    switch (parts[2]) {
+      case 'reply':
+        return answer(comments.reply(id, person, body));
+      case 'edit':
+        return answer(comments.edit(id, person, body));
+      case 'delete':
+        return answer(comments.remove(id, person, body) ?? {});
+      case 'resolve':
+        return answer(comments.resolve(id, person, true));
+      case 'reopen':
+        return answer(comments.resolve(id, person, false));
+    }
+    return error(404, 'not found');
+  }
+
   async function api(route: string, request: Request): Promise<Response> {
     if (route.startsWith('media/')) return media(route.slice(6), request);
     if (route === 'history' || route.startsWith('history/') || route === 'aside') return historyApi(route, request);
+    if (route === 'comments' || route.startsWith('comments/')) return commentsApi(route, request);
     if (route === 'share') return share(request);
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
@@ -603,6 +647,22 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if (history.overwrittenAfter(since)) answer.overwritten = true;
     },
   });
+  comments = new Comments(join(root, '.session'), authority, history.found, { ...options.comments, log });
+  comments.onChange(() => people.news());
+  people.feed({
+    rev: () => comments.v,
+    write: (answer, seen) => {
+      answer.comments = comments.since(seen);
+    },
+  });
+  // the times up to which the person of a page read, after a read on another page of the person
+  people.feed({
+    rev: () => comments.reads,
+    of: (person) => comments.readsOf(person),
+    write: (answer, _seen, _since, person) => {
+      answer.comments = { ...(answer.comments ?? { v: comments.v, changed: [], removed: [] }), ...comments.times(person) };
+    },
+  });
   disk.start();
 
   if (options.relay) {
@@ -640,7 +700,9 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');
         }
         history.stopSync();
-        written(unwritten);
+        // comments.stopSync logs the file and the reason when it is not written
+        const all = unwritten + (comments.stopSync() ? 0 : 1);
+        written(all);
         // a share in progress sees closed and stops its link, hence the stop waits behind it. the relay
         // keeps the record of the end for a guest who was not waiting at the edit command
         await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);
@@ -652,7 +714,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
             server.closeAllConnections();
           }, 300);
         });
-        return unwritten;
+        return all;
       })()),
   };
 }

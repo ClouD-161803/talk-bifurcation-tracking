@@ -2,11 +2,13 @@
 // import a stateful module of the editor, hence the parts of the shell that it needs come here
 
 import type { App } from '../../editor/app.ts';
+import type { Command } from '../../editor/commands.ts';
 import type { Edit } from '../../editor/merge.ts';
 import type { MediaStore } from '../../editor/media/store.ts';
 import type { Port } from '../../editor/session/session.ts';
 import type { PresenceHooks, Shape } from '../../editor/session/presence.ts';
 import type { SlideHooks } from '../../editor/session/slides.ts';
+import type { CommentsTab } from '../../editor/shell/shell.ts';
 import type { Dialog, DialogOptions } from '../../editor/ui/dialog.ts';
 import type { MenuItem, MenuOptions, OpenMenu } from '../../editor/ui/menu.ts';
 
@@ -40,6 +42,8 @@ export type Handover = {
   groups(els: Element[]): { els: Element[]; shape: Shape }[];
   // the Version History mode of src/editor/session/history-mode.ts
   history: HistoryShell;
+  // the parts of the shell for the comments, from editor/session/comments-shell.ts
+  comments: CommentsShell;
 };
 
 export type HistoryShell = {
@@ -51,6 +55,22 @@ export type HistoryShell = {
   setMode(on: boolean, back?: () => void): void;
   // the rectangle of the canvas in the window
   canvas(): DOMRect;
+};
+
+export type CommentsShell = {
+  // the tab Comments of the inspector, hidden until it is enabled
+  tab: CommentsTab;
+  // a command added to the menus, the toolbar, and the keys
+  define(command: Command): void;
+  // the kind and the text of an element, e.g. Heading and Low-thrust transfers
+  describe(el: Element): { kind: string; text: string };
+  // the selected element, else the text element of the caret, and the slide that holds it, or the
+  // current slide
+  target(): { el: Element | null; slide: Element | null };
+  // the slide of el shown, and el selected, or the slide shown when el is null
+  frame(el: Element | null, slide: Element | null): void;
+  // the row of a slide in the navigator
+  row(slide: Element): HTMLElement | null;
 };
 
 // window.BeesonSession, defined by theme/session.js. start() resolves with false when the page is

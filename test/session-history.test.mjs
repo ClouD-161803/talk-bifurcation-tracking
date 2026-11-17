@@ -1318,6 +1318,22 @@ test('Shift+F10 does not open the menu of the selected element over Version Hist
   clean(ann);
 });
 
+test('the button Comments is drawn dimmed while Version History makes it inert', { timeout: 180_000 }, async (t) => {
+  const { pages: [ann] } = await session(t, ['Ann']);
+  const DIM = `(() => { const b = document.querySelector('.beeson-session-comments'); return [b.inert, Number(getComputedStyle(b).opacity) < 1]; })()`;
+  await front(ann);
+  assert.deepEqual(await ann.evaluate(DIM), [false, false]);
+  await press(ann, HISTORY_KEY);
+  await ann.waitFor(SHOWN);
+  await ann.waitFor(`document.querySelector('.beeson-session-comments').inert`);
+  assert.deepEqual(await ann.evaluate(DIM), [true, true]);
+  await press$(ann, PANE, 'Back to editor');
+  await ann.waitFor(`!(${SHOWN})`);
+  await ann.waitFor(`!document.querySelector('.beeson-session-comments').inert`);
+  assert.deepEqual(await ann.evaluate(DIM), [false, false]);
+  clean(ann);
+});
+
 // the classes of the elements whose own opacity is below 1, which the page keeps in window.__dim
 // when keep is true. otherwise the classes of those that were not below 1 at the last keep, each
 // with whether it is inert
@@ -1345,7 +1361,7 @@ test('while Version History is open, every inert part of the editor but the canv
   // the edge of the navigator is drawn only under the pointer, and the canvas and its layers hold the slide
   const undimmed = `[...document.querySelectorAll('[inert]')].filter((e) => e.getClientRects().length && !e.closest('.beeson-edit-canvas, .reveal, .beeson-edit-nav-edge, .beeson-overlay, .beeson-line-layer, .beeson-table-bars') &&Number(getComputedStyle(e).opacity) === 1).map((e) => e.classList[0])`;
   assert.deepEqual(await ann.evaluate(undimmed), []);
-  assert.deepEqual((await ann.evaluate(DIMMED(false))).sort(), ['beeson-edit-bottom inert', 'beeson-edit-menubar inert', 'beeson-edit-nav inert', 'beeson-edit-objects inert', 'beeson-edit-pane inert', 'beeson-edit-top inert']);
+  assert.deepEqual((await ann.evaluate(DIMMED(false))).sort(), ['beeson-edit-bottom inert', 'beeson-edit-menubar inert', 'beeson-edit-nav inert', 'beeson-edit-objects inert', 'beeson-edit-pane inert', 'beeson-edit-top inert', 'beeson-session-comments inert']);
   await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .row.version')].find((r) => r.querySelector('.title').textContent === 'Changed')`);
   await ann.waitFor(`${FRAME}?.contentDocument?.querySelectorAll('[data-beeson-changed]').length > 0`, 30_000);
   assert.deepEqual([await ann.evaluate(DRAWN(`document.querySelector('${PANE}')`)), await ann.evaluate(DRAWN(FRAME))], [1, 1]);

@@ -250,6 +250,12 @@ export function installKeys(app: App): void {
   window.addEventListener('keydown', (ev) => {
     if (ev.isComposing || ev.keyCode === 229) return;
     if (dialogKey(app, ev)) return;
+    // a field that takes keys of commands for itself names them in data-own-keys, e.g. Mod+Enter,
+    // which sends a comment. it takes them with the other modifier too, since forKey finds a
+    // command for the chord of fallback()
+    const own = (document.activeElement as Element | null)?.closest?.('[data-own-keys]')?.getAttribute('data-own-keys');
+    const alt = own ? fallback(ev, app.platform) : null;
+    if (own?.split(' ').some((k) => matches(ev, k, app.platform) || (!!alt && matches(alt, k, app.platform)))) return;
     const region = app.region();
     // the handle of a text element is outside the slide, and its keys are those of the canvas
     const active = document.activeElement;

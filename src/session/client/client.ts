@@ -12,7 +12,7 @@ import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
-import { FULL, type AppliedOp, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
+import { FULL, type AppliedOp, type CommentsEvent, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
@@ -37,6 +37,8 @@ export type ClientEvents = {
   resolved: [];
   // an apply changed the deck, with the elements that it changed
   applied: [Element[]];
+  // the deck was drawn again with a new tex.js, e.g. with new numbers of its citations
+  tex: [];
   // a drive ended, with whether the base moved on after the last applied without an apply, e.g. at
   // the broadcast of an operation of this page
   settled: [moved: boolean];
@@ -50,6 +52,11 @@ export type ClientEvents = {
   // the rev of the version history changed, and a restore was made
   history: [number];
   restored: [Restored];
+  // the base of the replica moved from text at version v, by the operations given, or by a resync
+  // when they are null
+  base: [text: string, v: Version, ops: AppliedOp[] | null];
+  // the comments of an answer of events, whose anchors are of the text at version v
+  comments: [CommentsEvent, Version];
   // a change of index.html from outside replaced text that a person wrote in the session
   overwritten: [];
 };
@@ -442,7 +449,7 @@ export class Client {
           // a change of the person that settles calls onChange, which captures it
           if (this.dirty) this.dirty = !this.capture();
           for (const fn of this.rewrites.splice(0)) sync.edit(fn(sync.mine));
-          if (this.fresh) sync.resync(this.fresh.text, this.fresh.v);
+          if (this.fresh) this.resync(this.fresh.text, this.fresh.v);
           this.fresh = null;
           if (this.inbox.length) this.merge(this.inbox.splice(0));
           break;
@@ -469,13 +476,17 @@ export class Client {
           const wins = await Promise.resolve(side).finally(() => (this.deciding = false));
           // the end closed the dialog, and the deck keeps the version of the person
           if (this.ended) break;
-          if (sync.settle(this.fresh, this.inbox.splice(0), wins) !== null) stale = true;
+          const was = { text: sync.base, v: sync.version };
+          const whole = this.fresh;
+          const ops = this.inbox.splice(0);
+          if (sync.settle(whole, ops, wins) !== null) stale = true;
           this.fresh = null;
+          if (sync.version !== was.v) this.emit('base', was.text, was.v, whole ? null : ops);
         }
         if (this.fresh) {
           const { text, v } = this.fresh;
           this.fresh = null;
-          if (sync.resync(text, v) !== null) stale = true;
+          if (this.resync(text, v) !== null) stale = true;
         }
         if (this.inbox.length && this.merge(this.inbox.splice(0)) !== null) stale = true;
         if (!stale) break;
@@ -491,12 +502,24 @@ export class Client {
     this.check();
   }
 
-  // the operations that waited are taken into the replica, and rebased tells copy.ts what moved
+  // the operations that waited are taken into the replica. rebased tells copy.ts what moved, and
+  // base tells the parts
   private merge(ops: AppliedOp[]): string | null {
     const sync = this.sync!;
+    const was = { text: sync.base, v: sync.version };
     const before = sync.mine;
     const out = sync.receive(ops);
     this.emit('rebased', before);
+    if (sync.version !== was.v) this.emit('base', was.text, was.v, ops);
+    return out;
+  }
+
+  // the whole text of the authority taken into the replica, after which base tells the parts
+  private resync(text: string, v: Version): string | null {
+    const sync = this.sync!;
+    const was = { text: sync.base, v: sync.version };
+    const out = sync.resync(text, v);
+    this.emit('base', was.text, was.v, null);
     return out;
   }
 
@@ -760,6 +783,7 @@ export class Client {
     }
     if (answer.history !== undefined) this.emit('history', answer.history);
     if (answer.restored) this.emit('restored', answer.restored);
+    if (answer.comments) this.emit('comments', answer.comments, answer.v);
     if (answer.overwritten) this.emit('overwritten');
     if (answer.ops === null) {
       this.sync!.lose();
@@ -776,7 +800,7 @@ export class Client {
     const was = this.tex;
     this.tex = count;
     // a redraw that failed, e.g. at a fetch of tex.js, is tried again at the next answer
-    this.port.redrawTex().catch(() => {
+    this.port.redrawTex().then(() => this.emit('tex'), () => {
       if (this.tex === count) this.tex = was;
     });
   }

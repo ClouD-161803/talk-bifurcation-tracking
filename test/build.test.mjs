@@ -92,7 +92,7 @@ test('theme/edit.mjs is under 256 kB and starts nothing when it is imported', ()
 });
 
 // the client is loaded at each ?edit&session, beside theme/editor.js
-test('theme/session.js is under 200 kB', () => {
+test('theme/session.js is under 288 kB', () => {
   const size = statSync(resolve('theme/session.js')).size;
-  assert.ok(size < 200 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
+  assert.ok(size < 288 * 1024, `theme/session.js is ${Math.round(size / 1024)} kB`);
 });

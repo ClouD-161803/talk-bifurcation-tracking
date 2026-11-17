@@ -214,7 +214,7 @@ async function changeName(client: Client): Promise<void> {
   field.swatch.style.setProperty('--ink', inkOf(client.color));
   const dialog = client.shell.dialog({
     title: 'Change your name',
-    text: 'The others see this name on your avatar and your edits.',
+    text: 'The others see this name on your avatar, your edits, and your comments.',
     body: field.body,
     className: `beeson-session-rename ${fitClass()}`,
     stay: ['change'],
