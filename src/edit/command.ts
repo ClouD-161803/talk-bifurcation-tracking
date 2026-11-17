@@ -441,10 +441,14 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
         throw e;
       });
-      if (current !== body.base) return json(409, { error: `figures/${name}.tex changed since it was read`, text: current });
+      // a page reads the text without a byte-order mark, as fetch() drops it, and the mark of the
+      // file is kept
+      const bom = current?.startsWith('\ufeff') ? '\ufeff' : '';
+      const unmarked = bom ? current!.slice(1) : current;
+      if (unmarked !== body.base) return json(409, { error: `figures/${name}.tex changed since it was read`, text: unmarked });
       const tmp = join(real, `.${name}.tex.${randomBytes(6).toString('hex')}.tmp`);
       try {
-        await writeFile(tmp, text);
+        await writeFile(tmp, bom + text.replace(/^\ufeff/, ''));
         await renameRetried(tmp, file);
       } catch (e) {
         await unlink(tmp).catch(() => {});
