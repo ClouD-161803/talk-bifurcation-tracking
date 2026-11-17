@@ -313,7 +313,7 @@ test('a return to the tab of the editor keeps the focus in a dialog and in a fie
   await page.evaluate(`Reveal.slide(${at})`);
   await page.waitFor(`Reveal.getIndices().h === ${at}`);
   await frames(page);
-  await click(page, '.reveal section.present > pre');
+  await clickText(page, '.reveal section.present > pre');
   await press(page, 'Escape');
   await page.waitFor('window.BeesonEditor.selection().length === 1');
   const FIELD = `[...document.querySelectorAll('.beeson-edit-inspector [name="line-steps"]')].find((el) => el.getClientRects().length && !el.disabled)`;

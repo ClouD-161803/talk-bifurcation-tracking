@@ -40,6 +40,10 @@ Avoid "footnote", which is the `foot` line of a slide, and "reference", which is
 
 A rule of slides that is followed by default and may be argued with, as opposed to a hard invariant.
 
+## Delay
+
+The seconds between the click of a step and the moment an element is shown, as the Delay of an animation in PowerPoint. It is written as the key `delay` of an element of an animated plot, and as `--delay` on a late step.
+
 ## Dialog
 
 A window of the editor that is shown over the deck to ask a question or to give a message, until it is answered or closed.
@@ -57,6 +61,16 @@ Avoid "server" and "daemon".
 The box at the right of a content slide or of a split slide in which a figure is placed.
 
 Avoid "zone", the class of a figure box in an old talk, which is `figure-box`.
+
+## Fly
+
+A step that moves and scales its element from the box of other elements of its slide into its own box, as the Fly In of PowerPoint flies an element in from an edge. It is written as `data-fly-from` on a fragment, with `data-fly-to` and `data-fly-duration`.
+
+Avoid "Magic Move", which matches the elements of two slides.
+
+## Focus
+
+The step from which every step shown on its slide is held at full opacity, written as `data-focus` on a fragment, e.g. on an empty `span` after the steps of a comparison. It is not the keyboard focus of the editor.
 
 ## Follow
 
@@ -92,6 +106,12 @@ The person who started a session. The edit command runs on the machine of the ho
 
 Avoid "owner".
 
+## Iris
+
+To grow a region of an animated plot as a disk from a point until the region is filled, as its step is shown, as an iris opens in film. The seconds of the growth are written in the key `iris` of the region, and the point in its key `from`.
+
+The key `spread` of an old talk is `iris`.
+
 ## Kind
 
 The sort of a theorem, e.g. lemma, definition, or proof, written in `data-kind`, which gives its title, its style, and its counter.
@@ -103,6 +123,12 @@ Avoid "type" and "environment".
 A short text placed at a point of a backdrop or of a surface, such as the name of L1 or of the Moon.
 
 Avoid "lab", the class of a label in an old talk, which is `label`.
+
+## Late step
+
+An element shown a number of seconds after the click of its step, as an animation of PowerPoint with a delay. It is written as a fragment of the class `late`, with the seconds in the custom property `--delay` of its style.
+
+Avoid "delayed step", which is a step that starts After Previous, written with `data-autoslide` on the step before. The custom property `--late` of an old talk is `--delay`.
 
 ## Launcher
 
@@ -147,6 +173,12 @@ Avoid "PDF image" and "embedded PDF".
 The figure box over the whole of a figure slide, behind its heading and its caption.
 
 Avoid "plate" for a layout of a slide, such as the title, closing, or figure layout.
+
+## Play once
+
+To play a tab of an animated plot from its first frame to its last and to hold it at its last frame, at a step with `data-plot-once`. A plot started by a step with `data-plot-play` is played in a loop instead.
+
+Avoid "run", which is the running head of a section, written with `data-run`. The attribute `data-plot-run` of an old talk is `data-plot-once`.
 
 ## Plot panel
 
@@ -211,6 +243,14 @@ Avoid "Chapters Table".
 The click of the talk at which an element appears, is dimmed, or is hidden, written as a reveal.js fragment.
 
 Avoid "fragment" outside the markup, and avoid "click" and "build". Avoid "card" for a step in the Steps pane of the editor.
+
+## Strip
+
+The surface swept along the orbit of a strip bundle by a segment through each point of the orbit, along a unit direction given at the point, e.g. an eigendirection of the monodromy matrix. A rib is one of these segments, drawn as a line at a point named in the key `ribs` of the strip.
+
+## Strip bundle
+
+A closed orbit drawn in 3D with the strips along it, from the JSON script named in `data-bundle` on a `surface`, with a compass toward far points. The strips shown at a step are named in `data-surface-state`, as the state of a surface.
 
 ## Surface point
 
@@ -283,3 +323,9 @@ Avoid "strand" and "record". The attribute `data-strands` of an old talk is `dat
 A state of the deck kept by the edit command during a session, with its time and the people who changed the deck since the version before, and listed in Version History.
 
 Avoid "revision", "snapshot", and "checkpoint".
+
+## Wipe
+
+To trace a curve of an animated plot from its first point to its last as its step is shown, as the Wipe of PowerPoint does. The seconds of the tracing are written in the key `wipe` of the curve.
+
+Avoid "draw", which is said of every element on a slide. The key `draw` of an old talk is `wipe`.

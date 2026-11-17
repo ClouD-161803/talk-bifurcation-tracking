@@ -18,21 +18,23 @@ export type Scale = 'linear' | 'asinh';
 export type Axis = { range: Pair; ticks: Tick[]; title: string; scale: Scale; unit: number };
 // an element of a panel or a mark. id names it in data-plot-show and in the active list of a tab,
 // and the classes of cls are the targets of a data-highlight of the slide
-type Item = { id: string | null; tone: string; cls: string[] };
-export type Region = Item & { points: Pair[]; opacity: number };
-export type Curve = Item & { points: Pair[] | null; circle: [number, number, number] | null; width: number; dash: number[] | null };
+type Item = { id: string | null; tone: string; cls: string[]; delay: number };
+export type Region = Item & { points: Pair[]; opacity: number; iris: number; from: Pair | null };
+export type Curve = Item & { points: Pair[] | null; circle: [number, number, number] | null; width: number; dash: number[] | null; wipe: number };
 export type Label = Item & { at: Pair; text: string; anchor: Anchor; dx: number; dy: number };
 // the margin of a panel in px, from the top clockwise as in CSS
 export type Margin = [number, number, number, number];
 export type Panel = { id: string; x: Axis; y: Axis; equal: boolean; axes: boolean; title: string; regions: Region[]; curves: Curve[]; labels: Label[]; size: number; margin: Margin };
 // the keys of a panel that a tab may replace
 export type PanelPatch = Partial<Pick<Panel, 'x' | 'y' | 'title' | 'regions' | 'curves' | 'labels'>>;
-export type Mark = Item & { id: string; panel: string; kind: Kind; size: number; width: number; hollow: boolean; ghost: boolean; anchor: Anchor; dx: number; dy: number };
+// a trace with fade drawn faint, and each part of it faded out over fade seconds after the head has passed it
+export type Mark = Item & { id: string; panel: string; kind: Kind; size: number; width: number; hollow: boolean; ghost: boolean; fade: number; anchor: Anchor; dx: number; dy: number };
 export type PlotEvent = { frame: number; at: Pair; text: string };
 // a label mark with one position or one text is held there for every frame
 export type LabelData = { at: Pair[]; text: string[] };
-// the path of a trace, whose faint line is drawn from the first frame to the frame ghost
-export type TraceData = { points: Pair[]; ghost: number };
+// the path of a trace, whose faint line is drawn from the first frame to the frame ghost, with the
+// tone of each frame in tones, or in the tone of its mark without them
+export type TraceData = { points: Pair[]; ghost: number; tones: string[] | null };
 export type MarkData = number[][] | TraceData | LabelData | PlotEvent[];
 // times, when given, are the seconds into a pass at which the frames of a tab are shown
 export type Tab = { name: string; label: string; values: number[]; times: number[] | null; data: Record<string, MarkData>; active: string[][] | null; panels: Record<string, PanelPatch> };
@@ -82,7 +84,14 @@ function anchor(v: unknown, path: string): Anchor {
 
 function item(o: Record<string, unknown>, path: string, tone: string): Item {
   const cls = str(o.class, `${path}.class`, '').split(/\s+/).filter(Boolean);
-  return { id: o.id === undefined ? null : str(o.id, `${path}.id`), tone: str(o.tone, `${path}.tone`, tone), cls };
+  const delay = seconds(o.delay, `${path}.delay`);
+  return { id: o.id === undefined ? null : str(o.id, `${path}.id`), tone: str(o.tone, `${path}.tone`, tone), cls, delay };
+}
+
+function seconds(v: unknown, path: string): number {
+  const s = num(v, path, 0);
+  if (!(s >= 0)) fail(path, 'a number of seconds, at least 0, is expected');
+  return s;
 }
 
 function axis(v: unknown, path: string): Axis {
@@ -112,7 +121,8 @@ function regions(v: unknown, path: string): Region[] {
   return list(v, path, []).map((r, i) => {
     const p = `${path}[${i}]`;
     if (!isObject(r)) fail(p, 'a region is expected');
-    return { ...item(r, p, 'violet'), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12) };
+    const from = r.from === undefined ? null : pair(r.from, `${p}.from`);
+    return { ...item(r, p, 'violet'), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), iris: seconds(r.iris, `${p}.iris`), from };
   });
 }
 
@@ -127,7 +137,7 @@ function curves(v: unknown, path: string): Curve[] {
       circle = [num(a[0], `${p}.circle[0]`), num(a[1], `${p}.circle[1]`), num(a[2], `${p}.circle[2]`)];
     } else if (c.points === undefined) fail(p, 'points or circle is expected');
     const dash = c.dash === undefined ? null : list(c.dash, `${p}.dash`).map((d, j) => num(d, `${p}.dash[${j}]`));
-    return { ...item(c, p, 'subtle'), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash };
+    return { ...item(c, p, 'subtle'), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, wipe: seconds(c.wipe, `${p}.wipe`) };
   });
 }
 
@@ -193,7 +203,9 @@ function markData(m: Mark, v: unknown, frames: number, path: string): MarkData {
     perFrame(points.length);
     const ghost = num(given.ghost, `${path}.ghost`, points.length - 1);
     if (!Number.isInteger(ghost) || ghost < 0 || ghost > points.length - 1) fail(`${path}.ghost`, `a frame from 0 to ${points.length - 1} is expected`);
-    return { points, ghost };
+    const tones = given.tones === undefined ? null : list(given.tones, `${path}.tones`).map((t, i) => str(t, `${path}.tones[${i}]`));
+    if (tones && tones.length !== points.length) fail(`${path}.tones`, `${tones.length} tones are given, and the trace has ${points.length} points`);
+    return { points, ghost, tones };
   }
   if (m.kind === 'label') {
     if (!isObject(v)) fail(path, 'a label { at, text } is expected');
@@ -238,6 +250,7 @@ export function parsePlot(input: unknown): Plot {
       width: num(m.width, `${p}.width`, 3),
       hollow: m.hollow === true,
       ghost: m.ghost !== false,
+      fade: seconds(m.fade, `${p}.fade`),
       anchor: anchor(m.anchor, `${p}.anchor`),
       dx: num(m.dx, `${p}.dx`, 0),
       dy: num(m.dy, `${p}.dy`, 0),
@@ -562,11 +575,15 @@ export class PlotView {
   private emphasis = new Set<string>();
   private shown = new Set<string>();
   private steps = new Set<string>();
+  // the ids named in the data-plot-hide of a shown fragment, hidden from its step on
+  private gone = new Set<string>();
   private stepTab: string | null = null;
   // a plot whose slide has a fragment with data-plot-play is held until that fragment is shown
   private cue: 'none' | 'held' | 'shown' = 'none';
   // the slide of the plot is shown, and the plot may move
   private live = false;
+  // the tab is played once, from a fragment with data-plot-once, and held at its last frame
+  private once = false;
 
   constructor(el: HTMLElement) {
     this.el = el;
@@ -820,8 +837,15 @@ export class PlotView {
   private styleItem(node: Element, it: Item, names: (string | null)[]): void {
     (node as HTMLElement | SVGElement).style.color = toneColor(it.tone);
     node.classList.add(...it.cls);
+    if (it.delay > 0) {
+      node.classList.add('plot-delayed');
+      (node as HTMLElement | SVGElement).style.setProperty('--plot-delay', `${it.delay}s`);
+    }
     this.gate(node, names);
-    if (it.id) this.emphasized.push({ node, id: it.id });
+    if (it.id) {
+      node.setAttribute('data-plot-id', it.id);
+      this.emphasized.push({ node, id: it.id });
+    }
   }
 
   private drawStatic(): void {
@@ -840,17 +864,52 @@ export class PlotView {
         svg('rect', { x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, clip);
       }
       const statics = svg('g', { 'clip-path': `url(#plot-${this.uid}-${p.id})` }, g);
-      for (const r of p.regions) {
-        const node = svg('path', { class: 'plot-region', d: `${this.path(b, r.points)}Z`, 'fill-opacity': r.opacity }, statics);
-        this.styleItem(node, r, [p.id, r.id]);
-      }
-      for (const c of p.curves) {
+      p.regions.forEach((r, k) => {
+        const d = `${this.path(b, r.points)}Z`;
+        if (!(r.iris > 0)) {
+          this.styleItem(svg('path', { class: 'plot-region', d, 'fill-opacity': r.opacity }, statics), r, [p.id, r.id]);
+          return;
+        }
+        // a region with an iris is a disk clipped to the region, grown from the point from as it is
+        // shown. the disk reaches the farthest corner of the part of the bounding box in the axes
+        const id = `plot-${this.uid}-${p.id}-iris-${k}`;
+        svg('path', { d }, svg('clipPath', { id }, defs));
+        const xs = r.points.map((q) => clamp(this.X(b, q[0]), b.x, b.x + b.w)), ys = r.points.map((q) => clamp(this.Y(b, q[1]), b.y, b.y + b.h));
+        const [fx, fy] = r.from ?? [r.points.reduce((s, q) => s + q[0], 0) / r.points.length, r.points.reduce((s, q) => s + q[1], 0) / r.points.length];
+        const X = this.X(b, fx), Y = this.Y(b, fy);
+        const R = Math.max(...[Math.min(...xs), Math.max(...xs)].flatMap((x) => [Math.min(...ys), Math.max(...ys)].map((y) => Math.hypot(x - X, y - Y))));
+        const disk = svg('circle', { class: 'plot-region plot-iris', cx: X.toFixed(1), cy: Y.toFixed(1), r: (R + 2).toFixed(1), 'fill-opacity': r.opacity }, svg('g', { 'clip-path': `url(#${id})` }, statics));
+        disk.style.transformOrigin = `${X.toFixed(1)}px ${Y.toFixed(1)}px`;
+        disk.style.setProperty('--plot-iris', `${r.iris}s`);
+        this.styleItem(disk, r, [p.id, r.id]);
+      });
+      for (const [k, c] of p.curves.entries()) {
         const attrs: Record<string, string | number> = { class: 'plot-curve', 'stroke-width': c.width };
         if (c.dash) attrs['stroke-dasharray'] = c.dash.join(' ');
         const linear = p.x.scale === 'linear' && p.y.scale === 'linear';
         const node = c.circle && linear
           ? svg('ellipse', { ...attrs, cx: this.X(b, c.circle[0]), cy: this.Y(b, c.circle[1]), rx: c.circle[2] * b.sx, ry: c.circle[2] * b.sy }, statics)
           : svg('path', { ...attrs, d: this.path(b, c.circle ? circlePoints(c.circle) : (c.points ?? [])) }, statics);
+        // a curve with a wipe is traced from its first point to its last as it is shown. a dashed
+        // curve keeps its dashes, and a solid copy of it with the wipe is its mask
+        let wiped: Element | null = null;
+        if (c.wipe > 0 && c.dash) {
+          const id = `plot-${this.uid}-${p.id}-wipe-${k}`, pad = 14;
+          const mask = svg('mask', { id, maskUnits: 'userSpaceOnUse', x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, defs);
+          wiped = mask.appendChild(node.cloneNode() as Element);
+          for (const name of ['class', 'stroke-dasharray']) wiped.removeAttribute(name);
+          for (const [name, value] of [['fill', 'none'], ['stroke', 'white'], ['stroke-width', String(c.width + 4)]]) wiped.setAttribute(name, value);
+          node.setAttribute('mask', `url(#${id})`);
+        } else if (c.wipe > 0) wiped = node;
+        if (wiped) {
+          wiped.setAttribute('pathLength', '1');
+          wiped.classList.add('plot-wipe');
+          (wiped as SVGElement).style.setProperty('--plot-wipe', `${c.wipe}s`);
+          if (wiped !== node) {
+            if (c.delay > 0) (wiped as SVGElement).style.setProperty('--plot-delay', `${c.delay}s`);
+            this.gate(wiped, [p.id, c.id]);
+          }
+        }
         this.styleItem(node, c, [p.id, c.id]);
       }
       if (p.axes) {
@@ -916,18 +975,64 @@ export class PlotView {
           });
         });
       } else if (m.kind === 'trace') {
-        const { points, ghost } = data as TraceData, pts = points.map((q) => this.toAxes(b, q));
+        const { points, ghost, tones } = data as TraceData, pts = points.map((q) => this.toAxes(b, q));
         // the faint path up to the frame ghost is kept through the fade, and left out with "ghost": false
         if (m.ghost && ghost > 0) svg('path', { class: 'plot-ghost', d: this.pathS(b, pts.slice(0, ghost + 1)), 'stroke-width': m.width }, group);
         if (fader !== group) group.append(fader);
-        const done = svg('path', { class: 'plot-trace', 'stroke-width': m.width }, fader);
         const head = svg('circle', { class: 'plot-dot', r: m.size / 2 }, fader);
-        this.drawers.push((u) => {
-          const p = traceTo(pts, u), [x, y] = p[p.length - 1];
-          done.setAttribute('d', this.pathS(b, p));
-          head.setAttribute('cx', this.XS(b, x).toFixed(1));
-          head.setAttribute('cy', this.YS(b, y).toFixed(1));
-        });
+        if (!tones && !(m.fade > 0)) {
+          const done = svg('path', { class: 'plot-trace', 'stroke-width': m.width }, fader);
+          fader.insertBefore(done, head);
+          this.drawers.push((u) => {
+            const p = traceTo(pts, u), [x, y] = p[p.length - 1];
+            done.setAttribute('d', this.pathS(b, p));
+            head.setAttribute('cx', this.XS(b, x).toFixed(1));
+            head.setAttribute('cy', this.YS(b, y).toFixed(1));
+          });
+        } else {
+          // a trace with tones or a fade is drawn as one segment per frame, each in the tone of the
+          // frame it starts at, and faded by the seconds since the head passed its middle. a segment
+          // behind the newest is written once, and its opacity in steps of a twentieth while it fades,
+          // hence a long trace does not rewrite every segment in each frame
+          const parts: SVGLineElement[] = [], opacities: string[] = [];
+          const tone = (i: number) => toneColor(tones ? tones[clamp(i, 0, tones.length - 1)] : m.tone);
+          // the segments written in full, the segments shown, the first segment that may not be faded
+          // out, and the frame of the last draw
+          let full = 0, shown = 0, gone = 0, last = -1;
+          this.drawers.push((u) => {
+            const p = traceTo(pts, u), now = this.timeOf(u), n = p.length - 1;
+            // drawn again from an earlier frame, e.g. at the restart of the loop or a step back
+            if (u < last) { full = Math.min(full, Math.max(0, n - 1)); gone = 0; }
+            last = u;
+            while (parts.length < n) {
+              parts.push(fader.insertBefore(svg('line', { class: 'plot-trace', 'stroke-width': m.width }), head));
+              opacities.push('');
+            }
+            for (let i = n; i < shown; i++) parts[i].style.display = 'none';
+            for (let i = Math.min(full, shown); i < n; i++) {
+              const line = parts[i];
+              if (i >= shown) line.style.display = '';
+              line.setAttribute('x1', this.XS(b, p[i][0]).toFixed(1));
+              line.setAttribute('y1', this.YS(b, p[i][1]).toFixed(1));
+              line.setAttribute('x2', this.XS(b, p[i + 1][0]).toFixed(1));
+              line.setAttribute('y2', this.YS(b, p[i + 1][1]).toFixed(1));
+              line.style.color = tone(i);
+            }
+            shown = n;
+            full = Math.max(0, n - 1);
+            if (m.fade > 0) {
+              for (let i = gone; i < n; i++) {
+                const o = (Math.round(20 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)) * 0.03).toFixed(2);
+                if (o !== opacities[i]) { parts[i].style.opacity = o; opacities[i] = o; }
+                if (o === '0.00' && i === gone) gone++;
+              }
+            }
+            const [x, y] = p[p.length - 1];
+            head.setAttribute('cx', this.XS(b, x).toFixed(1));
+            head.setAttribute('cy', this.YS(b, y).toFixed(1));
+            head.style.color = tone(Math.round(u));
+          });
+        }
       } else if (m.kind === 'label') {
         const d = data as LabelData, at = d.at.map((q) => this.toAxes(b, q));
         const el = this.label(d.text[0], 0, 0, m.anchor, 'plot-mark', [m.panel, m.id], m.tone);
@@ -1009,7 +1114,7 @@ export class PlotView {
   }
 
   private hidden(names: string[]): boolean {
-    return names.some((s) => this.steps.has(s) && !this.shown.has(s));
+    return names.some((s) => (this.steps.has(s) && !this.shown.has(s)) || this.gone.has(s));
   }
 
   private applyGates(): void {
@@ -1038,10 +1143,14 @@ export class PlotView {
     this.steps = new Set(frags.flatMap((f) => words(f.dataset.plotShow)));
     const visible = frags.filter((f) => f.classList.contains('visible'));
     this.shown = new Set(visible.flatMap((f) => words(f.dataset.plotShow)));
+    this.gone = new Set(visible.flatMap((f) => words(f.dataset.plotHide)));
     const cues = frags.filter((f) => f.hasAttribute('data-plot-play'));
     const cue = !cues.length ? 'none' : cues.some((f) => visible.includes(f)) ? 'shown' : 'held';
     const tabbed = visible.filter((f) => f.dataset.plotTab).sort((a, b) => +(a.dataset.fragmentIndex ?? 0) - +(b.dataset.fragmentIndex ?? 0));
-    const name = tabbed.at(-1)?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
+    const top = tabbed.at(-1);
+    const name = top?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
+    // a tab of a fragment with data-plot-once is played once when its step is reached going forward
+    const run = !!top?.hasAttribute('data-plot-once') && top.classList.contains('current-fragment') && this.live && !reduced();
     let tab = this.tab;
     if (name !== this.stepTab) {
       this.stepTab = name;
@@ -1050,20 +1159,26 @@ export class PlotView {
     }
     const cued = cue !== this.cue;
     this.cue = cue;
-    if (tab !== this.tab) this.setTab(tab);
-    else this.applyGates();
+    if (tab !== this.tab) {
+      if (this.once) this.pause();
+      this.setTab(tab, run);
+      if (run) {
+        this.once = true;
+        this.play();
+      }
+    } else this.applyGates();
     if (cued && this.live) {
       if (cue === 'shown' && this.moves()) { this.pause(); this.u = 0; this.play(); }
       else this.still();
     }
   }
 
-  /** Shows the tab i, from its first frame while the plot is played, and at its still frame otherwise. */
-  setTab(i: number): void {
+  /** Shows the tab i, from its first frame while the plot is played or with first set, and at its still frame otherwise. */
+  setTab(i: number, first = false): void {
     if (!this.spec || i === this.tab) return;
     this.tab = i;
     this.markTabs();
-    this.u = this.raf ? 0 : this.stillFrame();
+    this.u = this.raf || first ? 0 : this.stillFrame();
     this.t0 = performance.now();
     this.fade = 1;
     this.pass = 0;
@@ -1118,6 +1233,12 @@ export class PlotView {
     this.pass = 0;
     const tick = (now: number) => {
       const t = (now - this.t0) / 1000, { duration, hold, fade } = this.plot, length = this.length;
+      if (this.once && t >= length) {
+        this.u = this.frames - 1;
+        this.draw();
+        this.pause();
+        return;
+      }
       const pass = length + hold > 0 ? Math.floor(t / (length + hold)) : 0;
       if (pass !== this.pass) {
         this.pass = pass;
@@ -1136,6 +1257,7 @@ export class PlotView {
   pause(): void {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
+    this.once = false;
     this.setPlaying(false);
     if (this.fade < 1 || this.held.length) {
       this.fade = 1;
