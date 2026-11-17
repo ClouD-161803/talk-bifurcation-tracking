@@ -18,7 +18,8 @@ other than its default with --set VARIABLE=VALUE. With --style, the viewer is
 placed in slide pixels, and without it the viewer takes the figure box of the slide layout. With --show VARIABLE..., only the controls
 of those variables and the transport are shown, and --show alone keeps the transport only, so that a
 slide offers only the controls spoken on it, while the page of the scene keeps them all. With --autoplay, a
-viewer with controls plays from the start like a kiosk. The six viewers of the deck are written by
+viewer with controls plays from the start like a kiosk. With --step N, the viewer is a fragment of the style
+play, i.e. it is held at its first frame until step N of its slide and played from its start at this step. The six viewers of the deck are written by
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
@@ -31,13 +32,13 @@ viewer with controls plays from the start like a kiosk. The six viewers of the d
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/frames/frames.tys "the frames scene" \
-        --controls --panels
+        --controls --panels --step 2
 
     uv run --project /Users/claudiovestini/git/tycho/code python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/correction.tys \
-        "the correction scene, slide 11" --controls \
+        "the correction scene, slide 11" --controls --step 4 \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set case=lyapunov --set system=cr3bp --set targeting=full --set S=1 --set guess=near \
         --show targeting guess solution
@@ -46,7 +47,7 @@ viewer with controls plays from the start like a kiosk. The six viewers of the d
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/correction.tys \
-        "the correction scene, slide 12" --controls \
+        "the correction scene, slide 12" --controls --step 1 \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set case=lyapunov --set system=cr3bp --set targeting=full --set S=16 --set guess=near \
         --show case system S guess
@@ -55,7 +56,7 @@ viewer with controls plays from the start like a kiosk. The six viewers of the d
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/continuation.tys \
-        "the continuation scene, slide 13" --controls \
+        "the continuation scene, slide 13" --controls --step 2 \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=lyapunov --set step=medium --set pens=natural --show family
 
@@ -63,7 +64,7 @@ viewer with controls plays from the start like a kiosk. The six viewers of the d
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/continuation.tys \
-        "the continuation scene, slide 14" --controls \
+        "the continuation scene, slide 14" --controls --step 2 \
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=family11 --set step=medium --set pens=both --show
 
@@ -107,11 +108,14 @@ def main() -> None:
     parser.add_argument("--panels", action="store_true", help="with --controls, keep the Add panel group and the icons of the panel heads")
     parser.add_argument("--show", nargs="*", metavar="VARIABLE", help="with --controls, show the controls of these variables only")
     parser.add_argument("--autoplay", action="store_true", help="with --controls, play from the start like a kiosk")
+    parser.add_argument("--step", type=int, help="the step of the slide at which the scene is played from its start")
     args = parser.parse_args()
     if args.panels and not args.controls:
         parser.error("--panels is given only with --controls, since a kiosk viewer does not show the Add panel group")
     if args.autoplay and not args.controls:
         parser.error("--autoplay is given only with --controls, since a kiosk viewer always plays")
+    if args.step is not None and args.autoplay:
+        parser.error("--step and --autoplay exclude each other, since a viewer started at a step is held at its first frame until then")
 
     # without --set, the text of the scene is embedded as it was written
     text = args.scene.read_text(encoding="utf-8")
@@ -130,7 +134,15 @@ def main() -> None:
     scene = document if args.set or args.show is not None else text
     lean = "panels" if args.panels else args.controls
     element = ty.build_embed(
-        scene, container, theme="dark", kiosk=not args.controls, lean=lean, autoplay=args.autoplay, class_="figure-box", style=args.style
+        scene,
+        container,
+        theme="dark",
+        kiosk=not args.controls,
+        lean=lean,
+        autoplay=args.autoplay,
+        class_="figure-box" if args.step is None else "figure-box fragment play",
+        data_fragment_index=args.step,
+        style=args.style,
     )
 
     start = f"<!-- tycho-viewer start, {args.label}, written by embed_scene.py -->"
