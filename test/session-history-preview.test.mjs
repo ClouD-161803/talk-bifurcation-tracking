@@ -439,11 +439,15 @@ test('on a phone of 390, 360, and 320 px and in a window of 1000 px, the bar of 
 
 // the authors of the bar whose name is broken inside a word although the author is narrower than
 // the info, i.e. is squeezed next to the date
+// the lines of the name are counted without the dot of the tone, and two boxes are on one line when
+// their tops are within 4 px, since the box of the name and the box of its text differ by a pixel
+// in some fonts
 const SQUEEZED = `[...document.querySelectorAll('${BAR} .who > *')].filter((a) => {
   const r = document.createRange();
-  r.selectNodeContents(a);
-  const lines = new Set([...r.getClientRects()].filter((x) => x.width > 1).map((x) => Math.round(x.top)));
-  return lines.size > a.textContent.trim().split(/[\\s-]+/).length && a.getBoundingClientRect().width < document.querySelector('${BAR} .info').getBoundingClientRect().width - 1;
+  r.selectNodeContents(a.querySelector('bdi') ?? a);
+  const tops = [...r.getClientRects()].filter((x) => x.width > 1).map((x) => x.top).sort((x, y) => x - y);
+  const lines = tops.filter((top, i) => i === 0 || top - tops[i - 1] > 4).length;
+  return lines > a.textContent.trim().split(/[\\s-]+/).length && a.getBoundingClientRect().width < document.querySelector('${BAR} .info').getBoundingClientRect().width - 1;
 }).map((a) => a.textContent)`;
 
 // the waits are 60 s for the edit command to start, 15 s for the page and 15 s for the pane, 20 s
