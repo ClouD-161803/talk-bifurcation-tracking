@@ -10,7 +10,7 @@ import type { Entry } from '../history.ts';
 import type { FigureLink } from '../session/port.ts';
 import { trapTab } from '../ui/dialog.ts';
 import { injectStyle, make } from '../ui/dom.ts';
-import { fromHeader, headerOf, writeFigure } from './from-data.ts';
+import { csvOf, fromHeader, writeFigure } from './from-data.ts';
 import type { Starter, TexHost, TexSheets } from './install.ts';
 
 const CSS = `
@@ -283,13 +283,13 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
           stem = file.name.replace(/\.tex$/i, '');
           source = await file.text();
         } else if (file && from === 'data') {
-          const text = await file.text();
+          const { text, columns } = csvOf(file.name, await file.text());
           const data = await post(link, 'data', { stem: file.name, text });
           const path = data.value?.path;
           if (data.status !== 200 || typeof path !== 'string') throw failure(data);
           // the figure is named after the CSV file as the edit command wrote it
           stem = path.slice('figures/'.length, -'.csv'.length);
-          source = writeFigure(fromHeader(path, headerOf(text)));
+          source = writeFigure(fromHeader(path, columns));
         }
         const made = await post(link, 'source', { stem, source, base: null });
         const name = made.value?.name;

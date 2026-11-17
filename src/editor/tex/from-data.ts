@@ -1,29 +1,51 @@
 // the source of a TikZ figure that Insert > TikZ Figure > From Data writes from the header of a CSV
-// file: a pgfplots axis with one curve per column after the first, which is x. each curve is a part
-// of the figure, in a color of styles/beeson-tikz.sty, with its label at its end, in a legend, or
-// without one. the TikZ Figure pane reads a source of this shape into its fields and writes it
+// file: a pgfplots axis with one curve per column after the first, which is x. the columns are taken
+// by their index, and the header is skipped, hence a name of any characters is not read by TeX.
+// each curve is a part of the figure, in a color of styles/beeson-tikz.sty, with its label at its
+// end, in a legend, or without one. the TikZ Figure pane reads a source of this shape into its fields and writes it
 // again from them. a source is read only when it is written back as the same text, hence an edit by
 // hand that the fields would lose turns them off. bundled into theme/editor-tex.js
 
 export type Kind = 'line' | 'points' | 'both';
-export type Curve = { part: string; column: string; kind: Kind; color: string; label: string };
+export type Curve = { part: string; column: number; kind: Kind; color: string; label: string };
 export type Axis = { label: string; min: string; max: string; log: boolean };
 export type Labels = 'curves' | 'legend' | 'none';
-export type DataFigure = { data: string; x: string; curves: Curve[]; axes: { x: Axis; y: Axis }; labels: Labels };
+export type DataFigure = { data: string; x: number; curves: Curve[]; axes: { x: Axis; y: Axis }; labels: Labels };
 
 export const MARK = '% From Data: the TikZ Figure pane of the editor reads and writes this source while it keeps this shape';
 // the colors of the style, data1 to data8 first, which new curves take in turn
 export const COLORS = ['data1', 'data2', 'data3', 'data4', 'data5', 'data6', 'data7', 'data8', 'accent', 'violet', 'blue', 'red', 'ink', 'subtle', 'muted'];
 const KINDS: Record<Kind, string> = { line: 'mark=none', points: 'only marks, mark=*', both: 'mark=*' };
 
-/** The names of the columns in the first line of a CSV file that is not empty. */
+/** The names of the columns in the first line of a CSV file that is not empty, where a name in quotes may hold a comma and "" is a quote. */
 export function headerOf(csv: string): string[] {
   const line = csv.replace(/^﻿/, '').split(/\r?\n/).find((l) => l.trim()) ?? '';
-  return line.split(',').map((name) => name.trim().replace(/^"(.*)"$/, '$1').trim());
+  const names = [''];
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"' && quoted && line[i + 1] === '"') names[names.length - 1] += line[i++];
+    else if (c === '"') quoted = !quoted;
+    else if (c === ',' && !quoted) names.push('');
+    else names[names.length - 1] += c;
+  }
+  return names.map((name) => name.trim());
 }
 
-// a label of TeX text for the name of a column
-const texText = (name: string): string => name.replace(/[\\{}$&#^_%~]/g, (c) => (c === '\\' ? '\\textbackslash{}' : c === '^' || c === '~' ? `\\${c}{}` : `\\${c}`));
+/** The text of a CSV file as From Data writes it, from its first line that is not blank, since pgfplots skips one line, and the names of its columns. Throws when TeX cannot read the first line. */
+export function csvOf(name: string, csv: string): { text: string; columns: string[] } {
+  const text = csv.replace(/^﻿?(?:[ \t]*\r?\n)*/, '');
+  const head = text.split(/\r?\n/, 1)[0];
+  if (!head.trim()) throw new Error(`${name} is empty`);
+  // a { that is not closed makes TeX read the lines after it as one group
+  let open = 0;
+  for (const c of head) open = c === '{' ? open + 1 : c === '}' ? Math.max(0, open - 1) : open;
+  if (open) throw new Error(`From Data cannot read ${name}, since TeX reads the { in its first line as the start of a group. Take it out of the names of the columns, or close it with a }`);
+  return { text, columns: headerOf(text) };
+}
+
+/** A label of TeX text for the name of a column. */
+export const texText = (name: string): string => name.replace(/[\\{}$&#^_%~]/g, (c) => (c === '\\' ? '\\textbackslash{}' : c === '^' || c === '~' ? `\\${c}{}` : `\\${c}`));
 
 /** A part name for column that none of taken has, i.e. its letters, digits, - and _. */
 export function partFor(column: string, taken: string[]): string {
@@ -33,16 +55,15 @@ export function partFor(column: string, taken: string[]): string {
   return part;
 }
 
-/** A new curve of column after the curves of figure, in the next color. */
-export function curveFor(figure: DataFigure, column: string): Curve {
-  return { part: partFor(column, figure.curves.map((c) => c.part)), column, kind: 'line', color: COLORS[figure.curves.length % 8], label: texText(column) };
+/** A new curve of the column at index column, named name, after the curves of figure, in the next color. */
+export function curveFor(figure: DataFigure, column: number, name: string): Curve {
+  return { part: partFor(name, figure.curves.map((c) => c.part)), column, kind: 'line', color: COLORS[figure.curves.length % 8], label: texText(name) };
 }
 
 /** The figure of data, a path from the talk folder, with a curve for each column after the first. */
 export function fromHeader(data: string, columns: string[]): DataFigure {
-  const [x = 'x', ...ys] = columns;
-  const figure: DataFigure = { data, x, curves: [], axes: { x: { label: texText(x), min: '', max: '', log: false }, y: { label: '', min: '', max: '', log: false } }, labels: 'curves' };
-  for (const column of ys) figure.curves.push(curveFor(figure, column));
+  const figure: DataFigure = { data, x: 0, curves: [], axes: { x: { label: texText(columns[0] ?? ''), min: '', max: '', log: false }, y: { label: '', min: '', max: '', log: false } }, labels: 'curves' };
+  columns.slice(1).forEach((name, i) => figure.curves.push(curveFor(figure, i + 1, name)));
   return figure;
 }
 
@@ -61,20 +82,20 @@ export function writeFigure(f: DataFigure): string {
   out.push(']');
   for (const c of f.curves) {
     const label = line(c.label);
-    out.push(`\\addplot+[part=${c.part}, ${c.color}, ${KINDS[c.kind]}] table[x={${f.x}}, y={${c.column}}, col sep=comma] {${f.data}}${f.labels === 'curves' ? ` node[pos=1, anchor=west] {${label}}` : ''};`);
+    out.push(`\\addplot+[part=${c.part}, ${c.color}, ${KINDS[c.kind]}] table[x index=${f.x}, y index=${c.column}, col sep=comma, header=false, skip first n=1] {${f.data}}${f.labels === 'curves' ? ` node[pos=1, anchor=west] {${label}}` : ''};`);
     if (f.labels === 'legend') out.push(`\\addlegendentry{${label}}`);
   }
   out.push('\\end{axis}', '\\end{tikzpicture}', '');
   return out.join('\n');
 }
 
-const PLOT = /^\\addplot\+\[part=([\w-]+), (\w+), (mark=none|only marks, mark=\*|mark=\*)\] table\[x=\{(.*?)\}, y=\{(.*?)\}, col sep=comma\] \{([^{}]*)\}(?: node\[pos=1, anchor=west\] \{(.*)\})?;$/;
+const PLOT = /^\\addplot\+\[part=([\w-]+), (\w+), (mark=none|only marks, mark=\*|mark=\*)\] table\[x index=(\d+), y index=(\d+), col sep=comma, header=false, skip first n=1\] \{([^{}]*)\}(?: node\[pos=1, anchor=west\] \{(.*)\})?;$/;
 
 /** The figure of a source of the shape that writeFigure writes, or null for another source. */
 export function readFigure(source: string): DataFigure | null {
   const lines = source.split('\n');
   if (lines[0] !== MARK) return null;
-  const f: DataFigure = { data: '', x: '', curves: [], axes: { x: { label: '', min: '', max: '', log: false }, y: { label: '', min: '', max: '', log: false } }, labels: 'none' };
+  const f: DataFigure = { data: '', x: 0, curves: [], axes: { x: { label: '', min: '', max: '', log: false }, y: { label: '', min: '', max: '', log: false } }, labels: 'none' };
   for (const text of lines) {
     const option = /^ {2}([xy])(label|min|max|mode)=(.*),$/.exec(text);
     if (option) {
@@ -93,10 +114,10 @@ export function readFigure(source: string): DataFigure | null {
     const plot = PLOT.exec(text);
     if (!plot) continue;
     const [, part, color, marks, x, column, data, label] = plot;
-    f.x = x;
+    f.x = Number(x);
     f.data = data;
     if (label !== undefined) f.labels = 'curves';
-    f.curves.push({ part, column, color, kind: (Object.keys(KINDS) as Kind[]).find((k) => KINDS[k] === marks)!, label: label ?? column });
+    f.curves.push({ part, column: Number(column), color, kind: (Object.keys(KINDS) as Kind[]).find((k) => KINDS[k] === marks)!, label: label ?? '' });
   }
   return writeFigure(f) === source ? f : null;
 }

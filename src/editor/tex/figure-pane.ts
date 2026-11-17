@@ -6,7 +6,7 @@
 
 import { make, injectStyle } from '../ui/dom.ts';
 import { errorLine, failure, post, sourceOf } from './figures.ts';
-import { COLORS, curveFor, fromHeader, headerOf, MARK, readFigure, writeFigure, type DataFigure, type Kind, type Labels } from './from-data.ts';
+import { COLORS, csvOf, curveFor, fromHeader, headerOf, MARK, readFigure, texText, writeFigure, type DataFigure, type Kind, type Labels } from './from-data.ts';
 import type { TexHost } from './install.ts';
 
 const CSS = `
@@ -123,11 +123,11 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
   async function replace(file: File): Promise<void> {
     const link = host.link();
     if (!link || !shape) return;
-    const csv = await file.text();
-    const answer = await post(link, 'data', { stem: file.name, text: csv });
+    const csv = csvOf(file.name, await file.text());
+    const answer = await post(link, 'data', { stem: file.name, text: csv.text });
     const path = answer.value?.path;
     if (answer.status !== 200 || typeof path !== 'string') return say(failure(answer).message);
-    columns = headerOf(csv);
+    columns = csv.columns;
     const was = shape;
     change(() => (shape = { ...fromHeader(path, columns), axes: was.axes, labels: was.labels }), true);
   }
@@ -147,13 +147,14 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
       picker.value = '';
       if (file) void replace(file).catch((e: unknown) => say(String(e)));
     });
-    const options = (c: string): [string, string][] => [...new Set([...columns.slice(1), c])].map((v) => [v, v]);
+    // the columns after x by their index, with the column of a curve that the file does not have
+    const options = (c: number): [string, string][] => [...new Set([...columns.keys()].slice(1).concat(c))].map((k) => [String(k), columns[k] || `Column ${k + 1}`]);
     const curves = f.curves.map((c, i) => {
       const one = make('div', 'curve');
       const n = i + 1;
       one.append(
         make('h6', '', `Curve ${n}`),
-        row('Column', choice(`Column of curve ${n}`, options(c.column), c.column, (v) => change((g) => (g.curves[i].column = v)))),
+        row('Column', choice(`Column of curve ${n}`, options(c.column), String(c.column), (v) => change((g) => (g.curves[i].column = Number(v))))),
         row('Kind', choice(`Kind of curve ${n}`, KINDS, c.kind, (v) => change((g) => (g.curves[i].kind = v)))),
         row('Color', choice(`Color of curve ${n}`, COLORS.map((t) => [t, toneName(t)] as [string, string]), c.color, (v) => change((g) => (g.curves[i].color = v)))),
         row('Label', text(`Label of curve ${n}`, c.label, (v) => change((g) => (g.curves[i].label = v)))),
@@ -164,7 +165,10 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
       one.append(row(null, remove));
       return one;
     });
-    const add = button('Add Curve', () => change((g) => g.curves.push(curveFor(g, columns.slice(1).find((c) => !g.curves.some((k) => k.column === c)) ?? columns[1] ?? g.curves[0]?.column ?? 'y')), true));
+    const add = button('Add Curve', () => change((g) => {
+      const k = [...columns.keys()].slice(1).find((c) => !g.curves.some((x) => x.column === c)) ?? g.curves[0]?.column ?? 1;
+      g.curves.push(curveFor(g, k, columns[k] ?? ''));
+    }, true));
     const axis = (key: 'x' | 'y') => {
       const a = f.axes[key];
       const log = make('input');
@@ -187,7 +191,11 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
       const b = make('button', '', t);
       b.type = 'button';
       b.setAttribute('aria-pressed', String(f.labels === v));
-      b.addEventListener('click', () => change((g) => (g.labels = v), true));
+      // a label is not written without labels, hence it is named after its column again
+      b.addEventListener('click', () => change((g) => {
+        g.labels = v;
+        for (const c of g.curves) c.label ||= texText(columns[c.column] ?? '');
+      }, true));
       seg.append(b);
     }
     fields.append(
@@ -210,7 +218,6 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
     if (shape) {
       last = shape;
       columns = headerOf((await textOf(shape.data)) ?? '');
-      if (!columns.length) columns = [shape.x, ...shape.curves.map((c) => c.column)];
     }
     draw(!!source?.startsWith(`${MARK}\n`));
   }
