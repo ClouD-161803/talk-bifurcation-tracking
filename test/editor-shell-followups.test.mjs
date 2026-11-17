@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { inflateSync } from 'node:zlib';
 import { launch } from '../scripts/chrome.mjs';
-import { click, editorPage, press } from './helpers/editor.mjs';
+import { click, clickText, editorPage, press } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -78,7 +78,7 @@ test('Edit Text is enabled on an element with a block and not on a figure withou
   assert.notEqual(await contextItem(page, 'Edit Text'), true, 'Edit Text is offered on the image of a figure');
   await press(page, 'Escape');
   assert.equal(await editText(page), true, 'Edit Text is disabled on a figure with a caption');
-  await click(page, await centerOf(page, '.reveal section.present h2'));
+  await clickText(page, await centerOf(page, '.reveal section.present h2'));
   await press(page, 'Escape');
   assert.equal(await editText(page), true, 'Edit Text is disabled on a heading');
   await press(page, 'Enter');
@@ -146,7 +146,7 @@ test('a toolbar button takes its label and its split from the toolbar place of i
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser);
-  await click(page, await centerOf(page, '.reveal section.present h1'));
+  await clickText(page, await centerOf(page, '.reveal section.present h1'));
   await page.send('Input.insertText', { text: 'x' });
   await page.waitFor(`window.BeesonEditor.state('edit.undo').label === 'Undo Typing'`);
   const undo = await page.evaluate(`(() => { const b = document.querySelector('.beeson-edit-top [data-command="edit.undo"]'); return { text: b.textContent, title: b.title }; })()`);
@@ -169,7 +169,7 @@ test('the gear menu of the find panel is a menu of the chrome', async (t) => {
   t.after(() => browser.close());
   const page = await editorPage(browser);
   await page.evaluate(`window.BeesonEditor.exec('find.open', 'orbit')`);
-  await click(page, await centerOf(page, '.beeson-find .gear'));
+  await clickText(page, await centerOf(page, '.beeson-find .gear'));
   const menu = () => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu.find-options .item')].map((i) => [i.querySelector('.label').textContent, i.getAttribute('aria-checked')])`);
   assert.deepEqual(await menu(), [['Find', 'true'], ['Find & Replace', 'false'], ['Whole Words', 'false'], ['Match Case', 'false'], ['Slides and Notes', 'true'], ['Notes Only', 'false'], ['Alt Texts', 'false'], ['Search TeX of Formulas', 'false']]);
   assert.equal(await page.evaluate(`document.querySelector('.beeson-find .gear').getAttribute('aria-expanded')`), 'true');
@@ -177,7 +177,7 @@ test('the gear menu of the find panel is a menu of the chrome', async (t) => {
   assert.deepEqual(await menu(), []);
   assert.equal(await page.evaluate(`!document.querySelector('.beeson-find').hidden`), true, 'Esc in the menu closes the panel');
   assert.equal(await page.evaluate(`document.activeElement.getAttribute('aria-label')`), 'Find');
-  await click(page, await centerOf(page, '.beeson-find .gear'));
+  await clickText(page, await centerOf(page, '.beeson-find .gear'));
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu.find-options .item')].find((i) => i.textContent.includes('Find & Replace')).click()`);
   assert.equal(await page.evaluate(`document.querySelector('.beeson-find').classList.contains('replacing')`), true);
   assert.deepEqual(page.errors, []);

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -95,7 +95,7 @@ for (const platform of PLATFORMS) {
     // D24: after an undo or a redo of Lock, nothing was selected, whereas Keynote selects the object
     test(`after an undo and a redo of ${name} on a figure that was deselected, the figure is selected (${platform})`, async (t) => {
       const page = await load(t, platform, 4);
-      await click(page, await center(page, IMG));
+      await clickText(page, await center(page, IMG));
       await wait(page);
       await change.setup?.(page);
       const start = await render(page);
@@ -124,7 +124,7 @@ for (const platform of PLATFORMS) {
 
   test(`after an undo and a redo of Lock, a figure that stayed selected is still selected (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
-    await click(page, await center(page, IMG));
+    await clickText(page, await center(page, IMG));
     await press(page, 'Mod+L');
     await wait(page);
     await press(page, 'Mod+Z');
@@ -141,7 +141,7 @@ for (const platform of PLATFORMS) {
   // change, as in Keynote
   test(`an undo and a redo of typing keep the caret in the text where it was (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
-    await click(page, await center(page, PARA));
+    await clickText(page, await center(page, PARA));
     await press(page, 'End');
     await type(page, ' XY');
     await wait(page);
@@ -167,7 +167,7 @@ for (const platform of PLATFORMS) {
   // the text, and selection() was empty
   test(`an undo and a redo of typing in a paragraph left with Esc select the paragraph as a block (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
-    await click(page, await center(page, PARA));
+    await clickText(page, await center(page, PARA));
     await press(page, 'End');
     await type(page, ' XY');
     await wait(page);
@@ -189,11 +189,11 @@ for (const platform of PLATFORMS) {
   // a typing undone after a click on the figure selects the paragraph, which the undo changes
   test(`an undo of typing with a figure selected selects the paragraph that it changes (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
-    await click(page, await center(page, PARA));
+    await clickText(page, await center(page, PARA));
     await press(page, 'End');
     await type(page, ' XY');
     await wait(page);
-    await click(page, await center(page, IMG));
+    await clickText(page, await center(page, IMG));
     await wait(page);
     assert.deepEqual(await selected(page), { els: ['figure.figure-box'], caret: null });
     await press(page, 'Mod+Z');
@@ -206,14 +206,14 @@ for (const platform of PLATFORMS) {
   // an undo of a color of the Format pane on a paragraph selected as a block put the caret in its text
   test(`an undo and a redo of a color from the Format pane select the paragraph as a block (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
-    await click(page, await center(page, PARA));
+    await clickText(page, await center(page, PARA));
     await press(page, 'Escape');
     await wait(page);
     if (!(await state(page, 'shell.format')).checked) await page.evaluate(`window.BeesonEditor.exec('shell.format')`);
     await wait(page);
     const swatch = '.beeson-edit-inspector [data-command="text.tone.accent"]';
     await page.waitFor(`(() => { const b = document.querySelector(${js(swatch)}); return !!b && !b.disabled && b.getClientRects().length > 0; })()`);
-    await click(page, await center(page, swatch));
+    await clickText(page, await center(page, swatch));
     await wait(page);
     const toned = await render(page);
     assert.notEqual(toned, page.source, 'the swatch does not color the paragraph');
@@ -236,7 +236,7 @@ for (const platform of PLATFORMS) {
 
 // button clicks the toolbar button of the command id
 async function button(page, id) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const r = document.querySelector('[data-command=${js(id)}]').getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`));
@@ -246,7 +246,7 @@ async function button(page, id) {
 for (const platform of PLATFORMS) {
   test(`Undo of the toolbar keeps the caret in a text of the slide (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
-    await click(page, await center(page, PARA));
+    await clickText(page, await center(page, PARA));
     await press(page, 'End');
     await type(page, ' XY');
     await wait(page);

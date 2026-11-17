@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { captured, center, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { captured, center, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const LISTS = 'test/pages/editor-r13-3.html';
@@ -99,7 +99,7 @@ for (const platform of PLATFORMS) {
   for (const [where, needle] of [['a paragraph', DESIGN], ['a list item', SAME]]) {
     test(`after an undo and a redo of Return in ${where}, the caret stays in the text (${platform})`, async (t) => {
       const page = await load(t, platform, 'test-deck.html', 2);
-      await click(page, await pointOf(page, needle));
+      await clickText(page, await pointOf(page, needle));
       await caretIn(page, needle);
       await press(page, 'Enter');
       await wait(page);
@@ -123,12 +123,12 @@ for (const platform of PLATFORMS) {
   // F9: the caret in another item of the same list counted as a caret outside the list
   test(`an undo of typing in one item of a list keeps the caret in the list when it is in another item (${platform})`, async (t) => {
     const page = await load(t, platform, 'test-deck.html', 2);
-    await click(page, await pointOf(page, SAME));
+    await clickText(page, await pointOf(page, SAME));
     await caretIn(page, SAME);
     await type(page, ' XY');
     await wait(page, 1200);
     assert.ok((await render(page)).includes(`${SAME} XY</li>`));
-    await click(page, await pointOf(page, 'When exporting'));
+    await clickText(page, await pointOf(page, 'When exporting'));
     await wait(page);
     await press(page, 'Mod+Z');
     await wait(page);
@@ -146,7 +146,7 @@ for (const platform of PLATFORMS) {
   // F10: the button undid the entry before the typed value, which Tab then entered over the redo
   test(`the toolbar button Undo enters a value typed into a field of the inspector, then undoes it (${platform})`, async (t) => {
     const page = await load(t, platform, 'test-deck.html', 4);
-    await click(page, await center(page, `${SLIDE} figure.figure-box img.for-dark`));
+    await clickText(page, await center(page, `${SLIDE} figure.figure-box img.for-dark`));
     await press(page, 'ArrowRight');
     await wait(page, 1100);
     const moved = await render(page);
@@ -155,7 +155,7 @@ for (const platform of PLATFORMS) {
     await wait(page);
     await exec(page, 'arrange.sizeAndPosition');
     await wait(page);
-    await click(page, await center(page, X));
+    await clickText(page, await center(page, X));
     await page.evaluate(`document.querySelector(${js(X)}).select()`);
     await type(page, '300');
     await wait(page);
@@ -283,7 +283,7 @@ async function showTab(page, name) {
   if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
   await wait(page);
   const at = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].find((b) => b.textContent.trim() === ${js(name)}); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  if (at) await click(page, at);
+  if (at) await clickText(page, at);
   await wait(page);
 }
 
@@ -292,7 +292,7 @@ for (const platform of PLATFORMS) {
   test(`Return in Start at with the shown number keeps the start of a cut-off list, in one entry (${platform})`, async (t) => {
     const page = await load(t, platform, LISTS, 0);
     const cut = await cutAfterBravo(page);
-    await click(page, await pointOf(page, 'Charlie'));
+    await clickText(page, await pointOf(page, 'Charlie'));
     await showTab(page, 'Text');
     assert.equal(await page.evaluate(`document.querySelector(${js(START)}).value`), '3');
     await click(page, START, { count: 3 });
@@ -339,13 +339,13 @@ for (const platform of PLATFORMS) {
   test(`an undo and a redo of a change to the selected video keep the selection and the focus on the slider of the inspector (${platform})`, async (t) => {
     const page = await load(t, platform, 'test-deck.html', 10);
     const at = await center(page, ".reveal:not(.beeson-peek) .slides > section.present video");
-    await click(page, at);
-    await click(page, at);
+    await clickText(page, at);
+    await clickText(page, at);
     await wait(page);
     if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
     await page.waitFor(`!!document.querySelector('${POSTER}:not([disabled])')`, 10000);
     const r = await page.evaluate(`(() => { const r = document.querySelector(${js(POSTER)}).getBoundingClientRect(); return { x: r.left + r.width * 0.6, y: r.top + r.height / 2 }; })()`);
-    await click(page, r);
+    await clickText(page, r);
     await captured(page, `window.BeesonEditor.render() !== ${js(page.source)}`);
     const poster = await render(page);
     assert.deepEqual(await held(page), { els: ['video'], focus: 'input.range', same: false });

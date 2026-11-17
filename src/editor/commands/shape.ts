@@ -297,14 +297,14 @@ export function install(app: App): void {
       document.execCommand('insertText', false, ev.key);
     } else void startWords(el, ev.key).catch((e) => app.fail(e));
   };
-  // a press on the words of a selected shape is taken by the move of canvas/drag.ts, whose click
-  // puts the caret, hence the word at the caret of a double click is selected here, as the browser
-  // selects it in a text. a space or a mark between two words is selected by itself
+  // a press on the words of a selected text element or shape is taken by the move of
+  // canvas/drag.ts, whose click puts the caret, hence the word at the caret of a double click is
+  // selected here, as the browser selects it in a text. a space or a mark between two words is
+  // selected by itself
   window.addEventListener('dblclick', (ev) => {
-    const el = ev.target instanceof Element ? ev.target.closest('.shape') : null;
     const host = ev.target instanceof Element ? ev.target.closest(HOST) : null;
     const s = getSelection(), node = s?.anchorNode;
-    if (!el || !isShape(el) || !host || !el.contains(host) || !s?.isCollapsed || !(node instanceof Text) || !host.contains(node)) return;
+    if (!host || !app.current()?.contains(host) || host.closest('aside.notes') || !s?.isCollapsed || !(node instanceof Text) || !host.contains(node)) return;
     const words = new Intl.Segmenter(document.documentElement.lang || undefined, { granularity: 'word' }).segment(node.data);
     const at = s.anchorOffset;
     const before = at > 0 ? words.containing(at - 1) : undefined;

@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 import { snapMove } from '../src/editor/canvas/snap.ts';
 
 const DECK = 'test-deck.html';
@@ -107,7 +107,7 @@ async function checkEdit(page, name, before = page.source) {
 // the paragraph and the figure of the figures slide made a group by the key of Group, with the
 // group selected
 async function groupOnFigures(page) {
-  await click(page, 'section.present figure img.for-light');
+  await clickText(page, 'section.present figure img.for-light');
   const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
   await click(page, p, { modifiers: 'Shift' });
   assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.localName).sort()'), ['figure', 'p']);
@@ -138,7 +138,7 @@ for (const platform of PLATFORMS) {
     const grouped = await render(page);
     const p0 = await boxOf(page, ':scope > p'), f0 = await boxOf(page, ':scope > figure');
     // the group, the heading, and the list spaced vertically with the group kept whole
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     await click(page, 'section.present h2', { modifiers: 'Shift' });
     await click(page, 'section.present > ul > li', { modifiers: 'Shift' });
     assert.equal(await page.evaluate('window.BeesonEditor.selection().length'), 4);
@@ -152,7 +152,7 @@ for (const platform of PLATFORMS) {
 
   test(`a typed width keeps the upper left corner of the QR code of the closing slide (${platform})`, async (t) => {
     const page = await load(t, platform, CLOSING);
-    await click(page, 'section.present .qr');
+    await clickText(page, 'section.present .qr');
     assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.matches(".qr"))'), [true]);
     const was = await boxOf(page, '.qr');
     await exec(page, 'arrange.setSize', { w: 240 });
@@ -172,7 +172,7 @@ for (const platform of PLATFORMS) {
   ]) {
     test(`an undo and a redo of ${what} show the slide that they change (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
-      await click(page, 'section.present figure img.for-light');
+      await clickText(page, 'section.present figure img.for-light');
       await act(page, platform);
       await frames(page);
       const edited = await render(page);
@@ -196,7 +196,7 @@ for (const platform of PLATFORMS) {
   }
   test(`a held corner grip keeps its diagonal cursor through the resize (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     const grip = await page.evaluate(`(() => { const g = [...document.querySelectorAll('.beeson-grip[data-handle="se"]')].find((g) => g.getClientRects().length && !g.hidden); const r = g.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     const cursor = (x, y) => page.evaluate(`getComputedStyle(document.elementFromPoint(${x}, ${y})).cursor`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: grip.x, y: grip.y });
@@ -212,7 +212,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const [, w, h] = readout.match(/w: (\d+) px\s+h: (\d+) px/) ?? [];
     assert.ok(near(Number(w), await fieldValue(page, 'width'), 1) && near(Number(h), await fieldValue(page, 'height'), 1), `the readout ${readout} is not W ${await fieldValue(page, 'width')} and H ${await fieldValue(page, 'height')}`);
-    await click(page, { x: grip.x - 120, y: grip.y - 32 });
+    await clickText(page, { x: grip.x - 120, y: grip.y - 32 });
     await frames(page);
     assert.notEqual(await cursor(grip.x - 120, grip.y - 32), 'nwse-resize');
     await checkEdit(page, `r12-5-grip-${platform}.html`);
@@ -220,7 +220,7 @@ for (const platform of PLATFORMS) {
   });
   test(`a multiple selection is turned by its rotate handle, each element about its own center (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present > p');
+    await clickText(page, 'section.present > p');
     await press(page, 'Escape');
     await click(page, 'section.present figure img.for-light', { modifiers: 'Shift' });
     assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.localName)'), ['p', 'figure']);
@@ -247,7 +247,7 @@ for (const platform of PLATFORMS) {
   });
   test(`the Height of a figure selected as one object gives its picture with its caption (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     const f0 = await figureBox(page);
     assert.ok(f0.height > 800, `the frame holds the caption: ${js(f0)}`);
     for (const [id, v] of [['x', f0.left], ['y', f0.top], ['width', f0.width], ['height', f0.height]]) {
@@ -260,9 +260,9 @@ for (const platform of PLATFORMS) {
     assert.ok(near(await fieldValue(page, 'height'), 700, 3), `Height reads ${await fieldValue(page, 'height')}`);
     await checkEdit(page, `r12-5-figure-height-${platform}.html`);
     // the picture alone, selected by a second click, gives its own height
-    await click(page, { x: 10, y: 10 });
-    await click(page, 'section.present figure img.for-light');
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, { x: 10, y: 10 });
+    await clickText(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.localName)'), ['img']);
     const h = await fieldValue(page, 'height');
     const pic = await figureBox(page, false);

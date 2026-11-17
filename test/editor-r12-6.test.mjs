@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -137,7 +137,7 @@ for (const platform of PLATFORMS) {
   // text-lists-find-1: Italic after Tab on the whole list wrote one more empty item with step 3
   test(`Italic after Tab on a whole list selected with the command A formats the items and adds no item (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'toggle', 2));
+    await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
     await press(page, 'Mod+A');
     await press(page, 'Tab');
     const nested = await render(page);
@@ -153,7 +153,7 @@ for (const platform of PLATFORMS) {
   // text-lists-find-2: Numbers, Dashes, and Paragraphs collapsed the selection to a caret
   test(`Numbers and then Paragraphs act on every item of a list selected with the command A (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'toggle', 2));
+    await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
     await press(page, 'Mod+A');
     await exec(page, 'text.list.ol');
     assert.equal((await caretIn(page)).collapsed, false, 'Numbers collapses the selection');
@@ -181,7 +181,7 @@ for (const platform of PLATFORMS) {
   // text-lists-find-3: the caret was left in the white space of a nested list after an undo
   test(`after the undo of an outdented empty nested item, Shift+Tab and Return act on the item of the caret (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'You should', 0, true));
+    await clickText(page, await pointOf(page, ITEM, 'You should', 0, true));
     await press(page, 'Home');
     await press(page, 'Tab');
     await caretAtEnd(page, 2);
@@ -221,7 +221,7 @@ for (const platform of PLATFORMS) {
   for (const [name, n, selector, needle] of [['the paragraph', 4, PARA, 'Export'], ['the heading', 4, HEAD, 'Figures'], ['the heading of a section slide', 1, '.reveal section.present h2', 'Chapter']]) {
     test(`Tab and Shift+Tab in ${name} keep the caret in its text (${platform})`, async (t) => {
       const page = await load(t, platform, n);
-      await click(page, await pointOf(page, selector, needle, 1, true));
+      await clickText(page, await pointOf(page, selector, needle, 1, true));
       const before = await caretIn(page);
       await press(page, 'Tab');
       assert.deepEqual(await caretIn(page), before, 'Tab moves the caret');
@@ -239,7 +239,7 @@ for (const platform of PLATFORMS) {
     await page.send('Browser.grantPermissions', { origin: server.origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }).catch(() => {});
     await click(page, await pointOf(page, PARA, 'matplotlib', 3), { count: 2 });
     await pressCommand(page, 'Mod+c', 'copy');
-    await click(page, await pointOf(page, PARA, 'frameless.', 9));
+    await clickText(page, await pointOf(page, PARA, 'frameless.', 9));
     await press(page, 'End');
     await type(page, ' abc ');
     await pressCommand(page, 'Mod+v', 'paste');
@@ -284,7 +284,7 @@ for (const platform of PLATFORMS) {
   // text-lists-find-8: Backspace at the start of the first item did nothing
   test(`Backspace at the start of the first item of a list takes its dash off, and a second joins it to the paragraph (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'Dark and light', 0, true));
+    await clickText(page, await pointOf(page, ITEM, 'Dark and light', 0, true));
     await press(page, 'Home');
     await press(page, 'Backspace');
     const text = listPart(await render(page));
@@ -292,7 +292,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await undoLabel(page), 'Undo Remove Bullet');
     assert.deepEqual(await caretIn(page), { tag: 'p', text: 'Dark and light mode: export o', editing: true, active: 'p', collapsed: true });
     await roundTrip(page);
-    await click(page, await pointOf(page, PARA, 'Dark and light', 0, true));
+    await clickText(page, await pointOf(page, PARA, 'Dark and light', 0, true));
     await press(page, 'Home');
     await press(page, 'Backspace');
     assert.match(listPart(await render(page)), /frameless\.Dark and light mode/);
@@ -301,7 +301,7 @@ for (const platform of PLATFORMS) {
   // plots-objects-outline-6: the menu of the paragraph style checked Body over a heading and a paragraph
   test(`the paragraph style menu checks no style over a heading and a paragraph selected as blocks (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, HEAD, 'Figures', 3));
+    await clickText(page, await pointOf(page, HEAD, 'Figures', 3));
     await press(page, 'Escape');
     await click(page, await pointOf(page, PARA, 'Export', 3), { modifiers: 'Shift' });
     assert.equal(await page.evaluate('window.BeesonEditor.selection().length'), 2);

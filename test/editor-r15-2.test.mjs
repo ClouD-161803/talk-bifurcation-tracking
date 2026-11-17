@@ -10,7 +10,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, saveAndReopen } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 const LAYOUTS = 'test/pages/editor-layouts.html';
@@ -73,7 +73,7 @@ async function load(t, platform, { n = FIGURES, deck = DECK } = {}) {
 
 // the element of selector selected as an object, by a click and Esc out of its text
 async function pick(page, selector, name) {
-  await click(page, selector);
+  await clickText(page, selector);
   await frames(page);
   if (js(await selected(page)) !== js([name])) await press(page, 'Escape');
   await frames(page);
@@ -126,7 +126,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const scale = await page.evaluate(`document.querySelector(${js(S)}).getBoundingClientRect().width / 1920`);
     const img = await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(S + ' figure img')})].find((i) => i.getClientRects().length).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, img);
+    await clickText(page, img);
     await frames(page);
     assert.deepEqual(await selected(page), ['figure']);
     // the drag of finding 2 of the judge opus in round 6, in slide px
@@ -275,7 +275,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const at = await page.evaluate(`(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector(${js(SUB)})); const r = range.getClientRects()[0]; return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
     assert.ok(await page.evaluate(`document.querySelector(${js(SUB)}).contains(document.elementsFromPoint(${at.x}, ${at.y})[0])`), 'the subtitle is drawn under another element');
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     assert.ok(await page.evaluate(`document.querySelector(${js(SUB)}).contains(document.activeElement)`), 'a click on the subtitle does not put the caret in it');
     await press(page, 'Escape');

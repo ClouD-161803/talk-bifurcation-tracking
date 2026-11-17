@@ -14,7 +14,10 @@ import { fillFormat as fillPanes } from '../inspector/inspector.ts';
 import { closeMenus, openContextMenu, openMenu, menuItems, type MenuItem } from '../ui/menu.ts';
 import { keyClashes, sheetClashes } from './keys-sheet.ts';
 import { overlay } from '../canvas/frames.ts';
-import { lineAt, onCanvas } from '../canvas/hit.ts';
+import { lineAt, onCanvas, stackAt } from '../canvas/hit.ts';
+import { selectIn } from '../commands/order.ts';
+import { groupsOf } from '../model/groups.ts';
+import { describeObject } from '../navigator/objects.ts';
 import { backdropAt } from '../commands/backdrop.ts';
 import { PANE_KEYS } from '../commands/view.ts';
 import { tileSlide } from '../navigator/sorter.ts';
@@ -383,6 +386,17 @@ export function install(app: App): void {
     return { kind: 'canvas', target: app.current() };
   }
 
+  // the submenu Select of the elements under the point x, y from front to back, by their names in
+  // the Object List, where two or more overlap. a choice selects the element by itself, as its row does
+  const picks = (x: number, y: number): MenuItem[] => {
+    const stack = stackAt(app, x, y);
+    const pick = (el: Element) => {
+      (app.hostOf(document.activeElement) as HTMLElement | null)?.blur();
+      selectIn(app, groupsOf(el), [el]);
+    };
+    return stack.length > 1 ? [{ label: 'Select', items: stack.map((el) => ({ label: describeObject(el).name, checked: app.selection.elements().includes(el), run: () => pick(el) })) }] : [];
+  };
+
   // a right-click on the stroke of a line, whose svg does not take the pointer, selects it and opens
   // its element menu, and its press does not put a caret into a text under the line
   const lineOf = (ev: MouseEvent) => (app.state === 'loaded' && ev.target instanceof Element && onCanvas(ev.target, app, { x: ev.clientX, y: ev.clientY }) && !document.documentElement.classList.contains('beeson-drawing-line') ? lineAt(app, ev.clientX, ev.clientY) : null);
@@ -395,7 +409,7 @@ export function install(app: App): void {
     ev.preventDefault();
     ev.stopPropagation();
     if (!app.selection.has(svg)) app.selection.set('elements', [svg]);
-    openContextMenu(app, 'element', svg, { x: ev.clientX, y: ev.clientY });
+    openContextMenu(app, 'element', svg, { x: ev.clientX, y: ev.clientY }, picks(ev.clientX, ev.clientY));
   }, true);
   // a right-click on a backdrop outside its labels and texts selects it and opens its element menu
   window.addEventListener('contextmenu', (ev) => {
@@ -405,12 +419,13 @@ export function install(app: App): void {
     ev.preventDefault();
     ev.stopPropagation();
     if (!app.selection.has(el)) app.selection.set('elements', [el]);
-    openContextMenu(app, 'element', el, { x: ev.clientX, y: ev.clientY });
+    openContextMenu(app, 'element', el, { x: ev.clientX, y: ev.clientY }, picks(ev.clientX, ev.clientY));
   }, true);
   document.addEventListener('contextmenu', (ev) => {
     const place = placeOf(ev.target instanceof Element ? ev.target : null);
     if (!place) return;
-    if (openContextMenu(app, place.kind, place.target, { x: ev.clientX, y: ev.clientY })) {
+    const more = place.kind === 'canvas' || place.kind === 'element' || place.kind === 'text' ? picks(ev.clientX, ev.clientY) : [];
+    if (openContextMenu(app, place.kind, place.target, { x: ev.clientX, y: ev.clientY }, more)) {
       ev.preventDefault();
       ev.stopPropagation();
     }

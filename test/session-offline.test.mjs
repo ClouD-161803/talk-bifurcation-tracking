@@ -57,8 +57,9 @@ test('the save state names the slides of the edits that wait, and the dialog of 
 
   await guest.evaluate('window.__blockOps = true');
   await edit(guest, 1, 'p', ' by Ben');
-  await guest.waitFor(`${STATE} === 'Offline. Changes on slide 2 are kept in this browser'`);
-  assert.equal(await guest.evaluate(ACTION), 'Try now');
+  // the button Try now is shown only while a reconnect waits, and not during a try, hence the
+  // save state and the button are awaited together
+  await guest.waitFor(`${STATE} === 'Offline. Changes on slide 2 are kept in this browser' && ${ACTION} === 'Try now'`);
   await edit(guest, 0, 'p', ' too');
   await guest.waitFor(`${STATE} === 'Offline. Changes on slides 1 and 2 are kept in this browser'`);
 

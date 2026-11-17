@@ -523,7 +523,8 @@ export function install(app: App): void {
   app.math = math;
   document.addEventListener('click', (ev) => {
     const target = ev.target instanceof Element ? ev.target : null;
-    const container = target?.closest('mjx-container');
+    // the click of a drag or an Alt-click, which canvas/drag.ts marks as handled, does not open the TeX
+    const container = ev.defaultPrevented ? null : target?.closest('mjx-container');
     if (container && app.hostOf(container)) {
       ev.preventDefault();
       // a Shift-click or a command-click only adds the object of the formula to the selection or

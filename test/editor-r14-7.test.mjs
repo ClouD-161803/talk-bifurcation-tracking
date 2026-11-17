@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -121,7 +121,7 @@ for (const platform of PLATFORMS) {
   for (const [id, tag] of [['text.list.ol', 'ol'], ['text.list.ul', 'ul']]) {
     test(`${tag === 'ol' ? 'Numbers' : 'Arrows'} after Paragraphs on a span of items acts on every paragraph of the span (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, await pointOf(page, ITEM, 'toggle', 2));
+      await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
       await press(page, 'Mod+A');
       await exec(page, 'text.list.none');
       assert.equal(await kinds(page), 'section>p:Export y | section>p:Dark and | section>p:You migh | section>p:You shou');
@@ -181,7 +181,7 @@ for (const platform of PLATFORMS) {
   for (const [name, keys] of [['Shift+Tab', ['Shift+Tab']], ['Backspace', ['Home', 'Backspace']]]) {
     test(`after an undo of the outdent of ${name}, typing lands where the caret was before the outdent (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, await pointOf(page, ITEM, 'You might', 4));
+      await clickText(page, await pointOf(page, ITEM, 'You might', 4));
       await press(page, 'Home');
       await press(page, 'Tab');
       const nested = await render(page);
@@ -197,7 +197,7 @@ for (const platform of PLATFORMS) {
   // its list, where the list commands do not act
   test(`after an undo of an outdent, the caret is in the nested item, and Shift+Tab takes it out again (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'You might', 4));
+    await clickText(page, await pointOf(page, ITEM, 'You might', 4));
     await press(page, 'Home');
     await press(page, 'Tab');
     const nested = await render(page);

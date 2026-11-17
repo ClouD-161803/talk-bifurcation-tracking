@@ -81,6 +81,9 @@ async function nameIt(page, name) {
 }
 
 // the id of the version of the row at index i of the rows shown
+// the toasts of the page stay until they are pressed, since a slow runner may take more than their 6 s
+const HOLD = `(() => { const set = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => set(fn, ms === 6000 ? 3_600_000 : ms, ...rest); return true; })()`;
+
 const rowId = (page, i) => page.evaluate(`[...document.querySelectorAll('${PANE} .versions .row.version')].filter((r) => r.getClientRects().length)[${i}].dataset.id.slice(8)`);
 
 // the toasts of the page recorded from now on, since a toast is gone after 6 s
@@ -1173,6 +1176,7 @@ test('Keep theirs at a conflict sets the text of the page aside, which Show open
   await t.test('the text is listed under Set aside, and Show opens its preview', async (t) => {
     const { server, ann, ben } = await conflicted(t);
     await recordToasts(ann);
+    await ann.evaluate(HOLD);
     await pressConflict(ann, 'Keep theirs');
     await converge(server, [ann, ben]);
     await ann.waitFor('window.__toasts.length > 0', 20_000);
@@ -1585,8 +1589,6 @@ test('Show changes tints a paragraph with a dollar or a backslash that MathJax s
 
 const OVERWRITTEN = 'A change of index.html from outside replaced text of this session. The text is kept in Version History.';
 
-// the toasts of the page stay until they are pressed, since a slow runner may take more than their 6 s
-const HOLD = `(() => { const set = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => set(fn, ms === 6000 ? 3_600_000 : ms, ...rest); return true; })()`;
 const TOAST = `(() => {
   const span = document.querySelector('.beeson-session-toast span');
   const lines = Math.round(span.getBoundingClientRect().height / parseFloat(getComputedStyle(span).lineHeight));

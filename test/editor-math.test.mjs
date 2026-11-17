@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const EQUATIONS = 3;
 const DISPLAY = String.raw`\[\ddot x - \class{coriolis}{2\dot y} = -\frac{\partial \class{potential}{\tilde U}}{\partial x},\qquad \ddot y + \class{coriolis}{2\dot x} = -\frac{\partial \class{potential}{\tilde U}}{\partial y},\]`;
@@ -74,7 +74,7 @@ async function inlineKey(page, platform) {
 const STEP2_LIVE = `[...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent.startsWith('where'))`;
 async function caretInStep2(page) {
   const at = await page.evaluate(`(() => { const r = ${STEP2_LIVE}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(150);
   await press(page, 'End');
 }
@@ -83,7 +83,7 @@ async function caretInStep2(page) {
 async function selectDisplay(page) {
   await page.evaluate(`Reveal.slide(${EQUATIONS})`);
   await page.evaluate(`(() => { window.BeesonEditor.state('view.steps').checked && window.BeesonEditor.exec('view.steps'); window.BeesonEditor.state('shell.format').checked || window.BeesonEditor.exec('shell.format'); })()`);
-  await click(page, await center(page, '.reveal section.present div.math mjx-container'));
+  await clickText(page, await center(page, '.reveal section.present div.math mjx-container'));
   await sleep(300);
   await press(page, 'Escape');
   await sleep(300);
@@ -102,7 +102,7 @@ const selectInField = (page, part) =>
   })()`);
 
 async function chooseStep(page, prefix) {
-  await click(page, await center(page, `${FORMAT} .ed-step`));
+  await clickText(page, await center(page, `${FORMAT} .ed-step`));
   await sleep(150);
   const at = await page.evaluate(`(() => {
     const item = [...document.querySelectorAll('[role=menu] [role=menuitemcheckbox]')].find((i) => i.textContent.startsWith(${JSON.stringify(prefix)}));
@@ -111,7 +111,7 @@ async function chooseStep(page, prefix) {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
   assert.ok(at, `the menu of the steps does not have ${prefix}`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(150);
 }
 
@@ -195,7 +195,7 @@ for (const platform of ['mac', 'other']) {
     const page = await open(platform);
     t.after(() => page.close?.());
     await selectDisplay(page);
-    await click(page, await center(page, `${FORMAT} input[type=checkbox]`));
+    await clickText(page, await center(page, `${FORMAT} input[type=checkbox]`));
     await sleep(300);
     await byteExact(page, [['<div class="math fragment" data-fragment-index="1" data-keep>', '<div class="math fragment" data-fragment-index="1">']]);
     await roundTrip(page);
@@ -206,7 +206,7 @@ for (const platform of ['mac', 'other']) {
     t.after(() => page.close?.());
     await selectDisplay(page);
     await selectInField(page, String.raw`\ddot y`);
-    await click(page, await center(page, `${FORMAT} .ed-tones button[aria-label="Violet"]`));
+    await clickText(page, await center(page, `${FORMAT} .ed-tones button[aria-label="Violet"]`));
     await chooseStep(page, 'Step 4');
     await click(page, await center(page, `${FORMAT} button[data-command="math.color"]`));
     await sleep(600);
@@ -220,7 +220,7 @@ for (const platform of ['mac', 'other']) {
     await roundTrip(page);
     // its color removed in the pane gives the file back
     await selectDisplay(page);
-    await click(page, await center(page, `${FORMAT} button[aria-label="Remove the color of y"]`));
+    await clickText(page, await center(page, `${FORMAT} button[aria-label="Remove the color of y"]`));
     await sleep(600);
     await byteExact(page);
   });
@@ -230,7 +230,7 @@ for (const platform of ['mac', 'other']) {
     t.after(() => page.close?.());
     await selectDisplay(page);
     await selectInField(page, String.raw`\ddot x`);
-    await click(page, await center(page, `${FORMAT} .ed-tones button[aria-label="Blue"]`));
+    await clickText(page, await center(page, `${FORMAT} .ed-tones button[aria-label="Blue"]`));
     await chooseStep(page, 'Step 2');
     await click(page, await center(page, `${FORMAT} button[data-command="math.color"]`));
     await sleep(600);

@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { click, editorPage, press, typeKeys } from './helpers/editor.mjs';
+import { clickText, editorPage, press, typeKeys } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-formula-ends.html';
 const END = String.raw`The angle is the true anomaly \(\theta\)</p>`;
@@ -35,7 +35,7 @@ async function load(t, platform) {
 // a click on the words of paragraph i, left of its formula at the end or right of it at the start
 async function clickWords(page, i) {
   const at = await page.evaluate(`(() => { const r = ${para(i)}.getBoundingClientRect(); const m = ${para(i)}.querySelector('mjx-container').getBoundingClientRect(); return { x: ${i ? 'm.right + 60' : 'r.left + 60'}, y: m.top + m.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await page.waitFor(`document.activeElement === ${para(i)} && getSelection().isCollapsed`);
 }
 
@@ -67,7 +67,7 @@ for (const platform of ['mac', 'other']) {
   test(`a click behind a formula at the end of a text puts the caret after it (${platform})`, async (t) => {
     const page = await load(t, platform);
     const at = await page.evaluate(`(() => { const m = ${para(0)}.querySelector('mjx-container').getBoundingClientRect(); return { x: m.right + 40, y: m.top + m.height / 2 }; })()`);
-    await click(page, at);
+    await clickText(page, at);
     await page.waitFor(`document.activeElement === ${para(0)} && getSelection().isCollapsed`);
     await typed(page, 'x', 0, END.replace('</p>', 'x</p>'));
   });

@@ -10,7 +10,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -83,7 +83,7 @@ async function choose(page, label) {
   })()`);
   assert.ok(at, `the open menu does not have an item ${label}`);
   await sleep(250);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 
@@ -108,11 +108,11 @@ for (const platform of PLATFORMS) {
     // the box is colored in the editor without a change of its DOM
     assert.ok((await ranges(page, 'keyword')) > 3, 'the keywords of the box are not colored');
     const dom = await page.evaluate(`document.querySelector('.reveal section.present pre').innerHTML`);
-    await click(page, await linePoint(page, 2));
+    await clickText(page, await linePoint(page, 2));
     await frames(page);
     assert.equal(await pane(page), 'code');
     assert.equal(await language(page), 'Python');
-    await click(page, `${PANEL} .ed-lang`);
+    await clickText(page, `${PANEL} .ed-lang`);
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     const labels = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item .label')].map((l) => l.textContent)`);
     assert.deepEqual(labels.slice(0, 3), ['Automatic', 'Plain Text', 'Python']);
@@ -128,10 +128,10 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.ok((await ranges(page, 'keyword')) > 3, 'the box is not colored again after an undo');
     // a language of the submenu of every language
-    await click(page, `${PANEL} .ed-lang`);
+    await clickText(page, `${PANEL} .ed-lang`);
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     const sub = await page.evaluate(`(() => { const item = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label').textContent === 'All Languages'); const r = item.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, sub);
+    await clickText(page, sub);
     await page.waitFor(`document.querySelectorAll('.beeson-edit-menu').length === 2`);
     assert.ok((await page.evaluate(`document.querySelectorAll('.beeson-edit-menu')[1].querySelectorAll('.item').length`)) > 100);
     await choose(page, 'Julia');
@@ -147,11 +147,11 @@ for (const platform of PLATFORMS) {
   test(`the line steps of a code box are typed, added from the selected lines, and removed on ${platform}`, async (t) => {
     const page = await open(t, platform);
     const source = page.source;
-    await click(page, await linePoint(page, 1));
+    await clickText(page, await linePoint(page, 1));
     await frames(page);
     assert.deepEqual(await groups(page), ['Lines 1–3 · With the slide', 'Line 4 · Step 1', 'Lines 5–7 · Step 2', 'Lines 8–9 · Step 3']);
     // the field takes the groups separated by bars
-    await click(page, `${PANEL} input[name="line-steps"]`);
+    await clickText(page, `${PANEL} input[name="line-steps"]`);
     await page.evaluate(`document.querySelector('${PANEL} input[name="line-steps"]').select()`);
     await type(page, '1-2 | 4');
     await press(page, 'Enter');
@@ -171,6 +171,7 @@ for (const platform of PLATFORMS) {
     // the lines selected in the box by a drag become the next group
     const from = await linePoint(page, 5);
     const to = await linePoint(page, 6, true);
+    await clickText(page, from);
     await drag(page, from, { dx: to.x - from.x, dy: to.y - from.y });
     await frames(page);
     assert.match(await page.evaluate(`[...document.querySelectorAll('${PANEL} .ed-note')].map((n) => n.textContent).join(' ')`), /Lines 5–6 are selected in the code/);
@@ -184,7 +185,7 @@ for (const platform of PLATFORMS) {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: row.x, y: row.y });
     await frames(page);
     assert.equal(await ranges(page, 'dim'), 8, 'the 8 lines outside line 4 are not dimmed');
-    await click(page, `${PANEL} .ed-groups li:nth-child(2) button`);
+    await clickText(page, `${PANEL} .ed-groups li:nth-child(2) button`);
     await frames(page);
     const removed = source.replace(CODE, CODE.replace('1-3|4|5-7|8-9', '1-2|5-6'));
     assert.equal(await rendered(page), removed);
@@ -198,7 +199,7 @@ for (const platform of PLATFORMS) {
     const numbered = source.replace(CODE, CODE.replace('="1-3|4|5-7|8-9"', ''));
     assert.equal(await rendered(page), numbered);
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} input[data-command="code.numbers"]').checked`), true);
-    await click(page, `${PANEL} label.ed-check`);
+    await clickText(page, `${PANEL} label.ed-check`);
     await frames(page);
     const bare = source.replace(CODE, CODE.replace(' data-line-numbers="1-3|4|5-7|8-9"', ''));
     assert.equal(await rendered(page), bare);

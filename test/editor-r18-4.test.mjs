@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 // the index of the figures slide and of the slide of the effective potential in index.html
@@ -76,7 +76,7 @@ async function caret(page) {
     }
     return null;
   })()`);
-  await click(page, at);
+  await clickText(page, at);
   await wait(page);
   assert.equal((await focus(page)).caret, true, 'the click does not put the caret into the paragraph');
 }
@@ -89,7 +89,7 @@ for (const platform of PLATFORMS) {
   test(`an undo or a redo that frames a figure takes the caret off the paragraph (${platform})`, async (t) => {
     for (const how of ['undo', 'redo']) {
       const page = await load(t, platform, FIGURES);
-      await click(page, await rect(page, IMAGE));
+      await clickText(page, await rect(page, IMAGE));
       await press(page, 'ArrowRight');
       await wait(page);
       assert.equal(await undoLabel(page), 'Undo Move');
@@ -146,7 +146,7 @@ for (const platform of PLATFORMS) {
   test(`an undo or a redo of the TeX of an inline formula keeps its paragraph framed (${platform})`, async (t) => {
     for (const how of ['undo', 'redo']) {
       const page = await load(t, platform, POTENTIAL);
-      await click(page, await rect(page, `Reveal.getCurrentSlide().querySelector('p mjx-container')`));
+      await clickText(page, await rect(page, `Reveal.getCurrentSlide().querySelector('p mjx-container')`));
       await wait(page, 300);
       assert.equal(await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); if (!f) return false; f.focus(); f.setSelectionRange(f.value.length, f.value.length); return true; })()`), true, 'the click does not open the TeX of the formula');
       await type(page, ' + 1');

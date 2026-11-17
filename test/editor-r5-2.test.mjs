@@ -12,7 +12,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { byteExact, click, drag, press, saveAndReopen, selectFigure, selectPicture } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure, selectPicture } from './helpers/editor.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const PLATFORMS = ['mac', 'other'];
@@ -133,7 +133,7 @@ async function arrange(page) {
   if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
   await sleep(50);
   const at = await page.evaluate(`(() => { const b = [...document.querySelectorAll('${PANEL} button')].find((b) => [b.textContent.trim(), b.title, b.getAttribute('aria-label')].includes('Arrange')); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(50);
   return sizeFields(page);
 }
@@ -155,7 +155,7 @@ async function setField(page, name, value) {
 // the figure box of the math slide selected with a click on its image, whose grips and size fields size
 // the image, with its caption kept under it
 async function selectFigureBoxFigure(page) {
-  await click(page, FIGURE_BOX_IMG);
+  await clickText(page, FIGURE_BOX_IMG);
   await frames(page);
 }
 
@@ -174,8 +174,8 @@ for (const platform of PLATFORMS) {
 
     // a white figure of a plate, which the theme scales down to fit
     const plate = await editor(platform, WHITE_FIGURE);
-    await click(plate, '.reveal section.present .plate > img');
-    await click(plate, '.reveal section.present .plate > img');
+    await clickText(plate, '.reveal section.present .plate > img');
+    await clickText(plate, '.reveal section.present .plate > img');
     await arrange(plate);
     await setField(plate, 'width', 1800);
     // the white frame of 24 px around the picture is inside the width of the image
@@ -371,35 +371,35 @@ for (const platform of PLATFORMS) {
     };
     await check(MATH, 'the add');
     // moved up with the navigator, and back with an undo
-    await click(page, await navRow(page, MATH));
+    await clickText(page, await navRow(page, MATH));
     await exec(page, 'slide.moveUp');
     await frames(page);
     await check(MATH - 1, 'a move up');
     await undo(page);
     await check(MATH, 'an undo of the move');
     // a slide added before it
-    await click(page, await navRow(page, 1));
+    await clickText(page, await navRow(page, 1));
     await exec(page, 'slide.new');
     await frames(page);
     await check(MATH + 1, 'a new slide before it');
     await undo(page);
     await check(MATH, 'an undo of the new slide');
     // a slide before it deleted
-    await click(page, await navRow(page, 1));
+    await clickText(page, await navRow(page, 1));
     await exec(page, 'slide.delete');
     await frames(page);
     await check(MATH - 1, 'a delete of a slide before it');
     await undo(page);
     await check(MATH, 'an undo of the delete');
     // duplicated: the copy after it gets a copy of its guides, as in Keynote
-    await click(page, await navRow(page, MATH));
+    await clickText(page, await navRow(page, MATH));
     await exec(page, 'slide.duplicate');
     await frames(page);
     await check(MATH + 1, 'a duplicate', [MATH, MATH + 1]);
     await undo(page);
     await check(MATH, 'an undo of the duplicate');
     // copied and pasted after it: the pasted slide keeps the guides, as in Keynote
-    await click(page, await navRow(page, MATH));
+    await clickText(page, await navRow(page, MATH));
     await exec(page, 'slide.copy');
     await exec(page, 'slide.paste');
     await frames(page);
@@ -425,7 +425,7 @@ for (const platform of PLATFORMS) {
     // the next session adds a slide at the start before it shows the slide of the guide
     const page = await editor(platform, 0, { keep: true });
     await exec(page, 'view.rulers');
-    await click(page, await navRow(page, 0));
+    await clickText(page, await navRow(page, 0));
     await exec(page, 'slide.new');
     await frames(page);
     await goTo(page, MATH + 1);
@@ -447,7 +447,7 @@ const constrainSwitch = (page) => page.evaluate(`(() => {
 })()`);
 const toggleConstrain = async (page) => {
   const at = await page.evaluate(`(() => { const l = [...document.querySelectorAll('${PANEL} label.ed-check')].find((l) => l.textContent.trim() === 'Constrain Proportions'); const r = l.querySelector('input').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 };
 const scaleOf = async (page) => (await screen(page, 1, 0)).x - (await screen(page, 0, 0)).x;
@@ -523,7 +523,7 @@ for (const platform of PLATFORMS) {
     box = await slideBox(page, FIGURE_BOX_IMG);
     assert.ok(near(box.width / box.height, aspect, 0.01), `the grip e of a stretched image changes its aspect from ${aspect.toFixed(3)} to ${(box.width / box.height).toFixed(3)}`);
     // the fields of the picture selected inside its figure give the picture alone
-    await click(page, FIGURE_BOX_IMG);
+    await clickText(page, FIGURE_BOX_IMG);
     await frames(page);
     await setField(page, 'width', 200);
     box = await slideBox(page, FIGURE_BOX_IMG);
@@ -549,8 +549,8 @@ for (const platform of PLATFORMS) {
     let page = await editor(platform, SPLIT);
     const VIDEO = '.reveal section.present .figure-box > video';
     // the figure box is selected with a first click, and its video with a second
-    await click(page, VIDEO);
-    await click(page, VIDEO);
+    await clickText(page, VIDEO);
+    await clickText(page, VIDEO);
     await frames(page);
     await arrange(page);
     assert.deepEqual(await constrainSwitch(page), { checked: true, disabled: false }, 'the switch of a video is not on and free');
@@ -566,7 +566,7 @@ for (const platform of PLATFORMS) {
 
     page = await editor(platform, 0);
     await page.evaluate(`localStorage.setItem('beeson-edit-constrain-qr', 'off')`);
-    await click(page, '.reveal section.present .qr');
+    await clickText(page, '.reveal section.present .qr');
     await arrange(page);
     assert.deepEqual(await constrainSwitch(page), { checked: true, disabled: true }, 'the switch of a QR code is not held on');
     await setField(page, 'height', 260);
@@ -589,7 +589,7 @@ for (const platform of PLATFORMS) {
   test(`${platform}: the side and corner grips of a text block set its width, which W shows, and its height follows its text`, async () => {
     const page = await editor(platform);
     const lead = await leadBox(page);
-    await click(page, lead);
+    await clickText(page, lead);
     await press(page, 'Escape');
     await frames(page);
     const grips = await gripsAt(page);
@@ -626,7 +626,7 @@ for (const platform of PLATFORMS) {
   test(`${platform}: a text block narrowed by a grip until its text wraps keeps its top, and grows down`, async () => {
     const page = await editor(platform);
     const lead = await leadBox(page);
-    await click(page, lead);
+    await clickText(page, lead);
     await press(page, 'Escape');
     await frames(page);
     const k = await scaleOf(page);
@@ -688,10 +688,10 @@ for (const platform of PLATFORMS) {
   test(`${platform}: the first click on the image of a figure selects the figure, and the second the image, which is rotated without its caption, and Esc selects the figure`, async () => {
     const page = await editor(platform);
     const caption = await slideBox(page, '.reveal section.present .figure-box .caption');
-    await click(page, FIGURE_BOX_IMG);
+    await clickText(page, FIGURE_BOX_IMG);
     await frames(page);
     assert.deepEqual(await selected(page), ['figure.figure-box'], 'the first click on the image does not select its figure');
-    await click(page, FIGURE_BOX_IMG);
+    await clickText(page, FIGURE_BOX_IMG);
     await frames(page);
     assert.deepEqual(await selected(page), ['img.for-dark'], 'the second click on the image does not select the image');
     assert.equal((await state(page, 'image.editMask')).enabled, true, 'Edit Mask is not offered on the image');
@@ -700,12 +700,12 @@ for (const platform of PLATFORMS) {
     await exec(page, 'selection.container');
     await frames(page);
     assert.deepEqual(await selected(page), ['figure.figure-box'], 'Select Figure does not select the figure of the image');
-    await click(page, FIGURE_BOX_IMG);
+    await clickText(page, FIGURE_BOX_IMG);
     const z = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present .figure-box').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.bottom + 3 }; })()`);
-    await click(page, z);
+    await clickText(page, z);
     await frames(page);
     assert.deepEqual(await selected(page), ['figure.figure-box'], 'a click on the band under the figure does not select it');
-    await click(page, FIGURE_BOX_IMG);
+    await clickText(page, FIGURE_BOX_IMG);
     await frames(page);
     assert.deepEqual(await selected(page), ['img.for-dark'], 'a click on the image of a selected figure does not select the image');
     const rotor = await page.evaluate(`(() => { const r = document.querySelector('.beeson-rotor').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -738,7 +738,7 @@ for (const platform of PLATFORMS) {
     const locked = await render(page);
     assert.match(locked, /<figure class="figure-box fragment" data-fragment-index="2" data-locked>/, 'the figure is not locked');
     await press(page, 'Escape');
-    await click(page, FIGURE_BOX_IMG);
+    await clickText(page, FIGURE_BOX_IMG);
     await frames(page);
     assert.deepEqual(await selected(page), ['figure.figure-box'], 'the first click on the image of a locked figure does not select the figure');
     assert.equal((await state(page, 'selection.selectMedia')).enabled, false, 'Return selects the image of a locked figure');
@@ -852,7 +852,7 @@ for (const platform of PLATFORMS) {
     const blocks = [['The lead-in of a display', true], ['where the Coriolis term is colored.', false]];
     for (const [words, room] of blocks) {
       const at = await page.evaluate(`(() => { const p = [...document.querySelectorAll('.reveal section.present p')].find((p) => p.textContent === ${JSON.stringify(words)}); const r = p.getBoundingClientRect(); return { x: r.right + 3, y: r.top + r.height / 2 }; })()`);
-      await click(page, at);
+      await clickText(page, at);
       await frames(page);
       const v = await rotorView(page);
       assert.ok(v.rotor, `the paragraph "${words}" does not have a rotate grip`);
