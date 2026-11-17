@@ -94,11 +94,12 @@ export function chromeArgs({ profile, offline = true, wholeFrames = false, platf
  * Starts Chrome and returns an object with newPage() and close(). With offline set, every host
  * name is mapped to a failed lookup, thus each network load of a deck is reported as an error.
  * Without it, only 127.0.0.1 is reached. A request that is not answered within timeout ms fails.
- * With wholeFrames set, a frame is drawn only once every layer in it is rastered, which a screenshot
+ * A step of the setup of a new page is given setup ms, at most timeout ms, before the page is tried
+ * again. With wholeFrames set, a frame is drawn only once every layer in it is rastered, which a screenshot
  * after a scroll and heavy work in the page needs, see scripts/export-pptx.mjs, and text is drawn
  * without subpixel antialiasing.
  */
-export async function launch({ offline = true, timeout = 120000, wholeFrames = false } = {}) {
+export async function launch({ offline = true, timeout = 120000, setup = 15000, wholeFrames = false } = {}) {
   const chrome = findChrome();
   const profile = mkdtempSync(join(tmpdir(), 'beeson-chrome-'));
   const args = chromeArgs({ profile, offline, wholeFrames });
@@ -180,7 +181,7 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
   async function newPage({ width = 1920, height = 1080, mobile = false, scale = 1, motion = false, drafts = false } = {}) {
     // on Windows runners, a fresh about:blank tab right after closing a page can hang or detach
     // before answering Page.enable. close a wedged tab and try another target twice at most
-    const setupLimit = Math.min(timeout, 15000);
+    const setupLimit = Math.min(timeout, setup);
     const cleanupLimit = Math.min(timeout, 2000);
     let targetId;
     let sessionId;
