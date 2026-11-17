@@ -465,6 +465,33 @@ test('a plot is held until its cue, offers the tabs of its element and of the st
   assert.deepEqual(page.errors, []);
 });
 
+// the frames drawn by the plot held from its cue on, until three of them are past the first frame.
+// the time of each animation frame is lag ms before the time read by performance.now, as it is
+// for an animation frame that began before the step was handled
+const cued = (lag) => `(async () => {
+  const view = Beeson.plots.find((p) => p.el.id === 'held');
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (f) => raf((t) => f(t - ${lag}));
+  const frames = [];
+  const draw = view.draw.bind(view);
+  view.draw = () => { frames.push(view.frame); draw(); };
+  Reveal.next();
+  while (frames.filter((u) => u > 0).length < 3) await new Promise((done) => raf(done));
+  return frames;
+})()`;
+
+test('a plot started at its cue is drawn from its first frame, also in an animation frame that began before the cue', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/plot-reveals.html'));
+  await page.waitFor(deckSettled);
+  // the tab has 3 frames over 2 s, hence the frames drawn in the first tenths of a second are below 1
+  const frames = await page.evaluate(cued(50));
+  assert.ok(frames.every((u) => u < 1), `the frames drawn after the cue are ${frames.map((u) => u.toFixed(3)).join(', ')}`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a held plot is printed at its still frame before its cue and at its last frame from the cue on', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
