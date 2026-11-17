@@ -146,8 +146,7 @@ test('a click on an avatar follows the person to the slide, and brings the selec
   await t.test('Enter and Space on the focused avatar stop and follow again, and the menu goes to the slide', async () => {
     await front(ben);
     await ben.evaluate(`document.querySelector(${JSON.stringify(avatar('Ana'))}).focus()`);
-    // a key of Enter that a button takes as a click carries its text
-    for (const type of ['keyDown', 'keyUp']) await ben.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
+    await key(ben, 'Enter');
     await following(ben, null);
     await key(ben, 'Space');
     await following(ben, anaId);
