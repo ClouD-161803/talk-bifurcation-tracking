@@ -3,7 +3,7 @@
 // kept in its data-tex, since the text of a typeset formula is not its source. a text with the
 // focus is not typeset, since its TeX is edited there
 
-const hasTex = (s: string): boolean => /\\\(|\\\[/.test(s);
+export const hasTex = (s: string): boolean => /\\\(|\\\[/.test(s);
 
 // one typesetting at a time, as MathJax asks of a page
 let queue: Promise<unknown> = Promise.resolve();

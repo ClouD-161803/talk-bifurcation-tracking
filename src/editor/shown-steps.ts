@@ -2,8 +2,11 @@
 // edited, but an element that is hidden at a step, e.g. a derivation faded out and replaced by
 // another one in its place, would then lie under the elements shown after it. the steps of such a
 // slide are cut into ranges at each step at which an element is hidden, and the slide is shown one
-// range at a time, as it is at the last step of the range. a switch in the status bar chooses the
-// range, and a slide without such an element is shown whole, without the switch
+// range at a time, as it is at the last step of the range. a switch in the status bar and the same
+// buttons as tabs under the slide choose the range, and a slide without such an element is shown
+// whole, without them
+
+import { injectStyle } from './ui/dom.ts';
 
 export type StepRange = { from: number; to: number };
 export type Fragment = { el: Element; step: number; kind: 'in' | 'out' | 'only' };
@@ -84,8 +87,23 @@ export function label(range: StepRange, last: boolean): string {
   return range.from === range.to ? `Step ${range.from}` : `Steps ${range.from}–${range.to}`;
 }
 
+// the tabs hang under the slide on the pasteboard, or above the slide when the canvas does not have
+// the room, so that the versions of a text stacked in one place can be found without a cover over
+// the slide
+const CSS = `
+.beeson-step-tabs { position: fixed; z-index: 52; display: flex; gap: 2px; font: 12px/1 var(--ed-font); }
+.beeson-step-tabs[hidden], html.beeson-previewing .beeson-step-tabs { display: none; }
+.beeson-step-tabs button { min-width: 24px; height: 26px; padding: 0 10px; border: 1px solid var(--ed-line); border-radius: 6px; background: var(--ed-panel); color: var(--ed-text); font: inherit; white-space: nowrap; cursor: default; }
+.beeson-step-tabs button:hover { background: var(--ed-bg); }
+.beeson-step-tabs button[aria-pressed="true"] { border-color: var(--ed-select); background: var(--ed-select); color: var(--ed-on-select); }
+.beeson-step-tabs button:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 1px; }
+`;
+// the gap between the slide and its tabs, in CSS px
+const GAP = 4;
+
 export class ShownSteps {
   readonly box = document.createElement('span');
+  readonly tabs = document.createElement('div');
   private readonly slide: () => Element | null;
   private readonly onChange: () => void;
   // the range chosen on each slide, kept while the editor is open
@@ -96,12 +114,17 @@ export class ShownSteps {
     this.slide = slide;
     this.onChange = onChange;
     this.box.className = 'beeson-shown-steps';
-    this.box.setAttribute('role', 'group');
-    this.box.setAttribute('aria-label', 'Steps shown on the slide');
-    this.box.hidden = true;
+    this.tabs.className = 'beeson-step-tabs';
+    for (const el of [this.box, this.tabs]) {
+      el.setAttribute('role', 'group');
+      el.setAttribute('aria-label', 'Steps shown on the slide');
+      el.hidden = true;
+    }
+    injectStyle('step-tabs', CSS);
+    document.body.append(this.tabs);
   }
 
-  // the marks and the switch follow the current slide and its steps
+  // the marks, the switch, and the tabs follow the current slide and its steps
   refresh(): void {
     // a preview of the steps shows every range in turn, and the last one at its end
     if (document.documentElement.classList.contains('beeson-previewing')) return;
@@ -109,33 +132,56 @@ export class ShownSteps {
     const ranges = slide ? rangesOf(slide) : [];
     if (!slide || ranges.length < 2) {
       if (slide) showRange(slide, null);
-      this.box.hidden = true;
-      this.box.replaceChildren();
+      for (const el of [this.box, this.tabs]) {
+        el.hidden = true;
+        el.replaceChildren();
+      }
       this.key = '';
       return;
     }
     const at = Math.min(this.chosen.get(slide) ?? 0, ranges.length - 1);
     showRange(slide, ranges[at]);
     const labels = ranges.map((l, i) => label(l, i === ranges.length - 1));
-    const key = `${labels.join('|')}#${at}`;
-    this.box.hidden = false;
-    if (key === this.key) return;
-    this.key = key;
-    const head = document.createElement('span');
-    head.textContent = 'Shows';
-    this.box.replaceChildren(head, ...labels.map((text, i) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = text;
-      b.title = `Show the slide as it is at step ${ranges[i].to}, without the elements hidden by then and those shown after it`;
-      b.setAttribute('aria-pressed', String(i === at));
-      b.classList.toggle('on', i === at);
-      b.addEventListener('click', (ev) => {
-        if (ev.detail > 0) b.blur();
-        this.choose(slide, i);
+    this.box.hidden = this.tabs.hidden = false;
+    // the buttons are made again only for other labels, so that a pressed button keeps the focus
+    const key = labels.join('|');
+    if (key !== this.key) {
+      this.key = key;
+      const head = document.createElement('span');
+      head.textContent = 'Shows';
+      const buttons = () => labels.map((text, i) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = text;
+        b.title = `Show the slide as it is at step ${ranges[i].to}, without the elements hidden by then and those shown after it`;
+        b.addEventListener('click', (ev) => {
+          if (ev.detail > 0) b.blur();
+          const now = this.slide();
+          if (now) this.choose(now, i);
+        });
+        return b;
       });
-      return b;
-    }));
+      this.box.replaceChildren(head, ...buttons());
+      this.tabs.replaceChildren(...buttons());
+    }
+    for (const el of [this.box, this.tabs]) {
+      el.querySelectorAll('button').forEach((b, i) => {
+        b.setAttribute('aria-pressed', String(i === at));
+        b.classList.toggle('on', i === at);
+      });
+    }
+    this.place();
+  }
+
+  // the tabs are set at the lower left corner of the slide, outside it, and clipped to the cell
+  private place(): void {
+    const cell = document.querySelector('.beeson-edit-canvas')?.getBoundingClientRect();
+    const slide = document.querySelector('.reveal:not(.beeson-peek)')?.getBoundingClientRect();
+    if (!cell || !slide) return;
+    const { offsetWidth: w, offsetHeight: h } = this.tabs;
+    const over = slide.bottom + GAP + h > cell.bottom && slide.top - GAP - h >= cell.top;
+    const x = Math.max(cell.left + GAP, slide.left), y = over ? slide.top - GAP - h : slide.bottom + GAP;
+    Object.assign(this.tabs.style, { left: `${x}px`, top: `${y}px`, clipPath: `inset(${cell.top - y}px ${x + w - cell.right}px ${y + h - cell.bottom}px ${cell.left - x}px)` });
   }
 
   // the last range of the slide is chosen, e.g. at the end of a preview of its steps

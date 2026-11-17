@@ -12,7 +12,7 @@ import { make, store, stored } from '../ui/dom.ts';
 import { Dialog, host } from '../ui/dialog.ts';
 import { display } from '../keymap.ts';
 import { forget, loadRecents, pageOf, recentsOfPage, remember, type Recent } from './recent.ts';
-import { startShow } from '../show.ts';
+import { startShow, writeDeck } from '../show.ts';
 
 type PickerOptions = { types?: { description: string; accept: Record<string, string[]> }[]; multiple?: boolean; suggestedName?: string };
 type Pickers = {
@@ -228,6 +228,9 @@ export function install(app: App): void {
   // a save after Save as writes the chosen file without a merge
   let overwrite = false;
   let autosaveTimer = 0;
+  // true once a save was a download, after which the file at the address of the page is not the
+  // saved text
+  let downloaded = false;
 
   const problemText = (p: Pairing['problems'][number]): string => `slide ${app.slideNumber(p.slide) ?? '?'}, ${p.tag}: ${p.reason}`;
 
@@ -571,6 +574,7 @@ export function install(app: App): void {
       text = (n ? `Saved ${edits} to ${app.handle.name} at ${clock()}` : `Saved ${app.handle.name} at ${clock()}`) + (also ? `. ${also}` : '');
     } else {
       const also = download(fileName(), rendered.text);
+      downloaded = true;
       text = `${n ? `Saved a copy with ${edits}` : `Saved a copy of ${fileName()}`}. ${REPLACE()}${also ? `. ${also}` : ''}`;
     }
     app.saved = rendered.text;
@@ -648,16 +652,24 @@ export function install(app: App): void {
   async function present(hash = '', tab = false): Promise<{ win: Window | null } | null> {
     const choice = app.session ? 'save' : app.dirty ? await askFirst('present') : 'saved';
     if (!choice) return null;
-    const show = tab ? null : startShow(app);
-    if (choice === 'save') await (app.session ? sent() : save()).catch((e) => (show?.end(), Promise.reject(e)));
+    // a save that is a download does not write the file at the address of the page, hence the show
+    // then plays the saved text. the copy is downloaded once a show in place ends, since the
+    // browser may ask where to save it in a dialog that would cover the show
+    const later = choice === 'save' && !app.session && !tab && !app.handle && !canWrite();
+    const show = tab ? null : startShow(app, later ? () => void save().catch((e) => app.fail(e)) : undefined);
+    if (choice === 'save' && !later) await (app.session ? sent() : save()).catch((e) => (show?.end(), Promise.reject(e)));
     if (choice === 'discard') await discardEdits();
-    if (choice === 'save' && app.dirty && !app.session) {
+    if (choice === 'save' && app.dirty && !later && !app.session) {
       show?.end();
       return null;
     }
+    const text = later ? render() : downloaded && !app.handle ? app.saved : null;
     // from-editor lets the show in a tab end at a click past its last step (src/main.ts)
     const url = `${deckAddress(show ? [] : ['from-editor'])}${hash}`;
-    return { win: show ? show.load(url) : window.open(url, '_blank') };
+    if (show) return { win: show.load(url, text) };
+    const win = window.open(text === null ? url : '', '_blank');
+    if (win && text !== null) writeDeck(win, url, text);
+    return { win };
   }
 
   const files: Files = {
