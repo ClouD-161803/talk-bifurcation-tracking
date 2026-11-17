@@ -2705,15 +2705,28 @@
           disk.style.setProperty("--plot-iris", `${r.iris}s`);
           this.styleItem(disk, r, [p.id, r.id]);
         });
-        for (const c of p.curves) {
+        for (const [k, c] of p.curves.entries()) {
           const attrs = { class: "plot-curve", "stroke-width": c.width };
           if (c.dash) attrs["stroke-dasharray"] = c.dash.join(" ");
           const linear2 = p.x.scale === "linear" && p.y.scale === "linear";
           const node = c.circle && linear2 ? svg("ellipse", { ...attrs, cx: this.X(b, c.circle[0]), cy: this.Y(b, c.circle[1]), rx: c.circle[2] * b.sx, ry: c.circle[2] * b.sy }, statics) : svg("path", { ...attrs, d: this.path(b, c.circle ? circlePoints(c.circle) : c.points ?? []) }, statics);
-          if (c.wipe > 0) {
-            node.setAttribute("pathLength", "1");
-            node.classList.add("plot-wipe");
-            node.style.setProperty("--plot-wipe", `${c.wipe}s`);
+          let wiped = null;
+          if (c.wipe > 0 && c.dash) {
+            const id = `plot-${this.uid}-${p.id}-wipe-${k}`, pad = 14;
+            const mask = svg("mask", { id, maskUnits: "userSpaceOnUse", x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, defs);
+            wiped = mask.appendChild(node.cloneNode());
+            for (const name of ["class", "stroke-dasharray"]) wiped.removeAttribute(name);
+            for (const [name, value] of [["fill", "none"], ["stroke", "white"], ["stroke-width", String(c.width + 4)]]) wiped.setAttribute(name, value);
+            node.setAttribute("mask", `url(#${id})`);
+          } else if (c.wipe > 0) wiped = node;
+          if (wiped) {
+            wiped.setAttribute("pathLength", "1");
+            wiped.classList.add("plot-wipe");
+            wiped.style.setProperty("--plot-wipe", `${c.wipe}s`);
+            if (wiped !== node) {
+              if (c.delay > 0) wiped.style.setProperty("--plot-delay", `${c.delay}s`);
+              this.gate(wiped, [p.id, c.id]);
+            }
           }
           this.styleItem(node, c, [p.id, c.id]);
         }
