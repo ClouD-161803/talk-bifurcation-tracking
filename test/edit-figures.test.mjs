@@ -157,22 +157,22 @@ test('after a failed compile the errors are told, the last good output is kept, 
   await w.stop();
 });
 
-test('a figure without a source or with an invalid name is not compiled, and is counted as not compiled as npm run check counts it', async (t) => {
+test('a figure without a source or with an invalid name is not compiled, and is not counted as not compiled, since npm run check tells it', async (t) => {
   const f = folder(t, { 'figures/a.tex': DRAWING, 'figures/bad name.tex': DRAWING });
   const html = deck(tag('a'), tag('lost'), tag('bad name'), '<div class="tikz"></div>');
   f.write('index.html', html);
   const { w, c } = watcher(f, html);
   await w.idle();
   assert.deepEqual(c.calls.map((call) => call.name), ['a']);
-  assert.equal(w.state().uncompiled, figureProblems(join(f.dir, 'index.html')).length);
-  assert.equal(w.state().uncompiled, 3);
+  assert.equal(figureProblems(join(f.dir, 'index.html')).length, 3);
+  assert.equal(w.state().uncompiled, 0);
   assert.deepEqual(Object.keys(w.state().outputs).sort(), ['a', 'lost']);
   assert.equal(w.state().outputs.lost, null);
   // a source added on disk is compiled
   f.write('figures/lost.tex', DRAWING);
   await twoPolls(w);
   assert.deepEqual(c.calls.map((call) => call.name), ['a', 'lost']);
-  assert.equal(w.state().uncompiled, 2);
+  assert.equal(w.state().uncompiled, 0);
   await w.stop();
 });
 
