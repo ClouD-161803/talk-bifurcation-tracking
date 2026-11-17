@@ -1,7 +1,8 @@
 // the click model of Keynote for text elements, with trusted input: the first click on a text element
 // selects it as a box, a drag from it moves it, a second click or a double click puts the caret in,
 // and one click and Delete remove it. Alt-click and the submenu Select of the context menu reach
-// the elements under the pointer behind the front one
+// the elements under the pointer behind the front one, and the Delete button of the toolbar
+// deletes the selection
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -200,6 +201,19 @@ test('a press on the selected paragraph that the browser cancels does not put th
   assert.deepEqual(page.errors, []);
 });
 
+test('the Delete button deletes the slide chosen in the slide list, as Edit > Delete does', async (t) => {
+  const page = await open(t);
+  const slides = await count(page, '.reveal .slides > section');
+  await click(page, '.beeson-edit-nav .row:nth-of-type(2)');
+  await frames(page);
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-top [data-command="element.delete"]').disabled`), false);
+  await click(page, '.beeson-edit-top [data-command="element.delete"]');
+  await page.waitFor(`document.querySelectorAll('.reveal .slides > section').length === ${slides - 1}`);
+  assert.equal(await count(page, '.reveal .slides > section h2'), slides - 1);
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section h2')].some((h) => h.textContent === 'A table')`), false, 'another slide than the chosen one is deleted');
+  assert.deepEqual(page.errors, []);
+});
+
 test('the helper clickText with Shift adds a paragraph to the selection with one click', async (t) => {
   const page = await open(t);
   await clickText(page, await onWords(page, BACK), { modifiers: 'Shift' });
@@ -228,6 +242,35 @@ test('the context menu lists the elements under the pointer in its submenu Selec
   assert.deepEqual(page.errors, []);
 });
 
+for (const platform of ['mac', 'other']) {
+  test(`${platform}: the Delete button follows Redo, is dimmed without a selection, gives its key, and deletes the selection`, async (t) => {
+    const page = await open(t, platform);
+    const BUTTON = '.beeson-edit-top [data-command="element.delete"]';
+    const next = await page.evaluate(`document.querySelector('.beeson-edit-top [data-command="edit.redo"]')?.nextElementSibling?.dataset.command ?? null`);
+    assert.equal(next, 'element.delete', 'the Delete button does not follow Redo');
+    assert.equal(await page.evaluate(`document.querySelector(${js(BUTTON)}).disabled`), true, 'the Delete button is not dimmed without a selection');
+    assert.match(await page.evaluate(`document.querySelector(${js(BUTTON)}).title`), /^Delete \(.+\)$/, 'the tooltip of Delete does not give its key');
+    await click(page, await onWords(page, BACK));
+    assert.equal(await page.evaluate(`document.querySelector(${js(BUTTON)}).disabled`), false, 'the Delete button is dimmed with a selection');
+    await click(page, BUTTON);
+    assert.equal(await count(page, '.reveal section.present > p'), 1, 'the Delete button does not delete the paragraph');
+    assert.deepEqual(page.errors, []);
+  });
+}
+
+for (const size of [{ width: 760, height: 700 }, { width: 390, height: 844, mobile: true }]) test(`${size.width} px wide: Delete is reached in the toolbar or in More`, async (t) => {
+  const page = await open(t, 'other', size);
+  await click(page, await onWords(page, BACK));
+  const folded = await page.evaluate(`(() => { const b = document.querySelector('.beeson-edit-top [data-command="element.delete"]'); return !b || b.getClientRects().length === 0; })()`);
+  if (folded) {
+    await click(page, '.beeson-edit-top .more-groups');
+    await page.waitFor(`!!document.querySelector('.beeson-edit-menu [data-command="element.delete"]')`);
+    await click(page, '.beeson-edit-menu [data-command="element.delete"]');
+  } else await click(page, '.beeson-edit-top [data-command="element.delete"]');
+  assert.equal(await count(page, '.reveal section.present > p'), 1, 'Delete is not reached in a narrow window');
+  assert.deepEqual(page.errors, []);
+  t.diagnostic(folded ? 'in More' : 'in the toolbar');
+});
 
 // a trusted tap of one finger at the point x, y
 async function tap(page, { x, y }) {
