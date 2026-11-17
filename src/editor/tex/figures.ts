@@ -2,7 +2,8 @@
 // or a blank drawing, and the Edit Source sheet of a figure. the edit command writes each source
 // into figures/ under a free name and compiles the figure once the deck holds it. a pause in
 // typing in the sheet compiles the source as a preview, which is drawn on the slide in place of the
-// output until Cancel, or until the output of the source applied arrives
+// output until Cancel, or until the compile of the source applied ends, with its output or with the
+// last good output after an error
 
 import type { FigureError } from '../../session/protocol.ts';
 import type { FigureOutput } from '../../tikz.ts';
@@ -148,7 +149,20 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     field.scrollTop = Math.max(0, (n - 3) * 18);
     lines();
   };
-  const boxOf = (el: HTMLElement) => ({ width: parseFloat(el.style.width) || el.offsetWidth || null, height: parseFloat(el.style.height) || el.offsetHeight || null });
+  // the box of the style, which the edit command compiles the output in
+  const px = (v: string): number | null => Number(/^([\d.]+)px$/.exec(v.trim())?.[1] ?? NaN) || null;
+  const boxOf = (el: HTMLElement) => ({ width: px(el.style.width), height: px(el.style.height) });
+  // the previews kept after Apply, by the time of the last compile of their figure then. each is
+  // taken off once the figure is compiled again with errors. a new output takes it off itself
+  const kept = new Map<string, number | undefined>();
+  let listening = false;
+  const settle = (s: { compiling: string | null; compiled: Record<string, number>; errors: Record<string, FigureError[]> }): void => {
+    for (const [name, was] of kept) {
+      if (s.compiling === name || s.compiled[name] === was) continue;
+      kept.delete(name);
+      if (s.errors[name]?.length) figuresApi().preview?.(name, null);
+    }
+  };
 
   async function preview(): Promise<void> {
     const link = host.link();
@@ -202,8 +216,13 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
         return;
       }
       if (answer.status !== 200) return void (said.textContent = failure(answer).message);
-      // the preview of another text is not kept until the output of this one arrives
-      if (drawn !== source) figuresApi().preview?.(opened.name, null);
+      // the preview of this text is kept until its compile ends, which a text on disk already does not start
+      if (drawn !== source || source === (theirs === undefined ? opened.base : theirs)) figuresApi().preview?.(opened.name, null);
+      else {
+        kept.set(opened.name, link.state()?.compiled[opened.name]);
+        if (!listening) link.on(settle);
+        listening = true;
+      }
       close();
     } catch (e) {
       said.textContent = e instanceof Error ? e.message : String(e);
