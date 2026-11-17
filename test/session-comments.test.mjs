@@ -529,7 +529,9 @@ for (const from of ['online', 'offline']) {
     await a.waitFor(`${C}.connection === 'ended'`);
     assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: ENDED });
     await sees(a, SENDS, [['Comment', true, ENDED], ['Resolve', true, ENDED], ['Thread actions', true, ENDED], ['Reply', true, ENDED]]);
-    clean(a, from === 'offline' ? REFUSED : []);
+    // a poll that the page sent just before its bye may reach the edit command after it, and is
+    // then answered 404
+    clean(a, from === 'offline' ? REFUSED : [/status of 404 .*\/\.session\/events\?/]);
   });
 }
 
