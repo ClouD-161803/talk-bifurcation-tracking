@@ -5001,6 +5001,9 @@ void main() {
   var TURN2 = 90;
   var ORBIT_WIDTH = 4;
   var RIB_WIDTH = 2;
+  var TRAIL_WIDTH = 1.5;
+  var TRAIL_ALPHA = 0.3;
+  var GHOST_ALPHA = 0.1;
   var DOT_SIZE = 18;
   var START = "start";
   var NUDGE = "nudge";
@@ -5087,7 +5090,16 @@ void main() {
       return `its JSON is malformed, ${String(error)}`;
     }
     const n = data?.orbit?.length ?? 0;
-    if (n < 3) return "its orbit has fewer than three points";
+    for (const f of data?.families ?? []) {
+      const m = f.orbits?.[0]?.length ?? 0;
+      if (!(f.values?.length >= 1 && f.values.length === f.orbits.length)) return `the family ${f.id} does not have one value for each orbit`;
+      if (m < 3 || f.orbits.some((o) => o.length !== m)) return `the orbits of the family ${f.id} do not have the same number of points, at least three`;
+      const sign = Math.sign(f.values.at(-1) - f.values[0]);
+      if (f.values.some((v, i) => i > 0 && Math.sign(v - f.values[i - 1]) !== sign)) return `the values of the family ${f.id} are not monotone`;
+    }
+    if (n < 3 && !data?.families?.length) return "its orbit has fewer than three points";
+    data.orbit = data.orbit ?? [];
+    data.strips = data.strips ?? [];
     for (const r of data.strips ?? []) {
       if (r.directions?.length !== n) return `the strip ${r.id} has ${r.directions?.length ?? 0} directions for ${n} points of the orbit`;
       if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
@@ -5100,9 +5112,22 @@ void main() {
     }
     return data;
   }
+  var VALUE_TOLERANCE = 1e-3;
+  function memberAt(values, v) {
+    const lo = Math.min(values[0], values.at(-1)), hi = Math.max(values[0], values.at(-1)), tolerance = VALUE_TOLERANCE * (hi - lo);
+    if (v < lo - tolerance || v > hi + tolerance) return null;
+    v = clamp2(v, lo, hi);
+    for (let i = 0; i + 1 < values.length; i++) {
+      const a = values[i], b = values[i + 1];
+      if ((v - a) * (v - b) <= 0) return [i, a === b ? 0 : (v - a) / (b - a)];
+    }
+    return [0, 0];
+  }
   var CACHE4 = /* @__PURE__ */ new WeakMap();
   var Bundle = class _Bundle {
     constructor(el, data, THREE) {
+      // the value of the clock of the plot of the slide
+      this.clock = null;
       this.subtle = "";
       this.colors = { accent: "", blue: "", bg: "" };
       this.marked = false;
@@ -5148,7 +5173,7 @@ void main() {
       };
       this.el = el;
       this.THREE = THREE;
-      this.orbit = data.orbit;
+      this.orbit = data.orbit ?? [];
       this.point = data.libration_point ?? null;
       this.times = data.times ?? null;
       const turn3 = num4(el.dataset.turn, TURN2);
@@ -5171,8 +5196,9 @@ void main() {
       this.orbit.forEach((p, i) => this.setSegment(this.line.geometry, i, p, this.orbit[(i + 1) % this.orbit.length]));
       this.dot = this.makeDot(this.point);
       this.scene.add(this.line, this.dot);
-      this.strips = data.strips.map((r, i) => this.makeStrip(r, i));
-      const points = [...this.orbit];
+      this.strips = (data.strips ?? []).map((r, i) => this.makeStrip(r, i));
+      this.families = (data.families ?? []).map((f) => this.makeFamily(f));
+      const points = [...this.orbit, ...this.families.flatMap((f) => f.orbits.flat())];
       for (const r of this.strips) this.orbit.forEach((p, i) => points.push(add(p, r.directions[i], r.half), add(p, r.directions[i], -r.half)));
       const lo = [0, 1, 2].map((k) => Math.min(...points.map((p) => p[k])));
       const hi = [0, 1, 2].map((k) => Math.max(...points.map((p) => p[k])));
@@ -5183,6 +5209,13 @@ void main() {
         const d = add(a.toward, from, -1);
         return { id: a.id, u: add([0, 0, 0], d, 1 / (Math.hypot(...d) || 1)) };
       });
+      if (this.families.length) {
+        document.addEventListener("beeson:plot-frame", (ev) => {
+          if (!(ev.target instanceof Element) || ev.target.closest("section") !== this.el.closest("section")) return;
+          this.clock = ev.detail.value;
+          if (!this.raf) this.draw();
+        });
+      }
       this.dragging = dragToTurn(el, (dx, dy) => {
         this.azimuth -= dx * 5e-3;
         this.elevation = clamp2(this.elevation + dy * 4e-3, -1.45, 1.45);
@@ -5194,6 +5227,44 @@ void main() {
       CACHE4.set(el, this);
       this.sync(false);
       this.fit();
+    }
+    // the faint members of a family, set once and drawn up to the member passed last, and its member
+    // at the clock, set at each frame
+    makeFamily(f) {
+      const n = f.orbits[0].length;
+      const trail = this.makeLine(n * f.orbits.length, TRAIL_WIDTH, 1.5), member = this.makeLine(n, ORBIT_WIDTH, 2.5);
+      f.orbits.forEach((o, j) => o.forEach((p, k) => this.setSegment(trail.geometry, j * n + k, p, o[(k + 1) % n])));
+      let ghost = null;
+      if (f.ghost) {
+        ghost = this.makeLine(0, TRAIL_WIDTH, 1.4);
+        ghost.geometry.dispose();
+        ghost.geometry = trail.geometry.clone();
+        ghost.material.uniforms.uAlpha.value = GHOST_ALPHA;
+        this.scene.add(ghost);
+      }
+      trail.material.uniforms.uAlpha.value = TRAIL_ALPHA;
+      trail.geometry.setDrawRange(0, 0);
+      member.visible = false;
+      this.scene.add(trail, member);
+      return { id: f.id, tone: f.tone, values: f.values, orbits: f.orbits, trail, member, ghost };
+    }
+    // the members of each family passed by the clock, i.e. those before the first member past it in the
+    // order of the family, and its member at the clock. before the clock is known, the first member of
+    // the first family is drawn
+    placeFamilies() {
+      if (!this.families.length) return;
+      const value = this.clock ?? this.families[0].values[0];
+      for (const f of this.families) {
+        const span = f.values.at(-1) - f.values[0], tolerance = VALUE_TOLERANCE * Math.abs(span);
+        const n = f.orbits[0].length, passed = f.values.findIndex((v) => (v - value) * Math.sign(span) > tolerance);
+        f.trail.geometry.setDrawRange(0, 6 * n * (passed < 0 ? f.values.length : passed));
+        const at = memberAt(f.values, value);
+        f.member.visible = at !== null;
+        if (!at) continue;
+        const [i, t] = at, a = f.orbits[i], b = f.orbits[Math.min(i + 1, f.orbits.length - 1)];
+        const p = a.map((q, k) => [lerp(q[0], b[k][0], t), lerp(q[1], b[k][1], t), lerp(q[2], b[k][2], t)]);
+        p.forEach((q, k) => this.setSegment(f.member.geometry, k, q, p[(k + 1) % n]));
+      }
     }
     // the segments of a line as quads of width pixels, for count segments set with setSegment()
     makeLine(count, width, order) {
@@ -5311,6 +5382,12 @@ void main() {
       set2(this.dot.material.uniforms.uColor.value, text);
       set2(this.dot.material.uniforms.uRing.value, bg);
       for (const k of ["accent", "blue", "bg"]) this.colors[k] = cs.getPropertyValue(`--${k}`).trim() || "#808080";
+      for (const f of this.families) {
+        const tone = css(`--${f.tone}`, [0.94, 0.5, 0.31]);
+        set2(f.trail.material.uniforms.uColor.value, tone);
+        set2(f.member.material.uniforms.uColor.value, tone);
+        if (f.ghost) set2(f.ghost.material.uniforms.uColor.value, tone);
+      }
       for (const r of this.strips) {
         const tone = css(`--${r.tone}`, [0.94, 0.5, 0.31]);
         set2(r.sheet.material.uniforms.uColor.value, tone);
@@ -5378,7 +5455,8 @@ void main() {
      * The strips as drawn now, read by the tests: for each, its growth from 0 to 1, the growth of its
      * sheet, and that of each of its segments. With settled, the change of stage has ended. For each
      * arrow, in the slide pixels of the element, its needle from the middle of the compass to the tip,
-     * and its direction in the scene, from the libration point to a point 0.1 toward its point.
+     * and its direction in the scene, from the libration point to a point 0.1 toward its point. For each
+     * family, the number of its members passed by the clock, and whether its member at the clock is drawn.
      */
     probe() {
       return {
@@ -5388,7 +5466,8 @@ void main() {
         arrows: this.arrows.map((a, i) => {
           const from = this.point ?? this.center, { middle, tips } = this.compass();
           return { id: a.id, needle: [middle, tips[i]], scene: [this.screen(from), this.screen(add(from, a.u, 0.1))] };
-        })
+        }),
+        families: this.families.map((f) => ({ id: f.id, passed: f.trail.geometry.drawRange.count / (6 * f.orbits[0].length), member: f.member.visible }))
       };
     }
     /** Sizes the canvas from the box of the element on the screen, and draws. */
@@ -5403,7 +5482,7 @@ void main() {
       this.canvas.width = this.W;
       this.canvas.height = this.H;
       const px = dpr * r.height / h;
-      for (const mesh of [this.line, ...this.strips.map((rb) => rb.segments)]) {
+      for (const mesh of [this.line, ...this.strips.map((rb) => rb.segments), ...this.families.flatMap((f) => [f.trail, f.member, ...f.ghost ? [f.ghost] : []])]) {
         mesh.material.uniforms.uViewport.value.set(this.W, this.H);
         mesh.material.uniforms.uWidth.value = mesh.userData.width * px;
       }
@@ -5613,6 +5692,7 @@ void main() {
       const r = renderer();
       if (!r) return;
       this.place();
+      this.placeFamilies();
       this.aim();
       this.label();
       if (r.domElement.width !== this.W || r.domElement.height !== this.H) r.setSize(this.W, this.H, false);
