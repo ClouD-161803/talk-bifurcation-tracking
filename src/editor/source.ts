@@ -151,7 +151,7 @@ const REFERENCE = /&(?:#[xX][0-9a-fA-F]+;?|#[0-9]+;?|[A-Za-z][A-Za-z0-9]*;?)/y;
 // splits the raw text of a node into segments, so that a range of the decoded text can be traced
 // to the file. when the segments do not give the decoded text, the node is one segment, and a
 // change to any part of it rewrites all of it
-function segmentsOf(raw: string, base: number, isRaw: boolean, decoded: string): Segment[] {
+export function segmentsOf(raw: string, base: number, isRaw: boolean, decoded: string): Segment[] {
   const out: Segment[] = [];
   const whole: Segment[] = [{ raw: { start: base, end: base + raw.length }, dec: { start: 0, end: decoded.length }, literal: false }];
   let i = 0, d = 0, literalStart = -1;

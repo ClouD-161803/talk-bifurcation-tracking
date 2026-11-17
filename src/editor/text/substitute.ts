@@ -6,15 +6,18 @@
 // local storage of the browser, and all are on unless switched off. a code box, inline code, a
 // link, and the TeX of a formula being typed are left as typed. with Markdown, a span closed by
 // the mark that opened it is written in the tag of the mark at its closing character, e.g.
-// **bold** as a strong, and the marks are taken off
+// **bold** as a strong, and the marks are taken off. with TeX Formulas, $tex$ or \(tex\) typed is made
+// an inline formula at its closing sign, and $$tex$$ or \[tex\] typed as a whole paragraph a display
 
 import type { App } from '../app.ts';
-import { contentWithTex } from '../math.ts';
+import { refreshHeads } from '../history.ts';
+import { contentWithTex, previewTex } from '../math.ts';
+import { typesetTyped } from './typing.ts';
 import { store, stored } from '../ui/dom.ts';
 
-export type Smart = 'quotes' | 'dashes' | 'links' | 'markdown';
+export type Smart = 'quotes' | 'dashes' | 'links' | 'markdown' | 'tex';
 
-const KEYS: Record<Smart, string> = { quotes: 'beeson-edit-smart-quotes', dashes: 'beeson-edit-smart-dashes', links: 'beeson-edit-smart-links', markdown: 'beeson-edit-smart-markdown' };
+const KEYS: Record<Smart, string> = { quotes: 'beeson-edit-smart-quotes', dashes: 'beeson-edit-smart-dashes', links: 'beeson-edit-smart-links', markdown: 'beeson-edit-smart-markdown', tex: 'beeson-edit-smart-tex' };
 
 export const isSmart = (kind: Smart): boolean => stored(KEYS[kind]) !== 'off';
 
@@ -25,9 +28,46 @@ export function setSmart(kind: Smart, on: boolean): void {
 // a quote opens after these characters, and closes after any other
 const OPENS = /(^|[\s([{“‘—–-])$/u;
 
-// true when before ends inside the TeX of a formula, i.e. after a \( or a \[ that is not closed
+// a dollar that opens a formula, i.e. not after a backslash or a dollar, and not before a space, a
+// digit, or a dollar, hence "$5 and $10" is text
+const DOLLAR = /(?:^|[^\\$])\$(?=[^\s\d$])/g;
+
+// true when text ends after a \( or a \[ that is not closed
+const opened = (text: string): boolean => text.lastIndexOf('\\(') > text.lastIndexOf('\\)') || text.lastIndexOf('\\[') > text.lastIndexOf('\\]');
+
+// true when before ends inside the TeX of a formula, i.e. after a \( or a \[ that is not closed,
+// or, with TeX Formulas on, after an opening dollar that is not closed
 function inTex(before: string): boolean {
-  return before.lastIndexOf('\\(') > before.lastIndexOf('\\)') || before.lastIndexOf('\\[') > before.lastIndexOf('\\]');
+  if (opened(before)) return true;
+  if (!isSmart('tex')) return false;
+  const dollar = [...before.matchAll(DOLLAR)].at(-1);
+  const open = dollar ? dollar.index + dollar[0].length : -1;
+  return open > 0 && !before.slice(open).includes('$');
+}
+
+// the inline formula that the sign typed last closes at the end of text, as the start of its
+// opening sign in text and its TeX. a formula between dollars does not end with a space, and it
+// is not opened inside a \( or a \[ that is not closed. null where text does not end with a
+// closed formula
+export function texSpan(text: string): { start: number; tex: string } | null {
+  if (text.endsWith('\\)')) {
+    const start = text.lastIndexOf('\\(');
+    const tex = start < 0 ? '' : text.slice(start + 2, -2);
+    return tex.trim() ? { start, tex } : null;
+  }
+  if (!text.endsWith('$')) return null;
+  const dollar = [...text.slice(0, -1).matchAll(DOLLAR)].at(-1);
+  if (!dollar) return null;
+  const start = dollar.index + dollar[0].length - 1;
+  const tex = text.slice(start + 1, -1);
+  return tex.includes('$') || /\s$/.test(tex) || opened(text.slice(0, start)) ? null : { start, tex };
+}
+
+// the TeX of a display typed as the whole of text, between $$ or \[ and \], or null
+export function texDisplay(text: string): string | null {
+  const m = /^\s*(?:\$\$([^$]+)\$\$|\\\[(.+)\\\])\s*$/s.exec(text);
+  const tex = m ? (m[1] ?? m[2]) : '';
+  return tex.trim() ? tex : null;
 }
 
 // the substitution of the character typed after the text before, as the count of the characters
@@ -168,11 +208,48 @@ export function install(app: App): void {
     // the substitution is an entry of its own after the typing, which an undo takes back alone
     const record = (label: string, was: string) => {
       const now = contentWithTex(host);
-      app.history.push({ label, undo: () => app.typing.restoreHost(host, was), redo: () => app.typing.restoreHost(host, now) });
+      // the heading of a section slide is written by the theme into the outlines and running heads
+      const put = async (content: string) => {
+        await app.typing.restoreHost(host, content);
+        refreshHeads(host);
+      };
+      app.history.push({ label, undo: () => put(was), redo: () => put(now), touches: [host] });
+      refreshHeads(host);
       app.history.track(host);
       app.markDirty();
       app.invalidate('content');
     };
+    // a formula closed in the text node of the caret, typeset once MathJax reads its TeX without
+    // an error. a formula that MathJax cannot typeset is left as typed
+    const tex = isSmart('tex') && /^[$)\]]$/.test(data) && !host.closest('aside.notes') ? texSpan(node.data.slice(0, offset)) : null;
+    const display = tex || !/^[$\]]$/.test(data) || !isSmart('tex') || !host.matches('p:not([class], [data-generated])') || host.closest('.shape') || host.querySelector('mjx-container') || node.data.length > offset ? null : texDisplay(host.textContent ?? '');
+    if (tex || display) {
+      const typed = node.data.slice(0, offset);
+      void previewTex(tex?.tex ?? display!, !tex).then(async ({ error }) => {
+        if (error || !node.isConnected || !node.data.startsWith(typed)) return;
+        if (display) {
+          // the paragraph is written as Insert > Formula writes a display, with its attributes kept
+          const body = `\\[${display.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}\\]`;
+          await app.history.transact('TeX Formula', async () => {
+            app.selection.set('elements', [await app.doc.rewrite(host, (text) => text.replace(/^<p([^>]*)>[\s\S]*$/, (_, attributes: string) => `<div class="math"${attributes}>${body}</div>`), 'TeX Formula')]);
+          });
+          return;
+        }
+        const was = contentWithTex(host);
+        const formula = `\\(${tex!.tex}\\)`;
+        const moved = formula.length - (offset - tex!.start);
+        const s = window.getSelection();
+        const caret = s?.focusNode === node && s.focusOffset >= offset ? s.focusOffset + moved : null;
+        // a formula typed between \( and \) is not changed, and only typeset
+        if (formula !== node.data.slice(tex!.start, offset)) {
+          node.replaceData(tex!.start, offset - tex!.start, formula);
+          if (caret !== null) s!.collapse(node, caret);
+          record('TeX Formula', was);
+        }
+        await typesetTyped(app, host);
+      }).catch((e) => app.fail(e));
+      return;
+    }
     // a span of Markdown closed in the text node of the caret, outside a link
     const md = isSmart('markdown') && /^[*_~`]$/.test(data) && !node.parentElement?.closest('a') ? markdownSpan(node.data.slice(0, offset)) : null;
     if (md) {

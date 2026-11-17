@@ -11,17 +11,18 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press } from './helpers/editor.mjs';
+import { click, clickText, press, typeKeys } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test/pages/editor-clipboard-keys.html';
 const MARK = '<!--beeson-->';
 const MOD = { mac: 4, other: 2 };
-const LETTER = { copy: 'c', cut: 'x', paste: 'v' };
+const LETTER = { copy: 'c', cut: 'x', paste: 'v', selectAll: 'a' };
 // the display of the deck, at its step and with a colored symbol, which a copy keeps
 const DISPLAY = String.raw`\[ E = \class{mass}{m} c^2 \]`;
 const STEP = 'class="math fragment" data-fragment-index="1"';
 const INLINE = String.raw`Gamma \(a^2 + b^2\) item.`;
+const FORMULA = String.raw`\(a^2 + b^2\)`;
 
 let browser;
 let server;
@@ -78,13 +79,13 @@ const emptyPoint = (page) => page.evaluate(`(() => { const r = Reveal.getCurrent
 const displayPoint = (page) => page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector('div.math mjx-container').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
 async function selectFigure(page) {
-  await click(page, await figurePoint(page));
+  await clickText(page, await figurePoint(page));
   await page.waitFor(`(() => { const s = window.BeesonEditor.selection(); return s.length === 1 && s[0].localName === 'figure'; })()`);
 }
 
 // a click on the display opens its TeX field with all of its TeX selected
 async function openTex(page) {
-  await click(page, await displayPoint(page));
+  await clickText(page, await displayPoint(page));
   await page.waitFor(`(() => { const f = document.activeElement; return f?.matches('.beeson-math textarea') && f.value.trim() && f.selectionStart === 0 && f.selectionEnd === f.value.length; })()`);
 }
 
@@ -120,7 +121,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate(`window.BeesonEditor.exec('view.objects')`);
     const row = `[...document.querySelectorAll('.beeson-edit-objects .row')].find((r) => r.dataset.kind === 'Figure')`;
     await page.waitFor(`!!${row}?.getBoundingClientRect().width`);
-    await click(page, await page.evaluate(`(() => { const r = ${row}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const r = ${row}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await page.waitFor(`(() => { const s = window.BeesonEditor.selection(); return s.length === 1 && s[0].localName === 'figure' && !!document.activeElement?.closest('.beeson-edit-objects'); })()`);
     await clipKey(page, 'copy');
     await page.waitFor(`navigator.clipboard.readText().then((t) => t.startsWith(${js(MARK)}))`);
@@ -149,7 +150,7 @@ for (const platform of PLATFORMS) {
     await frameDisplay(page);
     await clipKey(page, 'copy');
     await page.waitFor(`navigator.clipboard.readText().then((t) => t.startsWith(${js(MARK)}))`);
-    await click(page, await emptyPoint(page));
+    await clickText(page, await emptyPoint(page));
     await page.waitFor(`window.BeesonEditor.selection().length === 0`);
     assert.notEqual(await active(page), 'mjx-container', 'the formula keeps the focus after the click on the empty slide');
     await clipKey(page, 'paste');
@@ -163,7 +164,7 @@ for (const platform of PLATFORMS) {
   test(`an inline formula framed with Esc is copied and pasted with its text element by the keys (${platform})`, async (t) => {
     const page = await load(t, platform);
     const li = `Reveal.getCurrentSlide().querySelector('li')`;
-    await click(page, await page.evaluate(`(() => { const r = ${li}.querySelector('mjx-container').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const r = ${li}.querySelector('mjx-container').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await page.waitFor(`!!document.activeElement?.matches('.beeson-math textarea')`);
     await press(page, 'Escape');
     await page.waitFor(`(() => { const s = window.BeesonEditor.selection(); return !document.querySelector('.beeson-math') && s.length === 1 && s[0].contains(${li}); })()`);
@@ -185,7 +186,7 @@ for (const platform of PLATFORMS) {
     const copied = await html(page);
     assert.ok(copied.includes(STEP) && copied.includes(DISPLAY), `the display is not the HTML of the clipboard: ${copied}`);
     // a click away closes the field, and the key pastes the display on the slide
-    await click(page, await emptyPoint(page));
+    await clickText(page, await emptyPoint(page));
     await page.waitFor(`!document.querySelector('.beeson-math')`);
     await clipKey(page, 'paste');
     await page.waitFor(`Reveal.getCurrentSlide().querySelectorAll('div.math').length === 2`);
@@ -208,9 +209,49 @@ for (const platform of PLATFORMS) {
     assert.ok(!(await html(page)).includes(MARK), 'the display is on the clipboard');
   });
 
+  // the browser copies the words without the glyphs of a formula, and a paste into a text reads
+  // only the plain text, hence the TeX is put on the clipboard between its delimiters
+  test(`words copied out of a text with a formula are pasted with the formula, typeset and saved as TeX (${platform})`, async (t) => {
+    const page = await load(t, platform);
+    const li = `Reveal.getCurrentSlide().querySelector('li')`;
+    const p = `Reveal.getCurrentSlide().querySelector('p')`;
+    await clickText(page, await page.evaluate(`(() => { const r = ${li}.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`));
+    await page.waitFor(`document.activeElement === ${li}`);
+    await clipKey(page, 'selectAll');
+    await clipKey(page, 'copy');
+    await page.waitFor(`navigator.clipboard.readText().then((t) => t.includes('Gamma'))`);
+    assert.equal(await plain(page), INLINE, 'the plain text of the clipboard is not the words with the TeX of the formula');
+    await clickText(page, `.reveal section.present p`);
+    await page.waitFor(`document.activeElement === ${p}`);
+    await press(page, 'End');
+    await clipKey(page, 'paste');
+    await page.waitFor(`/item\\.$/.test(${p}.textContent) || ${p}.querySelectorAll('mjx-container').length > 0`);
+    await page.waitFor(`${p}.querySelectorAll('mjx-container[contenteditable="false"]').length === 1`);
+    assert.equal(await undoLabel(page), 'Undo Paste');
+    // the caret is left after the pasted words
+    await typeKeys(page, 'Z');
+    await page.waitFor(`/item\\.Z$/.test(${p}.textContent)`);
+    const saved = await page.evaluate('window.BeesonEditor.render()');
+    assert.equal(times(saved, FORMULA), 2, 'the deck does not have the pasted formula as TeX');
+    assert.ok(saved.includes(`slide.Gamma ${FORMULA} item.Z</p>`), 'the paragraph is not saved with the pasted words');
+    assert.deepEqual(errors(page), []);
+  });
+
+  test(`TeX pasted into a text with Edit > Paste is typeset (${platform})`, async (t) => {
+    const page = await load(t, platform);
+    const p = `Reveal.getCurrentSlide().querySelector('p')`;
+    await clickText(page, `.reveal section.present p`);
+    await page.waitFor(`document.activeElement === ${p}`);
+    await press(page, 'End');
+    await page.evaluate(`Promise.resolve(window.BeesonEditor.exec('edit.paste', ${js(INLINE)})).then(() => true)`);
+    await page.waitFor(`${p}.querySelectorAll('mjx-container[contenteditable="false"]').length === 1`);
+    assert.ok((await page.evaluate('window.BeesonEditor.render()')).includes(`${INLINE}</p>`), 'the paragraph is not saved with the pasted TeX');
+    assert.deepEqual(errors(page), []);
+  });
+
   test(`a text keeps the copy and the paste of the browser (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, '.reveal section.present p');
+    await clickText(page, '.reveal section.present p');
     await page.waitFor(`document.activeElement?.localName === 'p'`);
     await press(page, 'Home');
     for (let i = 0; i < 5; i++) await press(page, 'Shift+ArrowRight');
@@ -229,7 +270,7 @@ for (const platform of PLATFORMS) {
     await selectFigure(page);
     const field = `[...document.querySelectorAll('.beeson-edit-inspector textarea')].find((f) => f.getAttribute('aria-label') === 'Description' && f.getBoundingClientRect().width)`;
     await page.waitFor(`!!${field}`);
-    await click(page, await page.evaluate(`(() => { const r = ${field}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const r = ${field}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await page.waitFor(`document.activeElement === ${field}`);
     await page.evaluate(`(() => { const f = ${field}; f.select(); return true; })()`);
     const value = await page.evaluate(`${field}.value`);

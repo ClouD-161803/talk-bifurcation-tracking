@@ -18,6 +18,8 @@ const MIN_TITLE = 40;
 // the order of the menu bar of Keynote
 export const MENUS = ['File', 'Edit', 'Insert', 'Slide', 'Format', 'Arrange', 'View', 'Help'];
 
+// the title clips its text, hence its line is as tall as the letters of the font. a line of height 1
+// is shorter in most fonts, and in Segoe UI by enough to cut the descenders
 const CSS = `
 .beeson-edit-titlebar { display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr); align-items: center; column-gap: 12px; height: 28px; padding: 0 8px 0 6px; box-sizing: border-box; font: 13px/1 var(--ed-font); color: var(--ed-text); user-select: none; -webkit-user-select: none; }
 .beeson-edit-menubar { display: flex; align-items: center; }
@@ -26,7 +28,7 @@ const CSS = `
 .beeson-edit-menubar [role=menuitem]:hover, .beeson-edit-menubar [role=menuitem][aria-expanded="true"] { background: var(--ed-pressed); }
 .beeson-edit-menubar [role=menuitem][aria-disabled="true"] { color: var(--ed-faint); }
 .beeson-edit-menubar [role=menuitem]:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: -2px; }
-.beeson-edit-titlebar .doc { min-width: 0; display: flex; gap: 12px; align-items: baseline; overflow: hidden; white-space: nowrap; }
+.beeson-edit-titlebar .doc { min-width: 0; display: flex; gap: 12px; align-items: baseline; overflow: hidden; white-space: nowrap; line-height: normal; }
 .beeson-edit-titlebar .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
 .beeson-edit-titlebar .doc.tight .state { display: none; }
 .beeson-edit-titlebar .doc.gone { visibility: hidden; }
@@ -173,7 +175,8 @@ export function install(app: App): void {
   function fit(): void {
     doc.classList.remove('tight', 'gone');
     row.classList.remove('narrow');
-    const cut = () => doc.scrollWidth > doc.clientWidth || fileEl.scrollWidth > fileEl.clientWidth;
+    // the name and the state shrink together, hence a long state is cut before the name is by a pixel
+    const cut = () => doc.scrollWidth > doc.clientWidth || fileEl.scrollWidth > fileEl.clientWidth || stateEl.scrollWidth > stateEl.clientWidth;
     if (!cut()) return;
     doc.classList.add('tight');
     if (cut() && doc.clientWidth < MIN_TITLE) doc.classList.add('gone');
@@ -185,6 +188,8 @@ export function install(app: App): void {
   wire(autosave, () => app.commands.run('file.autosave'), fail);
   app.listen('report', () => {
     fileEl.textContent = app.handle?.name ?? fileName();
+    // in a session the edits go to the edit command, and its save state takes the place of the switch
+    autosave.hidden = !!app.session;
     autosave.setAttribute('aria-pressed', String(app.autosave));
     autosave.classList.toggle('on', app.autosave);
     which.hidden = !app.pairing?.problems.length;

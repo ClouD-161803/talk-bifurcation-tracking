@@ -19,8 +19,8 @@ export type Axis = { range: Pair; ticks: Tick[]; title: string; scale: Scale; un
 // an element of a panel or a mark. id names it in data-plot-show and in the active list of a tab,
 // and the classes of cls are the targets of a data-highlight of the slide
 type Item = { id: string | null; tone: string; cls: string[]; delay: number };
-export type Region = Item & { points: Pair[]; opacity: number; spread: number; from: Pair | null };
-export type Curve = Item & { points: Pair[] | null; circle: [number, number, number] | null; width: number; dash: number[] | null; draw: number };
+export type Region = Item & { points: Pair[]; opacity: number; iris: number; from: Pair | null };
+export type Curve = Item & { points: Pair[] | null; circle: [number, number, number] | null; width: number; dash: number[] | null; wipe: number };
 export type Label = Item & { at: Pair; text: string; anchor: Anchor; dx: number; dy: number };
 // the margin of a panel in px, from the top clockwise as in CSS
 export type Margin = [number, number, number, number];
@@ -124,7 +124,7 @@ function regions(v: unknown, path: string): Region[] {
     const p = `${path}[${i}]`;
     if (!isObject(r)) fail(p, 'a region is expected');
     const from = r.from === undefined ? null : pair(r.from, `${p}.from`);
-    return { ...item(r, p, 'violet'), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), spread: seconds(r.spread, `${p}.spread`), from };
+    return { ...item(r, p, 'violet'), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), iris: seconds(r.iris, `${p}.iris`), from };
   });
 }
 
@@ -139,7 +139,7 @@ function curves(v: unknown, path: string): Curve[] {
       circle = [num(a[0], `${p}.circle[0]`), num(a[1], `${p}.circle[1]`), num(a[2], `${p}.circle[2]`)];
     } else if (c.points === undefined) fail(p, 'points or circle is expected');
     const dash = c.dash === undefined ? null : list(c.dash, `${p}.dash`).map((d, j) => num(d, `${p}.dash[${j}]`));
-    return { ...item(c, p, 'subtle'), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, draw: seconds(c.draw, `${p}.draw`) };
+    return { ...item(c, p, 'subtle'), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, wipe: seconds(c.wipe, `${p}.wipe`) };
   });
 }
 
@@ -591,7 +591,7 @@ export class PlotView {
   private cue: 'none' | 'held' | 'shown' = 'none';
   // the slide of the plot is shown, and the plot may move
   private live = false;
-  // the tab is played once, from a fragment with data-plot-run, and held at its last frame
+  // the tab is played once, from a fragment with data-plot-once, and held at its last frame
   private once = false;
 
   constructor(el: HTMLElement) {
@@ -877,35 +877,49 @@ export class PlotView {
       const statics = svg('g', { 'clip-path': `url(#plot-${this.uid}-${p.id})` }, g);
       p.regions.forEach((r, k) => {
         const d = `${this.path(b, r.points)}Z`;
-        if (!(r.spread > 0)) {
+        if (!(r.iris > 0)) {
           this.styleItem(svg('path', { class: 'plot-region', d, 'fill-opacity': r.opacity }, statics), r, [p.id, r.id]);
           return;
         }
-        // a region that spreads is a disk clipped to the region, grown from the point from as it is
+        // a region with an iris is a disk clipped to the region, grown from the point from as it is
         // shown. the disk reaches the farthest corner of the part of the bounding box in the axes
-        const id = `plot-${this.uid}-${p.id}-spread-${k}`;
+        const id = `plot-${this.uid}-${p.id}-iris-${k}`;
         svg('path', { d }, svg('clipPath', { id }, defs));
         const xs = r.points.map((q) => clamp(this.X(b, q[0]), b.x, b.x + b.w)), ys = r.points.map((q) => clamp(this.Y(b, q[1]), b.y, b.y + b.h));
         const [fx, fy] = r.from ?? [r.points.reduce((s, q) => s + q[0], 0) / r.points.length, r.points.reduce((s, q) => s + q[1], 0) / r.points.length];
         const X = this.X(b, fx), Y = this.Y(b, fy);
         const R = Math.max(...[Math.min(...xs), Math.max(...xs)].flatMap((x) => [Math.min(...ys), Math.max(...ys)].map((y) => Math.hypot(x - X, y - Y))));
-        const disk = svg('circle', { class: 'plot-region plot-spread', cx: X.toFixed(1), cy: Y.toFixed(1), r: (R + 2).toFixed(1), 'fill-opacity': r.opacity }, svg('g', { 'clip-path': `url(#${id})` }, statics));
+        const disk = svg('circle', { class: 'plot-region plot-iris', cx: X.toFixed(1), cy: Y.toFixed(1), r: (R + 2).toFixed(1), 'fill-opacity': r.opacity }, svg('g', { 'clip-path': `url(#${id})` }, statics));
         disk.style.transformOrigin = `${X.toFixed(1)}px ${Y.toFixed(1)}px`;
-        disk.style.setProperty('--plot-spread', `${r.spread}s`);
+        disk.style.setProperty('--plot-iris', `${r.iris}s`);
         this.styleItem(disk, r, [p.id, r.id]);
       });
-      for (const c of p.curves) {
+      for (const [k, c] of p.curves.entries()) {
         const attrs: Record<string, string | number> = { class: 'plot-curve', 'stroke-width': c.width };
         if (c.dash) attrs['stroke-dasharray'] = c.dash.join(' ');
         const linear = p.x.scale === 'linear' && p.y.scale === 'linear';
         const node = c.circle && linear
           ? svg('ellipse', { ...attrs, cx: this.X(b, c.circle[0]), cy: this.Y(b, c.circle[1]), rx: c.circle[2] * b.sx, ry: c.circle[2] * b.sy }, statics)
           : svg('path', { ...attrs, d: this.path(b, c.circle ? circlePoints(c.circle) : (c.points ?? [])) }, statics);
-        // a curve that is drawn on is traced from its first point to its last as it is shown
-        if (c.draw > 0) {
-          node.setAttribute('pathLength', '1');
-          node.classList.add('plot-draw');
-          node.style.setProperty('--plot-draw', `${c.draw}s`);
+        // a curve with a wipe is traced from its first point to its last as it is shown. a dashed
+        // curve keeps its dashes, and a solid copy of it with the wipe is its mask
+        let wiped: Element | null = null;
+        if (c.wipe > 0 && c.dash) {
+          const id = `plot-${this.uid}-${p.id}-wipe-${k}`, pad = 14;
+          const mask = svg('mask', { id, maskUnits: 'userSpaceOnUse', x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, defs);
+          wiped = mask.appendChild(node.cloneNode() as Element);
+          for (const name of ['class', 'stroke-dasharray']) wiped.removeAttribute(name);
+          for (const [name, value] of [['fill', 'none'], ['stroke', 'white'], ['stroke-width', String(c.width + 4)]]) wiped.setAttribute(name, value);
+          node.setAttribute('mask', `url(#${id})`);
+        } else if (c.wipe > 0) wiped = node;
+        if (wiped) {
+          wiped.setAttribute('pathLength', '1');
+          wiped.classList.add('plot-wipe');
+          (wiped as SVGElement).style.setProperty('--plot-wipe', `${c.wipe}s`);
+          if (wiped !== node) {
+            if (c.delay > 0) (wiped as SVGElement).style.setProperty('--plot-delay', `${c.delay}s`);
+            this.gate(wiped, [p.id, c.id]);
+          }
         }
         this.styleItem(node, c, [p.id, c.id]);
       }
@@ -988,23 +1002,42 @@ export class PlotView {
           });
         } else {
           // a trace with tones or a fade is drawn as one segment per frame, each in the tone of the
-          // frame it starts at, and faded by the seconds since the head passed its middle
-          const parts: SVGLineElement[] = [];
+          // frame it starts at, and faded by the seconds since the head passed its middle. a segment
+          // behind the newest is written once, and its opacity in steps of a twentieth while it fades,
+          // hence a long trace does not rewrite every segment in each frame
+          const parts: SVGLineElement[] = [], opacities: string[] = [];
           const tone = (i: number) => toneColor(tones ? tones[clamp(i, 0, tones.length - 1)] : m.tone);
+          // the segments written in full, the segments shown, the first segment that may not be faded
+          // out, and the frame of the last draw
+          let full = 0, shown = 0, gone = 0, last = -1;
           this.drawers.push((u) => {
-            const p = traceTo(pts, u), now = this.timeOf(u);
-            while (parts.length < p.length - 1) parts.push(fader.insertBefore(svg('line', { class: 'plot-trace', 'stroke-width': m.width }), head));
-            parts.forEach((line, i) => {
-              const on = i < p.length - 1;
-              line.style.display = on ? '' : 'none';
-              if (!on) return;
+            const p = traceTo(pts, u), now = this.timeOf(u), n = p.length - 1;
+            // drawn again from an earlier frame, e.g. at the restart of the loop or a step back
+            if (u < last) { full = Math.min(full, Math.max(0, n - 1)); gone = 0; }
+            last = u;
+            while (parts.length < n) {
+              parts.push(fader.insertBefore(svg('line', { class: 'plot-trace', 'stroke-width': m.width }), head));
+              opacities.push('');
+            }
+            for (let i = n; i < shown; i++) parts[i].style.display = 'none';
+            for (let i = Math.min(full, shown); i < n; i++) {
+              const line = parts[i];
+              if (i >= shown) line.style.display = '';
               line.setAttribute('x1', this.XS(b, p[i][0]).toFixed(1));
               line.setAttribute('y1', this.YS(b, p[i][1]).toFixed(1));
               line.setAttribute('x2', this.XS(b, p[i + 1][0]).toFixed(1));
               line.setAttribute('y2', this.YS(b, p[i + 1][1]).toFixed(1));
               line.style.color = tone(i);
-              if (m.fade > 0) line.style.opacity = (0.6 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)).toFixed(3);
-            });
+            }
+            shown = n;
+            full = Math.max(0, n - 1);
+            if (m.fade > 0) {
+              for (let i = gone; i < n; i++) {
+                const o = (Math.round(20 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)) * 0.03).toFixed(2);
+                if (o !== opacities[i]) { parts[i].style.opacity = o; opacities[i] = o; }
+                if (o === '0.00' && i === gone) gone++;
+              }
+            }
             const [x, y] = p[p.length - 1];
             head.setAttribute('cx', this.XS(b, x).toFixed(1));
             head.setAttribute('cy', this.YS(b, y).toFixed(1));
@@ -1130,8 +1163,8 @@ export class PlotView {
     const tabbed = visible.filter((f) => f.dataset.plotTab).sort((a, b) => +(a.dataset.fragmentIndex ?? 0) - +(b.dataset.fragmentIndex ?? 0));
     const top = tabbed.at(-1);
     const name = top?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
-    // a tab of a fragment with data-plot-run is played once when its step is reached going forward
-    const run = !!top?.hasAttribute('data-plot-run') && top.classList.contains('current-fragment') && this.live && !reduced();
+    // a tab of a fragment with data-plot-once is played once when its step is reached going forward
+    const run = !!top?.hasAttribute('data-plot-once') && top.classList.contains('current-fragment') && this.live && !reduced();
     let tab = this.tab;
     if (name !== this.stepTab) {
       this.stepTab = name;

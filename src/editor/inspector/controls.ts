@@ -30,11 +30,6 @@ export const GLYPHS: Record<string, string[]> = {
   'column-narrow': ['M2.5 4.5h15v11h-15z', 'M5 8h5', 'M5 10.5h5', 'M5 13h3.5'],
   'column-normal': ['M2.5 4.5h15v11h-15z', 'M5 8h7.5', 'M5 10.5h7.5', 'M5 13h5'],
   'column-wide': ['M2.5 4.5h15v11h-15z', 'M5 8h10', 'M5 10.5h10', 'M5 13h7'],
-  'list-none': ['M4 6h12', 'M4 10h12', 'M4 14h8'],
-  'list-dash': ['M3.5 6h2.5', 'M8.5 6h8', 'M3.5 10h2.5', 'M8.5 10h8', 'M3.5 14h2.5', 'M8.5 14h5.5'],
-  'list-dot': ['F4.75 4.4a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM4.75 5.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z', 'M8.5 6h8', 'F4.75 8.4a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM4.75 9.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z', 'M8.5 10h8', 'F4.75 12.4a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM4.75 13.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z', 'M8.5 14h5.5'],
-  'list-arrow': ['M4 4.8l1.5 1.2-1.5 1.2', 'M8.5 6h8', 'M4 8.8l1.5 1.2-1.5 1.2', 'M8.5 10h8', 'M4 12.8l1.5 1.2-1.5 1.2', 'M8.5 14h5.5'],
-  'list-number': ['M3.75 4.75l1.25-.75v4', 'M3.5 12.25c.25-.9 2.6-1 2.4.4-.1.8-2.4 1.9-2.4 2.6h2.6', 'M8.5 6h8', 'M8.5 13.5h8'],
   outdent: ['M9 6h8', 'M9 10h8', 'M9 14h8', 'M6.5 7.5 3.5 10l3 2.5'],
   indent: ['M9 6h8', 'M9 10h8', 'M9 14h8', 'M3.5 7.5l3 2.5-3 2.5'],
   link: ['M8.5 11.5a3 3 0 0 0 4.25 0l2.5-2.5a3 3 0 0 0-4.25-4.25l-1 1', 'M11.5 8.5a3 3 0 0 0-4.25 0l-2.5 2.5a3 3 0 0 0 4.25 4.25l1-1'],
@@ -203,8 +198,9 @@ export type Run = ReturnType<typeof runner>;
 const stateOf = (app: App, id: string) => (app.commands.get(id) ? app.commands.state(id) : null);
 
 // a button of a segmented control or of its own: a command with its arg, shown with an icon of
-// GLYPHS, a text, or both. a command that is not defined is drawn disabled
-export type Item = { command: string; arg?: unknown; icon?: string; text?: string | (() => Node); title?: string; pressed?: () => boolean | 'mixed' | null };
+// GLYPHS, a text, or both. a command that is not defined is drawn disabled, as is an item whose off
+// gives the reason. click runs in place of the command, e.g. a command chosen at the click
+export type Item = { command: string; arg?: unknown; icon?: string; text?: string | (() => Node); title?: string; pressed?: () => boolean | 'mixed' | null; off?: () => string | null; click?: () => unknown };
 
 function itemButton(app: App, run: Run, item: Item, className: string): { el: HTMLButtonElement; sync(): void } {
   const b = make('button', className);
@@ -215,10 +211,11 @@ function itemButton(app: App, run: Run, item: Item, className: string): { el: HT
   else if (item.text) b.append(make('span', '', item.text));
   if (item.title && typeof item.text !== 'string') b.setAttribute('aria-label', item.title);
   keepFocus(b);
-  b.addEventListener('click', () => void run(item.command, item.arg));
+  b.addEventListener('click', () => void (item.click ? item.click() : run(item.command, item.arg)));
   const sync = () => {
     const s = stateOf(app, item.command);
-    b.disabled = !s?.enabled;
+    const off = item.off?.() ?? null;
+    b.disabled = !s?.enabled || !!off;
     const on = item.pressed ? item.pressed() : s?.checked;
     if (on === null || on === undefined) b.removeAttribute('aria-pressed');
     else b.setAttribute('aria-pressed', on === 'mixed' && !b.disabled ? 'mixed' : String(on === true && !b.disabled));
@@ -227,14 +224,14 @@ function itemButton(app: App, run: Run, item: Item, className: string): { el: HT
     const name = item.title ?? (s && typeof item.text !== 'string' ? s.label : '');
     const c = app.commands.get(item.command);
     const keys = name && c ? commandKeys(c, app.platform) : '';
-    b.title = s?.why ?? (keys ? `${name} (${keys})` : name);
+    b.title = s?.why ?? off ?? (keys ? `${name} (${keys})` : name);
   };
   sync();
   return { el: b, sync };
 }
 
-export function segmented(app: App, run: Run, items: Item[], label: string): Control {
-  const el = make('div', 'ed-seg');
+export function segmented(app: App, run: Run, items: Item[], label: string, className = ''): Control {
+  const el = make('div', `ed-seg ${className}`.trim());
   el.setAttribute('role', 'group');
   el.setAttribute('aria-label', label);
   return group(el, items.map((item) => itemButton(app, run, item, '')));

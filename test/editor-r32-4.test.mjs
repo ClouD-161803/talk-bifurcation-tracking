@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press } from './helpers/editor.mjs';
+import { click, clickText, press } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-r32-4.html';
 const PLATFORMS = ['mac', 'other'];
@@ -87,13 +87,13 @@ const measure = (page) => page.evaluate(DRAWN);
 
 // the selections of a table, each made with trusted input as a user makes it
 const SELECTIONS = {
-  cell: async (page) => { await click(page, 'section.present tr:nth-child(2) td'); },
+  cell: async (page) => { await clickText(page, 'section.present tr:nth-child(2) td'); },
   range: async (page) => {
-    await click(page, 'section.present tr:nth-child(2) td');
+    await clickText(page, 'section.present tr:nth-child(2) td');
     await click(page, 'section.present tr:last-child td:last-child', { modifiers: 'Shift' });
   },
   table: async (page) => {
-    await click(page, 'section.present tr:nth-child(2) td');
+    await clickText(page, 'section.present tr:nth-child(2) td');
     await press(page, 'Escape');
     await press(page, 'Escape');
   },
@@ -156,9 +156,9 @@ for (const platform of PLATFORMS) {
     for (const out of [false, true]) {
       await page.evaluate('Reveal.slide(0)');
       await frames(page);
-      await click(page, 'section.present h2');
+      await clickText(page, 'section.present h2');
       await press(page, 'End');
-      await click(page, MAIN);
+      await clickText(page, MAIN);
       await page.waitFor(playingOf('preview.slide'), 3000);
       await frames(page);
       assert.equal(await page.evaluate('document.activeElement.localName'), 'h2', 'the caret is not kept in the heading');

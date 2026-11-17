@@ -389,20 +389,23 @@ export function install(app: App): void {
     apply.disabled = !sheet.tex.trim();
     void ed.refresh();
     // the commit key is held until the TeX typed before it is typeset, since Apply is dimmed or
-    // lit by the preview of an earlier TeX until then. a TeX with an error is not committed
+    // lit by the preview of an earlier TeX until then. a TeX with an error is not committed. false
+    // for a commit that threw
     let committing = false;
     const submit = async (focus = !!target && !sheet.made) => {
-      if (committing) return;
+      if (committing) return true;
       committing = true;
       try {
         await ed.settle();
-        if (popover !== box || !ed.ok()) return;
+        if (popover !== box || !ed.ok()) return true;
         await sheet.commit(field.value);
         closeMath(focus);
         sheet.done?.();
+        return true;
       } catch (e) {
         ed.message.classList.remove('prompt');
         ed.message.textContent = e instanceof Error ? e.message : String(e);
+        return false;
       } finally {
         committing = false;
       }
@@ -428,9 +431,10 @@ export function install(app: App): void {
       stops[(at + (ev.shiftKey ? -1 : 1) + stops.length) % stops.length].focus();
     });
     popover = box;
+    // a refused commit keeps the field open with its TeX and the message
     away = sheet.made
       ? async () => {
-          if (field.value.trim()) await submit(false);
+          if (field.value.trim() && !(await submit(false))) return;
           if (popover === box) closeMath(false);
         }
       : sheet.left
@@ -480,6 +484,17 @@ export function install(app: App): void {
     const fresh = !info.tex.trim();
     // the text element is taken now, since a commit draws the formula again in a new container
     const textEl = textElementOf(container);
+    // so does a redraw of tex.js while the field is open, after which the formula is found by its place,
+    // as long as its text element holds as many formulas and this one has its TeX
+    const count = textEl.querySelectorAll('mjx-container').length;
+    const at = [...textEl.querySelectorAll('mjx-container')].indexOf(container);
+    const now = (): Element => {
+      if (container.isConnected) return container;
+      const all = textEl.isConnected ? textEl.querySelectorAll('mjx-container') : [];
+      const candidate = all[at];
+      if (candidate && all.length === count && mathLookup()(candidate)?.tex === info.tex) return candidate;
+      throw new Error('Another person changed the formulas of this text. Copy your TeX, press Cancel, and open the formula again.');
+    };
     openSheet({
       title: fresh ? 'Insert Formula' : 'Edit Formula',
       tex: info.tex,
@@ -490,10 +505,10 @@ export function install(app: App): void {
       textEl: () => textEl,
       commit: into
         ? (tex) => app.history.amend(into, async () => {
-            await setMath(container, tex);
+            await setMath(now(), tex);
             if (textEl.isConnected) app.selection.set('elements', [textEl]);
           })
-        : (tex) => setMath(container, tex),
+        : (tex) => setMath(now(), tex),
       made: into ? textEl : undefined,
     }, container);
   }
@@ -508,7 +523,8 @@ export function install(app: App): void {
   app.math = math;
   document.addEventListener('click', (ev) => {
     const target = ev.target instanceof Element ? ev.target : null;
-    const container = target?.closest('mjx-container');
+    // the click of a drag or an Alt-click, which canvas/drag.ts marks as handled, does not open the TeX
+    const container = ev.defaultPrevented ? null : target?.closest('mjx-container');
     if (container && app.hostOf(container)) {
       ev.preventDefault();
       // a Shift-click or a command-click only adds the object of the formula to the selection or

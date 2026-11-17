@@ -34,6 +34,13 @@ test('a fragment is held while the current step highlights a class in it', () =>
   assert.deepEqual(resolve(steps, 4).held, [false, false, false, false]);
 });
 
+test('from the step of a fragment with data-focus on, every shown fragment is held', () => {
+  const steps = (current) => [1, 2, 3, 4].map((i) => step(i, i <= current, { focus: i === 3 }));
+  assert.deepEqual(resolve(steps(2), 2).held, [false, false, false, false]);
+  assert.deepEqual(resolve(steps(3), 3).held, [true, true, false, false]);
+  assert.deepEqual(resolve(steps(4), 4).held, [true, true, true, false]);
+});
+
 test('a class is colored once its step is shown, in the tone of the last step that names it', () => {
   const steps = [step(1, true, { highlight: ['a'] }), step(2, true, { highlight: ['a', 'b'], tone: 'violet' }), step(3, false, { highlight: ['c'] })];
   assert.deepEqual([...resolve(steps, 2).lit], [['a', 'violet'], ['b', 'violet']]);
@@ -212,4 +219,76 @@ test('a fragment with data-final is shown last with every fragment restored, in 
   ]);
   assert.equal(await page.evaluate('Reveal.isLastSlide() && !Reveal.availableFragments().next'), true);
   assert.deepEqual(page.errors, []);
+});
+
+// the style of a fragment is read once it is visible and before it is current, hence a fragment in a
+// shown fragment, which is not dimmed, would start its fade at once without a delay set while it is
+// visible. the milliseconds from the step to the first frame at which the late fragment is drawn are
+// recorded in the page
+test('a fragment of the class late is shown after its delay, also in a shown fragment', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/late.html'));
+  await page.waitFor(deckSettled);
+
+  const start = (late, steps) => page.evaluate(`new Promise((done) => {
+    const el = document.querySelectorAll('.late')[${late}], t0 = performance.now();
+    for (let i = 0; i < ${steps}; i++) Reveal.next();
+    const frame = (now) => (Number(getComputedStyle(el).opacity) > 0 ? done(now - t0) : requestAnimationFrame(frame));
+    requestAnimationFrame(frame);
+  })`);
+  const shown = (late) => `getComputedStyle(document.querySelectorAll('.late')[${late}]).opacity === '1'`;
+  for (const [late, steps] of [[0, 1], [1, 2]]) {
+    const ms = await start(late, steps);
+    // the delay of --delay is 1 s
+    assert.ok(ms >= 950, `the late fragment ${late} is drawn ${ms} ms after its step`);
+    await page.waitFor(shown(late), 10000);
+  }
+  assert.deepEqual(page.errors, []);
+});
+
+// the opacity at which each fragment of the slide is drawn, its own times those of its ancestors up to
+// the slide, rounded to two places
+const drawn = (root) => `(() => {
+  const slide = ${root};
+  return [...slide.querySelectorAll('.fragment')].filter((f) => f.textContent.trim()).map((f) => {
+    let o = 1;
+    for (let el = f; el && el !== slide; el = el.parentElement) o *= Number(getComputedStyle(el).opacity);
+    return o.toFixed(2);
+  });
+})()`;
+
+// the step before the list, the item, the step nested in the item, and the last item, at the start,
+// after each of the four steps, and after the step added to restore the dimmed ones
+const NESTED = [
+  ['0.00', '0.00', '0.00', '0.00'],
+  ['1.00', '0.00', '0.00', '0.00'],
+  ['0.45', '1.00', '0.00', '0.00'],
+  ['0.45', '1.00', '1.00', '0.00'],
+  ['0.45', '0.45', '0.45', '1.00'],
+  ['1.00', '1.00', '1.00', '1.00'],
+];
+
+test('a step nested in an earlier step is drawn at full opacity while it is the current step, in the show and in print', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/nested-step.html'));
+  await page.waitFor(deckSettled);
+  const seen = [];
+  for (let i = 0; i < NESTED.length; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await new Promise((done) => setTimeout(done, 600));
+    seen.push(await page.evaluate(drawn('Reveal.getCurrentSlide()')));
+  }
+  assert.deepEqual(seen, NESTED);
+  assert.deepEqual(page.errors, []);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl('test/pages/nested-step.html', 'print-pdf'));
+  const pages = [];
+  for (let i = 0; i < NESTED.length; i++) pages.push(await print.evaluate(drawn(`document.querySelectorAll('.pdf-page section')[${i}]`)));
+  assert.deepEqual(pages, NESTED);
+  assert.deepEqual(print.errors, []);
 });

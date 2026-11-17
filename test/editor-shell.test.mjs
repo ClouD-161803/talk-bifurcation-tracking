@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { click, editorPage, press } from './helpers/editor.mjs';
+import { click, clickText, editorPage, press } from './helpers/editor.mjs';
 
 const scheme = (page, value) => page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
 const frames = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
@@ -41,7 +41,7 @@ test('a pointer click on Navigator or Steps leaves the focus off the button', as
   const page = await editorPage(browser);
   for (const name of ['Navigator', 'Steps']) {
     const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === ${JSON.stringify(name)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     assert.notEqual(await page.evaluate('document.activeElement.textContent'), name, `the focus is left on ${name}`);
   }
@@ -237,16 +237,16 @@ test('a dialog keeps Tab inside, answers with the button pressed, and gives the 
 test('the labels of the toolbar are kept while they fit, and the late groups go into a menu while they do not', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  for (const [width, labels, more] of [[1440, true, false], [1024, true, false], [900, true, 'file'], [840, true, 'inserts']]) {
+  for (const [width, labels, more] of [[1440, true, false], [1024, true, 'file'], [900, true, 'inserts'], [840, true, 'inserts']]) {
     const page = await editorPage(browser, { page: { width, height: 700 } });
     const bar = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-top .tb')]; return { texts: b.filter((e) => !e.classList.contains('more-groups')).map((e) => e.textContent), label: getComputedStyle(b[0].querySelector('.label')).display !== 'none', more: !!document.querySelector('.beeson-edit-top .more-groups') }; })()`);
     assert.equal(bar.label, labels, `${width}: labels`);
     assert.equal(bar.more, !!more, `${width}: the menu More`);
     // Format and Steps stay after More, since Format opens and closes the inspector, beside which
-    // the navigator is hidden in a narrow window. At 900 px Preview, Present, and Save are folded,
-    // and at 840 px the group of the inserts is folded too
+    // the navigator is hidden in a narrow window. At 1024 px Preview, Present, and Save are folded,
+    // and at 900 and 840 px the group of the inserts is folded too
     const inserts = ['Table', 'Text', 'Formula', 'Shape', 'Media'];
-    assert.deepEqual(bar.texts.map((x) => x.replace(/^\d+%/, '%')), more ? ['View', '%Zoom', 'Undo', 'Redo', 'Add Slide', ...(more === 'file' ? inserts : []), 'Format', 'Steps'] : ['View', '%Zoom', 'Undo', 'Redo', 'Add Slide', 'Table', 'Text', 'Formula', 'Shape', 'Media', 'Preview', 'Present', 'Save', 'Format', 'Steps']);
+    assert.deepEqual(bar.texts.map((x) => x.replace(/^\d+%/, '%')), more ? ['View', '%Zoom', 'Undo', 'Redo', 'Delete', 'Add Slide', ...(more === 'file' ? inserts : []), 'Format', 'Steps'] : ['View', '%Zoom', 'Undo', 'Redo', 'Delete', 'Add Slide', 'Table', 'Text', 'Formula', 'Shape', 'Media', 'Preview', 'Present', 'Save', 'Format', 'Steps']);
     const cell = await boxOf(page, '.beeson-edit-canvas');
     assert.ok(cell.w > 0 && cell.h > 0);
     assert.deepEqual(page.errors, []);
@@ -279,5 +279,52 @@ test('the zoom of the status bar scales the slide past Fit, the canvas scrolls, 
   // a figure selected at the zoom is framed at its box
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Fit').click()`);
   assert.deepEqual(await state(), fit);
+  assert.deepEqual(page.errors, []);
+});
+
+// reveal.js gave the focus to the body whenever a hidden page was shown again, hence the keys of a
+// person who came back to the tab went to the slide behind a dialog, or deleted the selected object
+test('a return to the tab of the editor keeps the focus in a dialog and in a field of the Format pane', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await editorPage(browser);
+  const other = await browser.newPage({ width: 800, height: 600 });
+  await page.send('Page.bringToFront');
+  // a person switches to another tab and back
+  const away = async () => {
+    await other.send('Page.bringToFront');
+    await page.waitFor('document.hidden');
+    await page.send('Page.bringToFront');
+    await page.waitFor('!document.hidden');
+    await frames(page);
+  };
+  const focused = () => page.evaluate(`document.activeElement === document.body ? 'the body' : document.activeElement.getAttribute('name') ?? document.activeElement.textContent`);
+
+  await page.evaluate(`window.BeesonEditorShell.ask({ title: 'Delete the slide?', buttons: [{ label: 'Delete', value: 'delete' }, { label: 'Cancel', value: 'cancel' }] }, 'cancel'); 0`);
+  assert.equal(await focused(), 'Cancel');
+  await away();
+  assert.equal(await focused(), 'Cancel');
+  await press(page, 'Tab');
+  assert.equal(await focused(), 'Delete');
+  await press(page, 'Escape');
+  await page.waitFor(`!document.querySelector('dialog.beeson-edit-dialog[open]')`);
+
+  const at = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('h2')?.textContent === 'Code boxes, you guessed it...')`);
+  await page.evaluate(`Reveal.slide(${at})`);
+  await page.waitFor(`Reveal.getIndices().h === ${at}`);
+  await frames(page);
+  await clickText(page, '.reveal section.present > pre');
+  await press(page, 'Escape');
+  await page.waitFor('window.BeesonEditor.selection().length === 1');
+  const FIELD = `[...document.querySelectorAll('.beeson-edit-inspector [name="line-steps"]')].find((el) => el.getClientRects().length && !el.disabled)`;
+  await page.waitFor(`!!${FIELD}`);
+  const { x, y, width, height } = await page.evaluate(`(${FIELD}).getBoundingClientRect().toJSON()`);
+  await click(page, { x: x + width / 2, y: y + height / 2 });
+  await page.waitFor(`document.activeElement === ${FIELD}`);
+  await away();
+  assert.equal(await focused(), 'line-steps');
+  await press(page, 'Backspace');
+  await frames(page);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present > pre').length`), 1, 'Backspace in the field deleted the selected object');
   assert.deepEqual(page.errors, []);
 });

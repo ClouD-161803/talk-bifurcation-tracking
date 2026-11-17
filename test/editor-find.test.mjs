@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { pattern, spans, splice } from '../src/editor/find.ts';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const KEYS = {
@@ -141,7 +141,7 @@ for (const platform of PLATFORMS) {
     assert.ok(total > 5, `only ${total} matches of slide`);
     const seen = new Set();
     for (let i = 0; i < total; i++) {
-      await click(page, '.beeson-find [aria-label="Next"]');
+      await clickText(page, '.beeson-find [aria-label="Next"]');
       const p = await panel(page);
       assert.equal(p.count, `${((i + 1) % total) + 1} of ${total}`);
       assert.equal(p.current.toLowerCase(), 'slide');
@@ -150,7 +150,7 @@ for (const platform of PLATFORMS) {
     }
     assert.ok(seen.size > 3, `the matches were shown on ${seen.size} slides`);
     // Whole Words and Match Case are set in the gear menu, and each narrows the count
-    await click(page, '.beeson-find .gear');
+    await clickText(page, '.beeson-find .gear');
     await click(page, '.beeson-edit-menu.find-options [data-command="find.wholeWords"]');
     const words = Number((await panel(page)).count.split(' of ')[1]);
     assert.ok(words < total && words > 0, `${words} whole words of ${total}`);
@@ -168,7 +168,7 @@ for (const platform of PLATFORMS) {
     assert.equal(p.replacing, true);
     assert.equal(p.focus, 'Find');
     await type(page, 'manifold');
-    await click(page, '.beeson-find .replace input');
+    await clickText(page, '.beeson-find .replace input');
     await type(page, 'tube');
     const changed = page.source.replaceAll('manifold', 'tube');
     assert.equal((await panel(page)).count, '1 of 2');
@@ -247,7 +247,7 @@ test('the count follows the typing in a block and an undo while the panel is ope
   const page = await open(t, 'other');
   await page.evaluate(`window.BeesonEditor.exec('find.open', 'orbit')`);
   assert.equal((await panel(page)).count, '1 of 2');
-  await click(page, '.reveal section.present > h2');
+  await clickText(page, '.reveal section.present > h2');
   await press(page, 'End');
   await type(page, ' orbit');
   await page.waitFor(`document.querySelector('.beeson-find .count').textContent.endsWith(' of 3')`);

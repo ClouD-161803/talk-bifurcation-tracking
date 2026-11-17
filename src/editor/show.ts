@@ -45,11 +45,25 @@ export function slideAt(app: App, { h, v }: At): Element | null {
 
 const fullscreen = () => (document as Prefixed).fullscreenElement ?? (document as Prefixed).webkitFullscreenElement ?? null;
 
-export type Stage = { load(url: string): Window | null; end(): void };
+export type Stage = { load(url: string, text?: string | null): Window | null; end(): void };
+
+// text written into win as the page at url, i.e. a deck played from its saved text where the file
+// at url is not this text, e.g. after a save that was a download. the address is set before the
+// text is parsed, so that the deck reads its parameters and hash as at url. Firefox keeps the
+// address of the editor as the base after document.open, hence url is written as the base too, so
+// that theme/ and the figures are found and a hash written by reveal.js keeps the parameters of url
+export function writeDeck(win: Window, url: string, text: string): void {
+  const doc = win.document;
+  doc.open();
+  win.history.replaceState(null, '', url);
+  const base = `<base href="${url.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">`;
+  doc.write(/<base[\s>]/i.test(text) ? text : text.replace(/<head(\s[^>]*)?>/i, (head) => head + base));
+  doc.close();
+}
 
 // startShow puts the stage over the window and asks for full screen on it at once. the deck is
-// loaded into it by load, and end takes it away
-export function startShow(app: App): Stage {
+// loaded into it by load, and end takes it away and then calls ended
+export function startShow(app: App, ended?: () => void): Stage {
   injectStyle('show', CSS);
   const el = make('div', 'beeson-edit-show') as Requestable;
   const frame = make('iframe');
@@ -90,6 +104,7 @@ export function startShow(app: App): Stage {
     const slide = at && slideAt(app, at);
     if (slide) app.showSlide(slide);
     window.focus();
+    ended?.();
   };
   const onMessage = (ev: MessageEvent) => {
     if (ev.source !== frame.contentWindow || typeof ev.data !== 'string') return;
@@ -127,8 +142,11 @@ export function startShow(app: App): Stage {
     ev.preventDefault();
     ev.stopPropagation();
   };
+  // the first load is that of the deck, and a load of another page, or of the address of a written
+  // deck, ends the show
+  let loading = false;
   frame.addEventListener('load', () => {
-    if (!frame.getAttribute('src')) return;
+    if (!loading) return;
     if (++loads > 1) return end();
     frame.contentWindow?.focus();
   });
@@ -138,11 +156,14 @@ export function startShow(app: App): Stage {
   enter();
 
   return {
-    load(url: string) {
+    load(url: string, text?: string | null) {
       if (!el.isConnected) return null;
       const u = new URL(url, location.href);
       u.searchParams.set('from-editor', '');
-      frame.src = u.href.replace(/=(?=&|$|#)/g, '');
+      const href = u.href.replace(/=(?=&|$|#)/g, '');
+      loading = true;
+      if (text == null) frame.src = href;
+      else writeDeck(frame.contentWindow!, href, text);
       frame.focus();
       return frame.contentWindow;
     },

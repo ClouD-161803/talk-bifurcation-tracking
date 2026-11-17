@@ -12,7 +12,7 @@ import { rangesOf, showRange } from '../shown-steps.ts';
 import { nextShown, transitionOf } from '../review/transitions.ts';
 import { injectStyle, stored, store } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
-import { drawInto, type Thumbs } from './thumbs.ts';
+import { drawBackdrops, drawInto, stillViewers, type Thumbs } from './thumbs.ts';
 
 const KEY = 'beeson-nav';
 const LAYOUTS = ['title', 'section', 'closing', 'figure', 'split'];
@@ -173,6 +173,8 @@ export class Navigator implements Pane {
   private last: Element | null = null;
   // the Slide Sorter of sorter.ts, whose tile takes the focus in place of a row while it is shown
   table: { shown: boolean; focus(slide: Element | null): void } | null = null;
+  // called after each refresh of the rows or the tiles, e.g. by theme/session.js
+  refreshed: (() => void) | null = null;
 
   constructor(app: App) {
     injectStyle('nav', CSS);
@@ -438,6 +440,7 @@ export class Navigator implements Pane {
     });
     if (changed && this.thumbs) this.thumbs.setHosts(new Map([...this.rows].map(([s, r]) => [s, r.pic])));
     this.paint(focusIn || this.list.contains(document.activeElement));
+    this.refreshed?.();
   }
 
   // the current row and the selected rows are marked, the current row is kept in view, and the
@@ -689,8 +692,8 @@ export class Navigator implements Pane {
   }
 
   // a clone of the slide, scaled into the preview from its upper left, with every step shown. the
-  // canvases of a backdrop are painted from the originals, since a cloned canvas is blank, and a
-  // tycho viewer is left out, since its clone would start a second renderer
+  // canvases of a backdrop are painted from the originals, since a cloned canvas is blank, a backdrop
+  // that is not drawn on its slide yet is drawn by the theme, and a tycho viewer shows a still of its scene
   private showPeek(slide: Element, row: HTMLElement): void {
     if (this.drag || isHidden(slide) || shownWhole(row)) return;
     const stage = slide.parentElement as HTMLElement;
@@ -706,15 +709,7 @@ export class Navigator implements Pane {
       }
     });
     clone.querySelectorAll('aside.notes').forEach((n) => n.remove());
-    clone.querySelectorAll<HTMLElement>('.backdrop .label').forEach((l) => {
-      if (!l.style.left) l.remove();
-    });
-    clone.querySelectorAll('tycho-viewer').forEach((v) => {
-      const box = document.createElement('div');
-      box.className = v.className;
-      box.setAttribute('style', v.getAttribute('style') ?? '');
-      v.replaceWith(box);
-    });
+    stillViewers(slide, clone, PEEK_WIDTH / width);
     clone.querySelectorAll('video').forEach((v) => {
       v.removeAttribute('autoplay');
       v.preload = 'none';
@@ -742,6 +737,7 @@ export class Navigator implements Pane {
     this.peek.style.height = `${peekHeight}px`;
     this.peek.replaceChildren(deck);
     this.peek.hidden = false;
+    drawBackdrops(slide, clone);
   }
 }
 

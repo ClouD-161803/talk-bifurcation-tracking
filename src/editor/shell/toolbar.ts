@@ -16,6 +16,7 @@
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS, type Command, type Group } from '../commands.ts';
 import { entering } from '../commands/edit.ts';
+import { onSlides } from '../commands/slide.ts';
 import { injectStyle, make, store, stored, wire } from '../ui/dom.ts';
 import { icon, itemIcon } from '../ui/icons.ts';
 import { playing } from '../commands/preview.ts';
@@ -123,7 +124,7 @@ html.beeson-no-toolbar .beeson-edit-top { display: none; }
 .beeson-edit-customize .item[aria-disabled="true"] { opacity: 0.4; cursor: default; }
 .beeson-edit-customize .item:focus-visible, .beeson-edit-customize .default:focus-visible { outline: 2px solid var(--ed-focus); outline-offset: 1px; }
 .beeson-edit-customize .default { display: flex; align-items: center; gap: 2px; padding: 6px 8px; margin-bottom: 12px; border: 1px solid var(--ed-line); border-radius: 8px; font-size: 10px; color: var(--ed-muted); overflow: hidden; cursor: grab; }
-.beeson-edit-customize .default .mini { flex: 0 1 auto; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 40px; }
+.beeson-edit-customize .default .mini { flex: 0 1 auto; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 36px; }
 .beeson-edit-customize .default .mini > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .beeson-edit-customize .default .mini.sep { width: 9px; min-width: 0; align-self: stretch; background: linear-gradient(var(--ed-line), var(--ed-line)) center / 1px 70% no-repeat; }
 .beeson-edit-customize .default .mini.space { flex: 1 1 0; min-width: 8px; }
@@ -209,9 +210,9 @@ export function install(app: App): void {
     const face = c.id === 'toolbar.zoom' ? make('span', 'readout', zoomText()) : glyph(faceOf(c));
     b.append(face, make('span', 'label', label));
     if (!POPUPS.has(c.id)) {
-      // Undo and Redo leave the focus in a text or a field of the inspector,
-      // as the Edit menu does, and they enter a value typed into the field first
-      const kept = (a: Element | null) => !!a && ((a as HTMLElement).isContentEditable || entering.has(a));
+      // Undo, Redo, and Delete leave the focus in a text, a field of the inspector, or the slide
+      // list, as the Edit menu does, and they enter a value typed into the field first
+      const kept = (a: Element | null) => !!a && ((a as HTMLElement).isContentEditable || entering.has(a) || onSlides(app));
       if (c.toolbar?.group === 'history') b.addEventListener('mousedown', (ev) => void (kept(document.activeElement) && ev.preventDefault()));
       wire(b, () => app.commands.run(c.id), fail);
       return b;
@@ -392,7 +393,7 @@ export function install(app: App): void {
       const s = app.commands.state(c.id);
       el.disabled = !s.enabled && !customizing;
       const keys = commandKeys(c, app.platform);
-      el.title = keys ? `${s.label} (${keys})` : s.label;
+      el.title = c.note?.(app) ?? (keys ? `${s.label} (${keys})` : s.label);
       // a split button is pressed while one of its variants is on, e.g. Arrow while an arrow is drawn
       const on = variants.map((v) => app.commands.state(v.id).checked);
       if (on.some((x) => x !== null) && !customizing) el.setAttribute('aria-pressed', String(on.some((x) => x === true)));

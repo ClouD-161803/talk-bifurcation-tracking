@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
 const PLATFORMS = ['mac', 'other'];
@@ -83,7 +83,7 @@ const itemAt = (page, label) => page.evaluate(`(() => {
 })()`);
 
 async function openBar(page, bar) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)}).getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`));
@@ -100,7 +100,7 @@ async function pick(page, ...path) {
     if (i < path.length - 1) {
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
       await page.waitFor(`document.querySelectorAll('.beeson-edit-menu').length > ${open + i}`);
-    } else await click(page, at);
+    } else await clickText(page, at);
   }
   await frames(page);
 }
@@ -263,7 +263,7 @@ for (const platform of PLATFORMS) {
   test(`a second right-click in a text, or a right-click with ${mac ? '⌥' : 'Alt'} held, opens the menu of the browser (${platform})`, async (t) => {
     const page = await load(t, platform, { record: true });
     const at = await point(page, P, 0.1);
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     await rightClick(page, at);
     const text = (await rows(page))[0];

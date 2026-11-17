@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press } from './helpers/editor.mjs';
+import { click, clickText, press } from './helpers/editor.mjs';
 import { DRAWN, shapePath } from '../src/shapes.ts';
 
 const DECK = 'test/pages/editor-r22-2.html';
@@ -80,7 +80,7 @@ async function splitMenu(page, command) {
 
 // the labels of the menu of the menu bar title name
 async function menuOf(page, name) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const t = [...document.querySelectorAll('.beeson-edit-header [aria-haspopup="menu"]')].find((b) => b.textContent === ${JSON.stringify(name)});
     const r = t.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -213,12 +213,12 @@ for (const platform of PLATFORMS) {
 
   test(`Play Slide traces the backdrop and then plays the steps, and Preview reads Stop with the icon pause while it plays (${platform})`, async () => {
     const page = await previewPage(platform, BOTH, { motion: true, step: 250 });
-    await click(page, await centerOf(page, 'section.present h2'));
+    await clickText(page, await centerOf(page, 'section.present h2'));
     await press(page, 'Escape');
     const selection = await selected(page);
     assert.deepEqual(selection, ['h2']);
     await page.evaluate(SAMPLE);
-    await click(page, await centerOf(page, MAIN));
+    await clickText(page, await centerOf(page, MAIN));
     await frames(page);
     assert.ok((await rafs(page)) > 0, 'the backdrop is not traced first');
     assert.equal(await layer(page), false, 'the steps are played before the trace ends');
@@ -265,7 +265,7 @@ for (const platform of PLATFORMS) {
       assert.deepEqual(await face(page), { label: 'Preview', d: PLAY, pressed: false }, `Preview after ${how}`);
     };
     await playing('the click on Stop');
-    await click(page, await centerOf(page, MAIN));
+    await clickText(page, await centerOf(page, MAIN));
     await stopped('a click on Stop');
     await unchanged(page);
     await playing('Esc');
@@ -276,7 +276,7 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     await stopped('Esc during a trace');
     await playing('a press on the canvas');
-    await click(page, await centerOf(page, 'section.present h2'));
+    await clickText(page, await centerOf(page, 'section.present h2'));
     await stopped('a press on the canvas');
     await press(page, 'Escape');
     await press(page, 'Escape');

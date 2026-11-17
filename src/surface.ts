@@ -258,6 +258,12 @@ void main() {
 }`;
 
 let shared: Three.WebGLRenderer | null | undefined;
+const restored: (() => void)[] = [];
+
+/** Calls redraw each time the context of the renderer is restored after a loss, e.g. at a reset of the GPU. */
+export function onRestore(redraw: () => void): void {
+  restored.push(redraw);
+}
 
 // the renderer of every surface of the page, created on first use, or null without THREE or WebGL,
 // which is reported once
@@ -275,11 +281,49 @@ export function renderer(): Three.WebGLRenderer | null {
     r.setClearColor(0x000000, 0);
     // the colors of the shaders are the sRGB values of the theme, written without a conversion
     r.outputColorSpace = THREE.LinearSRGBColorSpace;
+    // after a crash of the GPU process, Chrome draws on the restored canvas but copies it blank,
+    // hence every surface is drawn again on a new renderer
+    r.domElement.addEventListener('webglcontextrestored', () => {
+      r.dispose();
+      shared = undefined;
+      for (const redraw of restored) redraw();
+    }, { once: true });
     shared = r;
   } catch (error) {
     console.warn(`beeson: WebGL is not available for the surfaces, ${String(error)}`);
   }
   return shared;
+}
+
+/**
+ * Turns a camera by a drag on el, with the pointer captured, as on a surface or a strip bundle. The
+ * callback turn is called with each move in screen pixels, and end once the drag is over. Returns a
+ * function that returns true during a drag.
+ */
+export function dragToTurn(el: HTMLElement, turn: (dx: number, dy: number) => void, end: () => void): () => boolean {
+  let drag: { x: number; y: number } | null = null;
+  el.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    drag = { x: ev.clientX, y: ev.clientY };
+    // the capture is refused for a pointer that is not active, e.g. that of a synthetic event
+    try { el.setPointerCapture(ev.pointerId); } catch { /* the drag is followed without a capture */ }
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    const { x, y } = drag;
+    drag = { x: ev.clientX, y: ev.clientY };
+    turn(ev.clientX - x, ev.clientY - y);
+  });
+  const stop = () => {
+    if (!drag) return;
+    drag = null;
+    el.classList.remove('dragging');
+    end();
+  };
+  el.addEventListener('pointerup', stop);
+  el.addEventListener('pointercancel', stop);
+  return () => drag !== null;
 }
 
 const CACHE = new WeakMap<HTMLElement, Surface>();
@@ -343,7 +387,7 @@ export class Surface {
   private raf = 0;
   private last = 0;
   private resume = 0;
-  private drag: { x: number; y: number } | null = null;
+  private dragging: () => boolean;
   private W = 0;
   private H = 0;
   private w = 0;
@@ -401,7 +445,7 @@ export class Surface {
     this.points = this.makePoints();
     this.scene.add(this.plane, this.glow, this.curve, this.points);
     this.recolor();
-    this.bindDrag();
+    this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => { this.resume = performance.now() + 1500; });
     CACHE.set(el, this);
     this.sync(false);
     this.fit();
@@ -1003,31 +1047,6 @@ export class Surface {
     return false;
   }
 
-  private bindDrag(): void {
-    const el = this.el;
-    el.addEventListener('pointerdown', (ev) => {
-      if (ev.button !== 0) return;
-      this.drag = { x: ev.clientX, y: ev.clientY };
-      // the capture is refused for a pointer that is not active, e.g. that of a synthetic event
-      try { el.setPointerCapture(ev.pointerId); } catch { /* the drag is followed without a capture */ }
-      el.classList.add('dragging');
-    });
-    el.addEventListener('pointermove', (ev) => {
-      if (!this.drag) return;
-      const { x, y } = this.drag;
-      this.drag = { x: ev.clientX, y: ev.clientY };
-      this.turn(ev.clientX - x, ev.clientY - y);
-    });
-    const end = () => {
-      if (!this.drag) return;
-      this.drag = null;
-      el.classList.remove('dragging');
-      this.resume = performance.now() + 1500;
-    };
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
-  }
-
   private kick(): void {
     if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
   }
@@ -1049,7 +1068,7 @@ export class Surface {
       }
       if (k >= 1) this.settle();
     }
-    if (this.rate && !this.drag && now > this.resume) this.azimuth += dt * this.rate;
+    if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
     this.draw();
     if (this.moving || this.rate || !this.pointsSettled()) this.kick();
   };

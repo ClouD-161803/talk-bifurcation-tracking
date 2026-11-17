@@ -9,21 +9,17 @@
 <link rel="stylesheet" href="../../theme/beeson.css">
 </head>
 <body>
-<!-- a paused plot whose first step plays a trace with a tone per frame and a fade, held at its last
-     point for the last 1.2 s, and whose second step hides a region -->
+<!-- a paused plot whose step plays once a trace with a tone per frame and a fade, held at its last
+     point for the last 1.2 s -->
 <div class="reveal">
   <div class="slides">
     <section>
       <h2>A trace that fades</h2>
       <div class="plot figure-box" data-plot="data" data-plot-tabs="still" data-plot-tab="still" data-plot-paused></div>
-      <span class="fragment" data-plot-tab="go" data-plot-run></span>
-      <span class="fragment" data-plot-hide="fill"></span>
+      <span class="fragment" data-plot-tab="go" data-plot-once></span>
       <script type="application/json" id="data">{
         "duration": 1,
-        "panels": [
-          { "id": "p", "x": { "range": [0, 1] }, "y": { "range": [0, 1] },
-            "regions": [{ "id": "fill", "points": [[0, 0], [1, 0], [0, 1]] }] }
-        ],
+        "panels": [{ "id": "p", "x": { "range": [0, 1] }, "y": { "range": [0, 1] } }],
         "marks": [{ "id": "m", "panel": "p", "kind": "trace", "fade": 0.6, "ghost": false }],
         "tabs": [
           { "name": "still", "values": [0], "data": {} },

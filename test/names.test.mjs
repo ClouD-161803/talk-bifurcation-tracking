@@ -39,10 +39,13 @@ const OLD = [
   ['layer', /beeson-layers|layers\.ts|LayerSwitch|Layer of the slide|showLayer|\b(?:last|another|first|the) layer of the slide|cut into layers|one layer at a time|layersOf\((?:slide|clone)\)/i, 'the steps shown on the slide'],
   ['JSON block', /JSON block/, 'JSON script'],
   ['the surface states flat, wells, bowl, and sum', /data-surface-state="(?:flat|wells|bowl|sum)"/, 'zero, gravitational, centrifugal, and effective'],
+  ['beeson-session-sheet', /beeson-session-sheet/, 'beeson-session-fit'],
+  ['beeson-locked', /beeson-locked/, 'beeson-held'],
 ];
 
-// the files where an old word means something else, e.g. the JSON key ghost of a plot
-const OTHER = { ghost: /^src\/(plot|orbits|switcher)\.ts$|^theme\/beeson\.js$/ };
+// the files where an old word means something else, e.g. the JSON key ghost of a plot, and of a
+// family of a bundle, which mirrors it
+const OTHER = { ghost: /^src\/(plot|orbits|switcher|bundle)\.ts$|^theme\/beeson\.js$/ };
 
 // the uses of block in the editor that do not mean a text element: a blockquote, a CSS display, a
 // block arrow of a shape, a blocked request, the block option of scrollIntoView, and the

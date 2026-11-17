@@ -24,15 +24,15 @@ const running = new WeakSet<Viewer>();
 // the start that each viewer waits for, so that a start undone before it is made is dropped
 const turns = new WeakMap<Viewer, number>();
 let turn = 0;
-const loads = new WeakMap<Viewer, Promise<void>>();
+const loads = new WeakMap<Element, Promise<void>>();
 
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
-const loaded = (v: Viewer) => (v.state ?? null) !== null;
-const failed = (v: Viewer) => !!v.shadowRoot?.querySelector('.status.error');
+const loaded = (v: Element) => ((v as Viewer).state ?? null) !== null;
+const failed = (v: Element) => !!v.shadowRoot?.querySelector('.status.error');
 
 /** Resolves once the scene of a viewer is loaded, once the viewer shows an error, or after 60 s. */
-function whenLoaded(v: Viewer): Promise<void> {
+export function whenLoaded(v: Element): Promise<void> {
   let load = loads.get(v);
   if (!load) {
     const until = performance.now() + 60000;

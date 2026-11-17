@@ -102,8 +102,8 @@ export function parseHtmlTable(html: string): string[][] | null {
 // the mark of a table that a cut or a copy of a range of cells of the editor writes
 export const CELLS = 'data-beeson="cells"';
 
-// the HTML of the children of el with only the inline elements of the theme, i.e. strong, em, s, a
-// span of one class tone-*, and br. every other element is reduced to its text, without a script
+// the HTML of the children of el with only the inline elements of the theme, i.e. strong, em, u, s,
+// a span of one class tone-*, and br. every other element is reduced to its text, without a script
 // or a style
 function inlineHtml(el: Element): string {
   let out = '';
@@ -112,7 +112,7 @@ function inlineHtml(el: Element): string {
     if (!(n instanceof Element) || ['script', 'style'].includes(n.localName)) continue;
     const tone = n.localName === 'span' && n.classList.length === 1 && /^tone-(accent|violet|blue|red|subtle|muted)$/.test(n.className);
     if (n.localName === 'br') out += '<br>';
-    else if (['strong', 'em', 's'].includes(n.localName)) out += `<${n.localName}>${inlineHtml(n)}</${n.localName}>`;
+    else if (['strong', 'em', 'u', 's'].includes(n.localName)) out += `<${n.localName}>${inlineHtml(n)}</${n.localName}>`;
     else if (tone) out += `<span class="${n.className}">${inlineHtml(n)}</span>`;
     else out += inlineHtml(n);
   }

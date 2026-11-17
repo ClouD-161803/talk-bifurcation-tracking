@@ -283,7 +283,8 @@ export function install(app: App): void {
     }
   }, true);
   typed = (ev) => {
-    if (ev.isComposing || ev.key.length !== 1 || ev.key === ' ' || ev.ctrlKey || ev.metaKey || app.state !== 'loaded' || app.region() !== 'canvas') return;
+    // in Version History, the focus is on the body as well, and the shape selected before it is kept
+    if (ev.isComposing || ev.key.length !== 1 || ev.key === ' ' || ev.ctrlKey || ev.metaKey || app.state !== 'loaded' || app.region() !== 'canvas' || document.documentElement.classList.contains('beeson-history')) return;
     // an Alt key of a command, e.g. Alt+= of Insert Formula on other, runs the command
     if (ev.altKey && app.commands.forKey(ev, 'canvas')) return;
     const el = app.selection.only();
@@ -296,14 +297,14 @@ export function install(app: App): void {
       document.execCommand('insertText', false, ev.key);
     } else void startWords(el, ev.key).catch((e) => app.fail(e));
   };
-  // a press on the words of a selected shape is taken by the move of canvas/drag.ts, whose click
-  // puts the caret, hence the word at the caret of a double click is selected here, as the browser
-  // selects it in a text. a space or a mark between two words is selected by itself
+  // a press on the words of a selected text element or shape is taken by the move of
+  // canvas/drag.ts, whose click puts the caret, hence the word at the caret of a double click is
+  // selected here, as the browser selects it in a text. a space or a mark between two words is
+  // selected by itself
   window.addEventListener('dblclick', (ev) => {
-    const el = ev.target instanceof Element ? ev.target.closest('.shape') : null;
     const host = ev.target instanceof Element ? ev.target.closest(HOST) : null;
     const s = getSelection(), node = s?.anchorNode;
-    if (!el || !isShape(el) || !host || !el.contains(host) || !s?.isCollapsed || !(node instanceof Text) || !host.contains(node)) return;
+    if (!host || !app.current()?.contains(host) || host.closest('aside.notes') || !s?.isCollapsed || !(node instanceof Text) || !host.contains(node)) return;
     const words = new Intl.Segmenter(document.documentElement.lang || undefined, { granularity: 'word' }).segment(node.data);
     const at = s.anchorOffset;
     const before = at > 0 ? words.containing(at - 1) : undefined;

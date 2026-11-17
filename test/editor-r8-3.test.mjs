@@ -14,7 +14,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { themeClasses, textProblems } from '../src/editor/model/scope.ts';
-import { byteExact, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
@@ -137,7 +137,7 @@ const selectWords = (page, selector, text) => page.evaluate(`(() => {
 for (const platform of PLATFORMS) {
   test(`the link editor of a word is put beside its paragraph, off the list under it and inside the canvas (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, P);
+    await clickText(page, P);
     assert.ok(await selectWords(page, P, 'matplotlib'));
     await frames(page);
     await exec(page, 'text.link', { kind: 'email' });
@@ -160,7 +160,7 @@ for (const platform of PLATFORMS) {
   test(`the formula sheets are put by the same rule, beside their target inside the canvas and off the text (${platform})`, async (t) => {
     const page = await load(t, platform, { n: EQUATIONS });
     // state 45, the TeX sheet of the display formula
-    await click(page, '.reveal section.present div.math mjx-container');
+    await clickText(page, '.reveal section.present div.math mjx-container');
     await page.waitFor(`!!document.querySelector('.beeson-math')`);
     await sleep(300);
     let pop = await rectOf(page, '.beeson-math');
@@ -176,7 +176,7 @@ for (const platform of PLATFORMS) {
     // state 79, the sheet of a new formula under the list of the slide with the figure
     await page.evaluate(`Reveal.slide(${FIGURE})`);
     await frames(page);
-    await click(page, `${LIST} > li:last-child`);
+    await clickText(page, `${LIST} > li:last-child`);
     await press(page, 'Escape');
     await exec(page, 'insert.formula');
     await page.waitFor(`!!document.querySelector('.beeson-math')`);
@@ -221,7 +221,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(await page.evaluate('window.BeesonEditorShell.sheetClashes()'), [], 'a key is listed at two commands of one pane of the sheet');
     const previous = rows.find((r) => r.label === 'Find Previous').keys;
     // the key of Change Case changes the case of the words selected in a text
-    await click(page, P);
+    await clickText(page, P);
     assert.ok(await selectWords(page, P, 'matplotlib'));
     await frames(page);
     await press(page, 'Shift+F3');
@@ -232,7 +232,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'find.open', 'styles');
     await frames(page);
     await press(page, 'Escape');
-    await click(page, `${LIST} > li:first-child`);
+    await clickText(page, `${LIST} > li:first-child`);
     await frames(page);
     await press(page, platform === 'mac' ? 'Mod+Shift+G' : 'Ctrl+Shift+F3');
     await frames(page);
@@ -281,7 +281,7 @@ async function tableSlide(page) {
   await exec(page, 'insert.table', { rows: 5, columns: 3 });
   await frames(page);
   for (const [r, c, text] of [[1, 0, '1'], [2, 0, '2'], [1, 1, 'Step 1'], [2, 1, 'Step 2'], [1, 2, 'orbit'], [2, 2, 'tube']]) {
-    await click(page, cellAt(r, c));
+    await clickText(page, cellAt(r, c));
     await type(page, text);
   }
   await frames(page);
@@ -355,7 +355,7 @@ for (const platform of PLATFORMS) {
     assert.ok(inside(ink, frame), `the text of the merged cell at ${js(ink)} is drawn under its frame, whose inside is ${js(frame)}`);
     // one cell of the first column selected as a block, whose text starts at the left edge of the
     // cell
-    await click(page, cellAt(3, 0));
+    await clickText(page, cellAt(3, 0));
     await press(page, 'Escape');
     await frames(page);
     // its frame is on the edges of the cell, on its padding at the right, the top, and the bottom,
@@ -388,7 +388,7 @@ for (const platform of PLATFORMS) {
     const { x, y } = middle(await rectOf(page, '.beeson-table-picker .grid > :nth-child(24)'));
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     assert.equal(await page.evaluate(`document.querySelector('.beeson-table-picker .size').textContent`), '4 × 3 Table');
-    await click(page, '.beeson-table-picker .more');
+    await clickText(page, '.beeson-table-picker .more');
     await page.waitFor(`!!document.querySelector('dialog.beeson-table-size[open]')`);
     assert.deepEqual(await sizeFields(page), { columns: '4', rows: '3' }, 'the dialog does not open with the size of the grid');
     await press(page, 'Tab');
@@ -402,7 +402,7 @@ for (const platform of PLATFORMS) {
     // a later Insert Table… without a rest on the grid opens with the size typed last
     await click(page, '.beeson-edit-top [data-command="insert.table"]');
     await page.waitFor(`!!document.querySelector('dialog.beeson-table-picker[open]')`);
-    await click(page, '.beeson-table-picker .more');
+    await clickText(page, '.beeson-table-picker .more');
     await page.waitFor(`!!document.querySelector('dialog.beeson-table-size[open]')`);
     assert.deepEqual(await sizeFields(page), { columns: '4', rows: '9' });
     await press(page, 'Escape');
@@ -423,7 +423,7 @@ const UNUSED = /^text\.(indent|outdent|removeLink|list\.start)$|^(Remove Link|In
 for (const platform of PLATFORMS) {
   test(`the Text pane applies its formats to a list selected as a block (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, P);
+    await clickText(page, P);
     await press(page, 'Escape');
     await frames(page);
     await click(page, `${PANEL} [data-command="text.list.ul"]`);
@@ -452,7 +452,7 @@ for (const platform of PLATFORMS) {
   test(`a control of the Text pane dimmed for a selected block says why in its tooltip (${platform})`, async (t) => {
     const page = await load(t, platform);
     for (const sel of [P, `${LIST} > li:first-child`, '.reveal section.present h2']) {
-      await click(page, sel);
+      await clickText(page, sel);
       await press(page, 'Escape');
       await frames(page);
       for (const [id, title] of await dimmed(page)) {

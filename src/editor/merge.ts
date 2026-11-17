@@ -75,17 +75,72 @@ function diff(a: string[], b: string[], max: number): Hunk[] | null {
   return hunks;
 }
 
+// a line that opens a slide
+const SECTION = /^[ \t]*<section[\s>]/m;
+
+// the first line and the number of lines of each multiline slide of lines by its text, with the
+// first line -1 for a text that occurs more than once
+function slidesOf(lines: string[]): Map<string, number[]> {
+  const out = new Map<string, number[]>(), open: number[] = [];
+  lines.forEach((line, i) => {
+    const t = line.trimStart();
+    if (/^<section[\s>]/.test(t) && !t.includes('</section')) open.push(i);
+    const from = t.startsWith('</section') ? open.pop() : undefined;
+    if (from === undefined) return;
+    const text = lines.slice(from, i + 1).join('');
+    out.set(text, [out.has(text) ? -1 : from, i + 1 - from]);
+  });
+  return out;
+}
+
+// copies of a and b in which the lines of a slide that is moved from a to b are replaced by marks
+// that match no line, hence the diff gives its removal and its insertion whole. a slide is moved
+// when it occurs once in each, outside the longest run of such slides in the same order in both,
+// counted in lines. null when no slide is moved
+function markMoved(a: string[], b: string[]): [string[], string[]] | null {
+  const inB = slidesOf(b);
+  // a slide of a stack that is paired whole, which comes before it, moves or stays with the stack,
+  // hence it is not weighed again
+  let end = 0;
+  const pairs = [...slidesOf(a)].map(([t, [from, n]]) => [from, inB.get(t)?.[0] ?? -1, n]).filter(([from, to]) => from >= 0 && to >= 0).sort((p, q) => p[0] - q[0]).filter(([from, , n]) => from >= end && (end = from + n));
+  // the heaviest run in the same order, by dynamic programming over the slides
+  const best = pairs.map((p) => p[2]), prev = pairs.map(() => -1);
+  pairs.forEach((p, i) => pairs.forEach((q, j) => {
+    if (j < i && q[1] < p[1] && best[j] + p[2] > best[i]) [best[i], prev[i]] = [best[j] + p[2], j];
+  }));
+  const kept = new Set<number>();
+  for (let i = best.indexOf(Math.max(...best)); i >= 0; i = prev[i]) kept.add(i);
+  if (kept.size === pairs.length) return null;
+  const x = [...a], y = [...b];
+  pairs.forEach(([from, to, n], i) => {
+    for (let k = 0; k < n && !kept.has(i); k++) [x[from + k], y[to + k]] = ['\0a', '\0b'];
+  });
+  return [x, y];
+}
+
 // the changes that turn base into theirs, as edits of base in the order of the file. null when
 // the texts are too far apart to be one file, i.e. when the diff is given up or the changes replace
-// more than half of base, e.g. for an empty file or another deck
-export function changes(base: string, theirs: string): Edit[] | null {
+// more than half of base, e.g. for an empty file or another deck. with marks false, the slides
+// are not looked for as moved
+export function changes(base: string, theirs: string, marks = true): Edit[] | null {
   if (base === theirs) return [];
   const a = linesOf(base), b = linesOf(theirs);
-  let pre = 0;
-  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-  let suf = 0;
-  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-  const hunks = diff(a.slice(pre, a.length - suf), b.slice(pre, b.length - suf), MAX_LINES);
+  let x = a, y = b, pre = 0, suf = 0;
+  const trim = () => {
+    pre = suf = 0;
+    while (pre < x.length && pre < y.length && x[pre] === y[pre]) pre++;
+    while (suf < x.length - pre && suf < y.length - pre && x[x.length - 1 - suf] === y[y.length - 1 - suf]) suf++;
+  };
+  trim();
+  // a slide is looked for as moved only when both hold as many slides where they differ, hence not
+  // when a slide is copied and the slide copied is changed
+  const slides = (l: string[]) => l.slice(pre, l.length - suf).join('').split(SECTION).length;
+  const moved = marks && slides(a) > 1 && slides(a) === slides(b) && markMoved(a, b);
+  if (moved) {
+    [x, y] = moved;
+    trim();
+  }
+  const hunks = diff(x.slice(pre, x.length - suf), y.slice(pre, y.length - suf), MAX_LINES);
   if (!hunks) return null;
   const oa = offsets(a), ob = offsets(b);
   const out: Edit[] = [];
@@ -106,7 +161,13 @@ export function changes(base: string, theirs: string): Edit[] | null {
     removed += end - start;
     out.push({ start, end, text });
   }
-  return removed > base.length / 2 ? null : out;
+  // the marks count only when moves() pairs each removal of a line end, i.e. when the slides that
+  // they mark are moved whole and the diff around them removes no line. otherwise the diff of the
+  // marks can remove a slide that is not moved, and the line diff of the texts is taken
+  const paired = moved ? moves(base, out, out, () => true) : [];
+  if (moved && out.some((e) => base.slice(e.start, e.end).includes('\n') && !paired.includes(e))) return changes(base, theirs, false);
+  // a moved slide is in both texts, which are thus one file
+  return removed > base.length / 2 && !moved ? null : out;
 }
 
 // a and b overlap when they share a character, or when one of them is an insertion inside the
@@ -124,6 +185,45 @@ export function apply(base: string, edits: Edit[]): string {
   return text;
 }
 
+// the changes that turn base into theirs, or else one change from the first character in which
+// they differ to the last, hence no change is dropped
+export function edits(base: string, theirs: string): Edit[] {
+  const found = changes(base, theirs);
+  if (found) return found;
+  const n = Math.min(base.length, theirs.length);
+  let s = 0;
+  while (s < n && base[s] === theirs[s]) s++;
+  let t = 0;
+  while (t < n - s && base[base.length - 1 - t] === theirs[theirs.length - 1 - t]) t++;
+  return [{ start: s, end: base.length - t, text: theirs.slice(s, theirs.length - t) }];
+}
+
+// the edits of each move of list that an edit of others clashes with. a move is an insertion of
+// the lines of one or more removals of whole lines of base, in their order, with the lines trimmed
+// and without blank lines. lines without text outside tags, e.g. an empty list item, and lines that
+// two removals or two insertions hold are never moved, since they are not told from an edit of
+// someone else
+export function moves(base: string, list: Edit[], others: Edit[], hit: (a: Edit, b: Edit) => boolean): Edit[] {
+  const out: [string, Edit[]][] = [], cut = new Map<string, Edit | null>(), put = new Map(cut);
+  let n = 0;
+  for (const e of list) {
+    const w = !e.text && (base[e.start - 1] ?? '\n') + base[e.end - 1] === '\n\n', by = w ? cut : put;
+    const t = (w ? base.slice(e.start, e.end) : e.start === e.end ? e.text : '').replace(/\s*\n\s*/g, '\n').trim();
+    if (/(^|>)[^<]*[^\s<]/.test(t)) by.set(t, by.has(t) ? null : e);
+  }
+  for (const [t, f] of put) {
+    // the group g of the insertion and the removals whose lines come next in it, in their order, with
+    // r the lines left. n counts the edits of every move
+    let r = t + '\n';
+    const g = [f!];
+    for (const [k, e] of cut) if (e && r.startsWith(k + '\n')) r = r.slice(g.push(e) && k.length + 1);
+    if (f && !r && (n += g.length) && g.some((x) => others.some((o) => hit(x, o)))) out.push([t, g]);
+  }
+  // lines are a move only in a list without another change, since a diff can align a copied paragraph
+  // as a removal and an insertion, unlike whole slides, see markMoved()
+  return out.flatMap(([t, g]) => (n === list.length || /^<section[\s>][^]*\/section>$/.test(t) ? g : []));
+}
+
 const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.text === b.text;
 
 // the edits of the page, ours, written into theirs. a change of the file equal to an edit of the
@@ -132,10 +232,21 @@ const equal = (a: Edit, b: Edit) => a.start === b.start && a.end === b.end && a.
 // kept. null when theirs is not the same file as base
 export function merge(base: string, ours: Edit[], theirs: string, prefer: 'ours' | 'theirs'): Merge | null {
   const all = changes(base, theirs);
-  if (!all) return null;
+  return all && mergeEdits(base, ours, all, prefer);
+}
+
+// the same merge with the changes of the file, all, given as edits of base. with shared set, only
+// edits that share a character conflict, as in a session, see src/session/patch.ts. at an insertion
+// of both sides at one point the change of the file comes first
+export function mergeEdits(base: string, ours: Edit[], all: Edit[], prefer: 'ours' | 'theirs', shared = false): Merge {
+  const hit = shared ? (a: Edit, b: Edit) => a.start < b.end && b.start < a.end : overlaps;
   const others = all.filter((h) => !ours.some((o) => equal(o, h)));
-  const conflicts = ours.filter((o) => others.some((h) => overlaps(o, h)));
-  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => overlaps(o, h)));
+  const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
+  // a move in a session that a change inside the moved element conflicts with is left out whole,
+  // hence the element is neither doubled nor its change lost
+  const moved = new Set(shared ? [...moves(base, ours, others, hit), ...moves(base, others, ours, hit)] : []);
+  if (moved.size) return { text: mergeEdits(base, ours.filter((e) => !moved.has(e)), all.filter((e) => !moved.has(e)), prefer, shared).text, conflicts };
+  const keptTheirs = prefer === 'theirs' ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
   const keptOurs = (prefer === 'ours' ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => equal(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
 }

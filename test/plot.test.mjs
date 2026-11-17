@@ -64,13 +64,13 @@ test('an axis is read with its scale and the text of its ticks, and a tab replac
   assert.deepEqual(plot.tabs[0].panels.p.y.range, [0, 5]);
 });
 
-test('a region spreads and a curve is drawn on only with their keys, and an element is shown after its delay', () => {
+test('a region opens as an iris and a curve is wiped on only with their keys, and an element is shown after its delay', () => {
   const spec = minimal();
-  spec.panels[0].regions = [{ points: [[0, 0], [1, 0], [0, 1]] }, { points: [[0, 0], [1, 0], [0, 1]], spread: 1.5, from: [0.2, 0.2], delay: 0.5 }];
-  spec.panels[0].curves = [{ points: [[0, 0], [1, 1]] }, { points: [[0, 0], [1, 1]], draw: 2 }];
+  spec.panels[0].regions = [{ points: [[0, 0], [1, 0], [0, 1]] }, { points: [[0, 0], [1, 0], [0, 1]], iris: 1.5, from: [0.2, 0.2], delay: 0.5 }];
+  spec.panels[0].curves = [{ points: [[0, 0], [1, 1]] }, { points: [[0, 0], [1, 1]], wipe: 2 }];
   const plot = parsePlot(spec);
-  assert.deepEqual(plot.panels[0].regions.map((r) => [r.spread, r.from, r.delay]), [[0, null, 0], [1.5, [0.2, 0.2], 0.5]]);
-  assert.deepEqual(plot.panels[0].curves.map((c) => [c.draw, c.delay]), [[0, 0], [2, 0]]);
+  assert.deepEqual(plot.panels[0].regions.map((r) => [r.iris, r.from, r.delay]), [[0, null, 0], [1.5, [0.2, 0.2], 0.5]]);
+  assert.deepEqual(plot.panels[0].curves.map((c) => [c.wipe, c.delay]), [[0, 0], [2, 0]]);
   assert.equal(plot.marks[0].delay, 0);
 });
 
@@ -130,10 +130,10 @@ test('a fault in a plot is reported with its path', () => {
     [(p) => (p.panels[0].x.ticks = ['a']), /^panels\[0\]\.x\.ticks\[0\]: a number or a tick \{ at, text \} is expected/],
     [(p) => (p.panels[0].margin = [1, 2]), /^panels\[0\]\.margin: a margin \[top, right, bottom, left\] is expected/],
     [(p) => (p.panels[0].size = -1), /^panels\[0\]\.size: a positive number is expected/],
-    [(p) => (p.panels[0].regions = [{ points: [[0, 0]], spread: -1 }]), /^panels\[0\]\.regions\[0\]\.spread: a number of seconds, at least 0, is expected/],
-    [(p) => (p.panels[0].curves = [{ points: [[0, 0]], delay: 'soon' }]), /^panels\[0\]\.curves\[0\]\.delay: /],
     [(p) => (p.tabs[0].panels = { q: {} }), /^tabs\[0\]\.panels\.q: the panel q is not declared/],
     [(p) => (p.tabs[0].panels = { p: { equal: true } }), /^tabs\[0\]\.panels\.p\.equal: one of x, y, title, regions, curves, labels is expected/],
+    [(p) => (p.panels[0].regions = [{ points: [[0, 0]], iris: -1 }]), /^panels\[0\]\.regions\[0\]\.iris: a number of seconds, at least 0, is expected/],
+    [(p) => (p.panels[0].curves = [{ points: [[0, 0]], delay: 'soon' }]), /^panels\[0\]\.curves\[0\]\.delay: /],
   ];
   for (const [change, message] of faults) {
     const plot = minimal();
@@ -345,14 +345,14 @@ test('a plot is played while its slide is shown, and its steps show a panel and 
   assert.deepEqual(page.errors.filter((e) => !e.includes('"missing"')), []);
 });
 
-test('a step with data-plot-run plays its tab once and holds the last frame, with a region that spreads and a curve that is drawn on', { timeout: 60000 }, async (t) => {
+test('a step with data-plot-once plays its tab once and holds the last frame, with an iris on a region and a wipe on a curve', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ motion: true });
-  await page.goto(deckUrl('test/pages/plot-run.html'));
+  await page.goto(deckUrl('test/pages/plot-once.html'));
   await page.waitFor(deckSettled);
   const probe = `(() => {
-    const view = Beeson.plots[0], disk = view.el.querySelector('.plot-spread'), line = view.el.querySelector('.plot-draw');
+    const view = Beeson.plots[0], disk = view.el.querySelector('.plot-iris'), line = view.el.querySelector('[data-plot-id="line"]');
     return { playing: view.playing, frame: view.frame, dots: view.el.querySelectorAll('.plot-dot').length,
       clipped: !!disk?.parentElement.getAttribute('clip-path'), hidden: [disk, line].map((n) => n.classList.contains('plot-hidden')),
       delay: line.style.getPropertyValue('--plot-delay'), length: line.getAttribute('pathLength') };
@@ -380,7 +380,41 @@ test('a step with data-plot-run plays its tab once and holds the last frame, wit
   assert.deepEqual(page.errors, []);
 });
 
-test('a trace with tones and a fade is drawn in the tone of each frame and faded behind its head, and a step with data-plot-hide hides an item', { timeout: 60000 }, async (t) => {
+test('a dashed curve with a wipe keeps its dashes, and it is wiped on through a mask', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/plot-once.html'));
+  await page.waitFor(deckSettled);
+  const probe = `(() => {
+    const curve = Beeson.plots[0].el.querySelector('[data-plot-id="dashed"]');
+    const mask = curve.getAttribute('mask') && document.querySelector(curve.getAttribute('mask').slice(4, -1) + ' .plot-wipe');
+    return { dashes: getComputedStyle(curve).strokeDasharray, wipe: mask && getComputedStyle(mask).strokeDashoffset };
+  })()`;
+  assert.deepEqual(await page.evaluate(probe), { dashes: '6px, 4px', wipe: '1px' });
+  await page.evaluate('Reveal.next()');
+  await page.waitFor(`${probe}.wipe === '0px'`, 5000);
+  assert.equal((await page.evaluate(probe)).dashes, '6px, 4px');
+  assert.deepEqual(page.errors, []);
+});
+
+test('a step with data-plot-hide hides an item of a plot by its id, and the item is shown again when the step is undone', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/plot-once.html'));
+  await page.waitFor(deckSettled);
+  const hidden = `Beeson.plots[0].el.querySelector('[data-plot-id="fill"]').classList.contains('plot-hidden')`;
+  await page.evaluate('Reveal.next()');
+  assert.equal(await page.evaluate(hidden), false);
+  await page.evaluate('Reveal.next()');
+  assert.equal(await page.evaluate(hidden), true);
+  await page.evaluate('Reveal.prev()');
+  assert.equal(await page.evaluate(hidden), false);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a trace with tones and a fade is drawn in the tone of each frame and faded behind its head', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ motion: true });
@@ -389,9 +423,8 @@ test('a trace with tones and a fade is drawn in the tone of each frame and faded
   const probe = `(() => {
     const view = Beeson.plots[0], lines = [...view.el.querySelectorAll('line.plot-trace')].filter((l) => l.style.display !== 'none');
     return { playing: view.playing, frame: view.frame, colors: lines.map((l) => l.style.color), opacity: lines.map((l) => +l.style.opacity),
-      head: view.el.querySelector('.plot-dot')?.style.color, fill: view.el.querySelector('[data-plot-id="fill"]').classList.contains('plot-hidden') };
+      head: view.el.querySelector('.plot-dot')?.style.color };
   })()`;
-  assert.equal((await page.evaluate(probe)).fill, false);
 
   await page.evaluate('Reveal.next()');
   // the sample is kept in the same call as its test, between frames 2 and 3, where the newest
@@ -406,11 +439,28 @@ test('a trace with tones and a fade is drawn in the tone of each frame and faded
   assert.deepEqual(end.colors, ['var(--violet)', 'var(--accent)', 'var(--violet)', 'var(--accent)']);
   assert.deepEqual(end.opacity, [0, 0, 0, 0]);
   assert.equal(end.head, 'var(--accent)');
+  assert.deepEqual(page.errors, []);
+});
 
-  await page.evaluate('Reveal.next()');
-  assert.equal((await page.evaluate(probe)).fill, true);
-  await page.evaluate('Reveal.prev()');
-  assert.equal((await page.evaluate(probe)).fill, false);
+test('a long trace with tones and a fade writes only its newest and its fading segments in a frame', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/plot-fade-long.html'));
+  await page.waitFor(deckSettled);
+  // the changes of the attributes of the segments, per frame, from the step until the trace is held
+  await page.evaluate(`(() => {
+    window.writes = 0; window.frames = 0;
+    new MutationObserver((list) => { window.writes += list.length; }).observe(Beeson.plots[0].el, { attributes: true, subtree: true, attributeFilter: ['x1', 'y1', 'x2', 'y2', 'style'] });
+    const count = () => { window.frames++; if (Beeson.plots[0].playing || window.frames < 3) requestAnimationFrame(count); };
+    Reveal.next();
+    requestAnimationFrame(count);
+  })()`);
+  await page.waitFor('!Beeson.plots[0].playing', 10000);
+  const { writes, frames, lines } = await page.evaluate(`({ writes: window.writes, frames: window.frames, lines: Beeson.plots[0].el.querySelectorAll('line.plot-trace').length })`);
+  // the trace has 1999 segments, each written once in full and then while it fades for 0.6 s
+  assert.equal(lines, 1999);
+  assert.ok(writes / frames < 400, `${writes} writes in ${frames} frames`);
   assert.deepEqual(page.errors, []);
 });
 

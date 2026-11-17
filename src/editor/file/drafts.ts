@@ -49,7 +49,7 @@ export function install(app: App): void {
 
   // a render error is shown, since the edits are then not kept anywhere but on the page
   function keepDraft(): void {
-    if (!app.dirty || !app.source || !app.pairing) return;
+    if (!app.dirty || !app.source || !app.pairing || app.session) return;
     let text: string;
     try {
       text = app.files.render();
@@ -68,6 +68,7 @@ export function install(app: App): void {
 
   // a draft that differs from the file that was opened is offered on the dialog
   function offer(): void {
+    if (app.session) return;
     const draft = readDraft();
     if (!draft || !app.source || draft.text === app.source.text) {
       if (draft) drop();
@@ -113,6 +114,7 @@ export function install(app: App): void {
   const drafts: Drafts = {
     keepSoon: () => {
       window.clearTimeout(draftTimer);
+      if (app.session) return;
       draftTimer = window.setTimeout(keepDraft, DRAFT_DELAY);
     },
     drop,
@@ -123,4 +125,9 @@ export function install(app: App): void {
   };
   app.drafts = drafts;
   app.listen('dirty', drafts.keepSoon);
+  app.listen('session', () => {
+    if (!app.session) return;
+    window.clearTimeout(draftTimer);
+    recover.close(null);
+  });
 }

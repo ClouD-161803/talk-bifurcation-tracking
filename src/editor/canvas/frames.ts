@@ -119,6 +119,10 @@ export type FramedGroup = { els: Element[]; reach: Box; deg: number };
 
 const grow = (b: Box, by: number): Box => ({ left: b.left - by, top: b.top - by, width: b.width + 2 * by, height: b.height + 2 * by });
 
+// the px that the frame of el stands off the box of orientOf: a figure and a backdrop are framed at
+// their edges, where their handles are, and a text element 6 px outside its text
+export const growOf = (el: Element): number => (el.matches(RESIZABLE) || el.matches(CONTAINER) || el.matches('.backdrop') ? 0 : 6);
+
 // the angle of el in degrees, from its computed rotate
 const angleOf = (el: Element): number => parseFloat(getComputedStyle(el).rotate) || 0;
 
@@ -139,7 +143,7 @@ const INSET = 8;
 // angle that it is turned by. a figure that holds a picture is framed at the picture, where its
 // grips resize it, and over its caption, which is turned with the figure as one object. a picture
 // turned by itself in a figure with a caption is framed upright around both
-function orientOf(el: Element, scale: number): { box: Box; deg: number } {
+export function orientOf(el: Element, scale: number): { box: Box; deg: number } {
   if (captionsOf(el).length) {
     const whole = figureFrame(el);
     return { box: grow(whole.deg ? whole.box : frameRect(el), INSET), deg: whole.deg };
@@ -336,11 +340,9 @@ export class Frames {
     const caret = selected.length ? null : this.caretElement();
     if (caret) selected.push(caret);
     const scale = frameOf(app).scale;
-    // a figure and a backdrop are framed at their edges, where their handles are, and a text element 6 px
-    // outside its text
     const orients = selected.map((el) => {
       const o = orientOf(el, scale);
-      return el.matches(RESIZABLE) || el.matches(CONTAINER) || el.matches('.backdrop') ? o : { ...o, box: grow(o.box, 6) };
+      return { ...o, box: grow(o.box, growOf(el)) };
     });
     const boxes = orients.map((o) => o.box);
     while (this.frames.length < boxes.length) this.frames.push(div('beeson-frame selected', this.layer));

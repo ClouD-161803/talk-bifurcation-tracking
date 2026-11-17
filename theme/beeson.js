@@ -924,6 +924,7 @@
       this.loaded = true;
       this.fittedFor = "";
       this.pathsFor = "";
+      this.W = 0;
       this.fit();
       if (this.pending) {
         this.pending = false;
@@ -1992,7 +1993,7 @@
       const p = `${path2}[${i}]`;
       if (!isObject2(r)) fail(p, "a region is expected");
       const from = r.from === void 0 ? null : pair(r.from, `${p}.from`);
-      return { ...item(r, p, "violet"), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), spread: seconds(r.spread, `${p}.spread`), from };
+      return { ...item(r, p, "violet"), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), iris: seconds(r.iris, `${p}.iris`), from };
     });
   }
   function curves(v, path2) {
@@ -2006,7 +2007,7 @@
         circle = [num(a[0], `${p}.circle[0]`), num(a[1], `${p}.circle[1]`), num(a[2], `${p}.circle[2]`)];
       } else if (c.points === void 0) fail(p, "points or circle is expected");
       const dash = c.dash === void 0 ? null : list(c.dash, `${p}.dash`).map((d, j) => num(d, `${p}.dash[${j}]`));
-      return { ...item(c, p, "subtle"), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, draw: seconds(c.draw, `${p}.draw`) };
+      return { ...item(c, p, "subtle"), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, wipe: seconds(c.wipe, `${p}.wipe`) };
     });
   }
   function labels(v, path2) {
@@ -2439,7 +2440,7 @@
       this.cue = "none";
       // the slide of the plot is shown, and the plot may move
       this.live = false;
-      // the tab is played once, from a fragment with data-plot-run, and held at its last frame
+      // the tab is played once, from a fragment with data-plot-once, and held at its last frame
       this.once = false;
       this.el = el;
       CACHE2.set(el, this);
@@ -2698,30 +2699,43 @@
         const statics = svg("g", { "clip-path": `url(#plot-${this.uid}-${p.id})` }, g);
         p.regions.forEach((r, k) => {
           const d = `${this.path(b, r.points)}Z`;
-          if (!(r.spread > 0)) {
+          if (!(r.iris > 0)) {
             this.styleItem(svg("path", { class: "plot-region", d, "fill-opacity": r.opacity }, statics), r, [p.id, r.id]);
             return;
           }
-          const id = `plot-${this.uid}-${p.id}-spread-${k}`;
+          const id = `plot-${this.uid}-${p.id}-iris-${k}`;
           svg("path", { d }, svg("clipPath", { id }, defs));
           const xs = r.points.map((q) => clamp(this.X(b, q[0]), b.x, b.x + b.w)), ys = r.points.map((q) => clamp(this.Y(b, q[1]), b.y, b.y + b.h));
           const [fx, fy] = r.from ?? [r.points.reduce((s, q) => s + q[0], 0) / r.points.length, r.points.reduce((s, q) => s + q[1], 0) / r.points.length];
           const X = this.X(b, fx), Y = this.Y(b, fy);
           const R = Math.max(...[Math.min(...xs), Math.max(...xs)].flatMap((x) => [Math.min(...ys), Math.max(...ys)].map((y) => Math.hypot(x - X, y - Y))));
-          const disk = svg("circle", { class: "plot-region plot-spread", cx: X.toFixed(1), cy: Y.toFixed(1), r: (R + 2).toFixed(1), "fill-opacity": r.opacity }, svg("g", { "clip-path": `url(#${id})` }, statics));
+          const disk = svg("circle", { class: "plot-region plot-iris", cx: X.toFixed(1), cy: Y.toFixed(1), r: (R + 2).toFixed(1), "fill-opacity": r.opacity }, svg("g", { "clip-path": `url(#${id})` }, statics));
           disk.style.transformOrigin = `${X.toFixed(1)}px ${Y.toFixed(1)}px`;
-          disk.style.setProperty("--plot-spread", `${r.spread}s`);
+          disk.style.setProperty("--plot-iris", `${r.iris}s`);
           this.styleItem(disk, r, [p.id, r.id]);
         });
-        for (const c of p.curves) {
+        for (const [k, c] of p.curves.entries()) {
           const attrs = { class: "plot-curve", "stroke-width": c.width };
           if (c.dash) attrs["stroke-dasharray"] = c.dash.join(" ");
           const linear2 = p.x.scale === "linear" && p.y.scale === "linear";
           const node = c.circle && linear2 ? svg("ellipse", { ...attrs, cx: this.X(b, c.circle[0]), cy: this.Y(b, c.circle[1]), rx: c.circle[2] * b.sx, ry: c.circle[2] * b.sy }, statics) : svg("path", { ...attrs, d: this.path(b, c.circle ? circlePoints(c.circle) : c.points ?? []) }, statics);
-          if (c.draw > 0) {
-            node.setAttribute("pathLength", "1");
-            node.classList.add("plot-draw");
-            node.style.setProperty("--plot-draw", `${c.draw}s`);
+          let wiped = null;
+          if (c.wipe > 0 && c.dash) {
+            const id = `plot-${this.uid}-${p.id}-wipe-${k}`, pad = 14;
+            const mask = svg("mask", { id, maskUnits: "userSpaceOnUse", x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, defs);
+            wiped = mask.appendChild(node.cloneNode());
+            for (const name of ["class", "stroke-dasharray"]) wiped.removeAttribute(name);
+            for (const [name, value] of [["fill", "none"], ["stroke", "white"], ["stroke-width", String(c.width + 4)]]) wiped.setAttribute(name, value);
+            node.setAttribute("mask", `url(#${id})`);
+          } else if (c.wipe > 0) wiped = node;
+          if (wiped) {
+            wiped.setAttribute("pathLength", "1");
+            wiped.classList.add("plot-wipe");
+            wiped.style.setProperty("--plot-wipe", `${c.wipe}s`);
+            if (wiped !== node) {
+              if (c.delay > 0) wiped.style.setProperty("--plot-delay", `${c.delay}s`);
+              this.gate(wiped, [p.id, c.id]);
+            }
           }
           this.styleItem(node, c, [p.id, c.id]);
         }
@@ -2802,22 +2816,42 @@
               head.setAttribute("cy", this.YS(b, y).toFixed(1));
             });
           } else {
-            const parts = [];
+            const parts = [], opacities = [];
             const tone = (i) => toneColor(tones ? tones[clamp(i, 0, tones.length - 1)] : m.tone);
+            let full = 0, shown = 0, gone = 0, last = -1;
             this.drawers.push((u) => {
-              const p = traceTo(pts, u), now = this.timeOf(u);
-              while (parts.length < p.length - 1) parts.push(fader.insertBefore(svg("line", { class: "plot-trace", "stroke-width": m.width }), head));
-              parts.forEach((line, i) => {
-                const on = i < p.length - 1;
-                line.style.display = on ? "" : "none";
-                if (!on) return;
+              const p = traceTo(pts, u), now = this.timeOf(u), n = p.length - 1;
+              if (u < last) {
+                full = Math.min(full, Math.max(0, n - 1));
+                gone = 0;
+              }
+              last = u;
+              while (parts.length < n) {
+                parts.push(fader.insertBefore(svg("line", { class: "plot-trace", "stroke-width": m.width }), head));
+                opacities.push("");
+              }
+              for (let i = n; i < shown; i++) parts[i].style.display = "none";
+              for (let i = Math.min(full, shown); i < n; i++) {
+                const line = parts[i];
+                if (i >= shown) line.style.display = "";
                 line.setAttribute("x1", this.XS(b, p[i][0]).toFixed(1));
                 line.setAttribute("y1", this.YS(b, p[i][1]).toFixed(1));
                 line.setAttribute("x2", this.XS(b, p[i + 1][0]).toFixed(1));
                 line.setAttribute("y2", this.YS(b, p[i + 1][1]).toFixed(1));
                 line.style.color = tone(i);
-                if (m.fade > 0) line.style.opacity = (0.6 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)).toFixed(3);
-              });
+              }
+              shown = n;
+              full = Math.max(0, n - 1);
+              if (m.fade > 0) {
+                for (let i = gone; i < n; i++) {
+                  const o = (Math.round(20 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)) * 0.03).toFixed(2);
+                  if (o !== opacities[i]) {
+                    parts[i].style.opacity = o;
+                    opacities[i] = o;
+                  }
+                  if (o === "0.00" && i === gone) gone++;
+                }
+              }
               const [x, y] = p[p.length - 1];
               head.setAttribute("cx", this.XS(b, x).toFixed(1));
               head.setAttribute("cy", this.YS(b, y).toFixed(1));
@@ -2935,7 +2969,7 @@
       const tabbed = visible.filter((f) => f.dataset.plotTab).sort((a, b) => +(a.dataset.fragmentIndex ?? 0) - +(b.dataset.fragmentIndex ?? 0));
       const top = tabbed.at(-1);
       const name = top?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
-      const run = !!top?.hasAttribute("data-plot-run") && top.classList.contains("current-fragment") && this.live && !reduced();
+      const run = !!top?.hasAttribute("data-plot-once") && top.classList.contains("current-fragment") && this.live && !reduced();
       let tab = this.tab;
       if (name !== this.stepTab) {
         this.stepTab = name;
@@ -4158,6 +4192,10 @@ void main() {
 }`
   );
   var shared;
+  var restored = [];
+  function onRestore(redraw) {
+    restored.push(redraw);
+  }
   function renderer() {
     if (shared !== void 0) return shared;
     shared = null;
@@ -4171,11 +4209,43 @@ void main() {
       r.setPixelRatio(1);
       r.setClearColor(0, 0);
       r.outputColorSpace = THREE.LinearSRGBColorSpace;
+      r.domElement.addEventListener("webglcontextrestored", () => {
+        r.dispose();
+        shared = void 0;
+        for (const redraw of restored) redraw();
+      }, { once: true });
       shared = r;
     } catch (error) {
       console.warn(`beeson: WebGL is not available for the surfaces, ${String(error)}`);
     }
     return shared;
+  }
+  function dragToTurn(el, turn3, end) {
+    let drag = null;
+    el.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      drag = { x: ev.clientX, y: ev.clientY };
+      try {
+        el.setPointerCapture(ev.pointerId);
+      } catch {
+      }
+      el.classList.add("dragging");
+    });
+    el.addEventListener("pointermove", (ev) => {
+      if (!drag) return;
+      const { x, y } = drag;
+      drag = { x: ev.clientX, y: ev.clientY };
+      turn3(ev.clientX - x, ev.clientY - y);
+    });
+    const stop3 = () => {
+      if (!drag) return;
+      drag = null;
+      el.classList.remove("dragging");
+      end();
+    };
+    el.addEventListener("pointerup", stop3);
+    el.addEventListener("pointercancel", stop3);
+    return () => drag !== null;
   }
   var CACHE3 = /* @__PURE__ */ new WeakMap();
   var Surface = class {
@@ -4202,7 +4272,6 @@ void main() {
       this.raf = 0;
       this.last = 0;
       this.resume = 0;
-      this.drag = null;
       this.W = 0;
       this.H = 0;
       this.w = 0;
@@ -4222,7 +4291,7 @@ void main() {
           }
           if (k >= 1) this.settle();
         }
-        if (this.rate && !this.drag && now > this.resume) this.azimuth += dt * this.rate;
+        if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
         this.draw();
         if (this.moving || this.rate || !this.pointsSettled()) this.kick();
       };
@@ -4273,7 +4342,9 @@ void main() {
       this.points = this.makePoints();
       this.scene.add(this.plane, this.glow, this.curve, this.points);
       this.recolor();
-      this.bindDrag();
+      this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => {
+        this.resume = performance.now() + 1500;
+      });
       CACHE3.set(el, this);
       this.sync(false);
       this.fit();
@@ -4850,32 +4921,6 @@ void main() {
       }
       return false;
     }
-    bindDrag() {
-      const el = this.el;
-      el.addEventListener("pointerdown", (ev) => {
-        if (ev.button !== 0) return;
-        this.drag = { x: ev.clientX, y: ev.clientY };
-        try {
-          el.setPointerCapture(ev.pointerId);
-        } catch {
-        }
-        el.classList.add("dragging");
-      });
-      el.addEventListener("pointermove", (ev) => {
-        if (!this.drag) return;
-        const { x, y } = this.drag;
-        this.drag = { x: ev.clientX, y: ev.clientY };
-        this.turn(ev.clientX - x, ev.clientY - y);
-      });
-      const end = () => {
-        if (!this.drag) return;
-        this.drag = null;
-        el.classList.remove("dragging");
-        this.resume = performance.now() + 1500;
-      };
-      el.addEventListener("pointerup", end);
-      el.addEventListener("pointercancel", end);
-    }
     kick() {
       if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
     }
@@ -4965,34 +5010,6 @@ void main() {
   }
 
   // src/bundle.ts
-  function dragToTurn(el, turn3, end) {
-    let drag = null;
-    el.addEventListener("pointerdown", (ev) => {
-      if (ev.button !== 0) return;
-      drag = { x: ev.clientX, y: ev.clientY };
-      try {
-        el.setPointerCapture(ev.pointerId);
-      } catch {
-      }
-      el.classList.add("dragging");
-    });
-    el.addEventListener("pointermove", (ev) => {
-      if (!drag) return;
-      const scale = el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1;
-      const dx = (ev.clientX - drag.x) / scale, dy = (ev.clientY - drag.y) / scale;
-      drag = { x: ev.clientX, y: ev.clientY };
-      turn3(dx, dy);
-    });
-    const stop3 = () => {
-      if (!drag) return;
-      drag = null;
-      el.classList.remove("dragging");
-      end();
-    };
-    el.addEventListener("pointerup", stop3);
-    el.addEventListener("pointercancel", stop3);
-    return () => drag !== null;
-  }
   var GROW = 3600;
   var SHRINK = 1400;
   var RIBS_END = 0.42;
@@ -5089,26 +5106,38 @@ void main() {
     } catch (error) {
       return `its JSON is malformed, ${String(error)}`;
     }
-    const n = data?.orbit?.length ?? 0;
+    const point = (p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+    if (data?.families !== void 0 && !Array.isArray(data.families)) return "its families are not a list";
     for (const f of data?.families ?? []) {
-      const m = f.orbits?.[0]?.length ?? 0;
-      if (!(f.values?.length >= 1 && f.values.length === f.orbits.length)) return `the family ${f.id} does not have one value for each orbit`;
-      if (m < 3 || f.orbits.some((o) => o.length !== m)) return `the orbits of the family ${f.id} do not have the same number of points, at least three`;
+      if (!(Array.isArray(f?.values) && Array.isArray(f.orbits) && f.values.length >= 1 && f.values.length === f.orbits.length)) return `the family ${f?.id} does not have one value for each orbit`;
+      const m = Array.isArray(f.orbits[0]) ? f.orbits[0].length : 0;
+      if (m < 3 || f.orbits.some((o) => !Array.isArray(o) || o.length !== m)) return `the orbits of the family ${f.id} do not have the same number of points, at least three`;
+      if (f.orbits.some((o) => !o.every(point))) return `a point of the family ${f.id} is not three numbers`;
       const sign = Math.sign(f.values.at(-1) - f.values[0]);
-      if (f.values.some((v, i) => i > 0 && Math.sign(v - f.values[i - 1]) !== sign)) return `the values of the family ${f.id} are not monotone`;
+      if (f.values.some((v, i) => !Number.isFinite(v) || i > 0 && Math.sign(v - f.values[i - 1]) !== sign)) return `the values of the family ${f.id} are not monotone`;
     }
+    if (data?.orbit === void 0 && data?.families?.length) data.orbit = [];
+    if (data?.strips === void 0 && data?.families?.length) data.strips = [];
+    const n = Array.isArray(data?.orbit) ? data.orbit.length : 0;
     if (n < 3 && !data?.families?.length) return "its orbit has fewer than three points";
-    data.orbit = data.orbit ?? [];
-    data.strips = data.strips ?? [];
-    for (const r of data.strips ?? []) {
-      if (r.directions?.length !== n) return `the strip ${r.id} has ${r.directions?.length ?? 0} directions for ${n} points of the orbit`;
+    if (!Array.isArray(data.orbit)) return "its orbit is not a list";
+    const bad = data.orbit.findIndex((p) => !point(p));
+    if (bad >= 0) return `the point ${bad} of the orbit is not three numbers`;
+    if (data.libration_point !== void 0 && !point(data.libration_point)) return "its libration_point is not three numbers";
+    if (!Array.isArray(data.strips)) return "it does not have a list of strips";
+    for (const r of data.strips) {
+      if (r?.directions?.length !== n) return `the strip ${r?.id} has ${r?.directions?.length ?? 0} directions for ${n} points of the orbit`;
+      const d = r.directions.findIndex((p) => !point(p));
+      if (d >= 0) return `the direction ${d} of the strip ${r.id} is not three numbers`;
       if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
-      if (r.ribs.some((i) => !(i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
+      if (!Array.isArray(r.ribs)) return `the ribs of the strip ${r.id} are not a list`;
+      if (r.ribs.some((i) => !(Number.isInteger(i) && i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
     }
     const t = data.times;
     if (t && !(t.length === n && t.every((v, i) => v >= 0 && v < 1 && (i === 0 || v > t[i - 1])))) return "its times are not increasing fractions of the period, one for each point of the orbit";
+    if (data.arrows !== void 0 && !Array.isArray(data.arrows)) return "its arrows are not a list";
     for (const a of data.arrows ?? []) {
-      if (!(a.toward?.length === 3 && a.toward.every(Number.isFinite))) return `the arrow ${a.id} does not have a point toward of three numbers`;
+      if (!point(a?.toward)) return `the arrow ${a?.id} does not have a point toward of three numbers`;
     }
     return data;
   }
@@ -5137,7 +5166,11 @@ void main() {
       this.fill = 0;
       this.lapStart = 0;
       this.elapsed = 0;
-      this.stageName = null;
+      this.rate = 0;
+      this.azimuth = 0;
+      this.elevation = 0;
+      this.zoom = 1;
+      this.stateName = null;
       this.t0 = 0;
       this.duration = GROW;
       this.moving = false;
@@ -5176,11 +5209,7 @@ void main() {
       this.orbit = data.orbit ?? [];
       this.point = data.libration_point ?? null;
       this.times = data.times ?? null;
-      const turn3 = num4(el.dataset.turn, TURN2);
-      this.rate = turn3 > 0 ? 2 * Math.PI / turn3 : 0;
-      this.azimuth = num4(el.dataset.azimuth, -60) * Math.PI / 180;
-      this.elevation = num4(el.dataset.elevation, 32) * Math.PI / 180;
-      this.zoom = num4(el.dataset.zoom, 1);
+      this.setCamera();
       for (const old of el.querySelectorAll(":scope > canvas.surface-image")) old.remove();
       this.canvas = document.createElement("canvas");
       this.canvas.className = "surface-image";
@@ -5216,11 +5245,7 @@ void main() {
           if (!this.raf) this.draw();
         });
       }
-      this.dragging = dragToTurn(el, (dx, dy) => {
-        this.azimuth -= dx * 5e-3;
-        this.elevation = clamp2(this.elevation + dy * 4e-3, -1.45, 1.45);
-        if (!this.raf) this.draw();
-      }, () => {
+      this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => {
         this.resume = performance.now() + 1500;
       });
       this.recolor();
@@ -5414,9 +5439,9 @@ void main() {
     /** Sets the strips shown from the fragments of the slide, grown or shrunk, or at once. */
     sync(animate) {
       const names = this.target(), name = names.join(" ");
-      if (name === this.stageName) return;
-      const jump = !animate || this.stageName === null;
-      this.stageName = name;
+      if (name === this.stateName) return;
+      const jump = !animate || this.stateName === null;
+      this.stateName = name;
       this.el.dataset.shown = name;
       const has = (state) => this.times !== null && names.includes(state);
       const flowing = has(FLOW);
@@ -5453,14 +5478,14 @@ void main() {
     }
     /**
      * The strips as drawn now, read by the tests: for each, its growth from 0 to 1, the growth of its
-     * sheet, and that of each of its segments. With settled, the change of stage has ended. For each
+     * sheet, and that of each of its segments. With settled, the change of state has ended. For each
      * arrow, in the slide pixels of the element, its needle from the middle of the compass to the tip,
      * and its direction in the scene, from the libration point to a point 0.1 toward its point. For each
      * family, the number of its members passed by the clock, and whether its member at the clock is drawn.
      */
     probe() {
       return {
-        stage: this.stageName ?? "",
+        state: this.stateName ?? "",
         settled: !this.moving,
         strips: this.strips.map((r) => ({ id: r.id, grow: r.grow, sheet: sheetGrowth(r.grow), ribs: r.ribs.map((_, k) => ribGrowth(r.grow, k, r.ribs.length)) })),
         arrows: this.arrows.map((a, i) => {
@@ -5711,7 +5736,37 @@ void main() {
     kick() {
       if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
     }
-    /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other. */
+    // the camera and the turn read from the attributes of the element
+    setCamera() {
+      const w = this.view().written;
+      this.rate = w.turn > 0 ? 2 * Math.PI / w.turn : 0;
+      this.azimuth = w.azimuth * Math.PI / 180;
+      this.elevation = w.elevation * Math.PI / 180;
+      this.zoom = w.zoom;
+    }
+    /** Turns the camera as a drag by dx and dy screen pixels does. */
+    turn(dx, dy) {
+      const scale = this.el.getBoundingClientRect().width / (this.el.offsetWidth || 1) || 1;
+      this.azimuth -= dx / scale * 5e-3;
+      this.elevation = clamp2(this.elevation + dy / scale * 4e-3, -1.45, 1.45);
+      if (!this.raf) this.draw();
+    }
+    /** The camera drawn now and the values read from the attributes of the element, with the angles in degrees, as of a Surface for the editor. A bundle does not scale its heights, hence its zscale is 1. */
+    view() {
+      const d = this.el.dataset, deg = 180 / Math.PI;
+      return {
+        azimuth: this.azimuth * deg,
+        elevation: this.elevation * deg,
+        zoom: this.zoom,
+        written: { azimuth: num4(d.azimuth, -60), elevation: num4(d.elevation, 32), zoom: num4(d.zoom, 1), turn: num4(d.turn, TURN2), zscale: 1 }
+      };
+    }
+    /** Reads the camera and the turn from the attributes of the element again, e.g. after the editor changed them. */
+    configure() {
+      this.setCamera();
+      this.draw();
+    }
+    /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other, a bundle. */
     follow(other) {
       if (!(other instanceof _Bundle)) return;
       this.azimuth = other.azimuth;
@@ -5743,14 +5798,18 @@ void main() {
         continue;
       }
       const id = el.dataset.bundle ?? "";
-      const block = document.getElementById(id);
-      const data = block ? parseBundle(block.textContent ?? "") : `the block id="${id}" is missing`;
+      const script2 = document.getElementById(id);
+      const data = script2 ? parseBundle(script2.textContent ?? "") : `the JSON script with the id "${id}" is not found`;
       if (typeof data === "string") {
         console.error(`beeson: the bundle ${id} is not drawn, since ${data}`);
         continue;
       }
       if (!renderer() || !window.THREE) continue;
-      out.push(new Bundle(el, data, window.THREE));
+      try {
+        out.push(new Bundle(el, data, window.THREE));
+      } catch (error) {
+        console.error(`beeson: the bundle ${id} is not drawn, since ${String(error)}`);
+      }
     }
     return out;
   }
@@ -6383,6 +6442,9 @@ void main() {
   var TRACED = ["title", "section", "closing"];
   var backdrops = [];
   var surfaces = [];
+  onRestore(() => {
+    for (const s of surfaces) s.draw();
+  });
   var plots = [];
   var EDITING = new URLSearchParams(location.search).has("edit");
   var PLAYED = !EDITING && window.parent !== window && new URLSearchParams(location.search).has("from-editor");
@@ -6490,6 +6552,10 @@ void main() {
       p.syncSteps();
       p.still();
     }
+    if (root2.matches("tycho-viewer") || root2.querySelector("tycho-viewer")) {
+      markViewers();
+      syncViewers(get());
+    }
     const slide = root2.closest(".reveal .slides section");
     if (slide) applySteps(slide);
   }
@@ -6560,7 +6626,7 @@ void main() {
       hooks.internal = reveal;
       addRestoreSteps(document);
     } });
-    const editing = EDITING ? { showHiddenSlides: true } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
+    const editing = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
     await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
     initChrome();
     initSteps(deck);

@@ -22,11 +22,11 @@ const STEP_CLASSES = ['play'];
 // attachment of model/attach.ts, which only the editor reads, and the kind and the name of a
 // theorem and the key of a citation
 export const DATA_ATTRS = [
-  'data-at', 'data-auto', 'data-auto-animate', 'data-autoplay', 'data-azimuth', 'data-cx', 'data-cy', 'data-duration',
-  'data-dx', 'data-dy', 'data-elevation', 'data-final', 'data-fragment-index', 'data-function', 'data-half',
+  'data-at', 'data-auto', 'data-auto-animate', 'data-autoplay', 'data-azimuth', 'data-bundle', 'data-cx', 'data-cy', 'data-duration',
+  'data-dx', 'data-dy', 'data-elevation', 'data-final', 'data-fly-duration', 'data-fly-from', 'data-fly-to', 'data-focus', 'data-fragment-index', 'data-function', 'data-half',
   'data-heads', 'data-highlight', 'data-id', 'data-keep', 'data-keep-theme', 'data-line-numbers', 'data-live',
   'data-loop', 'data-mu', 'data-plot', 'data-plot-frame', 'data-plot-panels', 'data-plot-paused', 'data-plot-play',
-  'data-plot-show', 'data-plot-tab', 'data-plot-tabs', 'data-qr', 'data-run', 'data-backdrop',
+  'data-plot-hide', 'data-plot-once', 'data-plot-show', 'data-plot-tab', 'data-plot-tabs', 'data-qr', 'data-rib', 'data-run', 'data-side', 'data-backdrop',
   'data-stagger', 'data-trajectories', 'data-trajectories-color', 'data-trajectories-colormap', 'data-trajectories-ramp',
   'data-trajectories-select', 'data-trajectories-shade', 'data-surface-accent', 'data-surface-points', 'data-surface-state',
   'data-surface-violet', 'data-tone', 'data-turn', 'data-unhighlight', 'data-zoom', 'data-zscale',
@@ -100,6 +100,8 @@ export function declarationProblem(tag: string, classes: string[], name: string,
   // the height of a row is written in px on its tr by Distribute Rows Evenly
   if (name === 'height' && tag === 'tr') return PX.test(value.trim()) ? null : `height ${value} on a tr`;
   if (name === 'height') return STRETCHED_TAGS.has(tag) && PX.test(value.trim()) ? null : `height ${value} on a ${tag}`;
+  // the delay of a late step of theme/beeson.css, in seconds
+  if (name === '--delay') return classes.includes('late') && /^\d+(\.\d+)?s$/.test(value.trim()) ? null : `--delay ${value} on a ${tag}`;
   if (name === 'font-size') return tag === 'pre' && /^(22|18)px$/.test(value.trim()) ? null : `font-size ${value} on a ${tag}`;
   if (name === 'text-align') return (tag === 'td' || tag === 'th') && value.trim() === 'right' ? null : `text-align ${value} on a ${tag}`;
   if (MASK_DECLARATIONS[name]) return tag === 'img' && MASK_DECLARATIONS[name].test(value.trim()) ? null : `${name} ${value} on a ${tag}`;

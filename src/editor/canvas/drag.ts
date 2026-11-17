@@ -11,11 +11,11 @@ import type { App } from '../app.ts';
 import type { TagEdit, Translate } from '../tags.ts';
 import type { Box, Handle, Targets } from './snap.ts';
 import { LAYOUT_GUIDES, anchored, fitPicture, lockedAxis, resizeBox, snapAngle, snapMove, snapResize } from './snap.ts';
-import { BOXED, BY_ITSELF, CONTAINER, RESIZABLE, STRETCHED, aspectOf, bandAt, captionsOf, constrained, containerOf, cssWidth, figureFrame, frameOf, frameRect, hasText, innerBandAt, isTextSized, linePoints, linesOf, lineTouches, mediaIn, movableOf, movablesOf, objectOf, objectsOf, onCanvas, orientedBox, pickOf, pictureOf, pictureReach, sizedOf, snapBoxOf, toSlide, turnable, twinOf, unturnedRect, visualRect } from './hit.ts';
+import { BOXED, BY_ITSELF, CONTAINER, RESIZABLE, STRETCHED, aspectOf, bandAt, captionsOf, constrained, containerOf, cssWidth, figureFrame, frameOf, frameRect, hasText, innerBandAt, isTextSized, linePoints, linesOf, lineTouches, mediaIn, movableOf, movablesOf, objectOf, objectsOf, onCanvas, orientedBox, pickOf, pictureOf, pictureReach, sizedOf, snapBoxOf, stackAt, toSlide, turnable, twinOf, unturnedRect, visualRect } from './hit.ts';
 import { groupFrame, overlay, turned, view, wh, xy } from './frames.ts';
-import { enterGroup, settleCopies, freshGroup, groupOf } from '../commands/order.ts';
+import { enterGroup, settleCopies, freshGroup, groupOf, selectIn } from '../commands/order.ts';
 import { afterMove, relink } from '../model/attach.ts';
-import { copiedGroups, scopeOf, within } from '../model/groups.ts';
+import { copiedGroups, groupsOf, scopeOf, within } from '../model/groups.ts';
 import { cornerBoxOf } from '../commands/align.ts';
 import { backdropAt, pressBackdrop } from '../commands/backdrop.ts';
 import { placeCaretAt } from '../selection.ts';
@@ -24,6 +24,7 @@ import { injectStyle } from '../ui/dom.ts';
 const CSS = `
 html.beeson-dragging.beeson-copying, html.beeson-dragging.beeson-copying * { cursor: copy !important; }
 html.beeson-sizing, html.beeson-sizing * { cursor: var(--beeson-grip-cursor) !important; user-select: none !important; }
+html.beeson-pick .reveal * { cursor: default; }
 `;
 
 // the cursor of a held grip kept over the page while it is dragged, as the resize cursor of a held
@@ -36,6 +37,8 @@ function holdGrip(grip: HTMLElement): void {
 
 // a drag shorter than this, in screen pixels, is a click
 const CLICK = 3;
+// the distance in px that a finger may move in a tap
+const TAP = 10;
 // a dragged edge snaps to a line within this many screen pixels
 const SNAP = 8;
 
@@ -132,7 +135,15 @@ export function record(app: App, label: string, changes: { el: Element; from: Pl
   };
   // the attached ends of lines follow the moved elements in the same entry
   const attachment = afterMove(app, moved.map((c) => c.el));
-  app.history.push({ label, undo: () => (attachment.undo(), apply('from')), redo: () => (apply('to'), attachment.redo()) });
+  const touches = moved.flatMap((c) => [c.el, twinOf(app, c.el)].filter((el): el is Element => !!el));
+  app.history.push({
+    label,
+    undo: () => (attachment.undo(), apply('from')),
+    redo: () => (apply('to'), attachment.redo()),
+    get touches() {
+      return [...touches, ...attachment.touched];
+    },
+  });
   return moved;
 }
 
@@ -482,6 +493,12 @@ export function install(app: App): void {
   const frames = overlay();
   const ghosts = standIns();
   let press: Press | null = null;
+  // true from a drag or an Alt-click until its click, which is then marked as handled, hence a
+  // formula does not open its TeX and a citation is not selected by it
+  let quiet = false;
+  // a touch on a text element that is not selected, which selects it at a tap. a swipe from it is left
+  // to the deck, as before the click model of Keynote, since text covers most of a slide on a phone
+  let tapped: { el: Element; id: number; x: number; y: number } | null = null;
   const mac = () => app.platform === 'mac';
   const commandHeld = (ev: MouseEvent) => (mac() ? ev.metaKey : ev.ctrlKey);
   const freeMove = (ev: MouseEvent) => (mac() ? ev.metaKey : ev.altKey);
@@ -580,6 +597,7 @@ export function install(app: App): void {
   const onDown = (ev: PointerEvent) => {
     // on a Mac, a press with Ctrl is a secondary click, which opens the context menu
     if (ev.button !== 0 || (ev.ctrlKey && mac()) || press) return;
+    quiet = false;
     const target = ev.target instanceof Element ? ev.target : null;
     if (!target) return;
     const sel = app.selection;
@@ -694,6 +712,42 @@ export function install(app: App): void {
     }
     // a press on the chrome, e.g. a button of a bar or a pane, keeps the selection
     if (!onCanvas(target, app, { x: ev.clientX, y: ev.clientY })) return;
+    // Alt-click selects the element under the pointer one layer behind the selected one, and the
+    // front one after the last. a press with Alt that becomes a drag keeps its free move or copy
+    const next = ev.altKey && !ev.shiftKey && !commandHeld(ev) ? behind(ev) : null;
+    pressCanvas(ev, target);
+    if (!next) return;
+    const pick = () => {
+      quiet = true;
+      selectIn(app, groupsOf(next), [next]);
+      frames.draw();
+    };
+    // pressCanvas may have started a press, which the narrowing of press above does not see
+    const p = press as Press | null;
+    if (p?.kind === 'move') p.click = pick;
+    else if (!p) {
+      ev.preventDefault();
+      leaveText();
+      pick();
+    }
+  };
+
+  // the element under the pointer of ev behind the deepest selected one, around to the front
+  const behind = (ev: PointerEvent): Element | null => {
+    const stack = stackAt(app, ev.clientX, ev.clientY);
+    const sel = objectsOf(app, app.selection.elements());
+    const at = stack.reduce((k, el, i) => (sel.includes(el) ? i : k), 0);
+    return stack.length > 1 ? stack[(at + 1) % stack.length] : null;
+  };
+
+  // whether a press on el, a text element that is not edited, selects it as a box before a second
+  // click puts the caret in, as in Keynote. a cell of a table takes the caret at the first click
+  const boxFirst = (el: Element): boolean => !el.matches('table') || !!groupOf(el) || (scopeOf().length > 0 && within(el));
+  // whether the caret is in a text of el, e.g. in an item of the list el
+  const editingIn = (el: Element): boolean => !!app.hostOf(document.activeElement) && el.contains(document.activeElement);
+
+  const pressCanvas = (ev: PointerEvent, target: Element) => {
+    const sel = app.selection;
     const inner = innerBandAt(app, ev.clientX, ev.clientY);
     if (inner) {
       pressElement(ev, inner, null);
@@ -702,19 +756,21 @@ export function install(app: App): void {
     const el = pickOf(app, target);
     const host = app.hostOf(target);
     if (el && host) {
-      // a click into a text puts the caret there, and with Shift or the command modifier the text element
-      // is added to the selection as a box. a text element of a group is selected with its group at the
-      // first click and by itself at the second, and only the third puts the caret in it, as in
-      // Keynote and PowerPoint. a shape is selected at the first click on its words, as a group
-      // is, and inside an entered group, a text element is selected at the first click
-      const grouped = !!groupOf(el) || el.matches('.shape') || (scopeOf().length > 0 && within(el));
-      // a press in the text that is edited puts the caret there or selects words
-      const editing = host.contains(document.activeElement);
-      if (ev.shiftKey || commandHeld(ev) || (grouped && sel.only() !== el && !editing)) pressElement(ev, el, target);
-      // a press on the words of a selected shape that are not edited moves the shape, as in
-      // PowerPoint, and a click without a move puts the caret there. a press on a locked shape is
-      // left to the browser, which selects its words
-      else if (el.matches('.shape') && sel.only() === el && !editing && !locked(el)) {
+      // the first click on a text element selects it as a box and a drag moves it, as in Keynote,
+      // and with Shift or the command modifier the text element is added to the selection. a text
+      // element of a group is selected with its group at the first click and by itself at the
+      // second. a press in the text that is edited, or in another item of its list, puts the
+      // caret there or selects words
+      const editing = editingIn(el);
+      if (ev.pointerType === 'touch' && !ev.shiftKey && !commandHeld(ev) && boxFirst(el) && sel.only() !== el && !editing) {
+        ev.preventDefault();
+        tapped = { el, id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+        return;
+      }
+      if (ev.shiftKey || commandHeld(ev) || (boxFirst(el) && sel.only() !== el && !editing)) pressElement(ev, el, target);
+      // a press on the selected text element moves it, and a click without a move puts the caret
+      // there. a press on a locked one is left to the browser, which selects its words
+      else if (boxFirst(el) && sel.only() === el && !editing && !locked(el)) {
         const { clientX: x, clientY: y } = ev;
         pressElement(ev, el, target, () => placeCaretAt(host, x, y));
       }
@@ -744,6 +800,7 @@ export function install(app: App): void {
   };
 
   const onMove = (ev: PointerEvent) => {
+    if (tapped?.id === ev.pointerId && Math.hypot(ev.clientX - tapped.x, ev.clientY - tapped.y) >= TAP) tapped = null;
     const p = press;
     if (!p) {
       hover(ev);
@@ -1071,11 +1128,17 @@ export function install(app: App): void {
   };
 
   const onUp = (ev: PointerEvent | null) => {
+    const t = tapped;
+    tapped = null;
+    if (t && ev?.pointerId === t.id) {
+      leaveText();
+      app.selection.set('elements', [t.el]);
+    }
     const p = press;
     if (!p) return;
     press = null;
     app.stage?.edgeScroll(null);
-    document.documentElement.classList.remove('beeson-dragging', 'beeson-sizing', 'beeson-rotating');
+    document.documentElement.classList.remove('beeson-dragging', 'beeson-sizing', 'beeson-rotating', 'beeson-pick');
     view.moving = null;
     view.resizing = false;
     view.turn = null;
@@ -1109,8 +1172,9 @@ export function install(app: App): void {
           if (memo && p.kind === 'rotate') restOf.set(el, { ...memo, at: from.translate });
           if (twin && !els.includes(twin)) writeLive(twin, from);
         }
-      } else p.click?.();
-    } else if (!p.moved) p.click?.();
+      } else if (ev) p.click?.();
+    } else if (!p.moved && ev) p.click?.();
+    if (p.kind === 'move' && p.moved) quiet = true;
     frames.draw();
     app.invalidate('content');
   };
@@ -1152,6 +1216,9 @@ export function install(app: App): void {
     const el = pickOf(app, target);
     const band = el ? null : onCanvas(target, app, { x: ev.clientX, y: ev.clientY }) ? bandAt(app, ev.clientX, ev.clientY) : null;
     document.documentElement.classList.toggle('beeson-band', !!band);
+    // the arrow over a text element that a click selects as a box, and the I-beam once it is selected
+    const host = el && app.hostOf(target);
+    document.documentElement.classList.toggle('beeson-pick', !!host && boxFirst(el) && app.selection.only() !== el && !editingIn(el));
     const next = el ?? band;
     if (next) {
       if (next !== view.hover) {
@@ -1195,11 +1262,17 @@ export function install(app: App): void {
   document.addEventListener('pointermove', onMove);
   document.addEventListener('pointerup', onUp, true);
   document.addEventListener('pointercancel', () => onUp(null), true);
+  window.addEventListener('click', (ev) => {
+    if (quiet) ev.preventDefault();
+    quiet = false;
+  }, true);
   // Esc puts the elements of a drag back where they were at the press, as in Keynote, in place of
   // the commands of the key, which would change the selection under the drag
   const held = () => !!press?.moved && press.kind !== 'marquee';
   app.commands.veto((_, c) => held() && Object.values(c.keys ?? {}).some((k) => k.includes('Escape')));
   window.addEventListener('keydown', (ev) => {
+    // Windows repeats the keydown of a held Alt during an Alt-click
+    if (!ev.repeat) quiet = false;
     if (ev.key !== 'Escape' || !held()) return;
     ev.preventDefault();
     ev.stopImmediatePropagation();

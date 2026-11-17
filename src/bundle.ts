@@ -1,68 +1,24 @@
-// a `.surface` with data-bundle: a periodic orbit and strips along it, read from the inline JSON
-// block named by data-bundle, e.g. the one written by data/lyapunov/eigendirections.py. a strip is
-// the surface swept by a segment through each point of the orbit along a unit direction given there,
-// e.g. an eigendirection of the monodromy matrix. the bundle is drawn with three.js on the renderer of surface.ts,
-// under a camera that turns slowly and is turned by a drag. the strips shown at a step are named,
-// separated by spaces, in data-surface-state of a fragment of the slide. a strip that is added is
-// grown out of the orbit, first as segments at its ribs, one after another along the orbit, and then
-// as a sheet between them. a strip that is removed is shrunk back in the reverse order. a compass is
-// drawn at the upper left, with a needle toward the point of each arrow of the block, e.g. the Earth.
+// a `.surface` with data-bundle, i.e. a strip bundle: a closed orbit and strips along it, read from
+// the inline JSON script named by data-bundle. a strip is the surface swept by a segment through each
+// point of the orbit along a unit direction given there, e.g. an eigendirection of the monodromy
+// matrix. the bundle is drawn with three.js on the renderer of surface.ts, under a camera that turns
+// slowly and is turned by a drag. the strips shown at a step are named, separated by spaces, in
+// data-surface-state of a fragment of the slide. a strip that is added is grown out of the orbit,
+// first as segments at its ribs, one after another along the orbit, and then as a sheet between
+// them. a strip that is removed is shrunk back in the reverse order. a compass is drawn at the upper
+// left, with a needle toward the point of each arrow of the script, e.g. a primary body.
 // at the state start, a point is shown at the start of the orbit in an empty ring, at nudge an arrow
 // along the orbit is drawn from it, and at flow it is moved around the orbit once per LAP, at the
-// times of the block. the ring is filled at the end of the first period, and the elements of the
-// slide with data-surface-lap are faded in with it. a block may give families of orbits instead of,
+// times of the script. the ring is filled at the end of the first period, and the elements of the
+// slide with data-surface-lap are faded in with it. a script may give families of orbits instead of,
 // or besides, one orbit. a family is moved by the clock of a plot of the same slide: its members up to
 // the value of the clock are drawn faint, and the member at this value bright, interpolated point by
 // point between the two members nearest to it. every member of a family with ghost is drawn fainter
 // still, as the ghost of a trace of a plot
 
 import type * as Three from 'three';
-import { LINE_FRAGMENT, LINE_VERTEX, clamp, ease, lerp, mix3, num, renderer, rgb } from './surface.ts';
-import type { RGB } from './surface.ts';
-
-/** What src/main.ts calls on the drawing of a `.surface`, i.e. a Surface of src/surface.ts or a Bundle. */
-export interface Turntable {
-  readonly el: HTMLElement;
-  fit(): void;
-  sync(animate: boolean): void;
-  draw(): void;
-  start(): void;
-  stop(): void;
-  recolor(): void;
-  follow(other: Turntable): void;
-}
-
-/**
- * Turns a camera by a drag on el, with the pointer captured. The callback turn is called with each
- * move in slide pixels, and end once the drag is over. Returns a function that returns true during
- * a drag.
- */
-function dragToTurn(el: HTMLElement, turn: (dx: number, dy: number) => void, end: () => void): () => boolean {
-  let drag: { x: number; y: number } | null = null;
-  el.addEventListener('pointerdown', (ev) => {
-    if (ev.button !== 0) return;
-    drag = { x: ev.clientX, y: ev.clientY };
-    // the capture is refused for a pointer that is not active, e.g. that of a synthetic event
-    try { el.setPointerCapture(ev.pointerId); } catch { /* the drag is followed without a capture */ }
-    el.classList.add('dragging');
-  });
-  el.addEventListener('pointermove', (ev) => {
-    if (!drag) return;
-    const scale = el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1;
-    const dx = (ev.clientX - drag.x) / scale, dy = (ev.clientY - drag.y) / scale;
-    drag = { x: ev.clientX, y: ev.clientY };
-    turn(dx, dy);
-  });
-  const stop = () => {
-    if (!drag) return;
-    drag = null;
-    el.classList.remove('dragging');
-    end();
-  };
-  el.addEventListener('pointerup', stop);
-  el.addEventListener('pointercancel', stop);
-  return () => drag !== null;
-}
+import { LINE_FRAGMENT, LINE_VERTEX, clamp, dragToTurn, ease, lerp, mix3, num, renderer, rgb } from './surface.ts';
+import type { RGB, Surface } from './surface.ts';
 
 type Vec = [number, number, number];
 
@@ -185,30 +141,42 @@ const ribGrowth = (g: number, k: number, count: number): number => {
 };
 const sheetGrowth = (g: number): number => ease(clamp((g - SHEET_START) / (1 - SHEET_START), 0, 1));
 
-/** The data of the block text, or the reason it cannot be drawn. */
+/** The data of the text of a JSON script, or the reason it cannot be drawn. */
 export function parseBundle(text: string): BundleData | string {
   let data: BundleData;
   try { data = JSON.parse(text); } catch (error) { return `its JSON is malformed, ${String(error)}`; }
-  const n = data?.orbit?.length ?? 0;
+  const point = (p: unknown) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+  if (data?.families !== undefined && !Array.isArray(data.families)) return 'its families are not a list';
   for (const f of data?.families ?? []) {
-    const m = f.orbits?.[0]?.length ?? 0;
-    if (!(f.values?.length >= 1 && f.values.length === f.orbits.length)) return `the family ${f.id} does not have one value for each orbit`;
-    if (m < 3 || f.orbits.some((o) => o.length !== m)) return `the orbits of the family ${f.id} do not have the same number of points, at least three`;
+    if (!(Array.isArray(f?.values) && Array.isArray(f.orbits) && f.values.length >= 1 && f.values.length === f.orbits.length)) return `the family ${f?.id} does not have one value for each orbit`;
+    const m = Array.isArray(f.orbits[0]) ? f.orbits[0].length : 0;
+    if (m < 3 || f.orbits.some((o) => !Array.isArray(o) || o.length !== m)) return `the orbits of the family ${f.id} do not have the same number of points, at least three`;
+    if (f.orbits.some((o) => !o.every(point))) return `a point of the family ${f.id} is not three numbers`;
     const sign = Math.sign(f.values.at(-1)! - f.values[0]);
-    if (f.values.some((v, i) => i > 0 && Math.sign(v - f.values[i - 1]) !== sign)) return `the values of the family ${f.id} are not monotone`;
+    if (f.values.some((v, i) => !Number.isFinite(v) || (i > 0 && Math.sign(v - f.values[i - 1]) !== sign))) return `the values of the family ${f.id} are not monotone`;
   }
+  if (data?.orbit === undefined && data?.families?.length) data.orbit = [];
+  if (data?.strips === undefined && data?.families?.length) data.strips = [];
+  const n = Array.isArray(data?.orbit) ? data.orbit.length : 0;
   if (n < 3 && !data?.families?.length) return 'its orbit has fewer than three points';
-  data.orbit = data.orbit ?? [];
-  data.strips = data.strips ?? [];
-  for (const r of data.strips ?? []) {
-    if (r.directions?.length !== n) return `the strip ${r.id} has ${r.directions?.length ?? 0} directions for ${n} points of the orbit`;
+  if (!Array.isArray(data.orbit)) return 'its orbit is not a list';
+  const bad = data.orbit.findIndex((p) => !point(p));
+  if (bad >= 0) return `the point ${bad} of the orbit is not three numbers`;
+  if (data.libration_point !== undefined && !point(data.libration_point)) return 'its libration_point is not three numbers';
+  if (!Array.isArray(data.strips)) return 'it does not have a list of strips';
+  for (const r of data.strips) {
+    if (r?.directions?.length !== n) return `the strip ${r?.id} has ${r?.directions?.length ?? 0} directions for ${n} points of the orbit`;
+    const d = r.directions.findIndex((p) => !point(p));
+    if (d >= 0) return `the direction ${d} of the strip ${r.id} is not three numbers`;
     if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
-    if (r.ribs.some((i) => !(i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
+    if (!Array.isArray(r.ribs)) return `the ribs of the strip ${r.id} are not a list`;
+    if (r.ribs.some((i) => !(Number.isInteger(i) && i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
   }
   const t = data.times;
   if (t && !(t.length === n && t.every((v, i) => v >= 0 && v < 1 && (i === 0 || v > t[i - 1])))) return 'its times are not increasing fractions of the period, one for each point of the orbit';
+  if (data.arrows !== undefined && !Array.isArray(data.arrows)) return 'its arrows are not a list';
   for (const a of data.arrows ?? []) {
-    if (!(a.toward?.length === 3 && a.toward.every(Number.isFinite))) return `the arrow ${a.id} does not have a point toward of three numbers`;
+    if (!point(a?.toward)) return `the arrow ${a?.id} does not have a point toward of three numbers`;
   }
   return data;
 }
@@ -259,14 +227,14 @@ function memberAt(values: number[], v: number): [number, number] | null {
   return [0, 0];
 }
 
-// an arrow of the block as a unit direction, from the libration point, or from the middle of the
+// an arrow of the script as a unit direction, from the libration point, or from the middle of the
 // box, toward its point
 type Arrow = { id: string; u: Vec };
 
 const CACHE = new WeakMap<HTMLElement, Bundle>();
 
 /** One drawing per `.surface` element with data-bundle, made with mount(). */
-export class Bundle implements Turntable {
+export class Bundle {
   readonly el: HTMLElement;
   private THREE: typeof Three;
   private orbit: Vec[];
@@ -295,11 +263,11 @@ export class Bundle implements Turntable {
   private elapsed = 0;
   private center: Vec;
   private radius: number;
-  private rate: number;
-  private azimuth: number;
-  private elevation: number;
-  private zoom: number;
-  private stageName: string | null = null;
+  private rate = 0;
+  private azimuth = 0;
+  private elevation = 0;
+  private zoom = 1;
+  private stateName: string | null = null;
   private t0 = 0;
   private duration = GROW;
   private moving = false;
@@ -319,11 +287,7 @@ export class Bundle implements Turntable {
     this.orbit = data.orbit ?? [];
     this.point = data.libration_point ?? null;
     this.times = data.times ?? null;
-    const turn = num(el.dataset.turn, TURN);
-    this.rate = turn > 0 ? (2 * Math.PI) / turn : 0;
-    this.azimuth = (num(el.dataset.azimuth, -60) * Math.PI) / 180;
-    this.elevation = (num(el.dataset.elevation, 32) * Math.PI) / 180;
-    this.zoom = num(el.dataset.zoom, 1);
+    this.setCamera();
     for (const old of el.querySelectorAll(':scope > canvas.surface-image')) old.remove();
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'surface-image';
@@ -342,7 +306,7 @@ export class Bundle implements Turntable {
     this.scene.add(this.line, this.dot);
     this.strips = (data.strips ?? []).map((r, i) => this.makeStrip(r, i));
     this.families = (data.families ?? []).map((f) => this.makeFamily(f));
-    // the camera is aimed at the box of the orbit, of every strip in full, and of every family, at every stage
+    // the camera is aimed at the box of the orbit, of every strip in full, and of every family, in every state
     const points: Vec[] = [...this.orbit, ...this.families.flatMap((f) => f.orbits.flat())];
     for (const r of this.strips) this.orbit.forEach((p, i) => points.push(add(p, r.directions[i], r.half), add(p, r.directions[i], -r.half)));
     const lo = [0, 1, 2].map((k) => Math.min(...points.map((p) => p[k])));
@@ -363,11 +327,7 @@ export class Bundle implements Turntable {
       });
     }
 
-    this.dragging = dragToTurn(el, (dx, dy) => {
-      this.azimuth -= dx * 0.005;
-      this.elevation = clamp(this.elevation + dy * 0.004, -1.45, 1.45);
-      if (!this.raf) this.draw();
-    }, () => { this.resume = performance.now() + 1500; });
+    this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => { this.resume = performance.now() + 1500; });
     this.recolor();
     CACHE.set(el, this);
     this.sync(false);
@@ -565,9 +525,9 @@ export class Bundle implements Turntable {
   /** Sets the strips shown from the fragments of the slide, grown or shrunk, or at once. */
   sync(animate: boolean): void {
     const names = this.target(), name = names.join(' ');
-    if (name === this.stageName) return;
-    const jump = !animate || this.stageName === null;
-    this.stageName = name;
+    if (name === this.stateName) return;
+    const jump = !animate || this.stateName === null;
+    this.stateName = name;
     this.el.dataset.shown = name;
     const has = (state: string) => this.times !== null && names.includes(state);
     const flowing = has(FLOW);
@@ -606,20 +566,20 @@ export class Bundle implements Turntable {
 
   /**
    * The strips as drawn now, read by the tests: for each, its growth from 0 to 1, the growth of its
-   * sheet, and that of each of its segments. With settled, the change of stage has ended. For each
+   * sheet, and that of each of its segments. With settled, the change of state has ended. For each
    * arrow, in the slide pixels of the element, its needle from the middle of the compass to the tip,
    * and its direction in the scene, from the libration point to a point 0.1 toward its point. For each
    * family, the number of its members passed by the clock, and whether its member at the clock is drawn.
    */
   probe(): {
-    stage: string;
+    state: string;
     settled: boolean;
     strips: { id: string; grow: number; sheet: number; ribs: number[] }[];
     arrows: { id: string; needle: [number, number][]; scene: [number, number][] }[];
     families: { id: string; passed: number; member: boolean }[];
   } {
     return {
-      stage: this.stageName ?? '',
+      state: this.stateName ?? '',
       settled: !this.moving,
       strips: this.strips.map((r) => ({ id: r.id, grow: r.grow, sheet: sheetGrowth(r.grow), ribs: r.ribs.map((_, k) => ribGrowth(r.grow, k, r.ribs.length)) })),
       arrows: this.arrows.map((a, i) => {
@@ -908,8 +868,42 @@ export class Bundle implements Turntable {
     if (this.busy()) this.kick();
   };
 
-  /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other. */
-  follow(other: Turntable): void {
+  // the camera and the turn read from the attributes of the element
+  private setCamera(): void {
+    const w = this.view().written;
+    this.rate = w.turn > 0 ? (2 * Math.PI) / w.turn : 0;
+    this.azimuth = (w.azimuth * Math.PI) / 180;
+    this.elevation = (w.elevation * Math.PI) / 180;
+    this.zoom = w.zoom;
+  }
+
+  /** Turns the camera as a drag by dx and dy screen pixels does. */
+  turn(dx: number, dy: number): void {
+    const scale = this.el.getBoundingClientRect().width / (this.el.offsetWidth || 1) || 1;
+    this.azimuth -= (dx / scale) * 0.005;
+    this.elevation = clamp(this.elevation + (dy / scale) * 0.004, -1.45, 1.45);
+    if (!this.raf) this.draw();
+  }
+
+  /** The camera drawn now and the values read from the attributes of the element, with the angles in degrees, as of a Surface for the editor. A bundle does not scale its heights, hence its zscale is 1. */
+  view(): { azimuth: number; elevation: number; zoom: number; written: { azimuth: number; elevation: number; zoom: number; turn: number; zscale: number } } {
+    const d = this.el.dataset, deg = 180 / Math.PI;
+    return {
+      azimuth: this.azimuth * deg,
+      elevation: this.elevation * deg,
+      zoom: this.zoom,
+      written: { azimuth: num(d.azimuth, -60), elevation: num(d.elevation, 32), zoom: num(d.zoom, 1), turn: num(d.turn, TURN), zscale: 1 },
+    };
+  }
+
+  /** Reads the camera and the turn from the attributes of the element again, e.g. after the editor changed them. */
+  configure(): void {
+    this.setCamera();
+    this.draw();
+  }
+
+  /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other, a bundle. */
+  follow(other: Bundle | Surface): void {
     if (!(other instanceof Bundle)) return;
     this.azimuth = other.azimuth;
     this.elevation = other.elevation;
@@ -934,21 +928,22 @@ export class Bundle implements Turntable {
   }
 }
 
-/** One Bundle per `.surface` with data-bundle under root, reused when an element was mounted before. An element whose block is missing or malformed, or a page without three.js or WebGL, is reported and left blank. */
+/** One Bundle per `.surface` with data-bundle under root, reused when an element was mounted before. An element whose JSON script is missing or malformed, or a page without three.js or WebGL, is reported and left blank. */
 export function mount(root: ParentNode): Bundle[] {
   const out: Bundle[] = [];
   for (const el of root.querySelectorAll<HTMLElement>('.surface[data-bundle]')) {
     const known = CACHE.get(el);
     if (known) { out.push(known); continue; }
     const id = el.dataset.bundle ?? '';
-    const block = document.getElementById(id);
-    const data = block ? parseBundle(block.textContent ?? '') : `the block id="${id}" is missing`;
+    const script = document.getElementById(id);
+    const data = script ? parseBundle(script.textContent ?? '') : `the JSON script with the id "${id}" is not found`;
     if (typeof data === 'string') {
       console.error(`beeson: the bundle ${id} is not drawn, since ${data}`);
       continue;
     }
     if (!renderer() || !window.THREE) continue;
-    out.push(new Bundle(el, data, window.THREE));
+    // a fault the parser does not catch leaves this bundle blank, and the deck is started
+    try { out.push(new Bundle(el, data, window.THREE)); } catch (error) { console.error(`beeson: the bundle ${id} is not drawn, since ${String(error)}`); }
   }
   return out;
 }

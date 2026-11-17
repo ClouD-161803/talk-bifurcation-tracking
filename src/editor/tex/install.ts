@@ -28,6 +28,8 @@ export type TexSheets = {
   write(text: string, deck: FileSystemFileHandle): Promise<string>;
   download(text: string): string;
   dirty(): boolean;
+  // the deck drawn again with the tex.js next to it, and the sources read again when they were read
+  redraw(): Promise<void>;
   cite(target: CiteTarget): void;
   key(ev: KeyboardEvent): boolean;
   pane(el: HTMLElement, cite: HTMLElement): void;
@@ -64,6 +66,18 @@ export function citationPane(app: App): Control[] {
   return [{ el, sync }];
 }
 
+// whether the deck loads the tex.js next to it, rather than the tex.js of another folder
+const ownTex = (): boolean => [...document.scripts].some((s) => s.src === new URL('tex.js', location.href).href);
+
+/** The deck drawn again with the tex.js next to it, after the edit command of a session counted a change of it. Rejects when it fails. */
+export function redrawTex(app: App): Promise<void> {
+  if (!ownTex()) return Promise.resolve();
+  return load().then((s) => s.redraw()).catch((e) => {
+    app.fail(e);
+    throw e;
+  });
+}
+
 // the text of a slide with the caret, which a citation can be put into
 function citeHost(app: App): HTMLElement | null {
   const host = app.selection.kind === 'text' ? app.selection.items[0] : null;
@@ -96,7 +110,7 @@ export function install(app: App): void {
   // only references.bib has. a deck that cites other papers than its tex.js, e.g. a deck that
   // shares the tex.js of another, keeps those references
   let opened: string[] | null = null;
-  const own = [...document.scripts].some((s) => s.src === new URL('tex.js', location.href).href);
+  const own = ownTex();
   const uncited = (text: string): { script: string; keys: string[]; references: Tex['references'] } | { missing: string[] } | null => {
     if (!own) return null;
     const keys = citedKeys(text);
@@ -157,8 +171,9 @@ export function install(app: App): void {
   // the run ends once the sheet is shown, since a sheet of a deck opened from a file waits for the
   // folder of the deck to be chosen
   const open = (which: Which) => load().then((s) => void s.open(which).catch((e) => app.fail(e)));
-  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, run: () => open('preamble') });
-  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, run: () => open('bibliography') });
+  // in a session, the sources are the files of the talk folder, which the edit command reads
+  app.commands.define({ id: 'file.preamble', label: 'Preamble…', menu: { bar: 'File', group: 'tex', order: 35 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in preamble.tex' : null), run: () => open('preamble') });
+  app.commands.define({ id: 'file.bibliography', label: 'Bibliography…', menu: { bar: 'File', group: 'tex', order: 36 }, enabled: (a) => !a.session, note: (a) => (a.session ? 'Edited by the host in references.bib' : null), run: () => open('bibliography') });
   app.commands.define({
     id: 'insert.citation',
     label: 'Citation…',
@@ -194,7 +209,7 @@ export function install(app: App): void {
   document.addEventListener('click', (ev) => {
     const el = ev.target instanceof HTMLElement && ev.target.matches('cite[data-key]') ? ev.target : null;
     const host = el && app.hostOf(el);
-    if (!el || !(host instanceof HTMLElement) || !app.current()?.contains(host) || host.closest('aside.notes') || ev.shiftKey || ev.metaKey || ev.ctrlKey) return;
+    if (!el || !(host instanceof HTMLElement) || !app.current()?.contains(host) || host.closest('aside.notes') || ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.defaultPrevented) return;
     host.focus({ preventScroll: true });
     const range = document.createRange();
     range.selectNode(el);

@@ -28,6 +28,7 @@ export function install(app: App): void {
     // in the navigator, it runs Delete Slide, whose menu item prints this key there
     in: ['canvas', 'navigator'],
     menu: { bar: 'Edit', group: 'clipboard', order: 23 },
+    toolbar: { group: 'history', order: 12, icon: 'trash', label: 'Delete' },
     context: ['element'],
     enabled: (a) => (onSlides(a) ? a.commands.enabled('slide.delete') : inText(a) ? hasRange() : selectedElements(a).some((el) => !locked(el))),
     runsAs: (a) => (onSlides(a) ? 'slide.delete' : 'element.delete'),

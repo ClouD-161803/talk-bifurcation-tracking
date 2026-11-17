@@ -14,7 +14,7 @@ import { compileFigures } from './figures.mjs';
 import { renderPdfFigures } from './pdf-figures.mjs';
 import { sources } from './sources.mjs';
 
-const { readBibtex, readPreamble, preambleOf, texOf, texScript } = await sources(['bibtex', 'preamble', 'texfile']);
+const { folderTex, preambleOf, skippedLines, texScript } = await sources(['texfile']);
 
 /** What npm run tex writes for a deck, with the lines that are skipped and the keys without an entry. Nothing is written. */
 export function deckTex(deck) {
@@ -26,23 +26,7 @@ export function deckTex(deck) {
       return null;
     }
   };
-  // as in TeX, a file is looked up from the folder of the preamble, and \input adds .tex to a name
-  // without an extension
-  const names = {
-    input: (name) => (/\.[A-Za-z]+$/.test(name) ? [name] : [`${name}.tex`, name]),
-    package: (name) => [`${name}.sty`],
-    class: (name) => [`${name}.cls`],
-  };
-  const find = (name, kind) => {
-    for (const file of names[kind](name)) {
-      const found = text(file);
-      if (found !== null) return { file, text: found };
-    }
-    return null;
-  };
-  const preamble = readPreamble(text('preamble.tex') ?? '', { file: 'preamble.tex', resolve: find });
-  const bibliography = readBibtex(text('references.bib') ?? '');
-  const { tex, missing } = texOf(preamble, bibliography, readFileSync(deck, 'utf8'));
+  const { tex, preamble, bibliography, missing } = folderTex(text, readFileSync(deck, 'utf8'));
   return { file: join(dir, 'tex.js'), text: texScript(tex), tex, preamble, bibliography, missing };
 }
 
@@ -89,11 +73,8 @@ async function main() {
   console.log(`tex.js: ${count(tex.macros, 'macro')}, ${count(tex.environments, 'environment')}, ${count(tex.theorems, 'kind of theorem', 'kinds of theorem')}, and ${count(tex.references, 'reference')}`);
   compileFigures(deck);
   await renderPdfFigures(deck);
-  const short = (statement) => (statement.length > 100 ? `${statement.slice(0, 99)}…` : statement);
-  for (const skipped of preamble.skipped) console.log(`${skipped.file}:${skipped.line}: ${short(skipped.text)}: ${skipped.reason}`);
-  for (const skipped of bibliography.skipped) console.log(`references.bib:${skipped.line}: ${short(skipped.text)}: ${skipped.reason}`);
   const name = basename(deck);
-  for (const key of missing) console.log(`${name}: the key ${key} is cited, and it is not in references.bib`);
+  for (const line of skippedLines(preamble, bibliography, missing, name)) console.log(line);
   if (!/<script\b[^>]*\ssrc\s*=\s*["']tex\.js["']/.test(readFileSync(deck, 'utf8'))) {
     console.log(`${name} does not load tex.js: put <script src="tex.js"></script> before the script of theme/mathjax-config.js`);
   }

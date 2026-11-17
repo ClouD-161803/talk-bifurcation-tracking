@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -77,7 +77,7 @@ async function menu(page, bar, item) {
   await click(page, await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((e) => e.textContent.trim() === ${js(bar)}); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
   await sleep(250);
   const at = await page.evaluate(`(() => { const e = [...document.querySelectorAll('[role=menu] [role^=menuitem]')].find((x) => x.getClientRects().length && x.textContent.trim().startsWith(${js(item)})); const r = e.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(500);
   await frames(page);
 }
@@ -176,7 +176,7 @@ for (const platform of PLATFORMS) {
     assert.match(await render(page), /<p[^>]*>Pasted wordsx<\/p>/);
     await press(page, 'Escape');
     await press(page, 'Escape');
-    await click(page, { x: 1580, y: 600 });
+    await clickText(page, { x: 1580, y: 600 });
     await sleep(300);
     assert.match(await render(page), /<p[^>]*>Pasted wordsx<\/p>/, 'the words are lost after the box is left');
     await undo(page);
@@ -237,12 +237,12 @@ for (const platform of PLATFORMS) {
     await type(page, 'h');
     await sleep(300);
     // the heading is typed into, hence the entries of the box are no longer the last ones
-    await click(page, 'section.present h2');
+    await clickText(page, 'section.present h2');
     await press(page, 'End');
     await type(page, 'Z');
     await sleep(1200);
     const typed = await render(page);
-    await click(page, await page.evaluate(`(() => { const p = [...Reveal.getCurrentSlide().querySelectorAll('p')].find((e) => e.textContent === 'h'); const r = p.getBoundingClientRect(); return { x: r.left + 8, y: r.top + r.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const p = [...Reveal.getCurrentSlide().querySelectorAll('p')].find((e) => e.textContent === 'h'); const r = p.getBoundingClientRect(); return { x: r.left + 8, y: r.top + r.height / 2 }; })()`));
     await press(page, 'End');
     await press(page, 'Backspace');
     await sleep(300);
