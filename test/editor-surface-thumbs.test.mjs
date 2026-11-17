@@ -79,3 +79,21 @@ async function check(t, deck) {
 test('the thumbnail of a slide that was never shown draws its surface and its labels, as after the slide was shown', { timeout: 600000 }, (t) => check(t, 'test-deck.html'));
 
 test('the thumbnail of a slide that was never shown draws its strip bundle, as after the slide was shown', { timeout: 600000 }, (t) => check(t, 'test/pages/bundle-far.html'));
+
+// a flip of the mode draws every surface again, also one on a slide that is not laid out, whose labels then have
+// a size of 0. the label of an arrow of a strip bundle is placed by its size, and it keeps its place in this case
+test('after a flip of the mode, the labels of a strip bundle on a slide that was never shown keep their places', { timeout: 300000 }, async (t) => {
+  const deck = 'test/pages/bundle-far.html';
+  const page = await editorPage(browser, { deck, query: 'edit&still&theme=dark#/4', clear: true });
+  t.after(() => page.close().catch(() => {}));
+  const labels = `[...${SLIDES}[0].querySelectorAll('.surface .label')].map((l) => [l.dataset.at, l.style.left, l.style.top])`;
+  assert.equal((await page.evaluate(state(0))).laidOut, false, 'the slide of the bundle is laid out by reveal.js, and the case is not checked');
+  await page.waitFor(`${state(0)}.labels === ${SLIDES}[0].querySelectorAll('.surface .label').length`, 60000);
+  const placed = await page.evaluate(labels);
+  assert.ok(placed.some(([at]) => at === 'Sun'), 'the label of the arrow is not found');
+  const before = await page.evaluate(draws(0));
+  await page.evaluate(`(() => { window.BeesonEditor.exec('view.slideDark'); return true; })()`);
+  await page.waitFor(`document.documentElement.dataset.theme === 'light' && ${draws(0)} > ${before} && ${state(0)}.drawn > 0`, 60000);
+  assert.deepEqual(await page.evaluate(labels), placed);
+  assert.deepEqual(page.errors, []);
+});
