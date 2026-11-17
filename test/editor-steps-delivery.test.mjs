@@ -226,14 +226,25 @@ test('a step After Previous is shown by itself after its delay in the deck', asy
   await slideOf(page, 'li.fragment');
   const shown = () => page.evaluate(`[...document.querySelectorAll('.reveal section.present li.fragment')].map((li) => li.classList.contains('visible'))`);
   assert.deepEqual(await shown(), [false, false, false]);
+  // the time at which each step is shown, in ms after the key, is recorded with the clock of the
+  // page, since a read from the test may come after the delay on a slow runner
+  await page.evaluate(`(() => {
+    const slide = document.querySelector('.reveal section.present');
+    const items = [...slide.querySelectorAll('li.fragment')];
+    window.__shownAt = items.map(() => null);
+    addEventListener('keydown', () => { window.__key = performance.now(); }, { capture: true, once: true });
+    new MutationObserver(() => items.forEach((li, i) => {
+      if (window.__shownAt[i] === null && li.classList.contains('visible')) window.__shownAt[i] = performance.now() - window.__key;
+    })).observe(slide, { subtree: true, attributeFilter: ['class'] });
+    return true;
+  })()`);
   await press(page, 'ArrowRight');
-  // the steps are read 700 ms after the key, as on a slow runner
-  await sleep(700);
-  assert.deepEqual(await shown(), [true, false, false]);
-  await sleep(900);
-  assert.deepEqual(await shown(), [true, true, false]);
-  await sleep(900);
-  assert.deepEqual(await shown(), [true, true, false], 'the step after the delayed step is shown without a click');
+  await page.waitFor('window.__shownAt[1] !== null');
+  // the third step is read 900 ms after the second by the clock of the page
+  await page.waitFor('performance.now() - window.__key > window.__shownAt[1] + 900');
+  const [first, second, third] = await page.evaluate('window.__shownAt');
+  assert.ok(second - first >= 590, `the second step is shown ${Math.round(second - first)} ms after the first, before its delay of 600 ms`);
+  assert.equal(third, null, 'the step after the delayed step is shown without a click');
   assert.deepEqual(errors(page), []);
 });
 
