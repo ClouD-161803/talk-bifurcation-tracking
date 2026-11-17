@@ -270,10 +270,14 @@ test('a slide whose long run without spaces is replaced, e.g. the data of a plot
     const b = [`${other}\n`, plot(k, 4001)];
     return fastest(() => pairs(a, b, true, true));
   };
+  // the character at the middle of the data sets how many matches core in src/session/slides.ts
+  // reads per character. this number differs by up to 2 times between lengths, e.g. 2 000 points
+  // take half the reads of 8 000. hence 8 times the length takes up to 16 times as long when the
+  // time is linear, and 64 times when it is quadratic
   for (let attempt = 1; ; attempt++) {
-    const small = run(2_000);
-    const large = run(8_000);
-    if (large < 8 * small) break;
-    assert.ok(attempt < 3, `${large.toFixed(1)} ms for 4 times the length against ${small.toFixed(1)} ms`);
+    const small = run(8_000);
+    const large = run(64_000);
+    if (large < 24 * small) break;
+    assert.ok(attempt < 3, `${large.toFixed(1)} ms for 8 times the length against ${small.toFixed(1)} ms`);
   }
 });
