@@ -23,18 +23,24 @@ declare global {
 
 const mathjax = (): MathJaxApi | null => (window.MathJax?.startup?.document ? window.MathJax : null);
 
+function lookupOf(items: MathItem[]): MathLookup {
+  const map = new Map<Element, MathInfo>();
+  for (const item of items) if (item.typesetRoot) map.set(item.typesetRoot, { tex: item.math, display: item.display, open: item.start.delim ?? '', close: item.end.delim ?? '' });
+  return (el) => map.get(el) ?? null;
+}
+
 // the lookup is built when it is needed, since the items of a host are replaced when it is typeset
 // again
 export function mathLookup(): MathLookup {
-  const map = new Map<Element, MathInfo>();
   const mj = mathjax();
-  if (mj) {
-    for (const item of mj.startup.document.getMathItemsWithin([document.body])) {
-      if (!item.typesetRoot) continue;
-      map.set(item.typesetRoot, { tex: item.math, display: item.display, open: item.start.delim ?? '', close: item.end.delim ?? '' });
-    }
-  }
-  return (el) => map.get(el) ?? null;
+  return lookupOf(mj ? mj.startup.document.getMathItemsWithin([document.body]) : []);
+}
+
+// the formulas of el alone, since mathLookup() reads those of the whole deck, which is too slow for
+// an apply or a caret at each character typed
+export function mathIn(el: Element): MathLookup {
+  const mj = el.querySelector('mjx-container') ? mathjax() : null;
+  return lookupOf(mj ? mj.startup.document.getMathItemsWithin([el]) : []);
 }
 
 // typesets tex on its own, and gives the rendering and the error of MathJax, e.g. a missing brace.
@@ -106,7 +112,7 @@ function withTex(host: Element, replace?: ReadonlyMap<Element, string>, edit?: (
   const indexed = '[data-fragment-index]';
   fileIndexes([...host.querySelectorAll(indexed)], [...copy.querySelectorAll(indexed)]);
   stripRuntime(copy);
-  const lookup = mathLookup();
+  const lookup = mathIn(host);
   const live = [...host.querySelectorAll('mjx-container')];
   const copies = [...copy.querySelectorAll('mjx-container')];
   copies.forEach((c, i) => {

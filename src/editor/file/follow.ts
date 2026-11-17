@@ -34,10 +34,17 @@ export function onSlides(numbers: number[]): string {
   return ` on slides ${head}${numbers.length > 2 ? ',' : ''} and ${numbers[numbers.length - 1]}`;
 }
 
+// the sections of the last text parsed by slidesAt, since a caller may ask for one range at a time
+let last: { text: string; sections: { start: number; end: number }[] } | null = null;
+
 // the numbers of the slides, from 1, of the ranges in a text of the deck, i.e. of the sections
 // that are children of its div.slides, as the navigator counts them
-function slidesAt(text: string, ranges: Edit[]): number[] {
-  const sections = parseSource(text).slides.children.flatMap((c) => (c.kind === 'element' && c.tag === 'section' && c.open ? [{ start: c.open.start, end: c.close?.end ?? c.open.end }] : []));
+export function slidesAt(text: string, ranges: Edit[]): number[] {
+  if (last?.text !== text) {
+    const sections = parseSource(text).slides.children.flatMap((c) => (c.kind === 'element' && c.tag === 'section' && c.open ? [{ start: c.open.start, end: c.close?.end ?? c.open.end }] : []));
+    last = { text, sections };
+  }
+  const { sections } = last;
   const out = new Set<number>();
   for (const r of ranges) {
     sections.forEach((s, i) => {
@@ -48,7 +55,7 @@ function slidesAt(text: string, ranges: Edit[]): number[] {
 }
 
 // the slides of after that differ from before, by their numbers in after
-function changedSlides(before: string, after: string): number[] {
+export function changedSlides(before: string, after: string): number[] {
   try {
     const hunks = changes(before, after);
     if (!hunks) return [];
@@ -140,7 +147,7 @@ export function install(app: App): void {
   async function mergeInto(target: FileSystemFileHandle): Promise<'same' | 'other' | 'merged' | 'cancelled'> {
     const base = app.source;
     const pairing = app.pairing;
-    if (!base || !pairing) return 'same';
+    if (!base || !pairing || app.session) return 'same';
     let read: string | null;
     try {
       read = await readText(target);
@@ -193,7 +200,7 @@ export function install(app: App): void {
   // a change without unsaved edits, and without an open dialog, loads the page again. a change with
   // unsaved edits is named in the state and marked in the navigator until a save
   async function watch(): Promise<void> {
-    if (busy || diskText === null || app.state !== 'loaded' || saving || document.hidden) return;
+    if (busy || diskText === null || app.state !== 'loaded' || saving || document.hidden || app.session) return;
     busy = true;
     try {
       const at = saves;
@@ -207,7 +214,8 @@ export function install(app: App): void {
       const read = await readText(handle);
       if (read === null || read === diskText || saves !== at || saving) return;
       const text = await readSettled(handle, read);
-      if (text === null || text === diskText || saves !== at || saving) return;
+      // a session begun while the file was read
+      if (text === null || text === diskText || saves !== at || saving || app.session) return;
       const changed = changedSlides(diskText, text);
       if (!app.dirty && !document.querySelector('dialog.beeson-edit-dialog[open], .beeson-math')) {
         reload(changed, `Loaded the changes of the file${onSlides(changed)}`);
@@ -297,8 +305,12 @@ export function install(app: App): void {
       known = app.handle;
     },
     merge: mergeInto,
-    line: () => (stale && app.dirty ? `The file was changed${onSlides(stale)}, and a save merges your edits into it` : null),
+    line: () => (stale && app.dirty && !app.session ? `The file was changed${onSlides(stale)}, and a save merges your edits into it` : null),
     status: () => ({ changed: nav().marked, stale, watching: diskText !== null }),
   };
   app.follow = follow;
+  // the changes of the file before a session are in the deck of the session
+  app.listen('session', () => {
+    if (app.session) stale = null;
+  });
 }

@@ -15,10 +15,11 @@ on:
 permissions:
   contents: read
 
-# a push to a pull request cancels the round of the commit before it. A round on main has a group
-# of its own, hence it is neither cancelled nor held back by a later one
+# a push to a pull request cancels the round of the commit before it, and a push to main the round
+# of the push before it, since a merge after a merge would wait for the runners of each round. A
+# round started by hand has a group of its own, hence it is not cancelled
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.run_id }}
   cancel-in-progress: true
 
 # the tests and each browser are separate jobs, so that they run on separate runners at once
@@ -50,10 +51,10 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       # the tests read the demo deck, hence a talk made with "Use this template" checks only its deck
-      # npm test with the shard of the job, an option that is read only before the files. With
-      # --test-force-exit, a test file that leaves a server open after a failed cleanup is ended, and
-      # with --test-timeout, a test file that does not end fails by name after 20 minutes
-      - run: node --test --test-force-exit --test-timeout=1200000 --test-shard=${{ matrix.shard }}/7 "test/*.test.mjs"
+      # npm test on the files of the shard of the job, split by their durations in test/timings.json.
+      # With --test-force-exit, a test file that leaves a server open after a failed cleanup is ended,
+      # and with --test-timeout, a test file that does not end fails by name after 20 minutes
+      - run: node scripts/shard.mjs ${{ matrix.shard }}/7
         if: ${{ github.repository == 'beeson-group/slides' }}
 
   # the checks test (ubuntu-latest) and test (windows-latest) are required on main, hence the result

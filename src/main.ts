@@ -209,6 +209,11 @@ function mountWithin(root: Element): void {
   for (const o of backdrops) if (root.contains(o.el)) { o.fit(); o.complete(); }
   for (const s of surfaces) if (root.contains(s.el)) { s.fit(); s.sync(false); s.draw(); }
   for (const p of plots) if (root.contains(p.el)) { p.fit(); p.syncSteps(); p.still(); }
+  // a viewer added by the editor is numbered and themed as at the start
+  if (root.matches('tycho-viewer') || root.querySelector('tycho-viewer')) {
+    markViewers();
+    syncViewers(get());
+  }
   const slide = root.closest('.reveal .slides section');
   if (slide) applySteps(slide);
 }
@@ -295,8 +300,9 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   // must be on the page to be edited
   // the show in the frame of the editor posts its events to the editor. the option is not in the
   // address, which the speaker view copies into its frame of the upcoming slide, whose events
-  // would then move the show a step on
-  const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
+  // would then move the show a step on. reveal.js gives the focus to the body when a hidden page is
+  // shown again, for its own keys, which are off in the editor
+  const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
   await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
 
   initChrome();

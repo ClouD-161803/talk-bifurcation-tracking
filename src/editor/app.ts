@@ -47,7 +47,9 @@ export type State = 'starting' | 'waiting' | 'loaded' | 'error';
 // the state shown in the toolbar, and its list of the texts that cannot be edited as its title
 export type Line = { text: string; warn: boolean; title: string };
 
-export type Event = 'report' | 'history' | 'dirty' | 'slide' | 'resize';
+// open is emitted after files.open has paired a text with the page, and session at begin() and
+// end() of the session port
+export type Event = 'report' | 'history' | 'dirty' | 'slide' | 'resize' | 'open' | 'session';
 
 // a text element paired with the file is editable in place
 export const HOST = '[contenteditable="true"]';
@@ -183,6 +185,10 @@ export class App {
   dirty = false;
   // the message of the last save or error, shown until the next edit
   note: { text: string; warn: boolean } | null = null;
+  // the session of the synchronous editor after its begin(), see session/session.ts. Save then
+  // calls save() of its client, the file is neither written nor followed, and status is shown in
+  // the state line
+  session: { status: string | null; save(): Promise<void> | void } | null = null;
   autosave = false;
   // the texts of the current slide that run past its edge
   overflow = 0;
@@ -221,6 +227,7 @@ export class App {
       snapshot: contentWithTex,
       restore: (host, content) => this.typing.restoreHost(host, content),
       onChange: () => this.emit('history'),
+      alone: () => !this.session,
       selected: () => (this.selection?.kind === 'elements' ? this.selection.elements() : null),
       reselect: (els) => {
         const live = els.filter((el) => el.isConnected);

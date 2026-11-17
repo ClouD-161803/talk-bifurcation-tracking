@@ -26,6 +26,8 @@ const FILE_TYPES = [{ description: 'HTML', accept: { 'text/html': ['.html', '.ht
 const AUTOSAVE_KEY = 'beeson-autosave';
 // the pause after the last change, in ms, before an autosave
 const AUTOSAVE_DELAY = 1500;
+// the longest wait, in ms, for the edits of a page of a session to be sent before a show or an export
+const SEND_WAIT = 4000;
 
 const pickers = window as unknown as Pickers;
 // the pickers are read when they are used, so that a test can take them away
@@ -263,17 +265,22 @@ export function install(app: App): void {
     if (!pairing) return plain(app.note?.text ?? 'Loading', app.note?.warn ?? false);
     if (!pairing.texts.length) return plain('This file is not the deck on the page', true);
     const problems = pairing.problems;
-    const parts = [app.dirty ? 'Unsaved changes' : app.note?.text ?? 'No unsaved changes'];
-    // a warning, e.g. an error of a save or of a draft, is shown with unsaved changes too
-    if (app.dirty && app.note?.warn) parts.push(app.note.text);
+    // in a session, the edits are not saved to a file, and its status takes the place of the save
+    const first = app.session ? app.session.status : app.dirty ? 'Unsaved changes' : app.note?.text ?? 'No unsaved changes';
+    const parts = first ? [first] : [];
+    // a warning, e.g. an error of a save or of a draft, is shown with unsaved changes too. in a
+    // session, the note of a command follows the status until the next edit of the person
+    const warn = app.note?.warn ?? false;
+    if (app.note && (app.session || (app.dirty && warn))) parts.push(app.note.text);
     if (problems.length) parts.push(`${plural(problems.length, 'text')} cannot be edited`);
     const past = app.overflow - app.overFigure;
     if (past) parts.push(`${plural(past, 'text')} run${past === 1 ? 's' : ''} past the slide or into its footnote`);
     if (app.overFigure) parts.push(...coverSentences());
-    if (app.autosave && !app.handle && canWrite()) parts.push('autosave starts after the first save');
+    if (app.autosave && !app.handle && canWrite() && !app.session) parts.push('autosave starts after the first save');
     const changed = app.follow?.line();
     if (changed) parts.push(changed);
-    return { text: parts.join('. '), warn: (app.note?.warn ?? false) || problems.length > 0 || app.overflow > 0, title: problems.map(problemText).join('\n') };
+    // a part may end in a full stop of its own, e.g. a note
+    return { text: parts.map((p, i) => (i < parts.length - 1 ? p.replace(/\.$/, '') : p)).join('. '), warn: warn || problems.length > 0 || app.overflow > 0, title: problems.map(problemText).join('\n') };
   }
 
   // pairs the text of the file with the page and makes the paired text elements editable. the state
@@ -300,6 +307,7 @@ export function install(app: App): void {
       app.note = { text: error instanceof Error ? error.message : String(error), warn: true };
     }
     app.typing.attach();
+    app.emit('open');
     app.report();
     app.invalidate();
     if (fresh) app.drafts.offer();
@@ -356,8 +364,9 @@ export function install(app: App): void {
     if (app.pairing?.texts.length) keep(handle);
   }
 
+  // Open, Open Recent, and Revert to Saved would replace the deck of everyone in a session
   async function openFile(): Promise<void> {
-    if (!(await readyToOpen())) return;
+    if (app.session || !(await readyToOpen())) return;
     if (canPick() && pickers.showOpenFilePicker) {
       let picked: FileSystemFileHandle[];
       try {
@@ -388,7 +397,7 @@ export function install(app: App): void {
   // a deck of Open Recent kept on another page is opened on its page, where the dialog offers its
   // file. a deck that is missing is taken off the list
   async function openRecent(r: Recent): Promise<void> {
-    if (!(await readyToOpen())) return;
+    if (app.session || !(await readyToOpen())) return;
     if (r.page !== pageOf()) {
       location.assign(r.page + location.search);
       return;
@@ -411,7 +420,7 @@ export function install(app: App): void {
   // the page is loaded again from the file, without the edits and their draft, hence the dialog of
   // the edits that were not saved is not offered after the reload
   async function revert(): Promise<void> {
-    if (!app.dirty) return;
+    if (!app.dirty || app.session) return;
     if ((await revertDialog.open('cancel')) !== 'revert') return;
     window.clearTimeout(autosaveTimer);
     app.drafts.drop();
@@ -420,19 +429,36 @@ export function install(app: App): void {
     location.reload();
   }
 
-  // the address of the deck with the parameters of this page but edit, and with extra
+  // the address of the deck with the parameters of this page but edit, and with extra. the version
+  // v of a session is left out too, since it would play the deck as it was when the page was loaded
   function deckAddress(extra: string[] = []): string {
     const params = new URLSearchParams(location.search);
-    params.delete('edit');
+    for (const name of ['edit', 'session', 'v']) params.delete(name);
     for (const name of extra) params.set(name, '');
     // a parameter without a value, such as still, is kept without an equals sign
     const query = params.toString().replace(/=(?=&|$)/g, '');
     return `${pageOf()}${query ? `?${query}` : ''}`;
   }
 
-  // with unsaved changes, the user is asked first, and false is returned for no export or show
+  // the edits of this page sent in a session, before a show or an export. a page that is offline
+  // cannot send them, hence the wait ends after SEND_WAIT with the reason
+  async function sent(): Promise<void> {
+    let timer = 0;
+    const late = new Promise<never>((_, fail) => {
+      timer = window.setTimeout(() => fail(new Error('Your last changes are not sent yet. Try again once they are saved')), SEND_WAIT);
+    });
+    try {
+      await Promise.race([app.session!.save(), late]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // with unsaved changes, the user is asked first, and false is returned for no export or show. in a
+  // session every edit is shared, and the edits of this page are sent first
   async function savedFirst(action: 'present' | 'export' | 'print' | 'pptx'): Promise<boolean> {
-    if (!app.dirty) return true;
+    if (app.session) await sent();
+    if (!app.dirty || app.session) return true;
     const choice = await askFirst(action);
     if (!choice) return false;
     if (choice === 'save') await save();
@@ -504,6 +530,7 @@ export function install(app: App): void {
   // from a server. the saved text is then paired again, so that the next save starts from it. a
   // save asked for while one is in flight is run after it
   async function save(): Promise<void> {
+    if (app.session) return app.session.save();
     if (saving) {
       again = true;
       return;
@@ -569,6 +596,7 @@ export function install(app: App): void {
   // the deck is written into a file chosen with the picker, and where there is no picker a save is
   // a download anyway
   async function saveAs(): Promise<void> {
+    if (app.session) return app.session.save();
     if (!app.source || !app.pairing) {
       app.note = { text: 'Choose the file of this deck first', warn: true };
       app.report();
@@ -603,7 +631,7 @@ export function install(app: App): void {
 
   function scheduleAutosave(): void {
     window.clearTimeout(autosaveTimer);
-    if (!app.autosave || !app.handle) return;
+    if (!app.autosave || !app.handle || app.session) return;
     autosaveTimer = window.setTimeout(() => {
       if (app.dirty && !saving) void save().catch((e) => app.fail(e));
     }, AUTOSAVE_DELAY);
@@ -619,19 +647,19 @@ export function install(app: App): void {
 
   // the saved deck at hash, without the editor, played in place or, with tab, in a new tab. with
   // unsaved changes, the user is asked to save or discard them first. the show in place takes the
-  // full screen before the save, while the click on the dialog still counts. null is returned when
-  // nothing is played
+  // full screen before the save, while the click on the dialog still counts. in a session the edits
+  // are sent first without a question. null is returned when nothing is played
   async function present(hash = '', tab = false): Promise<{ win: Window | null } | null> {
-    const choice = app.dirty ? await askFirst('present') : 'saved';
+    const choice = app.session ? 'save' : app.dirty ? await askFirst('present') : 'saved';
     if (!choice) return null;
     // a save that is a download does not write the file at the address of the page, hence the show
     // then plays the saved text. the copy is downloaded once a show in place ends, since the
     // browser may ask where to save it in a dialog that would cover the show
-    const later = choice === 'save' && !tab && !app.handle && !canWrite();
+    const later = choice === 'save' && !app.session && !tab && !app.handle && !canWrite();
     const show = tab ? null : startShow(app, later ? () => void save().catch((e) => app.fail(e)) : undefined);
-    if (choice === 'save' && !later) await save();
+    if (choice === 'save' && !later) await (app.session ? sent() : save()).catch((e) => (show?.end(), Promise.reject(e)));
     if (choice === 'discard') await discardEdits();
-    if (choice === 'save' && app.dirty && !later) {
+    if (choice === 'save' && app.dirty && !later && !app.session) {
       show?.end();
       return null;
     }
@@ -664,7 +692,7 @@ export function install(app: App): void {
   app.autosave = canWrite() && stored(AUTOSAVE_KEY) === '1';
 
   app.listen('report', () => {
-    if (app.state !== 'waiting') {
+    if (app.state !== 'waiting' || app.session) {
       fileDialog.close(null);
       return;
     }
@@ -693,7 +721,13 @@ export function install(app: App): void {
     if (app.dirty) cleanIfSaved();
   });
   app.listen('dirty', scheduleAutosave);
-  window.addEventListener('beforeunload', (ev) => { if (app.dirty) ev.preventDefault(); });
+  // the file has not been written by this page during a session, hence the deck counts as changed
+  // after it
+  app.listen('session', () => {
+    window.clearTimeout(autosaveTimer);
+    if (!app.session && app.state === 'loaded') app.markDirty();
+  });
+  window.addEventListener('beforeunload', (ev) => { if (app.dirty && !app.session) ev.preventDefault(); });
 }
 
 // the slide shown is kept in the hash through a reload, which reveal.js does not keep up to date
