@@ -118,10 +118,10 @@ test('the TikZ Figure pane shows the file and the state of a figure, and writes 
 
   // a new curve takes the next column, and the last curve is not deleted
   await press(page, 'Add Curve');
-  figure.curves.push({ part: 'x-2', column: 'x', kind: 'line', color: 'data3', label: 'x' });
+  figure.curves.push({ part: 'x-2', column: 1, kind: 'line', color: 'data3', label: 'x' });
   await written('the new curve to be written');
-  await set(page, 'Column of curve 3', 'y pos');
-  figure.curves[2].column = 'y pos';
+  await set(page, 'Column of curve 3', '2');
+  figure.curves[2].column = 2;
   await written('the column of curve 3 to be written');
   await press(page, 'Delete curve 3');
   await press(page, 'Delete curve 2');
