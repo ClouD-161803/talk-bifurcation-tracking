@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Nested step deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<!-- a step nested in an item of a list that is itself a step, between two other steps -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Nested step</h2>
+      <p class="fragment" data-fragment-index="1">The first step.</p>
+      <ul>
+        <li class="fragment" data-fragment-index="2">Equilibria: collinear<span class="fragment" data-fragment-index="3"> and triangular</span></li>
+        <li class="fragment" data-fragment-index="4">The last step.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>
