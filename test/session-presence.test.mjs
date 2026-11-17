@@ -888,7 +888,9 @@ test('after Leave Session and after the end of the session, no element stays loc
     assert.deepEqual(await ana.evaluate(`({ held: ${P}.held, timers: ${TIMERS} })`), { held: null, timers: 0 });
   }
   clean(ana);
-  clean(ben);
+  // a poll that Ben sent just before his bye may reach the edit command after it, and is then
+  // answered 404
+  clean(ben, [/status of 404 .*\/\.session\/events\?/]);
   clean(cy);
 });
 
