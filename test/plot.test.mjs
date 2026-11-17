@@ -321,7 +321,7 @@ test('a step with data-plot-once plays its tab once and holds the last frame, wi
   await page.goto(deckUrl('test/pages/plot-once.html'));
   await page.waitFor(deckSettled);
   const probe = `(() => {
-    const view = Beeson.plots[0], disk = view.el.querySelector('.plot-iris'), line = view.el.querySelector('.plot-wipe');
+    const view = Beeson.plots[0], disk = view.el.querySelector('.plot-iris'), line = view.el.querySelector('[data-plot-id="line"]');
     return { playing: view.playing, frame: view.frame, dots: view.el.querySelectorAll('.plot-dot').length,
       clipped: !!disk?.parentElement.getAttribute('clip-path'), hidden: [disk, line].map((n) => n.classList.contains('plot-hidden')),
       delay: line.style.getPropertyValue('--plot-delay'), length: line.getAttribute('pathLength') };
@@ -346,6 +346,24 @@ test('a step with data-plot-once plays its tab once and holds the last frame, wi
   const back = await page.evaluate(probe);
   assert.equal(back.dots, 0);
   assert.deepEqual(back.hidden, [true, true]);
+  assert.deepEqual(page.errors, []);
+});
+
+test('a dashed curve with a wipe keeps its dashes, and it is wiped on through a mask', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/plot-once.html'));
+  await page.waitFor(deckSettled);
+  const probe = `(() => {
+    const curve = Beeson.plots[0].el.querySelector('[data-plot-id="dashed"]');
+    const mask = curve.getAttribute('mask') && document.querySelector(curve.getAttribute('mask').slice(4, -1) + ' .plot-wipe');
+    return { dashes: getComputedStyle(curve).strokeDasharray, wipe: mask && getComputedStyle(mask).strokeDashoffset };
+  })()`;
+  assert.deepEqual(await page.evaluate(probe), { dashes: '6px, 4px', wipe: '1px' });
+  await page.evaluate('Reveal.next()');
+  await page.waitFor(`${probe}.wipe === '0px'`, 5000);
+  assert.equal((await page.evaluate(probe)).dashes, '6px, 4px');
   assert.deepEqual(page.errors, []);
 });
 
