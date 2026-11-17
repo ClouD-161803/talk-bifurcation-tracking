@@ -192,7 +192,12 @@ test('the flag of a person who types reads that the person is typing, and the ca
     document.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { window.__stopped = window.__typing === false; }, 2000); }, true);
     return true;
   })()`);
+  // every answer to fetch on the page of Ben is held until 4 s after the last key of Ana, as on a
+  // crowded machine where this page reads her state after she stopped typing
+  await ben.evaluate(`(() => { const f = window.fetch.bind(window); let open; const gate = new Promise((d) => (open = d)); window.__open = open; window.fetch = async (...a) => { const r = await f(...a); await gate; return r; }; return true; })()`);
   await typeKeys(ana, ' and more');
+  await new Promise((d) => setTimeout(d, 4000));
+  await ben.evaluate(`(window.__open(), true)`);
   await until(() => ben.evaluate(`${el(1, 'p')}.textContent.endsWith('and more')`), 'the text of Ana on the page of Ben');
   const text = await ben.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(${el(1, 'p')}); const b = r.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; })()`);
   const typing = await until(() => ben.evaluate(`window.__drawn.find((d) => d.flags[0]?.text === 'Ana is typing' && d.carets.length === 1 && Math.abs(d.carets[0].x + d.carets[0].w / 2 - ${text.x + text.w}) < 4) ?? null`), 'the flag of Ana typing and her caret at the end of the text in what the page of Ben drew');
