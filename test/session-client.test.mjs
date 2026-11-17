@@ -72,7 +72,9 @@ test('a page with edit and without session loads neither theme/session.js nor th
   const page = await open(browser, `${server.edit.url}index.html?edit`, { wait: false });
   await page.waitFor('window.BeesonEditor.status().texts > 0');
   assert.equal(await page.evaluate(`performance.getEntriesByType('resource').some((e) => e.name.includes('session.js'))`), false);
-  assert.equal(await page.evaluate(`'BeesonSession' in window || !!document.querySelector('.beeson-session-state')`), false);
+  // a script that is still on its way is not among the resources yet, hence its element is looked for
+  assert.equal(await page.evaluate(`document.querySelector('script[src*="session.js"]')`), null);
+  assert.equal(await page.evaluate(`'BeesonSession' in window || 'BeesonEditorSession' in window || !!document.querySelector('.beeson-session-state')`), false);
   clean(page);
 });
 
