@@ -23,6 +23,29 @@ test('a bundle that cannot be drawn is reported with the reason', () => {
   assert.equal(typeof parseBundle(JSON.stringify({ orbit, strips: [] })), 'object');
 });
 
+test('a bundle without strips, or with a strip without ribs or with a malformed point, is reported with the reason', () => {
+  const orbit = [[0, 0, 0], [1, 0, 0], [0, 1, 0]];
+  assert.match(parseBundle(JSON.stringify({ orbit })), /strips/);
+  assert.match(parseBundle(JSON.stringify({ orbit, strips: [{ id: 'a', half_width: 1, directions: orbit }] })), /ribs of the strip a/);
+  assert.match(parseBundle(JSON.stringify({ orbit, strips: [{ id: 'a', half_width: 1, ribs: [0], directions: [[0, 0, 1], [0, 0], [0, 0, 1]] }] })), /direction 1 of the strip a/);
+  assert.match(parseBundle(JSON.stringify({ orbit: [[0, 0, 0], [1, 0], [0, 1, 0]], strips: [] })), /point 1 of the orbit/);
+  assert.match(parseBundle(JSON.stringify({ orbit, libration_point: [0, 0], strips: [] })), /libration_point/);
+});
+
+test('a deck with malformed bundles is started, and each bundle is reported and left blank', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/bundle-malformed.html'));
+  await page.waitFor(deckSettled);
+  const mode = await page.evaluate('document.documentElement.dataset.theme');
+  // the keys of the theme are bound after the surfaces and the bundles are mounted
+  await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', keyCode: 68, which: 68, bubbles: true }))`);
+  await page.waitFor(`document.documentElement.dataset.theme !== '${mode}'`, 5000);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.surface[data-bundle] canvas').length`), 0);
+  assert.deepEqual(page.errors.map((e) => e.replace(/, since .*/, '')), ['console.error: beeson: the bundle bare is not drawn', 'console.error: beeson: the bundle ribless is not drawn']);
+});
+
 // the state of each bundle shown, the share of its canvas that is drawn, a digest of the canvas, and
 // the opacities of the labels of the strip a and of the Sun, on the slide or on each page in print
 const shown = `Promise.all([...document.querySelectorAll('.surface[data-bundle]')].filter((s) => s.getClientRects().length).map(async (s) => {
