@@ -7,7 +7,6 @@
 
 import type { FigureError } from '../../session/protocol.ts';
 import type { FigureOutput } from '../../tikz.ts';
-import type { Entry } from '../history.ts';
 import type { FigureLink } from '../session/port.ts';
 import { trapTab } from '../ui/dialog.ts';
 import { injectStyle, make } from '../ui/dom.ts';
@@ -44,6 +43,8 @@ const BLANK = `\\begin{tikzpicture}
 `;
 // the pause in typing after which the source is compiled as a preview, in ms
 const PAUSE = 1000;
+// the box of a new figure, which Insert puts on the slide in this size
+const NEW_BOX = { width: 800, height: 600 };
 
 type Answer = { status: number; value: Record<string, unknown> | null };
 type Preview = { figure?: FigureOutput; errors?: FigureError[]; superseded?: true };
@@ -111,9 +112,10 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
   dialog.hidden = true;
   document.body.append(dialog);
 
-  // the figure being edited, the text that the sheet opened with, and the entry of the insert of a
-  // new figure, which Cancel undoes. theirs is the text of another person after a refused apply
-  let at: { el: HTMLElement; name: string; base: string | null; entry: Entry | null } | null = null;
+  // the figure being edited, or null for a new figure of Blank, which Insert writes and puts on the
+  // slide, and the text that the sheet opened with. theirs is the text of another person after a
+  // refused apply
+  let at: { el: HTMLElement | null; name: string; base: string | null } | null = null;
   let theirs: string | null | undefined;
   let back: HTMLElement | null = null;
   let timer = 0;
@@ -169,14 +171,15 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     if (!at || !link) return;
     const n = ++asked;
     const source = field.value;
-    const answer = await post(link, 'preview', { name: at.name, source, box: boxOf(at.el) }).catch((e: unknown) => ({ status: 0, value: { error: String(e) } }));
+    const answer = await post(link, 'preview', { name: at.name, source, box: at.el ? boxOf(at.el) : NEW_BOX }).catch((e: unknown) => ({ status: 0, value: { error: String(e) } }));
     if (n !== asked || !at) return;
     if (answer.status !== 200) return void (said.textContent = failure(answer).message);
     const v = (answer.value ?? {}) as Preview;
     if (v.superseded) return;
     said.textContent = '';
     showErrors(v.errors ?? []);
-    if (!v.figure) return;
+    // a new figure is not on the slide yet, hence its preview lists its errors alone
+    if (!v.figure || !at.el) return;
     drawn = source;
     figuresApi().preview?.(at.name, v.figure);
   }
@@ -191,13 +194,10 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     if (back?.isConnected) back.focus({ preventScroll: true });
     back = null;
   };
-  // the output drawn again, and a new figure taken off the slide
+  // the output drawn again
   const cancel = (): void => {
-    if (!at) return close();
-    const { name, entry } = at;
-    figuresApi().preview?.(name, null);
+    if (at?.el) figuresApi().preview?.(at.name, null);
     close();
-    if (entry && app.history.last === entry) void app.history.undo();
   };
   async function apply(): Promise<void> {
     const link = host.link();
@@ -207,6 +207,15 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     clearTimeout(timer);
     applyButton.disabled = true;
     try {
+      if (!opened.el) {
+        // a new figure is written under a free name and put on the slide
+        const made = await post(link, 'source', { stem: opened.name, source, base: null });
+        const name = made.value?.name;
+        if (at !== opened) return;
+        if (made.status !== 200 || typeof name !== 'string') return void (said.textContent = failure(made).message);
+        close();
+        return void (await host.place(name));
+      }
       const answer = await post(link, 'source', { name: opened.name, source, base: theirs === undefined ? opened.base : theirs });
       if (at !== opened) return;
       if (answer.status === 409) {
@@ -264,22 +273,23 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
     ev.stopPropagation();
   });
 
-  async function editSource(el: HTMLElement, entry: Entry | null = null): Promise<void> {
-    const name = el.dataset.figure ?? '';
+  // the sheet on the figure el, or on text for a new figure of Blank
+  async function editSource(el: HTMLElement | null, text: string | null = null): Promise<void> {
+    const name = el ? (el.dataset.figure ?? '') : 'figure';
     if (!/^[\w-]+$/.test(name)) return note('This TikZ figure does not have a name in data-figure');
-    const text = await sourceOf(name);
+    if (el) text = await sourceOf(name);
     clearTimeout(timer);
     asked++;
-    at = { el, name, base: text, entry };
+    at = { el, name, base: text };
     theirs = undefined;
     drawn = null;
-    heading.textContent = `${name}.tex`;
+    heading.textContent = el ? `${name}.tex` : 'New TikZ Figure';
     field.setAttribute('aria-label', `figures/${name}.tex`);
     field.value = text ?? '';
     said.textContent = '';
     theirsButton.hidden = true;
-    applyButton.textContent = entry ? 'Insert' : 'Apply';
-    showErrors(host.link()?.state()?.errors[name] ?? []);
+    applyButton.textContent = el ? 'Apply' : 'Insert';
+    showErrors(el ? (host.link()?.state()?.errors[name] ?? []) : []);
     if (!dialog.open) {
       back = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
       dialog.hidden = false;
@@ -296,13 +306,13 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
       const link = host.link();
       if (!link) return;
       try {
-        let stem = 'figure';
-        let source = BLANK;
-        if (file && from === 'file') {
-          stem = file.name.replace(/\.tex$/i, '');
-          source = await file.text();
-        } else if (file && from === 'data') {
-          const { text, columns } = csvOf(file.name, await file.text());
+        // a blank drawing is written and put on the slide at Insert
+        if (from === 'blank') return await editSource(null, BLANK);
+        if (!file) return;
+        let stem = file.name.replace(/\.tex$/i, '');
+        let source = await file.text();
+        if (from === 'data') {
+          const { text, columns } = csvOf(file.name, source);
           const data = await post(link, 'data', { stem: file.name, text });
           const path = data.value?.path;
           if (data.status !== 200 || typeof path !== 'string') throw failure(data);
@@ -313,9 +323,7 @@ export function figures(host: TexHost): Pick<TexSheets, 'newFigure' | 'editSourc
         const made = await post(link, 'source', { stem, source, base: null });
         const name = made.value?.name;
         if (made.status !== 200 || typeof name !== 'string') throw failure(made);
-        const el = await host.place(name);
-        // a blank drawing is edited at once, and Cancel takes it off the slide again
-        if (from === 'blank' && el instanceof HTMLElement) await editSource(el, app.history.undoLabel === 'Insert TikZ Figure' ? app.history.last : null);
+        await host.place(name);
       } catch (e) {
         note(e);
       }
