@@ -174,6 +174,8 @@ export function install(app: App): void {
   // bold and italic are taken in the speaker notes too
   format('bold', 'Bold', 10, { mac: ['Mod+B'], other: ['Mod+B'] }, undefined, [...FORMAT, 'notes']);
   format('italic', 'Italic', 11, { mac: ['Mod+I'], other: ['Mod+I'] }, undefined, [...FORMAT, 'notes']);
+  // the key of Keynote, PowerPoint, and Google Slides
+  format('underline', 'Underline', 11.5, { mac: ['Mod+U'], other: ['Mod+U'] });
   format('code', 'Code', 12, {});
   // the key of Word for a Mac and of Google Slides on a Mac, and the key of Google Slides elsewhere,
   // since neither Keynote nor PowerPoint for Windows gives Strikethrough a key
@@ -528,4 +530,5 @@ function installStyles(app: App, define: Define, menu: MenuOf): void {
   smart('dashes', 'Smart Dashes', 91);
   smart('links', 'Smart Web and Email Links', 92);
   smart('markdown', 'Markdown Formatting', 93);
+  smart('tex', 'TeX Formulas', 94);
 }
