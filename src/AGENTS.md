@@ -35,6 +35,7 @@ The rules below are for work on the template itself: the theme, the editor, the 
 - Run one test file with `node --test test/<name>.test.mjs`. The whole suite takes over an hour on one machine. In the workflow `check`, it is split over seven runners per system.
 - Run `node --test test/perf.test.mjs` yourself after you change how backdrops are drawn. This test is skipped on CI.
 - In the workflow `check`, `npm test` is run only in beeson-group/slides. In a talk, only the checks of the deck are run.
+- A draft is tested on Ubuntu only. The test shards on Windows are run in the round that is started when the PR is marked as ready. Watch this round as well.
 
 ## Writing a test
 
