@@ -967,7 +967,7 @@ test('after a restart, a page that rejoins second is read by the other page', { 
   await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben after the restart', 10_000);
   // the requests to the edit command that stopped, the polls with the tokens of before, and the
   // hello without a name, which the edit command refuses after a kill that lost the person
-  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, refused);
   clean(ben, refused);
 });
@@ -1024,7 +1024,7 @@ test('after a restart, a state that waited while the edit command was down is se
   const h2 = `(${C}.resolved().find((r) => r.name === 'Ana')?.selected ?? []).map((e) => e.localName).join()`;
   await until(async () => (await ben.evaluate(h2)) === 'h2', 'the selection of Ana on the page of Ben after the restart', 10_000);
   assert.deepEqual((await ana.evaluate('window.__statuses')).filter((s) => s !== 200 && s !== 204), [], 'every state is sent with a token that the edit command knows');
-  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, refused);
   clean(ben, refused);
 });
