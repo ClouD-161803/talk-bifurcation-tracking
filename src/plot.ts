@@ -1056,7 +1056,10 @@ export class PlotView {
       if (node instanceof HTMLElement) node.style.filter = `opacity(${Math.max(0, 1 - 2 * this.fade)})`;
       else node.style.opacity = String(1 - this.fade);
     }
-    this.value.textContent = formatNumber(valueAt(tab.values, u), this.plot.parameter.digits);
+    const value = valueAt(tab.values, u);
+    this.value.textContent = formatNumber(value, this.plot.parameter.digits);
+    // a drawing of the slide may follow the clock, e.g. a family of orbits of src/bundle.ts
+    this.el.dispatchEvent(new CustomEvent('beeson:plot-frame', { bubbles: true, detail: { value } }));
     const length = this.length;
     const at = `${(length > 0 ? this.timeOf(u) / length : 0) * 100}%`;
     this.fill.style.width = at;
