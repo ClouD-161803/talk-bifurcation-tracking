@@ -380,7 +380,7 @@ html.beeson-editor .reveal:not(.beeson-peek) .slides section > p[contenteditable
 .beeson-edit-menu .item.hi .label .path { color: inherit; opacity: 0.8; }
 .beeson-edit-menu .item .label.noted { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; white-space: normal; }
 .beeson-edit-menu .item .label.noted .path { margin-left: 0; }
-.beeson-edit-menu .item.noted { align-items: start; min-height: 16px; padding-top: 3px; padding-bottom: 3px; }
+.beeson-edit-menu .item.noted { align-items: start; min-height: 24px; box-sizing: border-box; padding-top: 3px; padding-bottom: 3px; }
 .beeson-edit-menu .item.noted .check, .beeson-edit-menu .item.noted .arrow { height: 1.25em; align-items: center; }
 .beeson-edit-menu.help { min-width: 300px; max-width: 560px; }
 .beeson-edit-menu .search { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; margin: -5px -5px 0; padding: 8px 11px 4px 13px; background: var(--ed-menu); }
