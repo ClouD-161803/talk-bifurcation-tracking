@@ -172,15 +172,22 @@ export function install(app: App): Port {
 
   let loading: Promise<Port | null> | null = null;
   load = () =>
-    (loading ??= script('editor-session.js')
-      .then(() => {
+    (loading ??= script('editor-session.js').then(
+      () => {
         const start = window.BeesonEditorSession;
         if (typeof start !== 'function') return null;
-        const { reported, ...members } = start(host, app, { ...tracked });
-        engine = { reported, ...members };
-        Object.assign(port, members);
-        return port;
-      })
-      .catch(() => null));
+        try {
+          const { reported, ...members } = start(host, app, { ...tracked });
+          engine = { reported, ...members };
+          Object.assign(port, members);
+          return port;
+        } catch (e) {
+          // the dialog does not tell a file that threw from a missing one, hence its error is reported
+          console.error(e);
+          return null;
+        }
+      },
+      () => null,
+    ));
   return port;
 }
