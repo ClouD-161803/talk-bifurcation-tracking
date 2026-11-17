@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { click, typeKeys } from './helpers/editor.mjs';
+import { click, editorPage, typeKeys } from './helpers/editor.mjs';
 import { E, applyOn, caretAtEnd, frame, front, sessionPage, showSlide } from './helpers/apply.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 
@@ -224,6 +224,23 @@ test('an edit of the person is kept when the apply removes more than half of the
     return done.then((r) => r.reload);
   })()`);
   assert.equal(result, false);
+  const want = once(remote, '<h1>Thank you</h1>', '<h1>Thank you Typed</h1>');
+  assert.equal(await render(b), want);
+  assert.equal(await sessionText(b), want);
+  assert.deepEqual(b.errors, []);
+});
+
+// on a page that loads the engine of the port after the deck is opened, the engine takes over what
+// the port tracked from the start of the page, hence its first apply reads a key typed before it
+test('a key typed before the engine of the port is loaded is kept by its first apply', async (t) => {
+  const b = await editorPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Thank you');
+  await caretAtEnd(b, THANKS);
+  await typeKeys(b, ' Typed');
+  const remote = once(b.source, 'Design the complete', 'Plan the complete');
+  const result = await applyOn(b, remote);
+  assert.equal(result.reload, false);
   const want = once(remote, '<h1>Thank you</h1>', '<h1>Thank you Typed</h1>');
   assert.equal(await render(b), want);
   assert.equal(await sessionText(b), want);
