@@ -1,7 +1,8 @@
 // the origin of a copy of slides or elements, written in a comment after the mark of
-// commands/slide.ts: the address of the deck, the version of its theme, and the macros of the deck
-// that the copied text uses. an editor without this comment skips it, as it skips any comment.
-// a paste of a text from another deck runs the steps of arrive()
+// commands/slide.ts: the address of the deck, the version of its theme, the macros of the deck
+// that the copied text uses, and whether the copy was made in a session. an editor without this
+// comment skips it, as it skips any comment. a paste of a text from another deck runs the steps of
+// arrive()
 
 import type { App } from '../app.ts';
 import { deckMacros } from '../math.ts';
@@ -10,12 +11,38 @@ import { nameMacros } from './macros.ts';
 import { MARK } from './slide.ts';
 
 export type OriginMacro = { name: string; body: string; args: number; default?: string };
-export type Origin = { deck: string; version: string; macros: OriginMacro[] };
+export type Origin = { deck: string; version: string; macros: OriginMacro[]; session?: boolean };
 
 const OPEN = '<!--beeson-origin ';
 
-// the address of this deck, without its query and its slide
-export const deckAddress = (): string => location.href.split(/[?#]/)[0];
+// whether an edit command serves the page, told by the session port once the client has read the
+// answer of the edit command, or at the load of the editor for a page at file:, and kept after the
+// session ends, since the address still has the key.
+// until then an address with session is taken as one of a session, whose key is not written
+let served: boolean | null = null;
+export const setServed = (on: boolean): void => void (served = on);
+const keyed = (): boolean => served ?? new URLSearchParams(location.search).has('session');
+
+// the 32-bit FNV-1a hash of s in base 36, which works also where crypto.subtle is missing, i.e.
+// outside a secure context
+function hash(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
+
+// the address of this deck, without its query and its slide. a folder of the path of a page of a
+// session is the key of the session, with which anyone can join it, after the path of a relay if it
+// has one. hence a hash takes the place of every folder whose name may be a key, as the edit command
+// and the relay take a key, and a folder of the talk with such a name is named by its hash too
+const KEY = /^[A-Za-z0-9_-]{22,128}$/;
+export function deckAddress(): string {
+  const address = location.href.split(/[?#]/)[0];
+  const start = address.indexOf('/', address.indexOf('//') + 2);
+  if (!keyed() || start < 0) return address;
+  const parts = address.slice(start).split('/');
+  return address.slice(0, start) + parts.map((p, i) => (i < parts.length - 1 && KEY.test(p) ? `session-${hash(p)}` : p)).join('/');
+}
 
 // the macros of the deck that text uses, with the macros that their bodies use
 function usedMacros(text: string): OriginMacro[] {
@@ -38,7 +65,7 @@ const themeVersion = (): string => (window as unknown as { Beeson?: { version?: 
 // the comment of the origin of the copied text. a dash and an angle bracket are written as escapes
 // of JSON, hence a URL or a macro does not close the comment early
 export function originComment(text: string): string {
-  const json = JSON.stringify({ deck: deckAddress(), version: themeVersion(), macros: usedMacros(text) } satisfies Origin);
+  const json = JSON.stringify({ deck: deckAddress(), version: themeVersion(), macros: usedMacros(text), ...(keyed() && { session: true }) } satisfies Origin);
   return `${OPEN}${json.replace(/[-<>]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)}-->`;
 }
 
@@ -77,7 +104,7 @@ export function originOf(text: string): Origin | null {
       (m: OriginMacro | null) => typeof m?.name === 'string' && /^[a-zA-Z]+$/.test(m.name) && typeof m.body === 'string' && contained(m.body) && Number.isInteger(m.args) && m.args >= 0 && m.args <= 9 && (m.default === undefined || (typeof m.default === 'string' && contained(m.default, true))),
     );
     const version = typeof o.version === 'string' && /^[\w.+-]{0,40}$/.test(o.version) ? o.version : '';
-    return { deck: o.deck, version, macros: macros.map(({ name, body, args, default: d }: OriginMacro) => ({ name, body, args, default: d })) };
+    return { deck: o.deck, version, macros: macros.map(({ name, body, args, default: d }: OriginMacro) => ({ name, body, args, default: d })), ...(o.session === true && { session: true }) };
   } catch {
     return null;
   }
@@ -107,9 +134,11 @@ export async function arrive<T>(app: App, text: string, texts: string[], insert:
   for (const step of BEFORE) await step(app, arrival);
   const out = await insert(arrival.texts);
   for (const step of AFTER) await step(app, arrival);
-  if (arrival.notes.length) {
-    app.note = { text: arrival.notes.join(' '), warn: true };
-    app.report();
-  }
+  // after the end of the entry of the paste, since a session clears the note at each change
+  if (arrival.notes.length)
+    void app.history.settle().then(() => {
+      app.note = { text: arrival.notes.join(' '), warn: true };
+      app.report();
+    });
   return out;
 }

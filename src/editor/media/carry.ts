@@ -4,10 +4,11 @@
 // this deck has at the same path, or under media/, with the same bytes is named and not copied
 // again, and a file of this deck that the page can read is never replaced. where the browser
 // refuses the read, e.g. from file:// or from another port, a dialog asks for the folder of the
-// first deck, which is kept for its address while the page lives once a file is found in it
+// first deck, which is kept for its address while the page lives once a file is found in it. the
+// address of a copy made in a session does not name a folder, and its files are asked for at once
 
 import type { App } from '../app.ts';
-import type { Arrival } from '../commands/origin.ts';
+import { deckAddress, type Arrival } from '../commands/origin.ts';
 import { tokenize } from '../tokens.ts';
 import { Dialog, host } from '../ui/dialog.ts';
 import { injectStyle, make, touchOnly } from '../ui/dom.ts';
@@ -153,9 +154,9 @@ function pick(): Promise<Folder | null> {
   });
 }
 
-// the folder of the deck at address, asked for until one with a file of the deck is chosen. the
-// picker is opened in the click on the button, which grants it in every browser
-async function folderOf(address: string, name: string): Promise<Folder | null> {
+// the folder of the deck at address, named by where, asked for until one with a file of the deck is
+// chosen. the picker is opened in the click on the button, which grants it in every browser
+async function folderOf(address: string, where: string): Promise<Folder | null> {
   const kept = folders.get(address);
   if (kept) return kept;
   picked = Promise.resolve(null);
@@ -171,7 +172,7 @@ async function folderOf(address: string, name: string): Promise<Folder | null> {
       if (v === 'choose') picked = pick();
     },
   });
-  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in the folder ${name ? `${name} ` : ''}of ${address}. The browser lets this page read them only once you choose this folder.`;
+  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in ${where}. The browser lets this page read them only once you choose this folder.`;
   // the dialog of the reads gives way to this one, and comes back at its answer
   busy?.close(null);
   const v = await dialog.open('choose');
@@ -188,7 +189,8 @@ export const listed = (n: string[]) => (n.length < 3 ? n.join(' and ') : `${n.sl
 export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
   const refs = arrival.texts.map(refsIn);
   const paths = [...new Set(refs.flat().map((r) => r.path))];
-  if (!paths.length) return;
+  // each path of a copy made in a session in this same folder is the file that it names here
+  if (!paths.length || (arrival.origin.session && new URL('.', arrival.origin.deck).href === new URL('.', deckAddress()).href)) return;
   stop = new AbortController();
   injectStyle('paste-busy', BUSY);
   busy ??= new Dialog({ title: 'Copying the files of the paste…', buttons: [{ label: 'Stop', value: 'stop' }], className: 'paste-busy', dismissable: false, stay: ['stop'], onButton: () => performance.now() - opened >= DELAY && stop.abort() });
@@ -204,11 +206,13 @@ export async function carryFiles(app: App, arrival: Arrival): Promise<void> {
 // not copied
 async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[]): Promise<void> {
   const read = new Map<string, Read>();
+  const session = !!arrival.origin.session;
   // the files of one deck are all refused once one is
-  for (const p of paths) read.set(p, [...read.values()].includes('refused') ? 'refused' : await fetched(new URL(p, arrival.origin.deck).href));
-  const name = decoded(new URL('.', arrival.origin.deck).pathname.split('/').filter(Boolean).pop() ?? '');
+  for (const p of paths) read.set(p, session || [...read.values()].includes('refused') ? 'refused' : await fetched(new URL(p, arrival.origin.deck).href));
+  const name = session ? '' : decoded(new URL('.', arrival.origin.deck).pathname.split('/').filter(Boolean).pop() ?? '');
+  const from = session ? 'the talk folder of the session that you copied from' : name ? `the folder ${name}` : arrival.origin.deck;
   const refused = paths.filter((p) => read.get(p) === 'refused');
-  const folder = refused.length && canPick() ? await folderOf(arrival.origin.deck, name) : null;
+  const folder = refused.length && canPick() ? await folderOf(arrival.origin.deck, session ? from : `the folder ${name ? `${name} ` : ''}of ${arrival.origin.deck}`) : null;
   if (folder) {
     for (const p of refused) read.set(p, stop.signal.aborted ? 'missing' : ((await folder(p)) ?? 'missing'));
     if (refused.some((p) => read.get(p) instanceof Blob)) folders.set(arrival.origin.deck, folder);
@@ -228,6 +232,12 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
       lost.push(p);
       continue;
     }
+    // e.g. a file over the limit of a session, or of a type that it does not take
+    const why = fresh ? media.refuse?.(new File([blob], path.slice(FOLDER.length + 1), { type: blob.type })) : null;
+    if (why) {
+      arrival.notes.push(`${p} was not copied: ${why}${why.endsWith('.') ? '' : '.'}`);
+      continue;
+    }
     to.set(p, fresh ? media.add(blob, path.slice(FOLDER.length + 1), isTaken).path : path);
   }
   arrival.texts = arrival.texts.map((text, i) => {
@@ -236,7 +246,7 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
     return out;
   });
   const why = refused.length && !canPick() ? ', since this browser cannot open a folder' : '';
-  if (lost.length) arrival.notes.push(`${listed(lost)} ${lost.length > 1 ? 'were' : 'was'} not copied from ${name ? `the folder ${name}` : arrival.origin.deck}${why}.`);
+  if (lost.length) arrival.notes.push(`${listed(lost)} ${lost.length > 1 ? 'were' : 'was'} not copied from ${from}${why}.`);
   // the theme reads a trajectory file from the disk only, and once per page
   const drawn = [...new Set(refs.flat().filter((r) => r.name === 'data-trajectories' && to.has(r.path)).map((r) => to.get(r.path)!))];
   if (drawn.length) arrival.notes.push(`The ${drawn.length > 1 ? 'backdrops' : 'backdrop'} of ${listed(drawn)} ${drawn.length > 1 ? 'are' : 'is'} drawn once the deck is saved and opened again.`);

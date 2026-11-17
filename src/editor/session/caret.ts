@@ -1,0 +1,147 @@
+// the caret of a text element kept through an apply that sets the content of the element or moves
+// it. the caret is an offset into the text of the element, in which each formula counts as its TeX
+// between its delimiters, as in the file, hence the offset is the same before and after MathJax
+
+import type { MathLookup } from '../math.ts';
+import { charEdits, shared, type Edit } from '../merge.ts';
+
+// the text of host, and the offset in it of each point (node, at), or -1. with br, a <br> counts as
+// one character
+function walk(host: Element, math: MathLookup, points: readonly [Node, number][], br = false): { text: string; offsets: number[] } {
+  let text = '';
+  const offsets = points.map(() => -1);
+  const visit = (n: Node): void => {
+    if (n.nodeType === Node.TEXT_NODE) {
+      points.forEach(([node, at], i) => {
+        if (n === node) offsets[i] = text.length + at;
+      });
+      text += (n as Text).data;
+      return;
+    }
+    if (!(n instanceof Element)) return;
+    if (br && n.localName === 'br') {
+      text += '\n';
+      return;
+    }
+    const info = n.localName === 'mjx-container' ? math(n) : null;
+    if (info) {
+      text += info.open + info.tex + info.close;
+      points.forEach(([node], i) => {
+        if (n.contains(node)) offsets[i] = text.length;
+      });
+      return;
+    }
+    n.childNodes.forEach((c, j) => {
+      points.forEach(([node, at], i) => {
+        if (n === node && j === at) offsets[i] = text.length;
+      });
+      visit(c);
+    });
+    points.forEach(([node, at], i) => {
+      if (n === node && at >= n.childNodes.length) offsets[i] = text.length;
+    });
+  };
+  visit(host);
+  return { text, offsets };
+}
+
+// the focus and the anchor of the selection in host, with the text of host, or null when the focus
+// is not in host. the anchor is the focus when it lies outside host
+export function caretOf(host: Element, math: MathLookup, br = false): { offset: number; anchor: number; text: string } | null {
+  const sel = getSelection();
+  if (!sel?.rangeCount || !sel.focusNode || !host.contains(sel.focusNode)) return null;
+  const points: [Node, number][] = [[sel.focusNode, sel.focusOffset]];
+  if (sel.anchorNode && host.contains(sel.anchorNode)) points.push([sel.anchorNode, sel.anchorOffset]);
+  const { text, offsets: [offset, anchor = offset] } = walk(host, math, points, br);
+  return offset < 0 ? null : { offset, anchor: anchor < 0 ? offset : anchor, text };
+}
+
+export const textIn = (host: Element, math: MathLookup, br = false): string => walk(host, math, [], br).text;
+
+let last: { before: string; after: string; runs: Edit[] } | null = null;
+
+// the offset of the caret moved with a change of before into after: kept before each run of changed
+// characters, moved by its length after it, and put at its end inside it. the runs are one, from
+// the first changed character to the last, when more than 500 units differ. the runs of the last
+// pair of texts are kept, since both ends of a selection are moved with one change
+export function mapOffset(offset: number, before: string, after: string): number {
+  if (last?.before !== before || last.after !== after) {
+    let runs = charEdits(before, after, 500);
+    if (!runs) {
+      const [head, tail] = shared(before, after);
+      runs = [{ start: head, end: before.length - tail, text: after.slice(head, after.length - tail) }];
+    }
+    last = { before, after, runs };
+  }
+  let shift = 0;
+  for (const run of last.runs) {
+    if (offset <= run.start) break;
+    if (offset < run.end) return run.start + shift + run.text.length;
+    shift += run.text.length - (run.end - run.start);
+  }
+  return offset + shift;
+}
+
+// the point at offset into the text of host, after a formula that the offset falls inside, and at
+// the end of host past its text. with br, a <br> counts as one character
+export function pointIn(host: Element, offset: number, math: MathLookup, br = false): [Node, number] {
+  let left = Math.max(0, offset);
+  let spot: [Node, number] | null = null;
+  const after = (n: Node, k: number): [Node, number] => [n.parentNode!, [...n.parentNode!.childNodes].indexOf(n as ChildNode) + k];
+  const visit = (n: Node): boolean => {
+    if (n.nodeType === Node.TEXT_NODE) {
+      const length = (n as Text).length;
+      if (left <= length) {
+        spot = [n, left];
+        return true;
+      }
+      left -= length;
+      return false;
+    }
+    if (!(n instanceof Element)) return false;
+    if (br && n.localName === 'br') {
+      if (left === 0) {
+        spot = after(n, 0);
+        return true;
+      }
+      left--;
+      return false;
+    }
+    const info = n.localName === 'mjx-container' ? math(n) : null;
+    if (info) {
+      const length = info.open.length + info.tex.length + info.close.length;
+      if (left < length) {
+        spot = after(n, 1);
+        return true;
+      }
+      left -= length;
+      return false;
+    }
+    for (const c of n.childNodes) if (visit(c)) return true;
+    return false;
+  };
+  visit(host);
+  return spot ?? [host, host.childNodes.length];
+}
+
+// the caret put at focus into the text of host, with the selection from anchor when it differs
+export function putCaret(host: Element, focus: number, math: MathLookup, anchor = focus): void {
+  const sel = getSelection();
+  if (!sel) return;
+  if (document.activeElement !== host && !host.contains(document.activeElement)) (host as HTMLElement).focus?.({ preventScroll: true });
+  const [node, at] = pointIn(host, focus, math);
+  if (anchor === focus) sel.collapse(node, at);
+  else sel.setBaseAndExtent(...pointIn(host, anchor, math), node, at);
+}
+
+// the presses and keys of the person, which tell a caret moved by the person from a caret moved by
+// MathJax, whose nodes the selection follows
+let acts = 0;
+for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, () => void (acts += 1), true);
+
+export type Mark = { active: Element | null; acts: number };
+
+export const markOf = (): Mark => ({ active: document.activeElement, acts });
+
+// whether the person moved the caret since mark, i.e. focused another element, pressed, or typed
+export const moved = (mark: Mark): boolean => document.activeElement !== mark.active || acts !== mark.acts;

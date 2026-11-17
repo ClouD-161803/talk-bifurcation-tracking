@@ -39,6 +39,7 @@ const OLD = [
   ['layer', /beeson-layers|layers\.ts|LayerSwitch|Layer of the slide|showLayer|\b(?:last|another|first|the) layer of the slide|cut into layers|one layer at a time|layersOf\((?:slide|clone)\)/i, 'the steps shown on the slide'],
   ['JSON block', /JSON block/, 'JSON script'],
   ['the surface states flat, wells, bowl, and sum', /data-surface-state="(?:flat|wells|bowl|sum)"/, 'zero, gravitational, centrifugal, and effective'],
+  ['beeson-session-sheet', /beeson-session-sheet/, 'beeson-session-fit'],
 ];
 
 // the files where an old word means something else, e.g. the JSON key ghost of a plot

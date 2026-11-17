@@ -22,6 +22,10 @@ export async function presentAt(app: App, fromStart: boolean, tab = false): Prom
   return shown;
 }
 
+// Open, Open Recent, and Revert to Saved would replace the deck of everyone in a session, and a
+// session does not autosave
+const away = (a: App): string | null => (a.session ? 'Not available in a session' : null);
+
 export function install(app: App): void {
   const c = app.commands;
   const both = (...keys: string[]) => ({ mac: keys, other: keys });
@@ -31,6 +35,8 @@ export function install(app: App): void {
     keys: both('Mod+O'),
     in: OUTSIDE_DIALOGS,
     menu: { bar: 'File', group: 'open', order: 10 },
+    enabled: (a) => !a.session,
+    note: away,
     run: (a) => a.files.openFile(),
   });
   c.define({
@@ -54,7 +60,8 @@ export function install(app: App): void {
     id: 'file.autosave',
     label: 'Autosave',
     menu: { bar: 'File', group: 'save', order: 22 },
-    enabled: () => canWrite(),
+    enabled: (a) => canWrite() && !a.session,
+    note: away,
     checked: (a) => a.autosave,
     run: (a) => a.files.toggleAutosave(),
   });
@@ -62,14 +69,15 @@ export function install(app: App): void {
     id: 'file.revert',
     label: 'Revert to Saved',
     menu: { bar: 'File', group: 'save', order: 23 },
-    enabled: (a) => a.dirty && a.state === 'loaded',
+    enabled: (a) => a.dirty && a.state === 'loaded' && !a.session,
+    note: away,
     run: () => fileActions().revert(),
   });
 
   // Open Recent lists the decks of file/recent.ts, which the menus read at each open, hence the
   // place of each item is a getter. without a deck, or in a browser without the open picker, i.e.
   // in Firefox and Safari, Open Recent is a dimmed item
-  const listed = () => (canPick() ? recents() : []);
+  const listed = () => (canPick() && !app.session ? recents() : []);
   const recent = (order: number, group = 'open'): Command['menu'] => ({ bar: 'File', group, order, submenu: 'Open Recent' });
   c.define({
     id: 'file.recent.none',
@@ -78,6 +86,7 @@ export function install(app: App): void {
       return listed().length ? undefined : { bar: 'File', group: 'open', order: 11 };
     },
     enabled: () => false,
+    note: away,
     run: () => {},
   });
   for (let i = 0; i < MAX_RECENT; i++) {

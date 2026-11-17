@@ -49,6 +49,8 @@ const CSS = `
 const LIMIT = 100;
 const DOI = /^\s*(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)?10\.\d{4,9}\/\S+\s*$/i;
 const BIBTEX = /@\s*[A-Za-z]+\s*[{(]/;
+// in a session, references.bib is a file of the talk folder, which the edit command reads
+const HOST = 'In a session, the host adds a paper to references.bib in the talk folder.';
 
 const keysOf = (cite: HTMLElement): string[] => (cite.dataset.key ?? '').split(',').map((k) => k.trim()).filter(Boolean);
 const listed = (names: string[]): string => (names.length < 3 ? names.join(' and ') : `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`);
@@ -172,7 +174,7 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     }
     if (loaded) {
       open.choose.hidden = true;
-      if (!open.items.length && open.note.dataset.kind !== 'paste') open.note.textContent = query ? `No entry of references.bib matches ${query}. Paste the BibTeX of the paper to add it.` : 'references.bib does not have any entries yet. Paste the BibTeX of a paper to add it.';
+      if (!open.items.length && open.note.dataset.kind !== 'paste') open.note.textContent = query ? `No entry of references.bib matches ${query}. ${app.session ? HOST : 'Paste the BibTeX of the paper to add it.'}` : `references.bib does not have any entries yet. ${app.session ? HOST : 'Paste the BibTeX of a paper to add it.'}`;
       else if (open.note.dataset.kind !== 'paste') open.note.textContent = '';
     }
     place();
@@ -270,8 +272,11 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     ev.preventDefault();
     ev.stopImmediatePropagation();
     app.history.beforeTyping(host);
-    a.next.insertData(0, ev.data);
-    s.collapse(a.next, ev.data.length);
+    // a space at the end of the text element is typed as a no-break space, as in substitute.ts,
+    // since a plain space there is not drawn and Chrome puts the next key before the citation
+    const data = a.next.data || a.next.nextSibling ? ev.data : ev.data.replace(/ $/, '\u00a0');
+    a.next.insertData(0, data);
+    s.collapse(a.next, data.length);
     app.history.afterTyping(host);
     app.markDirty();
     app.invalidate('content');
@@ -310,7 +315,8 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
   }
 
   // a BibTeX entry pasted into the list is added to references.bib and cited, together with the
-  // papers before the last comma. an entry whose key is in references.bib is cited as it is there
+  // papers before the last comma. an entry whose key is in references.bib is cited as it is there.
+  // an entry pasted in a session is refused with a note
   function pasted(text: string): boolean {
     if (!open) return false;
     const o = open;
@@ -320,10 +326,14 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       place();
     };
     if (DOI.test(text)) {
-      note('A DOI is not looked up, since the editor does not fetch anything. Paste the BibTeX of the paper instead, e.g. from Zotero or from the page of the journal.');
+      note(`A DOI is not looked up, since the editor does not fetch anything. ${app.session ? HOST : 'Paste the BibTeX of the paper instead, e.g. from Zotero or from the page of the journal.'}`);
       return true;
     }
     if (!BIBTEX.test(text)) return false;
+    if (app.session) {
+      note(`A BibTeX entry is not added in a session. ${HOST}`);
+      return true;
+    }
     if (!store.loaded()) {
       note('references.bib is not read yet, hence the entry is not added.');
       return true;
@@ -361,6 +371,9 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
         getSelection()!.collapse(t.node, t.at);
         return close(false);
       }
+      // the brace taken out is part of the typing, hence an undo of the typing is not refused over
+      // it in a session
+      app.history.afterTyping(open.target.host);
       accept();
       return;
     }
@@ -416,7 +429,7 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
       if (!target.typed) {
         input = make('input');
         input.type = 'search';
-        input.placeholder = 'Author, year, title, key, or pasted BibTeX';
+        input.placeholder = app.session ? 'Author, year, title, or key' : 'Author, year, title, key, or pasted BibTeX';
         input.setAttribute('aria-label', 'Search');
         input.addEventListener('input', () => {
           if (input!.value.endsWith(',')) commaIn(input!.value, (start, end, key) => (input!.value = `${input!.value.slice(0, start)}${key},`));

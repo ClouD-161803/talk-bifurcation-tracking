@@ -186,6 +186,10 @@ export class Patch {
   get empty(): boolean {
     return !this.before.size;
   }
+  // the elements written, which an apply of a session prunes the entry of the patch for
+  get touched(): Element[] {
+    return [...this.before.keys()];
+  }
   readonly write: Writer = (el, attrs, translate) => {
     if (!this.app.pairing?.elements.get(el) && !this.app.pairing?.inner.get(el)) return;
     const was = this.before.get(el) ?? { attrs: {} };
@@ -366,7 +370,7 @@ export function install(app: App): void {
   app.history.onSettle(() => {
     const p = new Patch(app);
     follow(app, p.write);
-    if (!p.empty) app.history.push({ label: 'attach', undo: () => p.undo(), redo: () => p.redo() });
+    if (!p.empty) app.history.push({ label: 'attach', undo: () => p.undo(), redo: () => p.redo(), touches: p.touched });
   });
   // an element pushed by typed words, e.g. a table in the flow under a paragraph that wraps, is
   // followed in the entry of the typing. a slide without an attached end is not measured
@@ -385,6 +389,8 @@ export function install(app: App): void {
         await redo.call(entry);
         patch.redo();
       };
+      // the lines that the undo or the redo writes, for prune() of the history
+      Object.defineProperty(entry, 'touches', { get: () => patch.touched, configurable: true });
       typed.set(entry, (p = patch));
     }
     follow(app, p.write);

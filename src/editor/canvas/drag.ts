@@ -37,6 +37,8 @@ function holdGrip(grip: HTMLElement): void {
 
 // a drag shorter than this, in screen pixels, is a click
 const CLICK = 3;
+// the command of Arrange that makes the change of each kind of drag
+const ARRANGE = { move: 'arrange.setPosition', resize: 'arrange.setSize', rotate: 'arrange.setRotation' } as const;
 // the distance in px that a finger may move in a tap
 const TAP = 10;
 // a dragged edge snaps to a line within this many screen pixels
@@ -135,7 +137,15 @@ export function record(app: App, label: string, changes: { el: Element; from: Pl
   };
   // the attached ends of lines follow the moved elements in the same entry
   const attachment = afterMove(app, moved.map((c) => c.el));
-  app.history.push({ label, undo: () => (attachment.undo(), apply('from')), redo: () => (apply('to'), attachment.redo()) });
+  const touches = moved.flatMap((c) => [c.el, twinOf(app, c.el)].filter((el): el is Element => !!el));
+  app.history.push({
+    label,
+    undo: () => (attachment.undo(), apply('from')),
+    redo: () => (apply('to'), attachment.redo()),
+    get touches() {
+      return [...touches, ...attachment.touched];
+    },
+  });
   return moved;
 }
 
@@ -799,6 +809,13 @@ export function install(app: App): void {
       return;
     }
     if (!p.moved && Math.hypot(ev.clientX - p.x, ev.clientY - p.y) < CLICK) return;
+    // a drag that a refusal refuses as the command of Arrange that makes the same change, e.g. of an
+    // element that another person types in, ends at its first move without its click
+    if (!p.moved && p.kind !== 'marquee' && app.commands.refused(ARRANGE[p.kind], { els: [...p.els, ...(p.sized ?? []), ...(p.followers ?? []).flatMap((m) => m.sized)] })) {
+      p.click = null;
+      onUp(null);
+      return;
+    }
     p.moved = true;
     const f = frameOf(app);
     if (p.kind === 'marquee') {
@@ -1142,11 +1159,13 @@ export function install(app: App): void {
     view.readout = null;
     const copying = ghosts.shown();
     ghosts.show(p, false);
-    if (p.kind === 'move' && ev && p.moved && copying && copyHeld(ev)) {
+    const els = [...new Set([...p.els, ...(p.sized ?? []), ...(p.followers ?? []).flatMap((m) => m.sized)])];
+    // a refusal that began during the drag, e.g. a hold, puts the elements back at the release
+    const refused = !!ev && p.moved && p.kind !== 'marquee' && app.commands.refused(ARRANGE[p.kind], { els });
+    if (p.kind === 'move' && ev && p.moved && !refused && copying && copyHeld(ev)) {
       void copyAt(p).catch((e) => app.fail(e));
     } else if (p.kind !== 'marquee') {
-      const els = [...new Set([...p.els, ...(p.sized ?? []), ...(p.followers ?? []).flatMap((m) => m.sized)])];
-      if (ev && p.moved) {
+      if (ev && p.moved && !refused) {
         const changes = els.map((el) => {
           const to = placeOf(el);
           writePlace(app, el, to);
@@ -1232,6 +1251,7 @@ export function install(app: App): void {
   const reset = () => {
     const el = frames.current();
     if (!el) return;
+    if (app.commands.refused('arrange.setPosition', { els: [el] })) return;
     const from = placeOf(el);
     const to = { ...from, translate: null };
     writePlace(app, el, to);

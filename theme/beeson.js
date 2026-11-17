@@ -6340,6 +6340,10 @@ void main() {
       p.syncSteps();
       p.still();
     }
+    if (root2.matches("tycho-viewer") || root2.querySelector("tycho-viewer")) {
+      markViewers();
+      syncViewers(get());
+    }
     const slide = root2.closest(".reveal .slides section");
     if (slide) applySteps(slide);
   }
@@ -6410,7 +6414,7 @@ void main() {
       hooks.internal = reveal;
       addRestoreSteps(document);
     } });
-    const editing = EDITING ? { showHiddenSlides: true } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
+    const editing = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
     await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
     initChrome();
     initSteps(deck);

@@ -277,6 +277,7 @@ export class Sorter {
     const hosts = new Map<Element, HTMLElement>();
     for (const [s, t] of this.tiles) if (t.el.isConnected && !t.el.parentElement?.hidden) hosts.set(s, t.pic);
     this.thumbs?.setHosts(hosts);
+    (this.app.nav as Navigator).refreshed?.();
   }
 
   private makeGroup(key: Element | string) {

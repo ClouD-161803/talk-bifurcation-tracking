@@ -54,7 +54,11 @@ const PATHS: Record<string, string[]> = {
   'line-arrow': ['M4 16 15.5 4.5', 'M10 4.5h5.5V10'],
   'line-curve': ['M3.5 16C4.75 9 9 5.25 15.5 5', 'M12.75 2.5 15.5 5l-2.75 2.5'],
   'line-elbow': ['M3.5 16h6.5V5h5.5', 'M13 2.5l2.5 2.5L13 7.5'],
+  // the save state of a session: saved, and offline
+  cloud: ['M6 15.5h8.25a3.25 3.25 0 0 0 .4-6.48A4.75 4.75 0 0 0 5.6 8.6 3.5 3.5 0 0 0 6 15.5z'],
+  'cloud-off': ['M6 15.5h8.25a3.25 3.25 0 0 0 .4-6.48A4.75 4.75 0 0 0 5.6 8.6 3.5 3.5 0 0 0 6 15.5z', 'M3.5 3.5l13 13'],
   orbit: ['M2.5 10a7.5 3.75 0 1 0 15 0a7.5 3.75 0 1 0-15 0', 'F8.5 10a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0'],
+  comment: ['M4.5 4h11a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H9.5L6 16.5v-3H4.5A1.5 1.5 0 0 1 3 12V5.5A1.5 1.5 0 0 1 4.5 4z'],
 };
 
 export const iconNames = (): string[] => Object.keys(PATHS);

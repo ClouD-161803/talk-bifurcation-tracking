@@ -25,6 +25,8 @@ PRE-RELEASE: The template is currently still in beta. View the most up to date v
 (This appends the text `?edit` to your browser tab's URL bar, e.g. `https://{owner}.github.io/talk-{name-of-your-talk}?edit`. You can reach the editor by typing this out manually too).
 4. When you are happy, click on the save button, which overwrites your repository's local `index.html`. We also support exports to the PDF and PPTX file formats (File > Export To > PDF… while in editor mode).
 
+Want to work on the same deck with others, at the same time? Run `npm run edit` in your talk folder (or double-click `Edit.command`, `Edit.cmd`, or `Edit.sh`), press Share, connect to your group's relay, and send the link around. Everyone edits live from their own browser, with no accounts and no paid service, and every edit lands in your local `index.html`. See [The synchronous editor](/REFERENCE.md#the-synchronous-editor) for how it works.
+
 ## Editing with agents
 
 This tool was built with agents.
