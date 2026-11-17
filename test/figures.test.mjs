@@ -471,3 +471,19 @@ test('npm run tex compiles each stale figure, skips one that is up to date, and 
   assert.equal(readFileSync(join(root, 'figures/decay.js'), 'utf8'), good);
   assert.equal(figureStatus(deck)[0].state, 'stale');
 });
+
+test('an output compiled while its preamble or a file that it reads changes is not current for the new text', { skip: WITHOUT_TEX }, async (t) => {
+  for (const changed of ['preamble.tex', 'figures/decay.csv']) {
+    const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': '\\documentclass{article}\n\\newcommand{\\vel}{v}\n\\begin{document}\n\\end{document}\n' });
+    const box = { width: 600, height: 480 };
+    const compiling = compileFigure({ dir, name: 'decay', box });
+    // the file changes once the compile has read the sources, and before it ends
+    await new Promise((done) => setTimeout(done, 50));
+    const file = join(dir, changed);
+    writeFileSync(file, readFileSync(file, 'utf8').replace('\\vel}{v}', '\\vel}{u}').replace('5,0.08,0.44', '5,0.08,0.4'));
+    const { figure, errors } = await compiling;
+    assert.equal(errors, undefined);
+    const source = readFileSync(join(dir, 'figures/decay.tex'), 'utf8');
+    assert.notEqual(figure.hash, figureHash({ dir, source, box, inputs: figure.inputs }), `${changed} changed during the compile`);
+  }
+});
