@@ -391,7 +391,13 @@ export function install(app: App): void {
       ev.preventDefault();
       ev.clipboardData?.setData('text/plain', rangeWords(t.host, t.range));
       ev.clipboardData?.setData('text/html', rangeTex(t.host, t.range));
-      if (kind === 'cut') document.execCommand('delete');
+      if (kind !== 'cut') return;
+      // the delete of execCommand comes without a beforeinput, and its input is not typed as a
+      // cut, hence the cut is made an entry of its own here
+      app.history.beforeTyping(t.host, 'Cut');
+      document.execCommand('delete');
+      app.history.afterTyping(t.host);
+      app.history.break();
     }, true);
   }
 }
