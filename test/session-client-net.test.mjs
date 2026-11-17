@@ -733,8 +733,11 @@ test('a page asks before it unloads for an edit typed while IndexedDB does not a
   t.after(() => browser.close());
   const server = await talk(t);
   // the open of the database of the copies never answers, as for a database blocked by another tab,
-  // and the wait of copy.ts for it, OPEN_WAIT, ends only at window.__openWait()
+  // and the wait of copy.ts for it, OPEN_WAIT, ends only at window.__openWait(). the locks are read
+  // before the open, and their query is answered after 2 s here, as on a slow runner
   const silent = `{
+    const query = LockManager.prototype.query;
+    LockManager.prototype.query = function () { return new Promise((done) => window.setTimeout(done, 2000)).then(() => query.call(this)); };
     const opened = IDBFactory.prototype.open;
     IDBFactory.prototype.open = function (name, ...rest) { return name === 'beeson-session' ? {} : opened.call(this, name, ...rest); };
     const later = window.setTimeout;
