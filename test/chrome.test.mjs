@@ -341,9 +341,15 @@ let buf = '';
 let creates = 0;
 let targets = 0;
 const closed = [];
+// with slowStart, nothing is answered in the first 1.5 s, as by a Chrome started on a fresh Windows runner
+const ready = Date.now() + (mode === 'slowStart' ? 1500 : 0);
 input.setEncoding('utf8');
-input.on('data', (chunk) => {
+input.on('data', function read(chunk) {
   buf += chunk;
+  if (Date.now() < ready) {
+    setTimeout(() => read(''), ready - Date.now());
+    return;
+  }
   for (let end; (end = buf.indexOf('\\0')) >= 0;) {
     const msg = JSON.parse(buf.slice(0, end));
     buf = buf.slice(end + 1);
@@ -390,6 +396,16 @@ test('newPage recovers when a fresh target does not answer Page.enable', { skip:
   const page = await browser.newPage();
   const state = await page.evaluate('state');
   assert.deepEqual(state, { creates: 2, targets: 2, closed: ['t1'] });
+});
+
+// on a fresh Windows runner, the first Target.createTarget of each test file was not answered in three
+// tries of 15 s each, while the later pages of the same files were opened in seconds (issue #136)
+test('the first page of a Chrome that starts slower than the setup of a page is opened within the timeout', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
+  pipeChrome(t, 'slowStart');
+  const browser = await launch({ timeout: 4000, setup: 300 });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  assert.deepEqual(await page.evaluate('state'), { creates: 1, targets: 1, closed: [] });
 });
 
 test('newPage recovers when Target.createTarget hangs or Target.closeTarget hangs during cleanup', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
