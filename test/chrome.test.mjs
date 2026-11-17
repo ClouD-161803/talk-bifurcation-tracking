@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -454,4 +454,38 @@ test('newPage still fails when every target hangs on Page.enable', { skip: proce
   await ready();
   t.after(() => browser.close());
   await assert.rejects(browser.newPage(), /did not answer Page\.enable/);
+});
+
+// on Windows, a process of Chrome can hold a file of the profile for longer than close() tries to
+// remove it, and a test whose assertions passed then failed in its cleanup (issue #116). the
+// profile of this test is put in a read-only folder, from which rmSync cannot remove it
+test('close() ends without an error when the profile cannot be removed, and names the profile on stderr', { skip: process.platform === 'win32' || process.getuid?.() === 0, timeout: 15000 }, async (t) => {
+  pipeChrome(t, 'answerAll');
+  const parent = mkdtempSync(join(tmpdir(), 'slides-locked-'));
+  const previous = process.env.TMPDIR;
+  process.env.TMPDIR = parent;
+  t.after(() => {
+    chmodSync(parent, 0o755);
+    rmSync(parent, { recursive: true, force: true });
+  });
+  let browser;
+  try {
+    browser = await launch({ timeout: 5000 });
+  } finally {
+    if (previous === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previous;
+  }
+  const [profile] = readdirSync(parent);
+  chmodSync(parent, 0o555);
+  const written = [];
+  const write = process.stderr.write;
+  t.mock.method(process.stderr, 'write', function (chunk, ...rest) {
+    written.push(String(chunk));
+    return write.call(this, chunk, ...rest);
+  });
+
+  await browser.close();
+
+  assert.ok(existsSync(join(parent, profile)));
+  assert.equal(written.filter((text) => text.includes(join(parent, profile))).length, 1, written.join(''));
 });
