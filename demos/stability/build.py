@@ -1318,7 +1318,7 @@ SHORT, LONG = 'violet', 'blue'
 def routh_eigenvalues(mu):
     """The planar eigenvalues of L4 in the upper half plane, as the short-period one and the
     long-period one below the Routh value, and above it as lam and -conj(lam), with Re(lam) > 0.
-    They are the roots of lam^4 + lam^2 + 27/4 mu (1 - mu) = 0."""
+    They are the roots of alpha^4 + alpha^2 + 27/4 mu (1 - mu) = 0."""
     disc = cmath.sqrt(1 - 27 * mu * (1 - mu))
     roots = [cmath.sqrt((-1 + s * disc) / 2) for s in (1, -1)]
     roots = [z if z.imag >= 0 else -z for z in roots]
@@ -1420,8 +1420,8 @@ def routh_plot():
                 'long-lower': {'points': lower(1), 'tones': tones[1]},
                 'meet': [{'frame': routh, 'text': r'$\mu_R$', 'at': [sig(meet.real), sig(meet.imag)]},
                          {'frame': routh, 'text': '', 'at': [sig(meet.real), sig(-meet.imag)]}],
-                'lshort': {'at': corner, 'text': [rf"$\lambda_1 = {lam_text(f['lams'][0])[1:]}" for f in frames]},
-                'llong': {'at': corner, 'text': [rf"$\lambda_2 = {lam_text(f['lams'][1])[1:]}" for f in frames]},
+                'lshort': {'at': corner, 'text': [rf"$\alpha_1 = {lam_text(f['lams'][0])[1:]}" for f in frames]},
+                'llong': {'at': corner, 'text': [rf"$\alpha_2 = {lam_text(f['lams'][1])[1:]}" for f in frames]},
                 'path': path,
                 'marked': [{'frame': earth, 'text': 'Earth–Moon', 'at': path[earth]},
                            {'frame': routh, 'text': r'$\mu_R$', 'at': path[routh]}],
