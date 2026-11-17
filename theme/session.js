@@ -68,6 +68,8 @@ html.beeson-editor body > .beeson-session-history[hidden] { display: none; }
   html.beeson-editor body > .beeson-session-history.peek { height: auto; max-height: 55vh; max-height: 55dvh; padding-bottom: 6px; }
   .beeson-session-history.peek > :not(.head, .rows), .beeson-session-history.peek .rows > :not(.row[aria-current="true"], .folded), .beeson-session-history.peek .folded > :not([aria-current="true"]) { display: none; }
   .beeson-session-history.peek .show-list { display: block; }
+  /* a toast is above the sheet at its full height */
+  html.beeson-history .beeson-session-toast { bottom: calc(55vh + 36px); bottom: calc(55dvh + 36px); }
 }
 .beeson-session-history .show-list { display: none; min-height: 32px; padding: 0 10px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); white-space: nowrap; }
 .beeson-session-history button, .beeson-session-preview button { font: inherit; color: inherit; }
