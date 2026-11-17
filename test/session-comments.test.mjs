@@ -462,6 +462,8 @@ test('offline, the Comment command opens a draft, which is kept until the page i
 
   await server.start(['--port', String(port)]);
   await front(a);
+  // on a slow runner, the page reconnected by its own retry before the click
+  await a.waitFor(ONLINE, 60_000);
   await click(a, '.beeson-session-action');
   await a.waitFor(ONLINE);
   await sees(a, `document.querySelector('${PANE} .draft .actions .primary').disabled`, false);
