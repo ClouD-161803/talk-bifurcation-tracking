@@ -623,9 +623,12 @@ test('a word in the copy of a closed page reaches index.html once when the page 
  * without a reset, and every later request goes through. lost is set once this operation is
  * swallowed, resent once Chrome has sent it again on another connection, and answered once the
  * edit command has answered it. copies holds the bodies of the other operations with ' both'.
+ * Chrome sends the lost operation again once its connection is closed, which cut() does. The edit
+ * command closes its side of this idle connection after 5 s, and this close is not passed on, since
+ * a crowded runner takes longer than 5 s to the join of the next page.
  */
 async function deadConnection(t, edit) {
-  const net = { token: null, lost: false, resent: false, answered: false, copies: [], url: '' };
+  const net = { token: null, lost: false, resent: false, answered: false, copies: [], url: '', cut: () => {} };
   const server = createTcpServer((client) => {
     const upstream = connect(edit.port, '127.0.0.1');
     let pending = null;
@@ -642,6 +645,7 @@ async function deadConnection(t, edit) {
       if (Buffer.byteLength(body) < Number(/content-length: (\d+)/i.exec(all)?.[1] ?? -1)) return;
       if (body.includes(net.token) && !net.lost) {
         swallowed = net.lost = true;
+        net.cut = () => client.destroy();
       } else {
         if (body.includes(net.token)) late = net.resent = true;
         else if (body.includes(' both')) net.copies.push(body);
@@ -655,8 +659,8 @@ async function deadConnection(t, edit) {
     });
     client.on('close', () => upstream.destroy());
     client.on('error', () => {});
-    upstream.on('error', () => client.destroy());
-    upstream.on('close', () => client.destroy());
+    upstream.on('error', () => swallowed || client.destroy());
+    upstream.on('close', () => swallowed || client.destroy());
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   t.after(() => new Promise((done) => server.close(done)));
@@ -692,8 +696,8 @@ for (const how of ['closed', 'loaded again']) {
     }
     await converge(server, [page]);
     assert.equal(net.copies.length, 1, 'the next page sent the copy');
-    // the edit command closes the idle connection of the lost operation after 5 s, and Chrome then
-    // sends the operation again
+    // the connection of the lost operation is closed, and Chrome then sends the operation again
+    net.cut();
     await until(() => net.answered, 'Chrome to send the operation again and the edit command to answer it', 60_000);
     assert.equal(count(await served(server), ' both'), 1);
     assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide both</p>'));
