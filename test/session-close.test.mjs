@@ -677,9 +677,13 @@ for (const how of ['closed', 'loaded again']) {
     net.token = await page.evaluate(`${C}.token`);
     await type(page, ' both');
     await until(() => net.lost, 'the operation to be lost');
-    await copied(page, ' both');
+    const id = await copied(page, ' both');
     if (how === 'closed') {
+      const probe = await probeOf(browser, net.url);
       await page.close();
+      // restore() of copy.ts takes over only the copy of a page whose Web Lock is released, and
+      // Chrome may release it well after Target.closeTarget has returned
+      await released(probe, id);
       page = await tab(browser, net.url);
     } else {
       await page.evaluate('(window.__before = true)');
