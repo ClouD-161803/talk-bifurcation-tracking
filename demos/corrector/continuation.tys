@@ -1,10 +1,10 @@
 {
  "format": "tycho-scene",
- "version": "0.3",
+ "version": "0.4",
  "requires": [
   "layers.outline"
  ],
- "generator": "pytycho 0.2.0",
+ "generator": "pytycho 0.3.0",
  "title": "Continuation",
  "frames": {
   "rp": {
