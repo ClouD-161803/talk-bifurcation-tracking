@@ -51,9 +51,9 @@ C_END = 2.9230742651998
 C_CURVE_END = 2.918
 LYAPUNOV_AMPLITUDE = 0.02
 # the weights of the continuation norm, which are nonzero only on the two coordinates of the diagram of
-# scene 2, i.e. x0 and C on the Lyapunov family and the launch velocity and e on family 11, each scaled by
+# scene 2, i.e. x0 and C on the Lyapunov family and the initial velocity and e on family 11, each scaled by
 # its range over the family. The norm is then the length in the diagram, and the tangent and the hyperplane
-# of a pseudo-arclength step are a line and its normal in it. On the Lyapunov family a norm of the launch
+# of a pseudo-arclength step are a line and its normal in it. On the Lyapunov family a norm of the initial
 # velocity and C lets the blue pen at the large step jump to an orbit of four times the period, and on
 # family 11 a norm of x0 and e stalls it at the fold, where both are at an extremum
 W_LYAPUNOV = np.array([1 / 0.157**2, 0.0, 0.0, 1 / 0.2309**2])
@@ -1344,7 +1344,7 @@ def build_correction(refs: dict, runs: dict, out: Path) -> dict:
         frame=conv,
         driver=driver,
         camera={"kind": "plane", "plane": "xy", "aspect": "free"},
-        label="convergence",
+        label="error",
         layers=[
             ty.track(ty.set_id("convergence-box"), opacity=0.0, width=1.0),
             ty.axes(),
@@ -1436,11 +1436,11 @@ METHODS = ("natural", "arclength")
 
 
 def build_continuation(pens: dict, curves: dict, out: Path) -> dict:
-    scene = ty.Scene(title="Continuation of a family")
+    scene = ty.Scene(title="Continuation")
     rp = scene.frame("rp", label="rotating-pulsating", axes=("x", "y"))
     diagram_frames = {
-        "lyapunov": scene.frame("lyapunov", label="𝓛₁ Lyapunov family", axes=("Jacobi constant C", "launch position x₀"), parent=rp),
-        "family11": scene.frame("family11", label="family 11", axes=("eccentricity e", "launch velocity ẏ₀"), parent=rp),
+        "lyapunov": scene.frame("lyapunov", label="𝓛₁ Lyapunov family", axes=("Jacobi constant C", "initial x₀"), parent=rp),
+        "family11": scene.frame("family11", label="family 11", axes=("eccentricity e", "initial ẏ₀"), parent=rp),
     }
     body_layers = bodies(scene, rp, l1_below=True)
     label_y = {}
@@ -1782,7 +1782,7 @@ def build_continuation(pens: dict, curves: dict, out: Path) -> dict:
         frame=rp,
         driver=driver,
         camera={"kind": "plane", "plane": "xy"},
-        label="members, rotating-pulsating frame",
+        label="family members",
         layers=[
             ty.track(ty.sets(element="obox", family=family), opacity=0.0, width=1.0),
             ty.axes(),
@@ -1806,11 +1806,11 @@ def build_continuation(pens: dict, curves: dict, out: Path) -> dict:
     scene.readout(
         "caption",
         family,
-        " · moving pen at ",
+        " · current member at ",
         ty.channel("p_int"),
         ".",
         *[ty.channel(f"p_{i}") for i in range(1, 5)],
-        " · halvings of its step: ",
+        " · step halvings: ",
         ty.channel("halvings"),
     )
     scene.write(out / "continuation.tys", out / "continuation.tyd")

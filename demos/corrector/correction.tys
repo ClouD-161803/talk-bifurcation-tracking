@@ -37851,7 +37851,7 @@
     "plane": "xy",
     "aspect": "free"
    },
-   "label": "convergence"
+   "label": "error"
   }
  },
  "controls": [

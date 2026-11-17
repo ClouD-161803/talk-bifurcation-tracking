@@ -5,7 +5,7 @@
   "layers.outline"
  ],
  "generator": "pytycho 0.2.0",
- "title": "Continuation of a family",
+ "title": "Continuation",
  "frames": {
   "rp": {
    "label": "rotating-pulsating",
@@ -19,7 +19,7 @@
    "label": "𝓛₁ Lyapunov family",
    "axes": [
     "Jacobi constant C",
-    "launch position x₀",
+    "initial x₀",
     ""
    ],
    "parent": "rp"
@@ -28,7 +28,7 @@
    "label": "family 11",
    "axes": [
     "eccentricity e",
-    "launch velocity ẏ₀",
+    "initial ẏ₀",
     ""
    ],
    "parent": "rp"
@@ -5713,7 +5713,7 @@
     "kind": "plane",
     "plane": "xy"
    },
-   "label": "members, rotating-pulsating frame"
+   "label": "family members"
   }
  },
  "controls": [
@@ -5743,7 +5743,7 @@
     {
      "var": "family"
     },
-    " · moving pen at ",
+    " · current member at ",
     {
      "channel": "p_int"
     },
@@ -5760,7 +5760,7 @@
     {
      "channel": "p_4"
     },
-    " · halvings of its step: ",
+    " · step halvings: ",
     {
      "channel": "halvings"
     }
