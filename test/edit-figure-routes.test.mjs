@@ -162,3 +162,17 @@ test('a guest may not change a figure where the TeX of the host is MiKTeX, and t
   assert.equal(readFileSync(join(talk, 'figures', 'orbit.tex'), 'utf8'), DRAWING);
   assert.equal((await post(edit.port, api('hello'), { name: 'Cy' })).json().figures.compiler, 'unfenced');
 });
+
+test('a source saved with a byte-order mark is written over the text that a page read from it, and keeps its mark', async (t) => {
+  const s = await session(t, { files: { 'figures/orbit.tex': `﻿${DRAWING}` } });
+  // fetch().text() of a page drops the mark
+  const read = await (await fetch(`http://127.0.0.1:${s.edit.port}${s.edit.base}figures/orbit.tex`)).text();
+  assert.equal(read, DRAWING);
+  const edited = DRAWING.replace('2,1', '3,1');
+  const written = await s.send('figures/source', { name: 'orbit', source: edited, base: read });
+  assert.equal(written.status, 200, written.text);
+  assert.equal(s.read('figures/orbit.tex'), `﻿${edited}`);
+  const stale = await s.send('figures/source', { name: 'orbit', source: DRAWING, base: read });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.json().text, edited);
+});
