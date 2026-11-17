@@ -654,9 +654,13 @@ test('a long reason in a narrow title bar scrolls inside its line, and the curre
     const hit = document.elementFromPoint(${box.x}, ${box.bottom});
     return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, overflowY: cs.overflowY, maxHeight: cs.maxHeight, hit: hit ? hit.tagName + '.' + hit.className : null, touches: window.__touches };
   })())`;
-  for (let drags = 0; !(await ann.evaluate(LAST)); drags++) {
+  // the last word and the position of the line are read at one moment. the line can still move
+  // from the drag before, and a line that reached its end between two reads is not moved by the
+  // next drag
+  for (let drags = 0; ; drags++) {
+    const { last, top } = await ann.evaluate(`({ last: ${LAST}, top: ${NAME}.scrollTop })`);
+    if (last) break;
     assert.ok(drags < 60, `the last word is not reached after 60 drags of the line: ${await ann.evaluate(STUCK)}`);
-    const top = await ann.evaluate(`${NAME}.scrollTop`);
     await touch('touchStart', box.bottom);
     for (let i = 1; i <= 8; i++) await touch('touchMove', box.bottom + ((box.top - box.bottom) * i) / 8);
     await touch('touchEnd');

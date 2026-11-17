@@ -7,15 +7,11 @@
 // the work is planned before the page is changed, and a change that cannot be planned is a reload
 
 import type { App } from '../app.ts';
-import { mathIn, mathLookup, setContentWithTex, type MathLookup } from '../math.ts';
-import { media } from '../media/store.ts';
-import { detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, type Pairing, type TextElement } from '../render.ts';
-import { contentRange, elementRange, parseSource, VOID, type Piece, type Source, type SrcEl, type SrcText } from '../source.ts';
-import { stateOf } from '../tags.ts';
-import { RAW_TEXT, type Attr } from '../tokens.ts';
-import { caretOf, mapOffset, putCaret, textIn } from './caret.ts';
-import { refreshHeads } from '../history.ts';
-import { charEdits } from '../merge.ts';
+import type { MathLookup } from '../math.ts';
+import type { Pairing, TextElement } from '../render.ts';
+import type { Piece, Source, SrcEl, SrcText } from '../source.ts';
+import type { Attr } from '../tokens.ts';
+import { caretOf, charEdits, contentRange, detached, elementRange, isTextElement, mapOffset, mathIn, mathLookup, media, pair, pairElement, parseSource, putCaret, RAW_TEXT, refreshHeads, renderDeck, renderTextElement, setContentWithTex, stateOf, textIn, unitsWithin, virtualChildren, VOID } from './host.ts';
 import { atPath, closing, decodedIn, graft, liveChild, pathOf, retag, retext, startTag, textAt, type Spot, type Window } from './tree.ts';
 
 export const NO_MATH: MathLookup = () => null;

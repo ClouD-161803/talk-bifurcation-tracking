@@ -6,12 +6,13 @@ import { editorPage } from './editor.mjs';
 export const E = 'window.BeesonEditor';
 
 /**
- * The editor on test-deck.html in a session, with the changes of the person counted in
- * window.__changes by onChange of the port.
+ * The editor on test-deck.html in a session, with the engine of the port loaded and the changes of
+ * the person counted in window.__changes by onChange of the port.
  */
 export async function sessionPage(browser, options = {}) {
   const page = await editorPage(browser, options);
-  await page.evaluate(`(() => {
+  await page.evaluate(`(async () => {
+    await ${E}.loadSession();
     window.__changes = 0;
     ${E}.session.onChange(() => window.__changes++);
     ${E}.session.begin();
@@ -59,7 +60,7 @@ export async function caretAtEnd(page, expression) {
 /** The apply of text on page, with its reload flag and the tags of the elements it changed. */
 export async function applyOn(page, text) {
   await front(page);
-  return page.evaluate(`${E}.apply(${JSON.stringify(text)}).then((r) => ({ reload: r.reload, changed: r.changed.map((el) => el.localName) }))`);
+  return page.evaluate(`${E}.loadSession().then(() => ${E}.apply(${JSON.stringify(text)})).then((r) => ({ reload: r.reload, changed: r.changed.map((el) => el.localName) }))`);
 }
 
 /** Asserts that page renders as text, with zero problems, no unsaved change, and an empty history. */

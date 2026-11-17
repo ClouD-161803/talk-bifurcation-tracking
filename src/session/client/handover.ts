@@ -5,7 +5,7 @@ import type { App } from '../../editor/app.ts';
 import type { Command } from '../../editor/commands.ts';
 import type { Edit } from '../../editor/merge.ts';
 import type { MediaStore } from '../../editor/media/store.ts';
-import type { Port } from '../../editor/session/session.ts';
+import type { Port } from '../../editor/session/port.ts';
 import type { PresenceHooks, Shape } from '../../editor/session/presence.ts';
 import type { SlideHooks } from '../../editor/session/slides.ts';
 import type { CommentsTab } from '../../editor/shell/shell.ts';

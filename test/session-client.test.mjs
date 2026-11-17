@@ -65,14 +65,16 @@ test('a page joins with the name typed in the dialog, and again without it', { t
   clean(page);
 });
 
-test('a page with edit and without session does not load theme/session.js', { timeout: 120_000 }, async (t) => {
+test('a page with edit and without session loads neither theme/session.js nor theme/editor-session.js', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
   const page = await open(browser, `${server.edit.url}index.html?edit`, { wait: false });
   await page.waitFor('window.BeesonEditor.status().texts > 0');
   assert.equal(await page.evaluate(`performance.getEntriesByType('resource').some((e) => e.name.includes('session.js'))`), false);
-  assert.equal(await page.evaluate(`'BeesonSession' in window || !!document.querySelector('.beeson-session-state')`), false);
+  // a script that is still on its way is not among the resources yet, hence its element is looked for
+  assert.equal(await page.evaluate(`document.querySelector('script[src*="session.js"]')`), null);
+  assert.equal(await page.evaluate(`'BeesonSession' in window || 'BeesonEditorSession' in window || !!document.querySelector('.beeson-session-state')`), false);
   clean(page);
 });
 

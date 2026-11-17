@@ -1,6 +1,7 @@
 // the loader of theme/session.js, the client of the synchronous editor, which is fetched from the
-// folder of editor.js only with session in the address. the client is handed the port and a few
-// parts of the shell in one call, see src/session/client/handover.ts
+// folder of editor.js only with session in the address, together with the engine of the port. the
+// client is handed the port and a few parts of the shell in one call, see
+// src/session/client/handover.ts
 
 import type { App } from '../app.ts';
 import type { Entry } from '../../session/client/handover.ts';
@@ -14,14 +15,12 @@ import { Dialog } from '../ui/dialog.ts';
 import { groupOf } from '../model/groups.ts';
 import { icon } from '../ui/icons.ts';
 import { openMenu } from '../ui/menu.ts';
+import { script } from '../ui/script.ts';
 import { commentsShell } from './comments-shell.ts';
 import { historyShell } from './history-mode.ts';
 import { hooks, type Shape } from './presence.ts';
 import { slideHooks } from './slides.ts';
-import type { Port } from './session.ts';
-
-// read while editor.js runs, since currentScript is null afterward
-const self = document.currentScript as HTMLScriptElement | null;
+import { loadEngine, type Port } from './port.ts';
 
 // starts the load of session.js, and returns the start of the session, which resolves with false
 // when the page is opened without a session
@@ -35,18 +34,14 @@ export function load(app: App, port: Port): () => Promise<boolean> {
     port.served(false);
     return async () => false;
   }
-  const loaded = given ? Promise.resolve<Entry | null>(given) : new Promise<Entry | null>((done) => {
-    const script = document.createElement('script');
-    script.src = self?.src ? new URL('session.js', self.src).href : 'theme/session.js';
-    script.onload = () => done((window as { BeesonSession?: Entry }).BeesonSession ?? null);
-    script.onerror = () => done(null);
-    document.head.append(script);
-  });
+  const loaded = given ? Promise.resolve(given) : script('session.js').then(() => (window as { BeesonSession?: Entry }).BeesonSession ?? null, () => null);
+  const engine = loadEngine();
   return async () => {
-    const entry = await loaded;
+    const [entry, installed] = await Promise.all([loaded, engine]);
     // the page does not edit the deck without the session, whose edits would not reach the others
-    if (!entry) {
-      void new Dialog({ title: 'The session could not start', text: 'theme/session.js could not be loaded. Load the page again to join the session.', buttons: [{ label: 'Load again', value: 'reload', primary: true }], dismissable: false, onButton: () => location.reload() }).open('reload');
+    if (!entry || !installed) {
+      const failed = [!entry && 'theme/session.js', !installed && 'theme/editor-session.js'].filter(Boolean).join(' and ');
+      void new Dialog({ title: 'The session could not start', text: `${failed} could not be loaded. Load the page again to join the session.`, buttons: [{ label: 'Load again', value: 'reload', primary: true }], dismissable: false, onButton: () => location.reload() }).open('reload');
       return new Promise(() => {});
     }
     const bar = document.querySelector<HTMLElement>('.beeson-edit-titlebar .right') ?? document.body;

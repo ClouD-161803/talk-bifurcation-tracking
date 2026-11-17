@@ -5,23 +5,12 @@
 
 import { pageOf, type Mode, type Tones } from '../../pdffigure.ts';
 import { make } from '../ui/dom.ts';
+import { script, themeUrl } from '../ui/script.ts';
 import { askForFile } from './actions.ts';
 import { media, type MediaFile } from './store.ts';
 export { isPdf } from './store.ts';
 
-const SELF = (document.currentScript as HTMLScriptElement | null)?.src ?? '';
-const themeUrl = (path: string) => (SELF ? new URL(path, SELF).href : `theme/${path}`);
-
 export const pdfOf = (el: Element | null): string | null => (el?.localName === 'img' ? el.getAttribute('data-pdf') : null);
-
-const script = (path: string): Promise<void> =>
-  new Promise((done, fail) => {
-    const s = make('script');
-    s.src = themeUrl(path);
-    s.onload = () => done();
-    s.onerror = () => fail(new Error(`theme/${path} is not found next to theme/editor.js`));
-    document.head.append(s);
-  });
 
 let loading: Promise<NonNullable<Window['BeesonPdf']>> | null = null;
 const renderer = () =>

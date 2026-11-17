@@ -28,6 +28,7 @@ const headingOf = (typed) => `[...document.querySelectorAll('.reveal h1, .reveal
 // the medians in ms of an apply that changes the first character of word, each after a key typed
 // at the end of the text element of the expression host when host is given, and of an open
 const measure = (page, word, host) => page.evaluate(`(async () => {
+  await ${E}.loadSession();
   const base = ${JSON.stringify(page.source)};
   const at = base.indexOf(${JSON.stringify(word)});
   const median = (a) => [...a].sort((x, y) => x - y)[a.length >> 1];
@@ -65,6 +66,7 @@ const measure = (page, word, host) => page.evaluate(`(async () => {
 // slides, and those read by one render of the deck, which reads the attributes of every element in
 // a text element. a section is left out, since the slide strip reads the attributes of each slide
 const work = (page, word, typed) => page.evaluate(`(async () => {
+  await ${E}.loadSession();
   const base = ${JSON.stringify(page.source)};
   const at = base.indexOf(${JSON.stringify(word)});
   const deck = document.querySelector('.reveal .slides');

@@ -2,11 +2,10 @@
 // element is read again without a parse of the whole file. every range of the tree is an offset
 // into source.text, hence the ranges after a change are moved by the change of its length
 
-import { RAW_TEXT, tokenize, type Range, type Token } from '../tokens.ts';
-import { contentRange, decode, elementRange, segmentsOf, VOID, type Source, type SrcEl, type SrcNode, type SrcText } from '../source.ts';
-import { fragmentRoot, parseFragment } from '../model/fragments.ts';
-import { isTextElement, type Pairing } from '../render.ts';
-import { shared } from '../merge.ts';
+import type { Pairing } from '../render.ts';
+import type { Source, SrcEl, SrcNode, SrcText } from '../source.ts';
+import type { Range, Token } from '../tokens.ts';
+import { contentRange, decode, elementRange, fragmentRoot, isTextElement, parseFragment, RAW_TEXT, segmentsOf, shared, tokenize, VOID } from './host.ts';
 
 // the part in which two texts differ: a and b are equal before start, and a after endA is equal
 // to b after endB
