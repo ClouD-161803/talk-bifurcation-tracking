@@ -2807,22 +2807,42 @@
               head.setAttribute("cy", this.YS(b, y).toFixed(1));
             });
           } else {
-            const parts = [];
+            const parts = [], opacities = [];
             const tone = (i) => toneColor(tones ? tones[clamp(i, 0, tones.length - 1)] : m.tone);
+            let full = 0, shown = 0, gone = 0, last = -1;
             this.drawers.push((u) => {
-              const p = traceTo(pts, u), now = this.timeOf(u);
-              while (parts.length < p.length - 1) parts.push(fader.insertBefore(svg("line", { class: "plot-trace", "stroke-width": m.width }), head));
-              parts.forEach((line, i) => {
-                const on = i < p.length - 1;
-                line.style.display = on ? "" : "none";
-                if (!on) return;
+              const p = traceTo(pts, u), now = this.timeOf(u), n = p.length - 1;
+              if (u < last) {
+                full = Math.min(full, Math.max(0, n - 1));
+                gone = 0;
+              }
+              last = u;
+              while (parts.length < n) {
+                parts.push(fader.insertBefore(svg("line", { class: "plot-trace", "stroke-width": m.width }), head));
+                opacities.push("");
+              }
+              for (let i = n; i < shown; i++) parts[i].style.display = "none";
+              for (let i = Math.min(full, shown); i < n; i++) {
+                const line = parts[i];
+                if (i >= shown) line.style.display = "";
                 line.setAttribute("x1", this.XS(b, p[i][0]).toFixed(1));
                 line.setAttribute("y1", this.YS(b, p[i][1]).toFixed(1));
                 line.setAttribute("x2", this.XS(b, p[i + 1][0]).toFixed(1));
                 line.setAttribute("y2", this.YS(b, p[i + 1][1]).toFixed(1));
                 line.style.color = tone(i);
-                if (m.fade > 0) line.style.opacity = (0.6 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)).toFixed(3);
-              });
+              }
+              shown = n;
+              full = Math.max(0, n - 1);
+              if (m.fade > 0) {
+                for (let i = gone; i < n; i++) {
+                  const o = (Math.round(20 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)) * 0.03).toFixed(2);
+                  if (o !== opacities[i]) {
+                    parts[i].style.opacity = o;
+                    opacities[i] = o;
+                  }
+                  if (o === "0.00" && i === gone) gone++;
+                }
+              }
               const [x, y] = p[p.length - 1];
               head.setAttribute("cx", this.XS(b, x).toFixed(1));
               head.setAttribute("cy", this.YS(b, y).toFixed(1));
