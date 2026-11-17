@@ -1,4 +1,4 @@
-// the formats of the words of a text element, within the scope rule: strong, em, s, sup, sub, code, a
+// the formats of the words of a text element, within the scope rule: strong, em, u, s, sup, sub, code, a
 // link, and a span with one class tone-NAME of theme/beeson.css for the color of the words. a format is
 // set on the range of the text, on the word at the caret when nothing is selected, or on the
 // whole text of each selected text element. the change is recorded as the content of the text element before and
@@ -20,6 +20,7 @@ export const isTone: Match = (el) => el.localName === 'span' && el.classList.len
 export const FORMATS = {
   bold: { tag: 'strong', match: tagIs('strong', 'b') },
   italic: { tag: 'em', match: tagIs('em', 'i') },
+  underline: { tag: 'u', match: tagIs('u') },
   strike: { tag: 's', match: tagIs('s', 'strike') },
   superscript: { tag: 'sup', match: tagIs('sup') },
   subscript: { tag: 'sub', match: tagIs('sub') },
@@ -185,7 +186,7 @@ function wrapRuns(nodes: Node[], make: () => Element): void {
 
 // an element of a format left without text by a cut is removed
 function prune(host: Element): void {
-  for (const el of [...host.querySelectorAll('strong, em, b, i, s, strike, sup, sub, code, span, a')].reverse()) {
+  for (const el of [...host.querySelectorAll('strong, em, b, i, u, s, strike, sup, sub, code, span, a')].reverse()) {
     if ((CLEARED(el) || isLink(el)) && !el.textContent && !el.querySelector('mjx-container, br, img')) el.remove();
   }
 }
@@ -519,7 +520,7 @@ function paint(host: Element, range: Range, style: TextStyle): Node[] {
     const tone = style.tone;
     wrap(() => Object.assign(document.createElement('span'), { className: `tone-${tone}` }));
   }
-  for (const name of ['code', 'subscript', 'superscript', 'strike', 'italic', 'bold'] as const) {
+  for (const name of ['code', 'subscript', 'superscript', 'strike', 'underline', 'italic', 'bold'] as const) {
     if (style.formats[name]) wrap(() => document.createElement(FORMATS[name].tag));
   }
   joinSame(made);

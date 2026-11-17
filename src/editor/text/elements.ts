@@ -137,11 +137,19 @@ export function rangeTex(root: Element, range: Range): string {
     c.replaceWith(document.createTextNode(info ? info.open + info.tex + info.close : c.textContent ?? ''));
   });
   // an inline element cut at the edge of the range is left empty in one of the parts
-  for (const el of [...div.querySelectorAll('strong, em, b, i, sup, sub, code, span, a')].reverse()) {
+  for (const el of [...div.querySelectorAll('strong, em, b, i, u, s, sup, sub, code, span, a')].reverse()) {
     if (!el.textContent && !el.querySelector(ATOM)) el.remove();
   }
   div.normalize();
   return div.innerHTML;
+}
+
+// the words of the part of root in range as plain text, with each formula as its TeX between its
+// delimiters, which a paste into a text typesets again
+export function rangeWords(root: Element, range: Range): string {
+  const div = document.createElement('div');
+  div.innerHTML = rangeTex(root, range);
+  return div.textContent ?? '';
 }
 
 export function rangeOf(root: Node, from: [Node, number] | null, to: [Node, number] | null): Range {
