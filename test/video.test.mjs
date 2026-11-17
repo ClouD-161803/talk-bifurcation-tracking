@@ -18,13 +18,15 @@ const DECK = 'test/pages/video-play.html';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-// the second clip is held back while slow is set
+// the second clip is held back while slow is set. #130: the hold is counted from the request, and
+// the cap of 5 s of start() in src/video.ts from the step. on a slow runner, the hold ended after
+// the cap, and the first clip was played alone. a hold of 6 s forces this case
 let slow = false;
 let server;
 let browser;
 
 before(async () => {
-  server = await serve('.', { delay: (path) => (slow && path.endsWith('clip-b.mp4') ? 3000 : 0) });
+  server = await serve('.', { delay: (path) => (slow && path.endsWith('clip-b.mp4') ? 6000 : 0) });
   browser = await launch({ offline: false });
 });
 
