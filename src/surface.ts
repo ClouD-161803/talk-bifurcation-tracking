@@ -281,8 +281,13 @@ export function renderer(): Three.WebGLRenderer | null {
     r.setClearColor(0x000000, 0);
     // the colors of the shaders are the sRGB values of the theme, written without a conversion
     r.outputColorSpace = THREE.LinearSRGBColorSpace;
-    // three.js sets up the context again in its own listener, which was added before this one
-    r.domElement.addEventListener('webglcontextrestored', () => { for (const redraw of restored) redraw(); });
+    // after a crash of the GPU process, Chrome draws on the restored canvas but copies it blank,
+    // hence every surface is drawn again on a new renderer
+    r.domElement.addEventListener('webglcontextrestored', () => {
+      r.dispose();
+      shared = undefined;
+      for (const redraw of restored) redraw();
+    }, { once: true });
     shared = r;
   } catch (error) {
     console.warn(`beeson: WebGL is not available for the surfaces, ${String(error)}`);

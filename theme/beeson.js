@@ -4200,8 +4200,10 @@ void main() {
       r.setClearColor(0, 0);
       r.outputColorSpace = THREE.LinearSRGBColorSpace;
       r.domElement.addEventListener("webglcontextrestored", () => {
+        r.dispose();
+        shared = void 0;
         for (const redraw of restored) redraw();
-      });
+      }, { once: true });
       shared = r;
     } catch (error) {
       console.warn(`beeson: WebGL is not available for the surfaces, ${String(error)}`);
