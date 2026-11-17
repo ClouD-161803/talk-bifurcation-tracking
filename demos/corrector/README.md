@@ -20,10 +20,10 @@ The builder imports only NumPy, pytycho, `corrector.py`, and the standard librar
 
 ## Building and checking
 
-The pages are built with the pytycho of the TyCHO checkout, whose runtime has to be built into `src/pytycho/_static/tycho.js` first.
+The pages are built with the pytycho of TyCHO commit 2196972, the last commit with `Scene.track_set` and with frames moved by channels, which scene format 0.5 does not have. Neither release of pytycho builds them, since 0.2.0 does not move a frame by a channel and 0.3.0 does not have `Scene.track_set`. Check this commit out in a worktree of the TyCHO checkout and build its runtime into `src/pytycho/_static/tycho.js` first. A change of a label alone can be written into the scene documents and the pages without a build, since the data containers are not changed by it.
 
 ```sh
-uv run --project /Users/claudiovestini/git/tycho/code python /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/build.py
+uv run --project /Users/claudiovestini/git/tycho/worktrees/2196972 python /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/build.py
 ```
 
 On the Mac a build takes about 230 s, spread over worker processes, i.e. the number of cores less two unless `--jobs` is given. The builder prints the table of the iterations of the 72 correction runs and a line for each continuation run. The correction page is 5.9 MB, of which 3.1 MB is the data container, and the continuation page is 1.7 MB, of which 0.7 MB is the data container. The check runs in about 30 s with the Python of DyLAN and the bindings of `vestini/master`.

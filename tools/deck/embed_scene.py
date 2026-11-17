@@ -21,20 +21,20 @@ slide offers only the controls spoken on it, while the page of the scene keeps t
 viewer with controls plays from the start like a kiosk. With --step N, the viewer is a fragment of the style
 play, i.e. it is held at its first frame until step N of its slide and played from its start at this step. The six viewers of the deck are written by
 
-    uv run --project /Users/claudiovestini/git/tycho/code python \
+    uv run --no-project --with pytycho==0.2.0 python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/tycho/code/examples/broucke/broucke.tys "the Broucke page" --controls \
         --style "left: 120px; top: 180px; width: 1680px; height: 830px" \
         --show family branch --autoplay
 
-    uv run --project /Users/claudiovestini/git/tycho/code python \
+    uv run --no-project --with pytycho==0.2.0 python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/frames/frames.tys "the frames scene" \
         --controls --panels --step 2
 
-    uv run --project /Users/claudiovestini/git/tycho/code python \
+    uv run --no-project --with pytycho==0.2.0 python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/correction.tys \
@@ -43,7 +43,7 @@ play, i.e. it is held at its first frame until step N of its slide and played fr
         --set case=lyapunov --set system=cr3bp --set targeting=full --set S=1 --set guess=near \
         --show targeting guess solution
 
-    uv run --project /Users/claudiovestini/git/tycho/code python \
+    uv run --no-project --with pytycho==0.2.0 python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/correction.tys \
@@ -52,7 +52,7 @@ play, i.e. it is held at its first frame until step N of its slide and played fr
         --set case=lyapunov --set system=cr3bp --set targeting=full --set S=16 --set guess=near \
         --show case system S guess
 
-    uv run --project /Users/claudiovestini/git/tycho/code python \
+    uv run --no-project --with pytycho==0.2.0 python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/continuation.tys \
@@ -60,7 +60,7 @@ play, i.e. it is held at its first frame until step N of its slide and played fr
         --style "left: 1150px; top: 110px; width: 730px; height: 880px" \
         --set family=lyapunov --set step=medium --set pens=natural --show family
 
-    uv run --project /Users/claudiovestini/git/tycho/code python \
+    uv run --no-project --with pytycho==0.2.0 python \
         /Users/claudiovestini/git/talks/bifurcation-tracking/tools/deck/embed_scene.py \
         /Users/claudiovestini/git/talks/bifurcation-tracking/index.html \
         /Users/claudiovestini/git/talks/bifurcation-tracking/demos/corrector/continuation.tys \
