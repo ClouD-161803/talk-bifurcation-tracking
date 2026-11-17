@@ -697,7 +697,14 @@ export function install(app: App): void {
           const deg = angleIn(o, pic);
           return { el: o, sized: sizedOf(o), pic, deg, base: toSlide(f, orientedBox(pic, f.scale, deg)), group: groupFor(o) };
         });
-      const p = Object.assign(start('resize', ev, el, [el, ...followers.map((m) => m.el)], null), {
+      // a tap of a finger on a grip puts the caret into its text element at the nearest point, as a
+      // second tap on the text does, since on a phone the grips cover most of a small text element
+      const host = ev.pointerType === 'touch' ? app.hostOf(el) : null;
+      const tap = host ? () => {
+        const r = host.getBoundingClientRect();
+        placeCaretAt(host, Math.min(Math.max(ev.clientX, r.left), r.right - 1), Math.min(Math.max(ev.clientY, r.top), r.bottom - 1));
+      } : null;
+      const p = Object.assign(start('resize', ev, el, [el, ...followers.map((m) => m.el)], tap), {
         handle: (grip as HTMLElement).dataset.handle as Handle, aspect: aspectOf(pic), sized, pic, followers, stretch: pic.matches(STRETCHED), keep: constrained(pic),
         framed: member && member.matches(CONTAINER) ? member : null,
       });
