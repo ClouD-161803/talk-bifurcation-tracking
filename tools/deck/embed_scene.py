@@ -15,7 +15,7 @@ View group, and Export are hidden, so that only the controls of the scene are se
 as well, the viewer is lean="panels", which keeps the Add panel group and the icons of the panel
 heads, for a scene in which the presenter adds panels by hand. A variable is started at a value
 other than its default with --set VARIABLE=VALUE. With --style, the viewer is
-placed in slide pixels, and without it the viewer takes the zone of the slide layout. With --show VARIABLE..., only the controls
+placed in slide pixels, and without it the viewer takes the figure box of the slide layout. With --show VARIABLE..., only the controls
 of those variables and the transport are shown, and --show alone keeps the transport only, so that a
 slide offers only the controls spoken on it, while the page of the scene keeps them all. With --autoplay, a
 viewer with controls plays from the start like a kiosk. The six viewers of the deck are written by
@@ -69,7 +69,7 @@ viewer with controls plays from the start like a kiosk. The six viewers of the d
 
 The Broucke page fills its slide below the h2, and it offers only the
 family and branch tabs and the transport, with the clock on the elapsed time. Each viewer of slides 11
-to 14 is placed beside the text column of its slide, in a box larger than the zone of the layout,
+to 14 is placed beside the text column of its slide, in a box larger than the figure box of the layout,
 which is too small for the controls and two panels side by side. The values set on slide 11 are the
 defaults of the scene, and they are set again so that the slide keeps its state if a rebuild of the
 scene changes a default.
@@ -130,7 +130,7 @@ def main() -> None:
     scene = document if args.set or args.show is not None else text
     lean = "panels" if args.panels else args.controls
     element = ty.build_embed(
-        scene, container, theme="dark", kiosk=not args.controls, lean=lean, autoplay=args.autoplay, class_="zone", style=args.style
+        scene, container, theme="dark", kiosk=not args.controls, lean=lean, autoplay=args.autoplay, class_="figure-box", style=args.style
     )
 
     start = f"<!-- tycho-viewer start, {args.label}, written by embed_scene.py -->"

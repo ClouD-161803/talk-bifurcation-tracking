@@ -34,13 +34,6 @@ test('a fragment is held while the current step highlights a class in it', () =>
   assert.deepEqual(resolve(steps, 4).held, [false, false, false, false]);
 });
 
-test('from the step of a fragment with data-focus on, every shown fragment is held', () => {
-  const steps = (current) => [1, 2, 3, 4].map((i) => step(i, i <= current, { focus: i === 3 }));
-  assert.deepEqual(resolve(steps(2), 2).held, [false, false, false, false]);
-  assert.deepEqual(resolve(steps(3), 3).held, [true, true, false, false]);
-  assert.deepEqual(resolve(steps(4), 4).held, [true, true, true, false]);
-});
-
 test('a class is colored once its step is shown, in the tone of the last step that names it', () => {
   const steps = [step(1, true, { highlight: ['a'] }), step(2, true, { highlight: ['a', 'b'], tone: 'violet' }), step(3, false, { highlight: ['c'] })];
   assert.deepEqual([...resolve(steps, 2).lit], [['a', 'violet'], ['b', 'violet']]);
@@ -116,6 +109,49 @@ test('the print view shows the held display and the colors of each step', { time
   assert.deepEqual(seen, EXPECTED);
 });
 
+const BLUE = 'rgb(79, 157, 245)';
+const RED = 'rgb(255, 77, 77)';
+
+// the color of each term in the display of MathJax and in its span of the text, in the deck of tones
+const tones = (root) => `(() => {
+  const root = ${root}, color = (el) => el && getComputedStyle(el).color;
+  return ['first', 'second'].map((name) => [color(root.querySelector('mjx-container .' + name)), color(root.querySelector('span.' + name))]);
+})()`;
+
+// at the start, after each of the five steps, and after the step added to restore the dimmed ones
+const TONES = [
+  [[TEXT, TEXT], [TEXT, TEXT]],
+  [[TEXT, TEXT], [TEXT, TEXT]],
+  [[BLUE, BLUE], [TEXT, TEXT]],
+  [[BLUE, BLUE], [RED, RED]],
+  [[TEXT, TEXT], [RED, RED]],
+  [[RED, RED], [RED, RED]],
+  [[RED, RED], [RED, RED]],
+];
+
+test('a class is colored in blue or red with data-tone, and its color is taken off with data-unhighlight', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/tones.html'));
+  await page.waitFor(deckSettled);
+
+  const seen = [];
+  for (let i = 0; i < TONES.length; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await new Promise((done) => setTimeout(done, 600));
+    seen.push(await page.evaluate(tones('Reveal.getCurrentSlide()')));
+  }
+  assert.deepEqual(seen, TONES);
+  assert.deepEqual(page.errors, []);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl('test/pages/tones.html', 'print-pdf'));
+  const pages = [];
+  for (let i = 0; i < TONES.length; i++) pages.push(await print.evaluate(tones(`document.querySelectorAll('.pdf-page section')[${i}]`)));
+  assert.deepEqual(pages, TONES);
+});
+
 // the opacity of each fragment with content of the current slide, and whether the slide is complete
 const opacities = `(() => {
   const slide = Reveal.getCurrentSlide();
@@ -127,14 +163,14 @@ test('the last step of a slide is shown alone, and a step is added to restore th
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  await page.goto(deckUrl('index.html', 'still'));
+  await page.goto(deckUrl('test-deck.html', 'still'));
   await page.waitFor(deckSettled);
 
   // a slide whose fragments are empty spans, e.g. the steps of a plot, is not dimmed and is left as it is
   const restored = await page.evaluate(`[...document.querySelectorAll('.slides > section')]
     .filter((section) => section.querySelector('.fragment[data-restore]'))
     .map((section) => section.querySelector('h1, h2').textContent)`);
-  assert.deepEqual(restored, ['Show your steps one at a time', 'Equations are first class citizens', 'Explain concepts, visually', 'Embedding videos']);
+  assert.deepEqual(restored, ['Show your steps one at a time', 'Equations are first class citizens', 'Figures are first class citizens, too', 'Explain concepts, visually', 'Color the terms and the points', 'Embedding TyCHO scenes', 'Embedding videos', 'Starting a video on a click']);
 
   await page.evaluate(`Reveal.slide(2)`);
   const seen = [];
@@ -154,26 +190,26 @@ test('the last step of a slide is shown alone, and a step is added to restore th
   assert.deepEqual(page.errors, []);
 });
 
-// the style of a fragment is read once it is visible and before it is current, hence a fragment in a shown
-// fragment, which is not dimmed, would start its fade at once without a delay set while it is visible
-test('a fragment of the class late is shown after its delay, also in a shown fragment', { timeout: 60000 }, async (t) => {
+test('a fragment with data-final is shown last with every fragment restored, in place of the added step', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  const page = await browser.newPage({ motion: true });
-  await page.goto(deckUrl('test/pages/late.html'));
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/final.html'));
   await page.waitFor(deckSettled);
 
-  const opacity = (i) => page.evaluate(`getComputedStyle(document.querySelectorAll('.late')[${i}]).opacity`);
-  const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+  assert.equal(await page.evaluate(`document.querySelectorAll('.fragment[data-restore]').length`), 0);
   const seen = [];
-  for (const [late, steps] of [[0, 1], [1, 2]]) {
-    for (let i = 0; i < steps; i++) await page.evaluate('Reveal.next()');
-    await wait(300);
-    seen.push(await opacity(late));
-    // after the delay of 1 s and the fade of 400 ms
-    await wait(1300);
-    seen.push(await opacity(late));
+  for (let i = 0; i < 4; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await new Promise((done) => setTimeout(done, 600));
+    seen.push(await page.evaluate(opacities));
   }
-  assert.deepEqual(seen, ['0', '1', '0', '1']);
+  assert.deepEqual(seen, [
+    [['0', '0', '0'], false],
+    [['1', '0', '0'], false],
+    [['0.45', '1', '0'], false],
+    [['1', '1', '1'], true],
+  ]);
+  assert.equal(await page.evaluate('Reveal.isLastSlide() && !Reveal.availableFragments().next'), true);
   assert.deepEqual(page.errors, []);
 });

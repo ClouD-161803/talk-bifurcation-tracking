@@ -57,8 +57,8 @@ const bundles = `Promise.all([...document.querySelectorAll('.surface[data-bundle
   let drawn = 0;
   for (let i = 3; i < data.length; i += 4) if (data[i] > 0) drawn++;
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
-  const label = Number(s.querySelector('.lab[data-at="unstable"]').style.opacity);
-  const earth = Number(s.querySelector('.lab[data-at="Earth"]').style.opacity);
+  const label = Number(s.querySelector('.label[data-at="unstable"]').style.opacity);
+  const earth = Number(s.querySelector('.label[data-at="Earth"]').style.opacity);
   return { stage: s.dataset.shown, drawn: drawn / (data.length / 4), digest: [...digest.slice(0, 8)].join('.'), label, earth };
 }))`;
 
@@ -78,7 +78,7 @@ const compass = (az) => `(() => {
   const turn = Math.atan2(t[1] - m[1], t[0] - m[0]) - Math.atan2(c[1] - a[1], c[0] - a[0]);
   const canvas = b.el.querySelector('canvas'), k = canvas.width / b.el.offsetWidth;
   const px = canvas.getContext('2d').getImageData(Math.round((k * (m[0] + t[0])) / 2) - 1, Math.round((k * (m[1] + t[1])) / 2) - 1, 3, 3).data;
-  const lab = b.el.querySelector('.lab[data-at="Earth"]');
+  const lab = b.el.querySelector('.label[data-at="Earth"]');
   return {
     length: Math.hypot(t[0] - m[0], t[1] - m[1]),
     angle: (Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) * 180) / Math.PI,
@@ -139,7 +139,7 @@ test('a strip is grown from its first segment to its last and then as a sheet, a
   await page.waitFor(deckSettled);
   const h = await page.evaluate(slideOf);
   const probe = `Beeson.surfaces.find((s) => s.el.closest('section') === Reveal.getCurrentSlide()).probe()`;
-  const f = await page.evaluate(`Number(${sections}[${h}].querySelector('[data-surface-stage="unstable"]').dataset.fragmentIndex)`);
+  const f = await page.evaluate(`Number(${sections}[${h}].querySelector('[data-surface-state="unstable"]').dataset.fragmentIndex)`);
   await page.evaluate(`Reveal.slide(${h}, 0, ${f - 1})`);
   await page.waitFor(`(${probe}).settled`);
 

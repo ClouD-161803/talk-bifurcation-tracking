@@ -1,7 +1,7 @@
-/*! beeson.js 0.9.0-beta.1, the reveal.js theme of the Beeson group. MIT license. The orbit engine is ported from src/lib/orbits.ts of https://github.com/ClouD-161803/ClouD-161803.github.io (MIT). */
+/*! beeson.js 0.9.0-beta.2, the reveal.js theme of the Beeson group. MIT license. The orbit engine is ported from src/lib/orbits.ts of https://github.com/ClouD-161803/ClouD-161803.github.io (MIT). */
 "use strict";
 (() => {
-  // src/scenes.ts
+  // src/backdrops.ts
   var H = 4e-3;
   var stopped = (u) => Math.hypot(u[0] + MU, u[1]) < 0.0166 || Math.hypot(u[0] - 1 + MU, u[1]) < 45e-4 || Math.hypot(u[0] - 0.8, u[1]) > 2.4;
   var toned = (s, tone) => ({ ...s, tone });
@@ -102,23 +102,22 @@
     }
     return [toned(first, "text"), ...out];
   }
-  var SCENES = {
-    nest: () => [...lyapunovFamily(1, spaced(0.012, 0.12, 12, 1.5), H), ...lyapunovFamily(2, spaced(0.012, 0.14, 12, 1.5), H), ...droFamily(ramp(0.03, 0.09, 1.2), H)].map(closed),
+  var BUILT_IN = {
     tubes: () => [...tubes(1, 0.0313, 14, 2.2), ...tubes(2, 0.0408, 14, 2.2)],
     wideRibbon: () => ribbon(0.016, 120, 3, 0.12)
   };
-  var SCENE_NAMES = Object.keys(SCENES);
+  var BUILT_IN_NAMES = Object.keys(BUILT_IN);
   var cache = /* @__PURE__ */ new Map();
-  function scene(name) {
+  function builtIn(name) {
     let out = cache.get(name);
     if (!out) {
-      out = name in SCENES ? SCENES[name]() : [];
+      out = name in BUILT_IN ? BUILT_IN[name]() : [];
       cache.set(name, out);
     }
     return out;
   }
 
-  // src/strands.ts
+  // src/trajectories.ts
   var FILL = 0.93;
   var MARGIN = 40;
   var INK_ALPHA = 0.6;
@@ -128,45 +127,45 @@
   var isColor = (v) => isColorString(v) || Array.isArray(v) && v.length === 2 && v.every(isColorString);
   var TONES = ["orange", "violet", "text"];
   function parse(data) {
-    const records = isObject(data) ? data.families : void 0;
-    if (!Array.isArray(records)) throw new Error('it does not have a list "families"');
-    records.forEach((r, i) => {
+    const fileTrajectories = isObject(data) ? data.families : void 0;
+    if (!Array.isArray(fileTrajectories)) throw new Error('it does not have a list "families"');
+    fileTrajectories.forEach((r, i) => {
       if (!isObject(r) || !Array.isArray(r.points) || r.points.length < 2 || !r.points.every(isPair)) {
-        throw new Error(`its record ${i} does not have a list "points" of at least two [x, y] pairs`);
+        throw new Error(`its trajectory ${i} does not have a list "points" of at least two [x, y] pairs`);
       }
       for (const key of ["t", "theta"]) {
         const clock = r[key];
         if (clock !== void 0 && (!Array.isArray(clock) || clock.length !== r.points.length || !clock.every(Number.isFinite))) {
-          throw new Error(`the list "${key}" of its record ${i} does not have one number per point`);
+          throw new Error(`the list "${key}" of its trajectory ${i} does not have one number per point`);
         }
       }
       if (r.tone !== void 0 && !TONES.includes(r.tone)) {
-        throw new Error(`the "tone" of its record ${i} is not orange, violet, or text`);
+        throw new Error(`the "tone" of its trajectory ${i} is not orange, violet, or text`);
       }
       if (r.color !== void 0 && !isColor(r.color)) {
-        throw new Error(`the "color" of its record ${i} is not a CSS color or a pair of them for the dark and the light mode`);
+        throw new Error(`the "color" of its trajectory ${i} is not a CSS color or a pair of them for the dark and the light mode`);
       }
       if (r.alpha !== void 0 && !(typeof r.alpha === "number" && r.alpha > 0 && r.alpha <= 1)) {
-        throw new Error(`the "alpha" of its record ${i} is not a number above 0 and up to 1`);
+        throw new Error(`the "alpha" of its trajectory ${i} is not a number above 0 and up to 1`);
       }
       for (const key of ["weight", "head", "start", "fade"]) {
         const v = r[key];
         if (v !== void 0 && !(typeof v === "number" && Number.isFinite(v) && v >= 0)) {
-          throw new Error(`the "${key}" of its record ${i} is not a number of zero or more`);
+          throw new Error(`the "${key}" of its trajectory ${i} is not a number of zero or more`);
         }
       }
       if (r.glow !== void 0 && typeof r.glow !== "boolean") {
-        throw new Error(`the "glow" of its record ${i} is not true or false`);
+        throw new Error(`the "glow" of its trajectory ${i} is not true or false`);
       }
     });
     const bodies = isObject(data) && Array.isArray(data.bodies) ? data.bodies.filter(isObject) : [];
-    return { families: records, bodies };
+    return { families: fileTrajectories, bodies };
   }
   var TERM = /^\s*([^=<>\s]+)\s*(<=|>=|=|<|>)\s*(.*?)\s*$/;
-  function select(records, spec) {
-    if (!spec?.trim()) return records;
+  function select(fileTrajectories, spec) {
+    if (!spec?.trim()) return fileTrajectories;
     const groups = spec.split(";").map(group);
-    return records.filter((r) => groups.some((tests) => tests.every((test) => test(r))));
+    return fileTrajectories.filter((r) => groups.some((tests) => tests.every((test) => test(r))));
   }
   function group(spec) {
     return spec.split(",").map((term) => {
@@ -186,7 +185,7 @@
       };
     });
   }
-  function strandsOf(file, chosen, color, ramp2, shade, map) {
+  function trajectoriesOf(file, chosen, color, ramp2, shade, map) {
     if (map) shade = void 0;
     const along = shade ?? ramp2;
     const order = color ? [...new Set(file.families.map((r) => String(r[color])))] : [];
@@ -210,23 +209,23 @@
         if (i > 0 && !clock) length += Math.hypot(pts[2 * i] - pts[2 * i - 2], pts[2 * i + 1] - pts[2 * i - 1]);
         times[i] = (clock ? clock[i] - clock[0] : length) + (r.start ?? 0);
       }
-      const strand = { pts, times, T: times[n - 1] };
-      if (r.craft === true) strand.craft = true;
+      const trajectory = { pts, times, T: times[n - 1] };
+      if (r.craft === true) trajectory.craft = true;
       if (color || along || map) {
         const pair2 = pairOf(r), [lo, hi] = range.get(pair2) ?? [0, 0], v = along ? r[along] : void 0;
-        strand.ink = { pair: pair2, at: typeof v === "number" && hi > lo ? (v - lo) / (hi - lo) : 0 };
-        if (shade) strand.ink.shade = true;
-        if (map) strand.ink.map = map;
-        strand.alpha = map ? MAP_ALPHA : INK_ALPHA;
+        trajectory.ink = { pair: pair2, at: typeof v === "number" && hi > lo ? (v - lo) / (hi - lo) : 0 };
+        if (shade) trajectory.ink.shade = true;
+        if (map) trajectory.ink.map = map;
+        trajectory.alpha = map ? MAP_ALPHA : INK_ALPHA;
       }
-      if (r.tone) strand.tone = r.tone;
-      if (r.color !== void 0) strand.color = r.color;
-      if (r.alpha !== void 0) strand.alpha = r.alpha;
-      if (r.weight !== void 0) strand.weight = r.weight;
-      if (r.head !== void 0) strand.head = r.head;
-      if (r.fade !== void 0) strand.fade = r.fade;
-      if (r.glow) strand.glow = true;
-      return strand;
+      if (r.tone) trajectory.tone = r.tone;
+      if (r.color !== void 0) trajectory.color = r.color;
+      if (r.alpha !== void 0) trajectory.alpha = r.alpha;
+      if (r.weight !== void 0) trajectory.weight = r.weight;
+      if (r.head !== void 0) trajectory.head = r.head;
+      if (r.fade !== void 0) trajectory.fade = r.fade;
+      if (r.glow) trajectory.glow = true;
+      return trajectory;
     });
   }
   var SAME = 1e-4;
@@ -255,10 +254,10 @@
     }
     return first ? [...first.values()] : [];
   }
-  function fitView(strands, box3, slide) {
+  function fitView(trajectories, box3, slide) {
     const xs = [], ys = [], ws = [];
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const s of strands) {
+    for (const s of trajectories) {
       const p = s.pts, n = p.length / 2;
       let length = 0;
       for (let i = 1; i < n; i++) length += Math.hypot(p[2 * i] - p[2 * i - 2], p[2 * i + 1] - p[2 * i - 1]);
@@ -450,12 +449,12 @@
     const script2 = document.currentScript;
     if (script2 instanceof HTMLScriptElement && script2.src) given.set(script2.src, data);
   }
-  function read(url, path) {
+  function read(url, path2) {
     if (!/\.js$/i.test(new URL(url).pathname)) {
       if (location.protocol === "file:") {
         return Promise.reject(
           new Error(
-            `a JSON file cannot be read in a deck opened from the disk. Wrap it in Beeson.strands( and ); and name the .js file in data-strands`
+            `a JSON file cannot be read in a deck opened from the disk. Wrap it in Beeson.trajectories( and ); and name the .js file in data-trajectories`
           )
         );
       }
@@ -468,17 +467,17 @@
     return new Promise((done, fail2) => {
       const script2 = document.createElement("script");
       script2.src = url;
-      script2.onload = () => given.has(url) ? done(given.get(url)) : fail2(new Error(`${path} does not call Beeson.strands`));
+      script2.onload = () => given.has(url) ? done(given.get(url)) : fail2(new Error(`${path2} does not call Beeson.trajectories`));
       script2.onerror = () => fail2(new Error("it was not found"));
       document.head.append(script2);
     });
   }
-  function load(path) {
-    const url = new URL(path, document.baseURI).href;
+  function load(path2) {
+    const url = new URL(path2, document.baseURI).href;
     let out = files.get(url);
     if (!out) {
-      out = read(url, path).then(parse).catch((error) => {
-        console.warn(`beeson: the backdrop file ${path} is not drawn, since ${error.message}`);
+      out = read(url, path2).then(parse).catch((error) => {
+        console.warn(`beeson: the backdrop file ${path2} is not drawn, since ${error.message}`);
         return null;
       });
       files.set(url, out);
@@ -486,41 +485,41 @@
     return out;
   }
   function colormapFor(el) {
-    const spec = el.dataset.strandsColormap;
+    const spec = el.dataset.trajectoriesColormap;
     if (!spec?.trim()) return void 0;
     let map;
     try {
       map = colormapOf(spec);
     } catch (error) {
-      console.warn(`beeson: data-strands-colormap="${spec}" is not used, since ${error.message}. The strands are colored from the palette`);
+      console.warn(`beeson: data-trajectories-colormap="${spec}" is not used, since ${error.message}. The trajectories are colored from the palette`);
       return void 0;
     }
-    if (el.dataset.strandsShade)
-      console.warn(`beeson: data-strands-shade="${el.dataset.strandsShade}" is ignored, since data-strands-colormap is given`);
+    if (el.dataset.trajectoriesShade)
+      console.warn(`beeson: data-trajectories-shade="${el.dataset.trajectoriesShade}" is ignored, since data-trajectories-colormap is given`);
     return map;
   }
-  async function strandsFor(el) {
-    const path = el.dataset.strands ?? "";
-    const file = await load(path);
-    if (!file) return { strands: [], dots: [] };
+  async function trajectoriesFor(el) {
+    const path2 = el.dataset.trajectories ?? "";
+    const file = await load(path2);
+    if (!file) return { trajectories: [], dots: [] };
     try {
-      const chosen = select(file.families, el.dataset.strandsSelect);
+      const chosen = select(file.families, el.dataset.trajectoriesSelect);
       if (!chosen.length)
-        console.warn(`beeson: data-strands-select="${el.dataset.strandsSelect}" does not match a record of ${path}`);
+        console.warn(`beeson: data-trajectories-select="${el.dataset.trajectoriesSelect}" does not match a trajectory of ${path2}`);
       return {
-        strands: strandsOf(
+        trajectories: trajectoriesOf(
           file,
           chosen,
-          el.dataset.strandsColor || void 0,
-          el.dataset.strandsRamp || void 0,
-          el.dataset.strandsShade || void 0,
+          el.dataset.trajectoriesColor || void 0,
+          el.dataset.trajectoriesRamp || void 0,
+          el.dataset.trajectoriesShade || void 0,
           colormapFor(el)
         ),
         dots: bodiesOf(file, chosen)
       };
     } catch (error) {
-      console.warn(`beeson: the backdrop of ${path} is not drawn, since ${error.message}`);
-      return { strands: [], dots: [] };
+      console.warn(`beeson: the backdrop of ${path2} is not drawn, since ${error.message}`);
+      return { trajectories: [], dots: [] };
     }
   }
 
@@ -580,11 +579,11 @@
     for (let i = 0; i < 6; i++) s[i] += dt / 6 * (K1[i] + 2 * K2[i] + 2 * K3[i] + K4[i]);
     return dt;
   }
-  function toCrossing(s0, h, tmin, tmax, path, times, count = 1, axis2 = 1) {
+  function toCrossing(s0, h, tmin, tmax, path2, times, count = 1, axis2 = 1) {
     const s = Float64Array.from(s0);
     let t = 0;
     const record = () => {
-      if (path) path.push(s[0], s[1], s[2]);
+      if (path2) path2.push(s[0], s[1], s[2]);
       if (times) times.push(t);
     };
     record();
@@ -606,29 +605,29 @@
     }
     return { s, t, hit: false };
   }
-  function propagate(s0, h, tmax, path, times, stop, t0 = 0) {
+  function propagate(s0, h, tmax, path2, times, stop3, t0 = 0) {
     const s = Float64Array.from(s0);
     let t = 0;
-    path.push(s[0], s[1], s[2]);
+    path2.push(s[0], s[1], s[2]);
     times.push(t0);
     while (t < tmax) {
       t += step(s, h);
-      path.push(s[0], s[1], s[2]);
+      path2.push(s[0], s[1], s[2]);
       times.push(t0 + t);
-      if (stop && stop(s)) break;
+      if (stop3 && stop3(s)) break;
     }
     return s;
   }
   function correct(s0, free, target, h, tmin, tmax, iters, count = 1, axis2 = 1) {
     const s = Float64Array.from(s0);
-    let path = [], times = [];
+    let path2 = [], times = [];
     for (let it = 0; it < iters; it++) {
-      path = [];
+      path2 = [];
       times = [];
-      const base = toCrossing(s, h, tmin, tmax, path, times, count, axis2);
+      const base = toCrossing(s, h, tmin, tmax, path2, times, count, axis2);
       if (!base.hit) return null;
       const f = target.map((i) => base.s[i]);
-      if (f.every((v) => Math.abs(v) < 1e-6)) return { s, path, times, t: base.t };
+      if (f.every((v) => Math.abs(v) < 1e-6)) return { s, path: path2, times, t: base.t };
       const J = [];
       for (let j = 0; j < free.length; j++) {
         const d = 1e-6;
@@ -647,10 +646,10 @@
       if (!dx.every((v) => Math.abs(v) < 0.1)) return null;
       for (let j = 0; j < free.length; j++) s[free[j]] -= dx[j];
     }
-    path = [];
+    path2 = [];
     times = [];
-    const r = toCrossing(s, h, tmin, tmax, path, times, count, axis2);
-    return r.hit ? { s, path, times, t: r.t } : null;
+    const r = toCrossing(s, h, tmin, tmax, path2, times, count, axis2);
+    return r.hit ? { s, path: path2, times, t: r.t } : null;
   }
   function family(guess, p, values, free, target, h, tmin, tmax, skip, count = 1, axis2 = 1) {
     const out = [];
@@ -677,11 +676,6 @@
     for (let x = a; x < b; x *= factor) out.push(x);
     return out;
   }
-  function spaced(a, b, count, p) {
-    const out = [];
-    for (let i = 0; i < count; i++) out.push(a + (b - a) * Math.pow(i / (count - 1), p));
-    return out;
-  }
   function lagrange(n, mu = MU) {
     let x = n === 1 ? 1 - mu - Math.cbrt(mu / 3) : n === 2 ? 1 - mu + Math.cbrt(mu / 3) : -1 - 5 * mu / 12;
     for (let i = 0; i < 30; i++) {
@@ -692,7 +686,7 @@
     }
     return x;
   }
-  function lyapunovFamily(n, amplitudes, h, start2 = 3e-3) {
+  function lyapunovFamily(n, amplitudes, h, start4 = 3e-3) {
     const xL = lagrange(n);
     const d1 = Math.abs(xL + MU), d2 = Math.abs(xL - 1 + MU);
     const c2 = (1 - MU) / (d1 * d1 * d1) + MU / (d2 * d2 * d2);
@@ -704,25 +698,9 @@
       return s;
     };
     const sign = n === 1 ? -1 : 1;
-    const lead = ramp(start2, amplitudes[0], 1.2);
+    const lead = ramp(start4, amplitudes[0], 1.2);
     const values = lead.concat(amplitudes).map((A) => xL + sign * A);
     return family(guess, 0, values, [4], [3], h, () => 0.3, () => 6, lead.length);
-  }
-  function droFamily(distances, h) {
-    const guess = (x0) => {
-      const d = 1 - MU - x0;
-      const s = new Float64Array(6);
-      s[0] = x0;
-      s[4] = Math.sqrt(MU / d) + d;
-      return s;
-    };
-    const tmin = (x0) => {
-      const d = 1 - MU - x0;
-      return 0.4 * Math.PI / (Math.sqrt(MU / (d * d * d)) + 1);
-    };
-    const lead = ramp(0.02, distances[0], 1.12);
-    const values = lead.concat(distances).map((d) => 1 - MU - d);
-    return family(guess, 0, values, [4], [3], h, tmin, (x0) => 10 * tmin(x0), lead.length);
   }
   function closed(m) {
     const n = m.times.length, T = m.t, N = 2 * n - 1;
@@ -740,11 +718,11 @@
     }
     return { pts, times: tt, T: 2 * T };
   }
-  function open(path, times) {
+  function open(path2, times) {
     const n = times.length, pts = new Float64Array(2 * n);
     for (let i = 0; i < n; i++) {
-      pts[2 * i] = path[3 * i];
-      pts[2 * i + 1] = path[3 * i + 1];
+      pts[2 * i] = path2[3 * i];
+      pts[2 * i + 1] = path2[3 * i + 1];
     }
     return { pts, times: Float32Array.from(times), T: times[n - 1] };
   }
@@ -816,17 +794,17 @@
     for (let k = 0, m = 0; k < n; k++) if (mark[k]) keep[m++] = k;
     return { px, keep, ctl };
   }
-  function pointOn(path, j, f) {
-    const p = path.px, n = p.length / 2;
+  function pointOn(path2, j, f) {
+    const p = path2.px, n = p.length / 2;
     if (j >= n - 1) return [p[2 * n - 2], p[2 * n - 1]];
     const x1 = p[2 * j], y1 = p[2 * j + 1], x2 = p[2 * j + 2], y2 = p[2 * j + 3];
-    if (!curved(path.ctl, j)) return [x1 + f * (x2 - x1), y1 + f * (y2 - y1)];
-    const c = path.ctl, k = 4 * j, g = 1 - f;
+    if (!curved(path2.ctl, j)) return [x1 + f * (x2 - x1), y1 + f * (y2 - y1)];
+    const c = path2.ctl, k = 4 * j, g = 1 - f;
     const w0 = g * g * g, w1 = 3 * g * g * f, w2 = 3 * g * f * f, w3 = f * f * f;
     return [w0 * x1 + w1 * c[k] + w2 * c[k + 2] + w3 * x2, w0 * y1 + w1 * c[k + 1] + w2 * c[k + 3] + w3 * y2];
   }
-  function trace(pen, path, j, f, from = 0) {
-    const { px: p, keep, ctl } = path, n = p.length / 2;
+  function trace(pen, path2, j, f, from = 0) {
+    const { px: p, keep, ctl } = path2, n = p.length / 2;
     pen.moveTo(p[2 * from], p[2 * from + 1]);
     let last = from, lo = 0, hi = keep.length;
     while (lo < hi) {
@@ -845,10 +823,10 @@
       const x1 = p[2 * j], y1 = p[2 * j + 1], k = 4 * j;
       const ax = x1 + f * (ctl[k] - x1), ay = y1 + f * (ctl[k + 1] - y1);
       const mx = ctl[k] + f * (ctl[k + 2] - ctl[k]), my = ctl[k + 1] + f * (ctl[k + 3] - ctl[k + 1]);
-      const [ex, ey] = pointOn(path, j, f);
+      const [ex, ey] = pointOn(path2, j, f);
       pen.bezierCurveTo(ax, ay, ax + f * (mx - ax), ay + f * (my - ay), ex, ey);
     } else {
-      const [x, y] = pointOn(path, j, f);
+      const [x, y] = pointOn(path2, j, f);
       pen.lineTo(x, y);
     }
   }
@@ -876,26 +854,28 @@
       this.pointer = null;
       // the box and the slide for which the window was last fitted, in slide pixels
       this.fittedFor = "";
-      // true when start() was called before the strands of a file were loaded
+      // true when start() was called before the trajectories of a file were loaded
       this.pending = false;
-      // the colors of the strands with an ink, resolved in redraw() for the current mode
+      // the colors of the trajectories with an ink, resolved in redraw() for the current mode
       this.inks = [];
       // copies of the canvases and of the trail, traced in the colors of the old mode during a flip, or
       // null
       this.ghosted = null;
-      // during a trace, the strands before the index cached are drawn on the trail a piece per frame, and
+      // during a trace, the trajectories before the index cached are drawn on the trail a piece per frame, and
       // the others are stroked whole at every frame, see order()
       this.cached = 0;
-      // the point of each strand before cached up to which it is drawn on the trail, a point of its path
+      // the point of each trajectory before cached up to which it is drawn on the trail, a point of its path
       this.upTo = [];
-      // the first points of the bands of the fade of each strand, from bandsOf()
+      // the first points of the bands of the fade of each trajectory, from bandsOf()
       this.bands = [];
-      // a canvas outside the page with the bodies and the strands before cached up to upTo, copied onto
+      // a canvas outside the page with the bodies and the trajectories before cached up to upTo, copied onto
       // the base canvas at every frame of a trace, or null outside a trace
       this.trail = null;
+      // the trajectories of the file once it is loaded, which the editor reads to tell two selections apart
+      this.fileTrajectories = null;
       this.el = el;
-      const file = el.dataset.strands !== void 0;
-      this.strands = file ? [] : scene(el.dataset.scene ?? "");
+      const file = el.dataset.trajectories !== void 0;
+      this.trajectories = file ? [] : builtIn(el.dataset.backdrop ?? "");
       this.dots = file ? [] : null;
       this.loaded = !file;
       this.fitted = file && el.dataset.half === void 0;
@@ -916,13 +896,16 @@
       for (const c of [this.base, this.head]) c.setAttribute("aria-hidden", "true");
       el.prepend(this.head);
       el.prepend(this.base);
-      this.labels = [...el.querySelectorAll(".lab")];
-      this.Tmax = Math.max(...this.strands.map((s) => s.T));
-      this.idx = this.strands.map(() => 0);
+      this.labels = [...el.querySelectorAll(".label")];
+      this.Tmax = Math.max(...this.trajectories.map((s) => s.T));
+      this.idx = this.trajectories.map(() => 0);
       this.order();
       CACHE.set(el, this);
       this.fit();
-      this.ready = file ? strandsFor(el).then(({ strands, dots }) => this.install(strands, dots)) : Promise.resolve();
+      this.ready = file ? Promise.all([trajectoriesFor(el), load(el.dataset.trajectories ?? "")]).then(([{ trajectories, dots }, f]) => {
+        this.fileTrajectories = f?.families ?? null;
+        this.install(trajectories, dots);
+      }) : Promise.resolve();
     }
     static of(el) {
       return CACHE.get(el);
@@ -932,11 +915,11 @@
       const q = location.search;
       return matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.hasAttribute("data-still") || /[?&]still\b/.test(q) || /print-pdf/.test(q);
     }
-    install(strands, dots) {
-      this.strands = strands;
+    install(trajectories, dots) {
+      this.trajectories = trajectories;
       this.dots = dots;
-      this.Tmax = Math.max(...strands.map((s) => s.T));
-      this.idx = strands.map(() => 0);
+      this.Tmax = Math.max(...trajectories.map((s) => s.T));
+      this.idx = trajectories.map(() => 0);
       this.order();
       this.loaded = true;
       this.fittedFor = "";
@@ -947,27 +930,27 @@
         this.start();
       }
     }
-    // sets cached, the number of strands at the start of the order of the strands that are drawn in
-    // pieces during a trace. a strand is drawn in pieces where the seams of the pieces are too faint to
+    // sets cached, the number of trajectories at the start of the order of the trajectories that are drawn in
+    // pieces during a trace. a trajectory is drawn in pieces where the seams of the pieces are too faint to
     // be seen, i.e. it is a hairline without a glow at an opacity of 0.5 or less, and where the pieces
-    // keep the order of the strands, i.e. every earlier strand of another color is traced before it
+    // keep the order of the trajectories, i.e. every earlier trajectory of another color is traced before it
     // begins. two strokes of one color give the same pixels in either order
     order() {
       const ends = /* @__PURE__ */ new Map();
       const seconds2 = (i, t) => t / this.Tmax * this.duration + i * this.stagger;
       let k = 0;
-      for (; k < this.strands.length; k++) {
-        const s = this.strands[k], color = colorOf(s), begin = seconds2(k, s.times[0]);
+      for (; k < this.trajectories.length; k++) {
+        const s = this.trajectories[k], color = colorOf(s), begin = seconds2(k, s.times[0]);
         if (s.glow || alphaOf(s) > 0.5 || widthOf(s) > 1) break;
         if ([...ends].some(([other, end]) => other !== color && end > begin)) break;
         ends.set(color, Math.max(ends.get(color) ?? -Infinity, seconds2(k, s.times[s.times.length - 1])));
       }
       this.cached = k;
-      this.upTo = this.strands.map(() => 0);
-      this.bands = this.strands.map(bandsOf);
+      this.upTo = this.trajectories.map(() => 0);
+      this.bands = this.trajectories.map(bandsOf);
       this.trail = null;
     }
-    // the last point of the path of strand i at or before its point j
+    // the last point of the path of trajectory i at or before its point j
     lastKept(i, j) {
       const keep = this.paths[i].keep;
       let lo = 0, hi = keep.length - 1;
@@ -978,7 +961,7 @@
       }
       return keep[lo];
     }
-    // the window in the units of the strands: its center and its half height
+    // the window in the units of the trajectories: its center and its half height
     get view() {
       return { cx: this.cx, cy: this.cy, half: this.half };
     }
@@ -1027,11 +1010,11 @@
       const cs = getComputedStyle(this.el);
       return { stroke: cs.getPropertyValue("--stroke").trim(), body: cs.getPropertyValue("--body").trim(), accent: cs.getPropertyValue("--accent").trim(), violet: cs.getPropertyValue("--violet").trim(), text: cs.getPropertyValue("--text").trim(), light: this.el.ownerDocument.documentElement.dataset.theme === "light" };
     }
-    // the colors of the strands with an ink in the current mode. a color of the palette is serialized
-    // by the canvas as #rrggbb or rgba(), which mix() reads, and a strand is given the stroke color
+    // the colors of the trajectories with an ink in the current mode. a color of the palette is serialized
+    // by the canvas as #rrggbb or rgba(), which mix() reads, and a trajectory is given the stroke color
     // when its colors are missing or of another form
     paint(ctx, c) {
-      if (!this.strands.some((s) => s.ink)) {
+      if (!this.trajectories.some((s) => s.ink)) {
         this.inks = [];
         return;
       }
@@ -1043,9 +1026,9 @@
         ctx.fillStyle = value;
         return String(ctx.fillStyle);
       };
-      const palette = Array.from({ length: PALETTE }, (_, i) => color(`--strand-${i + 1}`));
+      const palette = Array.from({ length: PALETTE }, (_, i) => color(`--trajectory-${i + 1}`));
       const bg = color("--bg") || void 0;
-      this.inks = this.strands.map((s) => {
+      this.inks = this.trajectories.map((s) => {
         if (!s.ink) return "";
         if (s.ink.map) return colormapColor(s.ink.map, s.ink.at, bg);
         const k = 2 * s.ink.pair % PALETTE;
@@ -1063,13 +1046,13 @@
       const w = this.el.offsetWidth, h = this.el.offsetHeight;
       if (r.width === 0 || r.height === 0 || w === 0 || h === 0) return;
       this.unghost();
-      if (this.fitted && this.strands.length) {
+      if (this.fitted && this.trajectories.length) {
         const section = this.el.closest("section");
         const box3 = { left: this.el.offsetLeft, top: this.el.offsetTop, width: w, height: h };
         const slide = { width: section?.offsetWidth || w, height: section?.offsetHeight || h };
         const key2 = [box3.left, box3.top, w, h, slide.width, slide.height].join();
         if (key2 !== this.fittedFor) {
-          const view = fitView(this.strands, box3, slide);
+          const view = fitView(this.trajectories, box3, slide);
           if (view) ({ cx: this.cx, cy: this.cy, half: this.half } = view);
           this.fittedFor = key2;
         }
@@ -1084,7 +1067,7 @@
       this.lw = Math.max(1, 0.7 * dpr * (r.height / h));
       const key = [this.W, this.H, this.cx, this.cy, this.half].join();
       if (key !== this.pathsFor) {
-        this.paths = this.strands.map((s) => {
+        this.paths = this.trajectories.map((s) => {
           const n = s.times.length, out = new Float32Array(2 * n);
           for (let i = 0; i < n; i++) {
             out[2 * i] = this.X(s.pts[2 * i]);
@@ -1136,10 +1119,10 @@
         ctx.fill();
       }
     }
-    // the color, opacity, width, and glow of strand i: those of its tone, then its own ink, alpha,
+    // the color, opacity, width, and glow of trajectory i: those of its tone, then its own ink, alpha,
     // weight, and glow where it has them
     pen(ctx, c, i, inks = this.inks) {
-      const s = this.strands[i], tone = s.tone;
+      const s = this.trajectories[i], tone = s.tone;
       ctx.strokeStyle = s.color ? typeof s.color === "string" ? s.color : s.color[c.light ? 1 : 0] : s.ink ? inks[i] : tone === "orange" || tone === "hero" ? c.accent : tone === "violet" ? c.violet : tone === "text" || tone === "line" ? c.text : c.stroke;
       ctx.globalAlpha = alphaOf(s);
       ctx.lineWidth = widthOf(s) * this.lw;
@@ -1147,17 +1130,17 @@
       ctx.shadowBlur = s.glow ? 6 * this.lw : 0;
       if (s.glow) ctx.shadowColor = ctx.strokeStyle;
     }
-    // strokes strand i from its point from, its first by default, up to the fraction f of its segment
-    // from point j to j + 1. up to its fade, the strand is stroked in one path, since two strokes of one
-    // strand at an opacity below 1 overlap or leave a gap at their joint. beyond its fade, it is stroked
+    // strokes trajectory i from its point from, its first by default, up to the fraction f of its segment
+    // from point j to j + 1. up to its fade, the trajectory is stroked in one path, since two strokes of one
+    // trajectory at an opacity below 1 overlap or leave a gap at their joint. beyond its fade, it is stroked
     // in bands of equal time, which begin and end at its points, at an opacity that falls to zero at its
     // last point. a stroke from a later point draws the pixels of the same bands beyond this point
     stroke(ctx, i, j, f, from = 0) {
-      const path = this.paths[i], ends = this.bands[i];
+      const path2 = this.paths[i], ends = this.bands[i];
       const part = (a2, b, g) => {
         if (b < from || b === from && !(g > 0)) return;
         ctx.beginPath();
-        trace(ctx, path, b, g, Math.max(a2, from));
+        trace(ctx, path2, b, g, Math.max(a2, from));
         ctx.stroke();
       };
       let a = ends ? Math.min(ends[0], j) : j;
@@ -1174,20 +1157,20 @@
       }
       ctx.globalAlpha = base;
     }
-    // the last point drawn of strand i
+    // the last point drawn of trajectory i
     drawn(i) {
-      return this.done ? this.strands[i].times.length - 1 : this.idx[i];
+      return this.done ? this.trajectories[i].times.length - 1 : this.idx[i];
     }
     // true between the start and the end of a trace that is not a loop
     get midTrace() {
       return !this.loop && this.t0 !== null && !this.finished;
     }
-    // the fraction of the segment of strand i from point j to j + 1 reached at the flight time tau
+    // the fraction of the segment of trajectory i from point j to j + 1 reached at the flight time tau
     fraction(i, j, tau) {
-      const t = this.strands[i].times, dt = t[j + 1] - t[j];
+      const t = this.trajectories[i].times, dt = t[j + 1] - t[j];
       return dt > 0 ? Math.min(1, Math.max(0, (tau - t[j]) / dt)) : 1;
     }
-    // draws the bodies and the strands on the base canvas for the current mode
+    // draws the bodies and the trajectories on the base canvas for the current mode
     redraw() {
       if (!this.W) return;
       const ctx = this.base.getContext("2d");
@@ -1198,10 +1181,10 @@
       this.draw(ctx, c, now, this.inks, this.midTrace ? this.trailOf(c) : null);
       this.paintHead(now, c);
     }
-    // draws the bodies and every strand, a finished strand whole and a strand in its trace up to its
-    // head at the time now. the strands are stroked in the order of their file or scene at every
+    // draws the bodies and every trajectory, a finished trajectory whole and a trajectory in its trace up to its
+    // head at the time now. the trajectories are stroked in the order of their file or built-in backdrop at every
     // frame, the order of the still, hence the last frame of a trace is its still apart from the heads.
-    // with a trail, the trail is copied in place of the bodies, and each strand before cached is
+    // with a trail, the trail is copied in place of the bodies, and each trajectory before cached is
     // stroked from its point of upTo on
     draw(ctx, c, now, inks = this.inks, trail = null) {
       ctx.globalAlpha = 1;
@@ -1210,7 +1193,7 @@
       if (trail) ctx.drawImage(trail, 0, 0);
       else this.bodies(ctx, c);
       const tracing = this.midTrace;
-      this.strands.forEach((s, i) => {
+      this.trajectories.forEach((s, i) => {
         const n = s.times.length, j = this.drawn(i), from = trail && i < this.cached ? this.upTo[i] : 0;
         if (from > 0 && from >= n - 1) return;
         if (j < n - 1) {
@@ -1226,8 +1209,8 @@
       ctx.globalAlpha = 1;
       ctx.shadowBlur = 0;
     }
-    // the trail of the trace, laid with the bodies and the strands before cached up to upTo when it
-    // is missing, or null without a strand before cached
+    // the trail of the trace, laid with the bodies and the trajectories before cached up to upTo when it
+    // is missing, or null without a trajectory before cached
     trailOf(c) {
       if (!this.cached) return null;
       if (!this.trail) {
@@ -1246,7 +1229,7 @@
       }
       return this.trail;
     }
-    // draws on the trails the pieces of the strands before cached that their heads have passed since
+    // draws on the trails the pieces of the trajectories before cached that their heads have passed since
     // the last frame, i.e. from the point of upTo to the last point of the path passed, and moves upTo
     // there. a piece ends at a point of the path, since a stroke to a point left out of the path ends
     // at the point of the path before it
@@ -1275,12 +1258,14 @@
       this.pending = false;
       this.t0 = null;
       this.finished = false;
-      this.idx = this.strands.map(() => 0);
-      this.upTo = this.strands.map(() => 0);
+      this.idx = this.trajectories.map(() => 0);
+      this.upTo = this.trajectories.map(() => 0);
       this.redraw();
     }
-    start() {
-      if (_Orbits.reduced()) {
+    // with force, the backdrop is traced in a still deck too, e.g. in the print view for a recording of
+    // scripts/record.mjs
+    start(force = false) {
+      if (!force && _Orbits.reduced()) {
         this.complete();
         return;
       }
@@ -1314,7 +1299,7 @@
       this.head.remove();
       CACHE.delete(this.el);
     }
-    // tints the drawn strands within r slide pixels of the client point in the accent color, or
+    // tints the drawn trajectories within r slide pixels of the client point in the accent color, or
     // clears the tint when clientX is null
     glow(clientX, clientY = 0, r = 20) {
       if (clientX === null || !this.W) this.pointer = null;
@@ -1342,55 +1327,71 @@
       else if (this.raf && this.t0 !== null && !this.finished) this.heads(ctx, c, now);
       if (this.pointer) this.glowing(ctx, c);
     }
+    // the head of the first trajectory of a built-in backdrop, or of each trajectory of a file, which has no trajectories and no
+    // paths before it is loaded
     loopHead(ctx, c, now) {
-      const s = this.strands[0], p = this.paths[0].px, n = s.times.length;
-      const tau = this.raf && this.t0 !== null ? (now - this.t0) / 1e3 % LOOP / LOOP * s.T : this.finished ? 0.37 * s.T : 0;
-      let j = 0;
-      while (j < n - 1 && s.times[j + 1] <= tau) j++;
-      const back = 0.1 * s.T;
-      ctx.lineWidth = this.lw * 1.4;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = c.accent;
-      for (let k = j; k > 0 && s.times[k] > tau - back; k--) {
-        const a = 1 - (tau - s.times[k]) / back;
-        ctx.globalAlpha = 0.85 * a * a;
+      const count = this.dots === null ? Math.min(1, this.trajectories.length) : this.trajectories.length;
+      for (let i = 0; i < count && this.paths[i]; i++) {
+        const s = this.trajectories[i], p = this.paths[i].px, n = s.times.length;
+        const tau = this.raf && this.t0 !== null ? (now - this.t0) / 1e3 % LOOP / LOOP * s.T : this.finished ? 0.37 * s.T : 0;
+        let j = 0;
+        while (j < n - 1 && s.times[j + 1] <= tau) j++;
+        const back = 0.1 * s.T;
+        ctx.lineWidth = this.lw * 1.4;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = c.accent;
+        for (let k = j; k > 0 && s.times[k] > tau - back; k--) {
+          const a = 1 - (tau - s.times[k]) / back;
+          ctx.globalAlpha = 0.85 * a * a;
+          ctx.beginPath();
+          ctx.moveTo(p[2 * (k - 1)], p[2 * (k - 1) + 1]);
+          ctx.lineTo(p[2 * k], p[2 * k + 1]);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        const [X, Y] = this.at(i, j, tau);
+        ctx.fillStyle = c.accent;
         ctx.beginPath();
-        ctx.moveTo(p[2 * (k - 1)], p[2 * (k - 1) + 1]);
-        ctx.lineTo(p[2 * k], p[2 * k + 1]);
-        ctx.stroke();
+        ctx.arc(X, Y, 3 * this.lw, 0, 2 * Math.PI);
+        ctx.fill();
       }
-      ctx.globalAlpha = 1;
-      const [X, Y] = this.at(0, j, tau);
-      ctx.fillStyle = c.accent;
-      ctx.beginPath();
-      ctx.arc(X, Y, 3 * this.lw, 0, 2 * Math.PI);
-      ctx.fill();
     }
-    // the flight time reached by strand i at the time now, which is negative before its start
+    // the flight time reached by trajectory i at the time now, which is negative before its start
     clock(i, now) {
       return ((now - (this.t0 ?? now)) / 1e3 - i * this.stagger) / this.duration * this.Tmax;
     }
-    // the radius of the head of strand i in line widths: the one of its record, or the one of the
-    // backdrop on the path of a spacecraft, or on every strand with data-heads set
+    // the radius of the head of trajectory i in line widths: the one given in its file, or the one of the
+    // backdrop on the path of a spacecraft, or on every trajectory with data-heads set
     headOf(i) {
-      const s = this.strands[i];
+      const s = this.trajectories[i];
       return s.head ?? (this.everyHead || s.craft ? this.headSize : 0);
     }
-    // true when a head is drawn on at least one strand during a trace
+    // true when a head is drawn on at least one trajectory during a trace
     get headed() {
-      return this.strands.some((_, i) => this.headOf(i) > 0);
+      return this.trajectories.some((_, i) => this.headOf(i) > 0);
     }
-    // the seconds into the trace at which its first head is drawn, e.g. at the start of a record of a file
+    // the seconds into the trace at which its last trajectory is traced to its end, with trajectory i started
+    // i times the stagger late
+    get span() {
+      if (!(this.Tmax > 0)) return this.duration;
+      return Math.max(...this.trajectories.map((s, i) => s.times[s.times.length - 1] / this.Tmax * this.duration + i * this.stagger));
+    }
+    // the seconds after which the frames of a loop repeat, i.e. one revolution of its heads, or 0 for a
+    // backdrop that is not a loop
+    get period() {
+      return this.loop ? LOOP : 0;
+    }
+    // the seconds into the trace at which its first head is drawn, e.g. at the start of a trajectory of a file
     get headAfter() {
       if (!(this.Tmax > 0)) return 0;
-      const first = Math.min(...this.strands.map((s, i) => this.headOf(i) > 0 ? s.times[0] / this.Tmax * this.duration + i * this.stagger : Infinity));
+      const first = Math.min(...this.trajectories.map((s, i) => this.headOf(i) > 0 ? s.times[0] / this.Tmax * this.duration + i * this.stagger : Infinity));
       return Number.isFinite(first) ? first : 0;
     }
     heads(ctx, c, now) {
       if (!this.headed) return;
       ctx.fillStyle = c.accent;
-      this.strands.forEach((s, i) => {
+      this.trajectories.forEach((s, i) => {
         const j = this.idx[i], tau = this.clock(i, now), size = this.headOf(i);
         if (!size || j >= s.times.length - 1 || tau < s.times[0]) return;
         const [X, Y] = this.at(i, j, tau);
@@ -1399,9 +1400,9 @@
         ctx.fill();
       });
     }
-    // tints the drawn strands within the radius of the pointer. a segment of a strand is stroked when its
+    // tints the drawn trajectories within the radius of the pointer. a segment of a trajectory is stroked when its
     // box, with its control points where it is curved, meets the box of the disc, and the stroke is
-    // clipped to the disc, since the points of a strand may lie far apart on either side of it
+    // clipped to the disc, since the points of a trajectory may lie far apart on either side of it
     glowing(ctx, c) {
       const g = this.pointer;
       if (!g) return;
@@ -1416,7 +1417,7 @@
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
       ctx.beginPath();
-      this.strands.forEach((_, i) => {
+      this.trajectories.forEach((_, i) => {
         const { px: p, ctl } = this.paths[i], last = this.drawn(i);
         let pen = false;
         for (let j = 1; j <= last; j++) {
@@ -1442,9 +1443,9 @@
       ctx.stroke();
       ctx.restore();
     }
-    // the point of strand i at the flight time tau, on its segment from point j to j + 1
+    // the point of trajectory i at the flight time tau, on its segment from point j to j + 1
     at(i, j, tau) {
-      return pointOn(this.paths[i], j, j < this.strands[i].times.length - 1 ? this.fraction(i, j, tau) : 0);
+      return pointOn(this.paths[i], j, j < this.trajectories[i].times.length - 1 ? this.fraction(i, j, tau) : 0);
     }
     frame(now) {
       if (this.loop || !this.W) {
@@ -1454,7 +1455,7 @@
       const ctx = this.base.getContext("2d");
       if (!ctx) return;
       let flying = 0;
-      this.strands.forEach((s, i) => {
+      this.trajectories.forEach((s, i) => {
         const n = s.times.length, tau = this.clock(i, now);
         let j = this.idx[i];
         while (j < n - 1 && s.times[j + 1] <= tau) j++;
@@ -1478,32 +1479,254 @@
 
   // src/chrome.ts
   var OWN = ["title", "section", "closing"];
-  var heading = (slide) => slide.dataset.run ?? (slide.querySelector("h2") ?? slide.querySelector("h1"))?.textContent?.trim() ?? "";
+  function sourceText(el) {
+    const items = window.MathJax?.startup?.document?.getMathItemsWithin([el]) ?? [];
+    if (!items.length) return el.textContent ?? "";
+    const tex = new Map(items.filter((i) => i.typesetRoot).map((i) => [i.typesetRoot, `${i.start.delim ?? ""}${i.math}${i.end.delim ?? ""}`]));
+    const copy = el.cloneNode(true);
+    const roots = [...el.querySelectorAll("mjx-container")];
+    [...copy.querySelectorAll("mjx-container")].forEach((m, k) => m.replaceWith(tex.get(roots[k]) ?? m.textContent ?? ""));
+    return copy.textContent ?? "";
+  }
+  var heading = (slide) => {
+    if (slide.dataset.run !== void 0) return slide.dataset.run;
+    const h = slide.querySelector("h2") ?? slide.querySelector("h1");
+    return h ? sourceText(h).trim() : "";
+  };
   var APPENDIX = "Appendix slides";
-  function initChrome() {
-    const slides = [...document.querySelectorAll(".reveal .slides section:not(:has(> section))")];
-    const sections = slides.filter((s) => s.classList.contains("section"));
+  var made = /* @__PURE__ */ new WeakMap();
+  function typeset(nodes) {
+    const mj = window.MathJax;
+    if (!nodes.length || !mj?.typesetPromise) return;
+    void Promise.resolve(mj.startup?.promise).then(() => mj.typesetPromise(nodes.filter((n) => n.isConnected)));
+  }
+  function untypeset(nodes) {
+    if (nodes.length) window.MathJax?.typesetClear?.(nodes);
+  }
+  function fill() {
+    const slides2 = [...document.querySelectorAll(".reveal .slides section:not(:has(> section))")];
+    const sections = slides2.filter((s) => s.classList.contains("section"));
+    const fresh = [];
+    const gone = [];
     let text = "";
-    for (const slide of slides) {
+    for (const slide of slides2) {
       if (slide.classList.contains("section")) text = heading(slide);
       if (slide.classList.contains("closing")) text = APPENDIX;
-      if (OWN.some((c) => slide.classList.contains(c)) || slide.querySelector(".run") || !text) continue;
+      const old = slide.querySelector(":scope > div.run[data-generated]");
+      const wanted = !OWN.some((c) => slide.classList.contains(c)) && !slide.querySelector(".run:not([data-generated])") && !!text;
+      if (old && wanted && made.get(old) === text) {
+        if (old.nextElementSibling) slide.append(old);
+        continue;
+      }
+      if (old) {
+        gone.push(old);
+        old.remove();
+      }
+      if (!wanted) continue;
       const run = document.createElement("div");
       run.className = "run";
+      run.dataset.generated = "";
       run.textContent = text;
+      made.set(run, text);
       slide.append(run);
+      fresh.push(run);
     }
     for (const list2 of document.querySelectorAll(".reveal ul.outline[data-auto]")) {
       const home = list2.closest("section");
-      list2.replaceChildren(
-        ...sections.map((s) => {
-          const li = document.createElement("li");
-          li.textContent = heading(s);
-          if (s === home) li.className = "now";
-          return li;
-        })
-      );
+      const names = sections.map(heading);
+      const items = [...list2.children];
+      const same = items.length === names.length && items.every((li, k) => made.get(li) === names[k]);
+      if (same) {
+        items.forEach((li, k) => li.classList.toggle("now", sections[k] === home));
+        continue;
+      }
+      gone.push(...items);
+      const lis = sections.map((s, k) => {
+        const li = document.createElement("li");
+        li.textContent = names[k];
+        made.set(li, names[k]);
+        if (s === home) li.className = "now";
+        return li;
+      });
+      list2.replaceChildren(...lis);
+      fresh.push(...lis);
     }
+    untypeset(gone);
+    typeset(fresh);
+  }
+  function initChrome() {
+    fill();
+  }
+  function refreshChrome() {
+    fill();
+  }
+
+  // src/accents.ts
+  var BASE = String.raw`(?:\{\s*(\\[ij]|[A-Za-z])\s*\}|(\\[ij](?![A-Za-z])|[A-Za-z]))`;
+  var SYMBOL_ACCENT = new RegExp(String.raw`\\([\`'^~"=.])\s*${BASE}`, "g");
+  var LETTER_ACCENT = new RegExp(String.raw`\\([uvHckrdb])(?:\s*\{\s*(\\[ij]|[A-Za-z])\s*\}|\s+(\\[ij](?![A-Za-z])|[A-Za-z]))`, "g");
+
+  // src/reference.ts
+  function referenceParts(reference) {
+    const italic = reference.venue ?? (reference.authors ? "" : reference.title ?? "");
+    const before = reference.authors ? italic ? `${reference.authors}, ` : reference.authors : "";
+    const after = (reference.venue && reference.volume ? ` ${reference.volume}` : "") + (reference.year ? ` (${reference.year})` : "");
+    return [before, italic, after];
+  }
+  var referenceLink = (reference) => reference.doi ? `https://doi.org/${reference.doi}` : reference.url ?? "";
+
+  // src/citations.ts
+  function citedOf(citations, known) {
+    const keys = [];
+    const labels2 = [];
+    const missing = [];
+    for (const cited2 of citations) {
+      const numbers = /* @__PURE__ */ new Set();
+      const lost = /* @__PURE__ */ new Set();
+      for (const key of cited2) {
+        if (!known(key)) {
+          lost.add(key);
+          continue;
+        }
+        if (!keys.includes(key)) keys.push(key);
+        numbers.add(keys.indexOf(key) + 1);
+      }
+      labels2.push([...[...numbers].sort((a, b) => a - b), ...lost].join(","));
+      missing.push(lost.size > 0);
+    }
+    return { labels: labels2, missing, keys };
+  }
+  var keysOf = (cite) => (cite.dataset.key ?? "").split(",").map((key) => key.trim()).filter(Boolean);
+  var citesOf = (slide) => [...slide.querySelectorAll("cite[data-key]")].filter((cite) => !cite.closest("aside.notes"));
+  var refsOf = (slide) => slide.querySelector(":scope > div.refs[data-generated]");
+  var slides = () => [...document.querySelectorAll(".reveal .slides section:not(:has(> section))")];
+  var cited = () => [...document.querySelectorAll(".reveal .slides section > div.refs[data-generated]")].map((refs) => refs.parentElement);
+  var made2 = /* @__PURE__ */ new WeakMap();
+  function referenceEl(number, key, reference) {
+    const ref = document.createElement("span");
+    ref.className = "ref";
+    ref.dataset.key = key;
+    const sup = document.createElement("sup");
+    sup.textContent = String(number);
+    ref.append(sup);
+    const [before, italic, after] = referenceParts(reference);
+    const venue = document.createElement("em");
+    venue.textContent = italic;
+    const link = referenceLink(reference);
+    let words3 = ref;
+    if (link) {
+      const a = document.createElement("a");
+      a.href = link;
+      a.target = "_blank";
+      a.rel = "noopener";
+      ref.append(a);
+      words3 = a;
+    }
+    words3.append(before, ...italic ? [venue] : [], after);
+    return ref;
+  }
+  function mount2(slide, references) {
+    const cites = citesOf(slide);
+    const { labels: labels2, missing, keys } = citedOf(cites.map(keysOf), (key) => Object.hasOwn(references, key));
+    cites.forEach((cite, k) => {
+      if (cite.dataset.n !== labels2[k]) cite.dataset.n = labels2[k];
+      cite.toggleAttribute("data-missing", missing[k]);
+    });
+    let refs = refsOf(slide);
+    if (!keys.length) {
+      refs?.remove();
+      slide.style.removeProperty("--refs");
+      return;
+    }
+    const text = JSON.stringify(keys.map((key) => [key, references[key]]));
+    if (!refs) {
+      refs = document.createElement("div");
+      refs.className = "refs";
+      refs.dataset.generated = "";
+      slide.append(refs);
+    }
+    if (made2.get(refs) !== text) {
+      refs.replaceChildren(...keys.map((key, k) => referenceEl(k + 1, key, references[key])));
+      made2.set(refs, text);
+    }
+  }
+  function sync(slides2) {
+    const listed = slides2.flatMap((slide) => {
+      const refs = refsOf(slide);
+      return refs ? [{ slide, refs }] : [];
+    });
+    const shown = listed.map(({ slide }) => new Set(citesOf(slide).filter((cite) => getComputedStyle(cite).visibility !== "hidden").flatMap(keysOf)));
+    listed.forEach(({ refs }, i) => {
+      for (const ref of refs.children) ref.classList.toggle("off", !shown[i].has(ref.dataset.key ?? ""));
+    });
+    const heights = listed.map(({ refs }) => refs.offsetHeight);
+    listed.forEach(({ slide }, i) => {
+      const height = `${heights[i]}px`;
+      if (heights[i] && slide.style.getPropertyValue("--refs") !== height) slide.style.setProperty("--refs", height);
+    });
+  }
+  function mountCitations() {
+    const references = window.beesonTex?.references ?? {};
+    for (const slide of slides()) mount2(slide, references);
+    sync(slides());
+  }
+  function syncCitations(slide) {
+    sync(slide ? [slide] : cited());
+  }
+
+  // src/click.ts
+  var OWN2 = [
+    "a[href]",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "label",
+    "summary",
+    "iframe",
+    "video",
+    "audio",
+    '[contenteditable]:not([contenteditable="false"])',
+    ".plot",
+    ".surface",
+    "tycho-viewer",
+    ".qr",
+    ".run",
+    ".foot",
+    ".slide-number",
+    ".progress",
+    ".scrub",
+    ".theme-switch",
+    ".r-overlay"
+  ].join(", ");
+  var SLOP = 4;
+  var selected = () => String(window.getSelection() ?? "");
+  function initClick(deck, cue, end) {
+    const root2 = deck.getRevealElement();
+    let down = null;
+    document.addEventListener("pointerdown", (ev) => {
+      down = ev.isPrimary && ev.button === 0 ? { x: ev.clientX, y: ev.clientY, text: selected() } : null;
+    }, true);
+    document.addEventListener("click", (ev) => {
+      const from = down;
+      down = null;
+      if (!from || ev.button !== 0 || ev.defaultPrevented || ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) return;
+      if (Math.hypot(ev.clientX - from.x, ev.clientY - from.y) > SLOP) return;
+      const text = selected();
+      if (text && text !== from.text) return;
+      const target = ev.target instanceof Element ? ev.target : null;
+      if (!target || !root2.contains(target)) return;
+      const own = target.closest(OWN2);
+      if (own instanceof HTMLMediaElement && !own.controls) {
+        if (own.paused) void own.play().catch(() => {
+        });
+        else own.pause();
+      }
+      if (own || deck.isOverview() || deck.isPaused()) return;
+      if (end && deck.isLastSlide() && !deck.availableFragments().next) return end();
+      deck.next();
+      cue();
+    });
   }
 
   // src/cursor.ts
@@ -1615,115 +1838,166 @@
     check();
   }
 
-  // src/fly.ts
-  function box(nodes) {
-    const rects = nodes.map((n) => n.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
-    if (!rects.length) return null;
-    const left = Math.min(...rects.map((r) => r.left)), right = Math.max(...rects.map((r) => r.right));
-    const top = Math.min(...rects.map((r) => r.top)), bottom = Math.max(...rects.map((r) => r.bottom));
-    return { x: (left + right) / 2, y: (top + bottom) / 2, w: right - left };
+  // src/expand.ts
+  var THEME_MACROS = { ensuremath: ["#1", 1], xspace: "", bm: ["\\boldsymbol{#1}", 1] };
+  var DEPTH = 10;
+  function deckMacros() {
+    const tex = globalThis.window?.beesonTex;
+    return tex ? { ...THEME_MACROS, ...tex.macros } : null;
   }
-  function flyIn(slide, el) {
-    const from = box([...slide.querySelectorAll(el.dataset.flyFrom ?? "")]);
-    const to = box(el.dataset.flyTo ? [...el.querySelectorAll(el.dataset.flyTo)] : [el]);
-    const own = el.getBoundingClientRect();
-    if (!from || !to || !to.w || !el.offsetWidth) return;
-    const k = own.width / el.offsetWidth;
-    const seconds2 = Number(el.dataset.flyDuration ?? 1.2);
-    el.style.transition = "none";
-    el.style.transformOrigin = `${(to.x - own.left) / k}px ${(to.y - own.top) / k}px`;
-    el.style.transform = `translate(${(from.x - to.x) / k}px, ${(from.y - to.y) / k}px) scale(${from.w / to.w})`;
-    void el.offsetWidth;
-    el.style.transition = `transform ${seconds2}s cubic-bezier(0.45, 0, 0.25, 1), opacity 0s`;
-    el.style.transform = "";
-    setTimeout(() => {
-      el.style.transition = "";
-      el.style.transformOrigin = "";
-    }, seconds2 * 1e3 + 50);
-  }
-  function fly(slide, shown) {
-    for (const f of shown) {
-      for (const el of [f, ...f.querySelectorAll("[data-fly-from]")]) {
-        if (el instanceof HTMLElement && el.dataset.flyFrom) flyIn(slide, el);
+  function argument(s, i) {
+    if (s[i] === "{") {
+      let depth = 0, j = i;
+      for (; j < s.length; j++) {
+        if (s[j] === "{") depth++;
+        else if (s[j] === "}" && --depth === 0) break;
       }
+      return [s.slice(i + 1, j), j + 1];
     }
+    const command = /^\\(?:[A-Za-z]+|.)/.exec(s.slice(i));
+    if (command) return [command[0], i + command[0].length];
+    return [s[i] ?? "", i + 1];
+  }
+  function optional(s, i) {
+    if (s[i] !== "[") return null;
+    let depth = 0;
+    for (let j = i + 1; j < s.length; j++) {
+      if (s[j] === "{") depth++;
+      else if (s[j] === "}") depth--;
+      else if (s[j] === "]" && depth === 0) return [s.slice(i + 1, j), j + 1];
+    }
+    return null;
+  }
+  var skipSpaces = (s, i) => {
+    while (s[i] === " " || s[i] === "	" || s[i] === "\n") i++;
+    return i;
+  };
+  function expand(s, macros, depth, math) {
+    if (depth > DEPTH) return s;
+    let out = "";
+    let i = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === "$") {
+        math = !math;
+        out += c;
+        i++;
+        continue;
+      }
+      if (c !== "\\") {
+        out += c;
+        i++;
+        continue;
+      }
+      const name = /^\\([A-Za-z]+)/.exec(s.slice(i))?.[1];
+      const def = name !== void 0 && Object.hasOwn(macros, name) ? macros[name] : void 0;
+      if (name === void 0 || def === void 0) {
+        const keep = name !== void 0 ? name.length + 1 : 2;
+        out += s.slice(i, i + keep);
+        i += keep;
+        continue;
+      }
+      const [body, count = 0, preset] = typeof def === "string" ? [def] : def;
+      let j = i + 1 + name.length;
+      if (math || count) j = skipSpaces(s, j);
+      const args = [];
+      if (preset !== void 0 && count > 0) {
+        const given2 = optional(s, j);
+        args.push(given2 ? given2[0] : preset);
+        if (given2) j = given2[1];
+      }
+      while (args.length < count) {
+        j = skipSpaces(s, j);
+        const [arg, next] = argument(s, j);
+        args.push(arg);
+        j = next;
+      }
+      const filled = body.replace(/#([1-9])/g, (m, k) => args[Number(k) - 1] ?? m);
+      out += name === "ensuremath" && !math ? `$${expand(filled, macros, depth + 1, true)}$` : expand(filled, macros, depth + 1, math);
+      i = j;
+    }
+    return out;
+  }
+  function expandMacros(src, macros) {
+    const all = macros ? { ...THEME_MACROS, ...macros } : deckMacros();
+    return all && src.includes("\\") ? expand(src, all, 0, false) : src;
   }
 
   // src/plot.ts
   var KINDS = ["points", "trace", "label", "events"];
   var PATCH = ["x", "y", "title", "regions", "curves", "labels"];
   var MARGIN2 = [52, 20, 84, 76];
-  function fail(path, what) {
-    throw new Error(`${path}: ${what}`);
+  function fail(path2, what) {
+    throw new Error(`${path2}: ${what}`);
   }
   var isObject2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-  function num(v, path, fallback) {
+  function num(v, path2, fallback) {
     if (v === void 0 && fallback !== void 0) return fallback;
-    if (typeof v !== "number" || !Number.isFinite(v)) fail(path, "a number is expected");
+    if (typeof v !== "number" || !Number.isFinite(v)) fail(path2, "a number is expected");
     return v;
   }
-  function str(v, path, fallback) {
+  function str(v, path2, fallback) {
     if (v === void 0 && fallback !== void 0) return fallback;
-    if (typeof v !== "string") fail(path, "a string is expected");
+    if (typeof v !== "string") fail(path2, "a string is expected");
     return v;
   }
-  function list(v, path, fallback) {
+  function list(v, path2, fallback) {
     if (v === void 0 && fallback !== void 0) return fallback;
-    if (!Array.isArray(v)) fail(path, "a list is expected");
+    if (!Array.isArray(v)) fail(path2, "a list is expected");
     return v;
   }
-  function pair(v, path) {
-    const a = list(v, path);
-    if (a.length !== 2) fail(path, "a pair [x, y] is expected");
-    return [num(a[0], `${path}[0]`), num(a[1], `${path}[1]`)];
+  function pair(v, path2) {
+    const a = list(v, path2);
+    if (a.length !== 2) fail(path2, "a pair [x, y] is expected");
+    return [num(a[0], `${path2}[0]`), num(a[1], `${path2}[1]`)];
   }
-  var pairs = (v, path) => list(v, path).map((p, i) => pair(p, `${path}[${i}]`));
-  function anchor(v, path) {
-    const a = str(v, path, "middle");
-    if (a !== "start" && a !== "middle" && a !== "end") fail(path, "start, middle, or end is expected");
+  var pairs = (v, path2) => list(v, path2).map((p, i) => pair(p, `${path2}[${i}]`));
+  function anchor(v, path2) {
+    const a = str(v, path2, "middle");
+    if (a !== "start" && a !== "middle" && a !== "end") fail(path2, "start, middle, or end is expected");
     return a;
   }
-  function item(o, path, tone) {
-    const cls = str(o.class, `${path}.class`, "").split(/\s+/).filter(Boolean);
-    const delay = seconds(o.delay, `${path}.delay`);
-    return { id: o.id === void 0 ? null : str(o.id, `${path}.id`), tone: str(o.tone, `${path}.tone`, tone), cls, delay };
+  function item(o, path2, tone) {
+    const cls = str(o.class, `${path2}.class`, "").split(/\s+/).filter(Boolean);
+    const delay = seconds(o.delay, `${path2}.delay`);
+    return { id: o.id === void 0 ? null : str(o.id, `${path2}.id`), tone: str(o.tone, `${path2}.tone`, tone), cls, delay };
   }
-  function seconds(v, path) {
-    const s = num(v, path, 0);
-    if (!(s >= 0)) fail(path, "a number of seconds, at least 0, is expected");
+  function seconds(v, path2) {
+    const s = num(v, path2, 0);
+    if (!(s >= 0)) fail(path2, "a number of seconds, at least 0, is expected");
     return s;
   }
-  function axis(v, path) {
-    if (!isObject2(v)) fail(path, "an axis { range, ticks, title } is expected");
-    const range = pair(v.range, `${path}.range`);
-    if (!(range[1] > range[0])) fail(`${path}.range`, "the second end must be larger than the first");
-    const scale = str(v.scale, `${path}.scale`, "linear");
-    if (scale !== "linear" && scale !== "asinh") fail(`${path}.scale`, "linear or asinh is expected");
-    const unit = num(v.unit, `${path}.unit`, 1);
-    if (!(unit > 0)) fail(`${path}.unit`, "a positive number is expected");
-    const ticks = list(v.ticks, `${path}.ticks`, []).map((t, i) => {
-      const p = `${path}.ticks[${i}]`;
+  function axis(v, path2) {
+    if (!isObject2(v)) fail(path2, "an axis { range, ticks, title } is expected");
+    const range = pair(v.range, `${path2}.range`);
+    if (!(range[1] > range[0])) fail(`${path2}.range`, "the second end must be larger than the first");
+    const scale = str(v.scale, `${path2}.scale`, "linear");
+    if (scale !== "linear" && scale !== "asinh") fail(`${path2}.scale`, "linear or asinh is expected");
+    const unit = num(v.unit, `${path2}.unit`, 1);
+    if (!(unit > 0)) fail(`${path2}.unit`, "a positive number is expected");
+    const ticks = list(v.ticks, `${path2}.ticks`, []).map((t, i) => {
+      const p = `${path2}.ticks[${i}]`;
       if (typeof t === "number") return { at: num(t, p), text: formatNumber(t) };
       if (!isObject2(t)) fail(p, "a number or a tick { at, text } is expected");
       const at = num(t.at, `${p}.at`);
       return { at, text: str(t.text, `${p}.text`, formatNumber(at)) };
     });
-    return { range, ticks, title: str(v.title, `${path}.title`, ""), scale, unit };
+    return { range, ticks, title: str(v.title, `${path2}.title`, ""), scale, unit };
   }
   function scaled(a, v) {
     return a.scale === "asinh" ? Math.asinh(v / a.unit) : v;
   }
-  function regions(v, path) {
-    return list(v, path, []).map((r, i) => {
-      const p = `${path}[${i}]`;
+  function regions(v, path2) {
+    return list(v, path2, []).map((r, i) => {
+      const p = `${path2}[${i}]`;
       if (!isObject2(r)) fail(p, "a region is expected");
       const from = r.from === void 0 ? null : pair(r.from, `${p}.from`);
       return { ...item(r, p, "violet"), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), spread: seconds(r.spread, `${p}.spread`), from };
     });
   }
-  function curves(v, path) {
-    return list(v, path, []).map((c, i) => {
-      const p = `${path}[${i}]`;
+  function curves(v, path2) {
+    return list(v, path2, []).map((c, i) => {
+      const p = `${path2}[${i}]`;
       if (!isObject2(c)) fail(p, "a curve is expected");
       let circle = null;
       if (c.circle !== void 0) {
@@ -1735,77 +2009,77 @@
       return { ...item(c, p, "subtle"), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, draw: seconds(c.draw, `${p}.draw`) };
     });
   }
-  function labels(v, path) {
-    return list(v, path, []).map((l, i) => {
-      const p = `${path}[${i}]`;
+  function labels(v, path2) {
+    return list(v, path2, []).map((l, i) => {
+      const p = `${path2}[${i}]`;
       if (!isObject2(l)) fail(p, "a label is expected");
       return { ...item(l, p, "subtle"), at: pair(l.at, `${p}.at`), text: str(l.text, `${p}.text`), anchor: anchor(l.anchor, `${p}.anchor`), dx: num(l.dx, `${p}.dx`, 0), dy: num(l.dy, `${p}.dy`, 0) };
     });
   }
-  function panel(v, path) {
-    if (!isObject2(v)) fail(path, "a panel is expected");
+  function panel(v, path2) {
+    if (!isObject2(v)) fail(path2, "a panel is expected");
     let margin = [...MARGIN2];
     if (v.margin !== void 0) {
-      const m = list(v.margin, `${path}.margin`).map((x, i) => num(x, `${path}.margin[${i}]`));
-      if (m.length !== 4) fail(`${path}.margin`, "a margin [top, right, bottom, left] is expected");
+      const m = list(v.margin, `${path2}.margin`).map((x, i) => num(x, `${path2}.margin[${i}]`));
+      if (m.length !== 4) fail(`${path2}.margin`, "a margin [top, right, bottom, left] is expected");
       margin = [m[0], m[1], m[2], m[3]];
     }
-    const size = num(v.size, `${path}.size`, 1);
-    if (!(size > 0)) fail(`${path}.size`, "a positive number is expected");
+    const size = num(v.size, `${path2}.size`, 1);
+    if (!(size > 0)) fail(`${path2}.size`, "a positive number is expected");
     return {
-      id: str(v.id, `${path}.id`),
-      x: axis(v.x, `${path}.x`),
-      y: axis(v.y, `${path}.y`),
+      id: str(v.id, `${path2}.id`),
+      x: axis(v.x, `${path2}.x`),
+      y: axis(v.y, `${path2}.y`),
       equal: v.equal === true,
       axes: v.axes !== false,
-      title: str(v.title, `${path}.title`, ""),
-      regions: regions(v.regions, `${path}.regions`),
-      curves: curves(v.curves, `${path}.curves`),
-      labels: labels(v.labels, `${path}.labels`),
+      title: str(v.title, `${path2}.title`, ""),
+      regions: regions(v.regions, `${path2}.regions`),
+      curves: curves(v.curves, `${path2}.curves`),
+      labels: labels(v.labels, `${path2}.labels`),
       size,
       margin
     };
   }
-  function patch(v, path) {
-    if (!isObject2(v)) fail(path, "a panel is expected");
-    for (const key of Object.keys(v)) if (!PATCH.includes(key)) fail(`${path}.${key}`, `one of ${PATCH.join(", ")} is expected`);
+  function patch(v, path2) {
+    if (!isObject2(v)) fail(path2, "a panel is expected");
+    for (const key of Object.keys(v)) if (!PATCH.includes(key)) fail(`${path2}.${key}`, `one of ${PATCH.join(", ")} is expected`);
     const out = {};
-    if (v.x !== void 0) out.x = axis(v.x, `${path}.x`);
-    if (v.y !== void 0) out.y = axis(v.y, `${path}.y`);
-    if (v.title !== void 0) out.title = str(v.title, `${path}.title`);
-    if (v.regions !== void 0) out.regions = regions(v.regions, `${path}.regions`);
-    if (v.curves !== void 0) out.curves = curves(v.curves, `${path}.curves`);
-    if (v.labels !== void 0) out.labels = labels(v.labels, `${path}.labels`);
+    if (v.x !== void 0) out.x = axis(v.x, `${path2}.x`);
+    if (v.y !== void 0) out.y = axis(v.y, `${path2}.y`);
+    if (v.title !== void 0) out.title = str(v.title, `${path2}.title`);
+    if (v.regions !== void 0) out.regions = regions(v.regions, `${path2}.regions`);
+    if (v.curves !== void 0) out.curves = curves(v.curves, `${path2}.curves`);
+    if (v.labels !== void 0) out.labels = labels(v.labels, `${path2}.labels`);
     return out;
   }
-  function markData(m, v, frames, path) {
-    const perFrame = (n) => n === 1 || n === frames || fail(path, `${n} frames are given, and the tab has ${frames} values`);
+  function markData(m, v, frames, path2) {
+    const perFrame = (n) => n === 1 || n === frames || fail(path2, `${n} frames are given, and the tab has ${frames} values`);
     if (m.kind === "points") {
-      const a = list(v, path).map((f, i) => list(f, `${path}[${i}]`).map((x, j) => num(x, `${path}[${i}][${j}]`)));
+      const a = list(v, path2).map((f, i) => list(f, `${path2}[${i}]`).map((x, j) => num(x, `${path2}[${i}][${j}]`)));
       perFrame(a.length);
-      a.forEach((f, i) => f.length % 2 === 0 || fail(`${path}[${i}]`, "pairs of x and y are expected"));
+      a.forEach((f, i) => f.length % 2 === 0 || fail(`${path2}[${i}]`, "pairs of x and y are expected"));
       return a;
     }
     if (m.kind === "trace") {
       const given2 = isObject2(v) ? v : { points: v };
-      const points = pairs(given2.points, isObject2(v) ? `${path}.points` : path);
+      const points = pairs(given2.points, isObject2(v) ? `${path2}.points` : path2);
       perFrame(points.length);
-      const ghost = num(given2.ghost, `${path}.ghost`, points.length - 1);
-      if (!Number.isInteger(ghost) || ghost < 0 || ghost > points.length - 1) fail(`${path}.ghost`, `a frame from 0 to ${points.length - 1} is expected`);
-      const tones = given2.tones === void 0 ? null : list(given2.tones, `${path}.tones`).map((t, i) => str(t, `${path}.tones[${i}]`));
-      if (tones && tones.length !== points.length) fail(`${path}.tones`, `${tones.length} tones are given, and the trace has ${points.length} points`);
+      const ghost = num(given2.ghost, `${path2}.ghost`, points.length - 1);
+      if (!Number.isInteger(ghost) || ghost < 0 || ghost > points.length - 1) fail(`${path2}.ghost`, `a frame from 0 to ${points.length - 1} is expected`);
+      const tones = given2.tones === void 0 ? null : list(given2.tones, `${path2}.tones`).map((t, i) => str(t, `${path2}.tones[${i}]`));
+      if (tones && tones.length !== points.length) fail(`${path2}.tones`, `${tones.length} tones are given, and the trace has ${points.length} points`);
       return { points, ghost, tones };
     }
     if (m.kind === "label") {
-      if (!isObject2(v)) fail(path, "a label { at, text } is expected");
-      const at = Array.isArray(v.at) && Array.isArray(v.at[0]) ? pairs(v.at, `${path}.at`) : [pair(v.at, `${path}.at`)];
-      const text = Array.isArray(v.text) ? v.text.map((t, i) => str(t, `${path}.text[${i}]`)) : [str(v.text, `${path}.text`)];
+      if (!isObject2(v)) fail(path2, "a label { at, text } is expected");
+      const at = Array.isArray(v.at) && Array.isArray(v.at[0]) ? pairs(v.at, `${path2}.at`) : [pair(v.at, `${path2}.at`)];
+      const text = Array.isArray(v.text) ? v.text.map((t, i) => str(t, `${path2}.text[${i}]`)) : [str(v.text, `${path2}.text`)];
       perFrame(at.length);
       perFrame(text.length);
       return { at, text };
     }
-    return list(v, path).map((e, i) => {
-      const p = `${path}[${i}]`;
+    return list(v, path2).map((e, i) => {
+      const p = `${path2}[${i}]`;
       if (!isObject2(e)) fail(p, "an event { frame, at, text } is expected");
       const frame = num(e.frame, `${p}.frame`);
       if (frame < 0 || frame > frames - 1) fail(`${p}.frame`, `a frame from 0 to ${frames - 1} is expected`);
@@ -1910,10 +2184,10 @@
     if (a.length !== b.length) return nearest(frames, v);
     return a.map((x, k) => x + f * (b[k] - x));
   }
-  function traceTo(path, u) {
-    const n = path.length, v = clamp(u, 0, n - 1), i = Math.floor(v), f = v - i;
-    const out = path.slice(0, i + 1);
-    if (f > 0 && i < n - 1) out.push([path[i][0] + f * (path[i + 1][0] - path[i][0]), path[i][1] + f * (path[i + 1][1] - path[i][1])]);
+  function traceTo(path2, u) {
+    const n = path2.length, v = clamp(u, 0, n - 1), i = Math.floor(v), f = v - i;
+    const out = path2.slice(0, i + 1);
+    if (f > 0 && i < n - 1) out.push([path2[i][0] + f * (path2[i + 1][0] - path2[i][0]), path2[i][1] + f * (path2[i + 1][1] - path2[i][1])]);
     return out;
   }
   function passLength(n, duration, times) {
@@ -1939,14 +2213,14 @@
     }
     return lo + (tau - times[lo]) / (times[lo + 1] - times[lo]);
   }
-  function loopFrame(t, n, duration, hold, times = null) {
+  function loopFrame(t, n, duration, hold2, times = null) {
     if (n < 2) return 0;
-    const period = passLength(n, duration, times) + hold;
+    const period = passLength(n, duration, times) + hold2;
     const tau = (t % period + period) % period;
     return frameAt(tau, n, duration, times);
   }
-  function loopFade(t, length, hold, fade) {
-    const f = Math.min(fade, length), period = length + hold;
+  function loopFade(t, length, hold2, fade) {
+    const f = Math.min(fade, length), period = length + hold2;
     if (!(f > 0) || !(period > 0) || t < 0) return 1;
     const pass = Math.floor(t / period), tau = t - pass * period;
     const a = pass > 0 && tau < f ? tau / f : 1;
@@ -2007,14 +2281,19 @@
   };
   var SCRIPT_GAPS = { B: "\u212C", E: "\u2130", F: "\u2131", H: "\u210B", I: "\u2110", L: "\u2112", M: "\u2133", R: "\u211B" };
   var script = (c) => SCRIPT_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(119964 + c.charCodeAt(0) - 65) : c);
-  function parseMarkup(src) {
+  var STRUCK_GAPS = { C: "\u2102", H: "\u210D", N: "\u2115", P: "\u2119", Q: "\u211A", R: "\u211D", Z: "\u2124" };
+  var struck = (c) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(120120 + c.charCodeAt(0) - 65) : c);
+  var AS_IS = /* @__PURE__ */ new Set(["boldsymbol", "bm", "mathit", "mathop", "mathfrak", "ensuremath"]);
+  var UPRIGHT = /* @__PURE__ */ new Set(["mathrm", "text", "mathbf", "mathsf", "mathtt", "operatorname", "textrm", "textbf", "textit", "mathnormal"]);
+  var SPACES = { ",": " ", ":": " ", ";": " ", " ": " ", "!": "", "\\": " " };
+  function parseMarkup(src, macros) {
     const runs = [];
     const push = (text, italic, shift) => {
       const last = runs.at(-1);
       if (last && last.italic === italic && last.shift === shift) last.text += text;
       else runs.push({ text, italic, shift });
     };
-    const parts = src.split("$");
+    const parts = expandMacros(src, macros).split("$");
     parts.forEach((part, k) => {
       if (k % 2 === 0) {
         if (part) push(part, false, null);
@@ -2044,19 +2323,19 @@
         if (c === "\\") {
           const m = /^\\([A-Za-z]+)/.exec(s.slice(i));
           if (!m) {
-            push(s[i + 1] ?? "", false, shift);
+            push(SPACES[s[i + 1]] ?? s[i + 1] ?? "", false, shift);
             i += 2;
             continue;
           }
           i += m[0].length;
-          if (m[1] === "mathrm" || m[1] === "text") {
+          if (UPRIGHT.has(m[1]) || AS_IS.has(m[1])) {
             const [g, j] = group2(s, i);
             i = j;
-            math(g, true, shift);
-          } else if (m[1] === "mathcal") {
+            math(g, upright || UPRIGHT.has(m[1]), shift);
+          } else if (m[1] === "mathcal" || m[1] === "mathbb") {
             const [g, j] = group2(s, i);
             i = j;
-            push([...g].map(script).join(""), false, shift);
+            push([...g].map(m[1] === "mathcal" ? script : struck).join(""), false, shift);
           } else {
             const sym = SYMBOLS[m[1]] ?? m[0];
             push(sym, !upright && /^[a-z]+$/.test(m[1]) && /[α-ω]/.test(sym), shift);
@@ -2102,10 +2381,10 @@
   var toneColor = (tone) => /^[a-z][a-z0-9-]*$/.test(tone) ? `var(--${tone})` : tone;
   var words = (s) => (s ?? "").split(/\s+/).filter(Boolean);
   var GAP = 56;
-  function cells(sizes, total, gap) {
-    const free = total - gap * (sizes.length - 1), sum = sizes.reduce((a, b) => a + b, 0);
+  function cells(sizes2, total, gap) {
+    const free = total - gap * (sizes2.length - 1), sum = sizes2.reduce((a, b) => a + b, 0);
     let at = 0;
-    return sizes.map((size) => {
+    return sizes2.map((size) => {
       const cell = [at, free * size / sum];
       at += cell[1] + gap;
       return cell;
@@ -2157,12 +2436,25 @@
       this.once = false;
       this.el = el;
       CACHE2.set(el, this);
+      this.load(null);
+    }
+    /** Draws the plot again from text, or from its block when text is null, e.g. while the editor changes its data. A fault is shown in place of the plot. */
+    reload(text = null) {
+      this.pause();
+      this.spec = null;
+      this.W = this.H = 0;
+      this.tabButtons = [];
+      this.stepTab = null;
+      this.load(text);
+    }
+    load(text) {
+      const el = this.el;
       for (const old of el.querySelectorAll(":scope > .plot-body, :scope > .plot-error")) old.remove();
       try {
         const id = el.dataset.plot ?? "";
         const block = id ? document.getElementById(id) : null;
-        if (!block) throw new Error(`the JSON block with the id "${id}" is not found`);
-        this.spec = parsePlot(block.textContent ?? "");
+        if (text === null && !block) throw new Error(`the JSON script with the id "${id}" is not found`);
+        this.spec = parsePlot(text ?? block?.textContent ?? "");
       } catch (error) {
         const message = `plot ${el.dataset.plot ?? ""}: ${error.message}`;
         const box3 = document.createElement("div");
@@ -2177,8 +2469,8 @@
       const names = words(el.dataset.plotTabs);
       this.offered = this.spec.tabs.map((_, i) => i).filter((i) => !names.length || names.includes(this.spec.tabs[i].name));
       if (!this.offered.length) this.offered = [0];
-      const start2 = this.spec.tabs.findIndex((t) => t.name === el.dataset.plotTab);
-      this.tab = start2 >= 0 ? start2 : this.offered[0];
+      const start4 = this.spec.tabs.findIndex((t) => t.name === el.dataset.plotTab);
+      this.tab = start4 >= 0 ? start4 : this.offered[0];
       this.emphasis = new Set(this.spec.tabs.flatMap((t) => t.active?.flat() ?? []));
       this.build();
     }
@@ -2711,20 +3003,20 @@
       this.t0 = performance.now() - this.timeOf(this.u) * 1e3;
       this.pass = 0;
       const tick = (now) => {
-        const t = (now - this.t0) / 1e3, { duration, hold, fade } = this.plot, length = this.length;
+        const t = (now - this.t0) / 1e3, { duration, hold: hold2, fade } = this.plot, length = this.length;
         if (this.once && t >= length) {
           this.u = this.frames - 1;
           this.draw();
           this.pause();
           return;
         }
-        const pass = length + hold > 0 ? Math.floor(t / (length + hold)) : 0;
+        const pass = length + hold2 > 0 ? Math.floor(t / (length + hold2)) : 0;
         if (pass !== this.pass) {
           this.pass = pass;
           if (fade > 0) this.holdLast();
         }
-        this.u = loopFrame(t, this.frames, duration, hold, this.plot.tabs[this.tab].times);
-        this.fade = loopFade(t, length, hold, fade);
+        this.u = loopFrame(t, this.frames, duration, hold2, this.plot.tabs[this.tab].times);
+        this.fade = loopFade(t, length, hold2, fade);
         if (this.fade >= 1) this.release();
         this.draw();
         this.raf = requestAnimationFrame(tick);
@@ -2764,16 +3056,19 @@
       written.add(viewer);
     });
   }
-  function box2(viewer) {
+  function box(viewer) {
     const still3 = document.createElement("div");
     still3.className = viewer.className;
+    still3.classList.add("viewer-still");
     still3.style.cssText = viewer.style.cssText;
+    if (viewer.dataset.still !== void 0) still3.dataset.still = viewer.dataset.still;
+    still3.style.position = getComputedStyle(viewer).position;
     viewer.replaceWith(still3);
     return still3;
   }
   async function still(viewer) {
-    const failed = () => viewer.shadowRoot?.querySelector(".status.error");
-    while (!viewer.renderer && !failed()) await sleep(50);
+    const failed2 = () => viewer.shadowRoot?.querySelector(".status.error");
+    while (!viewer.renderer && !failed2()) await sleep(50);
     if (!viewer.canvas || !viewer.renderer) return null;
     viewer.pause();
     viewer.draw();
@@ -2793,21 +3088,29 @@
     for (const viewer of document.querySelectorAll("tycho-viewer")) {
       const id = viewer.dataset.still;
       if (id === void 0 || written.has(viewer)) viewers.push(viewer);
-      else clones.set(id, [...clones.get(id) ?? [], box2(viewer)]);
+      else clones.set(id, [...clones.get(id) ?? [], box(viewer)]);
     }
     for (const viewer of viewers) {
       const image = await still(viewer);
       if (image === null) continue;
-      box2(viewer).append(image);
+      box(viewer).append(image);
       for (const clone of clones.get(viewer.dataset.still ?? "") ?? []) clone.append(image.cloneNode());
     }
   }
 
   // src/qr.ts
-  var ECC = [10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28];
-  var BLOCKS = [1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49];
-  var LEVEL_BITS = 0;
+  var ECC = {
+    M: [10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28],
+    H: [17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
+  };
+  var BLOCKS = {
+    M: [1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49],
+    H: [1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81]
+  };
+  var LEVEL_BITS = { M: 0, H: 2 };
   var QUIET = 4;
+  var LOGO = 0.3;
+  var GAP2 = 0.8;
   function dataModules(version) {
     const size = 4 * version + 17;
     let n = size * size - 3 * 64 - 2 * (size - 16) - 31;
@@ -2818,8 +3121,8 @@
     if (version >= 7) n -= 36;
     return n;
   }
-  var dataCodewords = (version) => Math.floor(dataModules(version) / 8) - ECC[version - 1] * BLOCKS[version - 1];
-  var capacity = (version) => Math.floor((dataCodewords(version) * 8 - 4 - (version < 10 ? 8 : 16)) / 8);
+  var dataCodewords = (version, level) => Math.floor(dataModules(version) / 8) - ECC[level][version - 1] * BLOCKS[level][version - 1];
+  var capacity = (version, level = "M") => Math.floor((dataCodewords(version, level) * 8 - 4 - (version < 10 ? 8 : 16)) / 8);
   function alignment(version) {
     if (version === 1) return [];
     const k = Math.floor(version / 7) + 2;
@@ -2828,6 +3131,32 @@
     const out = [6];
     for (let i = k - 2; i >= 0; i--) out.push(last - i * step2);
     return out;
+  }
+  function alignmentCenters(version) {
+    const centers = alignment(version);
+    const last = centers.length - 1;
+    const out = [];
+    for (const [i, r] of centers.entries()) {
+      for (const [j, c] of centers.entries()) {
+        if (!(i === 0 && (j === 0 || j === last) || i === last && j === 0)) out.push([r, c]);
+      }
+    }
+    return out;
+  }
+  function covered(n, r, c) {
+    const dx = Math.max(Math.abs(c + 0.5 - n / 2) - 0.5, 0), dy = Math.max(Math.abs(r + 0.5 - n / 2) - 0.5, 0);
+    return dx * dx + dy * dy < (LOGO * n / 2 + GAP2) ** 2;
+  }
+  function reached(version) {
+    const n = 4 * version + 17;
+    return alignmentCenters(version).filter(([r, c]) => {
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) if (covered(n, r + dr, c + dc)) return true;
+      return false;
+    });
+  }
+  function hidden(code, r, c) {
+    if (!code.logo) return false;
+    return covered(code.size, r, c) || reached(code.version).some(([ar, ac]) => Math.abs(ar - r) <= 2 && Math.abs(ac - c) <= 2);
   }
   var EXP = new Uint8Array(512);
   var LOG = new Uint8Array(256);
@@ -2859,7 +3188,7 @@
     }
     return r;
   }
-  function codewords(bytes, version) {
+  function codewords(bytes, version, level) {
     const bits = [];
     const put = (value, n) => {
       for (let i = n - 1; i >= 0; i--) bits.push(value >>> i & 1);
@@ -2867,7 +3196,7 @@
     put(4, 4);
     put(bytes.length, version < 10 ? 8 : 16);
     for (const b of bytes) put(b, 8);
-    const total = dataCodewords(version) * 8;
+    const total = dataCodewords(version, level) * 8;
     put(0, Math.min(4, total - bits.length));
     put(0, (8 - bits.length % 8) % 8);
     for (let pad = 236; bits.length < total; pad ^= 236 ^ 17) put(pad, 8);
@@ -2875,8 +3204,8 @@
     for (let i = 0; i < bits.length; i++) out[i >>> 3] |= bits[i] << 7 - (i & 7);
     return out;
   }
-  function interleave(data, version) {
-    const n = BLOCKS[version - 1], ecc = ECC[version - 1];
+  function interleave(data, version, level) {
+    const n = BLOCKS[level][version - 1], ecc = ECC[level][version - 1];
     const total = Math.floor(dataModules(version) / 8);
     const short = Math.floor(total / n) - ecc;
     const shortBlocks = n - total % n;
@@ -2936,15 +3265,10 @@
       grid.set(6, i, i % 2 === 0);
       grid.set(i, 6, i % 2 === 0);
     }
-    const centers = alignment(version);
-    const last = centers.length - 1;
-    for (const [i, r] of centers.entries()) {
-      for (const [j, c] of centers.entries()) {
-        if (i === 0 && (j === 0 || j === last) || i === last && j === 0) continue;
-        for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) grid.set(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
-      }
+    for (const [r, c] of alignmentCenters(version)) {
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) grid.set(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
     }
-    format(grid, 0);
+    format(grid, "M", 0);
     if (version >= 7) {
       const bits = bch(version, 6, 7973);
       for (let i = 0; i < 18; i++) {
@@ -2955,9 +3279,9 @@
       }
     }
   }
-  function format(grid, mask) {
+  function format(grid, level, mask) {
     const n = grid.size;
-    const bits = bch(LEVEL_BITS << 3 | mask, 5, 1335) ^ 21522;
+    const bits = bch(LEVEL_BITS[level] << 3 | mask, 5, 1335) ^ 21522;
     const bit = (i) => (bits >>> i & 1) === 1;
     for (let i = 0; i <= 5; i++) grid.set(i, 8, bit(i));
     grid.set(7, 8, bit(6));
@@ -2968,7 +3292,7 @@
     for (let i = 8; i < 15; i++) grid.set(n - 15 + i, 8, bit(i));
     grid.set(n - 8, 8, true);
   }
-  function place(grid, data) {
+  function walk(grid, visit) {
     const n = grid.size;
     let i = 0;
     for (let right = n - 1; right >= 1; right -= 2) {
@@ -2976,13 +3300,35 @@
       const up = (right + 1 & 2) === 0;
       for (let k = 0; k < n; k++) {
         const r = up ? n - 1 - k : k;
-        for (const c of [right, right - 1]) {
-          if (grid.fixed[r][c]) continue;
-          grid.dark[r][c] = i < data.length * 8 && (data[i >>> 3] >>> 7 - (i & 7) & 1) === 1;
-          i++;
-        }
+        for (const c of [right, right - 1]) if (!grid.fixed[r][c]) visit(r, c, i++);
       }
     }
+  }
+  function place(grid, data) {
+    walk(grid, (r, c, i) => {
+      grid.dark[r][c] = i < data.length * 8 && (data[i >>> 3] >>> 7 - (i & 7) & 1) === 1;
+    });
+  }
+  function logoFits(version) {
+    const grid = new Grid(4 * version + 17);
+    functionPatterns(grid, version);
+    const n = BLOCKS.H[version - 1], ecc = ECC.H[version - 1];
+    const patterns = reached(version);
+    for (let r = 0; r < grid.size; r++) {
+      for (let c = 0; c < grid.size; c++) {
+        if (grid.fixed[r][c] && covered(grid.size, r, c) && !patterns.some(([ar, ac]) => Math.abs(ar - r) <= 2 && Math.abs(ac - c) <= 2)) return false;
+      }
+    }
+    const total = Math.floor(dataModules(version) / 8);
+    const short = Math.floor(total / n) - ecc, shortBlocks = n - total % n;
+    const blockOf = [];
+    for (let i = 0; i <= short; i++) for (let b = 0; b < n; b++) if (i < short || b >= shortBlocks) blockOf.push(b);
+    for (let i = 0; i < ecc; i++) for (let b = 0; b < n; b++) blockOf.push(b);
+    const wrong = Array.from({ length: n }, () => /* @__PURE__ */ new Set());
+    walk(grid, (r, c, i) => {
+      if (i < total * 8 && covered(grid.size, r, c)) wrong[blockOf[i >>> 3]].add(i >>> 3);
+    });
+    return wrong.every((words3) => 3 * words3.size <= 2 * Math.floor(ecc / 2));
   }
   function applyMask(grid, mask) {
     const m = MASKS[mask];
@@ -3023,19 +3369,21 @@
     score += 10 * Math.floor(Math.abs(count * 100 / (n * n) - 50) / 5);
     return score;
   }
-  function encode(text) {
+  function encode(text, logo = false) {
     const bytes = new TextEncoder().encode(text);
+    const level = logo ? "H" : "M";
     let version = 1;
-    while (version <= 40 && capacity(version) < bytes.length) version++;
+    while (version <= 40 && (capacity(version, level) < bytes.length || logo && !logoFits(version))) version++;
+    if (version > 40 && logo) return encode(text);
     if (version > 40) throw new Error(`the text is ${bytes.length} bytes long, and a QR code at level M holds at most ${capacity(40)}`);
-    const data = interleave(codewords(bytes, version), version);
+    const data = interleave(codewords(bytes, version, level), version, level);
     let best = null, bestMask = 0, bestScore = Infinity;
     for (let mask = 0; mask < 8; mask++) {
       const grid2 = new Grid(4 * version + 17);
       functionPatterns(grid2, version);
       place(grid2, data);
       applyMask(grid2, mask);
-      format(grid2, mask);
+      format(grid2, level, mask);
       const score = penalty(grid2.dark);
       if (score < bestScore) {
         best = grid2;
@@ -3044,46 +3392,75 @@
       }
     }
     const grid = best;
-    return { version, size: grid.size, mask: bestMask, dark: grid.dark };
+    return { version, size: grid.size, mask: bestMask, level, logo, dark: grid.dark };
   }
   var SVG2 = "http://www.w3.org/2000/svg";
+  var fixed3 = (x) => +x.toFixed(3);
+  function rounded(x, y, a, r) {
+    const s = fixed3(a - 2 * r);
+    return `M${fixed3(x - a / 2 + r)} ${fixed3(y - a / 2)}h${s}a${r} ${r} 0 0 1 ${r} ${r}v${s}a${r} ${r} 0 0 1 ${-r} ${r}h${-s}a${r} ${r} 0 0 1 ${-r} ${-r}v${-s}a${r} ${r} 0 0 1 ${r} ${-r}z`;
+  }
   function svgOf(code, label) {
-    const side = code.size + 2 * QUIET;
+    const n = code.size, side = n + 2 * QUIET;
     const svg2 = document.createElementNS(SVG2, "svg");
     svg2.setAttribute("viewBox", `0 0 ${side} ${side}`);
-    svg2.setAttribute("shape-rendering", "crispEdges");
     svg2.setAttribute("role", "img");
     svg2.setAttribute("aria-label", label);
     const tile = document.createElementNS(SVG2, "rect");
     tile.setAttribute("class", "qr-tile");
     tile.setAttribute("width", String(side));
     tile.setAttribute("height", String(side));
-    tile.setAttribute("rx", String(+(side * 0.03).toFixed(2)));
+    tile.setAttribute("rx", String(fixed3(side * 0.05)));
     tile.setAttribute("fill", "#fff");
-    tile.setAttribute("shape-rendering", "geometricPrecision");
-    let d = "";
-    code.dark.forEach((row, r) => {
-      for (let c = 0; c < code.size; c++) {
-        if (!row[c]) continue;
-        const start2 = c;
-        while (c + 1 < code.size && row[c + 1]) c++;
-        d += `M${start2 + QUIET} ${r + QUIET}h${c - start2 + 1}v1h${start2 - c - 1}z`;
+    const patterns = [[3, 3, 7], [3, n - 4, 7], [n - 4, 3, 7]];
+    for (const [r, c] of alignmentCenters(code.version)) patterns.push([r, c, 5]);
+    const lost = code.dark.map((row, r) => row.map((_, c) => hidden(code, r, c)));
+    const on = (r, c) => r >= 0 && c >= 0 && r < n && c < n && code.dark[r][c] && !lost[r][c] && !patterns.some(([pr, pc, a]) => Math.abs(pr - r) < a / 2 && Math.abs(pc - c) < a / 2);
+    let d = "", eyes = "";
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (!on(r, c)) continue;
+        const start4 = c;
+        while (on(r, c + 1)) c++;
+        const x0 = start4 + QUIET, x1 = c + 1 + QUIET, y = r + QUIET;
+        const tl = on(r - 1, start4) ? 0 : 0.5, tr = on(r - 1, c) ? 0 : 0.5, br = on(r + 1, c) ? 0 : 0.5, bl = on(r + 1, start4) ? 0 : 0.5;
+        d += `M${x0 + tl} ${y}H${x1 - tr}${tr ? "a.5 .5 0 0 1 .5 .5" : ""}V${y + 1 - br}${br ? "a.5 .5 0 0 1 -.5 .5" : ""}H${x0 + bl}${bl ? "a.5 .5 0 0 1 -.5 -.5" : ""}V${y + tl}${tl ? "a.5 .5 0 0 1 .5 -.5" : ""}z`;
       }
-    });
+    }
+    for (const [r, c, a] of patterns) {
+      if (lost[r][c]) continue;
+      const x = c + QUIET + 0.5, y = r + QUIET + 0.5;
+      d += rounded(x, y, a, fixed3(a * 0.3)) + rounded(x, y, a - 2, fixed3((a - 2) * 0.24));
+      eyes += rounded(x, y, a - 4, fixed3((a - 4) * 0.22));
+    }
     const ink = document.createElementNS(SVG2, "path");
     ink.setAttribute("class", "qr-ink");
     ink.setAttribute("d", d);
     ink.setAttribute("fill", "#000");
-    svg2.append(tile, ink);
+    ink.setAttribute("fill-rule", "evenodd");
+    const eye = document.createElementNS(SVG2, "path");
+    eye.setAttribute("class", "qr-eye");
+    eye.setAttribute("d", eyes);
+    eye.setAttribute("fill", "#000");
+    svg2.append(tile, ink, eye);
     return svg2;
   }
   function mountQr(root2) {
-    for (const el of root2.querySelectorAll(".qr[data-qr]")) {
+    const own = root2 instanceof HTMLElement && root2.matches(".qr[data-qr]") ? [root2] : [];
+    for (const el of [...own, ...root2.querySelectorAll(".qr[data-qr]")]) {
       if (el.querySelector(":scope > svg, :scope > .qr-error")) continue;
       const text = el.dataset.qr ?? "";
       try {
         if (!text) throw new Error("data-qr is empty");
-        el.append(svgOf(encode(text), `QR code of ${text}`));
+        const image = getComputedStyle(el).getPropertyValue("--qr-logo").trim();
+        const code = encode(text, image !== "" && image !== "none");
+        el.append(svgOf(code, `QR code of ${text}`));
+        if (code.logo) {
+          const logo = document.createElement("div");
+          logo.className = "qr-logo";
+          logo.style.width = `${(100 * LOGO * code.size / (code.size + 2 * QUIET)).toFixed(2)}%`;
+          el.append(logo);
+        }
       } catch (error) {
         const box3 = document.createElement("div");
         box3.className = "qr-error";
@@ -3091,6 +3468,233 @@
         el.append(box3);
       }
     }
+  }
+
+  // src/shapes.ts
+  var SVG3 = "http://www.w3.org/2000/svg";
+  var DRAWN = ["triangle", "arrow", "arrow-both", "brace", "plus", "equals"];
+  var num2 = (v) => String(Math.round(v * 100) / 100);
+  var path = (parts) => parts.map((p) => typeof p === "number" ? num2(p) : p).join(" ").replace(/ ?([A-Z]) ?/g, "$1");
+  var dir = (deg) => [Math.cos(deg * Math.PI / 180), Math.sin(deg * Math.PI / 180)];
+  var HOOK = [dir(16), 0.4, 0.5, 0.95];
+  var CUSP = [dir(40), 0.4, 0.5, 1];
+  function shapePath(kind, w, h, s) {
+    const i = s / 2;
+    const l = i, t = i, r = w - i, b = h - i, cx = w / 2, cy = h / 2, m = Math.min(w, h);
+    switch (kind) {
+      case "triangle":
+        return path(["M", cx, t, "L", r, b, "L", l, b, "Z"]);
+      case "arrow": {
+        const x1 = r - m / 2, y1 = cy - (b - t) / 4, y2 = cy + (b - t) / 4;
+        return path(["M", l, y1, "L", x1, y1, "L", x1, t, "L", r, cy, "L", x1, b, "L", x1, y2, "L", l, y2, "Z"]);
+      }
+      case "arrow-both": {
+        const x1 = l + m / 2, x2 = r - m / 2, y1 = cy - (b - t) / 4, y2 = cy + (b - t) / 4;
+        return path(["M", l, cy, "L", x1, t, "L", x1, y1, "L", x2, y1, "L", x2, t, "L", r, cy, "L", x2, b, "L", x2, y2, "L", x1, y2, "L", x1, b, "Z"]);
+      }
+      case "brace": {
+        const W = r - l, xs = l + 0.508 * W, k = Math.min(1, 0.5 * (cy - t) / ((HOOK[3] + CUSP[3]) * W)) || 0, y1 = t + k * HOOK[3] * W, y2 = cy - k * CUSP[3] * W;
+        const miter = Math.hypot(1, CUSP[0][0] / (k * CUSP[0][1])), xc = w - i * (miter <= 4 ? miter : 1 / miter);
+        const half = [[l + HOOK[1] * W * HOOK[0][0], t + k * HOOK[1] * W * HOOK[0][1]], [xs, y1 - k * HOOK[2] * W], [xs, y1], [xs, y2], [xs, y2 + k * CUSP[2] * W], [xc - CUSP[1] * W * CUSP[0][0], cy - k * CUSP[1] * W * CUSP[0][1]]];
+        const low = half.map(([x, y]) => [x, 2 * cy - y]);
+        return path([
+          "M",
+          l,
+          t,
+          "C",
+          ...half[0],
+          ...half[1],
+          ...half[2],
+          "L",
+          ...half[3],
+          "C",
+          ...half[4],
+          ...half[5],
+          xc,
+          cy,
+          "C",
+          ...low[5],
+          ...low[4],
+          ...low[3],
+          "L",
+          ...low[2],
+          "C",
+          ...low[1],
+          ...low[0],
+          l,
+          b
+        ]);
+      }
+      case "plus": {
+        const p = 0.3675 * w, q = 0.3675 * h, k = 0.1176 * m;
+        return path([
+          "M",
+          cx - p,
+          cy - k,
+          "L",
+          cx - k,
+          cy - k,
+          "L",
+          cx - k,
+          cy - q,
+          "L",
+          cx + k,
+          cy - q,
+          "L",
+          cx + k,
+          cy - k,
+          "L",
+          cx + p,
+          cy - k,
+          "L",
+          cx + p,
+          cy + k,
+          "L",
+          cx + k,
+          cy + k,
+          "L",
+          cx + k,
+          cy + q,
+          "L",
+          cx - k,
+          cy + q,
+          "L",
+          cx - k,
+          cy + k,
+          "L",
+          cx - p,
+          cy + k,
+          "Z"
+        ]);
+      }
+      case "equals": {
+        const p = 0.3675 * w, g = 0.0588 * h, bar = 0.2352 * h;
+        const rect = (y0, y1) => ["M", cx - p, y0, "L", cx + p, y0, "L", cx + p, y1, "L", cx - p, y1, "Z"];
+        return path([...rect(cy - g - bar, cy - g), ...rect(cy + g, cy + g + bar)]);
+      }
+      default:
+        return "";
+    }
+  }
+  var kindOf = (el) => DRAWN.find((k) => el.classList.contains(k)) ?? null;
+  function draw(el) {
+    const kind = kindOf(el);
+    let svg2 = el.querySelector(":scope > svg");
+    if (!kind) {
+      svg2?.remove();
+      return;
+    }
+    const style = getComputedStyle(el);
+    const w = el.offsetWidth || parseFloat(style.width) || 0, h = el.offsetHeight || parseFloat(style.height) || 0;
+    const s = parseFloat(style.getPropertyValue("--weight")) || 0;
+    if (!svg2) {
+      svg2 = document.createElementNS(SVG3, "svg");
+      svg2.setAttribute("aria-hidden", "true");
+      svg2.append(document.createElementNS(SVG3, "path"));
+      el.prepend(svg2);
+    }
+    svg2.setAttribute("viewBox", `0 0 ${num2(w || 1)} ${num2(h || 1)}`);
+    svg2.querySelector("path")?.setAttribute("d", shapePath(kind, w, h, s));
+  }
+  var sizes = null;
+  var classes = null;
+  var watched = /* @__PURE__ */ new WeakSet();
+  function mountShapes(root2) {
+    sizes ?? (sizes = new ResizeObserver((entries) => {
+      for (const e of entries) draw(e.target);
+    }));
+    classes ?? (classes = new MutationObserver((records) => {
+      for (const r of records) draw(r.target);
+    }));
+    const own = root2 instanceof HTMLElement && root2.matches(".shape") ? [root2] : [];
+    for (const el of [...own, ...root2.querySelectorAll(".reveal .slides section .shape")]) {
+      draw(el);
+      if (watched.has(el)) continue;
+      watched.add(el);
+      sizes.observe(el);
+      classes.observe(el, { attributes: true, attributeFilter: ["class"] });
+    }
+  }
+
+  // src/tikz.ts
+  var loads = /* @__PURE__ */ new Map();
+  function load2(name) {
+    if (window.beesonFigures?.[name] || !/^[\w-]+$/.test(name)) return Promise.resolve();
+    let loading = loads.get(name);
+    if (!loading) {
+      loading = new Promise((done) => {
+        const script2 = document.createElement("script");
+        script2.src = `figures/${name}.js`;
+        script2.onload = script2.onerror = () => done();
+        document.head.append(script2);
+      });
+      loads.set(name, loading);
+    }
+    return loading;
+  }
+  var drawn = /* @__PURE__ */ new WeakMap();
+  var instances = 0;
+  var figuresUnder = (root2) => [
+    ...root2 instanceof HTMLElement && root2.matches(".tikz") ? [root2] : [],
+    ...root2.querySelectorAll(".tikz")
+  ];
+  function syncParts(el) {
+    const shown = /* @__PURE__ */ new Map();
+    for (const span of el.querySelectorAll(":scope > [data-part]")) {
+      const name = span.dataset.part ?? "";
+      shown.set(name, !!shown.get(name) || !span.classList.contains("fragment") || span.classList.contains("visible"));
+    }
+    for (const g of el.querySelectorAll(":scope > svg g[data-part]")) g.classList.toggle("tikz-later", shown.get(g.dataset.part ?? "") === false);
+  }
+  var watcher = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+    const figures = /* @__PURE__ */ new Set();
+    for (const r of records) {
+      const target = r.target;
+      if (r.type === "childList" && target.matches(".tikz")) figures.add(target);
+      else if (target.parentElement?.matches(".tikz") && target.matches("[data-part]")) figures.add(target.parentElement);
+    }
+    for (const el of figures) syncParts(el);
+  });
+  function draw2(el, mode2) {
+    const name = el.dataset.figure ?? "";
+    const key = `${name} ${mode2}`;
+    const state = drawn.get(el);
+    if (state?.key === key && el.querySelector(":scope > svg, :scope > .tikz-error")) return;
+    const n = state?.n ?? ++instances;
+    if (!state) watcher?.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "data-part"] });
+    drawn.set(el, { n, key });
+    for (const old of el.querySelectorAll(":scope > svg, :scope > .tikz-error")) old.remove();
+    const output = window.beesonFigures?.[name];
+    if (!output) {
+      const box3 = document.createElement("div");
+      box3.className = "tikz-error";
+      box3.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
+      el.prepend(box3);
+      return;
+    }
+    const prefix = `tikz-${name}-${mode2}-`;
+    el.insertAdjacentHTML("afterbegin", output[mode2].split(prefix).join(`${prefix}${n}-`));
+    const svg2 = el.firstElementChild;
+    svg2.style.width = `${output.width}px`;
+    svg2.style.height = `${output.height}px`;
+    svg2.setAttribute("aria-hidden", "true");
+    syncParts(el);
+  }
+  var pending = Promise.resolve();
+  var latest = "dark";
+  function mountFigures(root2, mode2) {
+    latest = mode2;
+    const done = Promise.all(figuresUnder(root2).map(async (el) => {
+      await load2(el.dataset.figure ?? "");
+      draw2(el, latest);
+    })).then(() => void 0);
+    pending = Promise.all([pending, done]).then(() => void 0);
+    return done;
+  }
+  var figuresReady = () => pending;
+  function redrawFigures(mode2) {
+    latest = mode2;
+    for (const el of figuresUnder(document)) if (drawn.has(el)) draw2(el, mode2);
   }
 
   // src/scrub.ts
@@ -3118,7 +3722,7 @@
       return at;
     });
   }
-  var GAP2 = 3.2;
+  var GAP3 = 3.2;
   var REACH2 = 48;
   function initScrub(deck) {
     const reveal = deck.getRevealElement();
@@ -3127,11 +3731,11 @@
     band.setAttribute("aria-hidden", "true");
     const track = document.createElement("div");
     track.className = "scrub-track";
-    const fill = document.createElement("span");
-    track.append(fill);
-    const card = document.createElement("div");
-    card.className = "scrub-card";
-    band.append(track, card);
+    const fill2 = document.createElement("span");
+    track.append(fill2);
+    const headingBox = document.createElement("div");
+    headingBox.className = "scrub-heading";
+    band.append(track, headingBox);
     reveal.append(band);
     let ticks = [];
     let hovered = null;
@@ -3139,16 +3743,16 @@
     let zone = band.getBoundingClientRect();
     const build = () => {
       for (const t of ticks) t.el.remove();
-      const slides = deck.getSlides();
+      const slides2 = deck.getSlides();
       const last = Math.max(1, deck.getTotalSlides() - 1);
-      const times = starts(slides.map((s) => s.dataset.timing), deck.getConfig());
-      ticks = slides.map((slide, i) => {
+      const times = starts(slides2.map((s) => s.dataset.timing), deck.getConfig());
+      ticks = slides2.map((slide, i) => {
         const at = Math.min(deck.getSlidePastCount(slide) / last, 1);
         const el = document.createElement("div");
         el.className = "scrub-tick";
         el.style.left = `${at * 100}%`;
         if (i === 0) el.classList.add("first");
-        if (i === slides.length - 1 && slides.length > 1) el.classList.add("last");
+        if (i === slides2.length - 1 && slides2.length > 1) el.classList.add("last");
         const number = document.createElement("span");
         number.textContent = String(deck.getSlidePastCount(slide) + 1);
         el.append(number);
@@ -3166,11 +3770,11 @@
       zone = band.getBoundingClientRect();
       const em = parseFloat(getComputedStyle(band).fontSize) || 16;
       const spacing = zone.width / Math.max(1, ticks.length - 1);
-      const k = Math.max(1, Math.ceil(GAP2 * em / spacing));
+      const k = Math.max(1, Math.ceil(GAP3 * em / spacing));
       ticks.forEach((t, i) => t.el.classList.toggle("quiet", i % k !== 0 && i !== ticks.length - 1));
     };
     const mark = () => {
-      fill.style.transform = `scaleX(${deck.getTotalSlides() < 2 ? 0 : deck.getProgress()})`;
+      fill2.style.transform = `scaleX(${deck.getTotalSlides() < 2 ? 0 : deck.getProgress()})`;
       const current = deck.getCurrentSlide();
       for (const t of ticks) t.el.classList.toggle("now", t.slide === current);
     };
@@ -3179,14 +3783,14 @@
       hovered?.el.classList.remove("hover");
       hovered = t;
       if (!t) {
-        card.textContent = "";
+        headingBox.textContent = "";
         return;
       }
       t.el.classList.add("hover");
-      card.textContent = heading(t.slide);
-      const half = card.offsetWidth / 2;
+      headingBox.textContent = heading(t.slide);
+      const half = headingBox.offsetWidth / 2;
       const x = Math.min(Math.max(t.at * zone.width, half), zone.width - half);
-      card.style.left = `${x}px`;
+      headingBox.style.left = `${x}px`;
     };
     const show2 = (on) => {
       if (on === open2) return;
@@ -3259,16 +3863,16 @@
       }
     }
     const out = [], seen = /* @__PURE__ */ new Set();
-    for (const start2 of links.keys()) {
-      if (seen.has(start2)) continue;
+    for (const start4 of links.keys()) {
+      if (seen.has(start4)) continue;
       const p = [];
-      let cur = start2;
+      let cur = start4;
       while (cur && !seen.has(cur)) {
         seen.add(cur);
         const [x, y] = where.get(cur) ?? [0, 0];
         p.push(x, y);
         const next = links.get(cur)?.find((k) => !seen.has(k));
-        if (!next && close && p.length > 4 && links.get(cur)?.includes(start2)) p.push(p[0], p[1]);
+        if (!next && close && p.length > 4 && links.get(cur)?.includes(start4)) p.push(p[0], p[1]);
         cur = next;
       }
       out.push(p);
@@ -3282,7 +3886,7 @@
     reds: ["#fff5f0", "#fee0d2", "#fcbba1", "#fc9272", "#fb6a4a", "#ef3b2c", "#cb181d", "#a50f15", "#67000d"],
     magma_r: ["#fcfdbf", "#fdda9c", "#feb67c", "#fc9065", "#f56b5c", "#e24d66", "#c43c75", "#a3307e", "#832681", "#641a80"]
   };
-  var num2 = (value, fallback) => value !== void 0 && value.trim() !== "" && Number.isFinite(Number(value)) ? Number(value) : fallback;
+  var num3 = (value, fallback) => value !== void 0 && value.trim() !== "" && Number.isFinite(Number(value)) ? Number(value) : fallback;
   function effectivePotential(mu) {
     const wells = (x, y) => -(1 - mu) / Math.hypot(x + mu, y) - mu / Math.hypot(x - 1 + mu, y);
     const bowl = (x, y) => -(x * x + y * y) / 2;
@@ -3322,32 +3926,30 @@
   var FUNCTIONS = {
     // the effective potential of the CR3BP at data-mu, assembled from its wells and its bowl, with the
     // libration points marked and a cut at the height -C/2 of the Jacobi constant C of data-C. the
-    // bowl is shown above the wells, and the two are merged into their sum at the next stage. the
+    // bowl is shown above the wells, and the two are merged into their sum at the next state. the
     // intersection of the plane with the surface is the zero-velocity curve, and Hill's region is
     // where the surface is under the plane. C is the value at L1 when data-C is not given
     "effective-potential": (attributes) => {
-      const mu = num2(attributes.mu, 0.05);
+      const mu = num3(attributes.mu, 0.05);
       const { wells, bowl, sum } = effectivePotential(mu);
-      const marks = librationPoints(mu);
-      const C1 = -2 * sum(marks[0].x, 0);
-      const one = (layer) => [{ layer, lift: 0 }];
-      const plain = (layer) => () => ({ sheets: one(layer), marks: false, level: null });
+      const points = librationPoints(mu);
+      const C1 = -2 * sum(points[0].x, 0);
+      const zero = () => 0;
+      const one = (height, tone) => [{ height, tone, lift: 0 }];
       return {
         x: [-1.5, 1.5],
         y: [-1.5, 1.5],
         floor: -3.2,
         zscale: 1,
-        layers: { flat: () => 0, wells, bowl, sum },
-        tones: { flat: GRAVITATIONAL, wells: GRAVITATIONAL, bowl: CENTRIFUGAL, sum: EFFECTIVE },
-        marks,
-        initial: "flat",
-        stages: {
-          flat: plain("flat"),
-          wells: plain("wells"),
-          bowl: () => ({ sheets: [{ layer: "wells", lift: 0 }, { layer: "bowl", lift: BOWL_LIFT }], marks: false, level: null }),
-          sum: plain("sum"),
-          extrema: () => ({ sheets: one("sum"), marks: true, level: null }),
-          cut: (a) => ({ sheets: one("sum"), marks: true, level: -num2(a.c, C1) / 2 })
+        points,
+        initial: "zero",
+        states: {
+          zero: () => ({ sheets: one(zero, GRAVITATIONAL), points: false, level: null }),
+          gravitational: () => ({ sheets: one(wells, GRAVITATIONAL), points: false, level: null }),
+          centrifugal: () => ({ sheets: [...one(wells, GRAVITATIONAL), { height: bowl, tone: CENTRIFUGAL, lift: BOWL_LIFT }], points: false, level: null }),
+          effective: () => ({ sheets: one(sum, EFFECTIVE), points: false, level: null }),
+          extrema: () => ({ sheets: one(sum, EFFECTIVE), points: true, level: null }),
+          cut: (a) => ({ sheets: one(sum, EFFECTIVE), points: true, level: -num3(a.c, C1) / 2 })
         }
       };
     }
@@ -3364,16 +3966,16 @@
   var TURN = 90;
   var CURVE_WIDTH = 3.5;
   var GLOW_WIDTH = 18;
-  var MARK_SIZE = 22;
+  var POINT_SIZE = 22;
   var BEHIND = 0.3;
   var DIMMING = 0.12;
   var UNLIT = 0.18;
-  var MARK_FADE = 0.15;
+  var POINT_FADE = 0.15;
   var RAMP_TEXELS = 256;
   var ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
   var lerp = (a, b, t) => a + (b - a) * t;
   var clamp2 = (v, a, b) => Math.min(b, Math.max(a, v));
-  var num3 = (v, fallback) => v !== void 0 && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : fallback;
+  var num4 = (v, fallback) => v !== void 0 && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : fallback;
   var mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
   function rgb(css, fallback) {
     const s = css.trim();
@@ -3506,7 +4108,7 @@ void main() {
   gl_FragColor = vec4(uColor, uAlpha * edge);
 }`
   );
-  var MARK_VERTEX = (
+  var POINT_VERTEX = (
     /* glsl */
     `
 attribute float kind;
@@ -3526,7 +4128,7 @@ void main() {
   vFill = fill;
 }`
   );
-  var MARK_FRAGMENT = (
+  var POINT_FRAGMENT = (
     /* glsl */
     `
 uniform vec3 uRing;
@@ -3566,35 +4168,7 @@ void main() {
     return shared;
   }
   var CACHE3 = /* @__PURE__ */ new WeakMap();
-  function dragToTurn(el, turn, end) {
-    let drag = null;
-    el.addEventListener("pointerdown", (ev) => {
-      if (ev.button !== 0) return;
-      drag = { x: ev.clientX, y: ev.clientY };
-      try {
-        el.setPointerCapture(ev.pointerId);
-      } catch {
-      }
-      el.classList.add("dragging");
-    });
-    el.addEventListener("pointermove", (ev) => {
-      if (!drag) return;
-      const scale = el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1;
-      const dx = (ev.clientX - drag.x) / scale, dy = (ev.clientY - drag.y) / scale;
-      drag = { x: ev.clientX, y: ev.clientY };
-      turn(dx, dy);
-    });
-    const stop = () => {
-      if (!drag) return;
-      drag = null;
-      el.classList.remove("dragging");
-      end();
-    };
-    el.addEventListener("pointerup", stop);
-    el.addEventListener("pointercancel", stop);
-    return () => drag !== null;
-  }
-  var Surface = class _Surface {
+  var Surface = class {
     constructor(el, fn, THREE) {
       this.grids = /* @__PURE__ */ new Map();
       this.normals = /* @__PURE__ */ new WeakMap();
@@ -3605,12 +4179,12 @@ void main() {
       this.zmax = 0;
       this.sheets = [];
       this.palette = { text: [0.95, 0.95, 0.94], accent: [0.94, 0.5, 0.31], violet: [0.79, 0.31, 0.9] };
-      this.markKey = "";
+      this.pointKey = "";
       this.seenAt = 0;
       this.capacity = 0;
       this.drawn = "";
       this.mix = 1;
-      this.stageName = "";
+      this.stateName = "";
       this.t0 = 0;
       this.duration = MORPH;
       this.moving = false;
@@ -3618,7 +4192,7 @@ void main() {
       this.raf = 0;
       this.last = 0;
       this.resume = 0;
-      this.dragging = () => false;
+      this.drag = null;
       this.W = 0;
       this.H = 0;
       this.w = 0;
@@ -3631,52 +4205,52 @@ void main() {
           const k = Math.min(1, (now - this.t0) / this.duration), e = ease(k), a = this.from, b = this.to;
           const late = ease(clamp2((k - 0.35) / 0.65, 0, 1)), early = ease(clamp2(k / 0.65, 0, 1));
           this.mix = e;
-          this.shown = { marks: lerp(a.marks, b.marks, b.marks > a.marks ? late : early), cut: lerp(a.cut, b.cut, e), level: lerp(a.level, b.level, e), low: lerp(a.low, b.low, e), high: lerp(a.high, b.high, e) };
+          this.shown = { points: lerp(a.points, b.points, b.points > a.points ? late : early), cut: lerp(a.cut, b.cut, e), level: lerp(a.level, b.level, e), low: lerp(a.low, b.low, e), high: lerp(a.high, b.high, e) };
           for (const s of this.sheets) {
             s.shown = { lift: lerp(s.from.lift, s.to.lift, e), alpha: lerp(s.from.alpha, s.to.alpha, s.to.alpha > s.from.alpha ? early : late) };
             s.tone = lerp(s.toneFrom, 1, e);
           }
           if (k >= 1) this.settle();
         }
-        if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
+        if (this.rate && !this.drag && now > this.resume) this.azimuth += dt * this.rate;
         this.draw();
-        if (this.moving || this.rate || !this.marksSettled()) this.kick();
+        if (this.moving || this.rate || !this.pointsSettled()) this.kick();
       };
       this.el = el;
       this.fn = fn;
       this.THREE = THREE;
       this.groove = new THREE.Vector3();
-      this.zscale = num3(el.dataset.zscale, fn.zscale);
-      const turn = num3(el.dataset.turn, TURN);
-      this.rate = turn > 0 ? 2 * Math.PI / turn : 0;
-      this.azimuth = num3(el.dataset.azimuth, -60) * Math.PI / 180;
-      this.elevation = num3(el.dataset.elevation, 32) * Math.PI / 180;
-      this.zoom = num3(el.dataset.zoom, 1);
+      this.zscale = num4(el.dataset.zscale, fn.zscale);
+      const turn3 = num4(el.dataset.turn, TURN);
+      this.rate = turn3 > 0 ? 2 * Math.PI / turn3 : 0;
+      this.azimuth = num4(el.dataset.azimuth, -60) * Math.PI / 180;
+      this.elevation = num4(el.dataset.elevation, 32) * Math.PI / 180;
+      this.zoom = num4(el.dataset.zoom, 1);
       for (const old of el.querySelectorAll(":scope > canvas.surface-image")) old.remove();
       this.canvas = document.createElement("canvas");
       this.canvas.className = "surface-image";
       this.canvas.setAttribute("aria-hidden", "true");
       el.prepend(this.canvas);
       el.setAttribute("data-prevent-swipe", "");
-      this.labels = [...el.querySelectorAll(".lab")];
-      for (const [name, f] of Object.entries(fn.layers)) {
+      this.labels = [...el.querySelectorAll(".label")];
+      for (const f of new Set(Object.values(fn.states).flatMap((state) => state({ ...el.dataset }).sheets.map((sheet) => sheet.height)))) {
         const g = sample(f, fn.x, fn.y, CELLS, CELLS, fn.floor);
-        this.grids.set(name, g);
-        this.ranges.set(name, this.range(g));
+        this.grids.set(f, g);
+        this.ranges.set(f, this.range(g));
         for (const z of g) {
           if (z < this.zmin) this.zmin = z;
           if (z > this.zmax) this.zmax = z;
         }
       }
-      this.markA = new Float64Array(fn.marks.length);
-      this.markB = new Float64Array(fn.marks.length);
-      this.seen = new Float32Array(fn.marks.length).fill(1);
-      this.lit = new Float32Array(fn.marks.length).fill(1);
-      this.litTo = new Float32Array(fn.marks.length).fill(1);
-      this.fill = new Float32Array(3 * fn.marks.length);
-      this.fillTo = new Float32Array(3 * fn.marks.length);
-      this.markTones = fn.marks.map(() => "text");
-      const still3 = { marks: 0, cut: 0, level: fn.floor, low: this.zmin * this.zscale, high: this.zmax * this.zscale };
+      this.pointA = new Float64Array(fn.points.length);
+      this.pointB = new Float64Array(fn.points.length);
+      this.seen = new Float32Array(fn.points.length).fill(1);
+      this.lit = new Float32Array(fn.points.length).fill(1);
+      this.litTo = new Float32Array(fn.points.length).fill(1);
+      this.fill = new Float32Array(3 * fn.points.length);
+      this.fillTo = new Float32Array(3 * fn.points.length);
+      this.pointTones = fn.points.map(() => "text");
+      const still3 = { points: 0, cut: 0, level: fn.floor, low: this.zmin * this.zscale, high: this.zmax * this.zscale };
       this.shown = this.from = this.to = still3;
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
@@ -3686,22 +4260,21 @@ void main() {
       this.glow = this.makeCurve(GLOW_WIDTH, 1);
       this.glow.geometry = this.curve.geometry;
       this.glow.renderOrder = 1.5;
-      this.points = this.makeMarks();
+      this.points = this.makePoints();
       this.scene.add(this.plane, this.glow, this.curve, this.points);
       this.recolor();
-      this.dragging = dragToTurn(el, (dx, dy) => {
-        this.azimuth -= dx * 5e-3;
-        this.elevation = clamp2(this.elevation + dy * 4e-3, 0.12, 1.45);
-        if (!this.raf) this.draw();
-      }, () => {
-        this.resume = performance.now() + 1500;
-      });
+      this.bindDrag();
       CACHE3.set(el, this);
       this.sync(false);
       this.fit();
     }
-    // the color range of a layer: from its 5th percentile, so that the deep wells do not take the
-    // whole ramp, to its maximum, in world units. a flat layer is drawn in the middle of the ramp
+    // the first sheet of the initial state of the function
+    initialSheet() {
+      return this.fn.states[this.fn.initial]({ ...this.el.dataset }).sheets[0];
+    }
+    // the color range of the sampled heights g: from their 5th percentile, so that the deep wells do
+    // not take the whole ramp, to their maximum, in world units. a flat sheet is drawn in the middle
+    // of the ramp
     range(g) {
       const sorted = Float64Array.from(g).sort();
       const lo = sorted[Math.floor(0.05 * (sorted.length - 1))] * this.zscale, hi = sorted[sorted.length - 1] * this.zscale;
@@ -3723,15 +4296,15 @@ void main() {
       this.textures.set(name, t);
       return t;
     }
-    // the ramp of a layer and its range in world units. an unknown ramp is reported, and the ramp
+    // the ramp of sheet and its range in world units. an unknown ramp is reported, and the ramp
     // theme is drawn in its place
-    paintOf(layer) {
-      let { ramp: ramp2, range } = this.fn.tones[layer] ?? { ramp: "theme" };
+    paintOf(sheet) {
+      let { ramp: ramp2, range } = sheet.tone;
       if (ramp2 !== "theme" && !(ramp2 in RAMPS)) {
-        console.error(`beeson: unknown ramp "${ramp2}" of the layer ${layer} of ${this.el.dataset.function}, known: theme, ${Object.keys(RAMPS).join(", ")}`);
+        console.error(`beeson: unknown ramp "${ramp2}" of ${this.el.dataset.function}, known: theme, ${Object.keys(RAMPS).join(", ")}`);
         ramp2 = "theme";
       }
-      const world = range ? [range[0] * this.zscale, range[1] * this.zscale] : this.ranges.get(layer) ?? [-1, 1];
+      const world = range ? [range[0] * this.zscale, range[1] * this.zscale] : this.ranges.get(sheet.height) ?? [-1, 1];
       return { key: `${ramp2}|${world.join("|")}`, texture: this.texture(ramp2), range: world };
     }
     // a sheet, made hidden on first use. the sheets are drawn in their order, before the plane
@@ -3758,7 +4331,7 @@ void main() {
       }
       geometry.setIndex(new THREE.BufferAttribute(index, 1));
       const cell = Math.max(fn.x[1] - fn.x[0], fn.y[1] - fn.y[0]) / 24;
-      const paint = this.paintOf(fn.initial);
+      const paint = this.paintOf(this.initialSheet());
       const uniforms = {
         uMix: { value: 1 },
         uRampA: { value: paint.texture },
@@ -3788,8 +4361,8 @@ void main() {
       }
       group2.visible = false;
       this.scene.add(group2);
-      const hidden = { lift: 0, alpha: 0 };
-      const s = { group: group2, mesh, depth, layer: "", A: this.zeros, B: this.zeros, from: hidden, to: hidden, shown: hidden, paintA: paint, paintB: paint, toneFrom: 1, tone: 1, now: null };
+      const hidden2 = { lift: 0, alpha: 0 };
+      const s = { group: group2, mesh, depth, height: null, A: this.zeros, B: this.zeros, from: hidden2, to: hidden2, shown: hidden2, paintA: paint, paintB: paint, toneFrom: 1, tone: 1, now: null };
       this.sheets[i] = s;
       return s;
     }
@@ -3833,30 +4406,30 @@ void main() {
       mesh.renderOrder = 2;
       return mesh;
     }
-    makeMarks() {
-      const THREE = this.THREE, marks = this.fn.marks;
+    makePoints() {
+      const THREE = this.THREE, points = this.fn.points;
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * marks.length), 3).setUsage(THREE.DynamicDrawUsage));
-      geometry.setAttribute("kind", new THREE.BufferAttribute(Float32Array.from(marks, (m) => m.kind === "saddle" ? 0 : 1), 1));
-      geometry.setAttribute("seen", new THREE.BufferAttribute(new Float32Array(marks.length).fill(1), 1).setUsage(THREE.DynamicDrawUsage));
-      geometry.setAttribute("lit", new THREE.BufferAttribute(new Float32Array(marks.length).fill(1), 1).setUsage(THREE.DynamicDrawUsage));
-      geometry.setAttribute("fill", new THREE.BufferAttribute(new Float32Array(3 * marks.length), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * points.length), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("kind", new THREE.BufferAttribute(Float32Array.from(points, (m) => m.kind === "saddle" ? 0 : 1), 1));
+      geometry.setAttribute("seen", new THREE.BufferAttribute(new Float32Array(points.length).fill(1), 1).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("lit", new THREE.BufferAttribute(new Float32Array(points.length).fill(1), 1).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("fill", new THREE.BufferAttribute(new Float32Array(3 * points.length), 3).setUsage(THREE.DynamicDrawUsage));
       const material = new THREE.ShaderMaterial({
-        vertexShader: MARK_VERTEX,
-        fragmentShader: MARK_FRAGMENT,
+        vertexShader: POINT_VERTEX,
+        fragmentShader: POINT_FRAGMENT,
         transparent: true,
         depthTest: false,
         depthWrite: false,
         uniforms: {
           uRing: { value: new THREE.Vector3() },
           uRise: { value: 0 },
-          uSize: { value: MARK_SIZE }
+          uSize: { value: POINT_SIZE }
         }
       });
-      const points = new THREE.Points(geometry, material);
-      points.frustumCulled = false;
-      points.renderOrder = 3;
-      return points;
+      const drawn2 = new THREE.Points(geometry, material);
+      drawn2.frustumCulled = false;
+      drawn2.renderOrder = 3;
+      return drawn2;
     }
     /** Reads the colors of the theme from the custom properties of the element, e.g. after a flip of the mode. */
     recolor() {
@@ -3874,26 +4447,26 @@ void main() {
       set2(this.glow.material.uniforms.uColor.value, accent);
       set2(this.points.material.uniforms.uRing.value, bg);
       this.palette = { text, accent, violet };
-      this.paintMarks();
+      this.paintPoints();
       this.fill.set(this.fillTo);
     }
-    // the stage set by the visible fragment of the slide with data-surface-stage and the highest
-    // fragment index, or the data-stage of the element, or the initial stage of the function
+    // the state set by the visible fragment of the slide with data-surface-state and the highest
+    // fragment index, or the data-surface-state of the element, or the initial state of the function
     target() {
       let best = null, index = -Infinity;
-      for (const f of this.el.closest("section")?.querySelectorAll(".fragment.visible[data-surface-stage]") ?? []) {
-        const i = num3(f.dataset.fragmentIndex, 0);
+      for (const f of this.el.closest("section")?.querySelectorAll(".fragment.visible[data-surface-state]") ?? []) {
+        const i = num4(f.dataset.fragmentIndex, 0);
         if (i >= index) {
           best = f;
           index = i;
         }
       }
-      let name = best?.dataset.surfaceStage ?? this.el.dataset.stage ?? this.fn.initial;
-      if (!(name in this.fn.stages)) {
-        console.error(`beeson: unknown surface stage "${name}" of ${this.el.dataset.function}, known: ${Object.keys(this.fn.stages).join(", ")}`);
+      let name = best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? this.fn.initial;
+      if (!(name in this.fn.states)) {
+        console.error(`beeson: unknown surface state "${name}" of ${this.el.dataset.function}, known: ${Object.keys(this.fn.states).join(", ")}`);
         name = this.fn.initial;
       }
-      return { name, stage: this.fn.stages[name]({ ...this.el.dataset, ...best?.dataset }), step: best };
+      return { name, state: this.fn.states[name]({ ...this.el.dataset, ...best?.dataset }), step: best };
     }
     // the ramp p set as the end of a change of the sheet s. a ramp drawn at the start is kept, so
     // that the colors drawn now are not changed at once when a change is reversed or redirected
@@ -3914,63 +4487,66 @@ void main() {
       u.uRangeA.value.set(...s.paintA.range);
       u.uRangeB.value.set(...s.paintB.range);
     }
-    // the targets of the opacity and the color of the marks at the step: every mark is lit without
-    // data-surface-marks, and a mark is filled in the color of the text unless it is named by
+    // the targets of the opacity and the color of the points at the step: every point is lit without
+    // data-surface-points, and a point is filled in the color of the text unless it is named by
     // data-surface-accent or data-surface-violet
-    markTargets(step2) {
+    pointTargets(step2) {
       const names = (key) => (step2?.dataset[key] ?? "").split(/[\s,]+/).filter(Boolean);
-      const lit = names("surfaceMarks"), accent = names("surfaceAccent"), violet = names("surfaceViolet");
-      this.fn.marks.forEach((m, i) => {
+      const lit = names("surfacePoints"), accent = names("surfaceAccent"), violet = names("surfaceViolet");
+      this.fn.points.forEach((m, i) => {
         this.litTo[i] = !lit.length || lit.includes(m.name) ? 1 : UNLIT;
-        this.markTones[i] = violet.includes(m.name) ? "violet" : accent.includes(m.name) ? "accent" : "text";
+        this.pointTones[i] = violet.includes(m.name) ? "violet" : accent.includes(m.name) ? "accent" : "text";
       });
-      this.paintMarks();
+      this.paintPoints();
       return JSON.stringify([lit, accent, violet]);
     }
-    paintMarks() {
-      this.markTones.forEach((tone, i) => this.fillTo.set(this.palette[tone], 3 * i));
+    paintPoints() {
+      this.pointTones.forEach((tone, i) => this.fillTo.set(this.palette[tone], 3 * i));
     }
-    marksSettled() {
+    pointsSettled() {
       for (let i = 0; i < this.lit.length; i++) if (Math.abs(this.lit[i] - this.litTo[i]) > 1e-3) return false;
       for (let i = 0; i < this.fill.length; i++) if (Math.abs(this.fill[i] - this.fillTo[i]) > 1e-3) return false;
       return true;
     }
-    /** Sets the stage from the fragments of the slide, animated or at once. */
+    /** Sets the state from the fragments of the slide, animated or at once. */
     sync(animate) {
-      const { name, stage, step: step2 } = this.target();
-      const markKey = this.markTargets(step2);
-      const jump = !animate || !this.stageName;
+      const { name, state, step: step2 } = this.target();
+      const pointKey = this.pointTargets(step2);
+      const jump = !animate || !this.stateName;
       if (jump) {
         this.lit.set(this.litTo);
         this.fill.set(this.fillTo);
       }
-      if (name === this.stageName) {
-        if (markKey !== this.markKey) {
-          this.markKey = markKey;
-          if (this.raf || !jump) this.kick();
-          this.draw();
+      if (name === this.stateName) {
+        if (pointKey !== this.pointKey) {
+          this.pointKey = pointKey;
+          if (jump) this.draw();
+          else {
+            this.seenAt = performance.now();
+            this.kick();
+          }
         }
         return;
       }
-      this.markKey = markKey;
-      this.stageName = name;
+      this.pointKey = pointKey;
+      this.stateName = name;
       this.el.dataset.shown = name;
-      const s = this.zscale, sheets = stage.sheets.length ? stage.sheets : [{ layer: this.fn.initial, lift: 0 }], main = sheets[0];
-      const grid = (layer) => this.grids.get(layer) ?? this.zeros;
+      const s = this.zscale, sheets = state.sheets.length ? state.sheets : [this.initialSheet()], main = sheets[0];
+      const grid = (height) => this.grids.get(height) ?? this.zeros;
       const first = this.sheets[0];
-      const merge = !first || first.layer !== main.layer;
+      const merge = !first || first.height !== main.height;
       const was = first ? { heights: this.current(first), lift: first.shown.lift, paint: first.tone < 0.5 ? first.paintA : first.paintB } : null;
       const lifts = [];
       for (let i = 0; i < Math.max(this.sheets.length, sheets.length); i++) {
         const sheet = this.sheet(i), next = sheets[i], seen = sheet.shown.alpha > 0;
         if (!next && !seen) {
-          sheet.layer = "";
+          sheet.height = null;
           sheet.from = sheet.to = sheet.shown;
           continue;
         }
         const heights = this.current(sheet);
         if (next) {
-          const paint = this.paintOf(next.layer);
+          const paint = this.paintOf(next);
           if (seen) {
             sheet.A = heights;
             sheet.from = sheet.shown;
@@ -3985,24 +4561,24 @@ void main() {
             sheet.paintA = sheet.paintB = paint;
             sheet.tone = 1;
           }
-          sheet.B = grid(next.layer);
+          sheet.B = grid(next.height);
           sheet.to = { lift: next.lift * s, alpha: 1 };
-          sheet.layer = next.layer;
+          sheet.height = next.height;
           this.repaint(sheet, paint);
           lifts.push(next.lift * s);
         } else {
           sheet.A = heights;
           sheet.from = sheet.shown;
-          sheet.layer = "";
-          sheet.B = merge ? grid(main.layer) : this.zeros;
+          sheet.height = null;
+          sheet.B = merge ? grid(main.height) : this.zeros;
           sheet.to = { lift: main.lift * s, alpha: 0 };
-          this.repaint(sheet, merge ? this.paintOf(main.layer) : sheet.paintB);
+          this.repaint(sheet, merge ? this.paintOf(main) : sheet.paintB);
         }
       }
       const to = {
-        marks: stage.marks ? 1 : 0,
-        cut: stage.level === null ? 0 : 1,
-        level: stage.level ?? this.fn.floor,
+        points: state.points ? 1 : 0,
+        cut: state.level === null ? 0 : 1,
+        level: state.level ?? this.fn.floor,
         low: this.zmin * s + Math.min(...lifts),
         high: this.zmax * s + Math.max(...lifts)
       };
@@ -4027,9 +4603,9 @@ void main() {
         this.moving = true;
       }
       const lead = this.sheet(0);
-      this.fn.marks.forEach((m, i) => {
-        this.markA[i] = heightAt(lead.A, this.fn, m.x, m.y);
-        this.markB[i] = heightAt(lead.B, this.fn, m.x, m.y);
+      this.fn.points.forEach((m, i) => {
+        this.pointA[i] = heightAt(lead.A, this.fn, m.x, m.y);
+        this.pointB[i] = heightAt(lead.B, this.fn, m.x, m.y);
       });
       for (const sheet of this.sheets) this.upload(sheet);
       if (this.moving) this.kick();
@@ -4073,33 +4649,33 @@ void main() {
       geometry.getAttribute("nB").set(this.normalsOf(sheet.B));
       for (const name of ["zA", "zB", "nA", "nB"]) geometry.getAttribute(name).needsUpdate = true;
     }
-    // the world position of the mark i, on the first sheet as drawn now
-    markAt(i, p) {
-      const m = this.fn.marks[i];
-      return p.set(m.x, m.y, lerp(this.markA[i], this.markB[i], this.mix) * this.zscale + this.sheet(0).shown.lift);
+    // the world position of the point i, on the first sheet as drawn now
+    pointAt(i, p) {
+      const m = this.fn.points[i];
+      return p.set(m.x, m.y, lerp(this.pointA[i], this.pointB[i], this.mix) * this.zscale + this.sheet(0).shown.lift);
     }
     /**
-     * The marks as drawn now, read by the tests: for each mark, the height at which it is drawn and
+     * The points as drawn now, read by the tests: for each point, the height at which it is drawn and
      * the height of the drawn surface under it, both in world units, and its fade, from 0 when it is
-     * hidden to 1, its opacity lit set by data-surface-marks, and its tone. With settled, the change
-     * of stage has ended.
+     * hidden to 1, its opacity lit set by data-surface-points, and its tone. With settled, the change
+     * of state has ended.
      */
     probe() {
       const position = this.points.geometry.getAttribute("position"), lead = this.sheet(0), g = this.current(lead);
-      const fade = this.points.visible ? this.shown.marks : 0;
+      const fade = this.points.visible ? this.shown.points : 0;
       const camera = this.camera.clone(), p = new this.THREE.Vector3();
       camera.updateMatrixWorld();
       const label = (i) => {
-        const lab = this.labels.find((l) => l.dataset.at === this.fn.marks[i].name);
+        const lab = this.labels.find((l) => l.dataset.at === this.fn.points[i].name);
         if (!lab) return null;
-        this.markAt(i, p).project(camera);
-        const x = (p.x + 1) / 2 * this.w + num3(lab.dataset.dx, 0), y = (1 - p.y) / 2 * this.h + num3(lab.dataset.dy, -34);
+        this.pointAt(i, p).project(camera);
+        const x = (p.x + 1) / 2 * this.w + num4(lab.dataset.dx, 0), y = (1 - p.y) / 2 * this.h + num4(lab.dataset.dy, -34);
         return Math.hypot(parseFloat(lab.style.left) - x, parseFloat(lab.style.top) - y);
       };
       return {
-        stage: this.stageName,
+        state: this.stateName,
         settled: !this.moving,
-        marks: this.fn.marks.map((m, i) => ({ name: m.name, z: position.getZ(i), surface: heightAt(g, this.fn, m.x, m.y) * this.zscale + lead.shown.lift, fade, label: label(i), lit: this.lit[i], tone: this.markTones[i] }))
+        points: this.fn.points.map((m, i) => ({ name: m.name, z: position.getZ(i), surface: heightAt(g, this.fn, m.x, m.y) * this.zscale + lead.shown.lift, fade, label: label(i), lit: this.lit[i], tone: this.pointTones[i] }))
       };
     }
     /** Sizes the canvas from the box of the element on the screen, and draws. */
@@ -4118,7 +4694,7 @@ void main() {
       this.curve.material.uniforms.uWidth.value = CURVE_WIDTH * px;
       this.glow.material.uniforms.uViewport.value.set(this.W, this.H);
       this.glow.material.uniforms.uWidth.value = GLOW_WIDTH * px;
-      this.points.material.uniforms.uSize.value = MARK_SIZE * px;
+      this.points.material.uniforms.uSize.value = POINT_SIZE * px;
       this.camera.aspect = this.W / this.H;
       this.draw();
     }
@@ -4146,7 +4722,7 @@ void main() {
     // the level or the heights have changed
     trace() {
       const lead = this.sheet(0);
-      const key = this.shown.cut > 0 ? `${this.shown.level}|${this.mix}|${lead.layer}` : "";
+      const key = this.shown.cut > 0 ? `${this.shown.level}|${this.mix}|${lead.height ? [...this.grids.keys()].indexOf(lead.height) : -1}` : "";
       if (key === this.drawn) return;
       this.drawn = key;
       const curves2 = key ? levelCurves(this.current(lead), this.fn.x, this.fn.y, CELLS, CELLS, this.shown.level) : [];
@@ -4162,8 +4738,8 @@ void main() {
         geometry.setAttribute("end", new THREE.BufferAttribute(new Float32Array(18 * this.capacity), 3).setUsage(THREE.DynamicDrawUsage));
       }
       if (!this.capacity) return;
-      const start2 = geometry.getAttribute("start"), end = geometry.getAttribute("end");
-      const a = start2.array, b = end.array, z = this.shown.level * this.zscale;
+      const start4 = geometry.getAttribute("start"), end = geometry.getAttribute("end");
+      const a = start4.array, b = end.array, z = this.shown.level * this.zscale;
       let k = 0;
       for (const c of curves2) {
         for (let i = 0; i + 3 < c.length; i += 2) {
@@ -4177,14 +4753,14 @@ void main() {
           }
         }
       }
-      for (const attribute of [start2, end]) {
+      for (const attribute of [start4, end]) {
         attribute.clearUpdateRanges();
         attribute.addUpdateRange(0, k);
         attribute.needsUpdate = true;
       }
       geometry.setDrawRange(0, 6 * count);
     }
-    /** Draws the surface at the stage and the camera of now, and places the labels. */
+    /** Draws the surface at the state and the camera of now, and places the labels. */
     draw() {
       if (!this.W) return;
       const r = renderer();
@@ -4208,8 +4784,8 @@ void main() {
       this.curve.visible = shown.cut > 0;
       this.glow.material.uniforms.uAlpha.value = 0.45 * Math.min(1, 2 * shown.cut);
       this.glow.visible = shown.cut > 0;
-      this.points.material.uniforms.uRise.value = shown.marks;
-      this.points.visible = shown.marks > 0;
+      this.points.material.uniforms.uRise.value = shown.points;
+      this.points.visible = shown.points > 0;
       this.trace();
       this.aim();
       this.place();
@@ -4220,8 +4796,8 @@ void main() {
       ctx.clearRect(0, 0, this.W, this.H);
       ctx.drawImage(r.domElement, 0, 0);
     }
-    // the marks on the first sheet as drawn now, dimmed behind the surface, and the labels at their
-    // marks in the pixels of the slide, faded with the marks. the dimming follows the surface over
+    // the points on the first sheet as drawn now, dimmed behind the surface, and the labels at their
+    // points in the pixels of the slide, faded with the points. the dimming follows the surface over
     // DIMMING seconds, and at once after a pause between two frames
     place() {
       const THREE = this.THREE, p = new THREE.Vector3();
@@ -4230,27 +4806,27 @@ void main() {
       const now = performance.now(), dt = (now - this.seenAt) / 1e3;
       this.seenAt = now;
       const lit = this.points.geometry.getAttribute("lit");
-      const fill = this.points.geometry.getAttribute("fill");
+      const fill2 = this.points.geometry.getAttribute("fill");
       const k = dt > 0.25 ? 1 : 1 - Math.exp(-dt / DIMMING);
-      const f = !this.active || dt > 0.25 ? 1 : 1 - Math.exp(-dt / MARK_FADE);
-      this.fn.marks.forEach((m, i) => {
-        this.markAt(i, p);
+      const f = !this.active || dt > 0.25 ? 1 : 1 - Math.exp(-dt / POINT_FADE);
+      this.fn.points.forEach((m, i) => {
+        this.pointAt(i, p);
         position.setXYZ(i, p.x, p.y, p.z);
         this.seen[i] += ((this.behind(p) ? BEHIND : 1) - this.seen[i]) * k;
         seen.setX(i, this.seen[i]);
         this.lit[i] += (this.litTo[i] - this.lit[i]) * f;
         lit.setX(i, this.lit[i]);
         for (let c = 0; c < 3; c++) this.fill[3 * i + c] += (this.fillTo[3 * i + c] - this.fill[3 * i + c]) * f;
-        fill.setXYZ(i, this.fill[3 * i], this.fill[3 * i + 1], this.fill[3 * i + 2]);
+        fill2.setXYZ(i, this.fill[3 * i], this.fill[3 * i + 1], this.fill[3 * i + 2]);
       });
-      position.needsUpdate = seen.needsUpdate = lit.needsUpdate = fill.needsUpdate = true;
+      position.needsUpdate = seen.needsUpdate = lit.needsUpdate = fill2.needsUpdate = true;
       for (const lab of this.labels) {
-        const i = this.fn.marks.findIndex((m) => m.name === lab.dataset.at);
+        const i = this.fn.points.findIndex((m) => m.name === lab.dataset.at);
         if (i < 0) continue;
-        this.markAt(i, p).project(this.camera);
-        lab.style.left = `${(p.x + 1) / 2 * this.w + num3(lab.dataset.dx, 0)}px`;
-        lab.style.top = `${(1 - p.y) / 2 * this.h + num3(lab.dataset.dy, -34)}px`;
-        lab.style.opacity = String(this.shown.marks ** 2 * this.seen[i] * this.lit[i]);
+        this.pointAt(i, p).project(this.camera);
+        lab.style.left = `${(p.x + 1) / 2 * this.w + num4(lab.dataset.dx, 0)}px`;
+        lab.style.top = `${(1 - p.y) / 2 * this.h + num4(lab.dataset.dy, -34)}px`;
+        lab.style.opacity = String(this.shown.points ** 2 * this.seen[i] * this.lit[i]);
       }
     }
     // whether the first sheet is between the world point p, a little above it, and the camera
@@ -4264,10 +4840,36 @@ void main() {
       }
       return false;
     }
+    bindDrag() {
+      const el = this.el;
+      el.addEventListener("pointerdown", (ev) => {
+        if (ev.button !== 0) return;
+        this.drag = { x: ev.clientX, y: ev.clientY };
+        try {
+          el.setPointerCapture(ev.pointerId);
+        } catch {
+        }
+        el.classList.add("dragging");
+      });
+      el.addEventListener("pointermove", (ev) => {
+        if (!this.drag) return;
+        const { x, y } = this.drag;
+        this.drag = { x: ev.clientX, y: ev.clientY };
+        this.turn(ev.clientX - x, ev.clientY - y);
+      });
+      const end = () => {
+        if (!this.drag) return;
+        this.drag = null;
+        el.classList.remove("dragging");
+        this.resume = performance.now() + 1500;
+      };
+      el.addEventListener("pointerup", end);
+      el.addEventListener("pointercancel", end);
+    }
     kick() {
       if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
     }
-    // the end of a change of stage, at once
+    // the end of a change of state, at once
     settle() {
       if (!this.moving) return;
       this.moving = false;
@@ -4278,21 +4880,54 @@ void main() {
         s.tone = 1;
       }
     }
+    /** Turns the camera as a drag by dx and dy screen pixels does. */
+    turn(dx, dy) {
+      const scale = this.el.getBoundingClientRect().width / (this.el.offsetWidth || 1) || 1;
+      this.azimuth -= dx / scale * 5e-3;
+      this.elevation = clamp2(this.elevation + dy / scale * 4e-3, 0.12, 1.45);
+      if (!this.raf) this.draw();
+    }
+    /** The camera drawn now and the values read from the attributes of the element, with the angles in degrees, e.g. for the editor. */
+    view() {
+      const d = this.el.dataset, deg = 180 / Math.PI;
+      return {
+        azimuth: this.azimuth * deg,
+        elevation: this.elevation * deg,
+        zoom: this.zoom,
+        written: { azimuth: num4(d.azimuth, -60), elevation: num4(d.elevation, 32), zoom: num4(d.zoom, 1), turn: num4(d.turn, TURN), zscale: num4(d.zscale, this.fn.zscale) }
+      };
+    }
+    /** Reads the camera, the turn, and the scale of the heights from the attributes of the element again, e.g. after the editor changed them. */
+    configure() {
+      const w = this.view().written;
+      this.rate = w.turn > 0 ? 2 * Math.PI / w.turn : 0;
+      this.azimuth = w.azimuth * Math.PI / 180;
+      this.elevation = w.elevation * Math.PI / 180;
+      this.zoom = w.zoom;
+      if (w.zscale !== this.zscale) {
+        this.zscale = w.zscale;
+        for (const [name, g] of this.grids) this.ranges.set(name, this.range(g));
+        this.normals = /* @__PURE__ */ new WeakMap();
+        this.drawn = "";
+        this.stateName = "";
+        this.sync(false);
+      }
+      this.draw();
+    }
     /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other. */
     follow(other) {
-      if (!(other instanceof _Surface)) return;
       this.azimuth = other.azimuth;
       this.elevation = other.elevation;
       this.resume = other.resume;
     }
-    /** Starts the turning of the camera and the animation of a change of stage, while the slide is shown. */
+    /** Starts the turning of the camera and the animation of a change of state, while the slide is shown. */
     start() {
       this.active = true;
       this.last = 0;
       if (this.moving || this.rate) this.kick();
       else this.draw();
     }
-    /** Stops the animation, and ends a change of stage at once. */
+    /** Stops the animation, and ends a change of state at once. */
     stop() {
       this.active = false;
       cancelAnimationFrame(this.raf);
@@ -4300,7 +4935,7 @@ void main() {
       this.settle();
     }
   };
-  function mount2(root2) {
+  function mount3(root2) {
     const out = [];
     for (const el of root2.querySelectorAll(".surface:not([data-bundle])")) {
       const known = CACHE3.get(el);
@@ -4320,6 +4955,34 @@ void main() {
   }
 
   // src/bundle.ts
+  function dragToTurn(el, turn3, end) {
+    let drag = null;
+    el.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      drag = { x: ev.clientX, y: ev.clientY };
+      try {
+        el.setPointerCapture(ev.pointerId);
+      } catch {
+      }
+      el.classList.add("dragging");
+    });
+    el.addEventListener("pointermove", (ev) => {
+      if (!drag) return;
+      const scale = el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1;
+      const dx = (ev.clientX - drag.x) / scale, dy = (ev.clientY - drag.y) / scale;
+      drag = { x: ev.clientX, y: ev.clientY };
+      turn3(dx, dy);
+    });
+    const stop3 = () => {
+      if (!drag) return;
+      drag = null;
+      el.classList.remove("dragging");
+      end();
+    };
+    el.addEventListener("pointerup", stop3);
+    el.addEventListener("pointercancel", stop3);
+    return () => drag !== null;
+  }
   var GROW = 3600;
   var SHRINK = 1400;
   var RIBS_END = 0.42;
@@ -4392,8 +5055,8 @@ void main() {
   );
   var add = (a, b, s) => [a[0] + s * b[0], a[1] + s * b[1], a[2] + s * b[2]];
   var ribGrowth = (g, k, count) => {
-    const start2 = count > 1 ? RIB_DELAY * k / (count - 1) : 0;
-    return ease(clamp2((g - start2) / (RIBS_END - RIB_DELAY), 0, 1));
+    const start4 = count > 1 ? RIB_DELAY * k / (count - 1) : 0;
+    return ease(clamp2((g - start4) / (RIBS_END - RIB_DELAY), 0, 1));
   };
   var sheetGrowth = (g) => ease(clamp2((g - SHEET_START) / (1 - SHEET_START), 0, 1));
   function parseBundle(text) {
@@ -4451,18 +5114,18 @@ void main() {
       this.THREE = THREE;
       this.orbit = data.orbit;
       this.point = data.libration_point ?? null;
-      const turn = num3(el.dataset.turn, TURN2);
-      this.rate = turn > 0 ? 2 * Math.PI / turn : 0;
-      this.azimuth = num3(el.dataset.azimuth, -60) * Math.PI / 180;
-      this.elevation = num3(el.dataset.elevation, 32) * Math.PI / 180;
-      this.zoom = num3(el.dataset.zoom, 1);
+      const turn3 = num4(el.dataset.turn, TURN2);
+      this.rate = turn3 > 0 ? 2 * Math.PI / turn3 : 0;
+      this.azimuth = num4(el.dataset.azimuth, -60) * Math.PI / 180;
+      this.elevation = num4(el.dataset.elevation, 32) * Math.PI / 180;
+      this.zoom = num4(el.dataset.zoom, 1);
       for (const old of el.querySelectorAll(":scope > canvas.surface-image")) old.remove();
       this.canvas = document.createElement("canvas");
       this.canvas.className = "surface-image";
       this.canvas.setAttribute("aria-hidden", "true");
       el.prepend(this.canvas);
       el.setAttribute("data-prevent-swipe", "");
-      this.labels = [...el.querySelectorAll(".lab")];
+      this.labels = [...el.querySelectorAll(".label")];
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
       this.camera.up.set(0, 0, 1);
@@ -4524,12 +5187,12 @@ void main() {
       return mesh;
     }
     setSegment(geometry, k, a, b) {
-      const start2 = geometry.getAttribute("start"), end = geometry.getAttribute("end");
+      const start4 = geometry.getAttribute("start"), end = geometry.getAttribute("end");
       for (let v = 0; v < 6; v++) {
-        start2.setXYZ(6 * k + v, a[0], a[1], a[2]);
+        start4.setXYZ(6 * k + v, a[0], a[1], a[2]);
         end.setXYZ(6 * k + v, b[0], b[1], b[2]);
       }
-      start2.needsUpdate = end.needsUpdate = true;
+      start4.needsUpdate = end.needsUpdate = true;
     }
     makeDot() {
       const THREE = this.THREE, geometry = new THREE.BufferGeometry();
@@ -4615,18 +5278,18 @@ void main() {
         set2(r.segments.material.uniforms.uColor.value, mix3(tone, text, 0.4));
       }
     }
-    // the strips named by the visible fragment of the slide with data-surface-stage and the highest
-    // fragment index, or by the data-stage of the element, or none. an unknown name is reported
+    // the strips named by the visible fragment of the slide with data-surface-state and the highest
+    // fragment index, or by the data-surface-state of the element, or none. an unknown name is reported
     target() {
       let best = null, index = -Infinity;
-      for (const f of this.el.closest("section")?.querySelectorAll(".fragment.visible[data-surface-stage]") ?? []) {
-        const i = num3(f.dataset.fragmentIndex, 0);
+      for (const f of this.el.closest("section")?.querySelectorAll(".fragment.visible[data-surface-state]") ?? []) {
+        const i = num4(f.dataset.fragmentIndex, 0);
         if (i >= index) {
           best = f;
           index = i;
         }
       }
-      const names = (best?.dataset.surfaceStage ?? this.el.dataset.stage ?? "").split(/\s+/).filter(Boolean);
+      const names = (best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? "").split(/\s+/).filter(Boolean);
       const unknown = names.filter((name) => !this.strips.some((r) => r.id === name));
       if (unknown.length) console.error(`beeson: unknown strip "${unknown.join(" ")}" of the bundle ${this.el.dataset.bundle}, known: ${this.strips.map((r) => r.id).join(", ")}`);
       return names;
@@ -4802,22 +5465,22 @@ void main() {
           const t = tips[i], l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
           const e = l < 1 ? [0, -1] : [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l];
           const reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
-          lab.style.left = `${t[0] + e[0] * reach + num3(lab.dataset.dx, 0)}px`;
-          lab.style.top = `${t[1] + e[1] * reach + num3(lab.dataset.dy, 0)}px`;
+          lab.style.left = `${t[0] + e[0] * reach + num4(lab.dataset.dx, 0)}px`;
+          lab.style.top = `${t[1] + e[1] * reach + num4(lab.dataset.dy, 0)}px`;
           lab.style.opacity = "1";
           continue;
         }
         let anchor2 = null, alpha = 1;
         const r = this.strips.find((rb) => rb.id === at);
         if (r) {
-          const k = clamp2(Math.round(num3(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i2 = r.ribs[k];
-          anchor2 = add(this.orbit[i2], r.directions[i2], r.half * (num3(lab.dataset.side, 1) < 0 ? -1 : 1));
+          const k = clamp2(Math.round(num4(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i2 = r.ribs[k];
+          anchor2 = add(this.orbit[i2], r.directions[i2], r.half * (num4(lab.dataset.side, 1) < 0 ? -1 : 1));
           alpha = sheetGrowth(r.grow);
         } else if (this.point && /^L\d$/.test(at)) anchor2 = this.point;
         if (!anchor2) continue;
         const [x, y] = this.screen(anchor2);
-        lab.style.left = `${x + num3(lab.dataset.dx, 0)}px`;
-        lab.style.top = `${y + num3(lab.dataset.dy, -30)}px`;
+        lab.style.left = `${x + num4(lab.dataset.dx, 0)}px`;
+        lab.style.top = `${y + num4(lab.dataset.dy, -30)}px`;
         lab.style.opacity = String(alpha);
       }
     }
@@ -4862,7 +5525,7 @@ void main() {
       if (this.moving) this.settle();
     }
   };
-  function mount3(root2) {
+  function mount4(root2) {
     const out = [];
     for (const el of root2.querySelectorAll(".surface[data-bundle]")) {
       const known = CACHE4.get(el);
@@ -4881,6 +5544,40 @@ void main() {
       out.push(new Bundle(el, data, window.THREE));
     }
     return out;
+  }
+
+  // src/fly.ts
+  function box2(nodes) {
+    const rects = nodes.map((n) => n.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
+    if (!rects.length) return null;
+    const left = Math.min(...rects.map((r) => r.left)), right = Math.max(...rects.map((r) => r.right));
+    const top = Math.min(...rects.map((r) => r.top)), bottom = Math.max(...rects.map((r) => r.bottom));
+    return { x: (left + right) / 2, y: (top + bottom) / 2, w: right - left };
+  }
+  function flyIn(slide, el) {
+    const from = box2([...slide.querySelectorAll(el.dataset.flyFrom ?? "")]);
+    const to = box2(el.dataset.flyTo ? [...el.querySelectorAll(el.dataset.flyTo)] : [el]);
+    const own = el.getBoundingClientRect();
+    if (!from || !to || !to.w || !el.offsetWidth) return;
+    const k = own.width / el.offsetWidth;
+    const seconds2 = Number(el.dataset.flyDuration ?? 1.2);
+    el.style.transition = "none";
+    el.style.transformOrigin = `${(to.x - own.left) / k}px ${(to.y - own.top) / k}px`;
+    el.style.transform = `translate(${(from.x - to.x) / k}px, ${(from.y - to.y) / k}px) scale(${from.w / to.w})`;
+    void el.offsetWidth;
+    el.style.transition = `transform ${seconds2}s cubic-bezier(0.45, 0, 0.25, 1), opacity 0s`;
+    el.style.transform = "";
+    setTimeout(() => {
+      el.style.transition = "";
+      el.style.transformOrigin = "";
+    }, seconds2 * 1e3 + 50);
+  }
+  function fly(slide, shown) {
+    for (const f of shown) {
+      for (const el of [f, ...f.querySelectorAll("[data-fly-from]")]) {
+        if (el instanceof HTMLElement && el.dataset.flyFrom) flyIn(slide, el);
+      }
+    }
   }
 
   // src/steps.ts
@@ -4906,8 +5603,10 @@ void main() {
     return { held, lit };
   }
   var words2 = (s) => (s ?? "").split(/\s+/).filter(Boolean);
+  var MOVES_ON = "data-moves-on";
   var hasContent = (f) => f.children.length > 0 || (f.textContent ?? "").trim() !== "";
   var isCopy = (f) => f.matches("pre > code.fragment");
+  var holdsVideo = (f) => f.matches("video, tycho-viewer") || !!f.querySelector("video, tycho-viewer");
   function addRestoreSteps(root2) {
     for (const slide of root2.querySelectorAll(".reveal .slides section")) {
       if (slide.querySelector("section, .fragment[data-restore], .fragment[data-final]")) continue;
@@ -4916,7 +5615,11 @@ void main() {
       const last = unindexed.length ? [unindexed[unindexed.length - 1]] : frags.filter((f) => Number(f.dataset.fragmentIndex) === Math.max(...frags.map((g) => Number(g.dataset.fragmentIndex))));
       const boxes = new Set(frags.filter(isCopy).map((f) => f.parentElement));
       const dimsBox = [...boxes].some((box3) => !last.some((f) => f.parentElement === box3 && isCopy(f)));
-      if (!dimsBox && !frags.some((f) => !last.includes(f) && hasContent(f) && !isCopy(f))) continue;
+      if (!dimsBox && !frags.some((f) => !last.includes(f) && hasContent(f) && !isCopy(f) && !holdsVideo(f))) continue;
+      if (last.some(delayed)) {
+        slide.setAttribute(MOVES_ON, "");
+        continue;
+      }
       const restore = document.createElement("span");
       restore.className = "fragment";
       restore.setAttribute("data-restore", "");
@@ -4926,7 +5629,7 @@ void main() {
   }
   function applySteps(slide) {
     const frags = [...slide.querySelectorAll(".fragment")];
-    if (!slide.querySelector("section")) slide.toggleAttribute("data-complete", frags.every((f) => f.classList.contains("visible")));
+    if (!slide.querySelector("section")) slide.toggleAttribute("data-complete", !slide.hasAttribute(MOVES_ON) && frags.every((f) => f.classList.contains("visible")));
     const names = [...new Set(frags.flatMap((f) => words2(f.dataset.highlight)))];
     if (!names.length && !frags.some((f) => f.hasAttribute("data-keep") || f.hasAttribute("data-focus"))) return;
     const select2 = (name) => `.${CSS.escape(name)}`;
@@ -4956,7 +5659,7 @@ void main() {
   function applyAll(root2) {
     for (const slide of root2.querySelectorAll(".reveal .slides section")) applySteps(slide);
   }
-  var typeset = () => window.MathJax?.startup?.promise ?? Promise.resolve();
+  var typeset2 = () => window.MathJax?.startup?.promise ?? Promise.resolve();
   function initSteps(deck) {
     const mark = () => {
       const slide = deck.getCurrentSlide();
@@ -4964,7 +5667,139 @@ void main() {
     };
     for (const type of ["fragmentshown", "fragmenthidden", "slidechanged"]) deck.on(type, mark);
     mark();
-    void typeset().then(mark);
+    void typeset2().then(mark);
+    deck.on("slidechanged", (event) => {
+      const { previousSlide: from, currentSlide: to } = event;
+      if (!from?.hasAttribute(MOVES_ON) || !to || deck.getSlides().indexOf(to) < deck.getSlides().indexOf(from)) return;
+      const frags = [...from.querySelectorAll(".fragment")];
+      const last = Math.max(...frags.map((f) => Number(f.dataset.fragmentIndex)).filter(Number.isFinite));
+      for (const f of frags) if (Number(f.dataset.fragmentIndex) === last) f.classList.add("current-fragment");
+    });
+  }
+  var AUTOSLIDE = "data-autoslide";
+  var HELD = "data-autoslide-held";
+  var stepsOf = (slide) => [-1, ...new Set([...slide.querySelectorAll(".fragment")].map((f) => Number(f.dataset.fragmentIndex)).filter(Number.isFinite))].sort((a, b) => a - b);
+  var fragmentsAt = (slide, f) => [...slide.querySelectorAll(".fragment")].filter((el) => Number(el.dataset.fragmentIndex) === f);
+  var delayed = (el) => (parseInt(el.getAttribute(AUTOSLIDE) ?? el.getAttribute(HELD) ?? "", 10) || 0) > 0;
+  function initTimedSteps(deck, forDeck2, internal) {
+    const config = deck.getConfig();
+    const method = config.autoSlideMethod;
+    let timer = false;
+    config.autoSlideStoppable = false;
+    config.autoSlideMethod = () => {
+      timer = true;
+      try {
+        if (typeof method === "function") method();
+        else deck.next();
+      } finally {
+        timer = false;
+      }
+    };
+    deck.addKeyBinding({ keyCode: 65, key: "A", description: "Pause and resume the timed steps" }, (ev) => {
+      if (forDeck2(ev)) deck.toggleAutoSlide(!deck.isAutoSliding());
+    });
+    const cue = internal.cueAutoSlide.bind(internal);
+    const state = () => {
+      const { h, v, f } = deck.getIndices();
+      return `${h}/${v}/${f}/${deck.isOverview()}/${deck.isPaused()}`;
+    };
+    let keyFrom = null;
+    internal.cueAutoSlide = () => {
+      if (keyFrom === null || keyFrom !== state()) cue();
+    };
+    window.addEventListener("keydown", () => {
+      keyFrom = state();
+      setTimeout(() => keyFrom = null, 0);
+    }, true);
+    window.addEventListener("keydown", () => keyFrom = null);
+    const slides2 = () => deck.getSlides();
+    const here = () => {
+      const slide = deck.getCurrentSlide();
+      const shown = [...slide.querySelectorAll(".fragment.visible")].map((f) => Number(f.dataset.fragmentIndex)).filter(Number.isFinite);
+      return { slide: slides2().indexOf(slide), f: Math.max(-1, ...shown) };
+    };
+    const before = (at) => {
+      const steps = stepsOf(slides2()[at.slide]);
+      const k = steps.indexOf(at.f);
+      if (k > 0) return { slide: at.slide, f: steps[k - 1] };
+      const prev = slides2()[at.slide - 1];
+      return prev ? { slide: at.slide - 1, f: stepsOf(prev).at(-1) } : null;
+    };
+    const delayedAt = (at) => !!at && at.f >= 0 && fragmentsAt(slides2()[at.slide], at.f).some(delayed);
+    const same = (a, b) => !!a && !!b && a.slide === b.slide && a.f === b.f;
+    const reached2 = /* @__PURE__ */ new Map();
+    const byDelay = (at) => reached2.get(`${at.slide}:${at.f}`) ?? delayedAt(before(at));
+    let last = here();
+    let held = [];
+    const change = () => {
+      const now = here();
+      if (same(now, last)) return;
+      for (const el of held) {
+        el.setAttribute(AUTOSLIDE, el.getAttribute(HELD) ?? "");
+        el.removeAttribute(HELD);
+      }
+      held = [];
+      const from = last;
+      last = now;
+      const back = now.slide < from.slide || now.slide === from.slide && now.f < from.f;
+      if (!back) reached2.set(`${now.slide}:${now.f}`, timer);
+      if (!back || deck.isOverview()) return;
+      if (delayedAt(now)) {
+        held = fragmentsAt(slides2()[now.slide], now.f).filter((el) => el.hasAttribute(AUTOSLIDE));
+        for (const el of held) {
+          el.setAttribute(HELD, el.getAttribute(AUTOSLIDE));
+          el.removeAttribute(AUTOSLIDE);
+        }
+      }
+      internal.cueAutoSlide();
+      if (!delayedAt(now)) return;
+      if (same(before(from), now) && byDelay(now)) setTimeout(() => deck.prev(), 0);
+    };
+    for (const type of ["fragmentshown", "fragmenthidden", "slidechanged"]) deck.on(type, change);
+  }
+
+  // src/kinds.ts
+  var usual = (title, style) => ({ title, style, counter: null });
+  var USUAL = {
+    theorem: usual("Theorem", "plain"),
+    lemma: usual("Lemma", "plain"),
+    proposition: usual("Proposition", "plain"),
+    corollary: usual("Corollary", "plain"),
+    definition: usual("Definition", "definition"),
+    example: usual("Example", "definition"),
+    remark: usual("Remark", "remark"),
+    proof: usual("Proof", "remark")
+  };
+  var kindsOf = (theorems) => ({ ...USUAL, ...theorems });
+
+  // src/theorems.ts
+  function theoremHeads(theorems, kinds) {
+    const count = /* @__PURE__ */ new Map();
+    return theorems.map(({ kind: name, name: note, counted = true }) => {
+      const kind = Object.hasOwn(kinds, name) ? kinds[name] : null;
+      if (!kind) return { head: `${name}.`, style: "plain", missing: true };
+      if (name === "proof" && note) return { head: `${note}.`, style: kind.style, missing: false };
+      let number = "";
+      if (kind.counter !== null && counted) {
+        count.set(kind.counter, (count.get(kind.counter) ?? 0) + 1);
+        number = ` ${count.get(kind.counter)}`;
+      }
+      return { head: `${kind.title}${number}${note ? ` (${note})` : ""}.`, style: kind.style, missing: false };
+    });
+  }
+  function numberTheorems() {
+    const tex = window.beesonTex;
+    const theorems = [...document.querySelectorAll(".reveal .slides p.theorem")];
+    const heads = theoremHeads(
+      theorems.map((p) => ({ kind: p.dataset.kind || "theorem", name: p.dataset.name, counted: !p.closest('section[data-visibility="hidden"]') })),
+      kindsOf(tex?.theorems ?? {})
+    );
+    theorems.forEach((p, k) => {
+      const { head, style, missing } = heads[k];
+      if (p.dataset.head !== head) p.dataset.head = head;
+      if (p.dataset.style !== style) p.dataset.style = style;
+      p.toggleAttribute("data-missing", missing);
+    });
   }
 
   // src/switcher.ts
@@ -5097,6 +5932,204 @@ void main() {
     return !target?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], tycho-viewer');
   }
 
+  // src/video.ts
+  var FADE = 400;
+  var running = /* @__PURE__ */ new WeakSet();
+  var turns = /* @__PURE__ */ new WeakMap();
+  var turn = 0;
+  var guarded = /* @__PURE__ */ new WeakSet();
+  var HIDES = ".fade-out, .fade-in-then-out:not(.current-fragment), .current-visible:not(.current-fragment)";
+  function stepShown(el, slide) {
+    for (let e = el; e && e !== slide; e = e.parentElement) {
+      if (!e.classList.contains("fragment")) continue;
+      if (!e.classList.contains("visible") || e.matches(HIDES)) return false;
+    }
+    return true;
+  }
+  var mode = (v) => v.classList.contains("for-dark") ? "dark" : v.classList.contains("for-light") ? "light" : "";
+  var coveredBy = (v, later) => !mode(later) || mode(later) === mode(v);
+  function cover(slide) {
+    for (const place2 of slide.querySelectorAll(".figure-box, .plate")) {
+      const videos = [...place2.children].filter((c) => c instanceof HTMLVideoElement);
+      const shown = videos.map((v) => stepShown(v, slide));
+      videos.forEach((v, i) => {
+        const under = !place2.classList.contains("row") && videos.some((later, j) => j > i && shown[j] && coveredBy(v, later));
+        v.toggleAttribute("data-covered", under);
+      });
+    }
+  }
+  function coverAll(root2) {
+    for (const slide of root2.querySelectorAll(".reveal .slides section")) cover(slide);
+  }
+  var plays = (v, slide) => {
+    if (v.hasAttribute("data-autoplay")) return true;
+    const step2 = v.closest(".fragment.play");
+    return !!step2 && slide.contains(step2);
+  };
+  var ready = (v) => v.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA || v.error !== null;
+  var once = (v, types) => new Promise((done) => {
+    for (const type of types) v.addEventListener(type, () => done(), { once: true });
+  });
+  var sleep2 = (ms) => new Promise((done) => setTimeout(done, ms));
+  async function start(videos) {
+    const mine = ++turn;
+    for (const v of videos) {
+      running.add(v);
+      turns.set(v, mine);
+    }
+    const current = () => videos.filter((v) => turns.get(v) === mine && running.has(v));
+    if (!videos.every(ready)) {
+      for (const v of videos) {
+        v.pause();
+        if (!ready(v)) v.preload = "auto";
+      }
+      await Promise.race([Promise.all(videos.filter((v) => !ready(v)).map((v) => once(v, ["canplay", "error"]))), sleep2(5e3)]);
+    }
+    const seeks = current().filter((v) => v.currentTime > 0).map((v) => {
+      v.currentTime = 0;
+      return once(v, ["seeked", "error"]);
+    });
+    if (seeks.length) await Promise.race([Promise.all(seeks), sleep2(1e3)]);
+    for (const v of current()) v.play().catch(() => {
+    });
+  }
+  function stop(v) {
+    const played = !v.paused || v.currentTime > 0;
+    running.delete(v);
+    turns.delete(v);
+    v.pause();
+    if (!played) return;
+    if (getComputedStyle(v).visibility !== "hidden" && !v.hasAttribute("data-covered")) {
+      v.load();
+      return;
+    }
+    setTimeout(() => {
+      if (!running.has(v) && v.currentTime > 0) v.currentTime = 0;
+    }, FADE + 50);
+  }
+  function guard(v) {
+    if (guarded.has(v)) return;
+    guarded.add(v);
+    v.addEventListener("play", () => {
+      if (!running.has(v)) v.pause();
+    });
+  }
+  function syncVideos(slide, speaker2 = false) {
+    cover(slide);
+    const starts2 = [];
+    for (const v of slide.querySelectorAll("video")) {
+      if (!plays(v, slide) || speaker2 && !v.muted) continue;
+      guard(v);
+      if (stepShown(v, slide) && !v.hasAttribute("data-covered")) {
+        if (!running.has(v)) starts2.push(v);
+      } else stop(v);
+    }
+    if (starts2.length) void start(starts2);
+  }
+  function leave(slide) {
+    for (const v of slide.querySelectorAll("video")) {
+      running.delete(v);
+      turns.delete(v);
+    }
+  }
+  function initVideos(deck) {
+    const speaker2 = deck.isSpeakerNotes();
+    const sync2 = () => {
+      const slide = deck.getCurrentSlide();
+      if (slide) syncVideos(slide, speaker2);
+    };
+    deck.on("slidechanged", (event) => {
+      const previous = event.previousSlide;
+      if (previous && previous !== deck.getCurrentSlide()) leave(previous);
+      sync2();
+    });
+    deck.on("fragmentshown", sync2);
+    deck.on("fragmenthidden", sync2);
+    sync2();
+  }
+
+  // src/viewers.ts
+  var running2 = /* @__PURE__ */ new WeakSet();
+  var turns2 = /* @__PURE__ */ new WeakMap();
+  var turn2 = 0;
+  var loads2 = /* @__PURE__ */ new WeakMap();
+  var sleep3 = (ms) => new Promise((done) => setTimeout(done, ms));
+  var loaded = (v) => (v.state ?? null) !== null;
+  var failed = (v) => !!v.shadowRoot?.querySelector(".status.error");
+  function whenLoaded(v) {
+    let load3 = loads2.get(v);
+    if (!load3) {
+      const until = performance.now() + 6e4;
+      load3 = new Promise((done) => {
+        const poll = () => loaded(v) || failed(v) || performance.now() > until ? done() : setTimeout(poll, 50);
+        poll();
+      });
+      loads2.set(v, load3);
+    }
+    return load3;
+  }
+  var plays2 = (v, slide) => {
+    const step2 = v.closest(".fragment.play");
+    return !!step2 && slide.contains(step2);
+  };
+  function hold(v) {
+    if (loaded(v)) v.seek(0);
+  }
+  async function start2(viewers) {
+    const mine = ++turn2;
+    for (const v of viewers) {
+      running2.add(v);
+      turns2.set(v, mine);
+    }
+    const waiting2 = viewers.filter((v) => !loaded(v));
+    if (waiting2.length) {
+      for (const v of viewers) hold(v);
+      await Promise.race([Promise.all(waiting2.map(whenLoaded)), sleep3(5e3)]);
+    }
+    const current = viewers.filter((v) => turns2.get(v) === mine && running2.has(v) && loaded(v));
+    for (const v of current) v.seek(0);
+    for (const v of current) v.play();
+  }
+  function stop2(v) {
+    running2.delete(v);
+    turns2.delete(v);
+    hold(v);
+  }
+  function stepViewers(slide, shown = (v) => stepShown(v, slide)) {
+    const starts2 = [];
+    for (const v of slide.querySelectorAll("tycho-viewer")) {
+      if (!plays2(v, slide)) continue;
+      if (shown(v)) {
+        if (!running2.has(v)) starts2.push(v);
+      } else stop2(v);
+    }
+    if (starts2.length) void start2(starts2);
+  }
+  function leave2(slide) {
+    for (const v of slide.querySelectorAll("tycho-viewer")) if (plays2(v, slide)) stop2(v);
+  }
+  function initViewers(deck) {
+    for (const v of document.querySelectorAll(".reveal .slides tycho-viewer")) {
+      const slide = v.closest("section");
+      if (!slide || !plays2(v, slide)) continue;
+      void whenLoaded(v).then(() => {
+        if (!running2.has(v)) hold(v);
+      });
+    }
+    const sync2 = () => {
+      const slide = deck.getCurrentSlide();
+      if (slide) stepViewers(slide);
+    };
+    deck.on("slidechanged", (event) => {
+      const previous = event.previousSlide;
+      if (previous && previous !== deck.getCurrentSlide()) leave2(previous);
+      sync2();
+    });
+    deck.on("fragmentshown", sync2);
+    deck.on("fragmenthidden", sync2);
+    sync2();
+  }
+
   // src/main.ts
   function numberOf(slide) {
     if (slide?.dataset.appendix) return [`A${slide.dataset.appendix}`, "", ""];
@@ -5123,11 +6156,17 @@ void main() {
     autoAnimateDuration: 0.5,
     autoAnimateEasing: "ease-out",
     autoAnimateUnmatched: true,
+    // the list of reveal.js with translate and rotate, which the editor writes for a move and a turn.
+    // with center off, reveal.js measures an element by its offset, which does not count them
+    autoAnimateStyles: ["opacity", "color", "background-color", "padding", "font-size", "line-height", "letter-spacing", "border-width", "border-color", "border-radius", "outline", "outline-offset", "translate", "rotate"],
     progress: true,
     slideNumber: (slide) => numberOf(slide),
     controls: false,
     center: false,
     pdfSeparateFragments: true,
+    // one page per step, as in Keynote and PowerPoint, with what runs past the slide cut off in the
+    // print styles of theme/beeson.css
+    pdfMaxPagesPerSlide: 1,
     // off with 0, since the chrome, the mode button, and the viewer are lost in the scroll view that
     // reveal.js would start in a narrow window
     scrollActivationWidth: 0
@@ -5137,7 +6176,25 @@ void main() {
   var surfaces = [];
   var plots = [];
   var EDITING = new URLSearchParams(location.search).has("edit");
+  var PLAYED = !EDITING && window.parent !== window && new URLSearchParams(location.search).has("from-editor");
+  var RECEIVER = window.parent !== window && /receiver/i.test(location.search);
+  var TAB = !EDITING && window.parent === window && !!window.opener && new URLSearchParams(location.search).has("from-editor");
+  var ENDS = (PLAYED || TAB) && !/controls=false/.test(location.search);
+  var toEditor = (eventName, state = window.Reveal.getState()) => (RECEIVER ? window.parent.opener : TAB ? window.opener : window.parent)?.postMessage(JSON.stringify({ namespace: "beeson", eventName, state }), "*");
+  var speaker = null;
+  function fromSpeaker(ev) {
+    let m = null;
+    try {
+      const from = ev.source;
+      if (from?.opener === window) speaker = from;
+      if (from?.parent?.opener === window && typeof ev.data === "string") m = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    if (m?.namespace === "beeson" && m.eventName === "edit") PLAYED || TAB ? toEditor("edit", m.state ?? window.Reveal.getState()) : edit();
+  }
   function edit() {
+    speaker?.close();
     const params = new URLSearchParams(location.search);
     params.set("edit", "");
     location.href = `${location.href.split(/[?#]/)[0]}?${params.toString().replace(/=(?=&|$)/g, "")}${location.hash}`;
@@ -5146,7 +6203,7 @@ void main() {
   function remount() {
     for (const o of mount(document)) if (!backdrops.includes(o)) backdrops.push(o);
     if (document.querySelector(".surface")) {
-      for (const s of [...mount2(document), ...mount3(document)]) if (!surfaces.includes(s)) surfaces.push(s);
+      for (const s of [...mount3(document), ...mount4(document)]) if (!surfaces.includes(s)) surfaces.push(s);
     }
     for (const p of mountPlots(document)) if (!plots.includes(p)) plots.push(p);
   }
@@ -5162,6 +6219,12 @@ void main() {
     if (own.length) applySteps(slide);
   }
   var waiting = (o) => o.el.classList.contains("fragment") && !o.el.classList.contains("visible");
+  function animated(o, slide = o.el.closest("section")) {
+    if (waiting(o)) return false;
+    const loop = o.el.hasAttribute("data-loop");
+    if (slide?.hasAttribute("data-auto-animate")) return loop;
+    return loop || o.el.hasAttribute("data-live") || TRACED.some((c) => slide?.classList.contains(c));
+  }
   function playBackdrop(o, slide) {
     o.fit();
     if (still2()) {
@@ -5181,7 +6244,7 @@ void main() {
         o.fit();
         if (loop) o.start();
       }, seconds2 * 1e3 + 50);
-    } else if (loop || o.el.hasAttribute("data-live") || TRACED.some((c) => slide.classList.contains(c))) {
+    } else if (animated(o, slide)) {
       o.reset();
       o.start();
     } else o.complete();
@@ -5196,6 +6259,51 @@ void main() {
       s.sync(false);
       if (!still2()) s.start();
     }
+  }
+  function mountWithin(root2) {
+    remount();
+    mountQr(root2);
+    mountShapes(root2);
+    void mountFigures(root2, get());
+    numberTheorems();
+    mountCitations();
+    for (const o of backdrops) if (root2.contains(o.el)) {
+      o.fit();
+      o.complete();
+    }
+    for (const s of surfaces) if (root2.contains(s.el)) {
+      s.fit();
+      s.sync(false);
+      s.draw();
+    }
+    for (const p of plots) if (root2.contains(p.el)) {
+      p.fit();
+      p.syncSteps();
+      p.still();
+    }
+    const slide = root2.closest(".reveal .slides section");
+    if (slide) applySteps(slide);
+  }
+  function remountBackdrop(el) {
+    const at = backdrops.findIndex((o2) => o2.el === el);
+    (at >= 0 ? backdrops[at] : Orbits.of(el))?.destroy();
+    const o = new Orbits(el);
+    if (at >= 0) backdrops.splice(at, 1, o);
+    else backdrops.push(o);
+    o.complete();
+    void o.ready.then(() => o.complete());
+    return o;
+  }
+  function preview(el) {
+    const o = new Orbits(el);
+    o.complete();
+    void o.ready.then(() => o.complete());
+    return o;
+  }
+  async function fitWindow(el, box3) {
+    const trajectories = el.dataset.trajectories !== void 0 ? (await trajectoriesFor(el)).trajectories : builtIn(el.dataset.backdrop ?? "");
+    const b = box3 ?? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
+    return b.width && b.height ? fitView(trajectories, b, { width: 1920, height: 1080 }) : null;
   }
   function completeAll() {
     remount();
@@ -5215,7 +6323,7 @@ void main() {
     }
     applyAll(document);
   }
-  async function start(options = {}) {
+  async function start3(options = {}) {
     const deck = window.Reveal;
     const plugins = [...options.plugins ?? []];
     if (window.RevealNotes && !plugins.includes(window.RevealNotes)) plugins.push(window.RevealNotes);
@@ -5223,17 +6331,34 @@ void main() {
     initSwitcher();
     if (!EDITING) markUncounted(document);
     mountQr(document);
+    mountShapes(document);
+    numberTheorems();
+    mountCitations();
+    void mountFigures(document, get());
     markViewers();
     deck.on("pdf-ready", () => {
       completeAll();
-      void typeset().then(() => applyAll(document));
+      mountShapes(document);
+      void mountFigures(document, get());
+      mountCitations();
+      coverAll(document);
+      void typeset2().then(() => applyAll(document));
       syncViewers(get());
       void stillViewers();
     });
-    if (!EDITING) plugins.push({ id: "beeson-restore", init: () => addRestoreSteps(document) });
-    await deck.initialize({ ...DEFAULTS, ...options, plugins });
+    const hooks = {};
+    if (!EDITING) plugins.push({ id: "beeson-restore", init: (reveal) => {
+      hooks.internal = reveal;
+      addRestoreSteps(document);
+    } });
+    const editing = EDITING ? { showHiddenSlides: true } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
+    await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
     initChrome();
     initSteps(deck);
+    syncCitations();
+    void document.fonts.ready.then(() => syncCitations());
+    const { internal } = hooks;
+    if (internal) initTimedSteps(deck, forDeck, internal);
     remount();
     initCursor(() => backdrops, () => deck.getCurrentSlide(), !EDITING);
     deck.addKeyBinding({ keyCode: 68, key: "D", description: "Switch dark and light" }, (ev) => {
@@ -5243,16 +6368,51 @@ void main() {
       if (forDeck(ev)) togglePointer();
     });
     deck.addKeyBinding(70, (ev) => {
-      if (forDeck(ev)) toggleFullscreen();
+      if (forDeck(ev)) PLAYED ? toEditor("fullscreen") : toggleFullscreen();
     });
     deck.registerKeyboardShortcut("F", "Full screen on and off");
     if (!EDITING && !deck.isPrintView() && !/print-pdf/.test(location.search)) {
-      initFullscreen();
+      if (!PLAYED) initFullscreen();
       initScrub(deck);
+      initVideos(deck);
+      initViewers(deck);
+      if (internal) initClick(deck, () => internal.cueAutoSlide(), ENDS ? () => toEditor("edit") : void 0);
     }
-    if (!EDITING) deck.addKeyBinding({ keyCode: 69, key: "E", description: "Edit the deck" }, (ev) => {
-      if (forDeck(ev)) edit();
+    if (PLAYED || TAB) for (const keyCode of [27, 69]) deck.addKeyBinding(keyCode, (ev) => {
+      if (forDeck(ev)) toEditor("edit", ENDS ? void 0 : null);
     });
+    else if (!EDITING) deck.addKeyBinding({ keyCode: 69, key: "E", description: "Edit the deck" }, (ev) => {
+      if (forDeck(ev)) RECEIVER ? toEditor("edit") : edit();
+    });
+    if (PLAYED) document.addEventListener("keydown", (ev) => {
+      if (ev.keyCode === 83 && forDeck(ev)) toEditor("speaker");
+    }, true);
+    let typed = "";
+    if (PLAYED && !RECEIVER) {
+      document.addEventListener("keydown", (ev) => {
+        if (!/^[0-9]$/.test(ev.key) && ev.key !== "Enter") typed = "";
+      }, true);
+      for (let d = 0; d < 10; d++) for (const keyCode of [48 + d, 96 + d]) deck.addKeyBinding(keyCode, (ev) => {
+        if (forDeck(ev)) typed = (typed + d).slice(-4);
+      });
+      deck.addKeyBinding(13, (ev) => {
+        if (deck.isOverview()) deck.toggleOverview(false);
+        else if (forDeck(ev)) typed ? deck.slide(Number(typed) - 1, 0, -1) : deck.next();
+        typed = "";
+      });
+      deck.addKeyBinding(8, (ev) => {
+        if (forDeck(ev)) deck.prev();
+      });
+    }
+    if (ENDS) document.addEventListener("keydown", (ev) => {
+      if (!["ArrowRight", "ArrowDown", "PageDown", " ", "Enter", "n", "N"].includes(ev.key) || ev.key === "Enter" && typed) return;
+      if (!forDeck(ev) || deck.isOverview() || !deck.isLastSlide() || deck.availableFragments().next) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      toEditor("edit");
+    }, true);
+    if (!EDITING && !RECEIVER) window.addEventListener("message", fromSpeaker);
+    if (PLAYED || TAB) window.addEventListener("pagehide", () => speaker?.close());
     if (still2()) completeAll();
     else show(deck.getCurrentSlide());
     deck.on("slidechanged", (event) => {
@@ -5262,17 +6422,19 @@ void main() {
       }
       const before = surfacesOf(ev.previousSlide);
       for (const s of before) s.stop();
-      const key = (s) => JSON.stringify(Object.entries(s.el.dataset).filter(([k]) => k !== "stage").sort());
+      const key = (s) => JSON.stringify(Object.entries(s.el.dataset).filter(([k]) => k !== "surfaceState" && k !== "shown").sort());
       for (const s of surfacesOf(ev.currentSlide)) {
         const from = before.find((b) => key(b) === key(s));
         if (from) s.follow(from);
       }
       for (const p of plotsIn(ev.previousSlide)) if (!ev.currentSlide.contains(p.el)) p.leave();
       show(ev.currentSlide);
+      syncCitations();
     });
     const step2 = () => {
       for (const s of surfacesOf(deck.getCurrentSlide())) s.sync(!still2());
       stepPlots(deck.getCurrentSlide());
+      syncCitations(deck.getCurrentSlide());
     };
     deck.on("fragmentshown", (event) => {
       step2();
@@ -5306,12 +6468,13 @@ void main() {
         s.recolor();
         s.draw();
       }
+      redrawFigures(get());
       syncViewers(get());
     });
   }
   function syncViewers(theme) {
     for (const viewer of document.querySelectorAll("tycho-viewer")) {
-      viewer.setAttribute("theme", theme);
+      if (!viewer.hasAttribute("data-keep-theme")) viewer.setAttribute("theme", theme);
       viewer.setAttribute("data-prevent-swipe", "");
     }
   }
@@ -5323,14 +6486,32 @@ void main() {
     document.head.append(script2);
   }
   var Beeson = {
-    start,
+    start: start3,
     theme: { get, set: (theme) => set(theme), toggle: () => toggle() },
     backdrops,
+    animated,
     surfaces,
     plots,
-    // called in a script file of polylines named in data-strands, see src/strands.ts
-    strands: register,
-    version: "0.9.0-beta.1"
+    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs
+    figures: { get ready() {
+      return figuresReady();
+    } },
+    // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
+    trajectories: register,
+    // called by the editor after a structural change of the slides
+    mount: mountWithin,
+    // called by the editor on a backdrop, see remountBackdrop, preview, and fitWindow
+    remount: remountBackdrop,
+    preview,
+    fitWindow,
+    // called by the editor after the slides were added, removed, or reordered, a tag was edited, or
+    // a text was put back, with the theorems and the citations numbered again
+    refreshChrome: () => {
+      refreshChrome();
+      numberTheorems();
+      mountCitations();
+    },
+    version: "0.9.0-beta.2"
   };
   window.Beeson = Beeson;
 })();

@@ -86,7 +86,7 @@ def mode_images(stem: str, alt: str) -> str:
 
 
 def paper_image(path: str, alt: str) -> str:
-    return f'<img class="paper" src="{path}" alt="{alt}">'
+    return f'<img class="white-figure" src="{path}" alt="{alt}">'
 
 
 def placeholder(text: str, span: int = 1) -> str:

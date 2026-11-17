@@ -1,58 +1,117 @@
 # AGENTS.md
 
-This repository is a talk, "Tracking bifurcations of periodic-orbit families", made from beeson-group/slides, the slide template of the Beeson group. The deck of the talk is `index.html`, and the reveal.js theme `beeson` is in `theme/`. The in-place editor of a deck, loaded with the URL parameter `edit`, is in `src/editor/` and compiled to `theme/editor.js`. The brand marks are in `brand/`, the matplotlib styles in `styles/`, and the maintainer tooling in `src/`, `scripts/`, and `.github/`. A talk made from the template is one `index.html` next to `theme/` and `brand/`.
+This repository is either slides or a talk made from it. slides is the Beeson group's template for talks as HTML slides on reveal.js. Talks are made from it with the GitHub button "Use this template". The deck is `index.html`: the demo deck in the template, and the talk in a talk. It is drawn by the theme in `theme/`. It is edited in the browser with the editor, which is opened with the URL parameter `edit`.
 
-## Vocabulary
+<!-- shared:begin -->
+## Hard invariants
 
-- A slide is a `section` element, and its layout is set with a class. With `title` or `closing`, the slide is a plate with the backdrop behind a block of words at the lower left. With `section`, the words are at the left and the outline of the talk is under them. Without a class, the slide is a content slide with a text column of 1000 px at the left margin and a `zone` or a full-height `backdrop` at the right. Set the width of the column with `narrow` or `wide`. With `figure`, the slide is a plate with a `backdrop` or a `plate` figure, the head at the top, and the `caption` at the lower left. With `split`, the black `panel` is at the left and a `zone` at the right.
-- A backdrop is the orbit drawing behind a slide, a `div.backdrop` with the attributes `data-scene`, `data-cx`, `data-cy`, and `data-half`, where `data-half` is the half height of the window in rotating-frame units. A drawing may run off the slide, but choose the window so that it is not cut at an edge of its box inside the slide. Optional `lab` spans are the labels of L1, L2, the Moon, and the Earth. On a content slide, the backdrop is drawn complete, and on a title, section, or closing slide, or with the attribute `data-live`, it is animated. A backdrop with `class="fragment"` is a step of its slide, blank until its step and traced from this step on. On a title slide, the backdrop is the low-thrust transfer of the group logo, drawn from `brand/transfer.js` with `data-strands` and `data-duration="20"`. In its trace, one head flies the transfer over the 20 s, and the tubes of the halo orbit are traced from the orbit outward from 0.8 s on. Their tips are thus at the end of the thrust at 5.8 s, together with the head. The word is not background, and not scene, which is a 3D view exported from tycho (the Typed Celestial HTML Observer).
-- A strand is one polyline record of a `data-strands` file, traced on its clock. A tube is a family of manifold arcs drawn as hairlines. The word is not fan, and not ribbon, which is a drawing of `data-scene`. A head is the dot at the tip of a strand while it is traced, with its radius set by `data-heads` or by the key `head` of its record. The word is not tracer, and not marker.
-- A surface is the graph z = f(x, y) of a function of `src/surfaces.ts` over a rectangle, a `div.surface` with `data-function` and the parameters of the function. It is drawn with three.js under a camera that turns slowly and is turned by a drag. Its stage, i.e. what is drawn at a step, is set with `data-surface-stage` on a fragment of its slide, and its marks are labeled with `lab` spans with `data-at`.
-- A bundle is a periodic orbit drawn in 3D with strips along it, a `div.surface` whose `data-bundle` is the id of the inline JSON block of the orbit and the strips. A strip is the surface swept by a segment along a unit direction at each point of the orbit, e.g. an eigendirection of the monodromy matrix. The stage of a bundle is the list of the strips shown, and a strip added at a step is grown out of the orbit. The word is not manifold, which is a family of trajectories. The compass of a bundle is the circle of the plane of the orbit at the upper left, with a needle toward each point of the list `arrows` of the block, e.g. the Earth.
-- A step is the stage at which an element is shown, i.e. a reveal.js fragment: `class="fragment"` with a `data-fragment-index`. Design the complete slide first, then assign the steps. With `?edit`, the steps of a slide are set in the Steps pane, which writes the class and the index into the tags of the slide. The word is not build.
-- A plot is an animated 2D figure in a `div.plot`, drawn as SVG from the inline JSON block named by its `data-plot`, with panels, marks, and tabs in the format given in the README. The word is not chart or graph.
-- A plate is a layout with the backdrop or figure over the whole slide and the words in a block at the lower left.
-- A block is an element whose text is edited in place with `?edit`: a heading, a paragraph, a list item, a cell, a caption, the `foot`, the `math` div, a `lab` span, or the notes. At a save, each edited block is written into its place in `index.html`, and every byte outside it is kept. A block that the editor cannot match to the file is skipped, counted in the state of its toolbar, and listed on the card of its button Which?. On a deck with a skipped block, `npm run check` fails. While a deck is edited, every backdrop is drawn complete, every step is shown, and the slides change without a transition. On a slide with an element hidden at a step, e.g. with `fade-out`, the steps are cut into layers at each such step, and the slide is shown one layer at a time, chosen in the status bar. A figure, or a block together with its list or table, is moved by dragging, snapped to the edges and centers of the other elements and of the slide unless Alt is held. While Shift is held, the drag is locked to one axis. The offset is written as the declaration `translate` of the `style` of its tag, in slide pixels, and it is shown at the lower right of the frame while the element is moved. Esc leaves a text and selects its block, which the arrow keys nudge, and nudges less than a second apart are one entry of the history. Every change is in one history, undone with ⌘Z and redone with ⌘⇧Z. The unsaved edits are kept in the storage of the browser and offered on a card when the deck is opened again, and Open or Present with unsaved changes asks whether to save them first. With Notes on, every slide gets an empty `aside.notes` to type into, which is written only once it has text. A bold or an italic set with ⌘B or ⌘I is written as `strong` or `em`. In the deck, the key E opens the same slide with `edit`.
-- The chrome is the running head (`run`, filled automatically from the last section slide, and Appendix slides after the closing slide), the slide number at the bottom right, the footnote line (`foot`) at the bottom left, and the 3 px progress line. Title, section, and closing slides are not numbered, and the slides after the closing slide are the appendix, numbered A1, A2, and so on. While the mouse is near the bottom of the window, the progress line is magnified into the scrubber of `src/scrub.ts`. A title bar, a rule under a title, bullets, cards, all-caps labels, and eyebrows are not part of the theme. A list item is marked with a short orange dash.
+Hard invariants are never traded away for other goals. When a change would break one, stop and ask the person you work for. Conventions may be argued with.
 
-## Writing a slide
+1. Phones are supported.
+2. Great performance on slow machines is always an objective.
+3. The best part is no part. Complexity is never favored when a simpler solution exists.
+<!-- shared:end -->
+4. Talks work without a toolchain. The compiled `theme/beeson.js`, `theme/editor.js`, and `theme/editor-tex.js` are committed.
+5. Decks do not fetch anything at show time. Everything they load is vendored under `theme/vendor/` with its license.
+6. Editor saves keep every byte of `index.html` outside the edited text elements.
+7. Nothing in this repository is derived from DyLAN code.
+8. Every feature is supported in all browsers. Decks can be viewed and presented, and every control can be used, in current Chrome, Firefox, and Safari, on desktops and phones. Extras such as an export or an editor command may be missing in one browser. The user is then told so in a message.
 
-- Use one `h2` per slide, and an `h1` on a title slide. Keep the text column under 66 characters per line, and prefer one paragraph and a few list items to many items.
-- Give an image for each mode with `for-dark` and `for-light`, a white raster figure the class `paper`, and a black-on-white line plot the class `invert`.
-- Write math in MathJax delimiters, `\(` `\)` inline and `\[` `\]` display, inside a `div.math` for a display, and put shared macros into `theme/macros.js`.
-- Reveal a display in four steps: the lead-in sentence, the display, the sentence in which it is explained, and a step in which a symbol is colored. Mark the symbol with `\class{name}{...}`, and give the later fragment `data-highlight="name"`, so that the class is colored orange once the fragment is shown, or violet with `data-tone="violet"`. Give the display `data-keep` to hold it at full opacity through the next step, or `data-keep="N"` to hold it through the step of index N. Give a fragment `data-focus` to hold every fragment of its slide from its step on.
-- Put a plot in a `zone` or a `plate`, with its JSON block next to it. Reveal its panels and marks with `data-plot-show`, hide them with `data-plot-hide`, and switch its tab with `data-plot-tab`, all on fragments of its slide.
-- To move an element in at its step from another element of its slide, e.g. a small plot from a thumbnail of a diagram, give it `data-fly-from` with a selector of the source, as described in the README under Plots.
-- Put code in a `pre` with a `code` of the class of its language, e.g. `language-python`, and load `theme/vendor/reveal/highlight.js` after `notes.js`. To step through it, write its groups of lines in `data-line-numbers` on the `code`, separated by bars.
-- Put speaker notes in an `aside.notes`.
-- Put a surface where a backdrop would go, and load `theme/vendor/three/three.js` before `theme/beeson.js`.
-- To draw a backdrop from a file of polylines, name the file in `data-strands`, and choose and color its records with `data-strands-select`, `data-strands-color`, and `data-strands-ramp`, as described in the README under Backdrops. To color the strands along the key of `data-strands-ramp` from a colormap of matplotlib in place of the palette, name `viridis`, `plasma`, or `Blues_r` in `data-strands-colormap`. Set the look of a record with its keys `tone`, `color`, `alpha`, `weight`, `head`, `start`, `fade`, and `glow`, and the seconds of the trace with `data-duration`.
-- Put a video in a `zone` or a `plate`, with a `poster` and an MP4 source, and add `data-autoplay` to play it while its slide is shown.
-- To glide an element between two slides, give both slides `data-auto-animate`, and give the element the same `data-id` on each.
-- Embed a tycho scene with the element from `build_embed` of pytycho, as in `demo/tycho-scene.py`, and vendor the runtime once in `theme/vendor/tycho/`.
+## Writing a talk
+
+- Write the talk over the demo deck in `index.html`. Keep `theme/` and `brand/` next to it. `index.html` is the deck that `npm run check`, `npm run pdf`, and `npm run pptx` read by default.
+- Read the section of `REFERENCE.md` on an element before you write one. Every class and attribute of the theme is described there.
+- Use one `h2` per slide, and an `h1` on title slides. Keep lines of text columns under 66 characters.
+- Design the complete slide first. Assign its steps afterward.
+- Take every color from a tone of the theme. Do not add title bars, rules under headings, all-caps labels, or eyebrows. None of them is part of the theme.
+- Set widths in px in a `style` only on headings, paragraphs, lists, `math` divs, captions, and cells in the top row of tables. Pictures, QR codes, TyCHO viewers, shapes, and backdrops may take widths as well.
+- Set heights in px in a `style` only on shapes, backdrops, table rows, and images, videos, or TyCHO viewers that have a width.
+- Give figures a version for each mode with `for-dark` and `for-light`, or the class `white-figure` or `invert`. Otherwise a figure may be visible in one mode only.
+- Put a PDF on a slide as a PDF figure, described under Figures in `REFERENCE.md`, rather than converting it by hand. Run `npm run tex` after you add or change one, and commit its renders.
+- Write each TikZ figure as a lone `tikzpicture` in `figures/name.tex`, with the colors of `styles/beeson-tikz.sty`. `npm run tex` compiles it into `figures/name.js` with a TeX that has `latex` and `dvisvgm`. Commit this output.
+- Write math macros used on more than one slide into `preamble.tex`. Write papers cited on slides into `references.bib`. Run `npm run tex` after you change either file.
+- Put the speaker notes of a slide in an `aside.notes`.
+- Do not write `data-moves-on`. It is set by the theme when the deck is started.
+- Someone may have the deck open in the editor while you change `index.html`. The editor then loads your change. At the next save, the unsaved edits of this person are merged into it.
+- When you copy a newer `theme/` into a talk, convert every class and attribute listed under "Avoid" in `GLOSSARY.md` to its new name. The theme reads only the new names.
+- Read PowerPoint files from their XML. Do not script PowerPoint, Keynote, or any other desktop app.
 
 ## Commands
 
 ```sh
-npm ci && npm run vendor && npm run build   # dependencies, vendored files, theme/beeson.js and theme/editor.js
-npm run typecheck && npm test               # types, then the orbit engine, the surfaces, the bundles, the backdrops from files, the build, the vendor script, the browser lookup, the mode flip, the crop of the backdrops, the print view, the PowerPoint file, the plots, the stepped math, the code boxes, the fly, and the editor under node --test
-npm run check                               # screenshots of every slide in both modes, console errors, problems in the page, a poster on every video, the phone layout, a pixel ratio of 1.25, the editor on the deck
-npm run check -- --browser firefox          # the same in Firefox or Safari over WebDriver, without the console, the phone layout, and the pixel ratio
-npm run pdf                                 # slides.pdf, one page per step, with a page count check
-npm run pptx                                # slides.pptx, one click per step, with videos and speaker notes
+npm ci && npm run vendor && npm run build   # the dependencies, theme/vendor/, and the bundles theme/beeson.js, theme/editor.js, and theme/editor-tex.js
+npm run tex                                 # tex.js, from preamble.tex and references.bib next to index.html, and the TikZ and PDF figures
+npm run check                               # screenshots of every slide in both modes into check/, and the problems of the page
+npm run check -- --browser firefox          # the same in Firefox, or in Safari with --browser safari
+npm run pdf                                 # slides.pdf, one page per step
+npm run pptx                                # slides.pptx, one click per step, with recordings of the scenes and the traced backdrops
+npm run pptx -- --still                     # the same file without recordings, for a browser without an H.264 encoder
 ```
 
-## Conventions
+In a talk, `npm run check`, `npm run pdf`, and `npm run pptx` need only Node.js and Chrome, not `npm ci`.
 
-- The compiled `theme/beeson.js` and `theme/editor.js` are committed, since a talk must be usable without a toolchain. Rebuild them after every change under `src/`. Nothing of the editor is loaded without `?edit`, and it does not fetch anything either.
-- Everything loaded in a deck is vendored under `theme/vendor/` with its license, and nothing is fetched from the network at show time.
-- The orbit engine is a port of `orbits.ts` of claudiovestini.com (MIT). Do not derive anything in this repository from DyLAN code.
-- The Princeton marks and the group logo in `brand/` are outside the MIT license, see `brand/NOTICE.md`.
-- Colors are the custom properties in `theme/beeson.css`: `--bg`, `--text`, `--subtle`, `--muted`, `--line`, `--accent`, `--violet`, and `--data-1` to `--data-8`. The typeface is Latin Modern Roman at 22, 28, 36, 48, 64, and 96 px on the 1920 by 1080 design size, and math is set in the TeX font of MathJax, i.e. Computer Modern, as in a LaTeX document. Body text is 48 px, i.e. the 24 points asked for by the AIAA on a slide 7.5 in high, captions and tables are 36 px, and a code box is 22 px. Orange is used for motion and progress, and violet for structure.
-- Write a talk over the demo deck in `index.html`, and do not copy `theme/` or `brand/` into another folder, since `index.html` is the default deck of `npm run check`, `npm run pdf`, and `npm run pptx`.
-- Read a PowerPoint file from its XML, and do not script PowerPoint, Keynote, or any other desktop app.
-- Hand over the work of a session as one commit, in place of a commit sequence: stage all of it with `git add`, and give Claudio one `git commit` command with its message. This rule applies in place of the commit-sequence rules of the global instructions, including the separate first commit of a failing test.
+## Before you hand work over
+
+- Run `npm run check` and `npm run pdf`. Hand work over only when `npm run check` passes.
+- Look at the last page of each changed slide in `slides.pdf`. Text that runs off a slide is not reported by `npm run check`.
+- NEVER assume the failure was there before your change.
+
+<!-- shared:begin -->
+## Issues and branches
+
+- Before you start a change, search the open issues, the open PRs, and the remote branches for the same work, and report what you find to the person you work for.
+- Start changes from GitHub issues. Issues are not needed for changes under about 20 lines, documentation-only changes, or dependency bumps.
+- Extend an existing issue when the change belongs to it, rather than opening a new one. Open separate issues for bugs that reproduce on `main`.
+- The issue type is `Bug` for a crash, a regression, or unintended behavior, `Feature` for behavior that the repository does not have yet, and `Task` for a refactor or performance improvement without new behavior.
+- Write a `Bug` under the headings Expected behavior, Actual behavior, Reproduction on `main`, and Version and browser.
+- UI changes need before/after images side by side. Take these yourself and attach them to the issue. Motion or timing needs short before/after videos.
+- Upload PR evidence to GitHub. Never commit PR-only screenshots or assets such as `.github/pr-assets/`.
+- Write feature issues under the headings Idea, Hard requirements, and Soft requirements.
+- Name your branch `<surname>/<N>-<two-or-three-words>` in lowercase, where the surname is the one of the person you work for and `N` is the number of the issue. Leave `<N>-` out when the change does not have an issue.
+<!-- shared:end -->
+
+## Commits and PRs
+
+- Conventional commit titles, plain language: `fix(editor): undo no longer drops a typed word`.
+<!-- shared:begin -->
+- Open GitHub descriptions and comments with the line `:robot: Generated by <harness>:<model>, not yet reviewed by the author :robot:`, where `<harness>` is the name of your harness and `<model>` is the id of your model.
+- Write `Closes #N` on the line below the attribution line, and NEVER repeat the text of the issue in the description.
+- Mark a PR as ready for review only when every check is green and the person you work for agrees.
+- If you think CI itself is broken, say so in the description but DO NOT change CI unless explicitly instructed to do so.
+- Watch CI until everything is green. DO NOT hand over until you have fixed all CI problems, and addressed `pr-agent` code reviews.
+- Merge a PR only when you are told to by the person you work for.
+<!-- shared:end -->
+
+<!-- shared:begin -->
+## Reviewing a PR
+
+PR-Agent reviews PRs in the workflow `pr-agent`. A person needs effective write access to start a review. Authorized commands review any PR, one opened by a bot included.
+
+- Treat the hard invariants above as the review criteria, and name the invariant that a finding breaks. A change that breaks one is a finding to fix before the PR is merged, not a suggestion.
+<!-- shared:end -->
+- Do not suggest changes in `theme/vendor/`, which is vendored with its licenses. Do not suggest changes in `theme/beeson.js`, `theme/editor.js`, or `theme/editor-tex.js` either. They are compiled and committed on purpose.
+- Read the section of `REFERENCE.md` on an element before you question it. Most of what looks unusual there is the design of the theme.
+
+## Documentation
+
+- Write each fact in one place, and link to it from the others.
+- `README.md` is hand-written for human readers by the maintainers, in their voice. If you have to edit it, keep this voice, and do not restyle it to the rules of this file.
+
+## Terms
+
+- Words with a narrower meaning than usual are defined in `GLOSSARY.md`.
+- Before you coin a word, use the word that PowerPoint, Keynote, reveal.js, CSS, or everyday English already has.
+- Give narrowed and coined words an entry in `GLOSSARY.md` as soon as they are settled. Name classes, attributes, and the labels of the editor after the glossary.
+- Keep one meaning per word across the theme, the editor, `REFERENCE.md`, and the demo deck.
+
+## Work on the template
+
+Before you change `src/`, `theme/beeson.css`, `scripts/`, `test/`, or `.github/`, read `src/AGENTS.md` as well. The rules for the source of the theme, the editor, the exports, and the tests are written there.
 
 ## Skills
 
-When someone asks to tighten, shorten, clean up, polish, fix, or review existing slides, follow `.claude/skills/refine-slides/SKILL.md`.
+Repository skills are kept in `.agents/skills/`. For Claude Code, `.claude/skills` is a link to the same folder. When someone asks you to tighten, shorten, clean up, polish, fix, or review existing slides, follow `.agents/skills/refine-slides/SKILL.md`.
+
+## Sibling repository
+
+TyCHO (`https://github.com/beeson-group/tycho.git`) is the group's Python package and browser runtime for astrodynamics visualizations. Its viewer can be put on a slide. Read its `AGENTS.md` before you change it.

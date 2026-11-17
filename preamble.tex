@@ -1,0 +1,20 @@
+% the macros and the kinds of theorem of the talk, which npm run tex and a save in the editor write
+% into tex.js
+\newcommand{\vb}[1]{\boldsymbol{#1}}
+% upright d with the spacing of an operator, as in \int f(x) \dd x
+\newcommand{\dd}{\mathop{}\!\mathrm{d}}
+\newcommand{\R}{\mathbb{R}}
+% a libration point, as in \LL{1}
+\newcommand{\LL}[1]{\mathcal{L}_{#1}}
+% the effective potential U_g + U_c of the notation registry
+\newcommand{\Ut}{\tilde{U}}
+% the pulsation factor of the ER3BP, which divides the whole gradient of the effective potential
+\newcommand{\ecth}{1 + e\cos\theta}
+% the Jacobian of the corrector constraint F with respect to the free variables X
+\newcommand{\DXF}{\boldsymbol{D}_{\boldsymbol{X}}\boldsymbol{F}}
+% a definition, with the colon centered on the equals sign, as in mathtools
+\newcommand{\coloneqq}{\mathrel{\vcenter{:}}=}
+% a kind of amsthm that is not defined here, e.g. lemma or proof, is headed without a number
+\newtheorem{theorem}{Theorem}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}

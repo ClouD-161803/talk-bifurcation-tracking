@@ -1,8 +1,12 @@
-// an animated 2D plot in a `.plot` element, drawn as SVG from an inline JSON block named by the
-// attribute data-plot. the format is documented in the README. the plot is played in a loop while
+// an animated 2D plot in a `.plot` element, drawn as SVG from an inline JSON script named by the
+// attribute data-plot. the format is documented in REFERENCE.md. the plot is played in a loop while
 // its slide is shown, and the fragments of its slide reveal its panels and marks with
 // data-plot-show and switch its tab with data-plot-tab. text in the JSON is set in a small markup,
-// in which $...$ is math with italic letters, sub- and superscripts, and TeX names of symbols
+// in which $...$ is math with italic letters, sub- and superscripts, and TeX names of symbols. the
+// macros of the preamble of the deck are expanded before the markup is read, see src/expand.ts
+
+import { expandMacros } from './expand.ts';
+import type { MacroDef } from './preamble.ts';
 
 type Pair = [number, number];
 type Anchor = 'start' | 'middle' | 'end';
@@ -399,18 +403,30 @@ const SYMBOLS: Record<string, string> = {
 // taken from the letterlike symbols
 const SCRIPT_GAPS: Record<string, string> = { B: 'ℬ', E: 'ℰ', F: 'ℱ', H: 'ℋ', I: 'ℐ', L: 'ℒ', M: 'ℳ', R: 'ℛ' };
 const script = (c: string) => SCRIPT_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(0x1d49c + c.charCodeAt(0) - 65) : c);
+// the capitals of \mathbb, from the double-struck block, where C, H, N, P, Q, R, and Z are taken
+// from the letterlike symbols
+const STRUCK_GAPS: Record<string, string> = { C: 'ℂ', H: 'ℍ', N: 'ℕ', P: 'ℙ', Q: 'ℚ', R: 'ℝ', Z: 'ℤ' };
+const struck = (c: string) => STRUCK_GAPS[c] ?? (/^[A-Z]$/.test(c) ? String.fromCodePoint(0x1d538 + c.charCodeAt(0) - 65) : c);
+// the styles that the markup does not draw, whose argument is shown in the style around it or upright
+const AS_IS = new Set(['boldsymbol', 'bm', 'mathit', 'mathop', 'mathfrak', 'ensuremath']);
+const UPRIGHT = new Set(['mathrm', 'text', 'mathbf', 'mathsf', 'mathtt', 'operatorname', 'textrm', 'textbf', 'textit', 'mathnormal']);
+// the spaces of TeX in math, and the negative space, which is not drawn
+const SPACES: Record<string, string> = { ',': ' ', ':': ' ', ';': ' ', ' ': ' ', '!': '', '\\': ' ' };
 
 export type Run = { text: string; italic: boolean; shift: 'sub' | 'sup' | null };
 
-/** Splits a text of the markup into runs, i.e. pieces of one style. */
-export function parseMarkup(src: string): Run[] {
+/**
+ * Splits a text of the markup into runs, i.e. pieces of one style, after the macros are expanded,
+ * by default those of the deck.
+ */
+export function parseMarkup(src: string, macros?: Record<string, MacroDef>): Run[] {
   const runs: Run[] = [];
   const push = (text: string, italic: boolean, shift: Run['shift']) => {
     const last = runs.at(-1);
     if (last && last.italic === italic && last.shift === shift) last.text += text;
     else runs.push({ text, italic, shift });
   };
-  const parts = src.split('$');
+  const parts = expandMacros(src, macros).split('$');
   parts.forEach((part, k) => {
     if (k % 2 === 0) { if (part) push(part, false, null); return; }
     math(part, false, null);
@@ -437,16 +453,16 @@ export function parseMarkup(src: string): Run[] {
       const c = s[i];
       if (c === '\\') {
         const m = /^\\([A-Za-z]+)/.exec(s.slice(i));
-        if (!m) { push(s[i + 1] ?? '', false, shift); i += 2; continue; }
+        if (!m) { push(SPACES[s[i + 1]] ?? s[i + 1] ?? '', false, shift); i += 2; continue; }
         i += m[0].length;
-        if (m[1] === 'mathrm' || m[1] === 'text') {
+        if (UPRIGHT.has(m[1]) || AS_IS.has(m[1])) {
           const [g, j] = group(s, i);
           i = j;
-          math(g, true, shift);
-        } else if (m[1] === 'mathcal') {
+          math(g, upright || UPRIGHT.has(m[1]), shift);
+        } else if (m[1] === 'mathcal' || m[1] === 'mathbb') {
           const [g, j] = group(s, i);
           i = j;
-          push([...g].map(script).join(''), false, shift);
+          push([...g].map(m[1] === 'mathcal' ? script : struck).join(''), false, shift);
         } else {
           const sym = SYMBOLS[m[1]] ?? m[0];
           push(sym, !upright && /^[a-z]+$/.test(m[1]) && /[α-ω]/.test(sym), shift);
@@ -572,13 +588,28 @@ export class PlotView {
   constructor(el: HTMLElement) {
     this.el = el;
     CACHE.set(el, this);
+    this.load(null);
+  }
+
+  /** Draws the plot again from text, or from its block when text is null, e.g. while the editor changes its data. A fault is shown in place of the plot. */
+  reload(text: string | null = null): void {
+    this.pause();
+    this.spec = null;
+    this.W = this.H = 0;
+    this.tabButtons = [];
+    this.stepTab = null;
+    this.load(text);
+  }
+
+  private load(text: string | null): void {
+    const el = this.el;
     // a slide is cloned with its plot for each step in the print view of reveal.js
     for (const old of el.querySelectorAll(':scope > .plot-body, :scope > .plot-error')) old.remove();
     try {
       const id = el.dataset.plot ?? '';
       const block = id ? document.getElementById(id) : null;
-      if (!block) throw new Error(`the JSON block with the id "${id}" is not found`);
-      this.spec = parsePlot(block.textContent ?? '');
+      if (text === null && !block) throw new Error(`the JSON script with the id "${id}" is not found`);
+      this.spec = parsePlot(text ?? block?.textContent ?? '');
     } catch (error) {
       const message = `plot ${el.dataset.plot ?? ''}: ${(error as Error).message}`;
       const box = document.createElement('div');

@@ -3,19 +3,63 @@
 // the surface swept by a segment through each point of the orbit along a unit direction given there,
 // e.g. an eigendirection of the monodromy matrix. the bundle is drawn with three.js on the renderer of surface.ts,
 // under a camera that turns slowly and is turned by a drag. the strips shown at a step are named,
-// separated by spaces, in data-surface-stage of a fragment of the slide. a strip that is added is
+// separated by spaces, in data-surface-state of a fragment of the slide. a strip that is added is
 // grown out of the orbit, first as segments at its ribs, one after another along the orbit, and then
 // as a sheet between them. a strip that is removed is shrunk back in the reverse order. a compass is
 // drawn at the upper left, with a needle toward the point of each arrow of the block, e.g. the Earth
 
 import type * as Three from 'three';
-import { LINE_FRAGMENT, LINE_VERTEX, clamp, dragToTurn, ease, lerp, mix3, num, renderer, rgb } from './surface.ts';
-import type { RGB, Turntable } from './surface.ts';
+import { LINE_FRAGMENT, LINE_VERTEX, clamp, ease, lerp, mix3, num, renderer, rgb } from './surface.ts';
+import type { RGB } from './surface.ts';
+
+/** What src/main.ts calls on the drawing of a `.surface`, i.e. a Surface of src/surface.ts or a Bundle. */
+export interface Turntable {
+  readonly el: HTMLElement;
+  fit(): void;
+  sync(animate: boolean): void;
+  draw(): void;
+  start(): void;
+  stop(): void;
+  recolor(): void;
+  follow(other: Turntable): void;
+}
+
+/**
+ * Turns a camera by a drag on el, with the pointer captured. The callback turn is called with each
+ * move in slide pixels, and end once the drag is over. Returns a function that returns true during
+ * a drag.
+ */
+function dragToTurn(el: HTMLElement, turn: (dx: number, dy: number) => void, end: () => void): () => boolean {
+  let drag: { x: number; y: number } | null = null;
+  el.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    drag = { x: ev.clientX, y: ev.clientY };
+    // the capture is refused for a pointer that is not active, e.g. that of a synthetic event
+    try { el.setPointerCapture(ev.pointerId); } catch { /* the drag is followed without a capture */ }
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    const scale = el.getBoundingClientRect().width / (el.offsetWidth || 1) || 1;
+    const dx = (ev.clientX - drag.x) / scale, dy = (ev.clientY - drag.y) / scale;
+    drag = { x: ev.clientX, y: ev.clientY };
+    turn(dx, dy);
+  });
+  const stop = () => {
+    if (!drag) return;
+    drag = null;
+    el.classList.remove('dragging');
+    end();
+  };
+  el.addEventListener('pointerup', stop);
+  el.addEventListener('pointercancel', stop);
+  return () => drag !== null;
+}
 
 type Vec = [number, number, number];
 
 /**
- * The JSON block of a bundle, in the units of the drawing. The orbit is closed from its last point to
+ * The JSON script of a bundle, in the units of the drawing. The orbit is closed from its last point to
  * its first. A strip has a unit direction at every point of the orbit, a half width, and the indices
  * of the points at which a segment is drawn. Its tone is the name of a custom property of the theme
  * without its dashes, e.g. accent or violet. An arrow is the id of its label and the point toward
@@ -204,7 +248,7 @@ export class Bundle implements Turntable {
     this.canvas.setAttribute('aria-hidden', 'true');
     el.prepend(this.canvas);
     el.setAttribute('data-prevent-swipe', '');
-    this.labels = [...el.querySelectorAll<HTMLElement>('.lab')];
+    this.labels = [...el.querySelectorAll<HTMLElement>('.label')];
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
@@ -364,15 +408,15 @@ export class Bundle implements Turntable {
     }
   }
 
-  // the strips named by the visible fragment of the slide with data-surface-stage and the highest
-  // fragment index, or by the data-stage of the element, or none. an unknown name is reported
+  // the strips named by the visible fragment of the slide with data-surface-state and the highest
+  // fragment index, or by the data-surface-state of the element, or none. an unknown name is reported
   private target(): string[] {
     let best: HTMLElement | null = null, index = -Infinity;
-    for (const f of this.el.closest('section')?.querySelectorAll<HTMLElement>('.fragment.visible[data-surface-stage]') ?? []) {
+    for (const f of this.el.closest('section')?.querySelectorAll<HTMLElement>('.fragment.visible[data-surface-state]') ?? []) {
       const i = num(f.dataset.fragmentIndex, 0);
       if (i >= index) { best = f; index = i; }
     }
-    const names = (best?.dataset.surfaceStage ?? this.el.dataset.stage ?? '').split(/\s+/).filter(Boolean);
+    const names = (best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? '').split(/\s+/).filter(Boolean);
     const unknown = names.filter((name) => !this.strips.some((r) => r.id === name));
     if (unknown.length) console.error(`beeson: unknown strip "${unknown.join(' ')}" of the bundle ${this.el.dataset.bundle}, known: ${this.strips.map((r) => r.id).join(', ')}`);
     return names;

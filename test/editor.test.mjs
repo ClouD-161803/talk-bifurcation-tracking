@@ -8,9 +8,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { isBlock } from '../src/editor/render.ts';
 
-const deckText = readFileSync('index.html', 'utf8');
+const deckText = readFileSync('test-deck.html', 'utf8');
 // the newline of the file, since a checkout on Windows may turn it into CRLF
 const nl = deckText.includes('\r\n') ? '\r\n' : '\n';
 const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
@@ -18,11 +17,29 @@ const openDeck = `window.BeesonEditor.open(${JSON.stringify(deckText)})`;
 
 async function editorPage(browser, query = 'edit&still') {
   const page = await browser.newPage();
-  await page.goto(deckUrl('index.html', query));
+  await page.goto(deckUrl('test-deck.html', query));
   await page.waitFor(deckSettled);
   await page.waitFor(ready);
   return page;
 }
+
+// the items of the slide with the figure, each a step of its own in the file
+// the rows of the Steps tab in document order, and the step of each, '' for an element shown with
+// the slide and otherwise the step counted from 0
+const IN_ORDER = `[...document.querySelectorAll('.beeson-edit-side .rows .row')].sort((a, b) => a.dataset.doc - b.dataset.doc)`;
+const STEP_VALUES = `${IN_ORDER}.map((r) => r.dataset.step)`;
+// the item with label of the menu of the chip of the row at position i in document order
+const pickStep = (page, i, label) => page.evaluate(`(() => {
+  document.querySelector('.beeson-edit-side .row[data-doc="${i}"] .chip').click();
+  [...document.querySelectorAll('.beeson-edit-menu .item')].find((x) => x.querySelector('.label').textContent === ${JSON.stringify(label)}).click();
+})()`);
+
+const FIGURE_ITEMS = [
+  'Dark and light mode: export one file per mode, marked <code>for-dark</code> and <code>for-light</code>.',
+  'You might have noticed a toggle on the top right: try clicking it on this slide.',
+  'You should give black-on-white plots the class <code>invert</code> to invert them in dark mode.',
+];
+const stepped = (i) => `<li class="fragment" data-fragment-index="${i + 1}">${FIGURE_ITEMS[i]}</li>`;
 
 // the edited text must be the file with one replacement, hence the old text occurs once
 function replaced(oldText, newText) {
@@ -30,23 +47,11 @@ function replaced(oldText, newText) {
   return deckText.replace(oldText, newText);
 }
 
-const srcEl = (tag, ...children) => ({ kind: 'element', tag, children });
-const srcText = (decoded) => ({ kind: 'text', decoded });
-
-test('a cell is a block unless it holds a box without text, e.g. a plot, and none of its own text', () => {
-  assert.equal(isBlock(srcEl('td', srcText('doubly elliptic'))), true);
-  assert.equal(isBlock(srcEl('td', srcEl('span', srcText('1')))), true);
-  assert.equal(isBlock(srcEl('td', srcEl('div', srcText('\\[x\\]')))), true);
-  assert.equal(isBlock(srcEl('aside', srcEl('p', srcText('a note')), srcEl('p', srcText('another')))), true);
-  assert.equal(isBlock(srcEl('td', srcEl('div', srcEl('div')), srcEl('span'))), false);
-  assert.equal(isBlock(srcEl('td', srcText('a plot '), srcEl('div'))), true);
-});
-
 test('a deck without ?edit does not load the editor, with ?edit it does on file://', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const plain = await browser.newPage();
-  await plain.goto(deckUrl('index.html', 'still'));
+  await plain.goto(deckUrl('test-deck.html', 'still'));
   await plain.waitFor(deckSettled);
   assert.equal(await plain.evaluate(`!!document.querySelector('script[src$="editor.js"]') || 'BeesonEditor' in window`), false);
   assert.deepEqual(plain.errors, []);
@@ -55,10 +60,10 @@ test('a deck without ?edit does not load the editor, with ?edit it does on file:
   const status = await page.evaluate('window.BeesonEditor.status()');
   assert.equal(status.supported, true);
   assert.equal(status.state, 'waiting');
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button')].filter((b) => !b.hidden).map((b) => b.textContent)`), ['Undo', 'Redo', 'Open…', 'Save', 'Save as…', 'Autosave', 'Present']);
-  // the card asks for the file, with the folder of the deck
-  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-card').hidden`), false);
-  assert.match(await page.evaluate(`document.querySelector('.beeson-edit-card p').textContent`), /index\.html in \//);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button')].filter((b) => !b.hidden).map((b) => b.textContent.replace(/^\\d+%/, '%'))`), ['View', '', '%Zoom', 'Undo', 'Redo', 'Add Slide', 'Table', 'Text', 'Formula', 'Shape', '', 'Media', '', 'Preview', '', 'Present', 'Save', 'Format', 'Steps']);
+  // the dialog asks for the file, with the folder of the deck
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-dialog').hidden`), false);
+  assert.match(await page.evaluate(`document.querySelector('.beeson-edit-dialog p').textContent`), /test-deck\.html in \//);
   assert.deepEqual(page.errors, []);
 });
 
@@ -68,11 +73,11 @@ test('every block of the demo deck is paired, and a save without an edit is byte
   const page = await editorPage(browser);
   const status = await page.evaluate(openDeck);
   assert.deepEqual(status.problems, []);
-  assert.ok(status.blocks > 30, `${status.blocks} blocks`);
+  assert.ok(status.texts > 30, `${status.texts} texts`);
   assert.equal(status.sections, (deckText.match(/<section/g) ?? []).length);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), deckText);
   // the same file with Windows line endings is written back with them
-  const crlf = deckText.replace(/\n/g, '\r\n');
+  const crlf = deckText.replace(/\r?\n/g, '\r\n');
   assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(crlf)})`)).problems, []);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), crlf);
   assert.deepEqual(page.errors, []);
@@ -192,7 +197,7 @@ test('a save writes the file through a handle, from a served deck', async (t) =>
   const server = await serve('.');
   t.after(() => server.close());
   const page = await browser.newPage();
-  await page.goto(`${server.origin}/index.html?edit&still`);
+  await page.goto(`${server.origin}/test-deck.html?edit&still`);
   await page.waitFor(deckSettled);
   await page.waitFor(ready);
   // the served deck is fetched by the editor itself
@@ -230,13 +235,13 @@ test('without the file pickers, a save is a download of the file with the edits'
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
   await page.evaluate(`[...document.querySelectorAll('.reveal h2')].find((h) => h.textContent === 'Show your steps one at a time').firstChild.data = 'Downloaded'`);
   await page.evaluate('window.BeesonEditor.save()');
-  assert.equal(await page.evaluate('window.__download'), 'index.html');
+  assert.equal(await page.evaluate('window.__download'), 'test-deck.html');
   assert.equal(await page.evaluate('window.__blob.text()'), replaced('<h2>Show your steps one at a time</h2>', '<h2>Downloaded</h2>'));
   const after = await page.evaluate('window.BeesonEditor.status()');
   assert.equal(after.dirty, false);
   // Safari and Firefox put a download into the downloads folder, unless they are set to ask where
   // to save each download, in which case index.html is chosen and replaced in the dialog
-  assert.match(after.message, /^Saved a copy with 1 edit\. Replace index\.html in \/.*, or set the browser to ask where to save each download/);
+  assert.match(after.message, /^Saved a copy with 1 edit\. Replace test-deck\.html in \/.*, or set the browser to ask where to save each download/);
   assert.deepEqual(page.errors, []);
 });
 
@@ -247,7 +252,7 @@ test('the video slide and the viewer are left alone, and the deck is still while
   const page = await editorPage(browser, 'edit');
   const status = await page.evaluate(openDeck);
   assert.deepEqual(status.problems, []);
-  assert.equal(await page.evaluate(`document.querySelectorAll('video[contenteditable], tycho-viewer[contenteditable], .zone[contenteditable], img[contenteditable]').length`), 0);
+  assert.equal(await page.evaluate(`document.querySelectorAll('video[contenteditable], tycho-viewer[contenteditable], .figure-box[contenteditable], img[contenteditable]').length`), 0);
   assert.equal(await page.evaluate(`!!document.querySelector('.reveal section:has(video) > h2[contenteditable="true"]')`), true);
   assert.equal(await page.evaluate('Reveal.getIndices().h'), 0);
   assert.equal(await page.evaluate('Beeson.backdrops.every((o) => !o.raf)'), true);
@@ -272,16 +277,20 @@ test('the notes are laid in a pane under the slide, and Present opens the deck w
     const slide = document.querySelector('.reveal .slides').getBoundingClientRect();
     const aside = document.querySelector('.reveal section.present > aside.notes');
     const box = aside.getBoundingClientRect();
-    return { display: getComputedStyle(aside).display, slideBottom: slide.bottom, top: box.top, bottom: box.bottom, height: innerHeight, focused: document.activeElement === aside };
+    const pane = document.querySelector('.beeson-edit-pane').getBoundingClientRect();
+    return { display: getComputedStyle(aside).display, slideBottom: slide.bottom, paneTop: pane.top, top: box.top, bottom: box.bottom, height: innerHeight, focused: document.activeElement === aside };
   })()`);
   assert.equal(boxes.display, 'block');
-  assert.ok(Math.abs(boxes.top - boxes.slideBottom) < 2, `the notes start at ${boxes.top}, the slide ends at ${boxes.slideBottom}`);
-  assert.ok(boxes.bottom <= boxes.height - 35, `the notes end at ${boxes.bottom} in a window of ${boxes.height}`);
+  // the notes are in their pane under the canvas, below the slide and its pasteboard
+  assert.ok(Math.abs(boxes.top - boxes.paneTop) < 2 && boxes.slideBottom <= boxes.top, `the notes start at ${boxes.top}, the pane at ${boxes.paneTop}, and the slide ends at ${boxes.slideBottom}`);
+  // the status bar of 28 px is under the notes
+  assert.ok(boxes.bottom <= boxes.height - 27, `the notes end at ${boxes.bottom} in a window of ${boxes.height}`);
   assert.equal(boxes.focused, true);
-  await page.evaluate(`window.open = (url) => { window.__opened = url; }`);
+  // the show is played in place, in a frame over the editor
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.textContent === 'Present').click()`);
-  const opened = await page.evaluate('window.__opened');
-  assert.ok(!/[?&]edit/.test(opened) && opened.endsWith('index.html?still'), opened);
+  await until(page, `!!document.querySelector('.beeson-edit-show iframe')?.src`);
+  const opened = await page.evaluate(`document.querySelector('.beeson-edit-show iframe').src`);
+  assert.ok(!/[?&]edit(?:[=&]|$)/.test(opened) && /test-deck\.html\?still(?:&|$)/.test(opened), opened);
   assert.deepEqual(page.errors, []);
 });
 
@@ -289,7 +298,7 @@ test('the print view of the PDF and of PowerPoint does not load the editor', asy
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  await printView(page, deckUrl('index.html', 'print-pdf&still'));
+  await printView(page, deckUrl('test-deck.html', 'print-pdf&still'));
   assert.equal(await page.evaluate(`!!document.querySelector('script[src$="editor.js"]') || 'BeesonEditor' in window`), false);
   assert.deepEqual(page.errors, []);
 });
@@ -320,47 +329,46 @@ test('a step set in the Steps pane writes the class and the index into the tag o
   t.after(() => browser.close());
   const page = await editorPage(browser);
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
-  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .zone > img'); const { h, v } = Reveal.getIndices(img.closest('section')); Reveal.slide(h, v); })()`);
+  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .figure-box > img'); const { h, v } = Reveal.getIndices(img.closest('section')); Reveal.slide(h, v); })()`);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps').click()`);
   await new Promise((done) => setTimeout(done, 300));
-  const pick = (i, value) => page.evaluate(`(() => { const sel = document.querySelectorAll('.beeson-edit-side .row select')[${i}]; sel.value = ${value === undefined ? '[...sel.options].at(-1).value' : JSON.stringify(value)}; sel.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-  // the heading is the first row, with the slide. the second and the third item get steps of
-  // their own, and the figure joins the first one
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row .kind')].map((k) => k.textContent)`), ['Heading', 'Paragraph', 'Item', 'Item', 'Item', 'Figure']);
-  await pick(3);
-  await pick(4);
-  await pick(5, '0');
-  const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row select')].map((s) => s.value)`);
-  assert.deepEqual(rows, ['', '', '', '0', '1', '0']);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-badge')].map((b) => b.textContent)`), ['1', '2', '1']);
-  let expected = replaced('<li>You might have noticed a toggle on the top right: try clicking it on this slide.</li>', '<li class="fragment" data-fragment-index="1">You might have noticed a toggle on the top right: try clicking it on this slide.</li>');
-  expected = expected.replace('<li>You should give black-on-white plots the class <code>invert</code> to invert them in dark mode.</li>', '<li class="fragment" data-fragment-index="2">You should give black-on-white plots the class <code>invert</code> to invert them in dark mode.</li>');
-  expected = expected.replace('<figure class="zone">', '<figure class="zone fragment" data-fragment-index="1">');
-  assert.notEqual(expected, deckText);
+  const pick = (i, label) => pickStep(page, i, label);
+  // the heading is the first row, with the slide, and each item is a step of its own. the figure
+  // joins the first step
+  assert.deepEqual(await page.evaluate(`${IN_ORDER}.map((r) => r.querySelector('.kind').textContent)`), ['Heading', 'Paragraph', 'Item', 'Item', 'Item', 'Figure']);
+  const rows = () => page.evaluate(`${STEP_VALUES}`);
+  assert.deepEqual(await rows(), ['', '', '0', '1', '2', '']);
+  await pick(5, 'Step 1');
+  assert.deepEqual(await rows(), ['', '', '0', '1', '2', '0']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-badge')].map((b) => b.textContent)`), ['1', '2', '3', '1']);
+  const expected = replaced('<figure class="figure-box">', '<figure class="figure-box fragment" data-fragment-index="1">');
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), expected);
-  // the element goes back with the slide, and the figure is alone in the first step
-  await pick(3, '');
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row select')].map((s) => s.value)`), ['', '', '', '', '1', '0']);
+  // the second item goes back with the slide, and the third item takes the second step
+  await pick(3, 'With the Slide');
+  assert.deepEqual(await rows(), ['', '', '0', '', '1', '0']);
   // the saved text is paired again, and the steps are read from it
   const text = await page.evaluate('window.BeesonEditor.render()');
   assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(text)})`)).problems, []);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row select')].map((s) => s.value)`), ['', '', '', '', '1', '0']);
+  assert.deepEqual(await rows(), ['', '', '0', '', '1', '0']);
   // One by one steps every element but the heading, and All at once takes every step away
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .head button')].find((b) => b.textContent === 'One by one').click()`);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row select')].map((s) => s.value)`), ['', '0', '1', '2', '3', '4']);
+  assert.deepEqual(await page.evaluate(`${STEP_VALUES}`), ['', '0', '1', '2', '3', '4']);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .head button')].find((b) => b.textContent === 'All at once').click()`);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row select')].map((s) => s.value)`), ['', '', '', '', '', '']);
-  assert.equal(await page.evaluate('window.BeesonEditor.render()'), deckText);
+  assert.deepEqual(await page.evaluate(`${STEP_VALUES}`), ['', '', '', '', '', '']);
+  const unstepped = FIGURE_ITEMS.reduce((text, item, i) => text.replace(stepped(i), `<li>${item}</li>`), deckText);
+  assert.notEqual(unstepped, deckText);
+  assert.equal(await page.evaluate('window.BeesonEditor.render()'), unstepped);
   assert.deepEqual(page.errors, []);
 });
 
 test('a figure dragged on the slide gets its offset as a translate style in its tag, and the arrow keys nudge it', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  const page = await editorPage(browser);
+  // Alt is the free modifier of a drag on Windows and Linux, and the copy modifier on a Mac
+  const page = await editorPage(browser, 'edit&still&edit-platform=other');
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
   const moved = await page.evaluate(`(async () => {
-    const img = document.querySelector('.reveal .slides section .zone > img');
+    const img = document.querySelector('.reveal .slides section .figure-box > img');
     const { h, v } = Reveal.getIndices(img.closest('section'));
     Reveal.slide(h, v);
     await new Promise((done) => setTimeout(done, 200));
@@ -369,23 +377,28 @@ test('a figure dragged on the slide gets its offset as a translate style in its 
     // with Alt, so that the figure does not snap to an edge on its way
     const at = (type, cx, cy) => document.elementFromPoint(cx, cy).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: 0, pointerId: 1, altKey: true }));
     at('pointermove', x, y);
-    const hovered = !document.querySelector('.beeson-frame').hidden && !document.querySelector('.beeson-handle').hidden;
+    // a figure is dragged by itself, hence its hover frame is drawn without the handle of a block
+    const hovered = !document.querySelector('.beeson-frame').hidden && document.querySelector('.beeson-handle').hidden;
     const scale = Reveal.getScale();
+    // a click on the image selects it apart from its caption, and Esc selects the figure
+    at('pointerdown', x, y);
+    at('pointerup', x, y);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     at('pointerdown', x, y);
     at('pointermove', x + 30 * scale, y + 20 * scale);
     at('pointermove', x + 60 * scale, y + 40 * scale);
     at('pointerup', x + 60 * scale, y + 40 * scale);
-    const translate = img.closest('.zone').style.translate;
+    const translate = img.closest('.figure-box').style.translate;
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true, cancelable: true }));
-    return { src: img.getAttribute('src'), hovered, translate, nudged: img.closest('.zone').style.translate, slide: Reveal.getIndices().h === h, selected: !document.querySelector('.beeson-frame.selected').hidden };
+    return { src: img.getAttribute('src'), hovered, translate, nudged: img.closest('.figure-box').style.translate, slide: Reveal.getIndices().h === h, selected: !document.querySelector('.beeson-frame.selected').hidden };
   })()`);
   const { src, ...rest } = moved;
   assert.deepEqual(rest, { hovered: true, translate: '60px 40px', nudged: '59px 30px', slide: true, selected: true });
-  // the tag of the figure of this image, which is one of two zones with the same tag
-  const figureAt = deckText.lastIndexOf('<figure class="zone">', deckText.indexOf(src));
+  // the tag of the figure of this image, which is one of two figure boxes with the same tag
+  const figureAt = deckText.lastIndexOf('<figure class="figure-box">', deckText.indexOf(src));
   assert.ok(figureAt > 0);
-  const expected = `${deckText.slice(0, figureAt)}<figure class="zone" style="translate: 59px 30px">${deckText.slice(figureAt + '<figure class="zone">'.length)}`;
+  const expected = `${deckText.slice(0, figureAt)}<figure class="figure-box" style="translate: 59px 30px">${deckText.slice(figureAt + '<figure class="figure-box">'.length)}`;
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), expected);
   // a double click on the handle puts the figure back, and the tag is as in the file again
   await page.evaluate(`document.querySelector('.beeson-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
@@ -428,7 +441,8 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 test('one history undoes and redoes the typing, a formula, a step, and a move, with ⌘Z and ⌘⇧Z', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  const page = await editorPage(browser);
+  // Alt is the free modifier of a drag on Windows and Linux, and the copy modifier on a Mac
+  const page = await editorPage(browser, 'edit&still&edit-platform=other');
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
   const status = () => page.evaluate('window.BeesonEditor.status()');
   const render = () => page.evaluate('window.BeesonEditor.render()');
@@ -478,34 +492,38 @@ test('one history undoes and redoes the typing, a formula, a step, and a move, w
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await render(), deckText);
   // a step, from the pane
-  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .zone > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
+  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .figure-box > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps').click()`);
   await sleep(200);
-  await page.evaluate(`(() => { const sel = document.querySelectorAll('.beeson-edit-side .row select')[3]; sel.value = [...sel.options].at(-1).value; sel.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-  const stepped = replaced('<li>You might have noticed a toggle on the top right: try clicking it on this slide.</li>', '<li class="fragment" data-fragment-index="1">You might have noticed a toggle on the top right: try clicking it on this slide.</li>');
-  assert.equal(await render(), stepped);
+  await pickStep(page, 5, 'New Step at End');
+  const figureStep = replaced('<figure class="figure-box">', '<figure class="figure-box fragment" data-fragment-index="4">');
+  assert.equal(await render(), figureStep);
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await render(), deckText);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row select')].map((s) => s.value)`), ['', '', '', '', '', '']);
+  assert.deepEqual(await page.evaluate(`${STEP_VALUES}`), ['', '', '0', '1', '2', '']);
   await page.evaluate('window.BeesonEditor.redo()');
-  assert.equal(await render(), stepped);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-badge')].map((b) => b.textContent)`), ['1']);
+  assert.equal(await render(), figureStep);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-badge')].map((b) => b.textContent)`), ['1', '2', '3', '4']);
   await page.evaluate('window.BeesonEditor.undo()');
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps').click()`);
   // a drag, with Alt so that the figure does not snap, and a nudge
   await page.evaluate(`(() => {
-    const img = document.querySelector('.reveal section.present .zone > img');
+    const img = document.querySelector('.reveal section.present .figure-box > img');
     const r = img.getBoundingClientRect();
     const x = r.left + r.width / 2, y = r.top + r.height / 2;
     const at = (type, cx, cy) => document.elementFromPoint(cx, cy).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: 0, pointerId: 1, altKey: true }));
     const scale = Reveal.getScale();
     at('pointermove', x, y);
+    // a click on the image selects it apart from its caption, and Esc selects the figure
+    at('pointerdown', x, y);
+    at('pointerup', x, y);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     at('pointerdown', x, y);
     at('pointermove', x + 60 * scale, y + 40 * scale);
     at('pointerup', x + 60 * scale, y + 40 * scale);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
   })()`);
-  const translate = () => page.evaluate(`document.querySelector('.reveal section.present .zone').style.translate`);
+  const translate = () => page.evaluate(`document.querySelector('.reveal section.present .figure-box').style.translate`);
   assert.equal(await translate(), '59px 40px');
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await translate(), '60px 40px');
@@ -535,7 +553,7 @@ test('the list of the slides at the left jumps to a slide, and G jumps to a slid
   assert.deepEqual(first[1].slice(0, 3), ['2', 'Chapter one', 'section']);
   assert.ok(first.every((r) => r[1].length > 0));
   // the pane is beside the slide, and the slide is not under it
-  const box = () => page.evaluate(`(() => { const nav = document.querySelector('.beeson-edit-nav'); const n = nav.getBoundingClientRect(); const s = document.querySelector('.reveal .slides').getBoundingClientRect(); return { display: getComputedStyle(nav).display, navRight: n.right, slideLeft: s.left, slideRight: s.right }; })()`);
+  const box = () => page.evaluate(`(() => { const nav = document.querySelector('.beeson-edit-nav'); const n = nav.getBoundingClientRect(); const s = document.querySelector('.reveal .slides').getBoundingClientRect(); const c = window.BeesonEditorShell.stage.viewport; return { display: getComputedStyle(nav).display, navRight: n.right, slideLeft: s.left, slideRight: s.right, cellLeft: c.left, cellRight: c.right }; })()`);
   let b = await box();
   assert.equal(b.display, 'flex');
   assert.ok(b.slideLeft >= b.navRight && b.slideRight <= 1920, JSON.stringify(b));
@@ -551,12 +569,13 @@ test('the list of the slides at the left jumps to a slide, and G jumps to a slid
   await page.evaluate(`(() => { const h = document.querySelector('.reveal section.present h2'); h.firstChild.data = 'Renamed'; h.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   assert.equal((await rows())[5][1], 'Renamed');
   // the Slides button hides the list, and the choice is kept
-  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Slides').click()`);
+  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Navigator').click()`);
   b = await box();
   assert.equal(b.display, 'none');
-  assert.ok(b.slideLeft < 100, JSON.stringify(b));
+  // the canvas takes the width of the list, and the slide is centered in it
+  assert.ok(Math.abs(b.slideLeft - b.cellLeft - (b.cellRight - b.slideRight)) < 2 && b.slideLeft < 200, JSON.stringify(b));
   assert.equal(await page.evaluate(`localStorage.getItem('beeson-nav')`), '0');
-  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Slides').click()`);
+  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Navigator').click()`);
   assert.equal((await box()).display, 'flex');
   // G of reveal.js asks for a number
   await page.evaluate(`document.activeElement.blur(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', keyCode: 71, which: 71, bubbles: true, cancelable: true }))`);
@@ -574,14 +593,14 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   t.after(() => browser.close());
   const server = await serve('.');
   t.after(() => server.close());
-  const page = await browser.newPage();
-  const url = `${server.origin}/index.html?edit&still`;
+  const page = await browser.newPage({ drafts: true });
+  const url = `${server.origin}/test-deck.html?edit&still`;
   const status = () => page.evaluate('window.BeesonEditor.status()');
   const load = async () => {
     await page.goto(url);
     await page.waitFor(deckSettled);
     await page.waitFor(ready);
-    await page.waitFor('window.BeesonEditor.status().blocks > 0');
+    await page.waitFor('window.BeesonEditor.status().texts > 0');
   };
   // the guard against leaving with unsaved changes would hold the navigation of the test
   const leave = () => page.evaluate(`window.addEventListener('beforeunload', (e) => e.stopImmediatePropagation(), true)`);
@@ -594,13 +613,13 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   await type(h2, 'Saved as');
   await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 's', metaKey: true, shiftKey: true, bubbles: true, cancelable: true }))`);
   await page.waitFor('!window.BeesonEditor.status().dirty');
-  assert.equal(await page.evaluate('window.__suggested'), 'index.html');
+  assert.equal(await page.evaluate('window.__suggested'), 'test-deck.html');
   assert.equal(await file('saved-as.html'), replaced(`<h2>${h2}</h2>`, '<h2>Saved as</h2>'));
   let s = await status();
   assert.equal(s.file, 'saved-as.html');
   assert.match(s.message, /^Saved 1 edit to saved-as\.html at \d/);
   // autosave, after the pause that follows the last change
-  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.textContent === 'Autosave').click()`);
+  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-header button')].find((b) => b.textContent === 'Autosave').click()`);
   s = await status();
   assert.equal(s.autosave, true);
   await type('Saved as', 'Autosaved');
@@ -618,9 +637,9 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   s = await status();
   assert.equal(s.recover, true);
   assert.equal(s.dirty, false);
-  assert.match(await page.evaluate(`document.querySelector('.beeson-edit-card.recover p').textContent`), /^Edits of index\.html from .* were kept in this browser/);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-card.recover button')].map((b) => b.textContent)`), ['Restore and save', 'Download a copy', 'Discard']);
-  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-card.recover button')].find((b) => b.textContent === 'Discard').click()`);
+  assert.match(await page.evaluate(`document.querySelector('.beeson-edit-dialog.recover p').textContent`), /^Edits of test-deck\.html from .* were kept in this browser/);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-dialog.recover button')].map((b) => b.textContent)`), ['Restore and save', 'Download a copy', 'Discard']);
+  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-dialog.recover button')].find((b) => b.textContent === 'Discard').click()`);
   s = await status();
   assert.deepEqual([s.recover, s.draft], [false, false]);
   // Restore writes the edits into the file and shows the page again
@@ -630,8 +649,8 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   await load();
   assert.equal((await status()).recover, true);
   await page.evaluate(`(async () => { window.__before = true; const root = await navigator.storage.getDirectory(); window.BeesonEditor.attach(await root.getFileHandle('restored.html', { create: true })); })()`);
-  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-card.recover button')].find((b) => b.textContent === 'Restore and save').click()`);
-  await until(page, '!window.__before && !!window.BeesonEditor && window.BeesonEditor.status().blocks > 0');
+  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-dialog.recover button')].find((b) => b.textContent === 'Restore and save').click()`);
+  await until(page, '!window.__before && !!window.BeesonEditor && window.BeesonEditor.status().texts > 0');
   assert.equal(await file('restored.html'), replaced(`<h2>${h2}</h2>`, '<h2>Drafted twice</h2>'));
   s = await status();
   assert.deepEqual([s.recover, s.draft, s.dirty], [false, false, false]);
@@ -654,13 +673,12 @@ test('a formula is reached with Tab and opened with Enter, and the controls carr
   assert.equal(await page.evaluate(`document.querySelector('.beeson-math').getAttribute('role')`), 'dialog');
   await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }))`);
   assert.equal(await page.evaluate(`!!document.querySelector('.beeson-math')`), false);
-  // the arrows of the status bar are named, and the notes show their focus
+  // the arrows of the status bar are named, and the notes show only the caret, as in Keynote
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].slice(0, 2).map((b) => b.getAttribute('aria-label'))`), ['Previous slide', 'Next slide']);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Notes').click()`);
   const outline = await page.evaluate(`(() => { const a = document.querySelector('.reveal section.present > aside.notes'); const s = getComputedStyle(a); return { focused: document.activeElement === a, style: s.outlineStyle, width: s.outlineWidth, color: s.outlineColor }; })()`);
   assert.equal(outline.focused, true);
-  assert.equal(outline.style, 'solid');
-  assert.notEqual(outline.color, 'rgba(0, 0, 0, 0)');
+  assert.equal(outline.color, 'rgba(0, 0, 0, 0)');
   assert.deepEqual(page.errors, []);
 });
 
@@ -701,14 +719,15 @@ test('the notes pane is resized by dragging the strip above it, and the height i
     at('pointerup', y - 100);
     const aside = document.querySelector('.reveal section.present > aside.notes').getBoundingClientRect();
     const slide = document.querySelector('.reveal .slides').getBoundingClientRect();
-    return { display: getComputedStyle(strip).display, stripAtPane: Math.abs(y - paneTop) < 6, pane: window.BeesonEditor.status().pane, stored: localStorage.getItem('beeson-pane'), asideHeight: aside.height, asideAtSlide: Math.abs(aside.top - slide.bottom) < 2 };
+    const paneAfter = document.querySelector('.beeson-edit-pane').getBoundingClientRect().top;
+    return { display: getComputedStyle(strip).display, stripAtPane: Math.abs(y - paneTop) < 6, pane: window.BeesonEditor.status().pane, stored: localStorage.getItem('beeson-pane'), asideHeight: aside.height, asideAtPane: Math.abs(aside.top - paneAfter) < 2 && slide.bottom <= aside.top };
   })()`);
   assert.equal(result.display, 'block');
   assert.equal(result.stripAtPane, true);
   assert.equal(result.pane, 300);
   assert.equal(result.stored, '300');
   assert.ok(Math.abs(result.asideHeight - 300) < 2, `the notes are ${result.asideHeight} px high`);
-  assert.equal(result.asideAtSlide, true);
+  assert.equal(result.asideAtPane, true);
   assert.deepEqual(page.errors, []);
 });
 
@@ -716,13 +735,14 @@ test('E opens the slide in the editor', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  await page.goto(deckUrl('index.html', 'still', '/3'));
+  await page.goto(deckUrl('test-deck.html', 'still', '/3'));
   await page.waitFor(deckSettled);
   assert.equal(await page.evaluate(`'BeesonEditor' in window`), false);
   await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', keyCode: 69, which: 69, bubbles: true, cancelable: true }))`);
   await until(page, `location.search === '?still&edit' && !!window.BeesonEditor`);
   await page.waitFor(ready);
-  assert.equal(await page.evaluate('location.hash'), '#/3');
+  // the editor shows every step, hence reveal.js may add the last step of the slide to the hash
+  assert.match(await page.evaluate('location.hash'), /^#\/3(\/0\/\d+)?$/);
   assert.equal(await page.evaluate('Reveal.getIndices().h'), 3);
   // in the editor, the key does nothing
   await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', keyCode: 69, which: 69, bubbles: true, cancelable: true }))`);
@@ -739,28 +759,32 @@ test('Open with unsaved changes asks first: Cancel keeps them, Open without savi
   const h2 = 'Show your steps one at a time';
   // stubs of the pickers: both give one handle of a file, read as last written
   await page.evaluate(`window.pickerCalls = 0; window.written = null;
-    const handle = { name: 'index.html', getFile: async () => new File([window.written ?? ${JSON.stringify(deckText)}], 'index.html', { type: 'text/html' }), createWritable: async () => ({ write: async (text) => { window.written = text; }, close: async () => {} }) };
+    const handle = { name: 'test-deck.html', getFile: async () => new File([window.written ?? ${JSON.stringify(deckText)}], 'test-deck.html', { type: 'text/html' }), createWritable: async () => ({ write: async (text) => { window.written = text; }, close: async () => {} }) };
     window.showOpenFilePicker = async () => { window.pickerCalls += 1; return [handle]; };
     window.showSaveFilePicker = async () => handle;`);
   const type = (text) => page.evaluate(`(() => { const h = [...document.querySelectorAll('.reveal h2')].find((h) => h.textContent === ${JSON.stringify(h2)}); Reveal.slide(Reveal.getIndices(h.closest('section')).h); h.focus(); const r = document.createRange(); r.selectNodeContents(h); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('insertText', false, ${JSON.stringify(text)}); })()`);
-  const open = () => page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.textContent === 'Open…').click()`);
-  const choose = (text) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-card.ask button')].find((b) => b.textContent === ${JSON.stringify(text)}).click()`);
+  // Open… is in the File menu of the menu bar
+  const open = () => page.evaluate(`{
+    [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent === 'File').click();
+    [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label').textContent === 'Open…').click();
+  }`);
+  const choose = (text) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-dialog.ask button')].find((b) => b.textContent === ${JSON.stringify(text)}).click()`);
   await type(' edited');
   assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, true);
   await open();
   await sleep(100);
-  const card = await page.evaluate(`(() => { const c = document.querySelector('.beeson-edit-card.ask'); return { hidden: c.hidden, title: c.querySelector('h3').textContent, buttons: [...c.querySelectorAll('button')].map((b) => b.textContent), focused: document.activeElement.textContent }; })()`);
+  const card = await page.evaluate(`(() => { const c = document.querySelector('.beeson-edit-dialog.ask'); return { hidden: c.hidden, title: c.querySelector('h3').textContent, buttons: [...c.querySelectorAll('button')].map((b) => b.textContent), focused: document.activeElement.textContent }; })()`);
   assert.deepEqual(card, { hidden: false, title: 'The deck has unsaved changes', buttons: ['Save and open…', 'Open without saving', 'Cancel'], focused: 'Cancel' });
   await choose('Cancel');
   await sleep(100);
   assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, true);
   assert.equal(await page.evaluate('window.pickerCalls'), 0);
-  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-card.ask').hidden`), true);
-  // Escape on the card is Cancel too
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-dialog.ask').hidden`), true);
+  // Escape on the dialog is Cancel too
   await open();
   await sleep(100);
   await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }))`);
-  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-card.ask').hidden`), true);
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-dialog.ask').hidden`), true);
   assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, true);
   // Open without saving undoes the typing, so that the page reads as the file chosen
   await open();
@@ -777,7 +801,7 @@ test('Open with unsaved changes asks first: Cancel keeps them, Open without savi
   assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, true);
   await open();
   await sleep(100);
-  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-card.ask').hidden`), false);
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-dialog.ask').hidden`), false);
   await choose('Save and open…');
   await until(page, 'window.pickerCalls === 2');
   await sleep(200);
@@ -788,12 +812,42 @@ test('Open with unsaved changes asks first: Cancel keeps them, Open without savi
   assert.deepEqual(page.errors, []);
 });
 
-test('Esc leaves a text and selects its block for the arrow keys, Tab reaches a figure, and a dragged figure snaps to the edge of a block with a guide', async (t) => {
+// a regression test of Discard going back past the text on disk: Open without saving after a save
+// and a later edit must leave the page as saved, not as it was before the save
+test('Open without saving after a save puts the slides back as last saved', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser);
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
-  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .zone > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
+  const h2 = 'Show your steps one at a time';
+  await page.evaluate(`window.written = null;
+    const handle = { name: 'test-deck.html', getFile: async () => new File([window.written], 'test-deck.html', { type: 'text/html' }), createWritable: async () => ({ write: async (text) => { window.written = text; }, close: async () => {} }) };
+    window.showOpenFilePicker = async () => { throw new DOMException('', 'AbortError'); };
+    window.showSaveFilePicker = async () => handle;`);
+  const type = (text) => page.evaluate(`(() => { const h = [...document.querySelectorAll('.reveal h2')].find((h) => h.textContent.startsWith(${JSON.stringify(h2)})); Reveal.slide(Reveal.getIndices(h.closest('section')).h); h.focus(); const r = document.createRange(); r.selectNodeContents(h); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('insertText', false, ${JSON.stringify(text)}); })()`);
+  await type(' saved');
+  await page.evaluate('window.BeesonEditor.save()');
+  const saved = await page.evaluate('window.written');
+  assert.equal(saved, replaced(`<h2>${h2}</h2>`, `<h2>${h2} saved</h2>`));
+  await type(' later');
+  assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, true);
+  await page.evaluate(`void window.BeesonEditor.exec('file.open')`);
+  await sleep(100);
+  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-dialog.ask button')].find((b) => b.textContent === 'Open without saving').click()`);
+  await sleep(300);
+  assert.equal(await page.evaluate('window.BeesonEditor.render()'), saved);
+  const status = await page.evaluate('window.BeesonEditor.status()');
+  assert.deepEqual({ dirty: status.dirty, problems: status.problems }, { dirty: false, problems: [] });
+  assert.deepEqual(page.errors, []);
+});
+
+test('Esc leaves a text and selects its block for the arrow keys, Tab reaches a figure, and a dragged figure snaps to the edge of a block with a guide', async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  // Alt is the free modifier of a drag on Windows and Linux, and the copy modifier on a Mac
+  const page = await editorPage(browser, 'edit&still&edit-platform=other');
+  assert.deepEqual((await page.evaluate(openDeck)).problems, []);
+  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .figure-box > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
   await sleep(200);
   const key = (k, o = '{}') => page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, bubbles: true, cancelable: true, ...${o} }))`);
   const selected = () => page.evaluate(`!document.querySelector('.beeson-frame.selected').hidden`);
@@ -805,29 +859,33 @@ test('Esc leaves a text and selects its block for the arrow keys, Tab reaches a 
   assert.equal(await page.evaluate(`document.querySelector('.reveal section.present p').style.translate`), '1px 10px');
   // Enter on the handle, which Tab reaches, puts the block back
   await page.evaluate(`document.querySelector('.beeson-handle').focus()`);
-  assert.deepEqual(await page.evaluate(`(() => { const h = document.querySelector('.beeson-handle'); return { focused: document.activeElement === h, role: h.getAttribute('role'), label: h.getAttribute('aria-label') }; })()`), { focused: true, role: 'button', label: 'Move the block: the arrow keys nudge it, Enter puts it back' });
+  assert.deepEqual(await page.evaluate(`(() => { const h = document.querySelector('.beeson-handle'); return { focused: document.activeElement === h, role: h.getAttribute('role'), label: h.getAttribute('aria-label') }; })()`), { focused: true, role: 'button', label: 'Move the text element: the arrow keys nudge it, Enter puts it back' });
   await page.evaluate(`document.querySelector('.beeson-handle').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`);
   assert.equal(await page.evaluate(`document.querySelector('.reveal section.present p').style.translate`), '');
   await key('Escape');
   assert.equal(await selected(), false);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), deckText);
   // a figure is in the tab order, and the focus selects it
-  const figure = await page.evaluate(`(() => { const f = document.querySelector('.reveal section.present .zone'); f.focus(); return { tabindex: f.getAttribute('tabindex'), label: f.getAttribute('aria-label'), focused: document.activeElement === f, selected: !document.querySelector('.beeson-frame.selected').hidden, imgInOrder: document.querySelector('.reveal section.present .zone > img').hasAttribute('tabindex') }; })()`);
+  const figure = await page.evaluate(`(() => { const f = document.querySelector('.reveal section.present .figure-box'); f.focus(); return { tabindex: f.getAttribute('tabindex'), label: f.getAttribute('aria-label'), focused: document.activeElement === f, selected: !document.querySelector('.beeson-frame.selected').hidden, imgInOrder: document.querySelector('.reveal section.present .figure-box > img').hasAttribute('tabindex') }; })()`);
   assert.deepEqual(figure, { tabindex: '0', label: 'Figure: the arrow keys move it, Esc deselects it', focused: true, selected: true, imgInOrder: false });
   await key('ArrowLeft');
-  assert.equal(await page.evaluate(`document.querySelector('.reveal section.present .zone').style.translate`), '-1px');
+  assert.equal(await page.evaluate(`document.querySelector('.reveal section.present .figure-box').style.translate`), '-1px');
   await key('Escape');
-  assert.deepEqual(await page.evaluate(`({ selected: !document.querySelector('.beeson-frame.selected').hidden, focused: document.activeElement === document.querySelector('.reveal section.present .zone') })`), { selected: false, focused: false });
+  assert.deepEqual(await page.evaluate(`({ selected: !document.querySelector('.beeson-frame.selected').hidden, focused: document.activeElement === document.querySelector('.reveal section.present .figure-box') })`), { selected: false, focused: false });
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), deckText);
   // the figure dragged to 5 px from the left edge of the paragraph snaps to it, with a guide at the
   // edge while it is dragged, and with Alt it stays where it is dropped
   const drag = (alt) => page.evaluate(`(() => {
-    const img = document.querySelector('.reveal section.present .zone > img'); const zone = img.closest('.zone'); const p = document.querySelector('.reveal section.present p');
+    const img = document.querySelector('.reveal section.present .figure-box > img'); const zone = img.closest('.figure-box'); const p = document.querySelector('.reveal section.present p');
     const z = zone.getBoundingClientRect(), pr = p.getBoundingClientRect(), r = img.getBoundingClientRect();
     const x = r.left + r.width / 2, y = r.top + r.height / 2;
     const at = (type, cx, cy) => document.elementFromPoint(cx, cy).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: 0, pointerId: 1, altKey: ${alt} }));
     const dx = pr.left + 5 - z.left;
+    // a click on the image selects it apart from its caption, and Esc selects the figure
+    at('pointerdown', x, y);
+    at('pointerup', x, y);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     at('pointerdown', x, y);
     at('pointermove', x + dx / 2, y + 100);
     at('pointermove', x + dx, y + 200);
@@ -854,12 +912,13 @@ test('the toggles, the state, the notes, and the formula dialog carry their stat
   t.after(() => browser.close());
   const page = await editorPage(browser);
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
-  const pressed = () => page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button, .beeson-edit-bottom button')].filter((b) => b.hasAttribute('aria-pressed')).map((b) => [b.textContent, b.getAttribute('aria-pressed')])`);
-  assert.deepEqual(await pressed(), [['Autosave', 'false'], ['Slides', 'true'], ['Steps', 'false'], ['Notes', 'false']]);
+  const pressed = () => page.evaluate(`[...document.querySelectorAll('.beeson-edit-header button, .beeson-edit-bottom button')].filter((b) => b.hasAttribute('aria-pressed')).map((b) => [b.textContent, b.getAttribute('aria-pressed')])`);
+  // the inspector is shown at the start with its Format tab, as Keynote opens a presentation
+  assert.deepEqual(await pressed(), [['Autosave', 'false'], ['View', 'true'], ['Format', 'true'], ['Steps', 'false'], ['Navigator', 'true'], ['Steps', 'false'], ['Notes', 'false'], ['Fit', 'true']]);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Notes').click()`);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps').click()`);
-  assert.deepEqual(await pressed(), [['Autosave', 'false'], ['Slides', 'true'], ['Steps', 'true'], ['Notes', 'true']]);
-  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-top .state').getAttribute('aria-live')`), 'polite');
+  assert.deepEqual(await pressed(), [['Autosave', 'false'], ['View', 'true'], ['Format', 'false'], ['Steps', 'true'], ['Navigator', 'true'], ['Steps', 'true'], ['Notes', 'true'], ['Fit', 'true']]);
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-header .state').getAttribute('aria-live')`), 'polite');
   assert.equal(await page.evaluate(`document.querySelector('.reveal section.present > aside.notes').getAttribute('aria-label')`), 'Speaker notes');
   // the strip above the notes is a separator with a value, and the arrows change the height
   const strip = await page.evaluate(`(() => { const s = document.querySelector('.beeson-edit-resize'); s.focus(); return { role: s.getAttribute('role'), label: s.getAttribute('aria-label'), now: s.getAttribute('aria-valuenow'), focused: document.activeElement === s }; })()`);
@@ -914,7 +973,7 @@ test('a toolbar button pressed by keyboard keeps the focus, and Tab is kept insi
   const page = await editorPage(browser);
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
   const focus = await page.evaluate(`(() => {
-    const b = [...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.textContent === 'Autosave');
+    const b = [...document.querySelectorAll('.beeson-edit-header button')].find((b) => b.textContent === 'Autosave');
     b.focus();
     b.click();
     const keyboard = document.activeElement === b;
@@ -948,7 +1007,7 @@ test('with nothing selected, Esc and B do not open the overview or black out the
   assert.deepEqual(page.errors, []);
 });
 
-test('an undo back to the saved text leaves the deck clean, and Present with unsaved changes asks first', async (t) => {
+test('an undo back to the saved text leaves the deck clean, and Present with unsaved changes asks first, where Discard changes puts the slides back as saved', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser);
@@ -963,39 +1022,46 @@ test('an undo back to the saved text leaves the deck clean, and Present with uns
   assert.deepEqual({ dirty: s.dirty, draft: s.draft, undo: s.undo }, { dirty: false, draft: false, undo: false });
   assert.equal(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.textContent === 'Save').classList.contains('on')`), false);
   // Present asks while there are unsaved changes
-  await page.evaluate(`window.written = null; window.__opened = null; window.open = (url) => { window.__opened = url; };
-    const handle = { name: 'index.html', getFile: async () => new File([window.written ?? ${JSON.stringify(deckText)}], 'index.html'), createWritable: async () => ({ write: async (text) => { window.written = text; }, close: async () => {} }) };
+  await page.evaluate(`window.written = null;
+    const handle = { name: 'test-deck.html', getFile: async () => new File([window.written ?? ${JSON.stringify(deckText)}], 'test-deck.html'), createWritable: async () => ({ write: async (text) => { window.written = text; }, close: async () => {} }) };
     window.showSaveFilePicker = async () => handle;`);
   const present = () => page.evaluate(`[...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.textContent === 'Present').click()`);
-  const choose = (text) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-card.ask button')].find((b) => b.textContent === ${JSON.stringify(text)}).click()`);
+  const choose = (text) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-dialog.ask button')].find((b) => b.textContent === ${JSON.stringify(text)}).click()`);
+  // the show is played in place, in a frame over the editor, and Esc ends it
+  const shown = `!!document.querySelector('.beeson-edit-show')`;
+  const endShow = async () => {
+    await page.evaluate(`(window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })), true)`);
+    await until(page, `!document.querySelector('.beeson-edit-show')`);
+  };
   await type(' edited');
   await present();
   await sleep(100);
-  const card = await page.evaluate(`(() => { const c = document.querySelector('.beeson-edit-card.ask'); return { hidden: c.hidden, buttons: [...c.querySelectorAll('button')].map((b) => b.textContent), focused: document.activeElement.textContent }; })()`);
+  const card = await page.evaluate(`(() => { const c = document.querySelector('.beeson-edit-dialog.ask'); return { hidden: c.hidden, buttons: [...c.querySelectorAll('button')].map((b) => b.textContent), focused: document.activeElement.textContent }; })()`);
   assert.deepEqual(card, { hidden: false, buttons: ['Save and present', 'Discard changes', 'Cancel'], focused: 'Cancel' });
   await choose('Cancel');
   await sleep(100);
-  assert.equal(await page.evaluate('window.__opened'), null);
+  assert.equal(await page.evaluate(shown), false);
   await present();
   await sleep(100);
+  // Discard changes puts the slides back as saved before the show
   await choose('Discard changes');
-  await until(page, '!!window.__opened');
+  await until(page, shown);
   s = await status();
   assert.deepEqual({ dirty: s.dirty, written: await page.evaluate('window.written') }, { dirty: false, written: null });
-  assert.equal(await page.evaluate(`[...document.querySelectorAll('.reveal h2')].some((h) => h.textContent === ${JSON.stringify(h2)})`), true);
-  await page.evaluate('window.__opened = null');
+  await endShow();
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('.reveal h2')].filter((h) => h.textContent === ${JSON.stringify(h2)}).length`), 1);
   await type(' edited');
   await present();
   await sleep(100);
   await choose('Save and present');
-  await until(page, '!!window.__opened');
+  await until(page, shown);
   assert.equal(await page.evaluate('window.written'), replaced(`<h2>${h2}</h2>`, `<h2>${h2} edited</h2>`));
   assert.equal((await status()).dirty, false);
   // Present without unsaved changes does not ask
-  await page.evaluate('window.__opened = null');
+  await endShow();
   await present();
-  await until(page, '!!window.__opened');
-  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-card.ask').hidden`), true);
+  await until(page, shown);
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-dialog.ask').hidden`), true);
   assert.deepEqual(page.errors, []);
 });
 
@@ -1003,7 +1069,7 @@ test('the texts that cannot be edited are listed on a card from the toolbar', as
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser);
-  const which = `[...document.querySelectorAll('.beeson-edit-top button')].find((b) => b.textContent === 'Which?')`;
+  const which = `[...document.querySelectorAll('.beeson-edit-header button')].find((b) => b.textContent === 'Which?')`;
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
   assert.equal(await page.evaluate(`!${which} || ${which}.hidden`), true);
   const changed = deckText.replace('<h2>Show your steps one at a time</h2>', '<h2>Another heading</h2>');
@@ -1011,10 +1077,10 @@ test('the texts that cannot be edited are listed on a card from the toolbar', as
   assert.ok(problems.length > 0);
   assert.equal(await page.evaluate(`${which}.hidden`), false);
   await page.evaluate(`${which}.click()`);
-  const card = await page.evaluate(`(() => { const c = document.querySelector('.beeson-edit-card.problems'); return { hidden: c.hidden, title: c.querySelector('h3').textContent, items: c.querySelectorAll('li').length, focused: document.activeElement.textContent }; })()`);
+  const card = await page.evaluate(`(() => { const c = document.querySelector('.beeson-edit-dialog.problems'); return { hidden: c.hidden, title: c.querySelector('h3').textContent, items: c.querySelectorAll('li').length, focused: document.activeElement.textContent }; })()`);
   assert.deepEqual(card, { hidden: false, title: 'Texts that cannot be edited', items: problems.length, focused: 'Close' });
   await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }))`);
-  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-card.problems').hidden`), true);
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-dialog.problems').hidden`), true);
   assert.equal(await page.evaluate(`document.activeElement === ${which}`), true);
   assert.deepEqual(page.errors, []);
 });
@@ -1042,7 +1108,7 @@ test('an undo puts the caret at the change, and ⌘B and ⌘I write strong and e
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await render(), deckText);
   // a word of a list item is made bold and italic, and the selection is kept
-  const li = [...deckText.matchAll(/<li>([A-Za-z][^<\\&]+)<\/li>/g)].find((m) => deckText.split(m[0]).length === 2);
+  const li = [...deckText.matchAll(/<li[^>]*>([A-Za-z][^<\\&]+)<\/li>/g)].find((m) => deckText.split(m[0]).length === 2);
   const word = li[1].split(' ')[0];
   const format = (type) => page.evaluate(`(() => {
     const li = [...document.querySelectorAll('.reveal li')].find((l) => l.textContent === ${JSON.stringify(li[1])});
@@ -1058,15 +1124,15 @@ test('an undo puts the caret at the change, and ⌘B and ⌘I write strong and e
     return getSelection().toString();
   })()`);
   assert.equal(await format('formatBold'), word);
-  assert.equal(await render(), replaced(li[0], li[0].replace(word, `<strong>${word}</strong>`)));
+  assert.equal(await render(), replaced(li[0], li[0].replace(`>${word}`, `><strong>${word}</strong>`)));
   assert.equal(await format('formatItalic'), word);
-  assert.equal(await render(), replaced(li[0], li[0].replace(word, `<strong><em>${word}</em></strong>`)));
+  assert.equal(await render(), replaced(li[0], li[0].replace(`>${word}`, `><strong><em>${word}</em></strong>`)));
   // a second Cmd+B takes the bold off again
   await format('formatBold');
-  assert.equal(await render(), replaced(li[0], li[0].replace(word, `<em>${word}</em>`)));
+  assert.equal(await render(), replaced(li[0], li[0].replace(`>${word}`, `><em>${word}</em>`)));
   await page.evaluate('window.BeesonEditor.undo()');
   await page.evaluate('window.BeesonEditor.undo()');
-  assert.equal(await render(), replaced(li[0], li[0].replace(word, `<strong>${word}</strong>`)));
+  assert.equal(await render(), replaced(li[0], li[0].replace(`>${word}`, `><strong>${word}</strong>`)));
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await render(), deckText);
   // underline stays blocked
@@ -1110,25 +1176,35 @@ const contrast = (a, b) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-test('the slide list and the selects of the Steps pane carry their names, and the muted text of the panes is legible in light mode', async (t) => {
+test('the slide list and the step chips of the Steps pane carry their names, and the muted text of the panes is legible in light mode', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser);
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
   assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-nav .rows').getAttribute('aria-label')`), 'Slides');
-  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .zone > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
+  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .figure-box > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps').click()`);
   await sleep(300);
-  const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .rows > *')].map((r) => [r.localName, r.className, r.querySelector('select').getAttribute('aria-label')])`);
+  const rows = await page.evaluate(`${IN_ORDER}.map((r) => [r.localName, r.classList[0], r.querySelector('.chip').getAttribute('aria-label')])`);
   assert.equal(rows.length, 6);
   assert.deepEqual(rows[0].slice(0, 2), ['div', 'row']);
   assert.match(rows[0][2], /^Step of the heading: \S/);
   assert.match(rows[5][2], /^Step of the figure: \S/);
   assert.ok(rows.every(([name, , label]) => name === 'div' && /^Step of the [a-z]+: /.test(label)), JSON.stringify(rows));
-  await page.evaluate(`document.documentElement.dataset.theme = 'light'`);
-  const colors = await page.evaluate(`({ text: getComputedStyle(document.querySelector('.beeson-edit-side .foot')).color, bg: getComputedStyle(document.querySelector('.beeson-edit-side')).backgroundColor })`);
-  const ratio = contrast(colors.text, colors.bg);
-  assert.ok(ratio >= 4.5, `the footnote of the Steps pane has a contrast of ${ratio.toFixed(2)} to 1 (${colors.text} on ${colors.bg})`);
+  // the panes follow the scheme of the system, not the mode of the deck, and the footnote is drawn
+  // on the first ancestor with an opaque background, the Steps pane itself being transparent
+  for (const scheme of ['light', 'dark']) {
+    await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    const colors = await page.evaluate(`(() => {
+      const foot = document.querySelector('.beeson-edit-side .foot');
+      let el = foot;
+      while (el && /rgba\\([^)]*, 0\\)|transparent/.test(getComputedStyle(el).backgroundColor)) el = el.parentElement;
+      return { text: getComputedStyle(foot).color, bg: el ? getComputedStyle(el).backgroundColor : 'rgb(255, 255, 255)' };
+    })()`);
+    assert.doesNotMatch(colors.bg, /rgba/, colors.bg);
+    const ratio = contrast(colors.text, colors.bg);
+    assert.ok(ratio >= 4.5, `the footnote of the Steps pane has a contrast of ${ratio.toFixed(2)} to 1 in ${scheme} mode (${colors.text} on ${colors.bg})`);
+  }
   assert.deepEqual(page.errors, []);
 });
 
@@ -1137,25 +1213,23 @@ test('a step is inserted before the others as one entry of the history, and a fo
   t.after(() => browser.close());
   const page = await editorPage(browser);
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
-  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .zone > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
+  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .figure-box > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps').click()`);
   await sleep(300);
-  const values = () => page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row select')].map((s) => s.value)`);
-  const pick = (i, value) => page.evaluate(`(() => { const sel = document.querySelectorAll('.beeson-edit-side .row select')[${i}]; sel.value = ${value === undefined ? '[...sel.options].at(-1).value' : JSON.stringify(value)}; sel.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-  await pick(3);
-  await pick(4);
-  assert.deepEqual(await values(), ['', '', '', '0', '1', '']);
-  const before = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .row select')[2].options].map((o) => [o.value, o.textContent])`);
-  assert.deepEqual(before[1], ['before', 'Step 1, new, before the others']);
-  await pick(2, 'before');
+  const values = () => page.evaluate(`${STEP_VALUES}`);
+  const pick = (i, label) => pickStep(page, i, label);
   assert.deepEqual(await values(), ['', '', '0', '1', '2', '']);
-  let expected = replaced('<li>Dark and light mode: export one file per mode, mark them <code>for-dark</code> and <code>for-light</code>.</li>', '<li class="fragment" data-fragment-index="1">Dark and light mode: export one file per mode, mark them <code>for-dark</code> and <code>for-light</code>.</li>');
-  expected = expected.replace('<li>You might have noticed a toggle on the top right: try clicking it on this slide.</li>', '<li class="fragment" data-fragment-index="2">You might have noticed a toggle on the top right: try clicking it on this slide.</li>');
-  expected = expected.replace('<li>You should give black-on-white plots the class <code>invert</code> to invert them in dark mode.</li>', '<li class="fragment" data-fragment-index="3">You should give black-on-white plots the class <code>invert</code> to invert them in dark mode.</li>');
+  const before = await page.evaluate(`(() => { const chip = document.querySelector('.beeson-edit-side .row[data-doc="5"] .chip'); chip.click(); const labels = [...document.querySelectorAll('.beeson-edit-menu .item .label')].map((l) => l.textContent); chip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.querySelector('.beeson-edit-menu')?.remove(); return labels; })()`);
+  assert.deepEqual(before.slice(0, 6), ['With the Slide', 'Step 1', 'Step 2', 'Step 3', 'New Step at Start', 'New Step at End']);
+  await pick(5, 'New Step at Start');
+  assert.deepEqual(await values(), ['', '', '1', '2', '3', '0']);
+  let expected = replaced('<figure class="figure-box">', '<figure class="figure-box fragment" data-fragment-index="1">');
+  expected = FIGURE_ITEMS.reduce((text, item, i) => text.replace(stepped(i), `<li class="fragment" data-fragment-index="${i + 2}">${item}</li>`), expected);
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), expected);
   // one undo takes the new step away and puts the other steps back
   await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }))`);
-  assert.deepEqual(await values(), ['', '', '', '0', '1', '']);
+  assert.deepEqual(await values(), ['', '', '0', '1', '2', '']);
+  assert.equal(await page.evaluate('window.BeesonEditor.render()'), deckText);
   // a display formula is listed by its TeX, and an inline formula is shown in place in its paragraph
   await page.evaluate(`(() => { const c = document.querySelector('.reveal .slides .surface'); Reveal.slide(Reveal.getIndices(c.closest('section')).h); })()`);
   await sleep(300);
@@ -1165,7 +1239,7 @@ test('a step is inserted before the others as one entry of the history, and a fo
   assert.ok(formulas[0].startsWith('U_g = -(1-\\mu)/\\rho_1'), formulas[0]);
   assert.ok(formulas[2].startsWith('\\tilde U = U_g + U_c'), formulas[2]);
   const item = texts.find(([kind, text]) => kind === 'Paragraph' && text.startsWith('Libration points'));
-  assert.ok(item && item[1].startsWith('Libration points \\{\\LL{i}\\}_{i=1}^5 satisfy \\nabla'), JSON.stringify(texts));
+  assert.ok(item && item[1].startsWith('Libration points \\{\\mathcal{L}_{i}\\}_{i=1}^5 satisfy \\nabla'), JSON.stringify(texts));
   assert.deepEqual(page.errors, []);
 });
 
@@ -1192,7 +1266,7 @@ test('the notes fill the width of the pane when the pane is tall', async (t) => 
     range.selectNodeContents(aside);
     const text = range.getClientRects()[0];
     const hit = document.elementFromPoint(pane.left + 30, text.top + text.height / 2);
-    return { pane: window.BeesonEditor.status().pane, aside: a.width, reveal: reveal.width, left: a.left, revealLeft: reveal.left, textLeft: text.left, paneLeft: pane.left, hit: !!hit && aside.contains(hit) };
+    return { pane: window.BeesonEditor.status().pane, aside: a.width, reveal: pane.width, left: a.left, revealLeft: pane.left, textLeft: text.left, paneLeft: pane.left, hit: !!hit && aside.contains(hit) };
   })()`);
   assert.equal(result.pane, 500);
   assert.ok(Math.abs(result.aside - result.reveal) < 2, `the notes are ${result.aside} px wide in a pane of ${result.reveal} px`);
@@ -1224,10 +1298,22 @@ test('a row of the slide list rested on shows a preview of its slide, which is h
     return { shown: !p.hidden && getComputedStyle(p).display !== 'none', width: box.width, right: box.left >= list.right, hidden: p.getAttribute('aria-hidden'), focusable: p.querySelectorAll('[tabindex], [contenteditable]').length, title: clone?.querySelector('h2')?.textContent ?? null, painted, fragments: [...(clone?.querySelectorAll('.fragment') ?? [])].every((f) => getComputedStyle(f).opacity === '1') };
   })()`);
   const row = (type) => page.evaluate(`document.querySelectorAll('.beeson-edit-nav .row')[${at}].dispatchEvent(new PointerEvent('${type}', { bubbles: false, pointerId: 1 }))`);
-  await row('pointerenter');
-  await sleep(100);
-  assert.notEqual((await peek())?.shown, true, 'the preview waits for the pointer to rest');
-  await sleep(400);
+  // a thumbnail shown whole is not previewed, hence the row is scrolled under the upper edge of the
+  // list, where its thumbnail is cut
+  await page.evaluate(`(() => { const list = document.querySelector('.beeson-edit-nav .rows'); const f = document.querySelectorAll('.beeson-edit-nav .row')[${at}].querySelector('.frame').getBoundingClientRect(); list.scrollTop += f.top + f.height / 2 - list.getBoundingClientRect().top; })()`);
+  // the time from the pointer on the row to the preview is measured in the page, since a read 100 ms
+  // after the pointer came later than the 300 ms of the rest on a slow runner
+  const rested = await page.evaluate(`new Promise((done) => {
+    const p = document.querySelector('.beeson-edit-peek');
+    const entered = performance.now();
+    new MutationObserver((_, observer) => {
+      if (p.hidden) return;
+      observer.disconnect();
+      done(performance.now() - entered);
+    }).observe(p, { attributes: true, attributeFilter: ['hidden'] });
+    document.querySelectorAll('.beeson-edit-nav .row')[${at}].dispatchEvent(new PointerEvent('pointerenter', { bubbles: false, pointerId: 1 }));
+  })`);
+  assert.ok(rested >= 290, `the preview is shown ${rested} ms after the pointer, and does not wait for the pointer to rest`);
   const shown = await peek();
   const title = await page.evaluate(`document.querySelectorAll('.reveal .slides > section')[${at}].querySelector('h2').textContent`);
   assert.equal(shown.shown, true);
@@ -1242,7 +1328,7 @@ test('a row of the slide list rested on shows a preview of its slide, which is h
   assert.notEqual((await peek())?.shown, true);
   // a click on the row hides the preview and moves to the slide
   await row('pointerenter');
-  await sleep(500);
+  await page.waitFor(`document.querySelector('.beeson-edit-peek')?.hidden === false`);
   assert.equal((await peek()).shown, true);
   await page.evaluate(`document.querySelectorAll('.beeson-edit-nav .row')[${at}].click()`);
   assert.notEqual((await peek())?.shown, true);
@@ -1254,41 +1340,57 @@ test('a row of the slide list rested on shows a preview of its slide, which is h
 test('Shift locks a drag to one axis, a run of nudges is one undo, and the offset is shown while the element moves', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  const page = await editorPage(browser);
+  // Alt is the free modifier of a drag on Windows and Linux, and the copy modifier on a Mac
+  const page = await editorPage(browser, 'edit&still&edit-platform=other');
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
-  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .zone > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
+  await page.evaluate(`(() => { const img = document.querySelector('.reveal .slides section .figure-box > img'); Reveal.slide(Reveal.getIndices(img.closest('section')).h); })()`);
   await sleep(200);
-  const translate = () => page.evaluate(`document.querySelector('.reveal section.present .zone').style.translate`);
+  const translate = () => page.evaluate(`document.querySelector('.reveal section.present .figure-box').style.translate`);
   // a drag by 60 by 20 slide pixels with Shift. with alt true, the figure does not snap
   const drag = (alt) => page.evaluate(`(() => {
-    const img = document.querySelector('.reveal section.present .zone > img');
+    const img = document.querySelector('.reveal section.present .figure-box > img');
     const r = img.getBoundingClientRect();
     const x = r.left + r.width / 2, y = r.top + r.height / 2;
     const at = (type, cx, cy) => document.elementFromPoint(cx, cy).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: cx, clientY: cy, button: 0, pointerId: 1, shiftKey: true, altKey: ${alt} }));
     const scale = Reveal.getScale();
     const label = () => document.querySelector('.beeson-offset');
+    // a click on the image selects it apart from its caption, and Esc selects the figure
+    const tap = (type) => document.elementFromPoint(x, y).dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, pointerId: 1 }));
+    tap('pointerdown');
+    tap('pointerup');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     at('pointermove', x, y);
     at('pointerdown', x, y);
     at('pointermove', x + 30 * scale, y + 10 * scale);
     at('pointermove', x + 60 * scale, y + 20 * scale);
-    const zone = img.closest('.zone'), z = zone.getBoundingClientRect(), l = label()?.getBoundingClientRect();
-    const during = { shown: !!label() && !label().hidden, text: label()?.textContent, lowerRight: !!l && l.top >= z.bottom && Math.abs(l.right - z.right - 6) < 1 };
+    const zone = img.closest('.figure-box'), l = label()?.getBoundingClientRect();
+    // the upper left corner of the figure in slide px, i.e. of its picture with its caption, which
+    // the readout gives, and whose frame is drawn 8 px outside it
+    const s = document.querySelector('.reveal .slides').getBoundingClientRect(), z = document.querySelector('.beeson-overlay > .beeson-frame.selected:not([hidden])').getBoundingClientRect();
+    const corner = 'x: ' + Math.round((z.left + 8 - s.left) / scale) + ' px  y: ' + Math.round((z.top + 8 - s.top) / scale) + ' px';
+    const during = { shown: !!label() && !label().hidden, corner: label()?.textContent === corner, atPointer: !!l && Math.abs(l.left - (x + 60 * scale) - 14) < 1 && Math.abs(l.top - (y + 20 * scale) - 18) < 1 };
     at('pointerup', x + 60 * scale, y + 20 * scale);
     return { during, after: label()?.hidden, translate: zone.style.translate };
   })()`);
   const locked = await drag(true);
-  assert.deepEqual(locked, { during: { shown: true, text: '60, 0', lowerRight: true }, after: true, translate: '60px' });
+  assert.deepEqual(locked, { during: { shown: true, corner: true, atPointer: true }, after: true, translate: '60px' });
   await page.evaluate(`document.querySelector('.beeson-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   // without Alt the figure may snap along the free axis, but not off the locked one
   const snapped = await drag(false);
   assert.match(snapped.translate, /^-?\d+px$/);
   await page.evaluate(`document.querySelector('.beeson-handle').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   assert.equal(await translate(), '');
-  // five nudges in a run are one entry of the history, and the offset is shown while they last
+  // five nudges in a run are one entry of the history, and the upper left corner of the figure in
+  // slide px is shown while they last
   const key = (k) => page.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, bubbles: true, cancelable: true }))`);
   for (let i = 0; i < 5; i++) await key('ArrowRight');
   assert.equal(await translate(), '5px');
-  assert.deepEqual(await page.evaluate(`(() => { const l = document.querySelector('.beeson-offset'); return { shown: !l.hidden, text: l.textContent }; })()`), { shown: true, text: '5, 0' });
+  assert.deepEqual(await page.evaluate(`(() => {
+    const l = document.querySelector('.beeson-offset');
+    const scale = Reveal.getScale(), s = document.querySelector('.reveal .slides').getBoundingClientRect(), z = document.querySelector('.beeson-overlay > .beeson-frame.selected:not([hidden])').getBoundingClientRect();
+    // the corner of the figure, inside its frame by 8 px
+    return { shown: !l.hidden, corner: l.textContent === 'x: ' + Math.round((z.left + 8 - s.left) / scale) + ' px  y: ' + Math.round((z.top + 8 - s.top) / scale) + ' px' };
+  })()`), { shown: true, corner: true });
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await translate(), '');
   await page.evaluate('window.BeesonEditor.redo()');
@@ -1322,8 +1424,8 @@ test('a slide with elements faded out at a step is edited one layer at a time', 
   await page.waitFor(ready);
   assert.deepEqual((await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(text)})`)).problems, []);
   const shown = (ids) => page.evaluate(`${JSON.stringify(ids)}.filter((id) => getComputedStyle(document.getElementById(id)).visibility === 'visible')`);
-  const layers = () => page.evaluate(`(() => { const box = document.querySelector('.beeson-layers'); return box.hidden ? null : [...box.querySelectorAll('button')].map((b) => (b.getAttribute('aria-pressed') === 'true' ? '*' : '') + b.textContent); })()`);
-  const choose = (label) => page.evaluate(`[...document.querySelectorAll('.beeson-layers button')].find((b) => b.textContent === ${JSON.stringify(label)}).click()`);
+  const layers = () => page.evaluate(`(() => { const box = document.querySelector('.beeson-shown-steps'); return box.hidden ? null : [...box.querySelectorAll('button')].map((b) => (b.getAttribute('aria-pressed') === 'true' ? '*' : '') + b.textContent); })()`);
+  const choose = (label) => page.evaluate(`[...document.querySelectorAll('.beeson-shown-steps button')].find((b) => b.textContent === ${JSON.stringify(label)}).click()`);
   const go = async (h) => { await page.evaluate(`Reveal.slide(${h})`); await sleep(100); };
   const swap = ['old-lead', 'old-step', 'old-span', 'new-lead', 'new-step'];
 
@@ -1364,7 +1466,7 @@ test('the file to open is chosen without a filter of its type', async (t) => {
     window.__options = 'not called';
     window.showOpenFilePicker = (options) => { window.__options = options ?? null; return Promise.reject(new DOMException('', 'AbortError')); };
   }`);
-  await page.evaluate(`document.querySelector('.beeson-edit-card button').click()`);
+  await page.evaluate(`document.querySelector('.beeson-edit-dialog button').click()`);
   await page.waitFor(`window.__options !== 'not called'`);
   assert.equal(await page.evaluate('JSON.stringify(window.__options?.types ?? null)'), 'null');
   // without the open picker, the file is chosen with an input element
@@ -1373,7 +1475,7 @@ test('the file to open is chosen without a filter of its type', async (t) => {
     window.__accept = 'not clicked';
     HTMLInputElement.prototype.click = function () { window.__accept = this.getAttribute('accept'); };
   }`);
-  await page.evaluate(`document.querySelector('.beeson-edit-card button').click()`);
+  await page.evaluate(`document.querySelector('.beeson-edit-dialog button').click()`);
   await page.waitFor(`window.__accept !== 'not clicked'`);
   assert.equal(await page.evaluate('window.__accept'), null);
   assert.deepEqual(page.errors, []);

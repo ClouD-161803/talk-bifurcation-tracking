@@ -1,0 +1,285 @@
+// helpers of the browser tests of the editor, with trusted input sent over the DevTools protocol,
+// which is closer to a user than dispatchEvent. a key string names the modifiers before the key,
+// e.g. 'Mod+Shift+Z', where Mod is ⌘ with ?edit-platform=mac and Ctrl otherwise
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { deckSettled, deckUrl } from '../../scripts/chrome.mjs';
+
+const ready = 'window.BeesonEditor && window.BeesonEditor.ready.then(() => true)';
+
+// the bits of the modifiers in Input.dispatchKeyEvent and Input.dispatchMouseEvent
+const BITS = { Alt: 1, Ctrl: 2, Meta: 4, Shift: 8 };
+
+// the key, code, and key code of a named key, e.g. ArrowUp, and of a letter or a digit
+const NAMED = {
+  Enter: ['Enter', 'Enter', 13],
+  Escape: ['Escape', 'Escape', 27],
+  Tab: ['Tab', 'Tab', 9],
+  Backspace: ['Backspace', 'Backspace', 8],
+  Delete: ['Delete', 'Delete', 46],
+  Space: [' ', 'Space', 32],
+  ArrowLeft: ['ArrowLeft', 'ArrowLeft', 37],
+  ArrowUp: ['ArrowUp', 'ArrowUp', 38],
+  ArrowRight: ['ArrowRight', 'ArrowRight', 39],
+  ArrowDown: ['ArrowDown', 'ArrowDown', 40],
+  Home: ['Home', 'Home', 36],
+  End: ['End', 'End', 35],
+  PageUp: ['PageUp', 'PageUp', 33],
+  PageDown: ['PageDown', 'PageDown', 34],
+};
+
+function keyOf(name, shift) {
+  if (NAMED[name]) return NAMED[name];
+  if (/^[a-z]$/i.test(name)) {
+    const upper = name.toUpperCase();
+    return [shift ? upper : name.toLowerCase(), `Key${upper}`, upper.charCodeAt(0)];
+  }
+  if (/^[0-9]$/.test(name)) return [name, `Digit${name}`, name.charCodeAt(0)];
+  if (/^F[0-9]+$/.test(name)) return [name, name, 111 + Number(name.slice(1))];
+  throw new Error(`the key ${name} is not known to press()`);
+}
+
+// the platform of a page, read from its URL parameter edit-platform as the editor reads it
+async function platformOf(page) {
+  return page.evaluate(`(() => {
+    const p = new URLSearchParams(location.search).get('edit-platform');
+    if (p === 'mac' || p === 'other') return p;
+    return /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other';
+  })()`);
+}
+
+/**
+ * The editor on a deck, with every block paired with its file. deck is the path of the deck from
+ * the root of the repository, and text is the text passed to open(), by default the file itself.
+ * With clear, the local storage of the file origin is emptied before the deck is loaded.
+ */
+export async function editorPage(browser, { deck = 'test-deck.html', query = 'edit&still', text, page: options, clear = false } = {}) {
+  const page = await browser.newPage(options);
+  // with clear, a draft that an earlier page of the deck left is dropped, whose dialog covers the slide
+  if (clear) await page.send('Storage.clearDataForOrigin', { origin: 'file://', storageTypes: 'local_storage' });
+  await page.goto(deckUrl(deck, query));
+  await page.waitFor(deckSettled);
+  await page.waitFor(ready);
+  const source = text ?? readFileSync(deck, 'utf8');
+  const status = await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(source)})`);
+  assert.deepEqual(status.problems, [], `the blocks of ${deck} are not all paired`);
+  page.source = source;
+  return page;
+}
+
+// the center of the first shown element matched by selector, in CSS pixels of the viewport
+export async function center(page, selector) {
+  const point = await page.evaluate(`(() => {
+    const r = [...document.querySelectorAll(${JSON.stringify(selector)})].map((el) => el.getBoundingClientRect()).find((r) => r.width && r.height);
+    return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+  })()`);
+  if (!point) throw new Error(`nothing is shown at ${selector}`);
+  return point;
+}
+
+const mouse = (page, type, x, y, extra = {}) => page.send('Input.dispatchMouseEvent', { type, x, y, ...extra });
+
+/**
+ * A trusted click at a point { x, y } or at the center of the element matched by a selector.
+ * button is 'left' or 'right', count is the click count, and modifiers is a key string, e.g. 'Shift'.
+ */
+export async function click(page, at, { button = 'left', count = 1, modifiers = '' } = {}) {
+  const { x, y } = typeof at === 'string' ? await center(page, at) : at;
+  const bits = await maskOf(page, modifiers);
+  const buttons = button === 'right' ? 2 : 1;
+  await mouse(page, 'mouseMoved', x, y, { modifiers: bits });
+  for (let n = 1; n <= count; n++) {
+    await mouse(page, 'mousePressed', x, y, { button, buttons, clickCount: n, modifiers: bits });
+    await mouse(page, 'mouseReleased', x, y, { button, clickCount: n, modifiers: bits });
+  }
+}
+
+/**
+ * The figure around the image of a selector selected by itself, by a click on the image, since a
+ * picture with its caption is one object.
+ */
+export async function selectFigure(page, image) {
+  await click(page, image);
+}
+
+/**
+ * The image of a selector selected by itself, by a second click on it after the click that
+ * selects its figure.
+ */
+export async function selectPicture(page, image) {
+  await click(page, image);
+  await click(page, image);
+}
+
+/**
+ * A trusted drag from a point or a selector by { dx, dy } in CSS pixels, in steps moves. With hold
+ * set, the button is not released, e.g. for a screenshot of the drag in progress.
+ */
+export async function drag(page, from, { dx = 0, dy = 0, steps = 10, modifiers = '', hold = false } = {}) {
+  const { x, y } = typeof from === 'string' ? await center(page, from) : from;
+  const bits = await maskOf(page, modifiers);
+  await mouse(page, 'mouseMoved', x, y, { modifiers: bits });
+  await mouse(page, 'mousePressed', x, y, { button: 'left', buttons: 1, clickCount: 1, modifiers: bits });
+  for (let i = 1; i <= steps; i++) {
+    await mouse(page, 'mouseMoved', x + (dx * i) / steps, y + (dy * i) / steps, { button: 'left', buttons: 1, modifiers: bits });
+  }
+  await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
+  if (!hold) await mouse(page, 'mouseReleased', x + dx, y + dy, { button: 'left', clickCount: 1, modifiers: bits });
+}
+
+// the bit mask of the modifiers of a key string, with Mod resolved for the platform of the page
+async function maskOf(page, modifiers) {
+  const names = modifiers ? modifiers.split('+') : [];
+  const mac = names.includes('Mod') && (await platformOf(page)) === 'mac';
+  return names.reduce((bits, name) => bits | (name === 'Mod' ? (mac ? BITS.Meta : BITS.Ctrl) : BITS[name] ?? 0), 0);
+}
+
+/** A trusted press of a key string, e.g. 'Mod+Z', 'Shift+ArrowUp', or 'Escape'. */
+export async function press(page, keys) {
+  const names = keys.split('+');
+  const name = names.pop();
+  for (const m of names) if (m !== 'Mod' && !(m in BITS)) throw new Error(`the modifier ${m} is not known to press()`);
+  const modifiers = await maskOf(page, names.join('+'));
+  const shift = names.includes('Shift');
+  const [key, code, keyCode] = keyOf(name, shift);
+  // a printable key without a command modifier types its character
+  const text = key.length === 1 && !(modifiers & (BITS.Ctrl | BITS.Meta)) ? key : undefined;
+  const base = { key, code, windowsVirtualKeyCode: keyCode, modifiers };
+  await page.send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text, unmodifiedText: text } : {}) });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+}
+
+// the code, the key code, and the modifier bits of the symbols of a US layout that typeKeys() types
+const SYMBOLS = {
+  ' ': ['Space', 32, 0],
+  '-': ['Minus', 189, 0],
+  '.': ['Period', 190, 0],
+  '/': ['Slash', 191, 0],
+  "'": ['Quote', 222, 0],
+  '"': ['Quote', 222, BITS.Shift],
+  ':': ['Semicolon', 186, BITS.Shift],
+  '@': ['Digit2', 50, BITS.Shift],
+};
+
+/**
+ * Trusted typing of text key by key on a US layout, each key with its code and Shift. The keys are
+ * sent at once and not each after the answer to the one before, since the typing into a block is
+ * one entry of the history only while its keys are less than 1 s apart, and on a slow runner an
+ * answer took longer.
+ */
+export async function typeKeys(page, text) {
+  const sent = [];
+  for (const c of text) {
+    const [code, keyCode, modifiers] = SYMBOLS[c] ?? [`Key${c.toUpperCase()}`, c.toUpperCase().charCodeAt(0), /[A-Z]/.test(c) ? BITS.Shift : 0];
+    const base = { key: c, code, windowsVirtualKeyCode: keyCode, modifiers };
+    sent.push(page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: c, unmodifiedText: c }));
+    sent.push(page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base }));
+  }
+  await Promise.all(sent);
+}
+
+/** Trusted typing of text at the caret, as an input method commits it. */
+export async function type(page, text) {
+  await page.send('Input.insertText', { text });
+}
+
+/**
+ * Records the frames of the step preview of the editor in window.__preview from now on. A frame is
+ * { step, playing, read }, with the value of the expression read as the frame is drawn. The preview
+ * goes on by a clock of the page, 800 ms a step, hence a read from the test may come a step late.
+ */
+export async function recordPreview(page, read = 'null') {
+  await page.evaluate(`(() => {
+    const html = document.documentElement;
+    window.__previewObserver?.disconnect();
+    window.__preview = [];
+    window.__previewObserver = new MutationObserver(() => window.__preview.push({ step: html.dataset.previewStep, playing: html.classList.contains('beeson-previewing'), read: ${read} }));
+    window.__previewObserver.observe(html, { attributes: true, attributeFilter: ['data-preview-step'] });
+    return true;
+  })()`);
+}
+
+/** Waits for the end of a preview recorded with recordPreview, and returns its frames. */
+export async function previewFrames(page, timeout = 60000) {
+  await page.waitFor(`window.__preview.length > 0 && !document.documentElement.classList.contains('beeson-previewing')`, timeout);
+  return page.evaluate('window.__preview');
+}
+
+/**
+ * Waits for the expression done after a poster is captured by a click on the Poster Frame slider or
+ * by a key, and fails with the message of a capture that fails. The capture waits up to 60 s for its
+ * copy of the video to load and 60 s for each seek, see src/editor/media/poster.ts.
+ */
+export async function captured(page, done) {
+  const failed = `/\\b(the|this) video\\b|the poster/.test(window.BeesonEditor.status().message)`;
+  await page.waitFor(`(${done}) || ${failed}`, 150000);
+  const { message } = await page.evaluate('window.BeesonEditor.status()');
+  assert.ok(await page.evaluate(done), `the poster is not captured: ${message}`);
+}
+
+/**
+ * Saves into a file of the origin private file system, opens the saved text again, and returns it
+ * with the status after the open, whose problems must be empty. The page must be served over HTTP.
+ */
+export async function saveAndReopen(page, name = 'saved.html') {
+  const text = await page.evaluate(`(async () => {
+    const root = await navigator.storage.getDirectory();
+    const handle = await root.getFileHandle(${JSON.stringify(name)}, { create: true });
+    window.BeesonEditor.attach(handle);
+    await window.BeesonEditor.save();
+    return (await handle.getFile()).text();
+  })()`);
+  const status = await page.evaluate(`window.BeesonEditor.open(${JSON.stringify(text)})`);
+  assert.deepEqual(status.problems, [], `the blocks of the saved text are not all paired`);
+  assert.equal(await page.evaluate('window.BeesonEditor.render()'), text, 'the saved text is not rendered byte for byte');
+  return { text, status };
+}
+
+/**
+ * Asserts that the text rendered by the editor is the source of the page with each pair [old, new]
+ * of edits replaced once, and that each old text occurs once in the source.
+ */
+export async function byteExact(page, edits = []) {
+  let expected = page.source;
+  for (const [before, after] of edits) {
+    assert.equal(expected.split(before).length, 2, `${before} does not occur once in the deck`);
+    expected = expected.replace(before, () => after);
+  }
+  assert.equal(await page.evaluate('window.BeesonEditor.render()'), expected);
+}
+
+// the contrast ratio of WCAG 2 of two rgb() colors, the first drawn with its alpha over the second
+export function contrast(fg, bg) {
+  const num = (c) => c.match(/[\d.]+/g).map(Number);
+  const [r, g, b, a = 1] = num(fg);
+  const under = num(bg);
+  const top = [r, g, b].map((v, i) => v * a + under[i] * (1 - a));
+  const lum = ([x, y, z]) => [x, y, z].map((v) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const [hi, lo] = [lum(top), lum(under)].sort((p, q) => q - p);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// GROUND is a function of the page that returns the ground of an element as rgb(), i.e. the
+// backgrounds of the element and of its ancestors composited down to the first opaque one, or white
+export const GROUND = `((el) => {
+  const layers = [];
+  for (let e = el; e; e = e.parentElement) {
+    const c = getComputedStyle(e).backgroundColor.match(/[\\d.]+/g).map(Number);
+    const a = c.length > 3 ? c[3] : 1;
+    if (a > 0) layers.push([c[0], c[1], c[2], a]);
+    if (a === 1) break;
+  }
+  let rgb = [255, 255, 255];
+  for (const [r, g, b, a] of layers.reverse()) rgb = [r, g, b].map((v, i) => v * a + rgb[i] * (1 - a));
+  return 'rgb(' + rgb.map(Math.round).join(', ') + ')';
+})`;
+
+// INK is a function of the page that returns the color of the text of an element as rgba(), with the
+// opacity of the element and of its ancestors folded into its alpha
+export const INK = `((el) => {
+  const c = getComputedStyle(el).color.match(/[\\d.]+/g).map(Number);
+  let a = c.length > 3 ? c[3] : 1;
+  for (let e = el; e; e = e.parentElement) a *= Number(getComputedStyle(e).opacity);
+  return 'rgba(' + c.slice(0, 3).join(', ') + ', ' + a + ')';
+})`;

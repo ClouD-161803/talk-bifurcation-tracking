@@ -1,4 +1,4 @@
-// checks of the plot element of src/plot.ts, i.e. the parser of the JSON block, the interpolation
+// checks of the plot element of src/plot.ts, i.e. the parser of the JSON script, the interpolation
 // between frames, the loop, and the markup of the labels. a plot of a test deck is played and
 // printed in Chrome
 
@@ -264,9 +264,12 @@ test('at the restart of a loop, the held frame is faded out while the next pass 
       assert.ok(s.liveText.every((a) => Math.abs(a - Math.max(0, 2 * s.fade - 1)) < 1e-6), JSON.stringify(s));
     } else assert.equal(s.fade, 1, JSON.stringify(s));
   }
-  // the copy holds the whole path, while the next pass is traced from its first frame
-  const full = samples.filter((s) => s.pass === 0).at(-1).trace;
-  assert.equal((full.match(/L/g) ?? []).length, 2, 'the first pass is held at its last frame');
+  // the copy holds the whole path, while the next pass is traced from its first frame. the path is
+  // read on the frame before a crossfade, since a slow runner may start the samples after a pass
+  const k = samples.findIndex((s, i) => i > 0 && s.held.length && !samples[i - 1].held.length);
+  assert.ok(k > 0, 'a crossfade begins within the samples');
+  const full = samples[k - 1].trace;
+  assert.equal((full.match(/L/g) ?? []).length, 2, 'a pass is held at its last frame');
   assert.ok(fading.every((s) => s.heldTrace === full && s.trace.length < full.length), JSON.stringify(fading[0]));
   assert.deepEqual(page.errors, []);
 });
@@ -286,7 +289,7 @@ const state = `(() => {
 test('a plot is played while its slide is shown, and its steps show a panel and switch its tab', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  const page = await browser.newPage();
+  const page = await browser.newPage({ motion: true });
   await page.goto(deckUrl('test/pages/plot-steps.html', '', '/1'));
   await page.waitFor(deckSettled);
 
@@ -307,7 +310,7 @@ test('a plot is played while its slide is shown, and its steps show a panel and 
   await page.evaluate('Reveal.next()');
   assert.equal((await page.evaluate(state)).playing, false);
   const error = await page.evaluate(`document.querySelector('[data-plot="missing"] .plot-error').textContent`);
-  assert.match(error, /the JSON block with the id "missing" is not found/);
+  assert.match(error, /the JSON script with the id "missing" is not found/);
   assert.deepEqual(page.errors.filter((e) => !e.includes('"missing"')), []);
 });
 
@@ -421,7 +424,7 @@ const reveals = (id) => `(() => {
 test('a plot is held until its cue, offers the tabs of its element and of the steps shown, and draws a tab with its own axis', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
-  const page = await browser.newPage();
+  const page = await browser.newPage({ motion: true });
   await page.goto(deckUrl('test/pages/plot-reveals.html'));
   await page.waitFor(deckSettled);
 

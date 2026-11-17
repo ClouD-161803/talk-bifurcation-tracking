@@ -4,7 +4,7 @@
 // the check of a deck is made in the page itself. geckodriver and safaridriver are preinstalled on
 // the runners of GitHub. On a Mac, safaridriver has to be enabled once with `sudo safaridriver --enable`.
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { extname, join, resolve, sep } from 'node:path';
@@ -15,17 +15,41 @@ const contentTypes = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/ja
 
 /**
  * Serves the files of a folder on a local port, and returns its origin and close(). The answer for
- * a file is held back by delay(path) ms.
+ * a file is held back by delay(path) ms. A Range request is answered with the bytes it names, as a
+ * static server does, since Chrome otherwise holds a connection for each video it reads in part,
+ * and a second tab of a deck with two videos then waits about 15 s for its files. With writable, a
+ * PUT writes its body into the file, as the stand-in of a file handle does in
+ * test/editor-follow.test.mjs.
  */
-export async function serve(folder, { delay = () => 0 } = {}) {
+export async function serve(folder, { delay = () => 0, writable = false } = {}) {
   const root = resolve(folder);
   const server = createHttpServer(async (request, response) => {
     const path = join(root, decodeURIComponent(new URL(request.url, 'http://localhost').pathname));
     try {
       if (!path.startsWith(root + sep)) throw new Error(`${path} is outside ${root}`);
+      if (writable && request.method === 'PUT') {
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        await writeFile(path, Buffer.concat(chunks));
+        response.writeHead(204).end();
+        return;
+      }
       const body = await readFile(path);
       await sleep(delay(path));
-      response.writeHead(200, { 'Content-Type': contentTypes[extname(path)] ?? 'application/octet-stream' });
+      const type = { 'Content-Type': contentTypes[extname(path)] ?? 'application/octet-stream', 'Accept-Ranges': 'bytes' };
+      const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+      if (range && (range[1] || range[2])) {
+        const start = range[1] ? Number(range[1]) : Math.max(0, body.length - Number(range[2]));
+        const end = range[1] && range[2] ? Math.min(Number(range[2]), body.length - 1) : body.length - 1;
+        if (start > end || start >= body.length) {
+          response.writeHead(416, { 'Content-Range': `bytes */${body.length}` }).end();
+          return;
+        }
+        response.writeHead(206, { ...type, 'Content-Range': `bytes ${start}-${end}/${body.length}`, 'Content-Length': end - start + 1 });
+        response.end(body.subarray(start, end + 1));
+        return;
+      }
+      response.writeHead(200, { ...type, 'Content-Length': body.length });
       response.end(body);
     } catch {
       response.writeHead(404).end();
@@ -148,5 +172,8 @@ export async function launch(browser, { env = process.env, timeout = 120000 } = 
     }
   }
 
-  return { newPage, close };
+  // a command of the session, e.g. session('POST', '/actions', { actions }) for trusted input
+  const session = (method, path, body) => request(method, `/session/${id}${path}`, body);
+
+  return { newPage, close, session };
 }

@@ -41,7 +41,12 @@ function pageImages(pdf) {
 
 // the black panel: a clone of a video had not loaded when the page was printed. The clip is held
 // back on a local port, since a clip on the disk loads before the print on most runs
-test('a video without a poster is printed with its frame on every step', { timeout: 60000 }, async (t) => {
+// the limit of a test that opens a print view, longer than the waits of printView added up, which
+// are 120 s for the pages, 5 s for each video, 60 s for the frames of the videos, and 15 s twice for
+// the deck
+const PRINT = 300000;
+
+test('a video without a poster is printed with its frame on every step', { timeout: PRINT }, async (t) => {
   const server = await serve('.', { delay: (path) => (path.endsWith('.mp4') ? 1500 : 0) });
   const browser = await launch({ offline: false });
   t.after(async () => {
@@ -58,11 +63,23 @@ test('a video without a poster is printed with its frame on every step', { timeo
   assert.deepEqual(frames, [1, 1, 1, 1]);
 });
 
-test('a tycho viewer is printed with its scene', { timeout: 60000 }, async (t) => {
+// on a slow runner, some of the videos that are loaded again at once do not get a frame, and the
+// export waits for them until its timeout
+test('the videos of the print view are loaded again one after the other', { timeout: PRINT }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
-  await printView(page, deckUrl('index.html', 'print-pdf&still'));
+  await printView(page, deckUrl('test/pages/video-steps.html', 'print-pdf&still'));
+
+  assert.equal(await page.evaluate(`document.querySelectorAll('video').length`), 4);
+  assert.equal(await page.evaluate(`window.loadedAtOnce`), 1);
+});
+
+test('a tycho viewer is printed with its scene', { timeout: PRINT }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await printView(page, deckUrl('test-deck.html', 'print-pdf&still'));
   const step = await page.evaluate(`[...document.querySelectorAll('.pdf-page')]
     .findIndex((p) => p.querySelector('h2')?.textContent === 'Embedding TyCHO scenes')`);
 
@@ -103,12 +120,46 @@ test('a tycho viewer is printed with its scene on every step of its slide', { ti
   assert.equal(new Set(stills.map((still) => `${still.width}x${still.height}`)).size, 1, 'the still has one size on every step');
 });
 
+// a picture enlarged past the bottom of its slide split the slide over two pages of the PDF, where
+// Keynote and PowerPoint print one page per slide and cut what runs past its edge
+test('a slide with a picture past its bottom is printed on one page', { timeout: PRINT }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await printView(page, deckUrl('test/pages/print-past-bottom.html', 'print-pdf&still'));
+
+  const pages = pageImages(await page.pdf()).length;
+
+  assert.equal(pages, 3, `the PDF of three slides has ${pages} pages`);
+  // the footnote of the last slide, which fits, is printed whole inside its page
+  const foot = await page.evaluate(`(() => {
+    const last = document.querySelectorAll('.pdf-page')[2];
+    const p = last.getBoundingClientRect();
+    const f = last.querySelector('.foot').getBoundingClientRect();
+    return { inside: f.top >= p.top && f.bottom <= p.bottom, height: f.height };
+  })()`);
+  assert.ok(foot.height > 0 && foot.inside, 'the footnote of the last slide is cut');
+});
+
 test('the check fails on a video without a poster', () => {
   const out = mkdtempSync(join(tmpdir(), 'beeson-poster-'));
   try {
     const run = spawnSync(process.execPath, ['scripts/check.mjs', '--deck', 'test/pages/video-steps.html', '--out', out], { encoding: 'utf8' });
     assert.equal(run.status, 1);
     assert.match(run.stderr, /video without a poster: \.\.\/\.\.\/demo\/clip-dark\.mp4/);
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+// the title backdrop of test/pages/title-step.html is a step of its slide, traced only from this
+// step on, hence checkHeads in scripts/check.mjs must show the step before it reads the heads
+test('the check reads the heads of a backdrop that is a step', { timeout: 120000 }, () => {
+  const out = mkdtempSync(join(tmpdir(), 'beeson-heads-'));
+  try {
+    const run = spawnSync(process.execPath, ['scripts/check.mjs', '--deck', 'test/pages/title-step.html', '--out', out], { encoding: 'utf8' });
+    assert.doesNotMatch(run.stdout + run.stderr, /heads are not painted/);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
   } finally {
     rmSync(out, { recursive: true, force: true });
   }

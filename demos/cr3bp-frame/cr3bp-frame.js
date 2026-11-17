@@ -1,5 +1,5 @@
 // the animated diagram of the circular restricted three-body problem (CR3BP) and its rotating
-// frame, drawn as inline SVG in a div.cr3bp-frame, with its labels as span.lab[data-lab] typeset by
+// frame, drawn as inline SVG in a div.cr3bp-frame, with its labels as span.label[data-lab] typeset by
 // MathJax. load this file after theme/beeson.js. the stage of the diagram is set by the shown
 // fragment of its slide with data-cr3bp-stage and the highest index, i.e. inertial without such a
 // fragment, then units, rotating, body, and mark, at which the third body turns violet. from units
@@ -51,10 +51,10 @@
   // third body is violet from the stage mark on
   const CSS = `
 .reveal .cr3bp-frame { pointer-events: none; }
-.reveal .slides section .zone.cr3bp-frame > svg { overflow: visible; }
-.reveal .cr3bp-frame .lab { position: absolute; left: 0; top: 0; white-space: nowrap; line-height: 1; font-size: 36px; color: var(--text); opacity: 0; filter: drop-shadow(0 0 3px var(--bg)) drop-shadow(0 0 1px var(--bg)); }
-.reveal .cr3bp-frame .lab[data-lab="X"], .reveal .cr3bp-frame .lab[data-lab="Y"] { color: var(--subtle); }
-.reveal .cr3bp-frame .lab[data-lab="one"] { color: var(--violet); }
+.reveal .slides section .figure-box.cr3bp-frame > svg { overflow: visible; }
+.reveal .cr3bp-frame .label { position: absolute; left: 0; top: 0; white-space: nowrap; line-height: 1; font-size: 36px; color: var(--text); opacity: 0; filter: drop-shadow(0 0 3px var(--bg)) drop-shadow(0 0 1px var(--bg)); }
+.reveal .cr3bp-frame .label[data-lab="X"], .reveal .cr3bp-frame .label[data-lab="Y"] { color: var(--subtle); }
+.reveal .cr3bp-frame .label[data-lab="one"] { color: var(--violet); }
 .cr3bp-frame svg .axis-i { stroke: var(--subtle); fill: var(--subtle); }
 .cr3bp-frame svg .axis-r { stroke: var(--text); fill: var(--text); }
 .cr3bp-frame svg .path { stroke: var(--stroke); fill: none; }
@@ -120,7 +120,7 @@
       // a diagram cloned with its slide, as in the print view, carries the drawing of its original
       for (const old of el.querySelectorAll(':scope > svg.cr3bp-svg')) old.remove();
       this.labels = {};
-      for (const l of el.querySelectorAll('.lab[data-lab]')) this.labels[l.dataset.lab] = l;
+      for (const l of el.querySelectorAll('.label[data-lab]')) this.labels[l.dataset.lab] = l;
       this.build();
       this.clock = 0;
       this.phi = STILL_ANGLE;

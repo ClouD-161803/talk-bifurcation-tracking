@@ -22,7 +22,7 @@ at least one every MAX_STEP of true anomaly, and more wherever a stored sample i
 TOLERANCE from the chord between two kept samples in either frame. Each record is given a clock t by clock_of(), from 0 to 1
 in proportion to the length along its polyline and eased over the fraction EASE of the length at each
 end, hence every strand is traced in the same time at an even pace. The result is written next to this script to broucke-families.json, and to
-broucke-families.js, i.e. the same JSON wrapped in Beeson.strands( and ); for a deck opened from the
+broucke-families.js, i.e. the same JSON wrapped in Beeson.trajectories( and ); for a deck opened from the
 disk.
 
 Run it with the Python of the TyCHO checkout, from any folder:
@@ -395,8 +395,8 @@ def readme():
 
 
 def written(document):
-    """The document as a script for Beeson.strands, with one record per line."""
-    lines = ["Beeson.strands({"]
+    """The document as a script for Beeson.trajectories, with one trajectory per line."""
+    lines = ["Beeson.trajectories({"]
     keys = list(document)
     for n, key in enumerate(keys):
         value, comma = document[key], "," if n < len(keys) - 1 else ""
