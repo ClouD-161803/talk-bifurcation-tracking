@@ -1,0 +1,81 @@
+// the thumbnail of a slide with a surface in the navigator of the editor (issue #121). a surface drawn with
+// three.js is drawn in the thumbnail of a slide that reveal.js has not laid out yet, as it is drawn once the
+// slide was shown. the surfaces of test-deck.html and the strip bundle of test/pages/bundle-far.html are checked
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { after, before, test } from 'node:test';
+import { launch } from '../scripts/chrome.mjs';
+import { editorPage } from './helpers/editor.mjs';
+
+let browser;
+before(async () => {
+  browser = await launch({ timeout: 180000 });
+});
+after(async () => {
+  await browser?.close();
+});
+
+const SLIDES = `[...document.querySelectorAll('.reveal:not(.beeson-peek) .slides > section')]`;
+
+// the share of the pixels of canvas that are drawn
+const INK = `((canvas) => {
+  if (!canvas?.width || !canvas.height) return 0;
+  const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  let drawn = 0;
+  for (let j = 3; j < data.length; j += 4) if (data[j]) drawn++;
+  return drawn / (data.length / 4);
+})`;
+
+// the surface of slide i and its picture in the thumbnail: whether reveal.js lays the slide out, the ink of the
+// picture, and the labels placed in the thumbnail
+const state = (i) => `(() => {
+  const slide = ${SLIDES}[${i}];
+  const pic = document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}]?.shadowRoot?.querySelector('.beeson-thumb .surface');
+  return {
+    laidOut: getComputedStyle(slide).display !== 'none',
+    drawn: ${INK}(pic?.querySelector('canvas.surface-image')),
+    labels: [...(pic?.querySelectorAll('.label') ?? [])].filter((l) => l.style.left).length,
+  };
+})()`;
+
+// the times the thumbnail of slide i was drawn
+const draws = (i) => `Number(document.querySelectorAll('.beeson-edit-nav .row .pic')[${i}]?.dataset.drawn ?? 0)`;
+
+// the indices of the slides with a surface, and of the last slide
+const found = `(() => {
+  const slides = ${SLIDES};
+  return { surfaces: slides.flatMap((s, i) => (s.querySelector('.surface') ? [i] : [])), last: slides.length - 1 };
+})()`;
+
+// deck is opened at its last slide. the thumbnail of each slide with a surface is drawn with the surface and its
+// labels, and it holds at least half the ink that it holds once the slide was shown
+async function check(t, deck) {
+  const last = readFileSync(deck, 'utf8').match(/<section[\s>]/g).length - 1;
+  const page = await editorPage(browser, { deck, query: `edit&still&theme=dark#/${last}`, clear: true });
+  t.after(() => page.close().catch(() => {}));
+  const at = await page.evaluate(found);
+  assert.ok(at.surfaces.length > 0, `the slides with a surface are not found in ${deck}`);
+  assert.equal(await page.evaluate('Reveal.getIndices().h'), at.last, 'the deck is not opened at its last slide');
+  for (const i of at.surfaces) {
+    assert.equal((await page.evaluate(state(i))).laidOut, false, `slide ${i} is laid out by reveal.js, and the case is not checked`);
+    const blank = await page.waitFor(`${state(i)}.drawn > 0`, 60000).then(() => false, () => true);
+    assert.ok(!blank, `the surface of slide ${i}, which was never shown, is blank in its thumbnail`);
+  }
+  for (const i of at.surfaces) {
+    const labels = await page.evaluate(`${SLIDES}[${i}].querySelectorAll('.surface .label').length`);
+    await page.waitFor(`${state(i)}.labels === ${labels}`, 60000);
+    const far = await page.evaluate(state(i));
+    const before = await page.evaluate(draws(i));
+    await page.evaluate(`(() => { Reveal.slide(${i}); return true; })()`);
+    await page.waitFor(`${draws(i)} > ${before} && ${state(i)}.drawn > 0`, 60000);
+    const shown = await page.evaluate(state(i));
+    await page.evaluate(`(() => { Reveal.slide(${at.last}); return true; })()`);
+    assert.ok(far.drawn > 0.5 * shown.drawn, `the thumbnail of slide ${i} draws ${far.drawn} of its pixels before the slide was shown, and ${shown.drawn} after`);
+  }
+  assert.deepEqual(page.errors, []);
+}
+
+test('the thumbnail of a slide that was never shown draws its surface and its labels, as after the slide was shown', { timeout: 600000 }, (t) => check(t, 'test-deck.html'));
+
+test('the thumbnail of a slide that was never shown draws its strip bundle, as after the slide was shown', { timeout: 600000 }, (t) => check(t, 'test/pages/bundle-far.html'));
