@@ -19,6 +19,7 @@ import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, 
 import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
 import { TexWriter } from './tex.ts';
+import { FigureWatcher } from './figures.ts';
 
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
@@ -217,12 +218,18 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const appliedTable = new AppliedTable(appliedFile, log);
   // the pages draw the deck again at each change of tex.js on disk
   const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged(), onWriteError: (m) => people.texFailed(m) });
+  // the stale figures are compiled in the background, and the pages load each new output
+  const figures = new FigureWatcher(root, text, { log, onChange: () => people.news() });
   const onWritten = (n: number, written: string) => {
     if (authority.written(n)) appliedTable.write(authority.table());
     tex.written(written);
+    figures.written(written);
   };
   // the pages are told of a write that fails, since an operation is acknowledged before it is written
-  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
+  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => {
+      tex.poll();
+      figures.poll();
+    }, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
   // made once this command holds the lock, so that a second start does not write the history
   let history!: History;
@@ -437,7 +444,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if ('full' in joined) return error(503, FULL);
       const { member, token } = joined;
       const applied = typeof hello.was === 'string' ? authority.applied(hello.was) : undefined;
-      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), tex: people.tex(), ...(applied === undefined ? {} : { applied }) };
+      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), tex: people.tex(), figures: figures.state(), ...(applied === undefined ? {} : { applied }) };
       const ops = typeof hello.v === 'string' ? authority.since(hello.v) : null;
       return json(200, ops ? { ...answer, ops } : { ...answer, text: authority.text });
     }
@@ -647,6 +654,12 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if (history.overwrittenAfter(since)) answer.overwritten = true;
     },
   });
+  people.feed({
+    rev: () => figures.rev,
+    write: (answer) => {
+      answer.figures = figures.state();
+    },
+  });
   comments = new Comments(join(root, '.session'), authority, history.found, { ...options.comments, log });
   comments.onChange(() => people.news());
   people.feed({
@@ -694,6 +707,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         people.end();
         const unwritten = await disk.stop();
         await tex.stop();
+        await figures.stop();
         await appliedTable.stop();
         if (unwritten) {
           const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);

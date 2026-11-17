@@ -23,7 +23,7 @@ import vm from 'node:vm';
 export const PX_PER_PT = 3.6;
 // dvisvgm writes its sizes in bp
 const PT_PER_BP = 72.27 / 72;
-const STYLE = join(dirname(fileURLToPath(import.meta.url)), '..', 'styles', 'beeson-tikz.sty');
+export const STYLE = join(dirname(fileURLToPath(import.meta.url)), '..', 'styles', 'beeson-tikz.sty');
 // the files of a compile in its temporary folder, which latex finds through TEXINPUTS
 const WRAPPER = 'beeson-figure';
 const SOURCE = 'beeson-figure-source';
@@ -316,6 +316,7 @@ function errorsOf(log, { name, dir, texts }) {
  * wrapper, the preamble.tex of the talk, the files of the talk that TeX read (inputs, as paths
  * from the folder of the deck), and its box. Line ends are read as LF, since git on Windows may
  * check a file out with CRLF.
+ * @param {{ dir: string, source: string, box?: { width?: number | null, height?: number | null }, inputs?: string[] }} figure
  */
 export function figureHash({ dir, source, box = {}, inputs = [] }) {
   const hash = createHash('sha256');
@@ -344,8 +345,9 @@ export function figureScript(name, figure) {
  * Compiles a figure of the talk in the folder dir, from its source text, or from figures/name.tex
  * when source is not given, into the box {width, height} in px. Returns { figure, text, passes,
  * seconds }, where figure is the value of window.beesonFigures[name] and text the script
- * figures/name.js, or { errors }, each { file, line, message } with file as a path from dir and
- * line null where TeX does not give one. Nothing is written into dir.
+ * figures/name.js, or { errors, inputs }, each error { file, line, message } with file as a path from
+ * dir and line null where TeX does not give one, and inputs the files of the talk that TeX read
+ * before an error of TeX, if any. Nothing is written into dir.
  */
 export async function compileFigure({ dir, name, source, box = {}, tools = findTools() }) {
   const started = Date.now();
@@ -380,7 +382,12 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
       const at = source.split('\n').findIndex((code) => stem && code.includes(stem));
       return { errors: [{ file: `figures/${name}.tex`, line: at < 0 ? null : at + 1, message: `TeX may not read ${forbidden}, since a figure reads only the files of the talk folder that are not hidden, and those of TeX` }] };
     }
-    if (latex.status !== 0) return { errors: errorsOf(read(join(temporary, `${WRAPPER}.log`)) ?? latex.stdout ?? '', { name, dir, texts: { [WRAPPER]: wrapper, [SOURCE]: source, [PREAMBLE]: preamble === null ? null : cutPreamble(preamble) } }) };
+    const inputs = new Set();
+    for (const [, path] of (fls ?? '').matchAll(/^INPUT (.+)$/gm)) {
+      const local = relative(dir, resolve(dir, path.trim()));
+      if (local && !local.startsWith('..') && !isAbsolute(local)) inputs.add(local.split('\\').join('/'));
+    }
+    if (latex.status !== 0) return { errors: errorsOf(read(join(temporary, `${WRAPPER}.log`)) ?? latex.stdout ?? '', { name, dir, texts: { [WRAPPER]: wrapper, [SOURCE]: source, [PREAMBLE]: preamble === null ? null : cutPreamble(preamble) } }), inputs: [...inputs].sort() };
     const file = join(temporary, `${WRAPPER}.svg`);
     // a PostScript special could read a file through Ghostscript
     const svg = await run(tools.dvisvgm, ['--no-fonts', '--no-specials=ps', '--precision=2', `--output=${file}`, join(temporary, `${WRAPPER}.dvi`)], { cwd: dir, env });
@@ -390,11 +397,6 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
     }
     const root = /<svg\b[^>]*>/.exec(text)[0];
     const size = (key) => parseFloat(new RegExp(`\\s${key}=['"]([\\d.]+)`).exec(root)[1]) * PT_PER_BP;
-    const inputs = new Set();
-    for (const [, path] of (fls ?? '').matchAll(/^INPUT (.+)$/gm)) {
-      const local = relative(dir, resolve(dir, path.trim()));
-      if (local && !local.startsWith('..') && !isAbsolute(local)) inputs.add(local.split('\\').join('/'));
-    }
     return { svg: text, width: size('width'), height: size('height'), inputs: [...inputs].sort() };
   };
   try {
@@ -496,10 +498,17 @@ export function readFigure(dir, name) {
  * first tag. TeX is not run.
  */
 export function figureStatus(deck) {
-  const dir = dirname(resolve(deck));
+  return figureStates(dirname(resolve(deck)), readFileSync(deck, 'utf8')).map(({ text, output, ...figure }) => figure);
+}
+
+/**
+ * The figures of figureStatus for the deck html in the folder dir, each with the text of its source
+ * and its output as well, read by output(name), when it has a name.
+ */
+export function figureStates(dir, html, output = (name) => readFigure(dir, name)) {
   const seen = new Set();
   const figures = [];
-  for (const { name, box } of deckFigures(readFileSync(deck, 'utf8'))) {
+  for (const { name, box } of deckFigures(html)) {
     if (!name || !/^[\w-]+$/.test(name)) {
       figures.push({ name: name || null, box, state: 'invalid' });
       continue;
@@ -508,7 +517,8 @@ export function figureStatus(deck) {
     seen.add(name);
     const entry = { name, box, file: `figures/${name}.js`, source: `figures/${name}.tex` };
     const source = read(join(dir, entry.source));
-    const figure = source === null ? null : readFigure(dir, name);
+    const figure = output(name);
+    Object.assign(entry, { text: source, output: figure });
     if (source === null) entry.state = 'no source';
     else if (!figure) entry.state = read(join(dir, entry.file)) === null ? 'missing' : 'stale';
     else entry.state = figure.hash === figureHash({ dir, source, box, inputs: Array.isArray(figure.inputs) ? figure.inputs : [] }) ? 'current' : 'stale';
