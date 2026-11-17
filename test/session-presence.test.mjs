@@ -851,9 +851,10 @@ test('after Leave Session and after the end of the session, no element stays loc
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered
-  // soon. a page is thus between two polls once a second, and the stopped edit command answers a
-  // poll with ended for 5 s, hence such a page is told the end as well
-  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000', SLIDES_CLOSE_WAIT_MS: '5000' } });
+  // soon. a page is thus between two polls once a second. the edit command of this test therefore
+  // answers a poll with ended until it exits, 3 s after index.html is written, in place of 200 ms,
+  // and it is killed once Ana and Cy are told the end
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000', SLIDES_CLOSE_WAIT_MS: '120000' } });
   const pages = [];
   for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name, script: `${NET}\n${ANSWERS}` }));
   await converge(server, pages);
@@ -883,9 +884,10 @@ test('after Leave Session and after the end of the session, no element stays loc
   // a signal ends a process at once on Windows, where a page is thus not told the end of the session
   if (process.platform !== 'win32') {
     server.edit.child.kill('SIGTERM');
+    for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
+    server.edit.child.kill('SIGKILL');
     await server.edit.exited;
     server.edit = null;
-    for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
     assert.deepEqual(await cy.evaluate(`({ locked: ${LOCKED(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { locked: false, resolved: 0, timers: 0 });
     assert.deepEqual(await ana.evaluate(`({ held: ${P}.held, timers: ${TIMERS} })`), { held: null, timers: 0 });
   }
