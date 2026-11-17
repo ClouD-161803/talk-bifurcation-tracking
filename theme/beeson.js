@@ -5485,6 +5485,7 @@ void main() {
         const at = lab.dataset.at ?? "";
         const i = this.arrows.findIndex((a) => a.id === at);
         if (i >= 0) {
+          if (!lab.offsetWidth && !lab.offsetHeight) continue;
           const t = tips[i], l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
           const e = l < 1 ? [0, -1] : [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l];
           const reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
