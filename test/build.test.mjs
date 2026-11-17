@@ -70,17 +70,22 @@ test('the client of a session shares a module with the editor only under src/ses
 
 // the session code of the editor runs beside theme/editor.js, and it reaches the editor only
 // through the handover of src/editor/session/host.ts. a module of the editor bundled into it would
-// be a second copy with its own state
+// be a second copy with its own state, also a module of its own folder such as caret.ts
 test('the session code of the editor shares no module with theme/editor.js', (t) => {
   const root = copy(t);
-  appendFileSync(join(root, 'src/editor/session/tree.ts'), "\nimport { make as editorMake } from '../ui/dom.ts';\nexport const seen = editorMake;\n");
-  let message = '';
-  try {
-    execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
-  } catch (e) {
-    message = String(e.stderr);
-  }
-  assert.match(message, /src\/editor\/ui\/dom\.ts, imported by src\/editor\/session\/tree\.ts/);
+  const tree = join(root, 'src/editor/session/tree.ts');
+  const before = readFileSync(tree, 'utf8');
+  const refusal = (lines) => {
+    writeFileSync(tree, before + lines);
+    try {
+      execFileSync(process.execPath, [join(root, 'build.mjs')], { stdio: 'pipe', cwd: root });
+      return '';
+    } catch (e) {
+      return String(e.stderr);
+    }
+  };
+  assert.match(refusal("\nimport { make as editorMake } from '../ui/dom.ts';\nexport const seen = editorMake;\n"), /src\/editor\/ui\/dom\.ts, imported by src\/editor\/session\/tree\.ts/);
+  assert.match(refusal("\nimport { markOf as editorMark } from './caret.ts';\nexport const seen = editorMark;\n"), /src\/editor\/session\/caret\.ts, imported by src\/editor\/session\/tree\.ts/);
 });
 
 // a page without a session does not load the engine of a session, which hence is not in theme/editor.js
