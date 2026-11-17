@@ -185,6 +185,7 @@ export class Client {
   private presenceState: unknown = null;
   private presenceDue = false;
   private presenceBusy = false;
+  private presenceTry = 0;
 
   constructor(handover: Handover) {
     const { app, port, ...shell } = handover;
@@ -886,7 +887,7 @@ export class Client {
     }
   }
 
-  // presence is a state, hence only the newest is sent, and it is sent again once the page is online
+  // presence is a state, hence only the newest is sent, and a state whose POST failed is sent again
   private async flushPresence(): Promise<void> {
     if (this.presenceBusy) return;
     this.presenceBusy = true;
@@ -895,10 +896,20 @@ export class Client {
         this.presenceDue = false;
         try {
           await this.transport.presence(this.token, this.presenceState);
+          this.presenceTry = 0;
         } catch (e) {
           this.presenceDue = true;
           if (e instanceof Failure && e.status === 404) await this.rejoin();
-          else return;
+          else {
+            // a page that stays online may not have a new state to send, hence it sends this one
+            // again after the delays of RETRY, unless a new state or a reconnect sends it first
+            if (e instanceof Failure && e.retried) {
+              window.setTimeout(() => {
+                if (this.connection === 'online') void this.flushPresence();
+              }, RETRY[Math.min(this.presenceTry++, RETRY.length - 1)] * 1000);
+            }
+            return;
+          }
         }
       }
     } finally {
