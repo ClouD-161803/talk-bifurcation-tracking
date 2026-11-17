@@ -7,7 +7,7 @@
 // whole span. a place is a text element and a visible offset of text/elements.ts in it
 
 import type { App } from '../app.ts';
-import { besideTextElement, canIndent, canOutdent, canSplit, endOf, indent, offsetIn, outdent, pointAt, rangeOf, rangeTex, selectIn, split, textTarget, type Target } from './elements.ts';
+import { besideTextElement, canIndent, canOutdent, canSplit, endOf, indent, offsetIn, outdent, pointAt, rangeOf, rangeTex, rangeWords, selectIn, split, textTarget, type Target } from './elements.ts';
 import { injectStyle } from '../ui/dom.ts';
 
 export type Place = [Element, number];
@@ -148,7 +148,7 @@ function atEdge(host: Element, at: number, way: Way): boolean {
 }
 
 // the caret position of the browser at a point of the window
-function fromPoint(x: number, y: number): [Node, number] | null {
+export function fromPoint(x: number, y: number): [Node, number] | null {
   const d = document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null };
   if (d.caretPositionFromPoint) {
     const p = d.caretPositionFromPoint(x, y);
@@ -379,16 +379,17 @@ export function install(app: App): void {
       if (!span) return;
       ev.preventDefault();
       ev.stopImmediatePropagation();
-      ev.clipboardData?.setData('text/plain', spanTargets(app).map((t) => t.range.toString().trim()).join('\n'));
+      ev.clipboardData?.setData('text/plain', spanTargets(app).map((t) => rangeWords(t.host, t.range).trim()).join('\n'));
       if (kind === 'cut') void app.history.transact('Cut', () => removeSpan(app)).catch((e) => app.fail(e));
     }, true);
-    // words of a theorem or with a citation are copied as the file has them, since the browser
-    // would copy the head of the theorem and the numbers of the citations that the theme writes
+    // words of a theorem, with a citation, or with a formula are copied as the file has them, since
+    // the browser would copy the head of the theorem, the numbers of the citations that the theme
+    // writes, and a formula without its TeX
     document.addEventListener(kind, (ev) => {
       const t = span ? null : textTarget(app);
-      if (!t || t.range.collapsed || !(t.host.matches('p.theorem') || t.range.cloneContents().querySelector('cite'))) return;
+      if (!t || t.range.collapsed || !(t.host.matches('p.theorem') || t.range.cloneContents().querySelector('cite, mjx-container'))) return;
       ev.preventDefault();
-      ev.clipboardData?.setData('text/plain', t.range.toString());
+      ev.clipboardData?.setData('text/plain', rangeWords(t.host, t.range));
       ev.clipboardData?.setData('text/html', rangeTex(t.host, t.range));
       if (kind === 'cut') document.execCommand('delete');
     }, true);

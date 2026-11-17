@@ -5,7 +5,9 @@
 // text element back with restoreHost
 
 import type { App, Typing } from '../app.ts';
-import { setContentWithTex } from '../math.ts';
+import { mathReady, setContentWithTex } from '../math.ts';
+import { hasTex } from '../typeset.ts';
+import { fromPoint } from './flow.ts';
 import { injectStyle } from '../ui/dom.ts';
 
 const CSS = `
@@ -68,6 +70,47 @@ export function placeCaret(host: Element, offset: number | null = null): void {
   }
   selection.removeAllRanges();
   selection.addRange(range);
+}
+
+// the text nodes of host outside its formulas
+const wordsOf = (host: Element): Text[] => {
+  const out: Text[] = [];
+  const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode() as Text | null; n; n = w.nextNode() as Text | null) if (!n.parentElement?.closest('mjx-container')) out.push(n);
+  return out;
+};
+
+// TeX put into host as text, e.g. by a paste, is typeset in place. the caret is kept before the
+// same text after it, since MathJax replaces the text nodes around a new formula, and a formula
+// drawn as SVG does not have a text to count. a caret that has left host is not moved
+export async function typesetTyped(app: App, host: Element): Promise<void> {
+  const mj = window.MathJax;
+  const sel = window.getSelection();
+  if (!mj?.typesetPromise) return;
+  const inside = () => !!sel?.rangeCount && host.contains(sel.anchorNode);
+  let left = -1;
+  if (inside()) {
+    const tail = sel!.getRangeAt(0).cloneRange();
+    tail.setEnd(host, host.childNodes.length);
+    const caret = tail.startContainer;
+    left = wordsOf(host).reduce((n, t) => n + (t === caret ? t.length - tail.startOffset : tail.comparePoint(t, 0) === 0 ? t.length : 0), 0);
+  }
+  await mathReady();
+  await mj.typesetPromise([host]);
+  app.typing.markMath(host);
+  app.invalidate('content');
+  if (left < 0 || !inside()) return;
+  const r = document.createRange();
+  r.selectNodeContents(host);
+  r.collapse(false);
+  for (const t of wordsOf(host).reverse()) {
+    if (left <= 0) break;
+    if (left <= t.length) r.setStart(t, t.length - left);
+    left -= t.length;
+  }
+  r.collapse(true);
+  sel!.removeAllRanges();
+  sel!.addRange(r);
 }
 
 // Cmd+B and Cmd+I wrap the selection in strong and em, as the deck is written, or take it out of
@@ -207,6 +250,7 @@ export async function pasteItems(app: App, text: string): Promise<void> {
       if (!typeBeforeSpace(host, line)) document.execCommand('insertText', false, line);
       app.history.afterTyping(host);
       app.history.break();
+      if (hasTex(line)) await typesetTyped(app, host);
     }
   });
 }
@@ -365,9 +409,11 @@ export function install(app: App): void {
       insertPlain(host, '\n');
     } else if (type === 'insertFromPaste') {
       ev.preventDefault();
-      insertPlain(host, spaced(host, ev.dataTransfer?.getData('text/plain') ?? ''));
+      const text = ev.dataTransfer?.getData('text/plain') ?? '';
+      insertPlain(host, spaced(host, text));
       history.afterTyping(host);
       history.break();
+      if (hasTex(text) && !host.closest('pre')) void typesetTyped(app, host).catch((e) => app.fail(e));
     } else if (type === 'formatUnderline') {
       ev.preventDefault();
       void app.commands.run('text.underline');
@@ -416,4 +462,52 @@ export function install(app: App): void {
     app.invalidate('selection');
   });
   document.addEventListener('focusout', () => setTimeout(() => app.invalidate('selection'), 0));
+  // a formula is not editable, and the caret is kept beside it. at a click behind a formula at the
+  // end of a line, Chrome puts the caret at the start of the text, Safari before the formula, and
+  // Firefox inside it, where typing is lost. Firefox puts it inside at the end of a line as well,
+  // and holds it before a formula at the end of a text, hence the arrows step over a formula
+  const besideMath = (math: Element, after: boolean) => {
+    const r = document.createRange();
+    if (after) r.setStartAfter(math);
+    else r.setStartBefore(math);
+    getSelection()?.collapse(r.startContainer, r.startOffset);
+  };
+  const mathAt = (node: Node | null | undefined): Element | null | undefined => (node instanceof Element ? node : node?.parentElement)?.closest('mjx-container');
+  // the formula next to the collapsed caret toward the end, or toward the start
+  const nextMath = (forward: boolean): Element | null => {
+    const s = getSelection();
+    if (!s?.isCollapsed) return null;
+    const { focusNode: n, focusOffset: o } = s;
+    let next: Node | null | undefined;
+    if (n instanceof Text) next = (forward ? o === n.length : o === 0) ? (forward ? n.nextSibling : n.previousSibling) : null;
+    else next = n?.childNodes[forward ? o : o - 1];
+    while (next instanceof Text && !next.data) next = forward ? next.nextSibling : next.previousSibling;
+    return next instanceof Element && next.matches('mjx-container') ? next : null;
+  };
+  let back = false;
+  document.addEventListener('keydown', (ev) => {
+    back = /^(ArrowLeft|ArrowUp|Home|PageUp)$/.test(ev.key);
+    const host = app.hostOf(ev.target);
+    if (!host || !/^Arrow(Left|Right)$/.test(ev.key) || ev.shiftKey || ev.altKey || ev.metaKey || ev.ctrlKey) return;
+    const math = nextMath(ev.key === 'ArrowRight');
+    if (!math || !host.contains(math)) return;
+    ev.preventDefault();
+    besideMath(math, ev.key === 'ArrowRight');
+  });
+  document.addEventListener('selectionchange', () => {
+    const s = getSelection();
+    const math = s?.isCollapsed ? mathAt(s.focusNode) : null;
+    const host = math && app.hostOf(math);
+    if (host && document.activeElement === host) besideMath(math, !back);
+  });
+  document.addEventListener('click', (ev) => {
+    const host = app.hostOf(ev.target);
+    if (!host || !getSelection()?.isCollapsed || mathAt(ev.target as Node)) return;
+    const at = fromPoint(ev.clientX, ev.clientY);
+    const math = mathAt(at?.[0]) ?? nextMath(true) ?? nextMath(false);
+    if (!math || !host.contains(math)) return;
+    const r = math.getBoundingClientRect();
+    if (ev.clientY < r.top || ev.clientY > r.bottom || (ev.clientX > r.left && ev.clientX < r.right)) return;
+    besideMath(math, ev.clientX >= r.right);
+  });
 }
