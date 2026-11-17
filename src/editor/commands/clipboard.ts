@@ -16,7 +16,8 @@ import { CLIPBOARD_REGIONS } from '../commands.ts';
 import type { Translate } from '../tags.ts';
 import { insertFiles } from '../media/actions.ts';
 import { kindOf } from '../media/store.ts';
-import { insertPlain, pasteItems, pastesItems, spaced } from '../text/typing.ts';
+import { insertPlain, pasteItems, pastesItems, spaced, typesetTyped } from '../text/typing.ts';
+import { hasTex } from '../typeset.ts';
 import { movableOf, objectsOf } from '../canvas/hit.ts';
 import { fieldOf, settleCopies, freshGroup } from './order.ts';
 import { copiedGroups } from '../model/groups.ts';
@@ -523,12 +524,17 @@ export function install(app: App): void {
       const at = getSelection()?.anchorNode ?? document.activeElement;
       const host = a.hostOf(at instanceof Element ? at : at?.parentElement ?? null);
       // one word with the space after it gets the spaces of the paste of the key in text/typing.ts
-      if (host && !els && !slides && pastesItems(a, host, text)) await pasteItems(a, text);
-      else if (match && host) insertPlain(host, els || slides ? wordsOf(text) : spaced(host, text));
-      else if (!els && !slides) {
-        // a range pasted into a cell fills the cells from it, as the paste of the key in table.ts
-        const html = cellAt(a) ? (text === clip?.text ? clip.html : '') || (read ? await readHtml() : '') : '';
-        if (!(await pasteAtCell(a, text, html))) document.execCommand('insertText', false, host ? spaced(host, text) : text);
+      const plain = !els && !slides;
+      if (host && plain && pastesItems(a, host, text)) await pasteItems(a, text);
+      else {
+        if (match && host) insertPlain(host, plain ? spaced(host, text) : wordsOf(text));
+        else if (plain) {
+          // a range pasted into a cell fills the cells from it, as the paste of the key in table.ts
+          const html = cellAt(a) ? (text === clip?.text ? clip.html : '') || (read ? await readHtml() : '') : '';
+          if (!(await pasteAtCell(a, text, html))) document.execCommand('insertText', false, host ? spaced(host, text) : text);
+        }
+        // pasted TeX is typeset, as at the paste of the key in text/typing.ts
+        if (host && plain && hasTex(text) && !host.closest('pre')) await typesetTyped(a, host);
       }
     } else if (els) await arrive(a, text, els, (from) => pasteElements(a, from));
     else if (slides) await a.commands.run('slide.paste', slides);

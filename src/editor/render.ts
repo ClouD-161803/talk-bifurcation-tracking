@@ -269,7 +269,7 @@ function serializeChildren(source: Source, s: SrcEl, el: Element, math: MathLook
 // and the tone on a span colored at a step (see src/steps.ts), which are not written into the file.
 // another class that starts with hl-, e.g. the one named in data-highlight, is the author's
 const RUNTIME_PREFIX = /^(beeson-|plot-)/;
-const RUNTIME_CLASSES = new Set(['visible', 'current-fragment', 'present', 'past', 'future', 'disabled', 'enabled', 'stack', 'hl-target', 'hl-accent', 'hl-violet', 'hl-blue', 'hl-red']);
+export const RUNTIME_CLASSES = new Set(['visible', 'current-fragment', 'present', 'past', 'future', 'disabled', 'enabled', 'stack', 'hl-target', 'hl-accent', 'hl-violet', 'hl-blue', 'hl-red']);
 export const isRuntimeClass = (c: string): boolean => RUNTIME_PREFIX.test(c) || RUNTIME_CLASSES.has(c);
 // the attributes that the theme writes at run time on a theorem and on a citation, see
 // src/theorems.ts and src/citations.ts

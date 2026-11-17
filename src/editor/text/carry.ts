@@ -210,7 +210,7 @@ function formatSelection(app: App, k: Carry): void {
     const span = host && text ? around(host, text, isTone) : null;
     if ((span ? span.classList[0].slice(5) : null) !== k.tone) setTone(app, k.tone);
   }
-  for (const name of ['code', 'subscript', 'superscript', 'strike', 'italic', 'bold'] as const) {
+  for (const name of ['code', 'subscript', 'superscript', 'strike', 'underline', 'italic', 'bold'] as const) {
     const want = k.formats[name];
     const now = want === undefined ? null : has(FORMATS[name].match);
     if (now !== null && now !== want) toggle(app, name);

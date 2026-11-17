@@ -11,17 +11,18 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press } from './helpers/editor.mjs';
+import { click, press, typeKeys } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test/pages/editor-clipboard-keys.html';
 const MARK = '<!--beeson-->';
 const MOD = { mac: 4, other: 2 };
-const LETTER = { copy: 'c', cut: 'x', paste: 'v' };
+const LETTER = { copy: 'c', cut: 'x', paste: 'v', selectAll: 'a' };
 // the display of the deck, at its step and with a colored symbol, which a copy keeps
 const DISPLAY = String.raw`\[ E = \class{mass}{m} c^2 \]`;
 const STEP = 'class="math fragment" data-fragment-index="1"';
 const INLINE = String.raw`Gamma \(a^2 + b^2\) item.`;
+const FORMULA = String.raw`\(a^2 + b^2\)`;
 
 let browser;
 let server;
@@ -206,6 +207,46 @@ for (const platform of PLATFORMS) {
     await clipKey(page, 'copy');
     await page.waitFor(`navigator.clipboard.readText().then((t) => t === ${js(tex.slice(-3))})`);
     assert.ok(!(await html(page)).includes(MARK), 'the display is on the clipboard');
+  });
+
+  // the browser copies the words without the glyphs of a formula, and a paste into a text reads
+  // only the plain text, hence the TeX is put on the clipboard between its delimiters
+  test(`words copied out of a text with a formula are pasted with the formula, typeset and saved as TeX (${platform})`, async (t) => {
+    const page = await load(t, platform);
+    const li = `Reveal.getCurrentSlide().querySelector('li')`;
+    const p = `Reveal.getCurrentSlide().querySelector('p')`;
+    await click(page, await page.evaluate(`(() => { const r = ${li}.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`));
+    await page.waitFor(`document.activeElement === ${li}`);
+    await clipKey(page, 'selectAll');
+    await clipKey(page, 'copy');
+    await page.waitFor(`navigator.clipboard.readText().then((t) => t.includes('Gamma'))`);
+    assert.equal(await plain(page), INLINE, 'the plain text of the clipboard is not the words with the TeX of the formula');
+    await click(page, `.reveal section.present p`);
+    await page.waitFor(`document.activeElement === ${p}`);
+    await press(page, 'End');
+    await clipKey(page, 'paste');
+    await page.waitFor(`/item\\.$/.test(${p}.textContent) || ${p}.querySelectorAll('mjx-container').length > 0`);
+    await page.waitFor(`${p}.querySelectorAll('mjx-container[contenteditable="false"]').length === 1`);
+    assert.equal(await undoLabel(page), 'Undo Paste');
+    // the caret is left after the pasted words
+    await typeKeys(page, 'Z');
+    await page.waitFor(`/item\\.Z$/.test(${p}.textContent)`);
+    const saved = await page.evaluate('window.BeesonEditor.render()');
+    assert.equal(times(saved, FORMULA), 2, 'the deck does not have the pasted formula as TeX');
+    assert.ok(saved.includes(`slide.Gamma ${FORMULA} item.Z</p>`), 'the paragraph is not saved with the pasted words');
+    assert.deepEqual(errors(page), []);
+  });
+
+  test(`TeX pasted into a text with Edit > Paste is typeset (${platform})`, async (t) => {
+    const page = await load(t, platform);
+    const p = `Reveal.getCurrentSlide().querySelector('p')`;
+    await click(page, `.reveal section.present p`);
+    await page.waitFor(`document.activeElement === ${p}`);
+    await press(page, 'End');
+    await page.evaluate(`Promise.resolve(window.BeesonEditor.exec('edit.paste', ${js(INLINE)})).then(() => true)`);
+    await page.waitFor(`${p}.querySelectorAll('mjx-container[contenteditable="false"]').length === 1`);
+    assert.ok((await page.evaluate('window.BeesonEditor.render()')).includes(`${INLINE}</p>`), 'the paragraph is not saved with the pasted TeX');
+    assert.deepEqual(errors(page), []);
   });
 
   test(`a text keeps the copy and the paste of the browser (${platform})`, async (t) => {
