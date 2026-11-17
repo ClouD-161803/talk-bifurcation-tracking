@@ -120,6 +120,14 @@ export class History {
     this.undone = [];
   }
 
+  // entry taken out of the history while it is the last entry, and whether it was
+  private unrecord(entry: Entry): boolean {
+    const list = this.open ?? this.done;
+    if (list.at(-1) !== entry) return false;
+    list.pop();
+    return true;
+  }
+
   private recorded(entry: Entry): boolean {
     return this.done.includes(entry) || !!this.open?.includes(entry);
   }
@@ -281,7 +289,12 @@ export class History {
     typing.state.after = this.snapshot(host);
     typing.at = now;
     this.known.set(host, typing.state.after);
-    if (typing.state.after === typing.state.before && !this.recorded(typing.entry)) return;
+    if (typing.state.after === typing.state.before) {
+      // typing that ends where it started, e.g. a key and Backspace, is taken out of the history,
+      // since its Undo would not change anything
+      if (this.unrecord(typing.entry)) this.onChange();
+      return;
+    }
     if (!this.recorded(typing.entry)) this.record(typing.entry);
     if (!this.open) for (const fn of this.typers) fn(typing.entry);
     this.onChange();

@@ -364,6 +364,8 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
         getSelection()!.collapse(t.node, t.at);
         return close(false);
       }
+      // the entry of the typing ends without the brace, which the citation takes the place of
+      app.history.afterTyping(open.target.host);
       accept();
       return;
     }
