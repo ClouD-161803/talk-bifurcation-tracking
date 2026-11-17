@@ -4,7 +4,7 @@
 // false and without the check of the Host header, since the relay already matched the key
 
 import { createReadStream, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -13,13 +13,13 @@ import { Authority } from '../session/authority.ts';
 import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { AppliedTable, readApplied } from './applied.ts';
 import { Comments, isCommentId, isFailure, type CommentsOptions, type Failure } from './comments.ts';
-import { Disk, readText, renameRetriedSync } from './disk.ts';
+import { Disk, readText, renameRetried, renameRetriedSync } from './disk.ts';
 import { History, type HistoryOptions } from './history.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
 import { TexWriter } from './tex.ts';
-import { FigureWatcher } from './figures.ts';
+import { FigureWatcher, type Box } from './figures.ts';
 
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
@@ -160,10 +160,31 @@ export function cleanName(raw: string): string | null {
   if (dot < 0) return null;
   const ext = name.slice(dot + 1).toLowerCase();
   if (!MEDIA_TYPES.has(ext)) return null;
-  let stem = name.slice(0, dot).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 80);
-  if (!stem) stem = 'media';
-  if (/^(con|prn|aux|nul|com\d|lpt\d)$/.test(stem)) stem = `${stem}-file`;
-  return `${stem}.${ext}`;
+  return `${cleanStem(name.slice(0, dot), 'media')}.${ext}`;
+}
+
+// a stem of a file name made safe for every system, or fallback when nothing is left of it
+function cleanStem(raw: string, fallback: string): string {
+  let stem = raw.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 80);
+  if (!stem) stem = fallback;
+  if (RESERVED.test(stem)) stem = `${stem}-file`;
+  return stem;
+}
+
+// the names that Windows keeps for its devices
+const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
+const FIGURE_NAME = /^[\w-]+$/;
+
+// the box of a preview, each size a number of px or null
+function boxOf(value: unknown): Box | null {
+  if (!value || typeof value !== 'object') return null;
+  const box: Box = { width: null, height: null };
+  for (const key of ['width', 'height'] as const) {
+    const size = (value as Record<string, unknown>)[key] ?? null;
+    if (size !== null && !(typeof size === 'number' && size > 0 && size <= 100_000)) return null;
+    box[key] = size;
+  }
+  return box;
 }
 
 const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -339,6 +360,101 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     return error(409, 'too many files of this name');
   }
 
+  // the writes of the sources and of the data files of the figures run one at a time, hence a source
+  // is compared with the text it was edited from and written before another write
+  let figureWrites: Promise<unknown> = Promise.resolve();
+  const oneAtATime = <T>(task: () => Promise<T>): Promise<T> => {
+    const run = figureWrites.then(task, task);
+    figureWrites = run.catch(() => {});
+    return run;
+  };
+
+  // the TikZ figures: preview compiles a source that is not saved, source writes figures/name.tex,
+  // or a new figure under a free name from stem, and data writes a CSV file into figures/
+  async function figuresApi(route: string, request: Request): Promise<Response> {
+    if (!['preview', 'source', 'data'].includes(route)) return error(404, 'not found');
+    if (request.method !== 'POST') return error(405, 'POST');
+    if (closed) return error(503, 'the edit command is stopping');
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    // a token is enough, as for the version history
+    const client = people.clientOf(body.token);
+    if (client === null) return error(404, 'say hello first');
+    if (!request.direct && (await figures.unfenced())) return error(403, 'the TeX of the host is MiKTeX, which reads every file that a figure names, hence only the host can change a figure');
+    if (route === 'preview') {
+      const box = boxOf(body.box);
+      if (typeof body.name !== 'string' || !FIGURE_NAME.test(body.name) || typeof body.source !== 'string' || !box) return error(400, 'name, source, or box is not valid');
+      if (figures.state().compiler === 'missing') return error(503, 'latex or dvisvgm is not found on the computer of the host');
+      return json(200, await figures.preview(client, body.name, body.source, box));
+    }
+    const text = route === 'data' ? body.text : body.source;
+    if (typeof text !== 'string') return error(400, `${route === 'data' ? 'text' : 'source'} is missing`);
+    if (Buffer.byteLength(text) > RELAY_BODY) return error(413, 'the file is larger than 16 MB');
+    const dir = join(root, 'figures');
+    await mkdir(dir, { recursive: true });
+    const real = await realpath(dir);
+    if (!real.startsWith(root + sep)) return error(403, 'figures/ leaves the talk folder');
+    if (route === 'data') {
+      if (typeof body.stem !== 'string') return error(400, 'stem is missing');
+      const clean = `${cleanStem((body.stem.split(/[\\/]/).pop() ?? '').replace(/\.csv$/i, ''), 'data')}.csv`;
+      const bytes = Buffer.from(text, 'utf8');
+      return oneAtATime(async () => {
+        const same = await sameFile(real, clean, bytes.length, sha256(bytes));
+        if (same) return json(200, { path: `figures/${same}` });
+        for (let i = 1; i < 1000; i++) {
+          const candidate = i === 1 ? clean : `${clean.slice(0, -4)}-${i}.csv`;
+          try {
+            await writeFile(join(real, candidate), bytes, { flag: 'wx' });
+            figures.changed();
+            return json(200, { path: `figures/${candidate}` });
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+          }
+        }
+        return error(409, 'too many files of this name');
+      });
+    }
+    if (body.base !== null && typeof body.base !== 'string') return error(400, 'base is missing');
+    if (body.name === undefined) {
+      if (typeof body.stem !== 'string') return error(400, 'name or stem is missing');
+      const stem = cleanStem(body.stem.replace(/\.tex$/i, ''), 'figure');
+      return oneAtATime(async () => {
+        for (let i = 1; i < 1000; i++) {
+          const name = i === 1 ? stem : `${stem}-${i}`;
+          if ((await stat(join(real, `${name}.js`)).catch(() => null)) !== null) continue;
+          try {
+            await writeFile(join(real, `${name}.tex`), text, { flag: 'wx' });
+            figures.changed();
+            return json(200, { name });
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+          }
+        }
+        return error(409, 'too many figures of this name');
+      });
+    }
+    const name = body.name;
+    if (typeof name !== 'string' || !FIGURE_NAME.test(name) || RESERVED.test(name)) return error(400, 'the name of a figure is letters, digits, - and _');
+    return oneAtATime(async () => {
+      const file = join(real, `${name}.tex`);
+      const current = await readFile(file, 'utf8').catch((e) => {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw e;
+      });
+      if (current !== body.base) return json(409, { error: `figures/${name}.tex changed since it was read`, text: current });
+      const tmp = join(real, `.${name}.tex.${randomBytes(6).toString('hex')}.tmp`);
+      try {
+        await writeFile(tmp, text);
+        await renameRetried(tmp, file);
+      } catch (e) {
+        await unlink(tmp).catch(() => {});
+        return error(500, `could not write figures/${name}.tex: ${(e as Error).message}`);
+      }
+      figures.changed();
+      return json(200, { name });
+    });
+  }
+
   // the version history and the texts set aside, for every page with a token
   function historyApi(route: string, request: Request): Response {
     const parts = route.split('/');
@@ -417,6 +533,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'history' || route.startsWith('history/') || route === 'aside') return historyApi(route, request);
     if (route === 'comments' || route.startsWith('comments/')) return commentsApi(route, request);
     if (route === 'share') return share(request);
+    if (route.startsWith('figures/')) return figuresApi(route.slice('figures/'.length), request);
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
       const query = new URLSearchParams(request.query);
