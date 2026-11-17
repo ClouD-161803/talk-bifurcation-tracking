@@ -515,6 +515,9 @@ export class Orbits {
     this.loaded = true;
     this.fittedFor = '';
     this.pathsFor = '';
+    // the paths are those of the trajectories before the load. where el is not laid out, fit() returns early,
+    // and nothing is drawn until the next fit
+    this.W = 0;
     this.fit();
     if (this.pending) {
       this.pending = false;
