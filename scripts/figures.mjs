@@ -6,12 +6,17 @@
 // the letters as outlines, at 3.6 px per TeX point, hence its text of 10 pt is 36 px on a slide.
 //
 // compileFigure does not write anything into the folder of the talk, and writeFigure writes its text,
-// hence a source can be compiled before it is saved.
+// hence a source can be compiled before it is saved. a guest of a session may change a source, hence
+// TeX Live is fenced: latex writes only into its temporary folder, by openout_any, and a compile is
+// refused when latex read a file other than those of the talk folder, of its temporary folder, and
+// of the trees of TeX Live, or a hidden file of the talk folder, from the files that -recorder lists.
+// openin_any would refuse such a read, but it does not have any effect from TeX Live 2026 on. MiKTeX
+// reads neither variable, and it is not fenced.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
@@ -104,6 +109,67 @@ function run(command, args, options) {
       done({ ...out, status });
     });
   });
+}
+
+// a path with its links resolved, in lowercase where the file system ignores case
+const real = (path) => {
+  let found;
+  try {
+    found = realpathSync.native(path);
+  } catch {
+    found = resolve(path);
+  }
+  return process.platform === 'win32' || process.platform === 'darwin' ? found.toLowerCase() : found;
+};
+const inside = (path, folder) => path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep);
+// a segment of a path that the edit command does not serve, see hiddenSegment in src/edit/http.ts
+const hidden = (segment) => segment.startsWith('.') || segment.endsWith('.') || segment.endsWith(' ') || segment.toLowerCase() === 'node_modules';
+
+const kinds = new Map();
+/**
+ * The TeX installation of tools: { miktex } for MiKTeX, { miktex: false, trees, files } for TeX Live,
+ * with trees the real paths of the folders of $TEXMF and files those of its texmf.cnf files, or null
+ * when latex is not found. latex and kpsewhich are run once for each latex.
+ */
+export function texOf(tools = findTools()) {
+  if (!tools.latex) return Promise.resolve(null);
+  let found = kinds.get(tools.latex);
+  if (!found) {
+    found = (async () => {
+      const version = await run(tools.latex, ['--version'], {});
+      if (/MiKTeX/i.test(`${version.stdout ?? ''}${version.stderr ?? ''}`)) return { miktex: true, trees: [], files: [] };
+      const kpsewhich = join(dirname(tools.latex), `kpsewhich${extname(tools.latex)}`);
+      const [listed, configs] = await Promise.all([run(kpsewhich, ['-expand-braces=$TEXMF'], {}), run(kpsewhich, ['-all', 'texmf.cnf'], {})]);
+      const trees = (listed.stdout ?? '').trim().split(delimiter).map((folder) => folder.replace(/^!!/, '')).filter((folder) => isAbsolute(folder));
+      const files = (configs.stdout ?? '').split(/\r?\n/).filter((file) => isAbsolute(file));
+      return { miktex: false, trees: trees.map(real), files: files.map(real) };
+    })();
+    kinds.set(tools.latex, found);
+  }
+  return found;
+}
+
+// the first file that latex read, as the text of its recorder lists them, that is outside the talk
+// folder dir, the temporary folder, and trees, or that is a hidden file of dir, as it is named in
+// the message of the refusal, or null
+function forbiddenRead(fls, { dir, temporary, trees, files }) {
+  const talk = real(dir);
+  const allowed = [real(temporary), ...trees];
+  let pwd = dir;
+  for (const line of fls.split(/\r?\n/)) {
+    if (!line) continue;
+    const [, kind, path] = /^(PWD|INPUT|OUTPUT) (.+)$/.exec(line) ?? [];
+    if (kind === 'PWD') pwd = path;
+    if (kind !== 'INPUT') {
+      if (!kind) return 'a file that its recorder does not name';
+      continue;
+    }
+    const file = real(resolve(pwd, path));
+    if (files.includes(file) || allowed.some((folder) => inside(file, folder))) continue;
+    if (inside(file, talk) && !relative(talk, file).split(sep).some(hidden)) continue;
+    return inside(file, talk) ? relative(talk, file).split(sep).join('/') : path;
+  }
+  return null;
 }
 
 export const attributes = (tag) => {
@@ -288,21 +354,36 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
   for (const tool of ['latex', 'dvisvgm']) {
     if (!tools[tool]) return { errors: [{ file: null, line: null, message: `${tool} is not found` }] };
   }
+  const tex = await texOf(tools);
+  const fenced = tex?.miktex === false;
   const preamble = read(join(dir, 'preamble.tex'));
   const temporary = mkdtempSync(join(tmpdir(), 'beeson-figure-'));
+  const env = { ...process.env };
+  // a variable of kpathsea set in another case, e.g. on Windows, and an output folder outside the
+  // temporary folder are left out
+  for (const key of Object.keys(env)) if (['openin_any', 'openout_any', 'texmfoutput', 'texmf_output_directory'].includes(key.toLowerCase())) delete env[key];
+  Object.assign(env, { TEXINPUTS: `${temporary}${delimiter}${process.env.TEXINPUTS ?? ''}`, openin_any: 'p', openout_any: 'p', max_print_line: '10000', error_line: '254', half_error_line: '238' });
   let passes = 0;
   // one compile in a mode, with the size in TeX pt and the files of the talk that TeX read
   const pass = async (mode, fit) => {
     passes += 1;
     const wrapper = wrapperOf({ mode, preamble: preamble !== null, ...fit });
     writeFileSync(join(temporary, `${WRAPPER}.tex`), wrapper);
-    const env = { ...process.env, TEXINPUTS: `${temporary}${delimiter}${process.env.TEXINPUTS ?? ''}`, max_print_line: '10000', error_line: '254', half_error_line: '238' };
     // the folder of the talk is the working folder of TeX, hence a path in a source is read from it
     const latex = await run(tools.latex, ['-interaction=nonstopmode', '-halt-on-error', '-no-shell-escape', '-file-line-error', '-recorder', `-output-directory=${temporary}`, `${WRAPPER}.tex`], { cwd: dir, env });
     if (latex.error) return { errors: [{ file: null, line: null, message: `latex does not run: ${latex.error.message}` }] };
+    const fls = read(join(temporary, `${WRAPPER}.fls`));
+    // a refused read is told before an error of TeX, whose message may hold the text that was read
+    const forbidden = !fenced ? null : fls === null ? 'the files that its recorder does not list' : forbiddenRead(fls, { dir, temporary, ...tex });
+    if (forbidden !== null) {
+      const stem = basename(forbidden).replace(/\.\w+$/, '');
+      const at = source.split('\n').findIndex((code) => stem && code.includes(stem));
+      return { errors: [{ file: `figures/${name}.tex`, line: at < 0 ? null : at + 1, message: `TeX may not read ${forbidden}, since a figure reads only the files of the talk folder that are not hidden, and those of TeX` }] };
+    }
     if (latex.status !== 0) return { errors: errorsOf(read(join(temporary, `${WRAPPER}.log`)) ?? latex.stdout ?? '', { name, dir, texts: { [WRAPPER]: wrapper, [SOURCE]: source, [PREAMBLE]: preamble === null ? null : cutPreamble(preamble) } }) };
     const file = join(temporary, `${WRAPPER}.svg`);
-    const svg = await run(tools.dvisvgm, ['--no-fonts', '--precision=2', `--output=${file}`, join(temporary, `${WRAPPER}.dvi`)], { cwd: dir, env });
+    // a PostScript special could read a file through Ghostscript
+    const svg = await run(tools.dvisvgm, ['--no-fonts', '--no-specials=ps', '--precision=2', `--output=${file}`, join(temporary, `${WRAPPER}.dvi`)], { cwd: dir, env });
     const text = read(file);
     if (svg.error || svg.status !== 0 || text === null) {
       return { errors: [{ file: `figures/${name}.tex`, line: null, message: `dvisvgm failed: ${(svg.error?.message ?? svg.stderr ?? '').trim().split(/\r?\n/).pop()}` }] };
@@ -310,7 +391,7 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
     const root = /<svg\b[^>]*>/.exec(text)[0];
     const size = (key) => parseFloat(new RegExp(`\\s${key}=['"]([\\d.]+)`).exec(root)[1]) * PT_PER_BP;
     const inputs = new Set();
-    for (const [, path] of (read(join(temporary, `${WRAPPER}.fls`)) ?? '').matchAll(/^INPUT (.+)$/gm)) {
+    for (const [, path] of (fls ?? '').matchAll(/^INPUT (.+)$/gm)) {
       const local = relative(dir, resolve(dir, path.trim()));
       if (local && !local.startsWith('..') && !isAbsolute(local)) inputs.add(local.split('\\').join('/'));
     }
