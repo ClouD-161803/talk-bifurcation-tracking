@@ -380,7 +380,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     // a token is enough, as for the version history
     const client = people.clientOf(body.token);
     if (client === null) return error(404, 'say hello first');
-    if (!request.direct && (await figures.unfenced())) return error(403, 'the TeX of the host is MiKTeX, which reads every file that a figure names, hence only the host can change a figure');
+    // TeX reads every file that the account of the host may, hence a guest does not send it a source
+    if (!request.direct) return error(403, 'only the host changes a TikZ figure');
     if (route === 'preview') {
       const box = boxOf(body.box);
       if (typeof body.name !== 'string' || !FIGURE_NAME.test(body.name) || typeof body.source !== 'string' || !box) return error(400, 'name, source, or box is not valid');

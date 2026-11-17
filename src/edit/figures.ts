@@ -10,7 +10,7 @@ import { randomBytes } from 'node:crypto';
 import { readdirSync, statSync } from 'node:fs';
 import { readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { compileFigure, deckFigures, figureHash, figureStates, findTools, readFigure, STYLE, texOf } from '../../scripts/figures.mjs';
+import { compileFigure, deckFigures, figureHash, figureStates, findTools, readFigure, STYLE } from '../../scripts/figures.mjs';
 import type { FigureError, FigureState } from '../session/protocol.ts';
 import { renameRetried, signature } from './disk.ts';
 
@@ -48,7 +48,7 @@ export class FigureWatcher {
   private stable: number;
   private compile: Compile;
   private tools: Tools;
-  private compiler: FigureState['compiler'];
+  private readonly compiler: FigureState['compiler'];
   // the files that the figures read, as absolute paths, with their signatures, and a change of them
   private watched = new Map<string, string>();
   private seen: { sig: string; at: number } | null = null;
@@ -81,14 +81,8 @@ export class FigureWatcher {
     this.stable = options.stable ?? STABLE;
     this.compile = options.compile ?? compileFigure;
     this.tools = options.tools ?? findTools();
-    this.compiler = this.tools.latex && this.tools.dvisvgm ? 'fenced' : 'missing';
-    if (this.compiler !== 'missing') void this.unfenced().then((unfenced) => unfenced && this.update(() => (this.compiler = 'unfenced')));
+    this.compiler = this.tools.latex && this.tools.dvisvgm ? 'found' : 'missing';
     this.evaluate();
-  }
-
-  // whether the TeX of the host is MiKTeX, which reads any file that a source names
-  async unfenced(): Promise<boolean> {
-    return this.compiler !== 'missing' && (await texOf(this.tools))?.miktex === true;
   }
 
   state(): FigureState {

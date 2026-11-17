@@ -59,14 +59,14 @@ export type FigureError = { file: string | null; line: number | null; message: s
 // the figure being compiled into its output, errors the errors of the last compile of each figure
 // that failed, compiled the time in ms of the last compile of each figure, and uncompiled the count
 // of the figures that npm run check finds not current. compiler is missing without latex or
-// dvisvgm, and unfenced for MiKTeX, which reads any file that a source names
+// dvisvgm
 export type FigureState = {
   outputs: Record<string, string | null>;
   compiling: string | null;
   errors: Record<string, FigureError[]>;
   compiled: Record<string, number>;
   uncompiled: number;
-  compiler: 'fenced' | 'unfenced' | 'missing';
+  compiler: 'found' | 'missing';
 };
 
 // the operations after the v of the request when they are in the log, and the whole text otherwise.
