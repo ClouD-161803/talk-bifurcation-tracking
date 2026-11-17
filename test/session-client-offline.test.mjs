@@ -79,9 +79,9 @@ test('a guest is told that the host is not running, and the end of the session b
     assert.equal(await guest.evaluate(`document.querySelector('.beeson-session-state').classList.contains('warn')`), true);
     await server.start(['--port', String(port)]);
     await until(async () => (await fetch(`${relay.url}/${key}/index.html`)).status === 200, 'the edit command to register with the relay again');
-    // on a slow runner, the guest reconnected by its own retry before the click
-    await guest.waitFor(ONLINE, 20_000);
-    await click(guest, '.beeson-session-action');
+    // the guest may be online by its own retry before a click on Try now on a slow runner, hence it
+    // is reconnected through the client, as the host is. the first test of this file clicks Try now
+    await guest.evaluate(`${C}.tryNow()`);
     await guest.waitFor(ONLINE, 20_000);
     await host.evaluate(`${C}.tryNow()`);
     await host.waitFor(ONLINE, 20_000);
