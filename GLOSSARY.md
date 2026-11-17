@@ -52,6 +52,10 @@ Avoid "note", which is a speaker note, and "annotation". Write "HTML comment" fo
 
 A rule of slides that is followed by default and may be argued with, as opposed to a hard invariant.
 
+## Data file
+
+A file of the talk folder that a TikZ figure reads, e.g. a CSV file of a pgfplots `table`. From Data… writes a CSV file into `figures/` as the data file of a new figure, and the edit command compiles a figure again after a change of one of its data files.
+
 ## data-own-keys
 
 The attribute of a field of the editor in which the keys of commands that the field takes for itself are named, separated by spaces. In the field of a comment, it is `Mod+Enter`, i.e. Cmd+Enter on a Mac and Ctrl+Enter elsewhere, which then sends the comment and does not start Present. A key named there is taken with the other of these two modifiers as well, e.g. Ctrl+Enter on a Mac.
@@ -68,7 +72,7 @@ Avoid "card". The heading over the scrubber of the progress line is not a card e
 
 ## Edit command
 
-The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` and `tex.js` are written.
+The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, `index.html` and `tex.js` are written, and the TikZ figures are compiled.
 
 Avoid "server" and "daemon".
 
@@ -186,7 +190,7 @@ A version given a name with Name this version in Version History. A named versio
 
 A named scope or curve of a TikZ figure that a slide shows as a step.
 
-Avoid "part" for an element of a slide or for a mark of an animated plot. A part is written with the key `part` in the source and with `data-part` on its span in the deck.
+Avoid "part" for an element of a slide or for a mark of an animated plot. A part is written with the key `part` in the source and with `data-part` on its span in the deck. Avoid "Figure Part" for its row in the Steps pane, which reads Part and its name.
 
 ## PDF figure
 
@@ -254,7 +258,7 @@ The version of the deck of a person that is kept apart from the deck when this p
 
 ## Sheet
 
-A panel of the editor in which a source is edited with a live preview, i.e. the Preamble sheet and the Bibliography sheet, and the sheet of a formula.
+A panel of the editor in which a source is edited with a live preview, i.e. the Preamble sheet and the Bibliography sheet, the sheet of a formula, and the Edit Source sheet of a TikZ figure.
 
 Avoid "window", "dialog", and "pane". A dialog of a session that is fitted to the visible part of the page is not a sheet either, and its class is `beeson-session-fit`, not `beeson-session-sheet`.
 
@@ -263,6 +267,12 @@ Avoid "window", "dialog", and "pane". A dialog of a session that is fitted to th
 The view of the editor in which every slide is shown as a thumbnail in a grid, grouped by section, to select and reorder the slides and the sections, as in PowerPoint and Keynote.
 
 Avoid "Chapters Table".
+
+## Source
+
+The text from which an output is compiled: `figures/name.tex` for a TikZ figure, and `preamble.tex` and `references.bib` for `tex.js`. The source of a TikZ figure is changed in its Edit Source sheet, or with the fields of the TikZ Figure pane when From Data… wrote it.
+
+Avoid "Edit TeX…" for Edit Source….
 
 ## Step
 
@@ -330,9 +340,9 @@ Avoid "conversation" and "discussion".
 
 ## TikZ figure
 
-A figure written in TikZ or pgfplots as a source `figures/name.tex`, compiled by `npm run tex` into the output `figures/name.js` with an SVG for each mode, and drawn into a `div.tikz` with the same name in `data-figure`.
+A figure written in TikZ or pgfplots as a source `figures/name.tex`, compiled by `npm run tex` or the edit command into the output `figures/name.js` with an SVG for each mode, and drawn into a `div.tikz` with the same name in `data-figure`. It is compiled at the size of its box, i.e. the `width` and the `height` in px of its `style`. A new one is inserted with Insert > TikZ Figure > From Data…, From File…, or Blank.
 
-Avoid "TikZ" alone for the element, and avoid "plot", which means an animated plot.
+Avoid "TikZ" alone for the element, also as its kind in the editor, and avoid "plot", which means an animated plot. Avoid "Plot…" and "Data Plot…" for From Data…, "TeX File…" for From File…, and "Drawing" and "Empty" for Blank.
 
 ## Toast
 
