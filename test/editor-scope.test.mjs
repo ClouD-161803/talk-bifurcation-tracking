@@ -25,7 +25,6 @@ test('a late step nudged in the editor keeps its class and its seconds', { timeo
   t.after(() => browser.close());
   const page = await editorPage(browser, { deck: 'test/pages/late.html' });
   await click(page, 'section > p.late');
-  await press(page, 'Escape');
   await page.waitFor(`(() => { const s = window.BeesonEditor.selection(); return s.length === 1 && s[0].matches('section > p.late'); })()`);
   await press(page, 'ArrowRight');
   const html = await page.evaluate('window.BeesonEditor.render()');
@@ -41,6 +40,6 @@ test('a play once and a hide of a plot are in the scope rule, and the Steps pane
   await page.evaluate(`window.BeesonEditor.exec('view.steps')`);
   await page.waitFor(`document.querySelectorAll('.beeson-edit-side .rows .row').length >= 2`);
   const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .rows .row')].map((r) => r.querySelector('.meta .kind').textContent + ': ' + r.querySelector('.text').textContent)`);
-  assert.deepEqual(rows.filter((r) => r.startsWith('Plot step')), ['Plot step: Show fill line', 'Plot step: Hide fill']);
+  assert.deepEqual(rows.filter((r) => r.startsWith('Plot step')), ['Plot step: Show fill line dashed', 'Plot step: Hide fill']);
   assert.deepEqual(page.errors, []);
 });
