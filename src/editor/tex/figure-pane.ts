@@ -149,9 +149,9 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
     });
     const options = (c: string): [string, string][] => [...new Set([...columns.slice(1), c])].map((v) => [v, v]);
     const curves = f.curves.map((c, i) => {
-      const block = make('div', 'curve');
+      const one = make('div', 'curve');
       const n = i + 1;
-      block.append(
+      one.append(
         make('h6', '', `Curve ${n}`),
         row('Column', choice(`Column of curve ${n}`, options(c.column), c.column, (v) => change((g) => (g.curves[i].column = v)))),
         row('Kind', choice(`Kind of curve ${n}`, KINDS, c.kind, (v) => change((g) => (g.curves[i].kind = v)))),
@@ -161,8 +161,8 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
       // a figure keeps one curve, which holds the path of its data
       const remove = button('Delete Curve', () => change((g) => g.curves.splice(i, 1), true), `Delete curve ${n}`);
       remove.disabled = f.curves.length < 2;
-      block.append(row(null, remove));
-      return block;
+      one.append(row(null, remove));
+      return one;
     });
     const add = button('Add Curve', () => change((g) => g.curves.push(curveFor(g, columns.slice(1).find((c) => !g.curves.some((k) => k.column === c)) ?? columns[1] ?? g.curves[0]?.column ?? 'y')), true));
     const axis = (key: 'x' | 'y') => {
