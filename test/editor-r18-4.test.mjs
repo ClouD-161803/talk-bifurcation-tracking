@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, openFormula, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 // the index of the figures slide and of the slide of the effective potential in index.html
@@ -146,9 +146,9 @@ for (const platform of PLATFORMS) {
   test(`an undo or a redo of the TeX of an inline formula keeps its paragraph framed (${platform})`, async (t) => {
     for (const how of ['undo', 'redo']) {
       const page = await load(t, platform, POTENTIAL);
-      await clickText(page, await rect(page, `Reveal.getCurrentSlide().querySelector('p mjx-container')`));
+      await openFormula(page, '.reveal section.present p mjx-container');
       await wait(page, 300);
-      assert.equal(await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); if (!f) return false; f.focus(); f.setSelectionRange(f.value.length, f.value.length); return true; })()`), true, 'the click does not open the TeX of the formula');
+      assert.equal(await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); if (!f) return false; f.focus(); f.setSelectionRange(f.value.length, f.value.length); return true; })()`), true, 'Enter does not open the TeX of the formula');
       await type(page, ' + 1');
       await press(page, 'Mod+Enter');
       await wait(page, 600);

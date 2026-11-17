@@ -159,6 +159,15 @@ async function maskOf(page, modifiers) {
   return names.reduce((bits, name) => bits | (name === 'Mod' ? (mac ? BITS.Meta : BITS.Ctrl) : BITS[name] ?? 0), 0);
 }
 
+/**
+ * Opens the sheet of the first formula matched by selector by focusing it and pressing Enter, as
+ * Tab and Enter do, since a click on an inline formula shows its TeX in its text.
+ */
+export async function openFormula(page, selector) {
+  await page.evaluate(`(() => { const m = document.querySelector(${JSON.stringify(selector)}); m.focus(); return true; })()`);
+  await press(page, 'Enter');
+}
+
 /** A trusted press of a key string, e.g. 'Mod+Z', 'Shift+ArrowUp', or 'Escape'. */
 export async function press(page, keys) {
   const names = keys.split('+');
