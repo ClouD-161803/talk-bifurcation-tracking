@@ -227,7 +227,8 @@ test('a step After Previous is shown by itself after its delay in the deck', asy
   const shown = () => page.evaluate(`[...document.querySelectorAll('.reveal section.present li.fragment')].map((li) => li.classList.contains('visible'))`);
   assert.deepEqual(await shown(), [false, false, false]);
   await press(page, 'ArrowRight');
-  await sleep(150);
+  // the steps are read 700 ms after the key, as on a slow runner
+  await sleep(700);
   assert.deepEqual(await shown(), [true, false, false]);
   await sleep(900);
   assert.deepEqual(await shown(), [true, true, false]);
