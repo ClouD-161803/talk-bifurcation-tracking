@@ -162,8 +162,14 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
     child.stdio[3].write(`${JSON.stringify({ id, method, params, sessionId })}\0`);
     // an expression that is not answered is named by its start, to tell which read of a test hung
     const what = typeof params.expression === 'string' ? `${method} of ${params.expression.slice(0, 300)}` : method;
-    return answered(new Promise((done, fail) => pending.set(id, { done, fail })), what, limit)
+    return answered(new Promise((done, fail) => pending.set(id, { done, fail, sessionId })), what, limit)
       .finally(() => pending.delete(id));
+  }
+
+  // fails the calls in flight to the page of a session, which Chrome does not answer once the page
+  // is closed
+  function failCalls(sessionId, error) {
+    for (const call of pending.values()) if (call.sessionId === sessionId) call.fail(error);
   }
 
   // with mobile set, the page is laid out as on a phone, with touch and a coarse pointer, and scale
@@ -181,6 +187,8 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
     let call;
     let errors;
     let onEvent;
+    // set by close() of the page
+    let closed = false;
     for (let n = 0; ; n++) {
       targetId = null;
       errors = [];
@@ -240,6 +248,12 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
         settingUp.catch(() => {});
         await Promise.race([settingUp, targetLost]);
         listeners.delete(onCrash);
+        // Chrome leaves a call to a closed page without an answer at times. such a call would wait for
+        // the whole timeout, e.g. in a cleanup of a test that is run after the close of its page
+        const ask = call;
+        call = (method, params, limit) => (closed
+          ? Promise.reject(new Error(`${method} was not sent, since the page is closed`))
+          : ask(method, params, limit));
         break;
       } catch (error) {
         if (onEvent) listeners.delete(onEvent);
@@ -351,7 +365,12 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
       },
       async close() {
         listeners.delete(onEvent);
-        await send('Target.closeTarget', { targetId });
+        closed = true;
+        try {
+          await send('Target.closeTarget', { targetId });
+        } finally {
+          failCalls(sessionId, new Error('the call was not answered, since the page is closed'));
+        }
       },
     };
   }

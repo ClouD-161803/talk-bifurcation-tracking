@@ -485,7 +485,9 @@ test('the speaker view of reveal.js and the PowerPoint file show the list of the
   const folder = mkdtempSync(join(tmpdir(), 'beeson-r7-4-'));
   try {
     const output = join(folder, 'deck.pptx');
-    const run = spawnSync(process.execPath, ['scripts/export-pptx.mjs', deck, output], { encoding: 'utf8' });
+    // the notes are written the same with --still, and the recordings of the backdrops, 5 min of
+    // this test on a runner, are compared in test/pptx.test.mjs
+    const run = spawnSync(process.execPath, ['scripts/export-pptx.mjs', '--still', deck, output], { encoding: 'utf8' });
     assert.equal(run.status, 0, run.stderr);
     const parts = unzip(readFileSync(output));
     const name = [...parts.keys()].find((n) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n) && parts.get(n).toString().includes('Notes of a content slide.'));
