@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
-import { center, click, press, type, typeKeys } from './helpers/editor.mjs';
+import { center, click, clickText, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -199,7 +199,7 @@ test('a thread stays on its element through the edits of another person and the 
 
   await t.test('the other person inserted an element before it', async () => {
     await show(b, 'Two');
-    await click(b, '.reveal section.present > h2');
+    await clickText(b, '.reveal section.present > h2');
     await press(b, 'Escape');
     await b.evaluate(`window.BeesonEditor.exec('edit.duplicate')`);
     await until(() => server.read().match(/>Two typed<\/h2>/g)?.length === 2, 'the copy to reach index.html');
@@ -221,7 +221,7 @@ test('a thread stays on its element through the edits of another person and the 
 
   await t.test('the other person moved it, and moved its slide', async () => {
     await show(b, 'Two');
-    await click(b, '.reveal section.present > p');
+    await clickText(b, '.reveal section.present > p');
     await press(b, 'Escape');
     await press(b, 'ArrowRight');
     await until(() => /<p style="translate: 1px [^"]*">Second slide<\/p>/.test(server.read()), 'the move to reach index.html');
@@ -243,7 +243,7 @@ test('a thread stays on its element through the edits of another person and the 
     await a.evaluate(HOLD);
     await caretAtEnd(a, on('Two', 'h2'));
     await type(a, ' held');
-    await click(a, '.reveal section.present li:last-child');
+    await clickText(a, '.reveal section.present li:last-child');
     const sent = comment(a, 'On Beta');
     // the comment waits for the edits of the page, which are held
     await a.waitFor(`window.__held.length > 0 && !!document.querySelector('${PANE} .draft')`);
@@ -272,7 +272,7 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
   await until(() => b.evaluate(`!document.querySelector('.reveal .slides > section:nth-child(2) > p').classList.contains('beeson-held')`), 'the paragraph that Ann left to be free on the page of Ben');
   await show(b, 'Two');
-  await click(b, '.reveal section.present > p');
+  await clickText(b, '.reveal section.present > p');
   await press(b, 'Escape');
   await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
   await until(() => !server.read().includes('Second slide'), 'the removal to reach index.html');
