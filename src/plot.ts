@@ -1199,7 +1199,10 @@ export class PlotView {
     this.t0 = performance.now() - this.timeOf(this.u) * 1000;
     this.pass = 0;
     const tick = (now: number) => {
-      const t = (now - this.t0) / 1000, { duration, hold, fade } = this.plot, length = this.length;
+      // the time of an animation frame is the time at which the frame began, which is before t0 for
+      // a frame that began before play was called. a time before 0 is in the hold of the pass
+      // before, i.e. at the last frame, hence the clock is held at 0 until the frame time reaches t0
+      const t = Math.max(0, (now - this.t0) / 1000), { duration, hold, fade } = this.plot, length = this.length;
       if (this.once && t >= length) {
         this.u = this.frames - 1;
         this.draw();

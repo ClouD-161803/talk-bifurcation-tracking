@@ -3003,7 +3003,7 @@
       this.t0 = performance.now() - this.timeOf(this.u) * 1e3;
       this.pass = 0;
       const tick = (now) => {
-        const t = (now - this.t0) / 1e3, { duration, hold: hold2, fade } = this.plot, length = this.length;
+        const t = Math.max(0, (now - this.t0) / 1e3), { duration, hold: hold2, fade } = this.plot, length = this.length;
         if (this.once && t >= length) {
           this.u = this.frames - 1;
           this.draw();
