@@ -850,8 +850,10 @@ const TIMERS = `(() => { const p = ${P}; return [p.ticker, p.timer, p.restTimer,
 test('after Leave Session and after the end of the session, no element stays locked, and no timer of presence runs', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered soon
-  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
+  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered
+  // soon. a page is thus between two polls once a second, and the stopped edit command answers a
+  // poll with ended for 5 s, hence such a page is told the end as well
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000', SLIDES_CLOSE_WAIT_MS: '5000' } });
   const pages = [];
   for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name, script: `${NET}\n${ANSWERS}` }));
   await converge(server, pages);
@@ -888,7 +890,9 @@ test('after Leave Session and after the end of the session, no element stays loc
     assert.deepEqual(await ana.evaluate(`({ held: ${P}.held, timers: ${TIMERS} })`), { held: null, timers: 0 });
   }
   clean(ana);
-  clean(ben);
+  // a poll that Ben sent just before his bye may reach the edit command after it, and is then
+  // answered 404
+  clean(ben, [/status of 404 .*\/\.session\/events\?/]);
   clean(cy);
 });
 
@@ -967,7 +971,7 @@ test('after a restart, a page that rejoins second is read by the other page', { 
   await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben after the restart', 10_000);
   // the requests to the edit command that stopped, the polls with the tokens of before, and the
   // hello without a name, which the edit command refuses after a kill that lost the person
-  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, refused);
   clean(ben, refused);
 });
@@ -1024,7 +1028,7 @@ test('after a restart, a state that waited while the edit command was down is se
   const h2 = `(${C}.resolved().find((r) => r.name === 'Ana')?.selected ?? []).map((e) => e.localName).join()`;
   await until(async () => (await ben.evaluate(h2)) === 'h2', 'the selection of Ana on the page of Ben after the restart', 10_000);
   assert.deepEqual((await ana.evaluate('window.__statuses')).filter((s) => s !== 200 && s !== 204), [], 'every state is sent with a token that the edit command knows');
-  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, refused);
   clean(ben, refused);
 });
