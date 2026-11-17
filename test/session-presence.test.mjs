@@ -850,8 +850,10 @@ const TIMERS = `(() => { const p = ${P}; return [p.ticker, p.timer, p.restTimer,
 test('after Leave Session and after the end of the session, no element stays locked, and no timer of presence runs', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered soon
-  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
+  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered
+  // soon. a page is thus between two polls once a second, and the stopped edit command answers a
+  // poll with ended for 5 s, hence such a page is told the end as well
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000', SLIDES_CLOSE_WAIT_MS: '5000' } });
   const pages = [];
   for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name, script: `${NET}\n${ANSWERS}` }));
   await converge(server, pages);
