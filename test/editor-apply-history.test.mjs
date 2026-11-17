@@ -111,7 +111,7 @@ test('the keys of one entry typed between applies on both sides of them are undo
   assert.deepEqual(b.errors, []);
 });
 
-test('an undo skips an entry of typing whose letters another person took away, and undoes the entry before it in the same step', async (t) => {
+test('an undo of an entry of typing whose letters another person took away is refused and changes nothing, and the next undo takes the entry before it', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());
   await showSlide(b, 'Show your steps');
@@ -123,6 +123,8 @@ test('an undo skips an entry of typing whose letters another person took away, a
   await b.waitFor(`${E}.render().includes('attention. One.')`);
   const text = once(await sessionText(b), 'viewer\'s attention. One.</p>', 'viewer\'s</p>');
   assert.equal((await applyOn(b, text)).reload, false);
+  await b.evaluate(`${E}.undo()`);
+  assert.equal(await render(b), text, 'the refused undo changes nothing');
   await b.evaluate(`${E}.undo()`);
   assert.equal(await render(b), once(text, 'one at a time!</h2>', 'one at a time</h2>'), 'the deletion is kept and the heading undone');
   const s = await status(b);
