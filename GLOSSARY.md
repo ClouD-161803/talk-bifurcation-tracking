@@ -26,7 +26,6 @@ The count of the open threads of an element or a slide in a session, drawn at it
 
 Avoid "pin" and "marker", and avoid "bubble", which is the message shown at a refused edit of a held element.
 
-
 ## Bibliography
 
 The file `references.bib` next to the deck, from which the references of its citations are written into `tex.js`.
@@ -48,7 +47,6 @@ Avoid "footnote", which is the `foot` line of a slide, and "reference", which is
 A text that a person of a session writes on an element or a slide, kept in `.session/comments.json` and never in `index.html`.
 
 Avoid "note", which is a speaker note, and "annotation". Write "HTML comment" for a comment `<!-- -->` in the source of a deck.
-
 
 ## Convention
 
@@ -99,7 +97,6 @@ Avoid "spotlight" and "watch".
 ## For You
 
 The filter of the Comments pane under which the open threads that you wrote, replied to, or are mentioned in are listed.
-
 
 ## Guest
 
@@ -174,7 +171,6 @@ Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" 
 A name of a person picked from the list after an @ in a comment, with which the thread is listed under For You for this person. A name typed by hand is not a mention.
 
 Avoid "tag" and "ping".
-
 
 ## Name flag
 
@@ -331,7 +327,6 @@ Avoid "statement", "block", "card", "box", and "environment".
 A comment together with its replies, on one element or slide, which is resolved and reopened as one.
 
 Avoid "conversation" and "discussion".
-
 
 ## TikZ figure
 
