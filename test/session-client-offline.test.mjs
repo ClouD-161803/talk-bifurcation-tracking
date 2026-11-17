@@ -124,11 +124,19 @@ test('a guest is told that the host is not running, and the end of the session b
 test('a page refused at its first hello because the session is full says so, and joins once a place is free', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // the 64 places of the session are held by people who do not poll, and who are not dropped meanwhile
+  // the 64 places of the session are held by people who poll once, and who are not dropped meanwhile.
+  // a person who has not polled 5 s after the hello is dropped, and a crowded runner may take longer
+  // than 5 s to the hello of the page
   const server = await talk(t, { env: { SLIDES_GONE_MS: '3600000' } });
   const { port, key } = server.edit;
   const tokens = [];
-  for (let i = 1; i <= 64; i++) tokens.push((await post(port, `/${key}/.session/hello`, { name: `Person ${i}` })).json().token);
+  const polls = [];
+  for (let i = 1; i <= 64; i++) {
+    const { token, v } = (await post(port, `/${key}/.session/hello`, { name: `Person ${i}` })).json();
+    tokens.push(token);
+    polls.push(raw(port, 'GET', `/${key}/.session/events?token=${token}&since=${v}`));
+  }
+  await Promise.all(polls);
   const page = await open(browser, sessionUrl(server.edit), { wait: false });
   await page.waitFor(`/^The session is full\\. Trying again in \\d+ s$/.test(${STATE})`);
   assert.equal(await page.evaluate(ACTION), 'Try now');
