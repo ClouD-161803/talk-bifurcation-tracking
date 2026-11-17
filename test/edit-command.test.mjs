@@ -179,7 +179,10 @@ test('the edit command serves a session and writes every edit into index.html', 
   });
 
   await t.test('a media upload is given a clean name, a free name, and a capped size', async () => {
-    const { token } = (await post(port, api('hello'), ann)).json();
+    const { token, v } = (await post(port, api('hello'), ann)).json();
+    // the page polls as a page of a session does, since a page that has not polled 5 s after its
+    // hello is dropped, and a crowded runner may take longer for the uploads
+    await raw(port, 'GET', `${api('events')}?token=${token}&since=${v}`);
     const put = (name, body, headers) => raw(port, 'PUT', api(`media/${name}?token=${token}`), { body, headers });
     assert.deepEqual((await put('My%20Plot%20(1).PNG', 'a')).json(), { path: 'media/my-plot-1.png' });
     assert.deepEqual((await put('My%20Plot%20(1).PNG', 'b')).json(), { path: 'media/my-plot-1-2.png' });
