@@ -48,10 +48,10 @@ test('a bundle that cannot be drawn is reported with the reason', () => {
   assert.match(parseBundle(JSON.stringify({ orbit, strips: [], arrows: [{ id: 'Earth', toward: [0, 0] }] })), /arrow Earth/);
 });
 
-// the stage of the bundle, the share of its canvas that is drawn, a digest of the canvas, and the
-// opacities of the labels of the unstable strip and of the Earth, on the slide or on each page of
-// the slide in print
-const bundles = `Promise.all([...document.querySelectorAll('.surface[data-bundle]')].filter((s) => s.getClientRects().length).map(async (s) => {
+// the stage of the bundle of the Floquet slide, the share of its canvas that is drawn, a digest of
+// the canvas, and the opacities of the labels of the unstable strip and of the Earth, on the slide or
+// on each page of the slide in print
+const bundles = `Promise.all([...document.querySelectorAll('.surface[data-bundle="eigendirections"]')].filter((s) => s.getClientRects().length).map(async (s) => {
   const canvas = s.querySelector('canvas'), ctx = canvas.getContext('2d');
   const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
   let drawn = 0;
@@ -65,7 +65,7 @@ const bundles = `Promise.all([...document.querySelectorAll('.surface[data-bundle
 
 // Reveal.getSlides() leaves out the slides that are not numbered, hence the sections are counted here
 const sections = `[...document.querySelectorAll('.reveal .slides > section')]`;
-const slideOf = `${sections}.findIndex((s) => s.querySelector('.surface[data-bundle]'))`;
+const slideOf = `${sections}.findIndex((s) => s.querySelector('.surface[data-bundle="eigendirections"]'))`;
 const STAGES = ['', 'start', 'nudge', 'flow', 'flow unstable', 'flow unstable stable'];
 
 // with the camera at the azimuth az in degrees: the length of the needle of the Earth, its angle in
