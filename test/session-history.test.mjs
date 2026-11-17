@@ -1610,6 +1610,13 @@ test('a change of index.html from outside over a text that Ann typed is told on 
   // on a desktop the toast is one line narrower than the window, and on a phone it takes the window less the gutters
   const [wide, narrow] = [await ben.evaluate(TOAST), await cy.evaluate(TOAST)];
   assert.ok(wide.lines === 1 && wide.width < wide.room && narrow.width === narrow.room, JSON.stringify({ wide, narrow }));
+  // on a phone, the toast is above the sheet of Version History, also at its full height of 55 % of
+  // the window, hence it covers neither a row nor a button of the sheet
+  const above = await cy.evaluate(`(() => {
+    const toast = document.querySelector('.beeson-session-toast').getBoundingClientRect();
+    return { toast: Math.round(toast.bottom), sheet: Math.round(Math.min(document.querySelector('${PANE}').getBoundingClientRect().top, innerHeight - 28 - 0.55 * innerHeight)) };
+  })()`);
+  assert.ok(above.toast <= above.sheet, JSON.stringify(above));
   await press$(ben, '.beeson-session-toast', 'Show');
   await ben.waitFor(SHOWN);
   await ben.waitFor(`${LIST}.length > 1`);
