@@ -202,6 +202,27 @@ test('a bundle is drawn again when the context of WebGL is restored, at the stat
   assert.deepEqual(page.errors, []);
 });
 
+// at a crash of the GPU process, as on a crowded runner of Windows, the context is restored by the
+// browser, and a bundle is then drawn on its canvas as before the crash
+test('a bundle is drawn after a crash of the GPU process, at a step taken once the context is restored', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.send('Page.addScriptToEvaluateOnNewDocument', { source: KEEP_GL });
+  await page.goto(deckUrl(DECK, 'still'));
+  await page.waitFor(deckSettled);
+  const base = await page.evaluate(share);
+  await page.evaluate(`window.gl.canvas.addEventListener('webglcontextrestored', () => { window.restored = true; }, { once: true })`);
+  await page.send('Browser.crashGpuProcess');
+  await page.waitFor('window.restored === true');
+  await page.evaluate('Reveal.slide(0, 0, 0)');
+  await page.evaluate('new Promise((done) => requestAnimationFrame(() => done()))');
+  const drawn = await page.evaluate(share);
+  assert.equal(await page.evaluate(`${bundle}.el.dataset.shown`), 'a');
+  assert.ok(drawn > base + 0.01, `${(100 * drawn).toFixed(2)}% of the canvas is drawn at the strip a after the crash, and ${(100 * base).toFixed(2)}% without a strip before it`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a strip is grown from its first segment to its last and then as a sheet, and shrunk back', { timeout: 120000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
