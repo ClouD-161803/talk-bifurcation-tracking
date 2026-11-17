@@ -194,7 +194,7 @@ export function install(app: App): void {
   document.addEventListener('click', (ev) => {
     const el = ev.target instanceof HTMLElement && ev.target.matches('cite[data-key]') ? ev.target : null;
     const host = el && app.hostOf(el);
-    if (!el || !(host instanceof HTMLElement) || !app.current()?.contains(host) || host.closest('aside.notes') || ev.shiftKey || ev.metaKey || ev.ctrlKey) return;
+    if (!el || !(host instanceof HTMLElement) || !app.current()?.contains(host) || host.closest('aside.notes') || ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.defaultPrevented) return;
     host.focus({ preventScroll: true });
     const range = document.createRange();
     range.selectNode(el);
