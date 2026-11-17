@@ -9,6 +9,7 @@ import type { App } from '../app.ts';
 import { twinOf } from '../canvas/hit.ts';
 import { moveTo, oneByOne, placedIndex, setFinal, setIndexReader, setStart, setStep, shift, stepAt, type Plan, type Start } from '../shown-steps.ts';
 import type { TagEdit } from '../tags.ts';
+import { docOf } from './slide.ts';
 import { AFTER_DEFAULT, MIN_DELAY, WITH_SLIDE, afterable, carryDelays, classesOf, deliverPlan, deliveryOf, delaysOf, PLAYED, effectEdit, effectOf, indexIn, listItems, listOf, modelAt, modelOf, startAt, writePlan, type Delivery, type Effect, type Model, type StartKind, type Steps } from '../steps.ts';
 
 type Arg = { el?: Element } & Record<string, unknown>;
@@ -239,6 +240,18 @@ export function install(app: App): void {
     label: 'Set Step',
     undoable: true,
     run: (a, arg) => changeEach(a, arg, join((arg as { to: number | 'first' | 'last' | null }).to)),
+  });
+  // a part of a TikZ figure made a step, with a new span of the part in the figure
+  c.define({
+    id: 'steps.part',
+    label: 'Make Part a Step',
+    undoable: true,
+    run: async (a, arg) => {
+      const { el, part, to } = arg as { el: Element; part: string; to: number | 'first' | 'last' };
+      const [span] = await docOf(a).insert(`<span class="fragment" data-part="${part.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"></span>`, el, null, 'steps');
+      const m = modelAt(a, span);
+      if (m) writePlan(a, m, setStep(m.plan, m.i, to));
+    },
   });
   const all = (a: App) => itemsOf(a, undefined)?.items ?? [];
   c.define({
