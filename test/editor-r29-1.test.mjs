@@ -189,7 +189,11 @@ async function erase(page, selector, needle, count) {
   await clickText(page, at);
   await frames(page);
   await page.evaluate(`(() => { const el = ${textElementOf(selector, needle)}; const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
-  for (let i = 0; i < count; i++) await press(page, 'Backspace');
+  for (let i = 0; i < count; i++) {
+    await press(page, 'Backspace');
+    // a pause of 1.1 s between two keys of the first erasure, as on a slow runner
+    if (i === 10 && needle === 'First line') await sleep(1100);
+  }
   await press(page, 'Escape');
   await frames(page);
 }
