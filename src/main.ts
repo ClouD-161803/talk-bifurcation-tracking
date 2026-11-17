@@ -15,7 +15,7 @@ import { mountQr } from './qr.ts';
 import { mountShapes } from './shapes.ts';
 import { figuresReady, mountFigures, redrawFigures } from './tikz.ts';
 import { initScrub } from './scrub.ts';
-import { mount as mountSurfaces } from './surface.ts';
+import { mount as mountSurfaces, onRestore } from './surface.ts';
 import type { Surface } from './surface.ts';
 import { mount as mountBundles, type Bundle } from './bundle.ts';
 import { fly } from './fly.ts';
@@ -81,6 +81,8 @@ const TRACED = ['title', 'section', 'closing'];
 
 const backdrops: Orbits[] = [];
 const surfaces: (Surface | Bundle)[] = [];
+// a surface drawn while the context of WebGL was lost is blank, hence every surface is drawn again
+onRestore(() => { for (const s of surfaces) s.draw(); });
 const plots: PlotView[] = [];
 
 // with the URL parameter edit, the in-place editor is loaded, and the deck is drawn still while it

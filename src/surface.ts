@@ -258,6 +258,12 @@ void main() {
 }`;
 
 let shared: Three.WebGLRenderer | null | undefined;
+const restored: (() => void)[] = [];
+
+/** Calls redraw each time the context of the renderer is restored after a loss, e.g. at a reset of the GPU. */
+export function onRestore(redraw: () => void): void {
+  restored.push(redraw);
+}
 
 // the renderer of every surface of the page, created on first use, or null without THREE or WebGL,
 // which is reported once
@@ -275,6 +281,8 @@ export function renderer(): Three.WebGLRenderer | null {
     r.setClearColor(0x000000, 0);
     // the colors of the shaders are the sRGB values of the theme, written without a conversion
     r.outputColorSpace = THREE.LinearSRGBColorSpace;
+    // three.js sets up the context again in its own listener, which was added before this one
+    r.domElement.addEventListener('webglcontextrestored', () => { for (const redraw of restored) redraw(); });
     shared = r;
   } catch (error) {
     console.warn(`beeson: WebGL is not available for the surfaces, ${String(error)}`);

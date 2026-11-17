@@ -4148,6 +4148,10 @@ void main() {
 }`
   );
   var shared;
+  var restored = [];
+  function onRestore(redraw) {
+    restored.push(redraw);
+  }
   function renderer() {
     if (shared !== void 0) return shared;
     shared = null;
@@ -4161,6 +4165,9 @@ void main() {
       r.setPixelRatio(1);
       r.setClearColor(0, 0);
       r.outputColorSpace = THREE.LinearSRGBColorSpace;
+      r.domElement.addEventListener("webglcontextrestored", () => {
+        for (const redraw of restored) redraw();
+      });
       shared = r;
     } catch (error) {
       console.warn(`beeson: WebGL is not available for the surfaces, ${String(error)}`);
@@ -6174,6 +6181,9 @@ void main() {
   var TRACED = ["title", "section", "closing"];
   var backdrops = [];
   var surfaces = [];
+  onRestore(() => {
+    for (const s of surfaces) s.draw();
+  });
   var plots = [];
   var EDITING = new URLSearchParams(location.search).has("edit");
   var PLAYED = !EDITING && window.parent !== window && new URLSearchParams(location.search).has("from-editor");
