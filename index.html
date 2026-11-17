@@ -497,12 +497,12 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
 </section>
 
 <!-- 13, about 2.5 min. Floquet's theorem, the multipliers and the exponents, and the stability of the
-     orbit read from them. the theorem is faded out at step 5, and the stability condition is shown in
-     its place, followed by the four multipliers of the planar CR3BP. the surface is the bundle of the
+     orbit read from them. the theorem is faded out at step 5, and the two conditions of stability are
+     shown in its place at steps 5 and 6, followed by the four multipliers of the planar CR3BP. the surface is the bundle of the
      block id="eigendirections", written by data/lyapunov/eigendirections.py --deck: an L1 Lyapunov
-     orbit at C = 3.05 in (x, y, ydot). at step 6 a point is moved around it once every 6 s, at the
-     times of the block. the unstable direction is grown out of the orbit at step 8 and the stable one
-     at step 9, each first as segments at 12 points spaced evenly along the orbit and then as a
+     orbit at C = 3.05 in (x, y, ydot). at step 7 a point is moved around it once every 6 s, at the
+     times of the block. the unstable direction is grown out of the orbit at step 9 and the stable one
+     at step 10, each first as segments at 12 points spaced evenly along the orbit and then as a
      sheet. a compass with a needle toward the Earth is drawn at the upper left -->
 <section>
   <h2>Periodic orbit stability</h2>
@@ -514,11 +514,14 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
       <p class="fragment" data-fragment-index="4" data-highlight="hl-b">The eigenvalues \(\alpha = \ln(\lambda)/T\) of \(\class{hl-b}{\boldsymbol B}\) are the Floquet <span class="tone-accent">exponents</span>.</p>
     </div>
     <div>
-      <p class="fragment" data-fragment-index="5">Offsets are multiplied by \(\boldsymbol M\) per period, so the orbit is</p>
-      <div class="math fragment" data-fragment-index="5">\[\begin{aligned} \text{stable} &amp;\text{ if all } |\lambda| \le 1, \text{ i.e. } \operatorname{Re}\alpha \le 0,\\ \text{unstable} &amp;\text{ if any } |\lambda| &gt; 1, \text{ i.e. } \operatorname{Re}\alpha &gt; 0. \end{aligned}\]</div>
-      <p class="fragment" data-fragment-index="6" data-surface-state="flow">After \(T\) a point is back at \(\boldsymbol x_0\), so \(\boldsymbol M\boldsymbol f(\boldsymbol x_0) = \boldsymbol f(\boldsymbol x_0)\), and \(\lambda = 1\).</p>
-      <p class="fragment" data-fragment-index="7">The CR3BP is Hamiltonian, so multipliers come in pairs \(\lambda, 1/\lambda\), and \(1\) comes twice.</p>
-      <p><span class="fragment" data-fragment-index="8" data-highlight="hl-un" data-surface-state="unstable">The other pair gives the unstable direction, of \(\class{hl-un}{\lambda \approx 601}\),</span> <span class="fragment" data-fragment-index="9" data-highlight="hl-st" data-tone="violet" data-surface-state="unstable stable">and the stable one, of \(\class{hl-st}{1/\lambda}\).</span></p>
+      <p class="fragment" data-fragment-index="5">We thus have \(\delta\boldsymbol{x}(T) = \boldsymbol{M}\delta\boldsymbol{x}_0\), so the orbit is:</p>
+      <ol>
+        <li class="fragment" data-fragment-index="5"><span class="tone-violet">stable</span> if all \(|\lambda| \le 1\), i.e. \(\operatorname{Re}\alpha \le 0\),</li>
+        <li class="fragment" data-fragment-index="6"><span class="tone-accent">unstable</span> if any \(|\lambda| &gt; 1\), i.e. \(\operatorname{Re}\alpha &gt; 0\).</li>
+      </ol>
+      <p class="fragment" data-fragment-index="7" data-surface-state="flow">After \(T\) a point is back at \(\boldsymbol x_0\), so \(\boldsymbol M\boldsymbol f(\boldsymbol x_0) = \boldsymbol f(\boldsymbol x_0)\), and \(\lambda = 1\).</p>
+      <p class="fragment" data-fragment-index="8">The CR3BP is Hamiltonian, so multipliers come in pairs \(\lambda, 1/\lambda\), and \(1\) comes twice.</p>
+      <p><span class="fragment" data-fragment-index="9" data-highlight="hl-un" data-surface-state="unstable">The other pair gives the unstable direction, of \(\class{hl-un}{\lambda \approx 601}\),</span> <span class="fragment" data-fragment-index="10" data-highlight="hl-st" data-tone="violet" data-surface-state="unstable stable">and the stable one, of \(\class{hl-st}{1/\lambda}\).</span></p>
     </div>
   </div>
   <div class="surface" data-bundle="eigendirections">
