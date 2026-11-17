@@ -110,6 +110,50 @@ const sample = (step) => `new Promise((done) => {
   requestAnimationFrame(frame);
 })`;
 
+// the WebGL context of the renderer of the surfaces, kept in window.gl when it is created, as the
+// renderer is not exposed by the theme
+const KEEP_GL = `const get = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+  const c = get.call(this, type, ...rest);
+  if (c && /webgl/.test(type)) window.gl = c;
+  return c;
+};`;
+
+// the share of the canvas of the bundle that is drawn
+const share = `(() => {
+  const canvas = document.querySelector('.surface[data-bundle] canvas');
+  const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+  let n = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 0) n++;
+  return n / (data.length / 4);
+})()`;
+
+// a context of WebGL is lost, e.g. at a reset of the GPU or under a heavy load, and the browser
+// restores it later. the strips shown at a step taken meanwhile are drawn once it is restored
+test('a bundle is drawn again when the context of WebGL is restored, at the state of a step taken while it was lost', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.send('Page.addScriptToEvaluateOnNewDocument', { source: KEEP_GL });
+  await page.goto(deckUrl(DECK, 'still'));
+  await page.waitFor(deckSettled);
+  const base = await page.evaluate(share);
+  await page.evaluate(`new Promise((done) => {
+    window.gl.canvas.addEventListener('webglcontextlost', () => done(), { once: true });
+    window.lose = window.gl.getExtension('WEBGL_lose_context');
+    window.lose.loseContext();
+  })`);
+  await page.evaluate('Reveal.slide(0, 0, 0)');
+  await page.evaluate(`new Promise((done) => {
+    window.gl.canvas.addEventListener('webglcontextrestored', () => requestAnimationFrame(() => done()), { once: true });
+    window.lose.restoreContext();
+  })`);
+  const restored = await page.evaluate(share);
+  assert.equal(await page.evaluate(`${bundle}.el.dataset.shown`), 'a');
+  assert.ok(restored > base + 0.01, `${(100 * restored).toFixed(2)}% of the canvas is drawn at the strip a after the restore, and ${(100 * base).toFixed(2)}% without a strip`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a strip is grown from its first segment to its last and then as a sheet, and shrunk back', { timeout: 120000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
