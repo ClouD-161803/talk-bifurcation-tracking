@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { launch } from '../scripts/chrome.mjs';
 import { center, editorPage, press } from './helpers/editor.mjs';
+import { sessionPage } from './helpers/apply.mjs';
 
 let browser;
 let dir;
@@ -72,5 +73,15 @@ test('every row of the menus of the editor is at least 24 px tall (#82)', { time
     await page.waitFor(`!document.querySelector('.beeson-edit-menu')`);
   }
   for (const [name, h] of Object.entries(heights)) assert.ok(h >= 24, `a row of the menu ${name} is ${h} px tall`);
+  assert.deepEqual(page.errors, []);
+});
+
+test('in a session, a row of the File menu with its note on its line is at least 24 px tall (#82)', { timeout: 120000 }, async (t) => {
+  const page = await sessionPage(browser, { page: { width: 1280, height: 800 } });
+  t.after(() => page.close());
+  await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent === 'File').click()`);
+  await page.waitFor(`document.querySelectorAll('.beeson-edit-menu .item.noted').length > 0`);
+  const heights = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item.noted')].map((i) => i.getBoundingClientRect().height)`);
+  assert.ok(Math.min(...heights) >= 24, `the rows with a note are ${heights.join(', ')} px tall`);
   assert.deepEqual(page.errors, []);
 });
