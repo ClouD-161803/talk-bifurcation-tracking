@@ -20,7 +20,7 @@ const LISTING = '\0figures';
 
 export type Box = { width: number | null; height: number | null };
 type Output = { hash: string; inputs?: string[] };
-type Compiled = { figure: Output; text: string } | { errors: FigureError[]; inputs?: string[] };
+type Compiled = { figure: Output; text: string } | { errors: FigureError[]; inputs?: string[]; hash?: string };
 type Compile = (args: { dir: string; name: string; source: string; box: Box; tools: Tools }) => Promise<Compiled>;
 type Tools = { latex: string | null; dvisvgm: string | null };
 export type PreviewAnswer = { figure: Output } | { errors: FigureError[] } | { superseded: true };
@@ -264,7 +264,9 @@ export class FigureWatcher {
     }
     this.compiled[name] = Date.now();
     const inputs = ('errors' in out ? out.inputs : out.figure.inputs) ?? [];
-    this.tried.set(name, { key: this.key(figure, inputs, listing), inputs });
+    // the key of the texts that the compile read, hence a file changed during it is compiled again
+    const used = 'errors' in out ? out.hash : out.figure.hash;
+    this.tried.set(name, { key: used ? `${used}\n${listing}` : this.key(figure, inputs, listing), inputs });
     if ('errors' in out) {
       this.errors[name] = out.errors;
       for (const error of out.errors) this.log(`${error.file ?? figure.source}${error.line === null ? '' : `:${error.line}`}: ${error.message}`);

@@ -14,7 +14,7 @@
 // reads neither variable, and it is not fenced.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -315,17 +315,20 @@ function errorsOf(log, { name, dir, texts }) {
  * A hash over everything that the output of a figure depends on: its source, the style, the
  * wrapper, the preamble.tex of the talk, the files of the talk that TeX read (inputs, as paths
  * from the folder of the deck), and its box. Line ends are read as LF, since git on Windows may
- * check a file out with CRLF.
- * @param {{ dir: string, source: string, box?: { width?: number | null, height?: number | null }, inputs?: string[] }} figure
+ * check a file out with CRLF. texts holds the text of the style, of the preamble, and of an input,
+ * under style, preamble, and the path of the input, as a compile read it, and a file that is not in
+ * it is read from the folder.
+ * @param {{ dir: string, source: string, box?: { width?: number | null, height?: number | null }, inputs?: string[], texts?: Record<string, string | null> }} figure
  */
-export function figureHash({ dir, source, box = {}, inputs = [] }) {
+export function figureHash({ dir, source, box = {}, inputs = [], texts = {} }) {
   const hash = createHash('sha256');
   const add = (label, text) => hash.update(`${label}\0${text === null ? '\u0001' : text.replace(/\r\n/g, '\n')}\0`);
+  const given = (key, file, encoding) => (Object.hasOwn(texts, key) ? texts[key] : read(file, encoding));
   add('source', source);
-  add('style', read(STYLE));
+  add('style', given('style', STYLE));
   add('wrapper', wrapperOf());
-  add('preamble', read(join(dir, 'preamble.tex')));
-  for (const file of [...inputs].sort()) add(`input ${file}`, read(join(dir, file), 'latin1'));
+  add('preamble', given('preamble', join(dir, 'preamble.tex')));
+  for (const file of [...inputs].sort()) add(`input ${file}`, given(file, join(dir, file), 'latin1'));
   add('box', `${box.width ?? ''} ${box.height ?? ''}`);
   return hash.digest('hex').slice(0, 16);
 }
@@ -347,7 +350,9 @@ export function figureScript(name, figure) {
  * seconds }, where figure is the value of window.beesonFigures[name] and text the script
  * figures/name.js, or { errors, inputs }, each error { file, line, message } with file as a path from
  * dir and line null where TeX does not give one, and inputs the files of the talk that TeX read
- * before an error of TeX, if any. Nothing is written into dir.
+ * before an error of TeX, if any. hash, of the figure and of a failed compile, is the figureHash
+ * of the texts that the compile read, hence an output is not current for a preamble or an input
+ * changed during the compile. Nothing is written into dir.
  */
 export async function compileFigure({ dir, name, source, box = {}, tools = findTools() }) {
   const started = Date.now();
@@ -359,6 +364,22 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
   const tex = await texOf(tools);
   const fenced = tex?.miktex === false;
   const preamble = read(join(dir, 'preamble.tex'));
+  const style = readFileSync(STYLE, 'utf8');
+  // the texts that the compile read: the style and the preamble before it, and each input after it,
+  // which is taken as changed when it was written after the start of the compile, since TeX may
+  // have read it before
+  const used = (inputs = []) => {
+    const texts = { style, preamble };
+    for (const file of inputs) {
+      const text = read(join(dir, file), 'latin1');
+      let changed = true;
+      try {
+        changed = statSync(join(dir, file)).mtimeMs >= started;
+      } catch {}
+      texts[file] = changed ? '\u0002changed during the compile' : text;
+    }
+    return figureHash({ dir, source, box, inputs, texts });
+  };
   const temporary = mkdtempSync(join(tmpdir(), 'beeson-figure-'));
   const env = { ...process.env };
   // a variable of kpathsea set in another case, e.g. on Windows, and an output folder outside the
@@ -399,8 +420,8 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
     const size = (key) => parseFloat(new RegExp(`\\s${key}=['"]([\\d.]+)`).exec(root)[1]) * PT_PER_BP;
     return { svg: text, width: size('width'), height: size('height'), inputs: [...inputs].sort() };
   };
-  try {
-    copyFileSync(STYLE, join(temporary, 'beeson-tikz.sty'));
+  const compile = async () => {
+    writeFileSync(join(temporary, 'beeson-tikz.sty'), style);
     writeFileSync(join(temporary, `${SOURCE}.tex`), source);
     if (preamble !== null) writeFileSync(join(temporary, `${PREAMBLE}.tex`), cutPreamble(preamble));
     // the target in TeX pt of each dimension of the box that is set
@@ -457,7 +478,7 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
     if (dark.errors) return dark;
     const light = finishSvg(out.svg, `tikz-${name}-light-`, factor);
     const figure = {
-      hash: figureHash({ dir, source, box, inputs: out.inputs }),
+      hash: used(out.inputs),
       width: light.width,
       height: light.height,
       scale: factor,
@@ -467,6 +488,10 @@ export async function compileFigure({ dir, name, source, box = {}, tools = findT
       light: light.svg,
     };
     return { figure, text: figureScript(name, figure), passes, seconds: (Date.now() - started) / 1000 };
+  };
+  try {
+    const out = await compile();
+    return out.errors ? { ...out, hash: used(out.inputs) } : out;
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
