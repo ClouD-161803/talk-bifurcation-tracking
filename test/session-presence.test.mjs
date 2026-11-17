@@ -195,8 +195,12 @@ test('the flag of a person who types reads that the person is typing, and the ca
   await typeKeys(ana, ' and more');
   await until(() => ben.evaluate(`${el(1, 'p')}.textContent.endsWith('and more')`), 'the text of Ana on the page of Ben');
   const text = await ben.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(${el(1, 'p')}); const b = r.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; })()`);
-  const typing = await until(() => ben.evaluate(`window.__drawn.find((d) => d.flags[0]?.text === 'Ana is typing' && d.carets.length === 1 && Math.abs(d.carets[0].x + d.carets[0].w / 2 - ${text.x + text.w}) < 4) ?? null`), 'the flag of Ana typing and her caret at the end of the text in what the page of Ben drew');
-  const bar = typing.carets[0];
+  // the flag and the bar at the end of the text are read from separate records, since the page of
+  // Ben may read the state with the caret at the end after Ana stopped typing
+  await ben.waitFor(`window.__drawn.some((d) => d.flags[0]?.text === 'Ana is typing' && d.carets.length === 1)`, 20_000);
+  const atEnd = `window.__drawn.find((d) => d.carets.length === 1 && Math.abs(d.carets[0].x + d.carets[0].w / 2 - ${text.x + text.w}) < 4)`;
+  await ben.waitFor(`!!${atEnd}`, 20_000);
+  const bar = (await ben.evaluate(atEnd)).carets[0];
   assert.ok(bar.y >= text.y - 2 && bar.y + bar.h <= text.y + text.h + 2 && bar.h > 10, 'the caret bar spans the line');
   assert.ok(bar.w >= 1.5 && bar.w <= 4, `the caret bar is 2 px wide, and it is ${bar.w}`);
   await until(async () => (await ben.evaluate(`${C}.resolved()[0]?.caret?.el.textContent`))?.endsWith('and more'), 'the caret element of Ana');
