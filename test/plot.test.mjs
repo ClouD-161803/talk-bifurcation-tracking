@@ -23,6 +23,7 @@ test('a plot is read with its defaults', () => {
   assert.equal(plot.panels[0].axes, true);
   assert.equal(plot.panels[0].size, 1);
   assert.deepEqual(plot.panels[0].margin, [52, 20, 84, 76]);
+  assert.equal(plot.panels[0].cell, null);
   assert.equal(plot.marks[0].tone, 'accent');
   assert.equal(plot.tabs[0].label, 'a');
   assert.equal(plot.tabs[0].active, null);
@@ -77,6 +78,36 @@ test('the panels share a side in proportion to their sizes, with a gap between t
   assert.deepEqual(cells([1, 1], 1056, 56), [[0, 500], [556, 500]]);
   assert.deepEqual(cells([1, 3], 456, 56), [[0, 100], [156, 300]]);
   assert.deepEqual(cells([2], 300, 56), [[0, 300]]);
+});
+
+test('a panel with a cell is placed in it, and the other panels share the row without it', { timeout: 60000 }, async (t) => {
+  const spec = minimal();
+  spec.panels = [
+    { id: 'p', x: { range: [0, 1] }, y: { range: [0, 1] }, margin: [10, 20, 30, 40], cell: [100, 50, 300, 200] },
+    { id: 'q', x: { range: [0, 1] }, y: { range: [0, 1] }, margin: [0, 0, 0, 0] },
+  ];
+  spec.layout = 'row';
+  assert.deepEqual(parsePlot(JSON.stringify(spec)).panels.map((p) => p.cell), [[100, 50, 300, 200], null]);
+  spec.panels[0].cell = [0, 0, 300];
+  assert.throws(() => parsePlot(JSON.stringify(spec)), /^Error: panels\[0\]\.cell: a cell \[x, y, width, height\]/);
+  spec.panels[0].cell = [100, 50, 300, 200];
+
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/plot-steps.html', '', '/1'));
+  await page.waitFor(deckSettled);
+  // the axes of a panel are drawn down its left side and along its bottom, from the top left corner
+  const boxes = await page.evaluate(`(() => {
+    const view = Beeson.plots.find((p) => p.el.dataset.plot === 'data');
+    view.reload(${JSON.stringify(JSON.stringify(spec))});
+    view.fit();
+    const area = view.el.querySelector('.plot-area');
+    const corners = [...view.el.querySelectorAll('.plot-axes > path:first-child')].map((a) => /^M([\\d.]+) ([\\d.]+)V([\\d.]+)H([\\d.]+)$/.exec(a.getAttribute('d')).slice(1).map(Number));
+    return { W: area.offsetWidth, H: area.offsetHeight, corners };
+  })()`);
+  // the panel p inside the margin of its cell, and the panel q over the whole plot
+  assert.deepEqual(boxes.corners, [[140, 60, 220, 380], [0, 0, boxes.H, boxes.W]]);
 });
 
 test('a fault in a plot is reported with its path', () => {

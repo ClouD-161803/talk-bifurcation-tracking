@@ -24,7 +24,9 @@ export type Curve = Item & { points: Pair[] | null; circle: [number, number, num
 export type Label = Item & { at: Pair; text: string; anchor: Anchor; dx: number; dy: number };
 // the margin of a panel in px, from the top clockwise as in CSS
 export type Margin = [number, number, number, number];
-export type Panel = { id: string; x: Axis; y: Axis; equal: boolean; axes: boolean; title: string; regions: Region[]; curves: Curve[]; labels: Label[]; size: number; margin: Margin };
+// the cell of a panel placed by hand, as x, y, width, and height in px of the plot
+export type Cell = [number, number, number, number];
+export type Panel = { id: string; x: Axis; y: Axis; equal: boolean; axes: boolean; title: string; regions: Region[]; curves: Curve[]; labels: Label[]; size: number; margin: Margin; cell: Cell | null };
 // the keys of a panel that a tab may replace
 export type PanelPatch = Partial<Pick<Panel, 'x' | 'y' | 'title' | 'regions' | 'curves' | 'labels'>>;
 // a trace with fade drawn faint, and each part of it faded out over fade seconds after the head has passed it
@@ -159,6 +161,12 @@ function panel(v: unknown, path: string): Panel {
   }
   const size = num(v.size, `${path}.size`, 1);
   if (!(size > 0)) fail(`${path}.size`, 'a positive number is expected');
+  let cell: Cell | null = null;
+  if (v.cell !== undefined) {
+    const c = list(v.cell, `${path}.cell`).map((x, i) => num(x, `${path}.cell[${i}]`));
+    if (c.length !== 4 || !(c[2] > 0) || !(c[3] > 0)) fail(`${path}.cell`, 'a cell [x, y, width, height] with a positive width and height is expected');
+    cell = [c[0], c[1], c[2], c[3]];
+  }
   return {
     id: str(v.id, `${path}.id`),
     x: axis(v.x, `${path}.x`),
@@ -171,6 +179,7 @@ function panel(v: unknown, path: string): Panel {
     labels: labels(v.labels, `${path}.labels`),
     size,
     margin,
+    cell,
   };
 }
 
@@ -761,11 +770,13 @@ export class PlotView {
 
   private layout(): void {
     const panels = this.panelsNow(), row = (this.plot.layout ?? (this.W >= this.H ? 'row' : 'column')) === 'row';
-    const along = cells(panels.map((p) => p.size), row ? this.W : this.H, GAP);
+    // a panel with a cell is placed there, and the other panels share the row or the column
+    const shared = panels.filter((p) => !p.cell);
+    const along = cells(shared.map((p) => p.size), row ? this.W : this.H, GAP);
     this.boxes.clear();
-    panels.forEach((p, i) => {
-      const [at, share] = along[i];
-      const cx = row ? at : 0, cy = row ? 0 : at, cw = row ? share : this.W, ch = row ? this.H : share;
+    panels.forEach((p) => {
+      const [at, share] = along[shared.indexOf(p)] ?? [0, 0];
+      const [cx, cy, cw, ch] = p.cell ?? (row ? [at, 0, share, this.H] : [0, at, this.W, share]);
       const [top, right, bottom, left] = p.margin;
       let x = cx + left, y = cy + top, w = cw - left - right, h = ch - top - bottom;
       const x0 = scaled(p.x, p.x.range[0]), y0 = scaled(p.y, p.y.range[0]);

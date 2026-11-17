@@ -2026,6 +2026,12 @@
     }
     const size = num(v.size, `${path2}.size`, 1);
     if (!(size > 0)) fail(`${path2}.size`, "a positive number is expected");
+    let cell = null;
+    if (v.cell !== void 0) {
+      const c = list(v.cell, `${path2}.cell`).map((x, i) => num(x, `${path2}.cell[${i}]`));
+      if (c.length !== 4 || !(c[2] > 0) || !(c[3] > 0)) fail(`${path2}.cell`, "a cell [x, y, width, height] with a positive width and height is expected");
+      cell = [c[0], c[1], c[2], c[3]];
+    }
     return {
       id: str(v.id, `${path2}.id`),
       x: axis(v.x, `${path2}.x`),
@@ -2037,7 +2043,8 @@
       curves: curves(v.curves, `${path2}.curves`),
       labels: labels(v.labels, `${path2}.labels`),
       size,
-      margin
+      margin,
+      cell
     };
   }
   function patch(v, path2) {
@@ -2598,11 +2605,12 @@
     }
     layout() {
       const panels = this.panelsNow(), row = (this.plot.layout ?? (this.W >= this.H ? "row" : "column")) === "row";
-      const along = cells(panels.map((p) => p.size), row ? this.W : this.H, GAP);
+      const shared2 = panels.filter((p) => !p.cell);
+      const along = cells(shared2.map((p) => p.size), row ? this.W : this.H, GAP);
       this.boxes.clear();
-      panels.forEach((p, i) => {
-        const [at, share] = along[i];
-        const cx = row ? at : 0, cy = row ? 0 : at, cw = row ? share : this.W, ch = row ? this.H : share;
+      panels.forEach((p) => {
+        const [at, share] = along[shared2.indexOf(p)] ?? [0, 0];
+        const [cx, cy, cw, ch] = p.cell ?? (row ? [at, 0, share, this.H] : [0, at, this.W, share]);
         const [top, right, bottom, left] = p.margin;
         let x = cx + left, y = cy + top, w = cw - left - right, h = ch - top - bottom;
         const x0 = scaled(p.x, p.x.range[0]), y0 = scaled(p.y, p.y.range[0]);
