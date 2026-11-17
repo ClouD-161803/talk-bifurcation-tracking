@@ -4,6 +4,7 @@
 // page. its members that read and apply the text are those of the engine in session.ts, which is
 // installed only once a page starts or joins a session
 
+import type { FigureState } from '../../session/protocol.ts';
 import type { App } from '../app.ts';
 import { setServed } from '../commands/origin.ts';
 import { refreshHeads } from '../history.ts';
@@ -57,7 +58,14 @@ export type Port = {
   onSave(fn: () => Promise<void> | void): void;
   redrawTex(): Promise<void>;
   reloadFigure(name: string, hash: string): Promise<boolean>;
+  figures(link: FigureLink): void;
 };
+
+// the TikZ figures of a session, which the client gives at its start: the state that the edit
+// command told last, the token of the page for the routes figures/, and a listener of each state
+export type FigureLink = { state(): FigureState | null; token(): string; on(fn: (state: FigureState) => void): void };
+let figures: FigureLink | null = null;
+export const figureLink = (): FigureLink | null => figures;
 
 // the members of the port from the engine, and reported(), which resolves once every change of the
 // person is reported through onChange, and no apply runs or waits
@@ -159,6 +167,7 @@ export function install(app: App): Port {
     end() {
       if (!active) return;
       active = false;
+      figures = null;
       app.session = null;
       app.emit('session');
       app.report();
@@ -172,6 +181,13 @@ export function install(app: App): Port {
     },
     redrawTex: () => redrawDeckTex(app),
     reloadFigure: async (name, hash) => (await window.Beeson?.figures?.reload?.(name, hash)) ?? false,
+    figures(link) {
+      figures = link;
+      link.on((state) => {
+        window.Beeson?.figures?.compiling?.(state.compiling);
+        app.invalidate('selection');
+      });
+    },
   };
 
   let loading: Promise<Port | null> | null = null;

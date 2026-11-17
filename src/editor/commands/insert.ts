@@ -191,6 +191,28 @@ function centerIfOut(app: App, el: Element, floor = FLOOR): void {
   placeNew(app, el, narrow);
 }
 
+// a QR code or a TikZ figure put by insert into the empty slot given, else into the first one, and
+// else into the text column, moved to the free area where it does not fit there, and selected
+async function putPicture(a: App, slot: Element | null, insert: (parent: Element, before: Node | null) => Promise<Element[]>): Promise<Element> {
+  const slide = a.current()!;
+  const figureBox = slot ?? emptySlot(a, slide);
+  const place = figureBox ? { parent: figureBox, before: null } : slide.matches('.title, .closing') ? { parent: slide, before: slide.querySelector(':scope > aside.notes') } : columnPlace(a, slide);
+  const [node] = await insert(place.parent, place.before);
+  if (!figureBox) centerIfOut(a, node);
+  checkOverlaps(a, slide, node);
+  a.selection.set('elements', [node]);
+  return node;
+}
+
+/** A TikZ figure of 800 by 600 px drawn from figures/name.tex, put on the slide as a QR code is. */
+export async function placeFigure(a: App, name: string): Promise<Element | null> {
+  let made: Element | null = null;
+  await a.history.selecting('Insert TikZ Figure', async () => {
+    made = await putPicture(a, null, (p, b) => docOf(a).insert(`<div class="tikz" data-figure="${name}" style="width: 800px; height: 600px"></div>`, p, b, 'Insert TikZ Figure'));
+  });
+  return made;
+}
+
 // the offset in slide px of a new text box el in the text column, under the text elements before it as
 // they are drawn: moved down as far as the lowest of them is drawn under its place in the layout,
 // e.g. a list moved down with a translate
@@ -733,13 +755,8 @@ export function install(app: App): void {
     enabled: ready,
     // a QR code fills the empty slot given, as by the icon of its placeholder, else the first one
     run: (a, arg) => a.history.selecting('Insert QR Code', async () => {
-      const slide = a.current()!;
-      const figureBox = arg instanceof Element && slide.contains(arg) && isEmptySlot(a, arg) ? arg : emptySlot(a, slide);
-      const place = figureBox ? { parent: figureBox, before: null } : slide.matches('.title, .closing') ? { parent: slide, before: slide.querySelector(':scope > aside.notes') } : columnPlace(a, slide);
-      const [node] = await docOf(a).insertElement('qr', place.parent, place.before, { qr: 'https://example.com' });
-      if (!figureBox) centerIfOut(a, node);
-      checkOverlaps(a, slide, node);
-      a.selection.set('elements', [node]);
+      const slot = arg instanceof Element && a.current()!.contains(arg) && isEmptySlot(a, arg) ? arg : null;
+      await putPicture(a, slot, (p, b) => docOf(a).insertElement('qr', p, b, { qr: 'https://example.com' }));
     }),
   });
   c.define({

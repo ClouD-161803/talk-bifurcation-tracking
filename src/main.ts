@@ -13,7 +13,7 @@ import { mountPlots, type PlotView } from './plot.ts';
 import { markViewers, stillViewers } from './print.ts';
 import { mountQr } from './qr.ts';
 import { mountShapes } from './shapes.ts';
-import { figuresReady, mountFigures, redrawFigures, reloadFigure } from './tikz.ts';
+import { compilingFigure, figuresReady, mountFigures, previewFigure, redrawFigures, reloadFigure } from './tikz.ts';
 import { initScrub } from './scrub.ts';
 import { mount as mountSurfaces, onRestore } from './surface.ts';
 import type { Surface } from './surface.ts';
@@ -459,7 +459,7 @@ const Beeson = {
   plots,
   // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs. reload is
   // called by the editor after the edit command wrote an output
-  figures: { get ready(): Promise<void> { return figuresReady(); }, reload: reloadFigure },
+  figures: { get ready(): Promise<void> { return figuresReady(); }, reload: reloadFigure, preview: previewFigure, compiling: compilingFigure },
   // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
   trajectories: register,
   // called by the editor after a structural change of the slides

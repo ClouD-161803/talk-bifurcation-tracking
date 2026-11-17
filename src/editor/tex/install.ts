@@ -3,17 +3,23 @@
 // and the readers of TeX are built into theme/editor-tex.js, which is loaded at their first use,
 // since editor.js is loaded at each edit and is kept under its budget. a save writes these files
 // only once they are read. the triggers of the list stay here: \cite{ typed in a text, Insert >
-// Citation… with its key, and a click on the number of a citation, which the Format pane shows
+// Citation… with its key, and a click on the number of a citation, which the Format pane shows.
+// the TikZ figures of a session are edited by the same bundle, from the items of Insert > TikZ Figure
 
 import type { App } from '../app.ts';
+import { placeFigure } from '../commands/insert.ts';
 import { addCompanion } from '../file/files.ts';
 import { showFormat } from '../inspector/inspector.ts';
 import type { Control } from '../inspector/controls.ts';
+import { chooseFiles } from '../media/actions.ts';
 import { deckFolder } from '../media/save.ts';
+import { figureLink } from '../session/port.ts';
 import { make } from '../ui/dom.ts';
 import { citedKeys, texScript, type Tex } from '../../texfile.ts';
 
 export type Which = 'preamble' | 'bibliography';
+// what a new TikZ figure is made from: a CSV file, a .tex file, or a blank drawing
+export type Starter = 'data' | 'file' | 'blank';
 // where the list of the bibliography puts the chosen papers: in place of the \cite{ typed before
 // the caret of host, at range in host, or into cite, in place of its paper at index or added to it
 export type CiteTarget = { host: Element; typed?: boolean; range?: Range; cite?: HTMLElement; index?: number; anchor?: Element };
@@ -33,10 +39,13 @@ export type TexSheets = {
   cite(target: CiteTarget): void;
   key(ev: KeyboardEvent): boolean;
   pane(el: HTMLElement, cite: HTMLElement): void;
+  // a new TikZ figure of a session made from file, put on the slide
+  newFigure(from: Starter, file: File | null): Promise<void>;
 };
 // what editor.js gives theme/editor-tex.js: the app, the folder of the deck shared with the media
-// files, and the tex.js of the deck as the page loaded it
-export type TexHost = { app: App; folder: typeof deckFolder; start: Tex | null };
+// files, the tex.js of the deck as the page loaded it, and for the TikZ figures of a session the
+// link of the client and the put of a new figure on the slide
+export type TexHost = { app: App; folder: typeof deckFolder; start: Tex | null; link: typeof figureLink; place(name: string): Promise<Element | null> };
 
 declare global {
   interface Window {
@@ -92,7 +101,7 @@ export function install(app: App): void {
       const script = document.createElement('script');
       script.src = SELF ? new URL('editor-tex.js', SELF).href : 'theme/editor-tex.js';
       script.onload = () => {
-        if (window.BeesonTexSheets) return done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start })));
+        if (window.BeesonTexSheets) return done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start, link: figureLink, place: (name) => placeFigure(app, name) })));
         loading = null;
         fail(new Error('theme/editor-tex.js did not start'));
       };
@@ -188,6 +197,30 @@ export function install(app: App): void {
       if (host) void cite({ host, range: range ?? undefined });
     },
   });
+
+  // Insert > TikZ Figure after Video…, whose items the Media button of the toolbar lists as well
+  const why = (a: App): string | null =>
+    !a.session ? 'TikZ figures are compiled by the edit command. Start it with Edit.command, Edit.cmd, or Edit.sh next to the deck, or with npm run edit' : figureLink()?.state()?.compiler === 'missing' ? 'TeX with latex and dvisvgm is not found on the computer of the host' : null;
+  const starters: [Starter, string, string][] = [['data', 'From Data…', '.csv,text/csv'], ['file', 'From File…', '.tex'], ['blank', 'Blank', '']];
+  for (const [i, [from, label, accept]] of starters.entries())
+    app.commands.define({
+      id: `insert.tikz${from[0].toUpperCase()}${from.slice(1)}`,
+      label,
+      menu: { bar: 'Insert', group: 'element', order: 25.1 + i / 10, submenu: 'TikZ Figure' },
+      toolbar: { group: 'insert', order: 24.12 + i / 100, icon: 'line-curve', split: 'Media' },
+      enabled: (a) => !!a.current() && a.region() !== 'dialog',
+      run: async (a, arg) => {
+        const no = why(a);
+        if (no) {
+          a.note = { text: no, warn: true };
+          return a.report();
+        }
+        // the file input is opened in the click, as Safari and Firefox ask, before the bundle loads
+        const files = accept ? ((arg as { files?: File[] } | undefined)?.files ?? (await chooseFiles(accept))) : [];
+        if (accept && !files.length) return;
+        await (await load()).newFigure(from, files[0] ?? null);
+      },
+    });
 
   // the keys of the open list are taken before those of the editor, hence this install is run
   // before installKeys of commands.ts

@@ -74,6 +74,11 @@ const watcher = typeof MutationObserver === 'undefined' ? null : new MutationObs
   for (const el of figures) syncParts(el);
 });
 
+// the outputs of the editor that a figure is drawn from in place of its output on disk, e.g. a
+// preview of a source being typed, and the figure that the edit command compiles
+const previews = new Map<string, FigureOutput>();
+let compiling: string | null = null;
+
 /** Draws the figure el in mode from its output, or the error of a figure without one, in place of what it showed. */
 function draw(el: HTMLElement, mode: Mode): void {
   const name = el.dataset.figure ?? '';
@@ -84,11 +89,11 @@ function draw(el: HTMLElement, mode: Mode): void {
   if (!state) watcher?.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'data-part'] });
   drawn.set(el, { n, key });
   for (const old of el.querySelectorAll(':scope > svg, :scope > .tikz-error')) old.remove();
-  const output = window.beesonFigures?.[name];
+  const output = previews.get(name) ?? window.beesonFigures?.[name];
   if (!output) {
     const box = document.createElement('div');
     box.className = 'tikz-error';
-    box.textContent = name ? `figure ${name} is not compiled: run npm run tex` : 'a TikZ figure without a name in data-figure';
+    box.textContent = !name ? 'a TikZ figure without a name in data-figure' : name === compiling ? `figure ${name} is being compiled` : `figure ${name} is not compiled: run npm run tex`;
     el.prepend(box);
     return;
   }
@@ -149,15 +154,33 @@ export async function reloadFigure(name: string, hash: string): Promise<boolean>
   });
   loads.set(name, loading);
   await loading;
-  if (window.beesonFigures?.[name] !== was) {
-    for (const el of figuresUnder(document)) {
-      const state = drawn.get(el);
-      if (el.dataset.figure !== name || !state) continue;
-      state.key = '';
-      draw(el, latest);
-    }
-  }
+  if (window.beesonFigures?.[name] !== was) drawAgain(name);
   return window.beesonFigures?.[name]?.hash === hash;
+}
+
+// every drawn instance of the figure name drawn again
+function drawAgain(name: string): void {
+  for (const el of figuresUnder(document)) {
+    const state = drawn.get(el);
+    if (el.dataset.figure !== name || !state) continue;
+    state.key = '';
+    draw(el, latest);
+  }
+}
+
+/** Draws every instance of the figure name from output, e.g. a preview of the editor, or from its output on disk again with null. */
+export function previewFigure(name: string, output: FigureOutput | null): void {
+  if (output) previews.set(name, output);
+  else previews.delete(name);
+  drawAgain(name);
+}
+
+/** Tells the figure that the edit command compiles, or null, which a figure without an output tells in place of its error. */
+export function compilingFigure(name: string | null): void {
+  if (name === compiling) return;
+  const was = compiling;
+  compiling = name;
+  for (const n of [was, name]) if (n && !previews.has(n) && !window.beesonFigures?.[n]) drawAgain(n);
 }
 
 /** Draws every TikZ figure of the page again in mode, after a flip of the mode. */
