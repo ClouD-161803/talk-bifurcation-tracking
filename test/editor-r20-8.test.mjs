@@ -13,7 +13,7 @@ import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { editProblems, textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { tokenize } from '../src/editor/tokens.ts';
-import { center, click, press, previewFrames, recordPreview, saveAndReopen, selectFigure, selectPicture } from './helpers/editor.mjs';
+import { center, click, clickText, press, previewFrames, recordPreview, saveAndReopen, selectFigure, selectPicture } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test/pages/editor-r20-8.html';
@@ -101,14 +101,14 @@ async function caretIn(page, selector) {
     const b = r.getBoundingClientRect();
     return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   })()`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 
 // the block of selector selected as an object, by a click into its text and Esc, or added to the
 // selection by a click with Shift
 async function selectTextElement(page, selector, modifiers = '') {
-  if (modifiers) await click(page, await center(page, `.reveal section.present ${selector}`), { modifiers });
+  if (modifiers) await clickText(page, await center(page, `.reveal section.present ${selector}`), { modifiers });
   else {
     await caretIn(page, selector);
     await press(page, 'Escape');
@@ -122,7 +122,7 @@ async function selectLine(page, selector) {
     const r = document.querySelector('.reveal section.present ' + ${js(selector)} + ' line').getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 + 2 };
   })()`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 

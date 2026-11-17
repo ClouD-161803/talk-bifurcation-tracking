@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 // the index of the figures slide in index.html
@@ -69,7 +69,7 @@ const blockAt = (page, selector) => page.evaluate(`(() => { const r = Reveal.get
 const grips = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-grip')].filter((g) => !g.hidden && g.getClientRects().length).map((g) => { const r = g.getBoundingClientRect(); return { handle: g.dataset.handle, group: !!g.dataset.group, x: r.left + r.width / 2, y: r.top + r.height / 2 }; })`);
 
 async function groupOnFigures(page, platform) {
-  await click(page, IMG);
+  await clickText(page, IMG);
   await click(page, await blockAt(page, ':scope > p'), { modifiers: 'Shift' });
   await press(page, platform === 'mac' ? 'Alt+Mod+G' : 'Mod+G');
   await frames(page);
@@ -141,10 +141,10 @@ for (const platform of PLATFORMS) {
   for (const modifiers of ['Shift', 'Mod']) {
     test(`a ${modifiers}-click on a figure with the caret in a text selects the block of the caret with the figure (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, await blockAt(page, ':scope > h2'));
+      await clickText(page, await blockAt(page, ':scope > h2'));
       await frames(page);
       assert.equal(await page.evaluate(`document.activeElement === Reveal.getCurrentSlide().querySelector(':scope > h2')`), true, 'the caret is not in the heading');
-      await click(page, IMG, { modifiers });
+      await clickText(page, IMG, { modifiers });
       await frames(page);
       assert.deepEqual((await names(page)).sort(), ['figure', 'h2'], 'the heading is not selected with the figure');
       assert.equal(await page.evaluate(`!!window.getSelection().rangeCount && Reveal.getCurrentSlide().querySelector(':scope > h2').contains(window.getSelection().anchorNode)`), false, 'the caret is left in the heading');
@@ -156,7 +156,7 @@ for (const platform of PLATFORMS) {
   test(`a Shift-click on the text of the caret selects its block alone (${platform})`, async (t) => {
     const page = await load(t, platform);
     const at = await blockAt(page, ':scope > h2');
-    await click(page, at);
+    await clickText(page, at);
     await click(page, at, { modifiers: 'Shift' });
     await frames(page);
     assert.deepEqual(await names(page), ['h2']);
@@ -169,7 +169,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform);
     const slideBox = () => page.evaluate(`(() => { const r = document.querySelector('.reveal .slides').getBoundingClientRect(); return [r.left, r.top, r.width]; })()`);
     const rest = await slideBox();
-    await click(page, IMG);
+    await clickText(page, IMG);
     await typeField(page, 'angle', 30);
     assert.deepEqual(await slideBox(), rest, 'the slide moved when the canvas was given room for the grips');
     assert.equal(await page.evaluate('window.BeesonEditorShell.stage.zoom'), null, 'the zoom is not Fit');

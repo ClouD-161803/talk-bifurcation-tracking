@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { center, click, drag, editorPage, press } from './helpers/editor.mjs';
+import { center, click, clickText, drag, editorPage, press } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-layouts.html';
 // the slide of DECK with a heading, a paragraph, and a list
@@ -31,7 +31,7 @@ for (const selector of ['.reveal section.present h2', '.reveal section.present p
     await page.evaluate(`Reveal.slide(${TEXT})`);
     await frames(page);
     const at = await center(page, selector);
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     assert.equal(await page.evaluate(`document.activeElement === document.querySelector(${js(selector)})`), true, 'the click does not put the caret in the block');
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'none' });
@@ -51,7 +51,7 @@ for (const [slide, selector] of [[0, '.reveal section.present h1'], [TEXT, '.rev
     t.after(() => page.close().catch(() => {}));
     await page.evaluate(`Reveal.slide(${slide})`);
     await frames(page);
-    await click(page, await center(page, selector));
+    await clickText(page, await center(page, selector));
     await frames(page);
     assert.equal(await page.evaluate(`document.activeElement === document.querySelector(${js(selector)})`), true, 'the click does not put the caret in the block');
     const grip = await page.evaluate(`(() => {
@@ -77,7 +77,7 @@ for (const esc of [true, false]) {
     t.after(() => page.close().catch(() => {}));
     await page.evaluate(`Reveal.slide(${TEXT})`);
     await frames(page);
-    await click(page, await center(page, '.reveal section.present h2'));
+    await clickText(page, await center(page, '.reveal section.present h2'));
     await frames(page);
     if (esc) {
       await press(page, 'Escape');

@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, saveAndReopen } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 // the slides of index.html with a list beside a backdrop and with a figure in a figure box
@@ -239,7 +239,7 @@ for (const platform of PLATFORMS) {
     // Caption off takes the caption off
     await page.evaluate(`Reveal.slide(${STEPS})`);
     await frames(page);
-    await click(page, '.reveal section.present > figure img');
+    await clickText(page, '.reveal section.present > figure img');
     await frames(page);
     await exec(page, 'figure.caption');
     assert.equal(await render(page), before);
@@ -267,7 +267,7 @@ for (const platform of PLATFORMS) {
     assert.match(sampleText('content'), /<section>\s*<h2>[^<]+<\/h2>\s*<p>[^<]+<\/p>\s*<ul>(\s*<li>[^<]+<\/li>)+\s*<\/ul>\s*<div class="figure-box"[^>]*><\/div>\s*<\/section>/, 'the Content tile draws the texts of a new slide and the place of its zone');
     assert.equal(slide.items, 1);
     // typing into the list item gives a dash item, and Return a second one
-    await click(page, '.reveal section.present > ul > li');
+    await clickText(page, '.reveal section.present > ul > li');
     await page.send('Input.insertText', { text: 'A first point' });
     await press(page, 'Enter');
     await page.send('Input.insertText', { text: 'A second point' });

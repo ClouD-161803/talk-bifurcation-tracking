@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, saveAndReopen } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-r20-7.html';
 const SOURCE = readFileSync(DECK, 'utf8');
@@ -113,7 +113,7 @@ async function shiftParagraph(page) {
 // the figures A and B in g1 inside g2 with the paragraph, made by Group as in NESTED, with the
 // rendered text as the source of the page
 async function nest(page, platform) {
-  await click(page, A);
+  await clickText(page, A);
   await shiftParagraph(page);
   await press(page, GROUP_KEY[platform]);
   await frames(page);
@@ -124,10 +124,10 @@ async function nest(page, platform) {
 
 // the three figures of the first slide made one group without nesting
 async function three(page, platform) {
-  await click(page, A);
+  await clickText(page, A);
   await press(page, UNGROUP_KEY[platform]);
   await empty(page);
-  await click(page, A);
+  await clickText(page, A);
   await click(page, B, { modifiers: 'Shift' });
   await click(page, C, { modifiers: 'Shift' });
   await press(page, GROUP_KEY[platform]);
@@ -152,7 +152,7 @@ const copyPaste = (page) =>
 // a click at the lower left of the slide, where nothing is drawn
 async function empty(page) {
   const at = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().getBoundingClientRect(); return { x: r.left + 30, y: r.bottom - 30 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
 }
 
 // Ctrl with ] or [, and Shift with shift, as Chrome sends the key on a US layout. press() of the
@@ -180,7 +180,7 @@ for (const platform of PLATFORMS) {
   test(`Group of a group and a paragraph nests the group, Ungroup gives it back, and Regroup puts it together again (${platform})`, async (t) => {
     const page = await load(t, platform);
     assert.equal((await state(page, 'arrange.regroup')).enabled, false, 'Regroup is offered with nothing ungrouped');
-    await click(page, A);
+    await clickText(page, A);
     await shiftParagraph(page);
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure', 'p']);
     await press(page, GROUP_KEY[platform]);
@@ -188,7 +188,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await render(page), NESTED);
     await checkEdit(page, 'Group', SOURCE, `r20-7-group-${platform}.html`);
 
-    await click(page, A);
+    await clickText(page, A);
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure', 'p']);
     await press(page, UNGROUP_KEY[platform]);
     await frames(page);
@@ -210,13 +210,13 @@ for (const platform of PLATFORMS) {
   test(`a click enters a nested group one level at a time, and Esc goes up again (${platform})`, async (t) => {
     const page = await load(t, platform);
     await nest(page, platform);
-    await click(page, A);
+    await clickText(page, A);
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure', 'p']);
     assert.equal(await shownFrames(page, '.beeson-frame.entered'), 0);
-    await click(page, A);
+    await clickText(page, A);
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure'], 'the second click does not select the inner group');
     assert.equal(await shownFrames(page, '.beeson-frame.entered'), 1, 'the entered group is not drawn');
-    await click(page, A);
+    await clickText(page, A);
     assert.deepEqual(await selected(page), ['figure:A first figure'], 'the third click does not select the member');
     await press(page, 'Escape');
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure']);
@@ -233,8 +233,8 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform);
     await three(page, platform);
     const a0 = await boxOf(page, A), b0 = await boxOf(page, B), c0 = await boxOf(page, C);
-    await click(page, A);
-    await click(page, A);
+    await clickText(page, A);
+    await clickText(page, A);
     assert.deepEqual(await selected(page), ['figure:A first figure']);
     await click(page, B, { modifiers: 'Shift' });
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure'], 'the Shift-click selects the whole group');
@@ -255,9 +255,9 @@ for (const platform of PLATFORMS) {
     await nest(page, platform);
     const before = page.source;
     const b0 = await boxOf(page, B), c0 = await boxOf(page, C);
-    await click(page, A);
-    await click(page, A);
-    await click(page, A);
+    await clickText(page, A);
+    await clickText(page, A);
+    await clickText(page, A);
     assert.deepEqual(await selected(page), ['figure:A first figure']);
     await drag(page, A, { dx: 40, dy: 30 });
     await frames(page);
@@ -295,8 +295,8 @@ for (const platform of PLATFORMS) {
   test(`in a group of two, Align Top aligns the members selected inside it to each other (${platform})`, async (t) => {
     const page = await load(t, platform);
     const a0 = await boxOf(page, A), b0 = await boxOf(page, B);
-    await click(page, A);
-    await click(page, A);
+    await clickText(page, A);
+    await clickText(page, A);
     await click(page, B, { modifiers: 'Shift' });
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure']);
     await exec(page, 'arrange.alignTo.selection');
@@ -308,8 +308,8 @@ for (const platform of PLATFORMS) {
     // a Shift-click on a selected member takes it off alone, and a click outside leaves the group
     await click(page, B, { modifiers: 'Shift' });
     assert.deepEqual(await selected(page), ['figure:A first figure']);
-    await click(page, C);
-    await click(page, A);
+    await clickText(page, C);
+    await clickText(page, A);
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure']);
     await checkEdit(page, 'Align Top', SOURCE, `r20-7-align-top-${platform}.html`);
     assert.deepEqual(errors(page), []);
@@ -370,7 +370,7 @@ for (const platform of PLATFORMS) {
       assert.equal(a[0], p[0], `${what}: ${lists}`);
       assert.ok(!['g1', 'g2'].includes(a[0]) && !['g1', 'g2'].includes(a[1]) && a[0] !== a[1], `${what}: ${lists}`);
     };
-    await click(page, A);
+    await clickText(page, A);
     await press(page, 'Mod+D');
     await frames(page);
     check(await copiedLists(page), 'Duplicate');
@@ -378,14 +378,14 @@ for (const platform of PLATFORMS) {
     assert.equal(await render(page), NESTED);
     // the undo selects the group again, and a click on it would enter it
     await empty(page);
-    await click(page, A);
+    await clickText(page, A);
     await copyPaste(page);
     await frames(page);
     check(await copiedLists(page), 'Paste');
     await undo(page);
     assert.equal(await render(page), NESTED);
     await empty(page);
-    await click(page, A);
+    await clickText(page, A);
     await drag(page, A, { dx: -40, dy: 200, modifiers: platform === 'mac' ? 'Alt' : 'Ctrl' });
     await frames(page);
     check(await copiedLists(page), 'a copy by a drag');
@@ -401,9 +401,9 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(all.filter((r) => !r.startsWith('1 ') || r === '1 Group'), ['1 Group', '2 Group', '3 Figure', '3 Figure', '2 Text'], `the rows: ${all}`);
     const inner = all.indexOf('2 Group');
     assert.equal(await page.evaluate(`!!document.querySelectorAll(${js(ROW)})[${inner}].querySelector('.twist svg')`), true, 'the inner group row does not have a chevron');
-    await click(page, `${ROW}:nth-child(${inner + 1})`);
+    await clickText(page, `${ROW}:nth-child(${inner + 1})`);
     assert.deepEqual(await selected(page), ['figure:A first figure', 'figure:A second figure']);
-    await click(page, `${ROW}:nth-child(${inner + 1}) .twist`);
+    await clickText(page, `${ROW}:nth-child(${inner + 1}) .twist`);
     assert.equal((await rows(page)).filter((r) => r.startsWith('3 ')).length, 0, 'the folded group shows its members');
     assert.equal(await render(page), NESTED);
     // the folded inner group is dragged as one row behind the paragraph, and its members keep their
@@ -424,13 +424,13 @@ for (const platform of PLATFORMS) {
 
   test(`Rotate Right 90° and Rotate Left 90° turn a figure by a quarter turn as one entry each (${platform})`, async (t) => {
     const page = await load(t, platform, SOURCE, 1);
-    await click(page, 'section.present img[alt="A turned figure"]');
+    await clickText(page, 'section.present img[alt="A turned figure"]');
     await exec(page, 'arrange.rotateRight');
     await frames(page);
     assert.equal(await render(page), SOURCE.replace('style="width: 200px; rotate: 30deg"', 'style="width: 200px; rotate: 120deg"'));
     await checkEdit(page, 'Rotate Right 90°', SOURCE, `r20-7-right-${platform}.html`);
     await reopen(page, SOURCE, 1);
-    await click(page, 'section.present img[alt="A straight figure"]');
+    await clickText(page, 'section.present img[alt="A straight figure"]');
     await exec(page, 'arrange.rotateLeft');
     await frames(page);
     assert.match(await render(page), /<img style="width: 200px; rotate: 270deg" src="..\/..\/demo\/figure-dark.png" alt="A straight figure">/);
@@ -440,7 +440,7 @@ for (const platform of PLATFORMS) {
 
   test(`the menu of an element holds the layer items, the turns, and the submenus Group, Align, and Distribute (${platform})`, async (t) => {
     const page = await load(t, platform, SOURCE, 1);
-    await click(page, 'section.present img[alt="A turned figure"]');
+    await clickText(page, 'section.present img[alt="A turned figure"]');
     await click(page, 'section.present img[alt="A turned figure"]', { button: 'right' });
     await sleep(100);
     const labels = await menuRows(page);
@@ -480,14 +480,14 @@ for (const platform of PLATFORMS) {
 
 test('on Windows and Linux, Ctrl with ] or [ orders the selection on the canvas and still indents a list item (other)', async (t) => {
   const page = await load(t, 'other', SOURCE, 1);
-  await click(page, 'section.present img[alt="A turned figure"]');
+  await clickText(page, 'section.present img[alt="A turned figure"]');
   for (const [shift, label] of [[false, 'Bring Forward'], [true, 'Bring to Front']]) {
     await bracket(page, true, shift);
     assert.equal((await state(page, 'edit.undo')).label, `Undo ${label}`);
     await undo(page);
     assert.equal(await render(page), SOURCE);
   }
-  await click(page, 'section.present img[alt="A straight figure"]');
+  await clickText(page, 'section.present img[alt="A straight figure"]');
   for (const [shift, label] of [[false, 'Send Backward'], [true, 'Send to Back']]) {
     await bracket(page, false, shift);
     assert.equal((await state(page, 'edit.undo')).label, `Undo ${label}`);
@@ -496,7 +496,7 @@ test('on Windows and Linux, Ctrl with ] or [ orders the selection on the canvas 
   }
   await empty(page);
   const two = await page.evaluate(`(() => { const r = [...Reveal.getCurrentSlide().querySelectorAll('li')][1].getBoundingClientRect(); return { x: r.left + 30, y: r.top + r.height / 2 }; })()`);
-  await click(page, two);
+  await clickText(page, two);
   await bracket(page, true, false);
   assert.equal((await state(page, 'edit.undo')).label, 'Undo Increase Indent Level', 'Ctrl+] in a list item does not indent it');
   assert.deepEqual(errors(page), []);

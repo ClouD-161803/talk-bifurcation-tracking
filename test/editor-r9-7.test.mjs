@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -201,14 +201,14 @@ for (const platform of PLATFORMS) {
     await press(page, key('notes'));
 
     // Deselect All clears a selected figure
-    await click(page, '.reveal section.present figure img');
+    await clickText(page, '.reveal section.present figure img');
     assert.ok((await page.evaluate('window.BeesonEditor.selection().length')) > 0, 'the figure is not selected');
     await press(page, key('deselect'));
     assert.equal(await page.evaluate('window.BeesonEditor.selection().length'), 0, 'Deselect All leaves the figure selected');
 
     // Use Selection for Find takes a word selected in a text as the query
     const word = await center(page, '.reveal section.present > p');
-    await click(page, { x: word.x - 200, y: word.y });
+    await clickText(page, { x: word.x - 200, y: word.y });
     await click(page, { x: word.x - 200, y: word.y }, { count: 2 });
     const selected = await page.evaluate('getSelection().toString().trim()');
     assert.ok(selected.length > 1, 'no word is selected');
@@ -247,7 +247,7 @@ test('the commands with a key on the Mac have a key on Windows and Linux, listed
     await press(page, key);
   }
   // Edit Mask is opened on a picture
-  await click(page, '.reveal section.present figure img');
+  await clickText(page, '.reveal section.present figure img');
   await press(page, 'Ctrl+Shift+M');
   assert.equal(await page.evaluate(`window.BeesonEditor.state('image.editMask').enabled`), false, 'Ctrl+Shift+M does not open the mask');
   await press(page, 'Escape');
@@ -296,7 +296,7 @@ for (const platform of PLATFORMS) {
   test(`Tab stays inside the Link popover, and Esc closes it at the first press (${platform})`, async (t) => {
     const page = await load(t, platform, { n: FIGURES });
     const p = await center(page, '.reveal section.present > p');
-    await click(page, { x: p.x - 200, y: p.y });
+    await clickText(page, { x: p.x - 200, y: p.y });
     await click(page, { x: p.x - 200, y: p.y }, { count: 2 });
     await press(page, 'Mod+K');
     assert.ok(await open(page, 'dialog.beeson-edit-link'), 'the Link popover is not open');
@@ -365,8 +365,8 @@ for (const [platform, answer] of [['mac', 'save'], ['other', 'cancel']]) {
       return true;
     })()`);
     const p = await center(page, '.reveal section.present > p');
-    await click(page, { x: p.x, y: p.y });
-    await click(page, { x: p.x, y: p.y });
+    await clickText(page, { x: p.x, y: p.y });
+    await clickText(page, { x: p.x, y: p.y });
     await press(page, 'End');
     await type(page, 'x');
     await press(page, 'Escape');
@@ -392,7 +392,7 @@ for (const [platform, answer] of [['mac', 'save'], ['other', 'cancel']]) {
 async function clickItem(page, label) {
   const at = await page.evaluate(`(() => { const i = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label')?.textContent === ${js(label)}); if (!i) return null; const r = i.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   assert.ok(at, `the open menu does not have ${label}`);
-  await click(page, at);
+  await clickText(page, at);
 }
 const percentText = (page) => page.evaluate(`document.querySelector('.beeson-edit-bottom .percent .value').textContent`);
 for (const platform of PLATFORMS) {
@@ -605,7 +605,7 @@ for (const platform of PLATFORMS) {
   test(`the dimmed switch of the line numbers says that the line steps need them (${platform})`, async (t) => {
     const page = await load(t, platform, { n: CODE });
     if (!(await stateOf(page, 'shell.format')).checked) await run(page, 'shell.format');
-    await click(page, '.reveal section.present pre');
+    await clickText(page, '.reveal section.present pre');
     await page.waitFor(`!!document.querySelector('.beeson-edit-inspector input[data-command="code.numbers"]')`);
     const dim = await page.evaluate(numbersSwitch);
     assert.equal(dim.disabled, true);

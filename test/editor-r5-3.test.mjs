@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { center, click, press, saveAndReopen } from './helpers/editor.mjs';
+import { center, click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -61,7 +61,7 @@ async function barMenu(page, title) {
   await page.evaluate('window.BeesonEditorShell.closeMenus()');
   await sleep(30);
   const at = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-menubar button')].find((x) => x.textContent === ${JSON.stringify(title)}); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(80);
   return menuRows(page);
 }
@@ -70,7 +70,7 @@ async function barMenu(page, title) {
 async function caretInTitle(page, n = 4) {
   await page.evaluate('Reveal.slide(0)');
   await sleep(200);
-  await click(page, await center(page, '.reveal section.present h1'));
+  await clickText(page, await center(page, '.reveal section.present h1'));
   await sleep(100);
   await page.evaluate(`(() => { const h = document.querySelector('.reveal section.present h1'); getSelection().collapse(h.firstChild, ${n}); })()`);
   await sleep(50);
@@ -173,7 +173,7 @@ for (const platform of PLATFORMS) {
       await page.evaluate(`document.documentElement.style.setProperty('--red', 'rgb(1, 2, 3)')`);
       await page.evaluate(`Reveal.slide([...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('.math mjx-container')))`);
       await sleep(250);
-      await click(page, await center(page, '.reveal section.present .math mjx-container'));
+      await clickText(page, await center(page, '.reveal section.present .math mjx-container'));
       await page.waitFor(`!!document.querySelector('.beeson-math textarea')`);
       await page.evaluate(`(() => { const f = document.querySelector('.beeson-math textarea'); f.focus(); f.value = '\\\\frac{'; f.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await page.waitFor(`!!document.querySelector('.beeson-math .error:not(.prompt)')?.textContent`);
@@ -261,7 +261,7 @@ for (const platform of PLATFORMS) {
     await sleep(200);
     const shape = '.beeson-edit-top [data-command="insert.shape.rounded"]';
     const pressed = () => page.evaluate(`document.querySelector('${shape}').getAttribute('aria-pressed')`);
-    await click(page, await center(page, shape));
+    await clickText(page, await center(page, shape));
     await sleep(50);
     assert.equal((await state(page, 'insert.shape.rounded')).checked, true, 'the main part of Shape does not draw a rounded rectangle');
     assert.equal(await pressed(), 'true');
@@ -346,7 +346,7 @@ for (const platform of PLATFORMS) {
     // Lock on its new key writes data-locked on the QR code of the title slide, byte for byte
     await page.evaluate('Reveal.slide(0)');
     await sleep(200);
-    await click(page, await center(page, '.reveal section.present > .qr'));
+    await clickText(page, await center(page, '.reveal section.present > .qr'));
     await sleep(50);
     await press(page, mac ? 'Ctrl+Mod+L' : 'Mod+L');
     await sleep(100);

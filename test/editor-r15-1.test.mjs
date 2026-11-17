@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 // the index of the figures slide in index.html
@@ -146,7 +146,7 @@ const overflow = async (page) => ({
 
 // the paragraph and the figure of the figures slide made one group with the key of Group
 async function groupOnFigures(page, platform) {
-  await click(page, IMG);
+  await clickText(page, IMG);
   const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
   await click(page, p, { modifiers: 'Shift' });
   await press(page, platform === 'mac' ? 'Alt+Mod+G' : 'Mod+G');
@@ -158,7 +158,7 @@ for (const platform of PLATFORMS) {
   // figure, about 908 slide px wide, with upright grips
   test(`a figure with a caption turned by the field Angle is turned as one object, with its frame, grips, and rotate handle (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, IMG);
+    await clickText(page, IMG);
     const rest = await fields(page);
     await typeField(page, 'angle', 30);
     assert.equal(await fieldValue(page, 'angle'), 30);
@@ -176,7 +176,7 @@ for (const platform of PLATFORMS) {
 
   test(`a figure with a caption turned by its rotate handle is framed turned, and its corner grip resizes it with the corner across kept (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await dragRotor(page, 40);
     const deg = await fieldValue(page, 'angle');
     assert.ok(deg >= 35 && deg <= 45, `the figure is turned to ${deg}°`);
@@ -210,7 +210,7 @@ for (const platform of PLATFORMS) {
   // finding 1: X and Y read 1060 and 58 at 30°, against 1200 and 160 at 0°
   test(`X and Y of a turned figure and text are those of the unturned box, and a typed X or Y reads back (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, IMG);
+    await clickText(page, IMG);
     const rest = await fields(page);
     await typeField(page, 'angle', 30);
     const figure = await fields(page);
@@ -224,7 +224,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await fieldValue(page, 'angle'), 30);
     await checkEdit(page, `r15-1-position-${platform}.html`, last);
 
-    await click(page, 'section.present > h2');
+    await clickText(page, 'section.present > h2');
     await press(page, 'Escape');
     await frames(page);
     const h2 = await fields(page);
@@ -257,10 +257,10 @@ for (const platform of PLATFORMS) {
       await exec(page, 'slide.layout.wide');
       await exec(page, 'slide.layout.content');
       await frames(page);
-      await click(page, IMG);
+      await clickText(page, IMG);
       return overflow(page);
     };
-    await click(page, IMG);
+    await clickText(page, IMG);
     assert.deepEqual((await overflow(page)).outlined, []);
     await typeField(page, 'angle', 30);
     let s = await checked();

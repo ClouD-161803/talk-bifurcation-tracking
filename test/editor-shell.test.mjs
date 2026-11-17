@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { click, editorPage, press } from './helpers/editor.mjs';
+import { click, clickText, editorPage, press } from './helpers/editor.mjs';
 
 const scheme = (page, value) => page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
 const frames = (page) => page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
@@ -41,7 +41,7 @@ test('a pointer click on Navigator or Steps leaves the focus off the button', as
   const page = await editorPage(browser);
   for (const name of ['Navigator', 'Steps']) {
     const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === ${JSON.stringify(name)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     assert.notEqual(await page.evaluate('document.activeElement.textContent'), name, `the focus is left on ${name}`);
   }

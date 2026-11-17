@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { click, drag, editorPage, press, selectFigure } from './helpers/editor.mjs';
+import { click, clickText, drag, editorPage, press, selectFigure } from './helpers/editor.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -45,11 +45,11 @@ test('a click on a button of the status bar keeps the selected figure', async (t
   t.after(() => browser.close());
   const page = await editorPage(browser);
   await figureSlide(page);
-  await click(page, '.reveal section.present .figure-box > img');
+  await clickText(page, '.reveal section.present .figure-box > img');
   const figureBox = await boxOf(page, '.reveal section.present .figure-box');
   assert.ok((await shownFrames(page)).some((f) => around(f, figureBox)), 'the figure is not selected by a click');
   const steps = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-bottom button')].find((b) => b.textContent === 'Steps'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, steps);
+  await clickText(page, steps);
   // the pane of the steps narrows the slide, hence the figure is measured again
   await sleep(100);
   const after = await boxOf(page, '.reveal section.present .figure-box');
@@ -104,10 +104,10 @@ for (const platform of ['mac', 'other']) {
     const page = await editorPage(browser, { query });
     await figureSlide(page);
     const p = await boxOf(page, P);
-    await click(page, { x: p.right + 3, y: (p.top + p.bottom) / 2 });
+    await clickText(page, { x: p.right + 3, y: (p.top + p.bottom) / 2 });
     assert.deepEqual(await framed(page, [P]), [P], 'the paragraph is not selected by a click on its border');
     assert.equal(await caretIn(page, P), false, 'a click on the border puts a caret into the paragraph');
-    await click(page, P);
+    await clickText(page, P);
     assert.equal(await caretIn(page, P), true, 'a click into the paragraph does not put the caret there');
     assert.deepEqual(page.errors, []);
   });
@@ -118,7 +118,7 @@ for (const platform of ['mac', 'other']) {
     const page = await editorPage(browser, { query });
     await figureSlide(page);
     const p = await boxOf(page, P);
-    await click(page, { x: p.right + 3, y: (p.top + p.bottom) / 2 });
+    await clickText(page, { x: p.right + 3, y: (p.top + p.bottom) / 2 });
     await click(page, IMG, { modifiers: 'Shift' });
     assert.deepEqual(await framed(page, [P, FIGURE_BOX]), [P, FIGURE_BOX], 'Shift-click does not add the figure');
     await click(page, IMG, { modifiers: 'Shift' });
@@ -126,7 +126,7 @@ for (const platform of ['mac', 'other']) {
     await click(page, IMG, { modifiers: 'Mod' });
     assert.deepEqual(await framed(page, [P, FIGURE_BOX]), [P, FIGURE_BOX], 'the command modifier does not add the figure');
     // a marquee from the margin to the list touches the paragraph and the list, not the heading
-    await click(page, await margin(page));
+    await clickText(page, await margin(page));
     assert.equal((await shownFrames(page)).length, 0, 'a click on an empty point keeps the selection');
     const ul = await boxOf(page, '.reveal section.present > ul');
     const from = await margin(page);
@@ -141,10 +141,10 @@ for (const platform of ['mac', 'other']) {
     const page = await editorPage(browser, { query });
     await figureSlide(page);
     const all = ['h2', 'p', 'ul', '.figure-box'].map((s) => `.reveal section.present > ${s}`);
-    await click(page, await margin(page));
+    await clickText(page, await margin(page));
     await press(page, 'Mod+A');
     assert.deepEqual(await framed(page, all), all, `${platform === 'mac' ? '⌘A' : 'Ctrl+A'} does not select every element`);
-    await click(page, P);
+    await clickText(page, P);
     assert.equal(await caretIn(page, P), true);
     await press(page, 'Escape');
     assert.equal(await caretIn(page, P), false, 'Esc does not leave the text');
@@ -161,7 +161,7 @@ test('Return enters the text of a selected block, Tab walks the elements, and a 
   const page = await editorPage(browser);
   await figureSlide(page);
   const [h2, p, ul] = ['h2', 'p', 'ul'].map((s) => `.reveal section.present > ${s}`);
-  await click(page, await margin(page));
+  await clickText(page, await margin(page));
   await press(page, 'Tab');
   assert.deepEqual(await framed(page, [h2, p, ul]), [h2], 'Tab does not select the first element');
   await press(page, 'Tab');
@@ -170,7 +170,7 @@ test('Return enters the text of a selected block, Tab walks the elements, and a 
   assert.deepEqual(await framed(page, [h2, p, ul]), [h2], 'Shift+Tab does not select the element before');
   await press(page, 'Tab');
   const autosave = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-header button')].find((b) => b.textContent === 'Autosave').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, autosave);
+  await clickText(page, autosave);
   assert.deepEqual(await framed(page, [h2, p, ul]), [p], 'a click on Autosave clears the selection');
   await press(page, 'Enter');
   assert.equal(await caretIn(page, p), true, 'Return does not put the caret into the paragraph');
@@ -211,8 +211,8 @@ for (const size of [{ width: 1920, height: 1080 }, { width: 1280, height: 800 }]
     t.after(() => browser.close());
     const page = await editorPage(browser, { page: size });
     await figureSlide(page);
-    await click(page, IMG);
-    await click(page, IMG);
+    await clickText(page, IMG);
+    await clickText(page, IMG);
     const img = await boxOf(page, '.reveal section.present .figure-box > img');
     const before = await page.evaluate(`(() => { const img = [...document.querySelectorAll(${JSON.stringify(IMG)})].find((el) => el.getBoundingClientRect().width); return img.naturalWidth / img.naturalHeight; })()`);
     await drag(page, '.beeson-grip[data-handle="se"]', { dx: -80, dy: -10, modifiers: 'Meta', hold: true });
@@ -235,7 +235,7 @@ for (const size of [{ width: 1920, height: 1080 }, { width: 1280, height: 800 }]
     // the closing slide, whose QR code theme/beeson.css places in the lower right corner
     await page.evaluate('Reveal.slide(15)');
     await sleep(200);
-    await click(page, QR);
+    await clickText(page, QR);
     const before = await boxOf(page, QR);
     await drag(page, '.beeson-grip[data-handle="w"]', { dx: -40, modifiers: 'Meta' });
     const [style, box] = [await page.evaluate(`document.querySelector(${JSON.stringify(QR)}).getAttribute('style')`), await boxOf(page, QR)];
@@ -279,7 +279,7 @@ test('the width of a resized QR code is written into the file', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await layouts(browser);
-  await click(page, QR);
+  await clickText(page, QR);
   await drag(page, '.beeson-grip[data-handle="nw"]', { dx: -40, dy: -40, modifiers: 'Meta' });
   const width = await page.evaluate(`document.querySelector(${JSON.stringify(QR)}).style.width`);
   assert.ok((await page.evaluate('window.BeesonEditor.render()')).includes(`width: ${width}`));

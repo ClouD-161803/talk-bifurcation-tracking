@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 // the index of the figures slide in index.html
@@ -95,7 +95,7 @@ async function checkEdit(page, name, before = page.source) {
 for (const platform of PLATFORMS) {
   test(`the fields and the frame of a figure give its drawn picture with its caption (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     const g = await geometry(page);
     const top = Math.min(g.picture.top, g.caption.top), bottom = Math.max(g.picture.top + g.picture.height, g.caption.top + g.caption.height);
     for (const [id, v] of [['x', g.picture.left], ['y', top], ['width', g.picture.width], ['height', bottom - top]]) {
@@ -107,7 +107,7 @@ for (const platform of PLATFORMS) {
 
   test(`Align Top and a typed Y of 0 put the visible top of a figure on the edge of the slide (${platform})`, async (t) => {
     let page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     await exec(page, 'arrange.align.top');
     await frames(page);
     let g = await geometry(page);
@@ -115,7 +115,7 @@ for (const platform of PLATFORMS) {
     assert.ok(near(await fieldValue(page, 'y'), 0, 1));
     await checkEdit(page, `r13-2-align-top-${platform}.html`);
     page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     await typeField(page, 'y', 0);
     g = await geometry(page);
     assert.ok(near(g.picture.top, 0, 1), `a typed Y of 0 puts the picture at ${g.picture.top}`);
@@ -125,7 +125,7 @@ for (const platform of PLATFORMS) {
 
   test(`a typed Height of a figure keeps the aspect of its picture and its caption on the slide (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     const y = await fieldValue(page, 'y');
     const h = Math.round(1080 - y - 20);
     await typeField(page, 'height', h);
@@ -143,7 +143,7 @@ for (const platform of PLATFORMS) {
 
   test(`a drag of a figure snaps the visible top of its picture to the edge of the slide (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     const g0 = await geometry(page);
     const k = await page.evaluate(`document.querySelector('.reveal .slides').getBoundingClientRect().width / 1920`);
     const at = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector('figure img.for-light').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -175,7 +175,7 @@ for (const scale of [1, 1.25]) {
   for (const handle of ['nw', 'ne', 'sw', 'se']) {
     test(`a corner resize of a figure by its ${handle} grip keeps the corner across from it at a pixel ratio of ${scale}`, async (t) => {
       const page = await load(t, 'other', FIGURES, { width: 1600, height: 1000, scale });
-      await click(page, 'section.present figure img.for-light');
+      await clickText(page, 'section.present figure img.for-light');
       const f0 = outer(await geometry(page));
       const k = await page.evaluate(`document.querySelector('.reveal .slides').getBoundingClientRect().width / 1920`);
       const at = await grip(page, handle);
@@ -231,7 +231,7 @@ for (const platform of PLATFORMS) {
     test(`the readout of a drag stays inside the visible canvas at its edges${zoom ? ' while zoomed in' : ''} (${platform})`, async (t) => {
       const page = await load(t, platform, FIGURES);
       await exec(page, 'view.rulers');
-      await click(page, 'section.present figure img.for-light');
+      await clickText(page, 'section.present figure img.for-light');
       // zoomed in about the figure, whose drag then reaches past the canvas
       if (zoom) await exec(page, 'zoom.selection');
       await frames(page);
@@ -259,7 +259,7 @@ const state = (page, id) => page.evaluate(`window.BeesonEditor.state(${js(id)})`
 const seen = (page, selector) => page.evaluate(`(() => { const e = document.querySelector(${js(selector)}); return !!e && e.getClientRects().length > 0 && e.getBoundingClientRect().width > 0; })()`);
 // the item label of the menu bar named bar chosen by trusted clicks
 async function choose(page, bar, label) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)}).getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`));
@@ -271,7 +271,7 @@ async function choose(page, bar, label) {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
   assert.ok(at, `the menu ${bar} does not have an item ${label}`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 
@@ -355,7 +355,7 @@ for (const platform of PLATFORMS) {
   test(`an undo and a redo of Numbers on the items of a list select the items again (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
     const ITEM = '.reveal section.present ul > li';
-    await click(page, await pointOf(page, ITEM, 'toggle', 2));
+    await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
     await press(page, 'Mod+A');
     const all = (await selected(page)).text;
     assert.ok(all.length > 20, `Mod+A selects the list: ${all}`);
@@ -386,7 +386,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, FIGURES);
     // a click on the pasteboard leaves nothing selected on the canvas
     const c = await canvasBox(page);
-    await click(page, { x: c.left + 8, y: c.bottom - 8 });
+    await clickText(page, { x: c.left + 8, y: c.bottom - 8 });
     assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().length'), 0);
     const keys = await menuKeys(page, 'Slide');
     const count = () => page.evaluate(`document.querySelectorAll('.reveal .slides > section').length`);
@@ -399,7 +399,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await count(), before);
     // the key of Edit > Duplicate, which lists it, duplicates the slide
     assert.ok((await menuKeys(page, 'Edit')).Duplicate);
-    await click(page, { x: c.left + 8, y: c.bottom - 8 });
+    await clickText(page, { x: c.left + 8, y: c.bottom - 8 });
     await press(page, 'Mod+D');
     await frames(page);
     assert.equal(await count(), before + 1);
@@ -416,7 +416,7 @@ const sizeFields = async (page) => ({ w: await fieldValue(page, 'width'), h: awa
 for (const platform of PLATFORMS) {
   test(`a turned figure selected as one object keeps W and H of its picture with its caption at every angle (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     const rest = await sizeFields(page);
     assert.deepEqual(rest, { w: 600, h: 875, angle: 0 });
     for (const deg of [30, 60, 90, 0]) {
@@ -439,7 +439,7 @@ for (const platform of PLATFORMS) {
 
   test(`a typed Height of a turned figure comes back as typed and gives the same size at Angle 0 (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     await typeField(page, 'angle', 29);
     const turned = await render(page);
     // the Height that the figure has changes nothing
@@ -459,7 +459,7 @@ for (const platform of PLATFORMS) {
 
   test(`an undo of a typed Height gives back Width and Height in their fields (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, 'section.present figure img.for-light');
+    await clickText(page, 'section.present figure img.for-light');
     await typeField(page, 'height', 975);
     assert.notEqual(await fieldValue(page, 'width'), 600);
     await undo(page);

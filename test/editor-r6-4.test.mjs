@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, press, saveAndReopen, selectFigure, selectPicture } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure, selectPicture } from './helpers/editor.mjs';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const PLATFORMS = ['mac', 'other'];
@@ -318,7 +318,7 @@ for (const platform of PLATFORMS) {
   test(`${platform}: a first click on a grouped text block selects its group, a second the block, and a third puts the caret in it`, async () => {
     const page = await editor(platform);
     // a click on a text block that is not grouped puts the caret in it
-    await click(page, await leadAt(page));
+    await clickText(page, await leadAt(page));
     await frames(page);
     assert.ok(await caretInLead(page), 'a click on a text block that is not grouped does not put the caret in it');
     await press(page, 'Escape');
@@ -331,15 +331,15 @@ for (const platform of PLATFORMS) {
     assert.deepEqual((await selected(page)).sort(), group, 'the paragraph and the figure are not grouped');
     await exec(page, 'selection.clear');
     await frames(page);
-    await click(page, await leadAt(page));
+    await clickText(page, await leadAt(page));
     await frames(page);
     assert.ok(!(await caretInLead(page)), 'a first click on a grouped text block puts the caret in it');
     assert.deepEqual((await selected(page)).sort(), group, 'a first click on a grouped text block does not select its group');
-    await click(page, await leadAt(page));
+    await clickText(page, await leadAt(page));
     await frames(page);
     assert.ok(!(await caretInLead(page)), 'a second click on a grouped text block puts the caret in it');
     assert.deepEqual(await selected(page), ['p'], 'a second click on a grouped text block does not select the block alone');
-    await click(page, await leadAt(page));
+    await clickText(page, await leadAt(page));
     await frames(page);
     assert.ok(await caretInLead(page), 'a third click on a grouped text block does not put the caret in it');
     // a drag that starts on a grouped text block moves the group

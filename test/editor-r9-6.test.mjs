@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -117,7 +117,7 @@ for (const platform of PLATFORMS) {
     ]) {
       test(`Mod+${key} with the caret ${where} a word keeps the caret where it was (${platform})`, async (t) => {
         const page = await load(t, platform);
-        await click(page, await pointOf(page, PARA, 'figure', 2));
+        await clickText(page, await pointOf(page, PARA, 'figure', 2));
         await caretAt(page, PARA, 'figure', k);
         const before = await selection(page);
         await press(page, `Mod+${key}`);
@@ -154,7 +154,7 @@ for (const platform of PLATFORMS) {
         await press(page, 'Escape');
       }],
       ['in a text between two words', async () => {
-        await click(page, await pointOf(page, PARA, 'figure', 2));
+        await clickText(page, await pointOf(page, PARA, 'figure', 2));
         await caretAt(page, PARA, 'figure', 6);
       }],
       ['in the empty field of the Find panel', async () => {
@@ -198,7 +198,7 @@ const written = (text, head) => text.split('\n').find((l) => l.includes(`>${head
 for (const platform of PLATFORMS) {
   test(`the arrows move the caret over the border of two items and of two paragraphs (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'Dark and light', 2));
+    await clickText(page, await pointOf(page, ITEM, 'Dark and light', 2));
     await caretAtEnd(page, 0);
     await press(page, 'ArrowRight');
     assert.match(await hostText(page), /^You might/, 'ArrowRight at the end of an item stays in it');
@@ -222,7 +222,7 @@ for (const platform of PLATFORMS) {
     // two paragraphs of one text column on slide 9
     await page.evaluate('Reveal.slide(8)');
     await frames(page);
-    await click(page, await pointOf(page, '.reveal section.present > p', 'gravitational', 2));
+    await clickText(page, await pointOf(page, '.reveal section.present > p', 'gravitational', 2));
     await caretAt(page, '.reveal section.present > p', 'blue,', 5);
     await press(page, 'ArrowRight');
     assert.match(await hostText(page), /^and the centrifugal/, 'ArrowRight at the end of a paragraph stays in it');
@@ -230,12 +230,13 @@ for (const platform of PLATFORMS) {
     assert.match(await hostText(page), /^The gravitational/, 'ArrowUp on the first line of a paragraph stays in it');
   });
 
-  // a drag from "toggle" in item 2 to the end of item 3, with the left button held on every move.
-  // with quick, the moves and the release are sent at once, as in a quick drag
+  // a drag from "toggle" in item 2 to the end of item 3, with the left button held on every move,
+  // after the caret is put in the list. With quick, the moves and the release are sent at once, as in a quick drag
   const dragOver = async (page, quick = false) => {
     const from = await pointOf(page, ITEM, 'toggle', 0);
     const to = await pointOf(page, ITEM, 'mode.', 4);
     const [x0, x1] = [from.x - 3, to.x + 8];
+    await clickText(page, { x: x0, y: from.y });
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: from.y });
     await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: from.y, button: 'left', buttons: 1, clickCount: 1 });
     const sent = [];
@@ -288,7 +289,7 @@ for (const platform of PLATFORMS) {
 
   test(`Mod+A in an item selects the text of the whole list, and Bold acts on every item (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'toggle', 2));
+    await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
     await press(page, 'Mod+A');
     await press(page, 'Mod+B');
     const text = await render(page);
@@ -300,7 +301,7 @@ for (const platform of PLATFORMS) {
 
   test(`Shift with the arrows selects over the border of two items, and Backspace deletes the selection (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'toggle', 2));
+    await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
     await caretAt(page, ITEM, 'slide.', 5);
     for (let i = 0; i < 5; i++) await press(page, 'Shift+ArrowRight');
     await press(page, 'Backspace');
@@ -312,7 +313,7 @@ for (const platform of PLATFORMS) {
 
   test(`a typed character replaces a selection over two items (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'toggle', 2));
+    await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
     await caretAt(page, ITEM, 'slide.', 5);
     for (let i = 0; i < 5; i++) await press(page, 'Shift+ArrowRight');
     await type(page, 'Z');
@@ -344,7 +345,7 @@ for (const platform of PLATFORMS) {
   ]) {
     test(`an undo and a redo of ${name} on a word select the word again (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, await pointOf(page, PARA, 'figure', 2));
+      await clickText(page, await pointOf(page, PARA, 'figure', 2));
       await selectText(page, PARA, 'figure');
       await run(page);
       assert.equal((await selection(page)).text, 'figure');
@@ -373,7 +374,7 @@ for (const platform of PLATFORMS) {
   for (const [name, key, code, keyCode] of [['Bigger', '>', 'Period', 190], ['Smaller', '<', 'Comma', 188]]) {
     test(`${name} on a selected word keeps the word selected (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, await pointOf(page, PARA, 'figure', 2));
+      await clickText(page, await pointOf(page, PARA, 'figure', 2));
       await selectText(page, PARA, 'figure');
       await modShift(page, platform, key, code, keyCode);
       await frames(page);
@@ -402,12 +403,12 @@ for (const platform of PLATFORMS) {
       await press(page, 'Ctrl+H');
       await page.waitFor(`document.activeElement?.closest('.beeson-find') !== null`);
       await type(page, 'frameless');
-      await click(page, await page.evaluate(`(() => {
+      await clickText(page, await page.evaluate(`(() => {
         const r = document.querySelectorAll('.beeson-find input')[1].getBoundingClientRect();
         return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
       })()`));
       await type(page, 'borderless');
-      await click(page, await findButton(page, label));
+      await clickText(page, await findButton(page, label));
       await page.waitFor(`window.BeesonEditor.render().includes('borderless')`);
       await frames(page);
       const active = await page.evaluate(`(() => { const a = document.activeElement; return a.closest('.beeson-find') ? 'panel' : a.outerHTML.slice(0, 60); })()`);
@@ -441,7 +442,7 @@ const linkPopover = (page) => page.evaluate(`(() => {
 for (const platform of PLATFORMS) {
   test(`a click on a link places the caret and opens its popover with its address (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, PARA, 'figure', 2));
+    await clickText(page, await pointOf(page, PARA, 'figure', 2));
     await selectText(page, PARA, 'template');
     await press(page, 'Mod+K');
     await page.waitFor(`document.querySelector('dialog.beeson-edit-link[open]') !== null`);
@@ -449,9 +450,9 @@ for (const platform of PLATFORMS) {
     await press(page, 'Enter');
     await page.waitFor(`window.BeesonEditor.render().includes('<a href="https://example.com">template</a>')`);
     page.source = await render(page);
-    await click(page, await pointOf(page, PARA, 'Export', 2));
+    await clickText(page, await pointOf(page, PARA, 'Export', 2));
     assert.equal((await linkPopover(page)).open, false);
-    await click(page, await pointOf(page, PARA, 'template', 3));
+    await clickText(page, await pointOf(page, PARA, 'template', 3));
     await frames(page);
     let p = await linkPopover(page);
     assert.deepEqual(p, { open: true, href: 'https://example.com', buttons: ['Remove', 'Open Link', 'Done'], focus: 'p', inLink: true });
@@ -460,7 +461,7 @@ for (const platform of PLATFORMS) {
     p = await linkPopover(page);
     assert.deepEqual([p.open, p.focus, p.inLink], [false, 'p', true]);
     // a key typed after a click goes into the link, and the popover is closed
-    await click(page, await pointOf(page, PARA, 'template', 3));
+    await clickText(page, await pointOf(page, PARA, 'template', 3));
     await frames(page);
     assert.equal((await linkPopover(page)).open, true);
     await type(page, 'X');
@@ -475,7 +476,7 @@ for (const platform of PLATFORMS) {
 for (const platform of PLATFORMS) {
   test(`Mod+K with the caret at the end of a word links the word (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, PARA, 'figure', 2));
+    await clickText(page, await pointOf(page, PARA, 'figure', 2));
     await caretAt(page, PARA, 'template', 8);
     await press(page, 'Mod+K');
     await page.waitFor(`document.querySelector('dialog.beeson-edit-link[open]') !== null`);
@@ -496,7 +497,7 @@ const PANE_KEYS = {
 for (const platform of PLATFORMS) {
   test(`the format buttons of the Text pane give their keys in their tooltips (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'Dark and light', 2));
+    await clickText(page, await pointOf(page, ITEM, 'Dark and light', 2));
     await frames(page);
     const titles = await page.evaluate(`Object.fromEntries(${js(Object.keys(PANE_KEYS[platform]))}.map((id) => [id, document.querySelector('#beeson-edit-panel-format [data-command="text.' + id + '"]')?.title ?? null]))`);
     assert.deepEqual(titles, PANE_KEYS[platform]);
@@ -513,17 +514,17 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform);
     const steps = [
       ['Text Color', async () => {
-        await click(page, await pointOf(page, PARA, 'figure', 2));
+        await clickText(page, await pointOf(page, PARA, 'figure', 2));
         await selectText(page, PARA, 'figure');
         await exec(page, 'text.tone.accent');
       }],
       ['Paragraph Style', () => exec(page, 'text.style.small')],
       ['List Style', async () => {
-        await click(page, await pointOf(page, ITEM, 'Dark and light', 2));
+        await clickText(page, await pointOf(page, ITEM, 'Dark and light', 2));
         await exec(page, 'text.list.ol');
       }],
       ['Figure Mode', async () => {
-        await click(page, await page.evaluate(`(() => {
+        await clickText(page, await page.evaluate(`(() => {
           const r = [...document.querySelectorAll('.reveal section.present img')].find((i) => i.getClientRects().length).getBoundingClientRect();
           return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
         })()`));
@@ -576,7 +577,7 @@ for (const platform of PLATFORMS) {
     test(`${name} on ${shape} colored at a step does not write the runtime classes of the span (${platform})`, async (t) => {
       const page = await load(t, platform, 3);
       assert.equal(await page.evaluate(`${find(COLORED, 'Coriolis')}.querySelector('span').className`), 'coriolis hl-target hl-accent');
-      await click(page, await pointOf(page, COLORED, 'Coriolis', 2));
+      await clickText(page, await pointOf(page, COLORED, 'Coriolis', 2));
       await pick(page);
       await run(page);
       await frames(page);
