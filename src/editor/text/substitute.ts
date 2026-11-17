@@ -10,6 +10,7 @@
 // an inline formula at its closing sign, and $$tex$$ or \[tex\] typed as a whole paragraph a display
 
 import type { App } from '../app.ts';
+import { refreshHeads } from '../history.ts';
 import { contentWithTex, previewTex } from '../math.ts';
 import { typesetTyped } from './typing.ts';
 import { store, stored } from '../ui/dom.ts';
@@ -207,7 +208,13 @@ export function install(app: App): void {
     // the substitution is an entry of its own after the typing, which an undo takes back alone
     const record = (label: string, was: string) => {
       const now = contentWithTex(host);
-      app.history.push({ label, undo: () => app.typing.restoreHost(host, was), redo: () => app.typing.restoreHost(host, now) });
+      // the heading of a section slide is written by the theme into the outlines and running heads
+      const put = async (content: string) => {
+        await app.typing.restoreHost(host, content);
+        refreshHeads(host);
+      };
+      app.history.push({ label, undo: () => put(was), redo: () => put(now), touches: [host] });
+      refreshHeads(host);
       app.history.track(host);
       app.markDirty();
       app.invalidate('content');

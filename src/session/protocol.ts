@@ -1,0 +1,171 @@
+// the requests and answers between a browser of a session and the edit command, under
+// /<key>/.session/. every body is JSON, apart from the bytes of a media upload. a version is
+// written <epoch>.<n>, where the epoch is drawn at each start of the edit command and n counts the
+// operations applied since this start. hello gives a page a client id, which is public, and a
+// token, which is secret. every later request of the page carries the token, from which the client
+// id is found, and the client id cannot be used in its place
+
+export type Version = string;
+
+// the characters start to end of a text replaced by text, with offsets in UTF-16 code units
+export type Patch = { start: number; end: number; text: string };
+
+// the secret of a page, 22 characters of base64url
+export type Token = string;
+
+// a page of a session. client is the public id of the page. person is the id that the browser
+// keeps in localStorage, hence one person on two devices has two pages
+export type Person = { client: string; person: string; name: string; color: number; host: boolean };
+
+// a person who joined the session at some time, as kept in .session/people.json
+export type KnownPerson = { person: string; name: string; color: number };
+
+// state is opaque to the edit command, e.g. the slide, the selection, and the caret of a person
+export type Presence = { client: string; name: string; color: number; state: unknown };
+
+// an operation as the authority applied it, broadcast to every browser, the sender included. v is
+// the version after the operation, patches are of the text at the version before it, and sum is
+// the checksum of the text after it
+export type AppliedOp = {
+  v: Version;
+  client: string;
+  seq: number;
+  // the person id, or file for a change of index.html from outside
+  author: string;
+  time: number;
+  patches: Patch[];
+  sum: string;
+};
+
+// POST hello. v is the version of the text that the editor read, when it read one. the person id
+// carries the identity of a person, and one that is missing or malformed is replaced by a new one.
+// claim takes over the person who holds the name, i.e. one person on a second device. a page passes
+// the token of its earlier hello only when the same page reconnects with its Replica in memory,
+// and it keeps its client id. a reloaded page is a new client, and it says hello without a token.
+// was is the client id under which the page sent its operation in flight, passed with the token.
+// retire names the tokens of closed pages whose copies the page took over, at most 16 of which the
+// edit command forgets, so that an operation of such a page that arrives later is not applied twice
+export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string; retire?: Token[] };
+// the answer of hello and of name when another person holds the name, and nothing is changed
+export type Taken = { taken: { name: string } };
+// the operations after the v of the request when they are in the log, and the whole text otherwise.
+// applied is the seq of the last operation of the client id was that the text holds, left out when
+// this client id is not known, e.g. after its operations left the table of the edit command. tex is
+// the count of the changes of tex.js on disk, from the time of the start of the edit command in ms
+export type HelloAnswer = {
+  client: string;
+  token: Token;
+  person: string;
+  name: string;
+  color: number;
+  host: boolean;
+  v: Version;
+  people: Person[];
+  known: KnownPerson[];
+  tex: number;
+  applied?: number;
+} & ({ ops: AppliedOp[]; text?: undefined } | { text: string; ops?: undefined });
+
+// POST name: a new name of the person of the page of token
+export type NameRequest = { token: Token; name: string };
+export type NameAnswer = { name: string } | Taken;
+
+// an operation of a Replica. base is the version of the text that the patches are of
+export type OpRequest = { client: string; seq: number; base: Version; patches: Patch[] };
+// POST op: the OpRequest and the token of the page. a client in the body is replaced by the
+// client id of the token
+export type OpPost = OpRequest & { token: Token };
+// stale: base is of another epoch or older than the log. conflict: a patch conflicts with an
+// operation applied after base. invalid: the patches are out of bounds, unsorted, overlapping, or
+// cut a surrogate pair. unknown: the token is not of a page that said hello
+export type RefusalReason = 'stale' | 'conflict' | 'invalid' | 'unknown';
+export type OpAnswer = { ok: true; v: Version } | { ok: false; reason: RefusalReason; v: Version };
+
+// the end of a session for a page: the edit command stopped, or the host ended the sharing. by is
+// the name of the host, or null when it is not known
+export type Ended = { by: string | null };
+
+// a write of index.html that failed, with the number of operations that are not in the file, or a
+// write of the file tex.js
+export type WriteError = { message: string; unwritten: number; file?: 'tex.js' };
+
+// GET events?token=&since=. ops is null when since is of another epoch or older than the log,
+// and the browser then says hello again. known is sent only when it changed since the last answer
+// to this page, and so is writeError, which is null once a write succeeded after a failed one.
+// after ended, every poll of the page is answered with ended until it says hello. tex is as in
+// HelloAnswer, and a page draws the deck again with tex.js when it changed
+export type EventsAnswer = {
+  v: Version;
+  ops: AppliedOp[] | null;
+  presence: Presence[];
+  people: Person[];
+  tex: number;
+  known?: KnownPerson[];
+  writeError?: WriteError | null;
+  ended?: Ended;
+};
+
+export type PresenceRequest = { token: Token; state: unknown };
+export type ByeRequest = { token: Token };
+export type EmptyAnswer = Record<string, never>;
+
+// PUT media/<name>. path is relative to the talk folder, e.g. media/plot-2.png
+export type MediaAnswer = { path: string };
+
+// GET, POST, and DELETE share, only for a browser that reaches the edit command directly
+export type ShareRequest = { relay?: string; secret?: string };
+export type ShareAnswer = { link: string | null; error?: string };
+
+export type ErrorAnswer = { error: string };
+
+// the tones of theme/beeson.css that the color index of a person stands for
+export const COLORS = ['--data-2', '--data-3', '--data-5', '--data-7'] as const;
+
+// characters that do not show, i.e. the default ignorable code points, the controls of the
+// direction of text, and the other format characters, e.g. U+0600 or U+FFF9
+const HIDDEN = /^[\p{Default_Ignorable_Code_Point}\p{Bidi_Control}\p{Cf}]$/u;
+// hidden characters that an emoji or a word needs: the variation selectors, kept after a character
+// that shows, and the zero-width joiner and non-joiner, kept between two such characters. the tags
+// are format characters, hence a flag of a region loses them
+const SELECTOR = /^[\ufe00-\ufe0f\u{e0100}-\u{e01ef}]$/u;
+const JOINER = /^[\u200c\u200d]$/u;
+const shows = (c: string | undefined) => c !== undefined && !HIDDEN.test(c) && !/\s/.test(c);
+
+// the characters of raw that show, with the selectors and joiners that belong to them
+function shown(raw: string): string {
+  const chars = Array.from(raw);
+  const kept: string[] = [];
+  chars.forEach((c, i) => {
+    const before = kept[kept.length - 1];
+    if (!HIDDEN.test(c)) kept.push(c);
+    else if (SELECTOR.test(c) && (shows(before) || SELECTOR.test(before ?? ''))) kept.push(c);
+    else if (JOINER.test(c) && (shows(before) || SELECTOR.test(before ?? '')) && shows(chars[i + 1])) kept.push(c);
+  });
+  return kept.join('');
+}
+
+// the error of a hello refused while the session holds as many pages as it takes
+export const FULL = 'the session is full';
+
+// a name as it is kept: without characters that do not show, trimmed, inner whitespace collapsed,
+// and cut to NAME_MAX characters. a name that is empty after this is refused
+export const NAME_MAX = 40;
+export const cleanPersonName = (raw: unknown): string =>
+  typeof raw === 'string' ? shown(Array.from(shown(raw).replace(/\s+/g, ' ').trim()).slice(0, NAME_MAX).join('')).trim() : '';
+// two names are one when their keys are equal, hence names that look alike, e.g. in fullwidth forms
+// or with and without a joiner, are one
+export const nameKey = (name: string): string =>
+  cleanPersonName(name)
+    .normalize('NFKC')
+    .replace(/[\p{Cf}\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/gu, '')
+    .toLowerCase();
+export const isPersonId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(id);
+export const isToken = (token: unknown): token is Token => typeof token === 'string' && /^[A-Za-z0-9_-]{22,64}$/.test(token);
+
+export const formatVersion = (epoch: string, n: number): Version => `${epoch}.${n}`;
+
+export function parseVersion(v: unknown): { epoch: string; n: number } | null {
+  if (typeof v !== 'string') return null;
+  const m = /^([A-Za-z0-9_-]{1,32})\.(0|[1-9][0-9]{0,14})$/.exec(v);
+  return m ? { epoch: m[1], n: Number(m[2]) } : null;
+}

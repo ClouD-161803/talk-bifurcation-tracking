@@ -281,3 +281,50 @@ test('the zoom of the status bar scales the slide past Fit, the canvas scrolls, 
   assert.deepEqual(await state(), fit);
   assert.deepEqual(page.errors, []);
 });
+
+// reveal.js gave the focus to the body whenever a hidden page was shown again, hence the keys of a
+// person who came back to the tab went to the slide behind a dialog, or deleted the selected object
+test('a return to the tab of the editor keeps the focus in a dialog and in a field of the Format pane', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await editorPage(browser);
+  const other = await browser.newPage({ width: 800, height: 600 });
+  await page.send('Page.bringToFront');
+  // a person switches to another tab and back
+  const away = async () => {
+    await other.send('Page.bringToFront');
+    await page.waitFor('document.hidden');
+    await page.send('Page.bringToFront');
+    await page.waitFor('!document.hidden');
+    await frames(page);
+  };
+  const focused = () => page.evaluate(`document.activeElement === document.body ? 'the body' : document.activeElement.getAttribute('name') ?? document.activeElement.textContent`);
+
+  await page.evaluate(`window.BeesonEditorShell.ask({ title: 'Delete the slide?', buttons: [{ label: 'Delete', value: 'delete' }, { label: 'Cancel', value: 'cancel' }] }, 'cancel'); 0`);
+  assert.equal(await focused(), 'Cancel');
+  await away();
+  assert.equal(await focused(), 'Cancel');
+  await press(page, 'Tab');
+  assert.equal(await focused(), 'Delete');
+  await press(page, 'Escape');
+  await page.waitFor(`!document.querySelector('dialog.beeson-edit-dialog[open]')`);
+
+  const at = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].findIndex((s) => s.querySelector('h2')?.textContent === 'Code boxes, you guessed it...')`);
+  await page.evaluate(`Reveal.slide(${at})`);
+  await page.waitFor(`Reveal.getIndices().h === ${at}`);
+  await frames(page);
+  await clickText(page, '.reveal section.present > pre');
+  await press(page, 'Escape');
+  await page.waitFor('window.BeesonEditor.selection().length === 1');
+  const FIELD = `[...document.querySelectorAll('.beeson-edit-inspector [name="line-steps"]')].find((el) => el.getClientRects().length && !el.disabled)`;
+  await page.waitFor(`!!${FIELD}`);
+  const { x, y, width, height } = await page.evaluate(`(${FIELD}).getBoundingClientRect().toJSON()`);
+  await click(page, { x: x + width / 2, y: y + height / 2 });
+  await page.waitFor(`document.activeElement === ${FIELD}`);
+  await away();
+  assert.equal(await focused(), 'line-steps');
+  await press(page, 'Backspace');
+  await frames(page);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present > pre').length`), 1, 'Backspace in the field deleted the selected object');
+  assert.deepEqual(page.errors, []);
+});

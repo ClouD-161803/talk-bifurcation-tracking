@@ -72,6 +72,8 @@ import { install as installGuides } from './canvas/guides.ts';
 import { install as installGrid } from './canvas/grid.ts';
 import { install as installMaskCommands } from './commands/mask.ts';
 import { install as installFlipCommands } from './commands/flip.ts';
+import { install as installSession } from './session/session.ts';
+import { load as loadSession } from './session/load.ts';
 import { install as installObjects } from './navigator/objects.ts';
 import { Doc } from './model/doc.ts';
 
@@ -189,6 +191,11 @@ installGrid(app);
 installMaskCommands(app);
 installFlipCommands(app);
 installObjects(app);
+const session = installSession(app);
+// a page opened with edit and session is in the session from its start, before a draft is offered
+// or the file is followed
+if (/[?&]session(=|&|$)/.test(location.search) && /[?&]edit(=|&|$)/.test(location.search)) session.begin();
+const startSession = loadSession(app, session);
 
 const revealReady = (): Promise<void> =>
   new Promise((done) => {
@@ -227,7 +234,11 @@ async function init(): Promise<void> {
     app.relayout();
   }
   await mathReady();
-  if (!(await fetchSource(app))) {
+  // in a session, the client fetches the text of the version of the page. a page that could not
+  // join, e.g. on a static server, is edited as without a session
+  const joined = await startSession();
+  if (!joined) session.end();
+  if (!joined && !(await fetchSource(app))) {
     app.state = 'waiting';
     app.report();
   }
@@ -289,6 +300,9 @@ const BeesonEditor = {
   // the selected elements, a line among them
   selection: () => app.selection.elements(),
   doc,
+  // the port of the synchronous editor, see session/session.ts, and its apply of a text
+  session,
+  apply: (text: string) => session.apply(text),
   // the delay of a step of Preview in ms, which a test shortens
   preview: previewTiming,
   version: __VERSION__,

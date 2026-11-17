@@ -404,6 +404,8 @@ export function install(app: App): void {
   });
   window.addEventListener('keydown', (ev) => {
     if (!(ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey))) return;
+    // a control of the title bar, e.g. an avatar of a session, opens its own menu
+    if (document.activeElement?.closest('.beeson-edit-titlebar')) return;
     const sel = app.selection.only();
     const at = sel ?? (document.activeElement instanceof Element && document.activeElement !== document.body ? document.activeElement : app.current());
     const place = placeOf(at);

@@ -44,6 +44,9 @@ export type Command = {
   undo?: string;
   // why the command is disabled, for the tooltip of its control, e.g. Bigger on a heading
   why?(app: App): string | null;
+  // a gray note after the label of its menu item and in the tooltip of its button, e.g. why Open is
+  // dimmed in a session
+  note?(app: App): string | null;
 };
 
 export type CommandState = { id: string; label: string; enabled: boolean; checked: boolean | null; why?: string };
@@ -59,8 +62,9 @@ export const OUTSIDE_DIALOGS: Region[] = ['canvas', 'text', 'field', 'navigator'
 export const EVERYWHERE: Region[] = [...OUTSIDE_DIALOGS, 'dialog'];
 
 // the keys that are kept from the browser wherever the editor has the focus, also where their
-// command is dimmed, since the browser would open a dialog of its own, e.g. its bookmark for Mod+D
-const HELD = ['Mod+D'];
+// command is dimmed, since the browser would open a dialog of its own, e.g. its bookmark for Mod+D,
+// or its Open for Mod+O, which is dimmed in a session
+const HELD = ['Mod+D', 'Mod+O'];
 
 // the keys that the menus list for a command whose keys reach it as clipboard events, since the
 // browser takes them in a text
@@ -138,6 +142,15 @@ export class Commands {
     this.vetoes.push(check);
   }
 
+  // the checks that refuse a command at its run and tell the person why, e.g. presence.ts of the
+  // client on a text element that another person holds. the command stays enabled, so that its
+  // keys and its menu item reach the check
+  private readonly refusals: ((app: App, c: Command, arg?: unknown) => boolean)[] = [];
+
+  refuse(check: (app: App, c: Command, arg?: unknown) => boolean): void {
+    this.refusals.push(check);
+  }
+
   // whether the command applies to the selection by its own enabled, i.e. before the vetoes, as a
   // command of a locked element does, which its context menu shows dimmed
   applies(id: string): boolean {
@@ -164,7 +177,7 @@ export class Commands {
   async run(id: string, arg?: unknown): Promise<void> {
     const c = this.byId.get(id);
     if (!c) throw new Error(`there is no command ${id}`);
-    if (!this.enabled(id)) return;
+    if (!this.enabled(id) || this.refusals.some((r) => r(this.app, c, arg))) return;
     if (c.undoable) await this.app.history.transact(c.undo ?? this.label(c.runsAs?.(this.app) ?? id), () => c.run(this.app, arg));
     else await c.run(this.app, arg);
   }

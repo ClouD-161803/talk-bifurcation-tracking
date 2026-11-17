@@ -135,7 +135,15 @@ export function record(app: App, label: string, changes: { el: Element; from: Pl
   };
   // the attached ends of lines follow the moved elements in the same entry
   const attachment = afterMove(app, moved.map((c) => c.el));
-  app.history.push({ label, undo: () => (attachment.undo(), apply('from')), redo: () => (apply('to'), attachment.redo()) });
+  const touches = moved.flatMap((c) => [c.el, twinOf(app, c.el)].filter((el): el is Element => !!el));
+  app.history.push({
+    label,
+    undo: () => (attachment.undo(), apply('from')),
+    redo: () => (apply('to'), attachment.redo()),
+    get touches() {
+      return [...touches, ...attachment.touched];
+    },
+  });
   return moved;
 }
 

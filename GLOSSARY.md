@@ -26,6 +26,10 @@ The file `references.bib` next to the deck, from which the references of its cit
 
 Avoid "library" and "references file".
 
+## Chip
+
+A small rounded tile with a short text, e.g. the initials of a person on a collapsed name flag, or the tint behind inline code.
+
 ## Citation
 
 The empty `cite` after the cited words of a slide, with the key of a paper of the bibliography in `data-key`, drawn as the number of the paper on its slide.
@@ -46,6 +50,12 @@ A window of the editor that is shown over the deck to ask a question or to give 
 
 Avoid "card". The heading over the scrubber of the progress line is not a card either, and its class is `scrub-heading`.
 
+## Edit command
+
+The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` and `tex.js` are written.
+
+Avoid "server" and "daemon".
+
 ## Figure box
 
 The box at the right of a content slide or of a split slide in which a figure is placed.
@@ -62,6 +72,18 @@ Avoid "Magic Move", which matches the elements of two slides.
 
 The step from which every step shown on its slide is held at full opacity, written as `data-focus` on a fragment, e.g. on an empty `span` after the steps of a comparison. It is not the keyboard focus of the editor.
 
+## Follow
+
+To keep your view of the editor on the slide and the selection of another person of a session, from a click on the avatar of this person until you stop.
+
+Avoid "spotlight" and "watch".
+
+## Guest
+
+A person who has joined a session through its link, in any browser.
+
+Avoid "collaborator" and "peer".
+
 ## Hard invariant
 
 A rule of slides that is never traded away for another goal, and that an agent does not break without asking first. The hard invariants are listed at the top of `AGENTS.md`.
@@ -71,6 +93,18 @@ A rule of slides that is never traded away for another goal, and that an agent d
 The title line at the top of a slide, i.e. its `h2`, or the `h1` of a title slide.
 
 Avoid "head" for the heading of a figure slide, since a head is the moving dot at the tip of a trajectory while it is traced, or the title of a theorem as in amsthm.
+
+## Hold
+
+To be the one person of a session who can type in a text element. You hold a text element from the moment your caret is put into it until the caret leaves, your page is silent for 15 s, or someone else enters it after you have not typed for 30 s.
+
+Avoid "lock", which is the command Lock of the Arrange menu. The class `beeson-locked` of an element held by another person is `beeson-held`.
+
+## Host
+
+The person who started a session. The edit command runs on the machine of the host, and `index.html` is written in the talk folder of the host.
+
+Avoid "owner".
 
 ## Iris
 
@@ -96,6 +130,10 @@ An element shown a number of seconds after the click of its step, as an animatio
 
 Avoid "delayed step", which is a step that starts After Previous, written with `data-autoslide` on the step before. The custom property `--late` of an old talk is `--delay`.
 
+## Launcher
+
+A file in a talk folder with which the edit command is started by a double click: `Edit.command` on macOS, `Edit.cmd` on Windows, and `Edit.sh` on Linux.
+
 ## Layer
 
 The place of an element in the stacking order of its slide, i.e. which elements it is drawn in front of and which behind.
@@ -107,6 +145,12 @@ Avoid "layer" for the steps of a slide that the editor shows at once, which do n
 A drawn element of an animated plot, such as a curve or a trace.
 
 Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" or "trademark" for a file in `brand/`, "surface point" for a point of a surface, and "Markdown syntax" for the signs that format a text.
+
+## Name flag
+
+The small box with the name of a person at the upper left corner of the frame of an element that this person selected in a session.
+
+Avoid "cursor", "tag", and "badge".
 
 ## Part
 
@@ -144,11 +188,23 @@ The LaTeX definitions of a talk in `preamble.tex` next to the deck, i.e. its mac
 
 Avoid "macros file", "header", and "style file". The `theme/macros.js` of an old talk is moved into `preamble.tex` by `npm run tex`.
 
+## Presence
+
+What a person in a session sees of the others: who is there, the slide each one is on, and what each one has selected or is typing.
+
+Avoid "awareness" and "cursors".
+
 ## Reference
 
 The short entry of a cited paper in the footnote line of its slide, e.g. Koon et al., Chaos 10 (2000).
 
 Avoid "footnote" and "citation".
+
+## Relay
+
+The program through which a guest reaches the edit command of a host, which can be reached only from the computer of the host. A deck is never kept on it.
+
+Avoid "server" and "hub".
 
 ## Render
 
@@ -156,11 +212,17 @@ The PNG of the page of a PDF figure, written by the editor or by `npm run tex`, 
 
 Avoid "rasterization" and "preview".
 
+## Session
+
+One run of the edit command on a talk folder, from its start to its stop, together with the people who have joined it.
+
+Avoid "room", and avoid "document" for the deck of a session.
+
 ## Sheet
 
 A panel of the editor in which a source is edited with a live preview, i.e. the Preamble sheet and the Bibliography sheet, and the sheet of a formula.
 
-Avoid "window", "dialog", and "pane".
+Avoid "window", "dialog", and "pane". A dialog of a session that is fitted to the visible part of the page is not a sheet either, and its class is `beeson-session-fit`, not `beeson-session-sheet`.
 
 ## Slide Sorter
 
@@ -193,6 +255,12 @@ Avoid "surface mark". The attribute `data-surface-marks` of an old talk is `data
 What a surface shows at a step, set on a fragment of its slide.
 
 Avoid "stage". The attribute `data-surface-stage` of an old talk is `data-surface-state`. The states `flat`, `wells`, `bowl`, and `sum` of the function `effective-potential` in an old talk are `zero`, `gravitational`, `centrifugal`, and `effective`.
+
+## Synchronous editor
+
+The editor while several people edit one deck at the same time, each in a browser, with every change shown to the others as it is made.
+
+Avoid "co-authoring", "multiplayer", and "live share". "Collaboration" is kept for work on a talk through git.
 
 ## Tab
 

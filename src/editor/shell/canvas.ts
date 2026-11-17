@@ -122,7 +122,7 @@ export function install(app: App): void {
   const sheet = injectStyle('canvas-box', '');
   const write = (next: Record<string, string>) => {
     Object.assign(vars, next);
-    const text = `.reveal:not(.beeson-peek), .beeson-grid { ${BOX.filter((p) => vars[p]).map((p) => `${p}: ${vars[p]};`).join(' ')} }\n.beeson-badges, .beeson-guides { ${CELL}: ${vars[CELL] ?? 'none'}; }`;
+    const text = `.reveal:not(.beeson-peek), .beeson-grid, .beeson-presence { ${BOX.filter((p) => vars[p]).map((p) => `${p}: ${vars[p]};`).join(' ')} }\n.beeson-badges, .beeson-guides, .beeson-presence-cell { ${CELL}: ${vars[CELL] ?? 'none'}; }`;
     if (sheet.textContent !== text) sheet.textContent = text;
   };
 

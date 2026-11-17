@@ -6,7 +6,10 @@
 // for while another one runs is queued, and the changes made in a transaction are one entry
 
 // els are the elements that the entry changes, and selects is the step at which a part of a
-// transaction puts a selection back
+// transaction puts a selection back. touches are further elements that its undo or redo changes,
+// which do not take the selection after it, and detaches are the elements that its undo or its redo
+// takes off the page with everything inside them. orders are the elements whose children its undo
+// or redo puts back in an order
 // the caret put at the end of the last text of host, before the white space of the layout
 function caretAtEnd(host: Element): void {
   const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
@@ -17,7 +20,19 @@ function caretAtEnd(host: Element): void {
   else getSelection()?.collapse(host, 0);
 }
 
-export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; selects?: 'undo' | 'redo' };
+export type Entry = { label: string; undo(): Promise<void> | void; redo(): Promise<void> | void; els?: readonly Element[]; touches?: readonly Element[]; detaches?: readonly Element[]; orders?: readonly Element[]; selects?: 'undo' | 'redo' };
+
+type Page = { Beeson?: { refreshChrome?(): void } };
+
+/**
+ * The running heads and the outlines filled again when host is the heading of a section slide, which
+ * the theme writes into them, see src/chrome.ts.
+ */
+export function refreshHeads(host: Element): void {
+  const slide = host.closest('section');
+  if (!slide?.classList.contains('section') || slide.hasAttribute('data-run') || (slide.querySelector('h2') ?? slide.querySelector('h1')) !== host) return;
+  (window as unknown as Page).Beeson?.refreshChrome?.();
+}
 
 // the typing into a text element is coalesced while the keystrokes are closer than this, in ms
 const PAUSE = 1000;
@@ -88,9 +103,33 @@ export class History {
     return this.done.at(-1) ?? null;
   }
 
+  // the entry that a redo would take back
+  get next(): Entry | null {
+    return this.undone.at(-1) ?? null;
+  }
+
+  // the entries of a transaction, or entry itself
+  partsOf(entry: Entry): readonly Entry[] {
+    return this.parts.get(entry) ?? [entry];
+  }
+
   // resolved once every undo and redo asked for has run
   idle(): Promise<void> {
     return this.queue;
+  }
+
+  // whether no transaction is open and no undo, redo, or retract runs
+  get settled(): boolean {
+    return !this.open && !this.busy;
+  }
+
+  // resolved once settled holds. amend() reopens a transaction without a new closed promise, hence
+  // a task is waited for when queue and closed resolve while the history is still open
+  async settle(): Promise<void> {
+    while (!this.settled) {
+      await this.queue.then(() => this.closed);
+      if (!this.settled) await new Promise((done) => setTimeout(done, 16));
+    }
   }
 
   // fn run at the end of each transaction with changes, e.g. to keep a number in step with them
@@ -262,6 +301,7 @@ export class History {
   private async put(host: Element, content: string): Promise<void> {
     await this.restore(host, content);
     this.known.set(host, content);
+    refreshHeads(host);
   }
 
   // called after an input into host. the entry is put into the history at the first input, and
@@ -284,6 +324,7 @@ export class History {
     if (typing.state.after === typing.state.before && !this.recorded(typing.entry)) return;
     if (!this.recorded(typing.entry)) this.record(typing.entry);
     if (!this.open) for (const fn of this.typers) fn(typing.entry);
+    refreshHeads(host);
     this.onChange();
   }
 
@@ -386,6 +427,21 @@ export class History {
     this.typing = null;
     this.undone = [];
     if (this.done.pop()) this.onChange();
+  }
+
+  // the entries that name an element for which touched holds are taken out, e.g. after a change of
+  // the deck by another person, and the typing in progress in such an element ends. so are the
+  // entries that would detach an element inside which within holds, with the change made there, and
+  // the entries that would put back an order of the children of an element for which reordered holds
+  prune(touched: (el: Element) => boolean, within: (root: Element) => boolean = () => false, reordered: (el: Element) => boolean = () => false): void {
+    const hits = (e: Entry) => (this.parts.get(e) ?? [e]).some((p) => p.els?.some(touched) || p.touches?.some(touched) || p.detaches?.some(within) || p.orders?.some(reordered));
+    if (this.typing && touched(this.typing.host)) this.typing = null;
+    const done = this.done.filter((e) => !hits(e));
+    const undone = this.undone.filter((e) => !hits(e));
+    if (done.length === this.done.length && undone.length === this.undone.length) return;
+    this.done = done;
+    this.undone = undone;
+    this.onChange();
   }
 
   clear(): void {

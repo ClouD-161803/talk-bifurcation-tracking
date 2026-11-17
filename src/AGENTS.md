@@ -7,6 +7,11 @@ The rules below are for work on the template itself: the theme, the editor, the 
 - The theme is compiled from `src/main.ts` into `theme/beeson.js`. The editor is compiled from `src/editor/main.ts` into `theme/editor.js`. The preamble and bibliography sheets are compiled from `src/editor/tex/sheets.ts` into `theme/editor-tex.js`, which is loaded when a sheet or the bibliography list is first opened. The renderer of PDF figures is compiled from `src/editor/pdf/render.ts` into `theme/editor-pdf.js`, which the editor loads with `theme/vendor/pdfjs/pdf.js` at the first PDF, and which `npm run tex` loads into Chrome. Run `npm run build` after every change under `src/`. Commit the bundles with the change.
 - Keep the editor out of `theme/beeson.js`. Nothing of the editor is loaded in decks opened without `edit`.
 - Keep `theme/editor.js` under the budget in `test/build.test.mjs`. The editor is loaded from this file at each `edit`.
+- The session client is compiled from `src/session/client/main.ts` into `theme/session.js`. The edit command is compiled from `src/edit/main.ts` into `theme/edit.mjs`. Keep both under their budgets in `test/build.test.mjs`. `theme/session.js` is loaded at each `edit` with `session`.
+- Let `theme/session.js` reach the editor only through `src/session/client/handover.ts`. From `src/editor/`, import only `merge.ts`, `tokens.ts`, and types. Any other module would be a second copy with separate state, and `build.mjs` fails on it.
+- Add what the session client needs from the editor as a small hook in `src/editor/session/`. Keep the drawing, the texts, and the styles in `src/session/client/`.
+- Keep the edit command and the relay free of dependencies. They are run on Node 20 and later, on Windows, macOS, and Linux.
+- Do not block the edit command with a long step. Every page of a session waits on its one process.
 - The files in `theme/vendor/` are copied from `node_modules` by `scripts/vendor.mjs`. The TyCHO runtime and the Latin Modern Roman faces are the exceptions, and they are copied by hand. Add libraries that decks load to `scripts/vendor.mjs`, together with their licenses.
 - The orbit engine in `src/orbits.ts` is a port of the MIT-licensed `orbits.ts` of claudiovestini.com, not of DyLAN code.
 
@@ -54,3 +59,4 @@ A round is one run of the workflow `check` on a commit. A flaky test is a test t
 - Count the requests of a page for the file under test by its name. Another file of the deck may be answered between two reads.
 - Find slides of `test-deck.html` by their content, not by their number, and assert that they are found.
 - Pass `drafts: true` to a page only in tests of the unsaved edits. These edits are offered on a dialog to the next page of the same test.
+- Do not export `GIT_DIR`, `GIT_WORK_TREE`, or `GIT_INDEX_FILE` in a test. Git then works on the repository that they name.
