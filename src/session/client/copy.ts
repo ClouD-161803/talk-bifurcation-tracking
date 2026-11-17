@@ -83,17 +83,27 @@ const locks = (): Locks | undefined => (navigator as { locks?: Locks }).locks;
 
 let opened: Promise<IDBDatabase> | null = null;
 function db(): Promise<IDBDatabase> {
-  return (opened ??= new Promise((done, fail) => {
-    setTimeout(() => fail(new Error('IndexedDB did not answer')), OPEN_WAIT);
+  if (opened) return opened;
+  let late = false;
+  const p = new Promise<IDBDatabase>((done, fail) => {
+    setTimeout(() => {
+      late = true;
+      fail(new Error('IndexedDB did not answer'));
+    }, OPEN_WAIT);
     const r = indexedDB.open(DB, 1);
     r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' }).createIndex('key', 'key');
     r.onsuccess = () => {
+      // a database that answers after OPEN_WAIT is closed, since the next write opens it again
+      if (late) return r.result.close();
       // the browser closes the database e.g. at Clear site data, and the next write opens it again
       r.result.onclose = () => (opened = null);
       done(r.result);
     };
     r.onerror = () => fail(r.error);
-  }));
+  });
+  // a failed open is forgotten, hence the next write tries again
+  p.catch(() => opened === p && (opened = null));
+  return (opened = p);
 }
 
 // one transaction on the store, which resolves with the result of the request of fn once it commits
