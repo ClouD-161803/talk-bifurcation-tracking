@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, saveAndReopen } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen } from './helpers/editor.mjs';
 import { shapePath } from '../src/shapes.ts';
 
 const PLATFORMS = ['mac', 'other'];
@@ -136,7 +136,7 @@ for (const platform of PLATFORMS) {
   test(`a drag over the words of a selected locked shape selects them and does not move the shape (${platform})`, async (t) => {
     const page = await load(t, platform, 0);
     const from = await wordAt(page, '.reveal section.present .shape[data-locked] p', 'Locked');
-    await click(page, from);
+    await clickText(page, from);
     await frames(page);
     assert.deepEqual(await selected(page), ['Locked words here']);
     await drag(page, { x: from.x - 30, y: from.y }, { dx: 160 });
@@ -148,7 +148,7 @@ for (const platform of PLATFORMS) {
 
   test(`the Text pane formats the words of a selected shape whose words are a list (${platform})`, async (t) => {
     const page = await load(t, platform, 1);
-    await click(page, await wordAt(page, '.reveal section.present .shape li', 'Goal'));
+    await clickText(page, await wordAt(page, '.reveal section.present .shape li', 'Goal'));
     await frames(page);
     assert.equal(await page.evaluate('window.BeesonEditor.selection()[0].matches("div.shape")'), true, 'the shape is not selected');
     for (const id of ['text.smaller', 'text.tone.accent', 'text.bold']) assert.equal((await state(page, id)).enabled, true, `${id} is disabled: ${js(await state(page, id))}`);
@@ -167,9 +167,9 @@ for (const platform of PLATFORMS) {
   test(`the Text pane formats a nested list item of a selected shape, after Tab in its words (${platform})`, async (t) => {
     const page = await load(t, platform, 1);
     const at = await wordAt(page, '.reveal section.present .shape li', 'Path');
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     await press(page, 'Tab');
     await frames(page);
@@ -205,7 +205,7 @@ for (const platform of PLATFORMS) {
 
   test(`after Dashes on a selected shape, its words are formatted by the Text pane (${platform})`, async (t) => {
     const page = await load(t, platform, 0);
-    await click(page, await wordAt(page, '.reveal section.present .shape:not([data-locked]) p', 'Build'));
+    await clickText(page, await wordAt(page, '.reveal section.present .shape:not([data-locked]) p', 'Build'));
     await frames(page);
     await exec(page, 'text.list.ul');
     await frames(page);
@@ -313,7 +313,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const rows = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-objects .row')].map((r) => r.textContent.trim())`);
     assert.deepEqual(rows.filter((r) => !/: (One|Two)$/.test(r)), ['Line', 'Group', 'Ellipse: Locked', 'Rectangle: Back', 'Text: A paragraph.', 'Text: Objects']);
-    await click(page, await wordAt(page, '.reveal section.present .shape p', 'Back'));
+    await clickText(page, await wordAt(page, '.reveal section.present .shape p', 'Back'));
     await frames(page);
     assert.deepEqual(await selected(page), ['Back']);
     const at = ORDER.findIndex((o) => o[0] === 'Back');
@@ -343,7 +343,7 @@ for (const platform of PLATFORMS) {
   test(`Tab keeps its meaning in a list item, in a table cell, and in a field of a pane (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
     // in a list item it indents the item
-    await click(page, await wordAt(page, '.reveal section.present li', 'Second'));
+    await clickText(page, await wordAt(page, '.reveal section.present li', 'Second'));
     await frames(page);
     await press(page, 'Tab');
     await frames(page);
@@ -352,14 +352,14 @@ for (const platform of PLATFORMS) {
     await undo(page);
     assert.equal(await render(page), page.source);
     // in a table cell it moves to the next cell
-    await click(page, await wordAt(page, '.reveal section.present td', 'A1'));
+    await clickText(page, await wordAt(page, '.reveal section.present td', 'A1'));
     await frames(page);
     await press(page, 'Tab');
     await frames(page);
     assert.equal(await page.evaluate('(getSelection().anchorNode?.parentElement?.closest("td") ?? getSelection().anchorNode)?.textContent'), 'B1');
     // in a field of a pane it moves the focus and keeps the selection
     await press(page, 'Escape');
-    await click(page, await wordAt(page, '.reveal section.present h2', 'Text'));
+    await clickText(page, await wordAt(page, '.reveal section.present h2', 'Text'));
     await press(page, 'Escape');
     await frames(page);
     const before = await selected(page);

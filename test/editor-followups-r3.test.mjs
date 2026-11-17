@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
 const PLATFORMS = ['mac', 'other'];
@@ -172,7 +172,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate(`Reveal.slide(Reveal.getIndices(document.querySelector('.reveal .slides section .figure-box > img').closest('section')).h)`);
     await frames(page);
     const fig = '.reveal section.present .figure-box > img';
-    await click(page, fig);
+    await clickText(page, fig);
     await exec(page, 'zoom.selection');
     await frames(page);
     // the frame of the figure, i.e. its picture with its caption, is centered
@@ -251,7 +251,7 @@ for (const platform of PLATFORMS) {
 
   test(`an image pasted into a text is put on the slide, and not into the text (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 2 });
-    await click(page, '.reveal section.present > h2');
+    await clickText(page, '.reveal section.present > h2');
     await press(page, 'End');
     assert.equal(await page.evaluate(PASTE_IMAGE), true);
     await waitText(page, 'media/image.png');
@@ -352,7 +352,7 @@ const shownFrames = (page) => page.evaluate(`(() => {
 for (const platform of PLATFORMS) {
   test(`Delete skips a locked element, and deletes nothing when every selected element is locked (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, '.reveal section.present > .qr');
+    await clickText(page, '.reveal section.present > .qr');
     await exec(page, 'arrange.lock');
     const locked = page.source.replace(TITLE_QR, '<div class="qr" data-qr="https://github.com/beeson-group/slides" data-locked></div>');
     assert.equal(await render(page), locked);
@@ -399,7 +399,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     // a first click on a member selects the group, which a second click would leave for the member
     await exec(page, 'selection.clear');
-    await click(page, '.reveal section.present > .qr');
+    await clickText(page, '.reveal section.present > .qr');
     assert.equal(await shownFrames(page), 2);
     await exec(page, 'edit.copy');
     await exec(page, 'edit.paste');
@@ -451,7 +451,7 @@ for (const platform of PLATFORMS) {
   test(`the Formula button inserts an inline formula at the caret of a text (${platform})`, async (t) => {
     const page = await load(t, platform, { deck: 'test-deck.html', n: EQUATIONS });
     const at = await page.evaluate(`(() => { const r = ${STEP2_LIVE}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, at);
+    await clickText(page, at);
     await sleep(150);
     await press(page, 'End');
     const displays = await page.evaluate(`document.querySelectorAll('.reveal section.present div.math').length`);

@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -134,7 +134,7 @@ for (const platform of PLATFORMS) {
   for (const kind of ['ul', 'ol']) {
     test(`Return on an empty item in the middle of a list of kind ${kind} cuts the list at a new paragraph (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, await pointOf(page, ITEM, 'Dark and light', 2));
+      await clickText(page, await pointOf(page, ITEM, 'Dark and light', 2));
       if (kind === 'ol') {
         await exec(page, 'text.list.ol');
         page.source = await render(page);
@@ -174,7 +174,7 @@ for (const platform of PLATFORMS) {
   // an empty first item is taken off its list, which then starts at the item after it
   test(`Return on an empty first item of a list makes it a paragraph before the list (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'Dark and light', 2));
+    await clickText(page, await pointOf(page, ITEM, 'Dark and light', 2));
     await caretAt(page, ITEM, 'Dark and light', 0);
     await press(page, 'Enter');
     page.source = await render(page);
@@ -190,7 +190,7 @@ for (const platform of PLATFORMS) {
   // it does the same, and the items after it go into a list at its end, as with Shift+Tab
   test(`Return on an empty nested item in the middle of its list moves it out one level (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'toggle', 2));
+    await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
     await press(page, 'Tab');
     await caretAt(page, ITEM, 'You should', 2);
     await press(page, 'Tab');
@@ -221,7 +221,7 @@ const BIGGER = ['>', 'Period', 190];
 
 // the paragraph and the list of slide 5 selected as objects, by a click, Esc, and a Shift+click
 async function selectBoth(page) {
-  await click(page, await pointOf(page, PARA, 'figure', 2));
+  await clickText(page, await pointOf(page, PARA, 'figure', 2));
   await press(page, 'Escape');
   await frames(page);
   await click(page, await pointOf(page, ITEM, 'toggle', 2), { modifiers: 'Shift' });
@@ -263,7 +263,7 @@ for (const platform of PLATFORMS) {
   for (const [name, how] of [['Smaller', 'key'], ['Small', 'pane']]) {
     test(`${name} on a text selected over two items acts on both items and keeps the selection (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, await pointOf(page, ITEM, 'toggle', 2));
+      await clickText(page, await pointOf(page, ITEM, 'toggle', 2));
       await caretAt(page, ITEM, 'slide.', 2);
       for (let i = 0; i < 8; i++) await press(page, 'Shift+ArrowRight');
       if (how === 'key') await modShift(page, platform, ...SMALLER);
@@ -284,7 +284,7 @@ for (const platform of PLATFORMS) {
   for (const [from, to, way] of [['toggle', 'plots', 'forward'], ['plots', 'toggle', 'backward']]) {
     test(`a Shift+click in another item extends the selection from the caret across the items, ${way} (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, await pointOf(page, ITEM, from, 2));
+      await clickText(page, await pointOf(page, ITEM, from, 2));
       await caretAt(page, ITEM, from, 0);
       await click(page, await pointOf(page, ITEM, to, 0, true), { modifiers: 'Shift' });
       await frames(page);
@@ -333,7 +333,7 @@ const lineEnds = (page, i) => page.evaluate(`(() => {
 for (const platform of PLATFORMS) {
   test(`ArrowDown and ArrowUp keep the column of the caret across a short item (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await pointOf(page, ITEM, 'Dark and light', 2));
+    await clickText(page, await pointOf(page, ITEM, 'Dark and light', 2));
     await caretAtEnd(page, 0);
     await press(page, 'Enter');
     await type(page, 'ab');
@@ -392,11 +392,11 @@ for (const platform of PLATFORMS) {
     await exec(page, 'steps.delay', `{ delay: 2, el: ${LI(2)} }`);
     page.source = await render(page);
     assert.ok(page.source.includes('data-fragment-index="1" data-autoslide="1000"') && page.source.includes('data-fragment-index="2" data-autoslide="2000"'), 'the delays are not set up');
-    await click(page, await pointIn(page, ROW(TWO), 0.7));
+    await clickText(page, await pointIn(page, ROW(TWO), 0.7));
     await click(page, await pointIn(page, ROW(LAST), 0.7), { modifiers: 'Shift' });
     await frames(page);
     const mixed = await field(page);
-    await click(page, DELAY);
+    await clickText(page, DELAY);
     await page.evaluate(`document.querySelector(${js(DELAY)}).select()`);
     await type(page, '3');
     await press(page, 'Enter');

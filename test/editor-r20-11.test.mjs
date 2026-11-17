@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, type } from './helpers/editor.mjs';
+import { click, clickText, drag, press, type } from './helpers/editor.mjs';
 
 const SOURCE = readFileSync('test-deck.html', 'utf8');
 const DECK = 'test/pages/editor-r20-11.html';
@@ -164,11 +164,11 @@ async function layerTimes(page, platform, n) {
   const names = await rowNames(page);
   const figs = names.map((r, i) => [r, i]).filter(([r]) => /^(Figure|Image|Picture)/.test(r)).map(([, i]) => i);
   assert.ok(figs.length >= 5, js(names));
-  await click(page, await rowAt(page, figs[0]));
+  await clickText(page, await rowAt(page, figs[0]));
   await frames(page);
   const at = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-menubar button')].find((x) => x.textContent === 'Arrange'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   const menu = await ms(async () => {
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
   });
   await page.evaluate('window.BeesonEditorShell.closeMenus()');
@@ -252,7 +252,7 @@ for (const platform of PLATFORMS) {
     test(`Bring ${o === 'front' ? 'to Front' : 'Forward'} of a caption on a content slide keeps its words in their place (${platform})`, async (t) => {
       const page = await load(t, platform, SOURCE, STEPS);
       await showList(page, platform);
-      await click(page, await rowAt(page, 'Text: Design the complete'));
+      await clickText(page, await rowAt(page, 'Text: Design the complete'));
       await frames(page);
       await exec(page, 'text.style.caption');
       await frames(page);
@@ -298,7 +298,7 @@ for (const platform of PLATFORMS) {
     await type(page, 'x^2 + y^2 = r^2');
     await sleep(300);
     // a click on the pasteboard closes the TeX field and leaves the slide without a selection
-    await click(page, { x: 8, y: 500 });
+    await clickText(page, { x: 8, y: 500 });
     await sleep(300);
     const inserted = await render(page);
     assert.match(inserted, /<div class="math" style="[^"]*z-index: \d+/, 'the insert does not hold the layer of the formula');
@@ -334,7 +334,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await drawnAt(page, `${S} > p`, shape), 'shape');
     const was = await corners(page, els);
     await showList(page, platform);
-    await click(page, await rowAt(page, 'Rounded Rectangle'));
+    await clickText(page, await rowAt(page, 'Rounded Rectangle'));
     await frames(page);
     await press(page, KEYS[platform].back);
     await frames(page);
@@ -400,10 +400,10 @@ async function dragRotor(page, deg) {
 // the paragraph and the figure of the figures slide made one group, with the figure turned by 20
 // degrees by itself first where own is set
 async function groupOnFigures(page, platform, own) {
-  await click(page, IMG);
+  await clickText(page, IMG);
   if (own) {
     await typeField(page, 'angle', 20);
-    await click(page, IMG);
+    await clickText(page, IMG);
   }
   const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
   await click(page, p, { modifiers: 'Shift' });
@@ -414,9 +414,9 @@ async function groupOnFigures(page, platform, own) {
 // the group selected anew by a click on the pasteboard and a click on the picture, since a click
 // on a member of a selected group selects the member
 async function reselect(page) {
-  await click(page, { x: 8, y: 500 });
+  await clickText(page, { x: 8, y: 500 });
   await frames(page);
-  await click(page, IMG);
+  await clickText(page, IMG);
   await frames(page);
 }
 
@@ -468,7 +468,7 @@ for (const platform of PLATFORMS) {
     const results = [];
     for (const cancel of [false, true]) {
       const page = await load(t, platform, SOURCE, FIGURES, null, '&theme=light');
-      await click(page, IMG);
+      await clickText(page, IMG);
       await typeField(page, 'angle', 30);
       // Esc leaves the field with the figure selected, and a click would select its picture
       await press(page, 'Escape');
@@ -517,7 +517,7 @@ for (const platform of PLATFORMS) {
     const end = await page.evaluate(`(() => { const g = [...document.querySelectorAll('.beeson-line-end')].find((x) => x.getClientRects().length && x.dataset.end === '2'); const r = g.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     assert.deepEqual(await held(end, 80, -60), ['svg', 'svg'], 'the selection after Esc in a drag of the line end');
     assert.equal(await render(page), base);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
     const mid = await page.evaluate(`(() => { const r = document.querySelector('${S} svg.line line').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     await click(page, mid, { modifiers: 'Shift' });

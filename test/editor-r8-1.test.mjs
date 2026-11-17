@@ -17,7 +17,7 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { tokenize } from '../src/editor/tokens.ts';
-import { byteExact, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const MODES = ['dark', 'light'];
@@ -178,7 +178,7 @@ async function deselect(page) {
 async function pick(page, from, first = 1) {
   await deselect(page);
   for (let i = 0; i < first + (from === 'picture' ? 1 : 0); i++) {
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
   }
   assert.deepEqual(await selected(page), [from === 'figure' ? 'figure.figure-box' : page.parts.pic], `the ${from} is not selected by its clicks`);
@@ -300,7 +300,7 @@ for (const combo of COMBOS) {
   // the first click selected the picture without its caption, which a drag then tore off it
   test(`the first click on the picture selects the figure with one frame, a second click the picture, and Esc the figure (${named(combo)})`, async (t) => {
     const page = await load(t, platform, mode, n);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
     assert.deepEqual(await selected(page), ['figure.figure-box'], 'the first click on the picture does not select its figure');
     const shown = await shownFrames(page);
@@ -313,7 +313,7 @@ for (const combo of COMBOS) {
     // the Image pane with its tabs, as the Format sidebar of an image with a caption in Keynote
     const figureTabs = await tabs(page);
     assert.ok(figureTabs.includes('Image') && figureTabs.includes('Arrange'), `the tabs of the figure are ${js(figureTabs)}`);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
     assert.deepEqual(await selected(page), [page.parts.pic], 'a second click on the picture does not select it alone');
     assert.ok((await tabs(page)).includes('Image'), 'the picture does not have the Image pane');
@@ -324,14 +324,14 @@ for (const combo of COMBOS) {
     assert.deepEqual(await selected(page), []);
     // a click on the caption puts the caret in it, also with the picture selected, and Esc then
     // selects the figure
-    await click(page, CAPTION);
+    await clickText(page, CAPTION);
     await frames(page);
     assert.equal(await page.evaluate(`!!document.activeElement?.matches('figcaption')`), true, 'a click on the caption does not put the caret in it');
     await press(page, 'Escape');
     await frames(page);
     assert.deepEqual(await selected(page), ['figure.figure-box'], 'Esc in the caption does not select its figure');
-    await click(page, IMG);
-    await click(page, CAPTION);
+    await clickText(page, IMG);
+    await clickText(page, CAPTION);
     await frames(page);
     assert.equal(await page.evaluate(`!!document.activeElement?.matches('figcaption')`), true, 'a click on the caption of a selected picture does not put the caret in it');
     assert.equal(await render(page), page.source);
@@ -514,7 +514,7 @@ for (const combo of COMBOS) {
       await deselect(page);
       // the picture alone, by a second click on it
       for (let i = 0; i < 2; i++) {
-        await click(page, IMG);
+        await clickText(page, IMG);
         await frames(page);
       }
       assert.deepEqual(await selected(page), [page.parts.pic], 'the picture is not selected by itself');
@@ -604,7 +604,7 @@ for (const combo of COMBOS) {
     await check(page, 'Edit Mask', async () => {
       await exec(page, 'image.editMask');
       await page.waitFor(`!!document.querySelector('${BAR}[open]')`);
-      await click(page, `${BAR} button[title="Edit Mask"]`);
+      await clickText(page, `${BAR} button[title="Edit Mask"]`);
       await drag(page, await rectOf(page, '.beeson-mask-window i[data-handle=se]'), { dx: -120, dy: -120 });
       await press(page, 'Enter');
       await frames(page);

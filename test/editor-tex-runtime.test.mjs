@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { attributeProblem, textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { byteExact, center, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/tex/index.html';
 const SOURCE = readFileSync(DECK, 'utf8');
@@ -64,7 +64,7 @@ async function show(page, title) {
 // the element of selector on the current slide selected as an object by a click and Esc, or the
 // element of block around it, e.g. the list of an item
 async function select(page, selector, block = selector) {
-  await click(page, `.reveal section.present ${selector}`);
+  await clickText(page, `.reveal section.present ${selector}`);
   await press(page, 'Escape');
   await settle(page);
   assert.equal(await page.evaluate(`window.BeesonEditor.selection().length === 1 && window.BeesonEditor.selection()[0] === document.querySelector('.reveal section.present ${block}')`), true, `${block} is not selected`);
@@ -79,7 +79,7 @@ const edge = (page, selector) => page.evaluate(`(() => {
 
 // the caret at offset into the first text node of the element of selector on the current slide
 async function caret(page, selector, offset) {
-  await click(page, `.reveal section.present ${selector}`);
+  await clickText(page, `.reveal section.present ${selector}`);
   await page.evaluate(`(() => {
     const el = document.querySelector('.reveal section.present ${selector}');
     const r = document.createRange();
@@ -306,7 +306,7 @@ test('a copy of text with a citation puts the citation with its key only on the 
   const page = await open();
   t.after(() => page.close?.());
   await show(page, 'Under a footnote');
-  await click(page, '.reveal section.present > p');
+  await clickText(page, '.reveal section.present > p');
   await page.evaluate(`(() => {
     const p = document.querySelector('.reveal section.present > p');
     const r = document.createRange();
@@ -332,7 +332,7 @@ test('the references of a slide are not an object of the editor', async (t) => {
   await show(page, 'Citations');
   const refs = '.reveal section.present > div.refs[data-generated]';
   assert.equal(await page.evaluate(`document.querySelector(${js(refs)}).isContentEditable`), false, 'the references are a block');
-  await click(page, refs);
+  await clickText(page, refs);
   await settle(page);
   assert.deepEqual(await page.evaluate(`window.BeesonEditor.selection().map((el) => el.localName + '.' + el.className)`), [], 'a click on the references selects them');
   // a drag on the references moves nothing

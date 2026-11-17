@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
 
@@ -42,7 +42,7 @@ for (const platform of ['mac', 'other']) {
     t.after(() => browser.close());
     const page = await editorPage(browser, { deck: LAYOUTS, query: `edit&still&edit-platform=${platform}` });
     await page.evaluate(`Reveal.slide(2)`);
-    await click(page, '.reveal section.present > h2');
+    await clickText(page, '.reveal section.present > h2');
     await press(page, 'End');
     await type(page, ' now');
     const edit = ['<h2>Text, a list, and a backdrop</h2>', '<h2>Text, a list, and a backdrop now</h2>'];
@@ -87,11 +87,11 @@ test('an edit made while the file is written keeps the deck dirty after both edi
   const page = await editorPage(browser, { deck: LAYOUTS });
   await page.evaluate(`Reveal.slide(2)`);
   await page.evaluate(slowHandle(400));
-  await click(page, '.reveal section.present > h2');
+  await clickText(page, '.reveal section.present > h2');
   await press(page, 'End');
   await type(page, ' A');
   await page.evaluate(`window.__save = window.BeesonEditor.save(), true`);
-  await click(page, '.reveal section.present > p.small');
+  await clickText(page, '.reveal section.present > p.small');
   await press(page, 'End');
   await type(page, ' B');
   await page.evaluate('window.__save');
@@ -113,7 +113,7 @@ test('an error in the render of a draft is caught and shown in the status line',
   t.after(() => browser.close());
   const page = await editorPage(browser, { deck: LAYOUTS });
   await page.evaluate(`Reveal.slide(2)`);
-  await click(page, '.reveal section.present > h2');
+  await clickText(page, '.reveal section.present > h2');
   await press(page, 'End');
   await type(page, ' A');
   await page.evaluate(`MathJax.startup.document.getMathItemsWithin = () => { throw new Error('the render broke'); }`);

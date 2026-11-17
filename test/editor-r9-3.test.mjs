@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -64,7 +64,7 @@ async function row(page, n, modifiers = '') {
     const b = r.getBoundingClientRect();
     return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   })()`);
-  await click(page, at, { modifiers });
+  await clickText(page, at, { modifiers });
   await frames(page);
 }
 
@@ -247,7 +247,7 @@ for (const platform of PLATFORMS) {
       const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect();
       return { x: r.left + 20, y: r.top + r.height / 2 };
     })()`);
-    await click(page, at);
+    await clickText(page, at);
     await press(page, 'End');
     await page.send('Input.insertText', { text: ' More words that make the caption run up the slide.'.repeat(6) });
     await press(page, 'Escape');
@@ -361,7 +361,7 @@ for (const platform of PLATFORMS) {
       return { card: document.querySelector('.ed-chooser .what > span:last-child').textContent, mixed: box.indeterminate, column: !!document.querySelector('[aria-label="Width of the text column"]') };
     })()`);
     assert.deepEqual(pane, { card: 'Multiple Layouts', mixed: true, column: false });
-    await click(page, '.ed-chooser');
+    await clickText(page, '.ed-chooser');
     await page.waitFor(`!!document.querySelector('.beeson-edit-layouts')`);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-layouts .tile[aria-selected="true"]')].map((t) => t.dataset.layout)`), []);
     const classes = `[5, 6, 7].map((i) => document.querySelectorAll('.reveal .slides > section')[i].className.replace(/\\b(present|past|future)\\b/g, '').trim())`;
@@ -415,7 +415,7 @@ for (const platform of PLATFORMS) {
   test(`Move Slide Up is dimmed on the canvas and runs by Alt+ArrowUp in the navigator (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 3 });
     const canvas = await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-canvas').getBoundingClientRect(); return { x: r.left + 12, y: r.top + 12 }; })()`);
-    await click(page, canvas);
+    await clickText(page, canvas);
     assert.equal((await state(page, 'slide.moveUp')).enabled, false, 'Move Slide Up is enabled on the canvas');
     assert.equal((await state(page, 'slide.moveDown')).enabled, false, 'Move Slide Down is enabled on the canvas');
     await key(page, 'Alt+ArrowUp');
@@ -462,7 +462,7 @@ for (const platform of PLATFORMS) {
 const MENU = `[...([...document.querySelectorAll('.beeson-edit-menu')].at(-1)?.querySelectorAll('.item') ?? [])].map((el) => el.dataset.command).filter(Boolean)`;
 async function pick(page, id) {
   const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-menu')].at(-1).querySelector('.item[data-command="${id}"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(200);
   await frames(page);
 }

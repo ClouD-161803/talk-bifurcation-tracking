@@ -98,6 +98,28 @@ export async function click(page, at, { button = 'left', count = 1, modifiers = 
 }
 
 /**
+ * A click at a point or at the center of a selector that puts the caret into a text element that
+ * is not selected, as one click did before the click model of Keynote. The first click on such an
+ * element selects it as a box, hence a second click is sent where the first selected a lone text
+ * element under the point without a caret. A shape and a member of a group, which one click
+ * selects as a box in both models, a display formula, whose TeX sheet one click opens in both, and
+ * every point outside a text get the first click only, as does a click with a modifier, which
+ * adds a text element to the selection in both models.
+ */
+export async function clickText(page, at, options = {}) {
+  const point = typeof at === 'string' ? await center(page, at) : at;
+  await click(page, point, options);
+  if (options.modifiers) return;
+  const boxed = `(() => {
+    const host = document.elementFromPoint(${point.x}, ${point.y})?.closest('[contenteditable="true"]');
+    if (!host || host.contains(document.activeElement)) return false;
+    const sel = window.BeesonEditor.selection();
+    return sel.length === 1 && sel[0].contains(host) && !sel[0].matches('.shape, div.math') && !sel[0].hasAttribute('data-group');
+  })()`;
+  if (await page.evaluate(boxed)) await click(page, point, options);
+}
+
+/**
  * The figure around the image of a selector selected by itself, by a click on the image, since a
  * picture with its caption is one object.
  */

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { kindsOf } from '../src/kinds.ts';
-import { byteExact, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/tex/index.html';
 const SOURCE = readFileSync(DECK, 'utf8');
@@ -76,7 +76,7 @@ async function barMenu(page, title) {
   await page.evaluate('window.BeesonEditorShell.closeMenus()');
   await sleep(30);
   const at = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-menubar button')].find((x) => x.textContent === ${js(title)}); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(80);
 }
 
@@ -118,7 +118,7 @@ test('a shape drawn over a theorem, sent behind it, grouped with it, and dragged
 
   // the shape is selected by its margin, the theorem added with Shift, and the two grouped
   await press(page, 'Escape');
-  await click(page, { ...(await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present > .shape').getBoundingClientRect(); return { x: r.left + 6, y: r.top + r.height / 2 }; })()`)) });
+  await clickText(page, { ...(await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present > .shape').getBoundingClientRect(); return { x: r.left + 6, y: r.top + r.height / 2 }; })()`)) });
   await click(page, '.reveal section.present p.theorem[data-name]', { modifiers: 'Shift' });
   await settle(page);
   assert.equal(await page.evaluate('window.BeesonEditor.selection().length'), 2, 'the shape and the theorem are not selected');
@@ -177,10 +177,10 @@ test('the submenu Theorem of the Insert menu lists the kinds of the deck, read w
   // the menu of the menu bar shows the same items
   await show(page, 'Theorems');
   await barMenu(page, 'Insert');
-  await click(page, await rowAt(page, 'Theorem'));
+  await clickText(page, await rowAt(page, 'Theorem'));
   await sleep(150);
   assert.deepEqual(await rows(page), kinds.map(([, k]) => k.title));
-  await click(page, await rowAt(page, 'Lemma'));
+  await clickText(page, await rowAt(page, 'Lemma'));
   await sleep(300);
   await settle(page);
   // a lemma with the caret is drawn after the proof with its head, and the file is not changed
@@ -247,7 +247,7 @@ for (const platform of ['mac', 'other']) {
 
 // the Text pane of the selected theorem shown
 async function pane(page, selector) {
-  await click(page, `.reveal section.present ${selector}`);
+  await clickText(page, `.reveal section.present ${selector}`);
   await press(page, 'Escape');
   await settle(page);
   if (!(await page.evaluate(`window.BeesonEditor.state('shell.format').checked`))) await exec(page, 'shell.format');
@@ -283,10 +283,10 @@ test('the section Theorem of the Text pane sets the kind and the name of a theor
 
   // Kind lists the kinds of the deck and writes the one chosen
   const at = await page.evaluate(`(() => { const r = document.querySelector('${PANEL} .ed-theorem-kind').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(100);
   assert.deepEqual(await rows(page), ['Theorem', 'Lemma', 'Proposition', 'Corollary', 'Definition', 'Example', 'Remark', 'Proof', 'Note']);
-  await click(page, await rowAt(page, 'Lemma'));
+  await clickText(page, await rowAt(page, 'Lemma'));
   await sleep(150);
   await settle(page);
   const lemma = await render(page);

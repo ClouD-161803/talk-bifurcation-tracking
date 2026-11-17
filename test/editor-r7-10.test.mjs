@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, press, saveAndReopen, selectPicture } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, selectPicture } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 // the slides of the demo deck with the stepped list and with the figure of a dark and light pair
@@ -115,14 +115,14 @@ for (const platform of PLATFORMS) {
       const pageIndex = await page.evaluate(`document.querySelectorAll('.reveal section.present li')[1].dataset.fragmentIndex`);
       assert.equal(pageIndex, '1', 'reveal.js does not renumber the steps of the page as this test assumes');
       const indent = async (item) => {
-        await click(page, item);
+        await clickText(page, item);
         await press(page, 'End');
         await frames(page);
         if (how === 'Tab') await press(page, 'Tab');
         else {
           const at = await controlAt(page, 'Increase Indent Level');
           assert.ok(at, 'the Text pane does not offer Increase Indent Level');
-          await click(page, at);
+          await clickText(page, at);
         }
         await frames(page);
       };
@@ -166,20 +166,20 @@ for (const platform of PLATFORMS) {
     test(`a click on the image gives the keys to the slide after a click on ${control.name} (${platform})`, async (t) => {
       const page = await load(t, platform);
       if (control.image) {
-        await click(page, IMG);
+        await clickText(page, IMG);
         await frames(page);
       }
       const at = await controlOf(page, control.find);
       assert.ok(at, `the window does not show ${control.name}`);
-      await click(page, at);
+      await clickText(page, at);
       await frames(page);
       // the slide of the image again after Next slide, and the mode of the deck after the flip
       if (control.back) await page.evaluate(`Reveal.slide(${FIGURE})`);
-      if (control.undo) await click(page, at);
+      if (control.undo) await clickText(page, at);
       if (control.image && control.find.includes('checkbox')) await page.evaluate('window.BeesonEditor.undo()');
       await frames(page);
       const chrome = await focused(page);
-      await click(page, IMG);
+      await clickText(page, IMG);
       await frames(page);
       // the click selects the figure, or the image alone where the figure was selected before it
       assert.deepEqual(await selected(page), [control.image ? 'img.for-dark' : 'figure.figure-box']);
@@ -221,14 +221,14 @@ for (const platform of PLATFORMS) {
       await frames(page);
       page.source = await render(page);
       const format = await controlOf(page, CONTROLS[0].find);
-      await click(page, format);
+      await clickText(page, format);
       await frames(page);
       assert.match(await focused(page), /^button/);
       if (part === 'line') {
         await press(page, 'Escape');
-        await click(page, format);
+        await clickText(page, format);
         const r = await page.evaluate(`(() => { const r = document.querySelector(${js(LINE)} + ' line').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-        await click(page, r);
+        await clickText(page, r);
       } else {
         const end = await page.evaluate(`(() => { const g = [...document.querySelectorAll('.beeson-line-end')].find((g) => !g.hidden && g.dataset.end === '2' && g.getBoundingClientRect().width); const r = g.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
         await drag(page, end, { dx: 20, dy: 0 });
@@ -258,7 +258,7 @@ const theme = (page) => page.evaluate('document.documentElement.dataset.theme');
 // the mode of the deck flipped by the button of the status bar
 async function flipMode(page) {
   const was = await theme(page);
-  await click(page, await controlOf(page, CONTROLS.find((c) => c.undo).find));
+  await clickText(page, await controlOf(page, CONTROLS.find((c) => c.undo).find));
   await frames(page);
   assert.notEqual(await theme(page), was, 'the mode button does not flip the mode');
 }
@@ -267,7 +267,7 @@ for (const platform of PLATFORMS) {
   test(`a group of the figure of an image and a paragraph is written on the figure and holds in the other mode (${platform})`, async (t) => {
     const page = await load(t, platform);
     assert.equal(await theme(page), 'dark');
-    await click(page, IMG);
+    await clickText(page, IMG);
     await click(page, PARA, { modifiers: 'Shift' });
     await frames(page);
     assert.deepEqual((await selected(page)).sort(), ['figure.figure-box', 'p']);
@@ -279,7 +279,7 @@ for (const platform of PLATFORMS) {
     // the paragraph and the figure
     await page.evaluate(`Reveal.slide(${FIGURE})`);
     await flipMode(page);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
     assert.deepEqual((await selected(page)).sort(), ['figure.figure-box', 'p'], 'the click in light mode does not select the group');
     await drag(page, IMG, { dx: -60, dy: -40 });
@@ -293,7 +293,7 @@ for (const platform of PLATFORMS) {
 
   test(`a lock of the figure of an image is written on the figure and holds in the other mode (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
     await press(page, 'Mod+L');
     await frames(page);
@@ -301,7 +301,7 @@ for (const platform of PLATFORMS) {
     await roundTrip(page);
     await page.evaluate(`Reveal.slide(${FIGURE})`);
     await flipMode(page);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await drag(page, IMG, { dx: -80, dy: -100 });
     await frames(page);
     await byteExact(page);
@@ -317,7 +317,7 @@ for (const platform of PLATFORMS) {
 
   test(`a flip of an image is written on both images of the pair, and its alt and Paper are not (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
     await exec(page, 'arrange.flipHorizontal');
     await frames(page);
@@ -325,7 +325,7 @@ for (const platform of PLATFORMS) {
     await roundTrip(page);
     // the alt, the mode, and White Figure of the dark image are its own
     await page.evaluate(`Reveal.slide(${FIGURE})`);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
     await exec(page, 'figure.alt', 'Curves of the dark version');
     await exec(page, 'figure.whiteFigure');

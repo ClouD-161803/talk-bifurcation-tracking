@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press } from './helpers/editor.mjs';
+import { click, clickText, drag, press } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 const PLATFORMS = ['mac', 'other'];
@@ -152,7 +152,7 @@ for (const platform of PLATFORMS) {
   test(`the figure of slide 5 dragged over the text column is not reported (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
     const img = '.reveal section.present figure img';
-    await click(page, img);
+    await clickText(page, img);
     await frames(page);
     const at = await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(img)})].find((i) => i.getClientRects().length).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     const k = await scaleOf(page);
@@ -181,7 +181,7 @@ for (const platform of PLATFORMS) {
     assert.ok((await status(page)).message.includes(`A picture covers ${n} texts`), (await status(page)).message);
     assert.deepEqual(c.marked, c.under);
     // the paragraph is nudged down by the keys
-    await click(page, await lineStart(page, '.reveal section.present > p'));
+    await clickText(page, await lineStart(page, '.reveal section.present > p'));
     await press(page, 'Escape');
     await press(page, 'ArrowDown');
     await settle(page);
@@ -193,7 +193,7 @@ for (const platform of PLATFORMS) {
     const rest = p.under.length - 1;
     assert.ok((await status(page)).message.includes(`A picture covers ${rest} text${rest === 1 ? '' : 's'}`), (await status(page)).message);
     // the picture is nudged left
-    await click(page, '.reveal section.present figure img');
+    await clickText(page, '.reveal section.present figure img');
     await press(page, 'ArrowLeft');
     await settle(page);
     const f = await covered(page, ':scope > figure img');
@@ -205,7 +205,7 @@ for (const platform of PLATFORMS) {
 
   test(`a text drawn over a picture after a change of layout is named before the picture (${platform})`, async (t) => {
     const page = await load(t, platform, FIGURES);
-    await click(page, await lineStart(page, '.reveal section.present > p'));
+    await clickText(page, await lineStart(page, '.reveal section.present > p'));
     await press(page, 'Escape');
     await exec(page, 'arrange.order.front');
     await settle(page);
