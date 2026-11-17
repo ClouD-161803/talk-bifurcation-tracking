@@ -48,6 +48,10 @@ for (const motion of ['no-preference', 'reduce']) test(`a deck with malformed bu
   await page.waitFor(`document.documentElement.dataset.theme !== '${mode}'`, 5000);
   assert.equal(await page.evaluate(`document.querySelectorAll('.surface[data-bundle] canvas').length`), 0);
   assert.deepEqual(page.errors.map((e) => e.replace(/, since .*/, '')), ['console.error: beeson: the bundle bare is not drawn', 'console.error: beeson: the bundle ribless is not drawn']);
+  // a script corrected later, as in the editor, is drawn at the next mount
+  await page.evaluate(`(document.getElementById('bare').textContent = '{"orbit":[[1,0,0],[0,1,0],[-1,0,0]],"strips":[]}', Beeson.mount(document.body), true)`);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.surface[data-bundle="bare"] canvas').length`), 1, 'the corrected bundle bare is not drawn');
+  assert.equal(page.errors.length, 2);
 });
 
 // the state of each bundle shown, the share of its canvas that is drawn, a digest of the canvas, and
