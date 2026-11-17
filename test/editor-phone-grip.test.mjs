@@ -1,5 +1,6 @@
 // on a phone, a touch drag of a grip of a selected paragraph resizes the paragraph and leaves the
-// deck on its slide, with the navigator or the Format pane open beside the canvas (#61)
+// deck on its slide, with the navigator or the Format pane open beside the canvas, and a tap on a
+// grip puts the caret into the paragraph (#61)
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -26,28 +27,34 @@ async function touchDrag(page, { x, y }, dx, dy) {
   await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
+// a phone with pane open, on the first slide with a paragraph, which a first tap selects as a box.
+// returns the page and the center of the east grip of the paragraph
+async function selected(t, pane) {
+  const page = await editorPage(browser, { page: { width: 390, height: 844, mobile: true } });
+  t.after(() => page.close());
+  if (pane) await page.evaluate(`(() => { const e = window.BeesonEditor; if (!e.state(${js(pane)}).checked) e.exec(${js(pane)}); return true; })()`);
+  await page.evaluate('new Promise((d) => setTimeout(() => d(true), 500))');
+  await page.evaluate(`(() => {
+    const s = [...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector(':scope > p'));
+    const { h, v } = Reveal.getIndices(s);
+    Reveal.slide(h, v);
+    window.__slide = s;
+    return true;
+  })()`);
+  await page.waitFor('Reveal.getCurrentSlide() === window.__slide');
+  await page.evaluate('new Promise((d) => setTimeout(() => d(true), 500))');
+  const at = await center(page, PARA);
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitFor(`window.BeesonEditor.selection().includes(document.querySelector(${js(PARA)}))`);
+  await page.waitFor(`[...document.querySelectorAll(${js(GRIP)})].some((g) => g.getClientRects()[0]?.width)`);
+  const grip = await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(GRIP)})].map((g) => g.getBoundingClientRect()).find((r) => r.width); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+  return { page, grip };
+}
+
 for (const pane of ['view.navigator', 'shell.format']) {
   test(`on a phone with ${pane} open, a touch drag of the east grip of a paragraph widens it and keeps the slide (#61)`, { timeout: 120000 }, async (t) => {
-    const page = await editorPage(browser, { page: { width: 390, height: 844, mobile: true } });
-    t.after(() => page.close());
-    await page.evaluate(`(() => { const e = window.BeesonEditor; if (!e.state(${js(pane)}).checked) e.exec(${js(pane)}); return true; })()`);
-    await page.evaluate('new Promise((d) => setTimeout(() => d(true), 500))');
-    await page.evaluate(`(() => {
-      const s = [...document.querySelectorAll('.reveal .slides > section')].find((s) => s.querySelector(':scope > p'));
-      const { h, v } = Reveal.getIndices(s);
-      Reveal.slide(h, v);
-      window.__slide = s;
-      return true;
-    })()`);
-    await page.waitFor('Reveal.getCurrentSlide() === window.__slide');
-    await page.evaluate('new Promise((d) => setTimeout(() => d(true), 500))');
-    // a first tap selects the paragraph as a box
-    const at = await center(page, PARA);
-    await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...at, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
-    await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await page.waitFor(`window.BeesonEditor.selection().includes(document.querySelector(${js(PARA)}))`);
-    await page.waitFor(`[...document.querySelectorAll(${js(GRIP)})].some((g) => g.getClientRects()[0]?.width)`);
-    const grip = await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(GRIP)})].map((g) => g.getBoundingClientRect()).find((r) => r.width); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    const { page, grip } = await selected(t, pane);
     const width = await page.evaluate(`document.querySelector(${js(PARA)}).getBoundingClientRect().width`);
     await touchDrag(page, grip, 48, 24);
     await page.evaluate('new Promise((d) => setTimeout(() => d(true), 800))');
@@ -57,3 +64,17 @@ for (const pane of ['view.navigator', 'shell.format']) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+// the grips of a small text element cover most of it on a phone, hence the second tap of the click
+// model reaches the text through them
+test('on a phone, a tap on a grip of a selected paragraph puts the caret into it and keeps its width (#61)', { timeout: 120000 }, async (t) => {
+  const { page, grip } = await selected(t, null);
+  const width = await page.evaluate(`document.querySelector(${js(PARA)}).getBoundingClientRect().width`);
+  // a second tap within the time of a double tap would be a double tap
+  await page.evaluate('new Promise((d) => setTimeout(() => d(true), 600))');
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...grip, radiusX: 4, radiusY: 4, force: 1, id: 1 }] });
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitFor(`(() => { const p = document.querySelector(${js(PARA)}); return document.activeElement === p && p.contains(getSelection().focusNode); })()`);
+  assert.equal(await page.evaluate(`document.querySelector(${js(PARA)}).getBoundingClientRect().width`), width);
+  assert.deepEqual(page.errors, []);
+});
