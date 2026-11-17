@@ -218,8 +218,6 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const appliedTable = new AppliedTable(appliedFile, log);
   // the pages draw the deck again at each change of tex.js on disk
   const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged(), onWriteError: (m) => people.texFailed(m) });
-  // the stale figures are compiled in the background, and the pages load each new output
-  const figures = new FigureWatcher(root, text, { log, onChange: () => people.news() });
   const onWritten = (n: number, written: string) => {
     if (authority.written(n)) appliedTable.write(authority.table());
     tex.written(written);
@@ -231,6 +229,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       figures.poll();
     }, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
+  // the stale figures are compiled in the background, and the pages load each new output
+  const figures = new FigureWatcher(root, text, { log, onChange: () => people.news() });
   // made once this command holds the lock, so that a second start does not write the history
   let history!: History;
   let comments!: Comments;
