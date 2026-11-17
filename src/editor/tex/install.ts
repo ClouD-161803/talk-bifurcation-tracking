@@ -48,7 +48,8 @@ export type TexSheets = {
 // what editor.js gives theme/editor-tex.js: the app, the folder of the deck shared with the media
 // files, the tex.js of the deck as the page loaded it, and for the TikZ figures of a session the
 // link of the client and the put of a new figure on the slide
-export type TexHost = { app: App; folder: typeof deckFolder; start: Tex | null; link: typeof figureLink; place(name: string): Promise<Element | null> };
+// why(), the reason why the page does not change a TikZ figure, or null
+export type TexHost = { app: App; folder: typeof deckFolder; start: Tex | null; link: typeof figureLink; place(name: string): Promise<Element | null>; why(): string | null };
 
 declare global {
   interface Window {
@@ -108,6 +109,8 @@ function citeHost(app: App): HTMLElement | null {
   return host instanceof HTMLElement && app.current()?.contains(host) && !host.closest('div.math, pre, aside.notes') ? host : null;
 }
 
+let why: (a: App) => string | null = () => null;
+
 export function install(app: App): void {
   const tex = (window as { beesonTex?: Tex }).beesonTex;
   const start: Tex | null = tex ? JSON.parse(JSON.stringify(tex)) : null;
@@ -116,7 +119,7 @@ export function install(app: App): void {
       const script = document.createElement('script');
       script.src = SELF ? new URL('editor-tex.js', SELF).href : 'theme/editor-tex.js';
       script.onload = () => {
-        if (window.BeesonTexSheets) return done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start, link: figureLink, place: (name) => placeFigure(app, name) })));
+        if (window.BeesonTexSheets) return done((sheets = window.BeesonTexSheets({ app, folder: deckFolder, start, link: figureLink, place: (name) => placeFigure(app, name), why: () => why(app) })));
         loading = null;
         fail(new Error('theme/editor-tex.js did not start'));
       };
@@ -214,8 +217,8 @@ export function install(app: App): void {
   });
 
   // Insert > TikZ Figure after Video…, whose items the Media button of the toolbar lists as well
-  const why = (a: App): string | null =>
-    !a.session ? 'TikZ figures are compiled by the edit command. Start it with Edit.command, Edit.cmd, or Edit.sh next to the deck, or with npm run edit' : figureLink()?.state()?.compiler === 'missing' ? 'TeX with latex and dvisvgm is not found on the computer of the host' : null;
+  why = (a: App): string | null =>
+    !a.session ? 'TikZ figures are compiled by the edit command. Start it with Edit.command, Edit.cmd, or Edit.sh next to the deck, or with npm run edit' : figureLink()?.host() === false ? 'Only the host changes a TikZ figure' : figureLink()?.state()?.compiler === 'missing' ? 'TeX with latex and dvisvgm is not found on the computer of the host' : null;
   const starters: [Starter, string, string][] = [['data', 'From Data…', '.csv,text/csv'], ['file', 'From File…', '.tex'], ['blank', 'Blank', '']];
   for (const [i, [from, label, accept]] of starters.entries())
     app.commands.define({

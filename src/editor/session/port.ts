@@ -62,8 +62,9 @@ export type Port = {
 };
 
 // the TikZ figures of a session, which the client gives at its start: the state that the edit
-// command told last, the token of the page for the routes figures/, and a listener of each state
-export type FigureLink = { state(): FigureState | null; token(): string; on(fn: (state: FigureState) => void): void };
+// command told last, the token of the page for the routes figures/, a listener of each state, and
+// whether the page is the host, since only the host changes a figure
+export type FigureLink = { state(): FigureState | null; token(): string; on(fn: (state: FigureState) => void): void; host(): boolean };
 let figures: FigureLink | null = null;
 export const figureLink = (): FigureLink | null => figures;
 

@@ -136,7 +136,7 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
     if (!marked) return body.replaceChildren();
     const f = shape ?? last ?? fromHeader('', []);
     const fields = make('fieldset');
-    fields.disabled = !shape;
+    fields.disabled = !shape || !!host.why();
     const picker = make('input');
     picker.type = 'file';
     picker.accept = '.csv,text/csv';
@@ -225,15 +225,18 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
   return () => {
     const link = host.link();
     const s = link?.state() ?? null;
-    edit.disabled = !app.commands.enabled('format.tikzSource');
+    const no = host.why();
+    edit.disabled = !app.commands.enabled('format.tikzSource') || !!no;
+    body.querySelector('fieldset')?.toggleAttribute('disabled', !shape || !!no);
     let t: string;
     let warn = false;
-    if (!link || !s) t = 'TikZ figures are compiled by the edit command, started with Edit.command, Edit.cmd, or Edit.sh next to the deck, or with npm run edit';
-    else if (s.compiler === 'missing') [t, warn] = ['TeX with latex and dvisvgm is not found on the computer of the host', true];
+    if (!link || !s) t = no ?? '';
     else if (s.compiling === name) t = 'Compiling…';
     else if (s.errors[name]?.length) [t, warn] = [errorLine(name, s.errors[name][0]), true];
     else if (!s.outputs[name]) [t, warn] = ['Not compiled', true];
     else t = s.compiled[name] ? `Compiled at ${time(s.compiled[name])}` : 'Compiled';
+    // the reason why the page does not change the figure, e.g. a guest or TeX not found, before its state
+    if (link && s && no) [t, warn] = [`${no}. ${t}`, true];
     state.textContent = t;
     state.classList.toggle('warn', warn);
     // the source is read again once the figure is compiled again, e.g. after Edit Source
