@@ -18,7 +18,7 @@ const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > se
 const INERT = `document.querySelector('.reveal .slides').inert`;
 const DIALOG = `document.querySelector('dialog.beeson-edit-dialog[open]')`;
 // a request to an edit command that is not running fails in the console of the page
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 // every request of the page under .session/ fails, also a request held and the long poll in flight
 const OFFLINE = `__net.clear() && __net.rule('/.session/', 'cut') && __net.cut('/.session/') && __net.drop('/.session/')`;
 // the paragraph of slide One in index.html
@@ -940,8 +940,8 @@ test('the operations of the answer that ends the session are taken before its di
   await type(ann, ' by Ann');
   await until(() => server.read().includes('<p>Second slide first by Ann</p>'), 'the edit of Ann to reach index.html');
   // the poll of Ben is released once Ann is told of the end, which takes two reads of a page by this
-  // test. the edit command of this test therefore answers a poll with ended for 2 min after it was
-  // stopped, in place of 200 ms, and it is killed once Ben has his answer
+  // test. the edit command of this test therefore answers a poll with ended until it exits, 3 s
+  // after index.html is written, in place of 200 ms, and it is killed once Ben has his answer
   server.edit.child.kill('SIGTERM');
   await ann.waitFor(`${C}.connection === 'ended'`);
   await ben.evaluate(`__net.clear() && __net.release('/.session/events')`);

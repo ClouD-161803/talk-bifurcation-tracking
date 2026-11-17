@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
-import { center, click, press, type, typeKeys } from './helpers/editor.mjs';
+import { center, click, clickText, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { until } from './helpers/session.mjs';
 
@@ -52,7 +52,7 @@ const COUNT = `document.querySelector('.beeson-session-comments').getAttribute('
 const TOASTS = `[...document.querySelectorAll('.beeson-session-toast > span')].map((s) => s.textContent)`;
 const TABS = `[...document.querySelectorAll('.beeson-edit-inspector .tabs button')].filter((b) => !b.hidden).map((b) => b.textContent)`;
 const TAB = `document.querySelector('.beeson-edit-inspector .tabs button[aria-selected="true"]')?.textContent ?? null`;
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 
 // the controls of selector that are shown and take a tap on less than 32 by 32 px, counting a
 // pseudo-element ::after placed around a control
@@ -62,6 +62,9 @@ const HITS = (selector) => `[...document.querySelectorAll(${JSON.stringify(selec
   const out = (v) => (a.content !== 'none' && a.position === 'absolute' ? Math.max(0, -parseFloat(v) || 0) : 0);
   return { name: b.getAttribute('aria-label') || b.textContent.trim() || b.localName, w: Math.round(r.width + out(a.left) + out(a.right)), h: Math.round(r.height + out(a.top) + out(a.bottom)) };
 }).filter((b) => b.w < 32 || b.h < 32)`;
+
+// the time in ms that page shows a toast
+const toastTime = (page, ms) => page.evaluate(`((window.BeesonSession.toasts.shown = ${ms}), true)`);
 
 // the operations of the page held until window.__go()
 const HOLD = `(() => {
@@ -196,7 +199,7 @@ test('a thread stays on its element through the edits of another person and the 
 
   await t.test('the other person inserted an element before it', async () => {
     await show(b, 'Two');
-    await click(b, '.reveal section.present > h2');
+    await clickText(b, '.reveal section.present > h2');
     await press(b, 'Escape');
     await b.evaluate(`window.BeesonEditor.exec('edit.duplicate')`);
     await until(() => server.read().match(/>Two typed<\/h2>/g)?.length === 2, 'the copy to reach index.html');
@@ -218,7 +221,7 @@ test('a thread stays on its element through the edits of another person and the 
 
   await t.test('the other person moved it, and moved its slide', async () => {
     await show(b, 'Two');
-    await click(b, '.reveal section.present > p');
+    await clickText(b, '.reveal section.present > p');
     await press(b, 'Escape');
     await press(b, 'ArrowRight');
     await until(() => /<p style="translate: 1px [^"]*">Second slide<\/p>/.test(server.read()), 'the move to reach index.html');
@@ -240,7 +243,7 @@ test('a thread stays on its element through the edits of another person and the 
     await a.evaluate(HOLD);
     await caretAtEnd(a, on('Two', 'h2'));
     await type(a, ' held');
-    await click(a, '.reveal section.present li:last-child');
+    await clickText(a, '.reveal section.present li:last-child');
     const sent = comment(a, 'On Beta');
     // the comment waits for the edits of the page, which are held
     await a.waitFor(`window.__held.length > 0 && !!document.querySelector('${PANE} .draft')`);
@@ -269,7 +272,7 @@ test('a thread on a removed element falls back to its slide, then to the deck, a
   // the caret of Ann left the paragraph for the draft, and the end of her hold reaches Ben later
   await until(() => b.evaluate(`!window.BeesonSession.presence().holderOf(document.querySelector('.reveal .slides > section:nth-child(2) > p'))`), 'the paragraph that Ann left to be free on the page of Ben');
   await show(b, 'Two');
-  await click(b, '.reveal section.present > p');
+  await clickText(b, '.reveal section.present > p');
   await press(b, 'Escape');
   await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
   await until(() => !server.read().includes('Second slide'), 'the removal to reach index.html');
@@ -358,6 +361,9 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
   });
 
   await t.test('a mention reaches the person with a toast and a count, which a look at the thread clears', async () => {
+    // the toast of the mention stays until its button is pressed, since the steps before the press
+    // may take more than its 6 s on a slow runner
+    await toastTime(a, 3_600_000);
     await show(b, 'Two');
     await click(b, '.reveal section.present > p');
     await press(b, COMMENT_KEY);
@@ -389,6 +395,7 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
 
     await front(a);
     await click(a, '.beeson-session-toast button');
+    await toastTime(a, 6000);
     await sees(a, COUNT, 'Comments');
     await badge(a, 'Two', 'p', '1');
     assert.equal(await a.evaluate(`document.activeElement?.closest('article')?.querySelector('.text')?.textContent`), 'Look, @Ann what do you think?');
@@ -522,7 +529,9 @@ for (const from of ['online', 'offline']) {
     await a.waitFor(`${C}.connection === 'ended'`);
     assert.deepEqual(await a.evaluate(`window.BeesonEditor.state('insert.comment')`), { id: 'insert.comment', label: 'Comment', enabled: false, checked: null, why: ENDED });
     await sees(a, SENDS, [['Comment', true, ENDED], ['Resolve', true, ENDED], ['Thread actions', true, ENDED], ['Reply', true, ENDED]]);
-    clean(a, from === 'offline' ? REFUSED : []);
+    // a poll that the page sent just before its bye may reach the edit command after it, and is
+    // then answered 404
+    clean(a, from === 'offline' ? REFUSED : [/status of 404 .*\/\.session\/events\?/]);
   });
 }
 

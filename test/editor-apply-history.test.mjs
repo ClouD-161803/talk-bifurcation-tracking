@@ -220,6 +220,47 @@ test('the caret stays at its character when its text element changes before and 
   assert.deepEqual(b.errors, []);
 });
 
+test('a selection and the caret stay at their characters when one apply changes a formatted paragraph before and after them', async (t) => {
+  const b = await sessionPage(browser);
+  t.after(() => b.close());
+  await showSlide(b, 'Show your steps');
+  // with a tag in the paragraph, a change on both sides of the tag sets the content of the paragraph
+  let text = once(b.source, 'the complete slide first', 'the <em>complete</em> slide first');
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  await applied(b, text, 'the tag');
+  // the selection of "sli", in the text after the tag
+  await b.evaluate(`(() => {
+    const p = ${P1};
+    p.focus();
+    getSelection().setBaseAndExtent(p.lastChild, ' '.length, p.lastChild, ' sli'.length);
+    return true;
+  })()`);
+  const selected = () => b.evaluate(`(() => {
+    const sel = getSelection();
+    if (!sel.rangeCount || !${P1}.contains(sel.focusNode)) return null;
+    const r = document.createRange();
+    r.setStart(${P1}, 0);
+    r.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+    return [r.toString(), sel.toString()];
+  })()`);
+  assert.deepEqual(await selected(), ['Design the complete ', 'sli']);
+  // two changes of other people arrive in one apply, one before the selection and one after it
+  text = once(once(text, '<p>Design the', '<p>BDesign the'), "viewer's attention.</p>", "viewer's attention.C</p>");
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  await applied(b, text, 'a change on both sides of a selection');
+  assert.deepEqual(await selected(), ['BDesign the complete ', 'sli']);
+  // the same with the caret after "sli", and the next key of the person goes to the caret
+  await b.evaluate(`(getSelection().collapseToEnd(), true)`);
+  assert.equal(await beforeCaret(b), 'BDesign the complete sli');
+  text = once(once(text, '<p>BDesign the', '<p>BBDesign the'), "viewer's attention.C</p>", "viewer's attention.CC</p>");
+  assert.deepEqual(await applyOn(b, text), { reload: false, changed: ['p'] });
+  assert.equal(await beforeCaret(b), 'BBDesign the complete sli');
+  await b.evaluate(`((window.__p = ${P1}), true)`);
+  await typeKeys(b, 'A');
+  assert.equal(await b.evaluate(`window.__p.textContent`), "BBDesign the complete sliAde first, then break it up into steps. Direct the viewer's attention.CC");
+  assert.deepEqual(b.errors, []);
+});
+
 test('an unsaved edit of the person is kept through an apply of a change elsewhere, with its entry and its caret', async (t) => {
   const b = await sessionPage(browser);
   t.after(() => b.close());

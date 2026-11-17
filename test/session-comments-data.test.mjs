@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, talk, TALK } from './helpers/client.mjs';
-import { click, press, type } from './helpers/editor.mjs';
+import { click, clickText, press, type } from './helpers/editor.mjs';
 import { goOffline, goOnline, tab } from './helpers/offline.mjs';
 import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
@@ -36,7 +36,7 @@ const BUTTON = `(() => {
   return [b.title === b.getAttribute('aria-label') ? b.title : null, c.textContent, drawn ? (r.width < 14 ? 'dot' : 'number') : null];
 })()`;
 // the requests of a page that is offline fail in its console
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 const TWINS = TALK.replace('<p>First slide</p>', '<p>TBD</p>\n  <p>TBD</p>\n  <p>TBD</p>');
 
 // the text of the badge of the element of expression, as in session-comments.test.mjs
@@ -186,7 +186,7 @@ test('a comment on one of identical paragraphs after a removal is anchored on th
   await converge(server, [a, b]);
 
   await show(a, 'One');
-  await click(a, '.reveal .slides > section:nth-child(1) > p');
+  await clickText(a, '.reveal .slides > section:nth-child(1) > p');
   await press(a, 'Escape');
   await a.evaluate(`window.BeesonEditor.exec('element.delete')`);
   await until(() => count(server, '<p>TBD</p>') === 2, 'the removal to reach index.html');
@@ -219,7 +219,7 @@ test('a thread on one of identical paragraphs is shown at its place while later 
   // the removal of the first paragraph is acknowledged while the typing after it waits
   await a.evaluate(HOLD);
   await show(a, 'One');
-  await click(a, '.reveal .slides > section:nth-child(1) > p');
+  await clickText(a, '.reveal .slides > section:nth-child(1) > p');
   await press(a, 'Escape');
   await a.evaluate(`window.BeesonEditor.exec('element.delete')`);
   await a.waitFor('window.__held.length === 1');
@@ -487,7 +487,7 @@ test('an answer of GET comments older than a removal of its element and the Undo
   await until(() => server.read().includes('<h2>One typed</h2>'), 'the typing to reach index.html');
   const before = server.read();
   await show(b, 'Two');
-  await click(b, '.reveal section.present > p');
+  await clickText(b, '.reveal section.present > p');
   await press(b, 'Escape');
   await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
   await until(() => !server.read().includes('Second slide'), 'the removal to reach index.html');

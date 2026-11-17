@@ -26,7 +26,6 @@ The count of the open threads of an element or a slide in a session, drawn at it
 
 Avoid "pin" and "marker", and avoid "bubble", which is the message shown at a refused edit of a held element.
 
-
 ## Bibliography
 
 The file `references.bib` next to the deck, from which the references of its citations are written into `tex.js`.
@@ -49,7 +48,6 @@ A text that a person of a session writes on an element or a slide, kept in `.ses
 
 Avoid "note", which is a speaker note, and "annotation". Write "HTML comment" for a comment `<!-- -->` in the source of a deck.
 
-
 ## Convention
 
 A rule of slides that is followed by default and may be argued with, as opposed to a hard invariant.
@@ -58,6 +56,9 @@ A rule of slides that is followed by default and may be argued with, as opposed 
 
 The attribute of a field of the editor in which the keys of commands that the field takes for itself are named, separated by spaces. In the field of a comment, it is `Mod+Enter`, i.e. Cmd+Enter on a Mac and Ctrl+Enter elsewhere, which then sends the comment and does not start Present. A key named there is taken with the other of these two modifiers as well, e.g. Ctrl+Enter on a Mac.
 
+## Delay
+
+The seconds between the click of a step and the moment an element is shown, as the Delay of an animation in PowerPoint. It is written as the key `delay` of an element of an animated plot, and as `--delay` on a late step.
 
 ## Dialog
 
@@ -77,6 +78,16 @@ The box at the right of a content slide or of a split slide in which a figure is
 
 Avoid "zone", the class of a figure box in an old talk, which is `figure-box`.
 
+## Fly
+
+A step that moves and scales its element from the box of other elements of its slide into its own box, as the Fly In of PowerPoint flies an element in from an edge. It is written as `data-fly-from` on a fragment, with `data-fly-to` and `data-fly-duration`.
+
+Avoid "Magic Move", which matches the elements of two slides.
+
+## Focus
+
+The step from which every step shown on its slide is held at full opacity, written as `data-focus` on a fragment, e.g. on an empty `span` after the steps of a comparison. It is not the keyboard focus of the editor.
+
 ## Follow
 
 To keep your view of the editor on the slide and the selection of another person of a session, from a click on the avatar of this person until you stop.
@@ -86,7 +97,6 @@ Avoid "spotlight" and "watch".
 ## For You
 
 The filter of the Comments pane under which the open threads that you wrote, replied to, or are mentioned in are listed.
-
 
 ## Guest
 
@@ -116,6 +126,12 @@ The person who started a session. The edit command runs on the machine of the ho
 
 Avoid "owner".
 
+## Iris
+
+To grow a region of an animated plot as a disk from a point until the region is filled, as its step is shown, as an iris opens in film. The seconds of the growth are written in the key `iris` of the region, and the point in its key `from`.
+
+The key `spread` of an old talk is `iris`.
+
 ## Kind
 
 The sort of a theorem, e.g. lemma, definition, or proof, written in `data-kind`, which gives its title, its style, and its counter.
@@ -127,6 +143,12 @@ Avoid "type" and "environment".
 A short text placed at a point of a backdrop or of a surface, such as the name of L1 or of the Moon.
 
 Avoid "lab", the class of a label in an old talk, which is `label`.
+
+## Late step
+
+An element shown a number of seconds after the click of its step, as an animation of PowerPoint with a delay. It is written as a fragment of the class `late`, with the seconds in the custom property `--delay` of its style.
+
+Avoid "delayed step", which is a step that starts After Previous, written with `data-autoslide` on the step before. The custom property `--late` of an old talk is `--delay`.
 
 ## Launcher
 
@@ -149,7 +171,6 @@ Avoid "mark" outside a plot. Write "bullet" for the sign of a list item, "logo" 
 A name of a person picked from the list after an @ in a comment, with which the thread is listed under For You for this person. A name typed by hand is not a mention.
 
 Avoid "tag" and "ping".
-
 
 ## Name flag
 
@@ -178,6 +199,12 @@ Avoid "PDF image" and "embedded PDF".
 The figure box over the whole of a figure slide, behind its heading and its caption.
 
 Avoid "plate" for a layout of a slide, such as the title, closing, or figure layout.
+
+## Play once
+
+To play a tab of an animated plot from its first frame to its last and to hold it at its last frame, at a step with `data-plot-once`. A plot started by a step with `data-plot-play` is played in a loop instead.
+
+Avoid "run", which is the running head of a section, written with `data-run`. The attribute `data-plot-run` of an old talk is `data-plot-once`.
 
 ## Plot panel
 
@@ -243,6 +270,14 @@ The click of the talk at which an element appears, is dimmed, or is hidden, writ
 
 Avoid "fragment" outside the markup, and avoid "click" and "build". Avoid "card" for a step in the Steps pane of the editor.
 
+## Strip
+
+The surface swept along the orbit of a strip bundle by a segment through each point of the orbit, along a unit direction given at the point, e.g. an eigendirection of the monodromy matrix. A rib is one of these segments, drawn as a line at a point named in the key `ribs` of the strip.
+
+## Strip bundle
+
+A closed orbit drawn in 3D with the strips along it, from the JSON script named in `data-bundle` on a `surface`, with a compass toward far points. The strips shown at a step are named in `data-surface-state`, as the state of a surface.
+
 ## Surface point
 
 A named point on a surface, which is shown, dimmed, or filled in a tone at a step.
@@ -293,7 +328,6 @@ A comment together with its replies, on one element or slide, which is resolved 
 
 Avoid "conversation" and "discussion".
 
-
 ## TikZ figure
 
 A figure written in TikZ or pgfplots as a source `figures/name.tex`, compiled by `npm run tex` into the output `figures/name.js` with an SVG for each mode, and drawn into a `div.tikz` with the same name in `data-figure`.
@@ -321,3 +355,9 @@ Avoid "strand" and "record". The attribute `data-strands` of an old talk is `dat
 A state of the deck kept by the edit command during a session, with its time and the people who changed the deck since the version before, and listed in Version History.
 
 Avoid "revision", "snapshot", and "checkpoint".
+
+## Wipe
+
+To trace a curve of an animated plot from its first point to its last as its step is shown, as the Wipe of PowerPoint does. The seconds of the tracing are written in the key `wipe` of the curve.
+
+Avoid "draw", which is said of every element on a slide. The key `draw` of an old talk is `wipe`.

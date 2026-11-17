@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TEXT } from './helpers/client.mjs';
-import { click, type, typeKeys } from './helpers/editor.mjs';
+import { clickText, type, typeKeys } from './helpers/editor.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 import { ANSWERS, NET } from './helpers/net.mjs';
 import { post, until } from './helpers/session.mjs';
@@ -236,7 +236,7 @@ test('a text element that another page types in takes a caret, a selection, and 
 
   // a click into the text puts the caret there, and a selection in it is kept
   await front(ben);
-  await click(ben, await (async () => { const b = await boxOf(ben, p); return { x: b.x + b.w / 4, y: b.y + b.h / 2 }; })());
+  await clickText(ben, await (async () => { const b = await boxOf(ben, p); return { x: b.x + b.w / 4, y: b.y + b.h / 2 }; })());
   assert.equal(await ben.evaluate(BUBBLE), null);
   assert.deepEqual(await ben.evaluate(`({ focused: document.activeElement === ${p}, caret: ${p}.contains(getSelection().focusNode) })`), { focused: true, caret: true });
   await ben.evaluate(`(() => { const t = ${p}.firstChild; getSelection().setBaseAndExtent(t, 0, t, 'Second'.length); })()`);
@@ -568,7 +568,7 @@ test('in a touch window of 390 px, a tap on a chip shows the name', { timeout: 3
   clean(ben);
 });
 
-test('in a touch window of 390 px, a tap puts the caret into a text element that another person types in, and both texts are kept', { timeout: 300_000 }, async (t) => {
+test('in a touch window of 390 px, a second tap puts the caret into a text element that another person types in, and both texts are kept', { timeout: 300_000 }, async (t) => {
   const { browser, server, pages: [ana] } = await session(t, ['Ana']);
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', width: 390, height: 844, mobile: true });
   await converge(server, [ana, ben]);
@@ -581,8 +581,17 @@ test('in a touch window of 390 px, a tap puts the caret into a text element that
   await front(ben);
   const b = await boxOf(ben, p);
   const point = { x: b.x + 2, y: b.y + b.h / 2 };
-  await ben.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
-  await ben.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const tap = async () => {
+    await ben.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await ben.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  // the first tap selects the paragraph as a box
+  await tap();
+  await until(() => ben.evaluate(`window.BeesonEditor.selection().includes(${p})`), 'the paragraph to be selected on the page of Ben');
+  assert.equal(await ben.evaluate(BUBBLE), null);
+  // a second tap within the time of a double tap would be a double tap
+  await ben.evaluate('new Promise((d) => setTimeout(() => d(true), 600))');
+  await tap();
   await until(() => ben.evaluate(`document.activeElement === ${p} && ${p}.contains(getSelection().focusNode)`), 'the caret of Ben in the paragraph');
   assert.equal(await ben.evaluate(BUBBLE), null);
   await ben.evaluate(`getSelection().collapse(${p}.firstChild, 0)`);
@@ -965,8 +974,11 @@ const TIMERS = `(() => { const p = ${P}; return [p.timer, p.restTimer, p.typingT
 test('after Leave Session and after the end of the session, no element stays held, and no timer of presence runs', { timeout: 360_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
-  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered soon
-  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000' } });
+  // a poll is answered within a second, hence the poll of Ben in flight when he leaves is answered
+  // soon. a page is thus between two polls once a second. the edit command of this test therefore
+  // answers a poll with ended until it exits, 3 s after index.html is written, in place of 200 ms,
+  // and it is killed once Ana and Cy are told the end
+  const server = await talk(t, { env: { SLIDES_POLL_HOLD_MS: '1000', SLIDES_CLOSE_WAIT_MS: '120000' } });
   const pages = [];
   for (const name of ['Ana', 'Ben', 'Cy']) pages.push(await open(browser, sessionUrl(server.edit), { name, script: `${NET}\n${ANSWERS}` }));
   await converge(server, pages);
@@ -996,14 +1008,17 @@ test('after Leave Session and after the end of the session, no element stays hel
   // a signal ends a process at once on Windows, where a page is thus not told the end of the session
   if (process.platform !== 'win32') {
     server.edit.child.kill('SIGTERM');
+    for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
+    server.edit.child.kill('SIGKILL');
     await server.edit.exited;
     server.edit = null;
-    for (const page of [ana, cy]) await until(() => page.evaluate(`${C}.connection === 'ended'`), 'the end of the session');
     assert.deepEqual(await cy.evaluate(`({ held: ${HOLDER(p)}, resolved: ${C}.resolved().length, timers: ${TIMERS} })`), { held: null, resolved: 0, timers: 0 });
     assert.equal(await ana.evaluate(TIMERS), 0);
   }
   clean(ana);
-  clean(ben);
+  // a poll that Ben sent just before his bye may reach the edit command after it, and is then
+  // answered 404
+  clean(ben, [/status of 404 .*\/\.session\/events\?/]);
   clean(cy);
 });
 
@@ -1082,7 +1097,7 @@ test('after a restart, a page that rejoins second is read by the other page', { 
   await until(async () => (await selectedOf(ben, 'Ana')).length === 1, 'the selection of Ana on the page of Ben after the restart', 10_000);
   // the requests to the edit command that stopped, the polls with the tokens of before, and the
   // hello without a name, which the edit command refuses after a kill that lost the person
-  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, refused);
   clean(ben, refused);
 });
@@ -1126,7 +1141,7 @@ test('after a restart, a state that waited while the edit command was down is se
   const h2 = `(${C}.resolved().find((r) => r.name === 'Ana')?.selected ?? []).map((e) => e.localName).join()`;
   await until(async () => (await ben.evaluate(h2)) === 'h2', 'the selection of Ana on the page of Ben after the restart', 10_000);
   assert.deepEqual((await ana.evaluate('window.__statuses')).filter((s) => s !== 200 && s !== 204), [], 'every state is sent with a token that the edit command knows');
-  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  const refused = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, refused);
   clean(ben, refused);
 });

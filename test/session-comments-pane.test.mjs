@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, sessionUrl, show, STATE, talk, TALK, TEXT } from './helpers/client.mjs';
-import { center, click, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
+import { center, click, clickText, contrast, drag, GROUND, INK, press, type, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { copied, goOffline, ROWS, tab } from './helpers/offline.mjs';
 import { post as request, startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
@@ -22,7 +22,7 @@ const el = (slide, selector) => `document.querySelectorAll('.reveal .slides > se
 const COMMENT_KEY = process.platform === 'darwin' ? 'Mod+Alt+M' : 'Shift+F2';
 const PANE = '.beeson-edit-inspector .panel.comments';
 const OFFLINE = 'Comments can be sent once you are back online';
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 404 .*\/\.session\/events\?/];
 const THREADS = `[...document.querySelectorAll('${PANE} article')].map((a) => ({
   anchor: a.querySelector('.anchor')?.textContent ?? null,
   texts: [...a.querySelectorAll('.item .text')].map((p) => p.textContent),
@@ -605,7 +605,7 @@ test('a draft stays on its element when an element before it is removed or inser
   // Ben removes the paragraph above the list, hence each item is one element earlier in its slide
   await away(async () => {
     await show(b, 'Two');
-    await click(b, '.reveal section.present > p');
+    await clickText(b, '.reveal section.present > p');
     await press(b, 'Escape');
     await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
   }, (text) => !text.includes('Second slide'));
@@ -1685,7 +1685,7 @@ test('a draft whose element another person deletes moves to its slide and is sen
   await press(a, 'Escape');
   await until(async () => (await b.evaluate(HOLDER(`document.querySelector('.reveal .slides > section:nth-child(2) > p')`))) === null, 'the paragraph that Ann left to be free on the page of Ben');
   await show(b, 'Two');
-  await click(b, '.reveal section.present > p');
+  await clickText(b, '.reveal section.present > p');
   await press(b, 'Escape');
   await b.evaluate(`window.BeesonEditor.exec('element.delete')`);
   await until(() => !server.read().includes('Second slide'), 'the removal to reach index.html');
@@ -1804,6 +1804,8 @@ test('a thread read offline is read on another page of the person once the page 
 
 test('Show on the toast of a mention on the slide that following shows stops following', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
+  // the toast stays until its button is pressed, since a slow runner may take more than its 6 s
+  await toastTime(a, 3_600_000);
   const ben = await b.evaluate(`${C}.person`);
   await show(b, 'Two');
   await a.evaluate(`window.BeesonSession.follow().start(${JSON.stringify(ben)})`);
@@ -1819,6 +1821,8 @@ test('Show on the toast of a mention on the slide that following shows stops fol
 
 test('Show on the toast of a mention closes the Slide Sorter', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
+  // the toast stays until its button is pressed, since a slow runner may take more than its 6 s
+  await toastTime(a, 3_600_000);
   await a.evaluate(`window.BeesonEditor.exec('view.lightTable')`);
   await sees(a, `window.BeesonEditor.state('view.lightTable').checked`, true);
   const id = await post(b, 1, 'Look, @Ann');

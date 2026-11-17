@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Long plot fade deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<!-- a paused plot whose step plays once a trace of 2000 points with a tone per frame and a fade,
+     written into its JSON script before the deck is started -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>A long trace that fades</h2>
+      <div class="plot figure-box" data-plot="data" data-plot-tabs="still" data-plot-tab="still" data-plot-paused></div>
+      <span class="fragment" data-plot-tab="go" data-plot-once></span>
+      <script type="application/json" id="data"></script>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script>
+  const n = 2000, values = [...Array(n).keys()];
+  document.getElementById('data').textContent = JSON.stringify({
+    duration: 1,
+    panels: [{ id: 'p', x: { range: [0, 1] }, y: { range: [-1, 1] } }],
+    marks: [{ id: 'm', panel: 'p', kind: 'trace', fade: 0.6, ghost: false }],
+    tabs: [
+      { name: 'still', values: [0], data: {} },
+      { name: 'go', values, times: values.map((i) => (3 * i) / (n - 1)),
+        data: { m: { points: values.map((i) => [i / (n - 1), Math.sin((12 * i) / n)]), tones: values.map((i) => (i % 2 ? 'accent' : 'violet')) } } },
+    ],
+  });
+</script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>
