@@ -18,15 +18,15 @@ const DECK = 'test/pages/video-play.html';
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-// the second clip is held back while slow is set. #130: the hold is counted from the request, and
-// the cap of 5 s of start() in src/video.ts from the step. on a slow runner, the hold ended after
-// the cap, and the first clip was played alone. a hold of 6 s forces this case
-let slow = false;
+// the second clip is held back until held is resolved by its test. #130: a hold of a fixed time is
+// counted from the request, and the cap of 5 s of start() in src/video.ts from the step. on a slow
+// runner, such a hold ended after the cap, and the first clip was played alone
+let held = null;
 let server;
 let browser;
 
 before(async () => {
-  server = await serve('.', { delay: (path) => (slow && path.endsWith('clip-b.mp4') ? 6000 : 0) });
+  server = await serve('.', { delay: (path) => (held && path.endsWith('clip-b.mp4') ? held.promise : 0) });
   browser = await launch({ offline: false });
 });
 
@@ -94,25 +94,43 @@ async function until(page, id, expected) {
   return state;
 }
 
+// the time on the clock of the page at which each video was at its start, from the first frame that it
+// presents after its start. two clips decoded in software on a busy runner drift apart while they
+// play, hence their times are not compared at a later read
+const recordStarts = `window.starts = {};
+document.addEventListener('DOMContentLoaded', () => {
+  for (const video of document.querySelectorAll('video')) {
+    const frame = (now, { mediaTime, expectedDisplayTime }) => {
+      if (mediaTime > 0) starts[video.id] = expectedDisplayTime - 1000 * mediaTime;
+      else video.requestVideoFrameCallback(frame);
+    };
+    video.requestVideoFrameCallback(frame);
+  }
+})`;
+
 // the second clip is held back on the local port, and the first one is held at its first frame
 // until the second one can be played. Both are then started in one task. This test is the first,
 // before a page of the deck has loaded the second clip
 test('two videos of one step are started together, also when one of them is loaded later', { timeout: 120000 }, async (t) => {
-  slow = true;
-  t.after(() => { slow = false; });
+  held = Promise.withResolvers();
+  t.after(() => { held.resolve(); held = null; });
   const page = await newPage(t);
+  await page.send('Page.addScriptToEvaluateOnNewDocument', { source: recordStarts });
   // the load event of a page waits for its videos, hence the step is made before it
   await page.send('Page.navigate', { url: `${server.origin}/${DECK}#/1` });
   await page.waitFor('!!window.Reveal?.isReady?.()');
   await page.evaluate('Reveal.next()');
+  // a clip started before the second one can be played would be past its first frame by now
   await sleep(1000);
-  const held = await page.evaluate(`[left, right].map((video) => [video.readyState, video.paused, video.currentTime])`);
+  const waiting = await page.evaluate(`[left, right].map((video) => [video.readyState, video.paused, video.currentTime])`);
   // HAVE_FUTURE_DATA is 3
-  if (held[1][0] < 3) assert.deepEqual(held[0].slice(1), [true, 0], 'the first clip waits for the second');
-  await page.waitFor('!left.paused && !right.paused && left.currentTime > 0.2', 30000);
+  assert.ok(waiting[1][0] < 3, `the second clip is held back: ${JSON.stringify(waiting)}`);
+  assert.deepEqual(waiting[0].slice(1), [true, 0], 'the first clip waits for the second');
+  held.resolve();
+  await page.waitFor(`'left' in starts && 'right' in starts`, 30000);
   // within three frames of the clips at 30 frames per second
-  const [left, right] = await page.evaluate('[left.currentTime, right.currentTime]');
-  assert.ok(Math.abs(left - right) < 0.1, `the clips are at ${left} s and ${right} s`);
+  const { left, right } = await page.evaluate('starts');
+  assert.ok(Math.abs(left - right) < 100, `the clips started at ${left} ms and ${right} ms`);
   // the plate of the class row puts the clips side by side, in two equal shares
   const [a, b] = await page.evaluate(`[left, right].map((video) => video.getBoundingClientRect().toJSON())`);
   assert.ok(a.right <= b.left && a.top === b.top && a.width === b.width && a.height === b.height, JSON.stringify([a, b]));
