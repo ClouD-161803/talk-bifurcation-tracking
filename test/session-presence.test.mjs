@@ -1163,3 +1163,20 @@ test('a page back online sends its state before the answer of its next poll', { 
   clean(ana);
   clean(ben);
 });
+
+// issue 123: one POST of the state of Ben fails with a 500 at the start of a show. Ben stays online
+// and does not change the state again, hence the client itself has to send the state again
+test('a state whose POST failed is sent again while the page stays online', { timeout: 300_000 }, async (t) => {
+  const { pages: [ana, ben] } = await session(t, ['Ana', 'Ben'], { script: NET });
+  await ben.evaluate(`__net.rule('/.session/presence', 'answer', { status: 500, body: '{"error":"busy"}', times: 1 })`);
+  await front(ben);
+  await ben.evaluate(`void ${C}.app.commands.run('file.present')`);
+  await ben.waitFor(`!!document.querySelector('body > .beeson-edit-show')`);
+  await ben.waitFor(`__net.count('/.session/presence', 'POST', 500) === 1`);
+  await front(ana);
+  await until(() => ana.evaluate(`${C}.resolved().some((r) => r.name === 'Ben' && r.mode === 'present')`), 'Ben to present on the page of Ana', 10_000);
+  await front(ben);
+  await ben.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+  clean(ana);
+  clean(ben, [/status of 500 .*\/\.session\/presence/]);
+});
