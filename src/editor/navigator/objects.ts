@@ -327,6 +327,8 @@ export function install(app: App): void {
   function choose(item: Item, extend: boolean): void {
     focusKey = keyOf(item);
     const els = membersOf(item);
+    // a change of the steps shown drops the selection, hence it is made first
+    if (!extend && els[0]) app.shownSteps.reveal(els[0]);
     const sel = app.selection;
     if (extend) {
       // the row of a pair is bound to the twin shown, and the selection may hold the other one

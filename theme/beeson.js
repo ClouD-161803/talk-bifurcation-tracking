@@ -924,6 +924,7 @@
       this.loaded = true;
       this.fittedFor = "";
       this.pathsFor = "";
+      this.W = 0;
       this.fit();
       if (this.pending) {
         this.pending = false;

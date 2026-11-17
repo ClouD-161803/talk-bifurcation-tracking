@@ -314,30 +314,77 @@ for (const platform of PLATFORMS) {
     await roundTrip(page);
   });
 
-  test(`the Text pane has a segment for each kind with a drawn mark, and a click on one sets it (${platform})`, async (t) => {
+  test(`the Text pane chooses the kind of text and the bullet in two selectors, and the bullets are drawn large (${platform})`, async (t) => {
     const page = await load(t, platform, KINDS);
+    // the Text pane of the item of the caret
+    const textPane = async () => {
+      if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
+      await page.waitFor(`!!document.querySelector('.beeson-edit-inspector .ed-tabs button')`);
+      const tab = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].find((b) => b.textContent.trim() === 'Text'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+      await click(page, tab);
+      await settle(page);
+    };
     await caretIn(page, 'Bravo');
-    if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
-    await frames(page);
-    const tab = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].find((b) => b.textContent.trim() === 'Text'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, tab);
-    await settle(page);
-    const segments = () => page.evaluate(`[...document.querySelectorAll('.beeson-edit-inspector .ed-seg button[data-command^="text.list."]')].map((b) => {
+    await textPane();
+    // the buttons of the selector of aria-label, with their words, state, and the size of their mark
+    const selector = (label) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-inspector [role="group"][aria-label="${label}"] button')].map((b) => {
       const r = b.getBoundingClientRect();
-      return { id: b.dataset.command, title: b.title || b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), marks: b.querySelectorAll('svg path, svg circle').length, width: r.width, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      const mark = b.querySelector('svg')?.getBoundingClientRect();
+      return { id: b.dataset.command, text: b.textContent.trim(), pressed: b.getAttribute('aria-pressed'), disabled: b.disabled, title: b.title, mark: mark ? Math.round(mark.width) : 0, height: r.height, x: r.left + r.width / 2, y: r.top + r.height / 2 };
     })`);
-    const now = await segments();
-    assert.deepEqual(now.map((s) => s.id), LIST_IDS, 'the segments are not None, Arrows, Dots, Dashes, and Numbers');
-    assert.deepEqual(now.map((s) => s.title), ['Paragraphs', 'Arrows', 'Dots', 'Dashes', 'Numbers']);
-    assert.ok(now.every((s) => s.marks > 0 && s.width >= 20), `a segment does not have a drawn mark: ${js(now)}`);
-    assert.deepEqual(now.map((s) => s.pressed), ['false', 'true', 'false', 'false', 'false']);
-    await click(page, now[3]);
+    const kinds = await selector('List');
+    assert.deepEqual(kinds.map((s) => s.text), ['Paragraphs', 'Bullets', 'Numbers']);
+    assert.deepEqual(kinds.map((s) => s.pressed), ['false', 'true', 'false']);
+    let bullets = await selector('Bullet');
+    assert.deepEqual(bullets.map((s) => s.text), ['Arrows', 'Dots', 'Dashes']);
+    assert.deepEqual(bullets.map((s) => s.id), ['text.list.ul', 'text.list.dots', 'text.list.dashes']);
+    assert.deepEqual(bullets.map((s) => s.pressed), ['true', 'false', 'false']);
+    // each bullet is drawn at 20 px beside its name, and every target is at least 24 px high
+    assert.ok(bullets.every((s) => s.mark >= 20 && !s.disabled), `a bullet is not drawn large: ${js(bullets)}`);
+    assert.ok([...kinds, ...bullets].every((s) => s.height >= 24), `a target is less than 24 px high: ${js([...kinds, ...bullets])}`);
+    await click(page, bullets[2]);
     await settle(page);
     assert.equal(await render(page), page.source.replace('<ul>\n    <li>Alpha', '<ul class="dashes">\n    <li>Alpha'));
     assert.equal(await undoLabel(page), 'Undo List Style');
-    assert.deepEqual((await segments()).map((s) => s.pressed), ['false', 'false', 'false', 'true', 'false']);
+    assert.deepEqual((await selector('List')).map((s) => s.pressed), ['false', 'true', 'false']);
+    assert.deepEqual((await selector('Bullet')).map((s) => s.pressed), ['false', 'false', 'true']);
     assert.ok(await page.evaluate(`!!getSelection().anchorNode?.parentElement?.closest('li')`), 'the caret left the text');
+    // Bullets keeps the dashes of the list
+    const dashed = await render(page);
+    await click(page, (await selector('List'))[1]);
+    await settle(page);
+    assert.equal(await render(page), dashed);
+    // Numbers dims the bullets, and Bullets on the numbered list sets the default bullet, Arrows
+    await click(page, (await selector('List'))[2]);
+    await settle(page);
+    bullets = await selector('Bullet');
+    assert.ok(bullets.every((s) => s.disabled && / only /.test(s.title)), `the bullets are not dimmed with a reason on a numbered list: ${js(bullets)}`);
+    const numbered = await render(page);
+    assert.equal(numbered, page.source.replace('<ul>\n    <li>Alpha', '<ol>\n    <li>Alpha').replace('<li>Bravo</li>\n  </ul>', '<li>Bravo</li>\n  </ol>'));
+    await click(page, (await selector('List'))[1]);
+    await settle(page);
+    assert.equal(await render(page), page.source);
+    assert.deepEqual((await selector('Bullet')).map((s) => s.pressed), ['true', 'false', 'false']);
+    await click(page, (await selector('List'))[0]);
+    await settle(page);
     await roundTrip(page);
+    assert.deepEqual(errors(page), []);
+  });
+
+  test(`Bullets on a dot list and a dash list selected together keeps the bullet of each (${platform})`, async (t) => {
+    const page = await load(t, platform, KINDS);
+    await click(page, await pointOf(page, 'Dot one'));
+    await press(page, 'Escape');
+    await click(page, await pointOf(page, 'Dash one'), { modifiers: 'Shift' });
+    await settle(page);
+    assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.className)'), ['dots', 'dashes']);
+    if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
+    const bullets = `[...document.querySelectorAll('.beeson-edit-inspector [role="group"][aria-label="List"] button')].find((b) => b.textContent.trim() === 'Bullets')`;
+    await page.waitFor(`${bullets}?.getAttribute('aria-pressed') === 'true'`);
+    await click(page, await page.evaluate(`(() => { const r = ${bullets}.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+    await settle(page);
+    assert.equal(await render(page), page.source);
+    assert.deepEqual(errors(page), []);
   });
 
   test(`Format > Text lists Dots and Dashes between Arrows and Numbers, disabled in the notes, and Dashes in a new text box is written once its text is typed (${platform})`, async (t) => {

@@ -226,8 +226,9 @@ function remountBackdrop(el: HTMLElement): Orbits {
   return o;
 }
 
-// a drawing of the attributes of el, a div outside the slides, drawn complete for a tile of the
-// gallery of the editor, and left out of backdrops. the caller destroys it
+// a drawing of the attributes of el, a div outside the slides that is laid out, drawn complete for a tile
+// of a gallery or a thumbnail of the editor, and left out of backdrops. once complete, the drawing does not
+// hold a timer or a listener, hence it is freed with el
 function preview(el: HTMLElement): Orbits {
   const o = new Orbits(el);
   o.complete();

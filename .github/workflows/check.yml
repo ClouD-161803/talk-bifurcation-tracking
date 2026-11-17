@@ -5,7 +5,10 @@ name: check
 on:
   push:
     branches: [main]
+  # with ready_for_review, a round is started when a draft is marked as ready, since the test shards
+  # on Windows are run only from then on
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 # the token of a job can only read the repository, and it is not left in the checkout
@@ -24,10 +27,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # the macOS runners draw WebGL in SwiftShader, too slowly for the timings of the tests
-        os: [ubuntu-latest, windows-latest]
+        # the macOS runners draw WebGL in SwiftShader, too slowly for the timings of the tests. A draft
+        # is tested on Ubuntu only, since two rounds on both systems wait for the runners of each
+        # other. To test a draft on Windows, start a round by hand, or mark the draft as ready
+        os: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
         # the test files are split over seven runners, since the suite is over an hour long on one.
-        # With the five jobs of check and the job tex, 20 jobs are run at once, the limit of the free plan
+        # With the five jobs of check and the job tex, 20 jobs are run at once, the limit of the free
+        # plan, and 13 for a draft
         shard: [1, 2, 3, 4, 5, 6, 7]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -52,7 +58,8 @@ jobs:
 
   # the checks test (ubuntu-latest) and test (windows-latest) are required on main, hence the result
   # of the fourteen shards is reported under both names. Without always(), the job is skipped after a
-  # failed shard, and a skipped check counts as passed
+  # failed shard, and a skipped check counts as passed. The matrix is the one of the shards, hence
+  # test (windows-latest) is not reported for a draft, and it is waited for until the draft is ready
   tests:
     name: test (${{ matrix.os }})
     needs: test
@@ -60,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

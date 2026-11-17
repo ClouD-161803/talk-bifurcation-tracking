@@ -132,6 +132,22 @@ test('a page opened with motion is shown without reduced motion', { timeout: 600
   assert.equal(await page.evaluate(`matchMedia('(prefers-reduced-motion: no-preference)').matches`), true);
 });
 
+// Chrome does not answer a call that is in flight when its page is closed, and at times it does not
+// answer a call sent after the close either. such a call in a cleanup waited for the limit of the
+// browser, 120 s by default, in a test that had passed
+test('a call to a closed page fails at once, and a call in flight at the close fails with it', { timeout: 60000 }, async (t) => {
+  const browser = await launch({ timeout: 10000 });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const inFlight = page.evaluate('new Promise(() => {})');
+  inFlight.catch(() => {});
+  await page.close();
+
+  await assert.rejects(inFlight, /the page is closed/);
+  await assert.rejects(page.evaluate('1'), /the page is closed/);
+  await assert.rejects(page.send('Page.reload'), /the page is closed/);
+});
+
 // within 1 s of its last change, the editor keeps the unsaved edits of a page in the storage of the
 // browser under a key that starts with beeson-draft:, and offers them on a dialog over the slide of
 // the next page of the deck. on a slow runner, the next page of a test file was offered the edits
