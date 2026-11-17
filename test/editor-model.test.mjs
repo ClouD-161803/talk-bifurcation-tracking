@@ -58,6 +58,19 @@ test('a changed class of a span inside a block is written, and the classes of th
   assert.deepEqual(page.errors, []);
 });
 
+test('a class of the file that starts with hl- is kept when its text element is edited', async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const { page, text, status } = await editorPage(browser, 'test/pages/editor-hl-class.html');
+  assert.deepEqual(status.problems, []);
+  await page.evaluate('Reveal.slide(0, 0, 0)');
+  const span = `document.querySelector('.reveal p span')`;
+  assert.equal(await page.evaluate(`${span}.className`), 'hl-m hl-target hl-violet');
+  await page.evaluate(`document.querySelector('.reveal p').lastChild.data = ', of negligible mass, edited.'`);
+  assert.equal(await page.evaluate('window.BeesonEditor.render()'), text.replace(', of negligible mass.', ', of negligible mass, edited.'));
+  assert.deepEqual(page.errors, []);
+});
+
 // the units of the content of the element whose start tag is at open in text, as ranges with the
 // start of the lead, the element, and the end of the unit
 async function unitsAt(text, open) {
