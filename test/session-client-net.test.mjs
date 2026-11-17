@@ -805,7 +805,8 @@ test('a page whose copy is deleted with the data of the site writes its copy aga
   // as Clear site data does
   await page.send('Storage.clearDataForOrigin', { origin: await page.evaluate('location.origin'), storageTypes: 'indexeddb' });
   await type(page, ' More');
-  await page.waitFor(`(${ASKED(' More')}).then((x) => x.copied && !x.asking)`, 30_000);
+  // an open of the database may fail while Chrome still deletes the data, and the copies are then read again
+  await page.waitFor(`(${ROWS}).then((rows) => !!rows && rows.some((r) => r.mine.includes(' More')) && !${C}.asking)`, 30_000);
 });
 
 // a script for open() that fails the next put once window.__failPut is set. Date.now() of the page
