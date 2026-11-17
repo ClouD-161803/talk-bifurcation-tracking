@@ -196,6 +196,23 @@ export function stillViewers(slide: Element, clone: Element, scale: number): voi
   clone.querySelectorAll('tycho-viewer').forEach((v, i) => v.replaceWith(made[i]));
 }
 
+// the backdrops of clone that are not drawn on slide yet, drawn by the theme at the size of clone, as
+// the tiles of the gallery of backdrops. clone is a clone of slide that is laid out in the page. a
+// backdrop is not drawn before reveal.js lays its slide out, and a drawn one keeps the copy of its
+// canvases
+export function drawBackdrops(slide: Element, clone: Element): void {
+  const preview = (window as unknown as { Beeson?: { preview?(el: HTMLElement): unknown } }).Beeson?.preview;
+  const from = slide.querySelectorAll('.backdrop');
+  clone.querySelectorAll<HTMLElement>('.backdrop').forEach((el, i) => {
+    const canvas = from[i]?.querySelector(':scope > canvas.orbits-base');
+    if (preview && canvas && !canvas.hasAttribute('width')) preview(el);
+  });
+  // a label of a backdrop that is not drawn is not placed
+  clone.querySelectorAll<HTMLElement>('.backdrop .label').forEach((l) => {
+    if (!l.style.left) l.remove();
+  });
+}
+
 // a clone of slide for its thumbnail, with every step shown, or the first range of steps of a slide whose
 // elements are hidden at a step. its canvases are painted from the originals at the scale of the
 // thumbnail, a tycho viewer shows a still of its scene, and a video shows its poster
@@ -222,10 +239,6 @@ export function cloneSlide(slide: Element, scale: number): HTMLElement {
     } catch {
       // a WebGL canvas without a kept buffer is left blank
     }
-  });
-  // a label of a backdrop that is not drawn yet is not placed
-  clone.querySelectorAll<HTMLElement>('.backdrop .label').forEach((l) => {
-    if (!l.style.left) l.remove();
   });
   stillViewers(slide, clone, scale);
   clone.querySelectorAll('video').forEach((v) => {
@@ -292,6 +305,9 @@ function glyphsOf(clone: Element): SVGSVGElement | null {
 
 export type Size = { width: number; height: number };
 
+// the links cloned into a root whose load has ended, with a sheet or with an error
+const settled = new WeakSet<HTMLLinkElement>();
+
 // draws slide into the shadow root of host, scaled from the size of the deck to width, in CSS px
 export function drawInto(host: HTMLElement, slide: Element, deck: Size, width: number): void {
   const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
@@ -300,7 +316,11 @@ export function drawInto(host: HTMLElement, slide: Element, deck: Size, width: n
   const have = [...root.querySelectorAll('link')].map((l) => l.href).join('\n');
   if (have !== links.map((l) => l.href).join('\n')) {
     root.querySelectorAll('link').forEach((l) => l.remove());
-    root.prepend(...links.map((l) => l.cloneNode(true)));
+    root.prepend(...links.map((l) => {
+      const copy = l.cloneNode(true) as HTMLLinkElement;
+      for (const type of ['load', 'error']) copy.addEventListener(type, () => settled.add(copy), { once: true });
+      return copy;
+    }));
   }
   const wrap = document.createElement('div');
   wrap.className = 'reveal beeson-thumb';
@@ -318,6 +338,12 @@ export function drawInto(host: HTMLElement, slide: Element, deck: Size, width: n
   if (glyphs) wrap.append(glyphs);
   root.querySelector('.beeson-thumb')?.remove();
   root.append(wrap);
+  // a backdrop is drawn in the box that the sheets give it. a link that was cloned into a new root
+  // loads its sheet after this frame
+  const loading = [...root.querySelectorAll('link')].filter((l) => !settled.has(l));
+  const ended = (l: HTMLLinkElement) => new Promise((done) => ['load', 'error'].forEach((type) => l.addEventListener(type, done, { once: true })));
+  if (loading.length) void Promise.all(loading.map(ended)).then(() => clone.isConnected && drawBackdrops(slide, clone));
+  else drawBackdrops(slide, clone);
 }
 
 // the attributes that reveal.js, the theme, and the editor set at run time, which a thumbnail does
@@ -339,6 +365,9 @@ function seen(m: MutationRecord): boolean {
 }
 
 export const DELAY = 300;
+// the ms after a flip of the mode at which the theme has redrawn every backdrop, see the listener of
+// beeson:theme in src/main.ts
+const REDRAWN = 600;
 // the times a thumbnail waits DELAY for the formulas of its slide to be typeset, after which it is
 // drawn as it is, e.g. on a deck whose MathJax does not load
 const WAITS = 20;
@@ -459,7 +488,7 @@ export class Thumbs {
   }
 
   // the slide is drawn again 300 ms after its last change
-  soon(slide: Element): void {
+  soon(slide: Element, delay = DELAY): void {
     clearTimeout(this.timers.get(slide));
     this.timers.set(
       slide,
@@ -467,13 +496,15 @@ export class Thumbs {
         this.timers.delete(slide);
         this.dirty.add(slide);
         this.drawDue();
-      }, DELAY),
+      }, delay),
     );
   }
 
-  // every slide drawn again soon, e.g. after the mode of the slides was flipped
+  // every slide drawn again after a flip of the mode of the slides. the theme redraws the backdrops
+  // of the slides other than the current one REDRAWN ms after the flip, hence their thumbnails are
+  // drawn after it
   all(): void {
-    for (const s of this.hosts.keys()) this.soon(s);
+    for (const s of this.hosts.keys()) this.soon(s, s.querySelector('.backdrop') && !s.classList.contains('present') ? REDRAWN + 100 : DELAY);
   }
 
   private deck(): Size {
@@ -498,14 +529,20 @@ export class Thumbs {
     for (const v of slide.querySelectorAll<Viewer>('tycho-viewer')) this.watch(v);
   }
 
+  // a thumbnail is not drawn into a host that is not laid out, e.g. in a hidden list or in the row of
+  // a hidden slide, in which the theme does not draw a backdrop. its slide stays due, and it is drawn
+  // once the host is shown, at the call of the observer
   private drawDue(): void {
     if (!this.width) return;
-    for (const [slide, host] of this.hosts) if (this.dirty.has(slide) && this.inView.has(host)) this.draw(slide);
-    if (this.idle || ![...this.dirty].some((s) => this.hosts.has(s))) return;
+    const due = () => [...this.hosts].filter(([slide, host]) => this.dirty.has(slide) && host.getClientRects().length > 0);
+    // the hosts are read before a thumbnail is drawn, since a read after it lays the page out again
+    const now = due();
+    for (const [slide, host] of now) if (this.inView.has(host)) this.draw(slide);
+    if (this.idle || !now.some(([slide]) => this.dirty.has(slide))) return;
     const later = (fn: () => void): number => (typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 200 }) : setTimeout(fn, 16));
     const step = () => {
       this.idle = 0;
-      const next = [...this.hosts.keys()].find((s) => this.dirty.has(s));
+      const next = due()[0]?.[0];
       if (!next) return;
       this.draw(next);
       this.idle = later(step);
