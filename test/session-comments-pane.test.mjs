@@ -1803,6 +1803,8 @@ test('a thread read offline is read on another page of the person once the page 
 
 test('Show on the toast of a mention on the slide that following shows stops following', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
+  // the toast stays until its button is pressed, since a slow runner may take more than its 6 s
+  await toastTime(a, 3_600_000);
   const ben = await b.evaluate(`${C}.person`);
   await show(b, 'Two');
   await a.evaluate(`window.BeesonSession.follow().start(${JSON.stringify(ben)})`);
@@ -1818,6 +1820,8 @@ test('Show on the toast of a mention on the slide that following shows stops fol
 
 test('Show on the toast of a mention closes the Slide Sorter', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
+  // the toast stays until its button is pressed, since a slow runner may take more than its 6 s
+  await toastTime(a, 3_600_000);
   await a.evaluate(`window.BeesonEditor.exec('view.lightTable')`);
   await sees(a, `window.BeesonEditor.state('view.lightTable').checked`, true);
   const id = await post(b, 1, 'Look, @Ann');

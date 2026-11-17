@@ -63,6 +63,9 @@ const HITS = (selector) => `[...document.querySelectorAll(${JSON.stringify(selec
   return { name: b.getAttribute('aria-label') || b.textContent.trim() || b.localName, w: Math.round(r.width + out(a.left) + out(a.right)), h: Math.round(r.height + out(a.top) + out(a.bottom)) };
 }).filter((b) => b.w < 32 || b.h < 32)`;
 
+// the time in ms that page shows a toast
+const toastTime = (page, ms) => page.evaluate(`((window.BeesonSession.toasts.shown = ${ms}), true)`);
+
 // the operations of the page held until window.__go()
 const HOLD = `(() => {
   const fetched = window.fetch;
@@ -358,6 +361,9 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
   });
 
   await t.test('a mention reaches the person with a toast and a count, which a look at the thread clears', async () => {
+    // the toast of the mention stays until its button is pressed, since the steps before the press
+    // may take more than its 6 s on a slow runner
+    await toastTime(a, 3_600_000);
     await show(b, 'Two');
     await click(b, '.reveal section.present > p');
     await press(b, COMMENT_KEY);
@@ -389,6 +395,7 @@ test('the actions on a thread, the rights of its author, the filters, a mention,
 
     await front(a);
     await click(a, '.beeson-session-toast button');
+    await toastTime(a, 6000);
     await sees(a, COUNT, 'Comments');
     await badge(a, 'Two', 'p', '1');
     assert.equal(await a.evaluate(`document.activeElement?.closest('article')?.querySelector('.text')?.textContent`), 'Look, @Ann what do you think?');
