@@ -155,6 +155,9 @@ for (const platform of PLATFORMS) {
         const before = await select(page, kind);
         assert.ok(Object.keys(before.drawn).length, `the ${kind} selection draws nothing before the preview`);
         await start(page, id);
+        // #129: on a slow runner, the reads below took longer than the 1.1 s of the preview of a
+        // fade. a wait of 1.2 s forces this case
+        if (id === 'slide.previewTransition') await wait(1200);
         // the pointer over another element during the preview
         await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...(await centerOf(page, 'section.present .shape.tone-violet')) });
         await frames(page);
