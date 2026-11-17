@@ -1085,7 +1085,7 @@ test('the texts that cannot be edited are listed on a card from the toolbar', as
   assert.deepEqual(page.errors, []);
 });
 
-test('an undo puts the caret at the change, and ⌘B and ⌘I write strong and em', async (t) => {
+test('an undo puts the caret at the change, and ⌘B, ⌘I, and ⌘U write strong, em, and u', async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await editorPage(browser);
@@ -1135,8 +1135,12 @@ test('an undo puts the caret at the change, and ⌘B and ⌘I write strong and e
   assert.equal(await render(), replaced(li[0], li[0].replace(`>${word}`, `><strong>${word}</strong>`)));
   await page.evaluate('window.BeesonEditor.undo()');
   assert.equal(await render(), deckText);
-  // underline stays blocked
+  // Cmd+U writes u, and a second Cmd+U takes it off
   await format('formatUnderline');
+  await page.waitFor(`window.BeesonEditor.render().includes(${JSON.stringify(`<u>${word}</u>`)})`);
+  assert.equal(await render(), replaced(li[0], li[0].replace(`>${word}`, `><u>${word}</u>`)));
+  await format('formatUnderline');
+  await page.waitFor(`!window.BeesonEditor.render().includes('<u>')`);
   assert.equal(await render(), deckText);
   assert.deepEqual(page.errors, []);
 });
