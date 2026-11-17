@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, STATE, TEXT, converge, loads, show } from './helpers/client.mjs';
-import { click, press, typeKeys } from './helpers/editor.mjs';
+import { clickText, press, typeKeys } from './helpers/editor.mjs';
 import { NET } from './helpers/net.mjs';
 import { BUBBLE, el, leave, select, session, unbubble } from './helpers/presence.mjs';
 import { tap } from './helpers/share.mjs';
@@ -427,7 +427,7 @@ test('an undo of an earlier entry of typing in a paragraph keeps a letter that a
   await caretAtEnd(ana, el(1, 'h2'));
   await typeKeys(ana, ' x');
   await converge(server, pages);
-  await click(ana, await ana.evaluate(`(() => { const r = ${p}.getBoundingClientRect(); return { x: r.right - 4, y: r.top + r.height / 2 }; })()`));
+  await clickText(ana, await ana.evaluate(`(() => { const r = ${p}.getBoundingClientRect(); return { x: r.right - 4, y: r.top + r.height / 2 }; })()`));
   await typeKeys(ana, ' fast');
   assert.equal(para(await converge(server, pages)), '<p>the dogs runs fast</p>');
   // Ben types cats over dogs, and his c reaches Ana before the rest

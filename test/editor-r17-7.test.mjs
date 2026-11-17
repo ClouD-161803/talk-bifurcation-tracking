@@ -232,7 +232,7 @@ for (const platform of PLATFORMS) {
       await typeKeys(page, keys);
       await page.waitFor(`${find(SAME.slice(0, 3))}.textContent.length > ${SAME.length}`);
       const h2 = await page.evaluate(`(() => { const r = document.querySelector('${SLIDE} h2').getClientRects()[0]; return { x: r.left + 40, y: r.top + r.height / 2 }; })()`);
-      await click(page, h2);
+      await clickText(page, h2);
       await page.waitFor(`document.querySelector('${SLIDE} h2').contains(getSelection().focusNode)`);
       assert.equal(await undoLabel(page), label);
       await press(page, 'Mod+Z');

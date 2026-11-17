@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, frame, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show, talk, TEXT } from './helpers/client.mjs';
-import { click, type, typeKeys } from './helpers/editor.mjs';
+import { clickText, type, typeKeys } from './helpers/editor.mjs';
 import { closeGate, openGate } from './helpers/gate.mjs';
 import { ANSWERS, NET } from './helpers/net.mjs';
 import { post, until } from './helpers/session.mjs';
@@ -236,7 +236,7 @@ test('a text element that another page types in takes a caret, a selection, and 
 
   // a click into the text puts the caret there, and a selection in it is kept
   await front(ben);
-  await click(ben, await (async () => { const b = await boxOf(ben, p); return { x: b.x + b.w / 4, y: b.y + b.h / 2 }; })());
+  await clickText(ben, await (async () => { const b = await boxOf(ben, p); return { x: b.x + b.w / 4, y: b.y + b.h / 2 }; })());
   assert.equal(await ben.evaluate(BUBBLE), null);
   assert.deepEqual(await ben.evaluate(`({ focused: document.activeElement === ${p}, caret: ${p}.contains(getSelection().focusNode) })`), { focused: true, caret: true });
   await ben.evaluate(`(() => { const t = ${p}.firstChild; getSelection().setBaseAndExtent(t, 0, t, 'Second'.length); })()`);
@@ -568,7 +568,7 @@ test('in a touch window of 390 px, a tap on a chip shows the name', { timeout: 3
   clean(ben);
 });
 
-test('in a touch window of 390 px, a tap puts the caret into a text element that another person types in, and both texts are kept', { timeout: 300_000 }, async (t) => {
+test('in a touch window of 390 px, a second tap puts the caret into a text element that another person types in, and both texts are kept', { timeout: 300_000 }, async (t) => {
   const { browser, server, pages: [ana] } = await session(t, ['Ana']);
   const ben = await open(browser, sessionUrl(server.edit), { name: 'Ben', width: 390, height: 844, mobile: true });
   await converge(server, [ana, ben]);
@@ -581,8 +581,17 @@ test('in a touch window of 390 px, a tap puts the caret into a text element that
   await front(ben);
   const b = await boxOf(ben, p);
   const point = { x: b.x + 2, y: b.y + b.h / 2 };
-  await ben.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
-  await ben.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const tap = async () => {
+    await ben.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await ben.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  // the first tap selects the paragraph as a box
+  await tap();
+  await until(() => ben.evaluate(`window.BeesonEditor.selection().includes(${p})`), 'the paragraph to be selected on the page of Ben');
+  assert.equal(await ben.evaluate(BUBBLE), null);
+  // a second tap within the time of a double tap would be a double tap
+  await ben.evaluate('new Promise((d) => setTimeout(() => d(true), 600))');
+  await tap();
   await until(() => ben.evaluate(`document.activeElement === ${p} && ${p}.contains(getSelection().focusNode)`), 'the caret of Ben in the paragraph');
   assert.equal(await ben.evaluate(BUBBLE), null);
   await ben.evaluate(`getSelection().collapse(${p}.firstChild, 0)`);
