@@ -174,11 +174,18 @@ test('the flag of a person who types reads that the person is typing, and the ca
   const { pages: [ana, ben] } = await session(t);
   await show(ana, 'Two');
   await show(ben, 'Two');
+  // the flag reads that Ana is typing only until 2 s after her last key, which may be over before
+  // a read from the test. the page of Ben, which is in front, hence records what its layer draws
+  await ben.evaluate(`(() => {
+    window.__drawn = [];
+    new MutationObserver(() => window.__drawn.push(${DRAWN})).observe(document.querySelector('.beeson-presence'), { subtree: true, childList: true, attributes: true, characterData: true });
+    return true;
+  })()`);
   await caretAtEnd(ana, el(1, 'p'));
   await typeKeys(ana, ' and more');
   await until(() => ben.evaluate(`${el(1, 'p')}.textContent.endsWith('and more')`), 'the text of Ana on the page of Ben');
   const text = await ben.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(${el(1, 'p')}); const b = r.getBoundingClientRect(); return { x: b.left, y: b.top, w: b.width, h: b.height }; })()`);
-  const typing = await until_(ben, (d) => d.flags[0]?.text === 'Ana is typing' && d.carets.length === 1 && Math.abs(d.carets[0].x + d.carets[0].w / 2 - (text.x + text.w)) < 4, 'the flag of Ana typing and her caret at the end of the text');
+  const typing = await until(() => ben.evaluate(`window.__drawn.find((d) => d.flags[0]?.text === 'Ana is typing' && d.carets.length === 1 && Math.abs(d.carets[0].x + d.carets[0].w / 2 - ${text.x + text.w}) < 4) ?? null`), 'the flag of Ana typing and her caret at the end of the text in what the page of Ben drew');
   const bar = typing.carets[0];
   assert.ok(bar.y >= text.y - 2 && bar.y + bar.h <= text.y + text.h + 2 && bar.h > 10, 'the caret bar spans the line');
   assert.ok(bar.w >= 1.5 && bar.w <= 4, `the caret bar is 2 px wide, and it is ${bar.w}`);
