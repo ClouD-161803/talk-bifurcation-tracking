@@ -73,6 +73,7 @@ test('each test file is run in one shard', () => {
 });
 
 // the durations of a round are read from the line printed by the reporter of scripts/shard.mjs.
+// The timers of the file below may end a little early, hence 0.3 s is measured as 0.2995 s at times.
 // When the events of node --test are changed, this line is empty, and the shards of the next
 // test/timings.json are no longer balanced
 test('the reporter of scripts/shard.mjs prints the sum of the test durations of each file', { timeout: 60000 }, async (t) => {
@@ -95,7 +96,7 @@ test('the reporter of scripts/shard.mjs prints the sum of the test durations of 
   assert.equal(line?.[1], process.platform, out);
   const sums = JSON.parse(line[2]);
   assert.deepEqual(Object.keys(sums), ['two.test.mjs']);
-  assert.ok(sums['two.test.mjs'] >= 0.3 && sums['two.test.mjs'] < 10, `the sum is ${sums['two.test.mjs']} s`);
+  assert.ok(sums['two.test.mjs'] >= 0.25 && sums['two.test.mjs'] < 10, `the sum is ${sums['two.test.mjs']} s`);
 });
 
 // the result of the shards is reported under test (ubuntu-latest) and test (windows-latest) by a
