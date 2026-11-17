@@ -247,3 +247,48 @@ test('a fragment of the class late is shown after its delay, also in a shown fra
   }
   assert.deepEqual(page.errors, []);
 });
+
+// the opacity at which each fragment of the slide is drawn, its own times those of its ancestors up to
+// the slide, rounded to two places
+const drawn = (root) => `(() => {
+  const slide = ${root};
+  return [...slide.querySelectorAll('.fragment')].filter((f) => f.textContent.trim()).map((f) => {
+    let o = 1;
+    for (let el = f; el && el !== slide; el = el.parentElement) o *= Number(getComputedStyle(el).opacity);
+    return o.toFixed(2);
+  });
+})()`;
+
+// the step before the list, the item, the step nested in the item, and the last item, at the start,
+// after each of the four steps, and after the step added to restore the dimmed ones
+const NESTED = [
+  ['0.00', '0.00', '0.00', '0.00'],
+  ['1.00', '0.00', '0.00', '0.00'],
+  ['0.45', '1.00', '0.00', '0.00'],
+  ['0.45', '1.00', '1.00', '0.00'],
+  ['0.45', '0.45', '0.45', '1.00'],
+  ['1.00', '1.00', '1.00', '1.00'],
+];
+
+test('a step nested in an earlier step is drawn at full opacity while it is the current step, in the show and in print', { timeout: 120000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test/pages/nested-step.html'));
+  await page.waitFor(deckSettled);
+  const seen = [];
+  for (let i = 0; i < NESTED.length; i++) {
+    if (i) await page.evaluate('Reveal.next()');
+    await new Promise((done) => setTimeout(done, 600));
+    seen.push(await page.evaluate(drawn('Reveal.getCurrentSlide()')));
+  }
+  assert.deepEqual(seen, NESTED);
+  assert.deepEqual(page.errors, []);
+
+  const print = await browser.newPage();
+  await printView(print, deckUrl('test/pages/nested-step.html', 'print-pdf'));
+  const pages = [];
+  for (let i = 0; i < NESTED.length; i++) pages.push(await print.evaluate(drawn(`document.querySelectorAll('.pdf-page section')[${i}]`)));
+  assert.deepEqual(pages, NESTED);
+  assert.deepEqual(print.errors, []);
+});
