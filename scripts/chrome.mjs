@@ -53,6 +53,24 @@ export async function removeProfile(profile) {
   }
 }
 
+// a profile that close() could not remove, since a process of Chrome on Windows can hold one of its
+// files for longer than removeProfile tries. each is tried once more at the exit of this process
+const leftProfiles = new Set();
+
+function leaveProfile(profile, error) {
+  process.stderr.write(`The profile of Chrome at ${profile} was left behind: ${error.message}\n`);
+  if (!leftProfiles.size) {
+    process.once('exit', () => {
+      for (const left of leftProfiles) {
+        try {
+          rmSync(left, { recursive: true, force: true });
+        } catch {}
+      }
+    });
+  }
+  leftProfiles.add(profile);
+}
+
 /** Returns the Chrome flags for a profile, offline mode, frame rastering, platform, and CI. */
 export function chromeArgs({ profile, offline = true, wholeFrames = false, platform = process.platform, ci = Boolean(process.env.CI) } = {}) {
   return [
@@ -392,7 +410,8 @@ export async function launch({ offline = true, timeout = 120000, setup = 15000, 
       // chrome_crashpad_handler and GoogleUpdater inherit the stderr of Chrome and outlive it, and an
       // open pipe would keep this process alive until they exit
       for (const stream of child.stdio) stream?.destroy();
-      await removeProfile(profile);
+      // a test whose assertions passed does not fail on a profile that is left
+      await removeProfile(profile).catch((error) => leaveProfile(profile, error));
     }
   }
 
