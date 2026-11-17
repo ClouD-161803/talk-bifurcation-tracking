@@ -596,11 +596,15 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   const page = await browser.newPage({ drafts: true });
   const url = `${server.origin}/test-deck.html?edit&still`;
   const status = () => page.evaluate('window.BeesonEditor.status()');
+  // a load, a save, and the pause before an autosave or a draft take many times longer on a crowded
+  // Windows runner than on a laptop: this test took 9 to 83 s there in rounds that passed, and it
+  // takes 6 s on a laptop. each wait is for a state, hence its limit only ends a test that fails
+  const LIMIT = 60000;
   const load = async () => {
     await page.goto(url);
-    await page.waitFor(deckSettled);
-    await page.waitFor(ready);
-    await page.waitFor('window.BeesonEditor.status().texts > 0');
+    await page.waitFor(deckSettled, LIMIT);
+    await page.waitFor(ready, LIMIT);
+    await page.waitFor('window.BeesonEditor.status().texts > 0', LIMIT);
   };
   // the guard against leaving with unsaved changes would hold the navigation of the test
   const leave = () => page.evaluate(`window.addEventListener('beforeunload', (e) => e.stopImmediatePropagation(), true)`);
@@ -612,7 +616,7 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   await page.evaluate(`window.showSaveFilePicker = async (o) => { window.__suggested = o.suggestedName; const root = await navigator.storage.getDirectory(); return root.getFileHandle('saved-as.html', { create: true }); }`);
   await type(h2, 'Saved as');
   await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 's', metaKey: true, shiftKey: true, bubbles: true, cancelable: true }))`);
-  await page.waitFor('!window.BeesonEditor.status().dirty');
+  await page.waitFor('!window.BeesonEditor.status().dirty', LIMIT);
   assert.equal(await page.evaluate('window.__suggested'), 'test-deck.html');
   assert.equal(await file('saved-as.html'), replaced(`<h2>${h2}</h2>`, '<h2>Saved as</h2>'));
   let s = await status();
@@ -624,14 +628,14 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   assert.equal(s.autosave, true);
   await type('Saved as', 'Autosaved');
   assert.equal((await status()).dirty, true);
-  await page.waitFor('!window.BeesonEditor.status().dirty', 6000);
+  await page.waitFor('!window.BeesonEditor.status().dirty', LIMIT);
   assert.equal(await file('saved-as.html'), replaced(`<h2>${h2}</h2>`, '<h2>Autosaved</h2>'));
   assert.equal(await page.evaluate(`localStorage.getItem('beeson-autosave')`), '1');
   await page.evaluate('window.BeesonEditor.toggleAutosave()');
   assert.equal((await status()).autosave, false);
   // the edits are kept in the browser after a pause, and offered after a reload
   await type('Autosaved', 'Drafted');
-  await page.waitFor('window.BeesonEditor.status().draft', 6000);
+  await page.waitFor('window.BeesonEditor.status().draft', LIMIT);
   await leave();
   await load();
   s = await status();
@@ -644,13 +648,13 @@ test('Save as writes a chosen file, autosave saves after a pause, and unsaved ed
   assert.deepEqual([s.recover, s.draft], [false, false]);
   // Restore writes the edits into the file and shows the page again
   await type(h2, 'Drafted twice');
-  await page.waitFor('window.BeesonEditor.status().draft', 6000);
+  await page.waitFor('window.BeesonEditor.status().draft', LIMIT);
   await leave();
   await load();
   assert.equal((await status()).recover, true);
   await page.evaluate(`(async () => { window.__before = true; const root = await navigator.storage.getDirectory(); window.BeesonEditor.attach(await root.getFileHandle('restored.html', { create: true })); })()`);
   await page.evaluate(`[...document.querySelectorAll('.beeson-edit-dialog.recover button')].find((b) => b.textContent === 'Restore and save').click()`);
-  await until(page, '!window.__before && !!window.BeesonEditor && window.BeesonEditor.status().texts > 0');
+  await until(page, '!window.__before && !!window.BeesonEditor && window.BeesonEditor.status().texts > 0', LIMIT);
   assert.equal(await file('restored.html'), replaced(`<h2>${h2}</h2>`, '<h2>Drafted twice</h2>'));
   s = await status();
   assert.deepEqual([s.recover, s.draft, s.dirty], [false, false, false]);

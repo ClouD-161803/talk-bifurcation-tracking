@@ -300,7 +300,7 @@ for (const platform of PLATFORMS) {
 // backdrop keeps its drawing at the size of the slide
 const THUMB = `(() => {
   const c = document.querySelectorAll('.beeson-edit-nav .row .pic')[0]?.shadowRoot?.querySelector('canvas');
-  return c ? c.style.width || String(c.getBoundingClientRect().width) : null;
+  return c ? Math.round(10 * c.getBoundingClientRect().width) / 10 : null;
 })()`;
 for (const platform of PLATFORMS) {
   test(`the thumbnail of the title slide keeps the size of its drawing after a jump to a far slide (${platform})`, async (t) => {
