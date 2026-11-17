@@ -248,3 +248,25 @@ test('without latex or dvisvgm nothing is compiled, and the state tells it', asy
   assert.equal(w.state().uncompiled, 1);
   await w.stop();
 });
+
+test('a figure whose preamble changes during its compile is compiled again', async (t) => {
+  // a stale output, hence the list of the files of figures/ does not change at the write
+  const f = folder(t, { 'figures/a.tex': DRAWING, 'preamble.tex': 'one\n' });
+  f.write('figures/a.js', output(f.dir, 'a', `${DRAWING}% old\n`, { width: 600, height: 400 }).text);
+  const read = [];
+  // a compile that hashes the preamble that it read at its start, as compileFigure does, while the
+  // preamble is changed during the first compile
+  const compile = async ({ dir, name, source, box }) => {
+    const texts = { preamble: readFileSync(join(dir, 'preamble.tex'), 'utf8') };
+    read.push(texts.preamble);
+    if (read.length === 1) f.write('preamble.tex', 'two\n');
+    const figure = { hash: figureHash({ dir, source, box, inputs: [], texts }), width: 10, height: 10, scale: 1, parts: 0, inputs: [], dark: '<svg/>', light: '<svg/>' };
+    return { figure, text: figureScript(name, figure) };
+  };
+  const { w } = watcher(f, deck(tag('a')), { compiler: { compile } });
+  await w.idle();
+  await twoPolls(w);
+  assert.deepEqual(read, ['one\n', 'two\n']);
+  assert.equal(w.state().uncompiled, 0);
+  await w.stop();
+});
