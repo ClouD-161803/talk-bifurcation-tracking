@@ -98,12 +98,6 @@ async function main(argv: string[]): Promise<void> {
     process.stderr.write(`${message}\n`);
     process.exit(1);
   }
-  process.stdout.write(`${JSON.stringify({ url: running.url, port: running.port, key: running.key })}\n`);
-  const page = `${running.url}index.html?edit&session`;
-  process.stderr.write(`Editing ${running.root}\nat ${page}\nKeep this window open while you edit, and close it or press Ctrl+C to stop.\n`);
-  if (open) openBrowser(page);
-  // a write to a terminal that was closed fails, and must not end the command before its stop
-  for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
   // a close that the relay or an open connection holds ends 3 s after index.html is written, with
   // the status of this write. a stop of the disk that hangs, as on a file system that does not
   // answer, is not ended
@@ -117,6 +111,7 @@ async function main(argv: string[]): Promise<void> {
     void running.close().finally(() => process.exit(1));
     void running.unwritten.then(() => setTimeout(() => process.exit(1), 3000).unref());
   };
+  // the handlers are set before the address is printed, since a caller may stop the command at once
   process.on('uncaughtException', fail);
   process.on('unhandledRejection', fail);
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'] as const) {
@@ -124,6 +119,12 @@ async function main(argv: string[]): Promise<void> {
       process.on(signal, stop);
     } catch {}
   }
+  process.stdout.write(`${JSON.stringify({ url: running.url, port: running.port, key: running.key })}\n`);
+  const page = `${running.url}index.html?edit&session`;
+  process.stderr.write(`Editing ${running.root}\nat ${page}\nKeep this window open while you edit, and close it or press Ctrl+C to stop.\n`);
+  if (open) openBrowser(page);
+  // a write to a terminal that was closed fails, and must not end the command before its stop
+  for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
 }
 
 const isMain = (() => {
