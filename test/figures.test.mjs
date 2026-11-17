@@ -208,6 +208,21 @@ test('a drawing is fitted to its box by a scale of its coordinates, up or down, 
   assert.ok(figure.width <= 61 && figure.height <= 61, `${figure.width} by ${figure.height}`);
 });
 
+// the edit command compiles a figure while it answers the pages of a session
+test('a figure is compiled without blocking the event loop', { skip: WITHOUT_TEX }, async (t) => {
+  const dir = folder(t, { 'figures/orbit.tex': ORBIT });
+  let ticks = 0;
+  const timer = setInterval(() => ticks++, 5);
+  try {
+    const compiling = compileFigure({ dir, name: 'orbit', box: { width: 400, height: 300 } });
+    assert.ok(compiling instanceof Promise, 'the compile returns a promise');
+    assert.ok((await compiling).figure);
+  } finally {
+    clearInterval(timer);
+  }
+  assert.ok(ticks > 0, 'a timer ran while TeX ran');
+});
+
 // a box is filled in a dimension in which the drawing has a size. a drawing without a size in one
 // dimension or in both, such as a new blank source, is compiled at scale 1 in its box
 test('a drawing without a width or a height is compiled in its box without an error', { skip: WITHOUT_TEX }, (t) => {
