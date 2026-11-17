@@ -7,7 +7,9 @@
 import { BLOCKED, type Client } from './client.ts';
 import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
+import { timeOf } from './labels.ts';
 import { failedLine, lostLine, retry as retryUpload } from './media.ts';
+import type { FigureState } from '../protocol.ts';
 import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
 import { isLeaving } from './people.ts';
 
@@ -34,8 +36,20 @@ type Action = 'retry' | 'reload' | 'upload' | null;
 // note is a warning of the editor, e.g. why a file is not added, which follows text until the next
 // edit. the title shows it in place of the status, hence text is the status
 type View = { text: string; icon: string; warn: boolean; action: Action; note?: string };
+// the last compile of a figure told after the first state of the figures
+type Compile = { name: string; at: number } | null;
 
-function view(client: Client): View {
+// the state of the TikZ figures in place of Saved: the figure being compiled, the count of the
+// figures not compiled, or the last compile. the edit command does not tell why a figure is not
+// compiled, e.g. a change of preamble.tex, hence the count is told without a cause
+function figuresLine(state: FigureState | null, done: Compile): string | null {
+  if (!state) return null;
+  if (state.compiling) return `Compiling ${state.compiling}.tex`;
+  if (state.uncompiled) return `${state.uncompiled} ${state.uncompiled === 1 ? 'figure is' : 'figures are'} not compiled`;
+  return done && `Compiled ${done.name}.tex at ${timeOf(done.at)}`;
+}
+
+function view(client: Client, done: Compile): View {
   const retry: Action = client.retryAt === null ? null : 'retry';
   if (client.blocked) return { text: BLOCKED, icon: 'warning', warn: true, action: 'reload' };
   if (isLeaving()) return { text: 'Leaving…', icon: 'cloud', warn: false, action: null };
@@ -62,6 +76,8 @@ function view(client: Client): View {
       if (lost) return { text: lost, icon: 'warning', warn: true, action: null, note };
       if (note) return { text: '', icon: 'warning', warn: true, action: null, note };
       if (client.saving) return { text: 'Saving…', icon: 'cloud', warn: false, action: null };
+      const figures = figuresLine(client.figures, done);
+      if (figures) return { text: figures, icon: 'cloud', warn: false, action: null };
       const restored = restoredLine(client);
       if (restored) return { text: restored, icon: 'cloud', warn: false, action: null };
       return { text: client.host ? 'Saved to index.html' : 'Saved', icon: 'cloud', warn: false, action: null };
@@ -85,13 +101,15 @@ export function install(client: Client): void {
   let shown = '';
   let icon = '';
   let doing: Action = null;
+  let told: Record<string, number> | null = null;
+  let done: Compile = null;
   const draw = () => {
     if (client.connection === 'ended') {
       button.remove();
       action.remove();
       return;
     }
-    const v = view(client);
+    const v = view(client, done);
     if (v.icon !== icon) {
       icon = v.icon;
       button.replaceChildren(client.shell.icon(icon, 14), name);
@@ -136,6 +154,17 @@ export function install(client: Client): void {
   });
   client.on('state', draw);
   client.on('me', draw);
+  client.on('figures', (state) => {
+    if (told) for (const [name, at] of Object.entries(state.compiled)) if (at !== told[name] && (!done || at >= done.at)) done = { name, at };
+    told = state.compiled;
+    draw();
+  });
+  // the next edit ends the note of the last compile
+  client.app.listen('history', () => {
+    if (!done) return;
+    done = null;
+    draw();
+  });
   client.app.listen('report', draw);
   draw();
 }
