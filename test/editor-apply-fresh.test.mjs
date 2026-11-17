@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { click, editorPage, press, typeKeys } from './helpers/editor.mjs';
+import { click, clickText, editorPage, press, typeKeys } from './helpers/editor.mjs';
 import { E, applied, applyOn, caretAtEnd, front, sessionPage, showSlide } from './helpers/apply.mjs';
 import { freshDeck, looksFresh } from './helpers/fresh.mjs';
 
@@ -142,7 +142,7 @@ async function commanded(t, heading, first, second, run) {
   t.after(() => Promise.all([a.close(), b.close()]));
   await front(a);
   await showSlide(a, heading);
-  await click(a, `section.present ${first}`);
+  await clickText(a, `section.present ${first}`);
   await press(a, 'Escape');
   await click(a, `section.present ${second}`, { modifiers: 'Shift' });
   await a.waitFor(`${E}.selection().length === 2`);

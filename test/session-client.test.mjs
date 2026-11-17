@@ -14,7 +14,7 @@ import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, loads, ONLINE, open, ops, sessionUrl, show, STATE, talk, TALK } from './helpers/client.mjs';
-import { click, press, type, typeKeys } from './helpers/editor.mjs';
+import { click, clickText, press, type, typeKeys } from './helpers/editor.mjs';
 import { until } from './helpers/session.mjs';
 import { cleanPersonName, nameKey } from '../src/session/protocol.ts';
 
@@ -116,7 +116,7 @@ test('the edits of two pages reach each other and index.html byte for byte', { t
     loaded['a new slide of page a'] = [before, await both()];
     await show(b, 'One');
     before = await both();
-    await click(b, '.reveal section.present > h2');
+    await clickText(b, '.reveal section.present > h2');
     await press(b, 'Escape');
     await press(b, 'ArrowRight');
     const text = await converge(server, [a, b]);

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -128,7 +128,7 @@ for (const platform of PLATFORMS) {
     await allDrawn(page, 'at the load of the deck');
     // slide 3 has formulas in the labels of its backdrop, and slide 2 does not have a formula
     for (const n of [3, 2, 4]) {
-      await click(page, await thumb(page, n));
+      await clickText(page, await thumb(page, n));
       await frames(page);
       assert.equal(await page.evaluate('Reveal.getIndices().h'), n - 1);
       await allDrawn(page, `after a click on the thumbnail of slide ${n}`);
@@ -141,7 +141,7 @@ for (const platform of PLATFORMS) {
 
   test(`every thumbnail in view shows its slide after the arrow keys in the navigator (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await thumb(page, 1));
+    await clickText(page, await thumb(page, 1));
     for (const [key, n] of [['ArrowDown', 2], ['ArrowDown', 3], ['ArrowDown', 4], ['ArrowUp', 3]]) {
       await press(page, key);
       await frames(page);
@@ -158,7 +158,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, { n: 3 });
     // the paragraph of slide 4 with the formula \(\tilde U\), whose TeX is shown while it is edited
     const para = '.reveal section.present p.fragment[data-fragment-index="2"]';
-    await click(page, para);
+    await clickText(page, para);
     await press(page, 'End');
     await type(page, ' Edited');
     await sleep(900);
@@ -196,7 +196,7 @@ async function typeKeys(page, text) {
 async function caretAt(page, selector, mark) {
   // a click on a block selected after an open of the text may select it, and a second one edits it
   for (let i = 0; i < 2; i++) {
-    await click(page, selector);
+    await clickText(page, selector);
     await frames(page);
     if (await page.evaluate(`document.querySelector(${js(selector)}).contains(document.activeElement)`)) break;
   }
@@ -303,7 +303,7 @@ const TABLE_STATE = `(() => {
 async function insertTableOn(page, columns, rows) {
   const last = '.reveal section.present ul > li:last-child';
   if (await page.evaluate(`!!document.querySelector('${last}')`)) {
-    await click(page, last);
+    await clickText(page, last);
     await press(page, 'Escape');
   }
   await exec(page, 'insert.table', { rows, columns });
@@ -389,7 +389,7 @@ function docked(b, what) {
 
 const pressFormat = async (page) => {
   const b = await shellBoxes(page);
-  await click(page, { x: (b.format.left + b.format.right) / 2, y: (b.format.top + b.format.bottom) / 2 });
+  await clickText(page, { x: (b.format.left + b.format.right) / 2, y: (b.format.top + b.format.bottom) / 2 });
   await sleep(200);
   await frames(page);
 };
@@ -486,7 +486,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'insert.table', { rows: 5, columns: 3 });
     await frames(page);
     for (const [r, c, text] of [[1, 0, '1'], [2, 0, '2'], [1, 1, 'orbit'], [2, 1, 'tube']]) {
-      await click(page, cellOf(r, c));
+      await clickText(page, cellOf(r, c));
       await type(page, text);
     }
     await frames(page);

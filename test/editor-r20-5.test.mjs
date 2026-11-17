@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, press } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, press } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test/pages/editor-r20-5.html';
@@ -98,7 +98,7 @@ const near = (a, b, d = 2) => Math.abs(a.x - b.x) <= d && Math.abs(a.y - b.y) <=
 for (const platform of PLATFORMS) {
   test(`a turn by 43 degrees is held at 45 with an angle guide through the center (${platform})`, async (t) => {
     const page = await load(t, platform, 0);
-    await click(page, `.reveal ${QR}`);
+    await clickText(page, `.reveal ${QR}`);
     await frames(page);
     assert.equal(await page.evaluate(`document.querySelector('.beeson-rotor').title`), 'Drag to rotate, held at multiples of 45°, with Shift in steps of 15°');
     const c = await center(page, `.reveal ${QR}`);
@@ -118,7 +118,7 @@ for (const platform of PLATFORMS) {
 
   test(`a turn on from 43 to 50 degrees leaves the hold and follows the pointer to the degree (${platform})`, async (t) => {
     const page = await load(t, platform, 0);
-    await click(page, `.reveal ${QR}`);
+    await clickText(page, `.reveal ${QR}`);
     const release = await turnBy(page, await center(page, `.reveal ${QR}`), 43);
     assert.equal((await shown(page)).readout, '45°');
     await release.to(50);
@@ -130,7 +130,7 @@ for (const platform of PLATFORMS) {
 
   test(`the free modifier turns the hold off, and Shift keeps its steps of 15 degrees (${platform})`, async (t) => {
     const page = await load(t, platform, 0);
-    await click(page, `.reveal ${QR}`);
+    await clickText(page, `.reveal ${QR}`);
     const c = await center(page, `.reveal ${QR}`);
     let release = await turnBy(page, c, 42);
     assert.equal((await shown(page)).readout, '45°');
@@ -148,7 +148,7 @@ for (const platform of PLATFORMS) {
 
   test(`the hold acts on the absolute angle, and a turn back to 0 gives back the file (${platform})`, async (t) => {
     const page = await load(t, platform, 0);
-    await click(page, `.reveal ${QR}`);
+    await clickText(page, `.reveal ${QR}`);
     if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
     await exec(page, 'arrange.setRotation', { deg: 20 });
     await frames(page);
@@ -169,7 +169,7 @@ for (const platform of PLATFORMS) {
 
   test(`a group is held by the angle of its first member, and its other member keeps its angle to it (${platform})`, async (t) => {
     const page = await load(t, platform, 1);
-    await click(page, `.reveal ${P}`);
+    await clickText(page, `.reveal ${P}`);
     await frames(page);
     assert.equal(await page.evaluate('window.BeesonEditor.selection().length'), 2, 'the group is not selected');
     const c = await center(page, '.beeson-frame.union');
@@ -189,7 +189,7 @@ for (const platform of PLATFORMS) {
 
   test(`a multiple selection is held by its first object, and the other object turns by the same delta (${platform})`, async (t) => {
     const page = await load(t, platform, 2);
-    await click(page, `.reveal ${P}`);
+    await clickText(page, `.reveal ${P}`);
     await press(page, 'Escape');
     await click(page, `.reveal ${QR}`, { modifiers: 'Shift' });
     await frames(page);
@@ -208,7 +208,7 @@ for (const platform of PLATFORMS) {
 
   test(`Esc during a drag held at 45 degrees puts the page and the file back (${platform})`, async (t) => {
     const page = await load(t, platform, 0);
-    await click(page, `.reveal ${QR}`);
+    await clickText(page, `.reveal ${QR}`);
     const release = await turnBy(page, await center(page, `.reveal ${QR}`), 43);
     assert.equal((await shown(page)).readout, '45°');
     assert.equal(await angle(page, QR), '45deg');

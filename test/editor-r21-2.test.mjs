@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press } from './helpers/editor.mjs';
+import { click, clickText, drag, press } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-r21-2.html';
 const PLATFORMS = ['mac', 'other'];
@@ -61,7 +61,7 @@ async function backdropPage(platform, n, motion = false) {
 
 // the selection left with a click into the heading of the slide and Escape twice
 async function leave(page) {
-  await click(page, 'section.present h2');
+  await clickText(page, 'section.present h2');
   await press(page, 'Escape');
   await press(page, 'Escape');
 }
@@ -77,7 +77,7 @@ const ARGS = { 'arrange.setRotation': { deg: 90 }, 'arrange.setPosition': { x: 1
 for (const platform of PLATFORMS) {
   test(`the turns, the flips, Align, Distribute, and the fields of a position are disabled on a backdrop and leave it as it is (${platform})`, async () => {
     const page = await backdropPage(platform, 0);
-    await click(page, await at(page, 0.7, 0.6));
+    await clickText(page, await at(page, 0.7, 0.6));
     assert.deepEqual(await selected(page), ['backdrop']);
     for (const id of ARRANGE) assert.equal((await state(page, id)).enabled, false, `${id} is enabled on a backdrop`);
     for (const id of ARRANGE) {
@@ -93,7 +93,7 @@ for (const platform of PLATFORMS) {
     }
     await press(page, 'Escape');
     // given a paragraph and a backdrop, the fields write the paragraph alone
-    await click(page, 'section.present p');
+    await clickText(page, 'section.present p');
     await press(page, 'Escape');
     assert.deepEqual(await selected(page), ['p']);
     for (const [id, arg] of [['arrange.setPosition', '{ x: 300, y: 600 }'], ['arrange.setRotation', '{ deg: 90 }']]) {
@@ -115,20 +115,20 @@ for (const platform of PLATFORMS) {
     const P = 'Text: A paragraph';
     const B = 'Backdrop: Cislunar Manifolds';
     for (const modifiers of ['Mod', 'Shift']) {
-      await click(page, await rowAt(P));
+      await clickText(page, await rowAt(P));
       assert.deepEqual(await selected(page), ['p']);
-      await click(page, await rowAt(B), { modifiers });
+      await clickText(page, await rowAt(B), { modifiers });
       assert.deepEqual(await selected(page), ['backdrop'], `a ${modifiers}-click on the backdrop row`);
       assert.equal((await state(page, 'arrange.group')).enabled, false);
-      await click(page, await rowAt(P), { modifiers });
+      await clickText(page, await rowAt(P), { modifiers });
       assert.deepEqual(await selected(page), ['p'], `a ${modifiers}-click on a row with the backdrop selected`);
     }
     // a range of rows by the keys that ends at the backdrop row selects the backdrop alone
-    await click(page, await rowAt(P));
+    await clickText(page, await rowAt(P));
     await press(page, 'Shift+End');
     assert.deepEqual(await selected(page), ['backdrop']);
     // with the backdrop selected, a Shift-click on the canvas selects the paragraph alone
-    await click(page, await at(page, 0.7, 0.6));
+    await clickText(page, await at(page, 0.7, 0.6));
     assert.deepEqual(await selected(page), ['backdrop']);
     await click(page, 'section.present p', { modifiers: 'Shift' });
     assert.deepEqual(await selected(page), ['p']);
@@ -141,7 +141,7 @@ for (const platform of PLATFORMS) {
 
   test(`Reset Slide draws a resized backdrop again at the size of its box, and so do its undo and redo (${platform})`, async () => {
     const page = await backdropPage(platform, 0);
-    await click(page, await at(page, 0.7, 0.6));
+    await clickText(page, await at(page, 0.7, 0.6));
     // the width of the box of the backdrop and of its canvas, in device px
     const fit = () => page.evaluate(`(() => { const el = document.querySelector('${BACK}'); return { box: Math.round(el.getBoundingClientRect().width * devicePixelRatio), canvas: el.querySelector(':scope > canvas').width }; })()`);
     const grip = await page.evaluate(`(() => { const g = [...document.querySelectorAll('.beeson-grip[data-handle="w"]')].find((g) => !g.hidden); const r = g.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -172,7 +172,7 @@ for (const platform of PLATFORMS) {
   test(`Preview of a looping backdrop ends when the selection is left or the slide is changed (${platform})`, async () => {
     const page = await backdropPage(platform, 1, true);
     const rafs = () => page.evaluate('Beeson.backdrops.filter((b) => b.raf).length');
-    await click(page, await at(page, 0.7, 0.6));
+    await clickText(page, await at(page, 0.7, 0.6));
     assert.deepEqual(await selected(page), ['backdrop']);
     await exec(page, 'backdrop.preview');
     await frames(page);
@@ -180,7 +180,7 @@ for (const platform of PLATFORMS) {
     await leave(page);
     await wait(page, 300);
     assert.equal(await rafs(), 0, 'the loop is drawn after the selection is left');
-    await click(page, await at(page, 0.7, 0.6));
+    await clickText(page, await at(page, 0.7, 0.6));
     await exec(page, 'backdrop.preview');
     await frames(page);
     assert.ok((await rafs()) > 0);

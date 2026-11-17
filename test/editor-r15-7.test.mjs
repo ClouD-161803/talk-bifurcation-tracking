@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 // the index of the figures slide in index.html
@@ -73,7 +73,7 @@ async function openBar(page, bar) {
 
 async function choose(page, bar, label) {
   await openBar(page, bar);
-  await click(page, await rect(page, `(${findItem})(${js(label)})`));
+  await clickText(page, await rect(page, `(${findItem})(${js(label)})`));
   await settle(page);
 }
 
@@ -119,7 +119,7 @@ async function newFormula(page) {
   await choose(page, 'Insert', 'Formula');
   await type(page, 'x^2 + y^2');
   await settle(page);
-  await click(page, await below(page));
+  await clickText(page, await below(page));
   await settle(page);
 }
 
@@ -147,7 +147,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform);
     await watchKeys(page);
     const caret = async () => {
-      await click(page, await wordAt(page, 'your'));
+      await clickText(page, await wordAt(page, 'your'));
       await settle(page);
       assert.equal((await state(page)).focus, 'p editable');
     };
@@ -280,14 +280,14 @@ for (const platform of PLATFORMS) {
   // nothing selected on the canvas
   test(`Delete Slide and Duplicate Slide list their keys only where the keys run them, and Edit > Delete and Edit > Duplicate list their keys in the navigator (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await below(page));
+    await clickText(page, await below(page));
     await settle(page);
     assert.deepEqual(await itemsIn(page, 'Slide', ['Delete Slide', 'Duplicate Slide']), { 'Delete Slide': { keys: '', dimmed: false }, 'Duplicate Slide': { keys: K.duplicate, dimmed: false } });
-    await click(page, '.reveal .slides > section.present img');
+    await clickText(page, '.reveal .slides > section.present img');
     await settle(page);
     assert.deepEqual(await itemsIn(page, 'Slide', ['Delete Slide', 'Duplicate Slide']), { 'Delete Slide': { keys: '', dimmed: false }, 'Duplicate Slide': { keys: '', dimmed: false } });
     const row = await rect(page, `document.querySelectorAll('.beeson-edit-nav .row')[${FIGURES}]`);
-    await click(page, row);
+    await clickText(page, row);
     await settle(page);
     assert.deepEqual(await itemsIn(page, 'Slide', ['Delete Slide']), { 'Delete Slide': { keys: K.delete, dimmed: false } });
     assert.deepEqual(await itemsIn(page, 'Edit', ['Delete', 'Duplicate']), { Delete: { keys: K.delete, dimmed: false }, Duplicate: { keys: K.duplicate, dimmed: false } });
@@ -295,7 +295,7 @@ for (const platform of PLATFORMS) {
     await settle(page);
     assert.deepEqual(await openItems(page, ['Delete Slide']), { 'Delete Slide': { keys: K.delete, dimmed: false } });
     await closeMenus(page);
-    await click(page, row);
+    await clickText(page, row);
     await press(page, K.press);
     await settle(page);
     assert.equal((await state(page)).slides, 12);
@@ -316,7 +316,7 @@ for (const platform of PLATFORMS) {
     const arrows = platform === 'mac' ? ['⌥↑', '⌥↓', '⌥←', '⌥→'] : ['Alt+Up Arrow', 'Alt+Down Arrow', 'Alt+Left Arrow', 'Alt+Right Arrow'];
     const listed = Object.fromEntries(ADD.map((l, i) => [l, { keys: arrows[i], dimmed: false }]));
     for (const how of ['caret', 'cell']) {
-      await click(page, await cell(page));
+      await clickText(page, await cell(page));
       await settle(page);
       if (how === 'cell') await press(page, 'Escape');
       await settle(page);
@@ -329,7 +329,7 @@ for (const platform of PLATFORMS) {
     }
     // with the caret in the cell, the text takes the keys on a Mac, where Option with an arrow moves
     // the caret, and the key adds a row on Windows and Linux (R17.10)
-    await click(page, await cell(page));
+    await clickText(page, await cell(page));
     await settle(page);
     await press(page, 'Alt+ArrowUp');
     await settle(page);
@@ -343,7 +343,7 @@ for (const platform of PLATFORMS) {
     await settle(page);
     assert.deepEqual(await size(page), [4, 3]);
     // Duplicate is dimmed with the caret in a cell, since Esc selects the cell, and keeps its key
-    await click(page, await cell(page));
+    await clickText(page, await cell(page));
     await settle(page);
     assert.deepEqual(await itemsIn(page, 'Edit', ['Duplicate']), { Duplicate: { keys: K.duplicate, dimmed: true } });
     assert.deepEqual(errors(page), []);
@@ -366,7 +366,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await render(page), page.source);
     await page.evaluate(`Reveal.slide(${FIGURES})`);
     await settle(page);
-    await click(page, '.reveal .slides > section.present img');
+    await clickText(page, '.reveal .slides > section.present img');
     await settle(page);
     await choose(page, 'Edit', 'Delete');
     assert.equal(await page.evaluate(`Reveal.getCurrentSlide().querySelectorAll('figure').length`), 0);
@@ -375,7 +375,7 @@ for (const platform of PLATFORMS) {
     await settle(page);
     assert.equal(await render(page), page.source);
     // Edit > Duplicate with nothing selected on the canvas hands its run to Duplicate Slide too
-    await click(page, await below(page));
+    await clickText(page, await below(page));
     await settle(page);
     await choose(page, 'Edit', 'Duplicate');
     assert.equal((await state(page)).slides, 14);
@@ -413,11 +413,11 @@ const cardButton = (page, name, label) => rect(page, `[...document.querySelector
 // File > Export To > PowerPoint… opens the item of the submenu Export To of the File menu
 async function exportPowerPoint(page) {
   await openBar(page, 'File');
-  await click(page, await rect(page, `(${findItem})('Export To')`));
+  await clickText(page, await rect(page, `(${findItem})('Export To')`));
   await settle(page);
   const items = await page.evaluate(`(() => { const m = [...document.querySelectorAll('.beeson-edit-menu')].filter((m) => m.getClientRects().length).at(-1); return [...m.querySelectorAll('.item')].map((i) => i.querySelector('.label')?.textContent); })()`);
   assert.deepEqual(items, ['PDF…', 'HTML…', 'PowerPoint…'], 'File > Export To does not list PowerPoint… after PDF… and HTML…');
-  await click(page, await rect(page, `(${findItem})('PowerPoint…')`));
+  await clickText(page, await rect(page, `(${findItem})('PowerPoint…')`));
   await settle(page);
   return items;
 }
@@ -434,7 +434,7 @@ for (const platform of PLATFORMS) {
     assert.match(shown.text, /saved test-deck\.html/);
     assert.deepEqual(shown.buttons, ['Copy Command', 'Close']);
     await page.evaluate(`navigator.clipboard.writeText('nothing').then(() => true)`);
-    await click(page, await cardButton(page, 'pptx', 'Copy Command'));
+    await clickText(page, await cardButton(page, 'pptx', 'Copy Command'));
     await settle(page);
     assert.equal(await page.evaluate('navigator.clipboard.readText()'), 'npm run pptx -- test-deck.html');
     assert.ok(await card(page, 'pptx'), 'Copy Command closes the card');
@@ -442,7 +442,7 @@ for (const platform of PLATFORMS) {
     await settle(page);
     assert.equal(await card(page, 'pptx'), null, 'Esc does not close the card');
     await exportPowerPoint(page);
-    await click(page, await cardButton(page, 'pptx', 'Close'));
+    await clickText(page, await cardButton(page, 'pptx', 'Close'));
     await settle(page);
     assert.equal(await card(page, 'pptx'), null);
     assert.equal(await render(page), page.source);
@@ -451,7 +451,7 @@ for (const platform of PLATFORMS) {
 
   test(`File > Export To > PowerPoint… with unsaved changes asks to save first, as Present does (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, await wordAt(page, 'your'));
+    await clickText(page, await wordAt(page, 'your'));
     await type(page, 'q');
     await settle(page);
     const edited = await render(page);
@@ -467,7 +467,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await card(page, 'ask'), null);
     assert.equal(await card(page, 'pptx'), null, 'Esc on the question shows the command');
     await exportPowerPoint(page);
-    await click(page, await cardButton(page, 'ask', 'Export the saved file'));
+    await clickText(page, await cardButton(page, 'ask', 'Export the saved file'));
     await settle(page);
     assert.equal((await card(page, 'pptx'))?.code, 'npm run pptx -- test-deck.html');
     await press(page, 'Escape');

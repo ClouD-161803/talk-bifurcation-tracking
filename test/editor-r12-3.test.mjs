@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press } from './helpers/editor.mjs';
+import { click, clickText, drag, press } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 const PLATFORMS = ['mac', 'other'];
@@ -66,7 +66,7 @@ async function choose(page, bar, label) {
   await click(page, `.beeson-edit-menubar [role=menuitem]:nth-child(${i + 1})`);
   const at = await itemAt(page, label);
   assert.ok(at, `the ${bar} menu does not have ${label}`);
-  await click(page, at);
+  await clickText(page, at);
 }
 
 // what is hit in the middle of the first shown element of selector: an element of the light table,
@@ -143,7 +143,7 @@ for (const platform of PLATFORMS) {
     await page.evaluate(SPY);
     const file = await readMenu(page, 'File');
     assert.deepEqual(file.at(-1), { label: 'Print…', keys: platform === 'mac' ? '⌘P' : 'Ctrl+P', enabled: true });
-    await click(page, { x: 700, y: 200 });
+    await clickText(page, { x: 700, y: 200 });
     await press(page, 'Mod+P');
     await sleep(300);
     assert.deepEqual(await page.evaluate('window.__keys'), [true], 'the key is left to the browser');
@@ -176,7 +176,7 @@ for (const platform of PLATFORMS) {
     await sleep(100);
     const at = await itemAt(page, 'Zoom…');
     assert.ok(at, 'the zoom menu of the status bar does not have Zoom…');
-    await click(page, at);
+    await clickText(page, at);
     await page.waitFor(`document.activeElement?.name === 'percent'`);
     assert.match(await page.evaluate('document.activeElement.value'), /^\d+$/);
     for (const key of ['1', '4', '0']) await press(page, key);
@@ -205,7 +205,7 @@ for (const platform of PLATFORMS) {
     const mac = platform === 'mac';
     const dup = mac ? '⌘D' : 'Ctrl+D';
     const del = mac ? '⌫' : 'Delete';
-    await click(page, '.reveal .slides > section.present img');
+    await clickText(page, '.reveal .slides > section.present img');
     assert.deepEqual(await keysIn(page, 'Slide', ['Duplicate Slide', 'Delete Slide']), { 'Duplicate Slide': '', 'Delete Slide': '' });
     assert.deepEqual(await keysIn(page, 'Edit', ['Duplicate', 'Delete']), { Duplicate: dup, Delete: del });
     await press(page, 'Mod+D');
@@ -238,9 +238,9 @@ for (const platform of PLATFORMS) {
   test(`a right-click on a grip or the rotate handle opens the menu of the object (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 4 });
     for (const pick of ['figure', 'paragraph']) {
-      if (pick === 'figure') await click(page, '.reveal .slides > section.present img');
+      if (pick === 'figure') await clickText(page, '.reveal .slides > section.present img');
       else {
-        await click(page, '.reveal .slides > section.present p');
+        await clickText(page, '.reveal .slides > section.present p');
         await press(page, 'Escape');
       }
       await sleep(100);
@@ -344,7 +344,7 @@ for (const platform of PLATFORMS) {
   test(`an undo in the light table leaves the focus on the restored slide (${platform})`, async (t) => {
     const page = await load(t, platform);
     await openTable(page);
-    await click(page, await tileAt(page, 3));
+    await clickText(page, await tileAt(page, 3));
     await press(page, 'Backspace');
     await sleep(200);
     await press(page, 'Mod+Z');
