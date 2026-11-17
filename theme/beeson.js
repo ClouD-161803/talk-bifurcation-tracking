@@ -4992,6 +4992,9 @@ void main() {
   var ORBIT_WIDTH = 4;
   var RIB_WIDTH = 2;
   var DOT_SIZE = 18;
+  var FLOW = "flow";
+  var LAP = 6e3;
+  var PULSE = 0.035;
   var COMPASS_LEFT = 190;
   var COMPASS_TOP = 170;
   var COMPASS_RADIUS = 70;
@@ -5073,6 +5076,8 @@ void main() {
       if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
       if (r.ribs.some((i) => !(i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
     }
+    const t = data.times;
+    if (t && !(t.length === n && t.every((v, i) => v >= 0 && v < 1 && (i === 0 || v > t[i - 1])))) return "its times are not increasing fractions of the period, one for each point of the orbit";
     for (const a of data.arrows ?? []) {
       if (!(a.toward?.length === 3 && a.toward.every(Number.isFinite))) return `the arrow ${a.id} does not have a point toward of three numbers`;
     }
@@ -5082,6 +5087,10 @@ void main() {
   var Bundle = class _Bundle {
     constructor(el, data, THREE) {
       this.subtle = "";
+      this.flowing = false;
+      this.lapStart = 0;
+      this.phase = 0;
+      this.px = 1;
       this.stageName = null;
       this.t0 = 0;
       this.duration = GROW;
@@ -5106,14 +5115,16 @@ void main() {
           }
           if (k >= 1) this.settle();
         }
+        if (this.flowing) this.phase = ((now - this.lapStart) / LAP % 1 + 1) % 1;
         if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
         this.draw();
-        if (this.moving || this.rate) this.kick();
+        if (this.moving || this.rate || this.flowing) this.kick();
       };
       this.el = el;
       this.THREE = THREE;
       this.orbit = data.orbit;
       this.point = data.libration_point ?? null;
+      this.times = data.times ?? null;
       const turn3 = num4(el.dataset.turn, TURN2);
       this.rate = turn3 > 0 ? 2 * Math.PI / turn3 : 0;
       this.azimuth = num4(el.dataset.azimuth, -60) * Math.PI / 180;
@@ -5131,8 +5142,11 @@ void main() {
       this.camera.up.set(0, 0, 1);
       this.line = this.makeLine(this.orbit.length, ORBIT_WIDTH, 2);
       this.orbit.forEach((p, i) => this.setSegment(this.line.geometry, i, p, this.orbit[(i + 1) % this.orbit.length]));
-      this.dot = this.makeDot();
-      this.scene.add(this.line, this.dot);
+      this.dot = this.makeDot(this.point);
+      this.traveler = this.makeDot(this.orbit[0]);
+      this.traveler.renderOrder = 5;
+      this.traveler.visible = false;
+      this.scene.add(this.line, this.dot, this.traveler);
       this.strips = data.strips.map((r, i) => this.makeStrip(r, i));
       const points = [...this.orbit];
       for (const r of this.strips) this.orbit.forEach((p, i) => points.push(add(p, r.directions[i], r.half), add(p, r.directions[i], -r.half)));
@@ -5194,9 +5208,10 @@ void main() {
       }
       start4.needsUpdate = end.needsUpdate = true;
     }
-    makeDot() {
+    // a dot at the point at, hidden when at is null
+    makeDot(at) {
       const THREE = this.THREE, geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(this.point ?? [0, 0, 0]), 3));
+      geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(at ?? [0, 0, 0]), 3));
       const material = new THREE.ShaderMaterial({
         vertexShader: DOT_VERTEX,
         fragmentShader: DOT_FRAGMENT,
@@ -5208,7 +5223,7 @@ void main() {
       const dot2 = new THREE.Points(geometry, material);
       dot2.frustumCulled = false;
       dot2.renderOrder = 4;
-      dot2.visible = this.point !== null;
+      dot2.visible = at !== null;
       return dot2;
     }
     // the sheet of a strip as a mesh of three rows of points across it, at its two edges and on the
@@ -5271,6 +5286,8 @@ void main() {
       set2(this.line.material.uniforms.uColor.value, text);
       set2(this.dot.material.uniforms.uColor.value, text);
       set2(this.dot.material.uniforms.uRing.value, bg);
+      set2(this.traveler.material.uniforms.uColor.value, css("--accent", [0.94, 0.5, 0.31]));
+      set2(this.traveler.material.uniforms.uRing.value, bg);
       for (const r of this.strips) {
         const tone = css(`--${r.tone}`, [0.94, 0.5, 0.31]);
         set2(r.sheet.material.uniforms.uColor.value, tone);
@@ -5290,7 +5307,7 @@ void main() {
         }
       }
       const names = (best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? "").split(/\s+/).filter(Boolean);
-      const unknown = names.filter((name) => !this.strips.some((r) => r.id === name));
+      const unknown = names.filter((name) => !this.strips.some((r) => r.id === name) && !(name === FLOW && this.times));
       if (unknown.length) console.error(`beeson: unknown strip "${unknown.join(" ")}" of the bundle ${this.el.dataset.bundle}, known: ${this.strips.map((r) => r.id).join(", ")}`);
       return names;
     }
@@ -5301,6 +5318,14 @@ void main() {
       const jump = !animate || this.stageName === null;
       this.stageName = name;
       this.el.dataset.shown = name;
+      const flowing = names.includes(FLOW) && this.times !== null;
+      if (flowing !== this.flowing) {
+        this.flowing = flowing;
+        this.phase = 0;
+        this.lapStart = performance.now();
+        this.traveler.visible = flowing;
+        if (flowing) this.kick();
+      }
       let longest = 0;
       for (const r of this.strips) {
         r.from = r.grow;
@@ -5356,6 +5381,7 @@ void main() {
         mesh.material.uniforms.uWidth.value = mesh.userData.width * px;
       }
       this.dot.material.uniforms.uSize.value = DOT_SIZE * px;
+      this.px = px;
       this.camera.aspect = this.W / this.H;
       this.draw();
     }
@@ -5396,6 +5422,21 @@ void main() {
         });
         r.segments.visible = r.grow > 0;
       }
+    }
+    // the point of the state flow at its phase, enlarged as it passes its start
+    travel() {
+      const t = this.times;
+      if (!this.flowing || !t) return;
+      const n = this.orbit.length, phase = this.phase;
+      let k = 0;
+      while (k + 1 < n && t[k + 1] <= phase) k++;
+      const next = k + 1 < n ? t[k + 1] : 1, f = (phase - t[k]) / (next - t[k] || 1);
+      const a = this.orbit[k], b = this.orbit[(k + 1) % n];
+      const position = this.traveler.geometry.getAttribute("position");
+      position.setXYZ(0, lerp(a[0], b[0], f), lerp(a[1], b[1], f), lerp(a[2], b[2], f));
+      position.needsUpdate = true;
+      const d = Math.min(phase, 1 - phase) / PULSE;
+      this.traveler.material.uniforms.uSize.value = DOT_SIZE * this.px * (1 + 0.7 * Math.exp(-d * d));
     }
     // a point of the drawing in the slide pixels of the element, under the camera of now
     screen(v) {
@@ -5452,7 +5493,7 @@ void main() {
       ctx.restore();
     }
     // the labels at their anchors in the pixels of the slide. data-at is L1, for the libration point,
-    // the id of a strip, or the id of an arrow. the label of a strip is at the outer end of the
+    // flow, for the start of the moving point, the id of a strip, or the id of an arrow. the label of a strip is at the outer end of the
     // segment of its rib data-rib, from 0, on the side data-side, 1 or -1, and it is faded in with its
     // sheet. the label of an arrow is past the head of its needle, by LABEL_GAP and by its half extent
     // along the needle, or above the middle of the compass when the needle is too short to show
@@ -5472,7 +5513,10 @@ void main() {
         }
         let anchor2 = null, alpha = 1;
         const r = this.strips.find((rb) => rb.id === at);
-        if (r) {
+        if (at === FLOW) {
+          anchor2 = this.orbit[0];
+          alpha = this.flowing ? 1 : 0;
+        } else if (r) {
           const k = clamp2(Math.round(num4(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i2 = r.ribs[k];
           anchor2 = add(this.orbit[i2], r.directions[i2], r.half * (num4(lab.dataset.side, 1) < 0 ? -1 : 1));
           alpha = sheetGrowth(r.grow);
@@ -5490,6 +5534,7 @@ void main() {
       const r = renderer();
       if (!r) return;
       this.place();
+      this.travel();
       this.aim();
       this.label();
       if (r.domElement.width !== this.W || r.domElement.height !== this.H) r.setSize(this.W, this.H, false);
@@ -5514,7 +5559,8 @@ void main() {
     start() {
       this.active = true;
       this.last = 0;
-      if (this.moving || this.rate) this.kick();
+      this.lapStart = performance.now() - this.phase * LAP;
+      if (this.moving || this.rate || this.flowing) this.kick();
       else this.draw();
     }
     /** Stops the animation, and ends a change at once. */

@@ -6,7 +6,8 @@
 // separated by spaces, in data-surface-state of a fragment of the slide. a strip that is added is
 // grown out of the orbit, first as segments at its ribs, one after another along the orbit, and then
 // as a sheet between them. a strip that is removed is shrunk back in the reverse order. a compass is
-// drawn at the upper left, with a needle toward the point of each arrow of the block, e.g. the Earth
+// drawn at the upper left, with a needle toward the point of each arrow of the block, e.g. the Earth.
+// at the state flow, a point is moved around the orbit once per LAP, at the times of the block
 
 import type * as Three from 'three';
 import { LINE_FRAGMENT, LINE_VERTEX, clamp, ease, lerp, mix3, num, renderer, rgb } from './surface.ts';
@@ -63,13 +64,15 @@ type Vec = [number, number, number];
  * its first. A strip has a unit direction at every point of the orbit, a half width, and the indices
  * of the points at which a segment is drawn. Its tone is the name of a custom property of the theme
  * without its dashes, e.g. accent or violet. An arrow is the id of its label and the point toward
- * which its needle is drawn.
+ * which its needle is drawn. The times, if given, are the fractions of the period at the points of the
+ * orbit, increasing from 0, at which the point of the state flow is moved.
  */
 export type BundleData = {
   orbit: Vec[];
   libration_point?: Vec;
   strips: { id: string; tone: string; half_width: number; ribs: number[]; directions: Vec[] }[];
   arrows?: { id: string; toward: Vec }[];
+  times?: number[];
 };
 
 // milliseconds in which a strip is grown in full, and shrunk in full
@@ -86,6 +89,11 @@ const TURN = 90;
 const ORBIT_WIDTH = 4;
 const RIB_WIDTH = 2;
 const DOT_SIZE = 18;
+// the state at which a point is moved around the orbit, the milliseconds of one period, and the
+// half width in periods of the pulse of the point as it passes its start
+const FLOW = 'flow';
+const LAP = 6000;
+const PULSE = 0.035;
 // the compass in slide pixels: the middle of its circle from the left and the top edges of the
 // element, its radius, the widths of its circle and of a needle, the length of the head of a
 // needle, and the gap between the head and the label
@@ -168,6 +176,8 @@ export function parseBundle(text: string): BundleData | string {
     if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
     if (r.ribs.some((i) => !(i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
   }
+  const t = data.times;
+  if (t && !(t.length === n && t.every((v, i) => v >= 0 && v < 1 && (i === 0 || v > t[i - 1])))) return 'its times are not increasing fractions of the period, one for each point of the orbit';
   for (const a of data.arrows ?? []) {
     if (!(a.toward?.length === 3 && a.toward.every(Number.isFinite))) return `the arrow ${a.id} does not have a point toward of three numbers`;
   }
@@ -212,6 +222,12 @@ export class Bundle implements Turntable {
   private camera: Three.PerspectiveCamera;
   private line: Three.Mesh<Three.BufferGeometry, Three.ShaderMaterial>;
   private dot: Three.Points<Three.BufferGeometry, Three.ShaderMaterial>;
+  private times: number[] | null;
+  private traveler: Three.Points<Three.BufferGeometry, Three.ShaderMaterial>;
+  private flowing = false;
+  private lapStart = 0;
+  private phase = 0;
+  private px = 1;
   private center: Vec;
   private radius: number;
   private rate: number;
@@ -237,6 +253,7 @@ export class Bundle implements Turntable {
     this.THREE = THREE;
     this.orbit = data.orbit;
     this.point = data.libration_point ?? null;
+    this.times = data.times ?? null;
     const turn = num(el.dataset.turn, TURN);
     this.rate = turn > 0 ? (2 * Math.PI) / turn : 0;
     this.azimuth = (num(el.dataset.azimuth, -60) * Math.PI) / 180;
@@ -255,8 +272,11 @@ export class Bundle implements Turntable {
     this.camera.up.set(0, 0, 1);
     this.line = this.makeLine(this.orbit.length, ORBIT_WIDTH, 2);
     this.orbit.forEach((p, i) => this.setSegment(this.line.geometry, i, p, this.orbit[(i + 1) % this.orbit.length]));
-    this.dot = this.makeDot();
-    this.scene.add(this.line, this.dot);
+    this.dot = this.makeDot(this.point);
+    this.traveler = this.makeDot(this.orbit[0]);
+    this.traveler.renderOrder = 5;
+    this.traveler.visible = false;
+    this.scene.add(this.line, this.dot, this.traveler);
     this.strips = data.strips.map((r, i) => this.makeStrip(r, i));
     // the camera is aimed at the box of the orbit and of every strip in full, at every stage
     const points: Vec[] = [...this.orbit];
@@ -322,9 +342,10 @@ export class Bundle implements Turntable {
     start.needsUpdate = end.needsUpdate = true;
   }
 
-  private makeDot(): Three.Points<Three.BufferGeometry, Three.ShaderMaterial> {
+  // a dot at the point at, hidden when at is null
+  private makeDot(at: Vec | null): Three.Points<Three.BufferGeometry, Three.ShaderMaterial> {
     const THREE = this.THREE, geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.point ?? [0, 0, 0]), 3));
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(at ?? [0, 0, 0]), 3));
     const material = new THREE.ShaderMaterial({
       vertexShader: DOT_VERTEX,
       fragmentShader: DOT_FRAGMENT,
@@ -336,7 +357,7 @@ export class Bundle implements Turntable {
     const dot = new THREE.Points(geometry, material);
     dot.frustumCulled = false;
     dot.renderOrder = 4;
-    dot.visible = this.point !== null;
+    dot.visible = at !== null;
     return dot;
   }
 
@@ -400,6 +421,8 @@ export class Bundle implements Turntable {
     set(this.line.material.uniforms.uColor.value, text);
     set(this.dot.material.uniforms.uColor.value, text);
     set(this.dot.material.uniforms.uRing.value, bg);
+    set(this.traveler.material.uniforms.uColor.value, css('--accent', [0.94, 0.5, 0.31]));
+    set(this.traveler.material.uniforms.uRing.value, bg);
     for (const r of this.strips) {
       const tone = css(`--${r.tone}`, [0.94, 0.5, 0.31]);
       set(r.sheet.material.uniforms.uColor.value, tone);
@@ -417,7 +440,7 @@ export class Bundle implements Turntable {
       if (i >= index) { best = f; index = i; }
     }
     const names = (best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? '').split(/\s+/).filter(Boolean);
-    const unknown = names.filter((name) => !this.strips.some((r) => r.id === name));
+    const unknown = names.filter((name) => !this.strips.some((r) => r.id === name) && !(name === FLOW && this.times));
     if (unknown.length) console.error(`beeson: unknown strip "${unknown.join(' ')}" of the bundle ${this.el.dataset.bundle}, known: ${this.strips.map((r) => r.id).join(', ')}`);
     return names;
   }
@@ -429,6 +452,14 @@ export class Bundle implements Turntable {
     const jump = !animate || this.stageName === null;
     this.stageName = name;
     this.el.dataset.shown = name;
+    const flowing = names.includes(FLOW) && this.times !== null;
+    if (flowing !== this.flowing) {
+      this.flowing = flowing;
+      this.phase = 0;
+      this.lapStart = performance.now();
+      this.traveler.visible = flowing;
+      if (flowing) this.kick();
+    }
     let longest = 0;
     for (const r of this.strips) {
       r.from = r.grow;
@@ -492,6 +523,7 @@ export class Bundle implements Turntable {
       mesh.material.uniforms.uWidth.value = mesh.userData.width * px;
     }
     this.dot.material.uniforms.uSize.value = DOT_SIZE * px;
+    this.px = px;
     this.camera.aspect = this.W / this.H;
     this.draw();
   }
@@ -536,6 +568,21 @@ export class Bundle implements Turntable {
     }
   }
 
+  // the point of the state flow at its phase, enlarged as it passes its start
+  private travel(): void {
+    const t = this.times;
+    if (!this.flowing || !t) return;
+    const n = this.orbit.length, phase = this.phase;
+    let k = 0;
+    while (k + 1 < n && t[k + 1] <= phase) k++;
+    const next = k + 1 < n ? t[k + 1] : 1, f = (phase - t[k]) / (next - t[k] || 1);
+    const a = this.orbit[k], b = this.orbit[(k + 1) % n];
+    const position = this.traveler.geometry.getAttribute('position') as Three.BufferAttribute;
+    position.setXYZ(0, lerp(a[0], b[0], f), lerp(a[1], b[1], f), lerp(a[2], b[2], f));
+    position.needsUpdate = true;
+    const d = Math.min(phase, 1 - phase) / PULSE;
+    this.traveler.material.uniforms.uSize.value = DOT_SIZE * this.px * (1 + 0.7 * Math.exp(-d * d));
+  }
   // a point of the drawing in the slide pixels of the element, under the camera of now
   private screen(v: Vec): [number, number] {
     const p = new this.THREE.Vector3(...v).project(this.camera);
@@ -594,7 +641,7 @@ export class Bundle implements Turntable {
   }
 
   // the labels at their anchors in the pixels of the slide. data-at is L1, for the libration point,
-  // the id of a strip, or the id of an arrow. the label of a strip is at the outer end of the
+  // flow, for the start of the moving point, the id of a strip, or the id of an arrow. the label of a strip is at the outer end of the
   // segment of its rib data-rib, from 0, on the side data-side, 1 or -1, and it is faded in with its
   // sheet. the label of an arrow is past the head of its needle, by LABEL_GAP and by its half extent
   // along the needle, or above the middle of the compass when the needle is too short to show
@@ -614,7 +661,10 @@ export class Bundle implements Turntable {
       }
       let anchor: Vec | null = null, alpha = 1;
       const r = this.strips.find((rb) => rb.id === at);
-      if (r) {
+      if (at === FLOW) {
+        anchor = this.orbit[0];
+        alpha = this.flowing ? 1 : 0;
+      } else if (r) {
         const k = clamp(Math.round(num(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i = r.ribs[k];
         anchor = add(this.orbit[i], r.directions[i], r.half * (num(lab.dataset.side, 1) < 0 ? -1 : 1));
         alpha = sheetGrowth(r.grow);
@@ -633,6 +683,7 @@ export class Bundle implements Turntable {
     const r = renderer();
     if (!r) return;
     this.place();
+    this.travel();
     this.aim();
     this.label();
     if (r.domElement.width !== this.W || r.domElement.height !== this.H) r.setSize(this.W, this.H, false);
@@ -662,9 +713,10 @@ export class Bundle implements Turntable {
       }
       if (k >= 1) this.settle();
     }
+    if (this.flowing) this.phase = (((now - this.lapStart) / LAP) % 1 + 1) % 1;
     if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
     this.draw();
-    if (this.moving || this.rate) this.kick();
+    if (this.moving || this.rate || this.flowing) this.kick();
   };
 
   /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other. */
@@ -679,7 +731,8 @@ export class Bundle implements Turntable {
   start(): void {
     this.active = true;
     this.last = 0;
-    if (this.moving || this.rate) this.kick();
+    this.lapStart = performance.now() - this.phase * LAP;
+    if (this.moving || this.rate || this.flowing) this.kick();
     else this.draw();
   }
 
