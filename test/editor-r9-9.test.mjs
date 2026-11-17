@@ -617,18 +617,38 @@ const PLAYED = `(() => {
   const play = slider?.parentElement.querySelector('button.ed-play');
   return { paused: v.paused, time: v.currentTime, slider: Number(slider?.value), label: play?.getAttribute('aria-label') ?? null, before: !!play && !!(play.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING) };
 })()`;
-// RECORD writes the time of the selected video and of the slider into window.__plays at each update
+// RECORD writes the time of the selected video and of the slider into window.__plays at each update,
+// and the state of the video in the task of the first click on Play, after the handler of the
+// editor, into window.__click
 const RECORD = `(() => {
   const v = window.BeesonEditor.selection()[0];
   window.__plays = [];
+  window.__click = null;
   const add = () => window.__plays.push({ at: performance.now(), paused: v.paused, time: v.currentTime, slider: Number(document.querySelector('${PANEL} input[name=poster-frame]')?.value) });
   for (const type of ['playing', 'timeupdate']) v.addEventListener(type, add);
+  document.addEventListener('click', (e) => {
+    if (!window.__click && e.target.closest?.('${PANEL} button.ed-play')) window.__click = { at: performance.now(), paused: v.paused, time: v.currentTime };
+  });
+  // the callers of pause, for the message of a failed wait
+  window.__pauses = [];
+  const pause = v.pause;
+  v.pause = function () {
+    window.__pauses.push({ at: performance.now(), time: v.currentTime, by: new Error().stack.split('\\n').slice(2, 6).join(' < ') });
+    return pause.call(this);
+  };
   return true;
+})()`;
+// the record and the state of the selected video, for the message of a failed wait
+const RECORDED = `(() => {
+  const v = window.BeesonEditor.selection()[0];
+  const play = document.querySelector('${PANEL} button.ed-play');
+  return JSON.stringify({ click: window.__click, plays: window.__plays.length, last: window.__plays.slice(-3), pauses: window.__pauses, video: v && { paused: v.paused, time: v.currentTime, ready: v.readyState, ended: v.ended }, play: play && { label: play.getAttribute('aria-label'), disabled: play.disabled } });
 })()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-// with late, the state of the video is read late ms later, as on a crowded machine
-async function playInPlace(t, platform, late = 0) {
+// with late, the state of the video is read late ms later, and with hold, the main thread of the page
+// is held for hold ms after the click on Play, as on a crowded machine
+async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   const page = await load(t, platform, { n: VIDEO, query: 'edit' });
   await selectVideo(page);
   // the frame at half of the video, captured as the poster
@@ -644,14 +664,22 @@ async function playInPlace(t, platform, late = 0) {
 
   await page.evaluate(RECORD);
   await click(page, await playAt(page));
+  if (hold) await page.evaluate(`(() => { const t = performance.now(); while (performance.now() - t < ${hold}); return true; })()`);
   // the updates of the playing video are read from the record, since it plays on until the read.
   // the first is at the frame it plays from, and the slider is compared with an update 0.5 s later
   const later = `window.__plays.find((p) => !p.paused && p.time > ${from + 0.5})`;
-  await page.waitFor(`!!${later}`, 60000);
+  await page.waitFor(`!!${later}`, 60000).catch(async (error) => { throw new Error(`${error.message}: ${await page.evaluate(RECORDED)}`); });
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
   await sleep(late);
-  const first = await page.evaluate('window.__plays.find((p) => !p.paused)');
-  assert.ok(first.time >= from - 0.1 && first.time < from + 2, `the video plays from ${first.time} and not from the frame ${from} of the slider`);
+  const started = await page.evaluate('window.__click');
+  assert.ok(started && !started.paused && Math.abs(started.time - from) < 0.1, `Play starts the video at ${JSON.stringify(started)} and not at the frame ${from} of the slider`);
+  // a listener of the record reads the time when it is run, which on a crowded machine is seconds
+  // after the update. the first time read is then at most this delay past the frame of the slider,
+  // or past the end of the video and wrapped to its start, since the video loops
+  const { first, duration } = await page.evaluate('({ first: window.__plays.find((p) => !p.paused), duration: window.BeesonEditor.selection()[0].duration })');
+  const ran = (first.at - started.at) / 1000;
+  const time = first.time < from - 0.1 && from + ran >= duration ? first.time + duration : first.time;
+  assert.ok(time >= from - 0.1 && time < from + ran + 0.5, `the video plays from ${first.time}, read ${ran} s after the click, and not from the frame ${from} of the slider`);
   const on = await page.evaluate(later);
   assert.ok(Math.abs(on.slider - on.time) < 0.5, `the slider at ${on.slider} does not follow the video at ${on.time}`);
   s = await page.evaluate(PLAYED);
@@ -690,7 +718,10 @@ for (const platform of PLATFORMS) {
   test(`${platform}: Play in the Video pane plays the video in place from the frame of the slider, as a preview that stops on a change of the selection or the slide`, (t) => playInPlace(t, platform));
 }
 
-test('Play in the Video pane is checked from a record of the video when the state is read 3 s late', (t) => playInPlace(t, 'other', 3000));
+test('Play in the Video pane is checked from a record of the video when the state is read 3 s late', (t) => playInPlace(t, 'other', { late: 3000 }));
+
+// #124: on a crowded runner, the listeners of the record ran seconds after the start of the video
+test('Play in the Video pane is checked from a record of the video when the page is held 5 s after the click', (t) => playInPlace(t, 'other', { hold: 5000 }));
 
 // the tag of the outline of a drop, and the buttons of the placeholder drawn under it
 const TAGGED = `(() => {

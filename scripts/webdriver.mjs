@@ -15,7 +15,7 @@ const contentTypes = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/ja
 
 /**
  * Serves the files of a folder on a local port, and returns its origin and close(). The answer for
- * a file is held back by delay(path) ms. A Range request is answered with the bytes it names, as a
+ * a file is held back by delay(path), a number of ms or a promise. A Range request is answered with the bytes it names, as a
  * static server does, since Chrome otherwise holds a connection for each video it reads in part,
  * and a second tab of a deck with two videos then waits about 15 s for its files. With writable, a
  * PUT writes its body into the file, as the stand-in of a file handle does in
@@ -35,7 +35,8 @@ export async function serve(folder, { delay = () => 0, writable = false } = {}) 
         return;
       }
       const body = await readFile(path);
-      await sleep(delay(path));
+      const hold = delay(path);
+      await (typeof hold === 'number' ? sleep(hold) : hold);
       const type = { 'Content-Type': contentTypes[extname(path)] ?? 'application/octet-stream', 'Accept-Ranges': 'bytes' };
       const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
       if (range && (range[1] || range[2])) {
