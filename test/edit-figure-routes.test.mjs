@@ -36,7 +36,7 @@ const temporary = (talk) => readdirSync(join(talk, 'figures')).filter((name) => 
 
 test('a source is written only over the text that it was edited from, and a new figure takes a free name', async (t) => {
   const s = await session(t);
-  assert.deepEqual(s.hello.figures, { outputs: { orbit: null }, compiling: null, errors: {}, compiled: {}, uncompiled: 1, compiler: 'missing' });
+  assert.deepEqual(s.hello.figures, { outputs: { orbit: null }, compiling: null, errors: {}, compiled: {}, uncompiled: 0, compiler: 'missing' });
   const first = await s.send('figures/source', { name: 'orbit', source: DRAWING, base: null });
   assert.equal(first.status, 200, first.text);
   assert.deepEqual(first.json(), { name: 'orbit' });

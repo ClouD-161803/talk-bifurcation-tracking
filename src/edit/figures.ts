@@ -189,7 +189,8 @@ export class FigureWatcher {
     const names = new Set(states.flatMap((figure) => (figure.state === 'invalid' ? [] : [figure.name!])));
     this.update(() => {
       this.outputs = {};
-      this.uncompiled = states.filter((figure) => figure.state !== 'current').length;
+      // a figure without a source or with an invalid name is not compiled here, and npm run check tells it
+      this.uncompiled = states.filter((figure) => figure.state === 'stale' || figure.state === 'missing').length;
       for (const name of Object.keys(this.errors)) if (!names.has(name)) delete this.errors[name];
       for (const name of this.stale) if (!names.has(name)) this.stale.delete(name);
       for (const figure of states) {

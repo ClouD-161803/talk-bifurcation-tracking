@@ -58,8 +58,7 @@ export type FigureError = { file: string | null; line: number | null; message: s
 // page loads an output again when its hash differs from the one of the figure it drew. compiling is
 // the figure being compiled into its output, errors the errors of the last compile of each figure
 // that failed, compiled the time in ms of the last compile of each figure, and uncompiled the count
-// of the figures that npm run check finds not current. compiler is missing without latex or
-// dvisvgm
+// of the figures whose output is stale or missing. compiler is missing without latex or dvisvgm
 export type FigureState = {
   outputs: Record<string, string | null>;
   compiling: string | null;
