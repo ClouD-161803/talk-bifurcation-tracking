@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -87,7 +87,7 @@ for (const platform of PLATFORMS) {
   ]) {
     test(`after an undo and a redo of Remove Bullet on slide ${n + 1}, the next key goes into the text (${platform})`, async (t) => {
       const page = await load(t, platform, n);
-      await click(page, await pointOf(page, ITEM, needle));
+      await clickText(page, await pointOf(page, ITEM, needle));
       await press(page, 'Home');
       await press(page, 'Backspace');
       assert.equal(await undoLabel(page), 'Undo Remove Bullet');
@@ -100,7 +100,7 @@ for (const platform of PLATFORMS) {
       await command(page, 'undo');
       await byteExact(page);
       // a typing clears the redos, hence the bullet is taken off again for the redo
-      await click(page, await pointOf(page, ITEM, needle));
+      await clickText(page, await pointOf(page, ITEM, needle));
       await press(page, 'Home');
       await press(page, 'Backspace');
       await command(page, 'undo');
@@ -139,7 +139,7 @@ const listPart = (text) => {
 // the item "You might..." of slide 5 made the first item of a list nested in "Dark and light..."
 async function nested(t, platform) {
   const page = await load(t, platform, 4);
-  await click(page, await pointOf(page, ITEM, 'You might'));
+  await clickText(page, await pointOf(page, ITEM, 'You might'));
   await press(page, 'Home');
   await press(page, 'Tab');
   assert.match(listPart(await render(page)), /for-light<\/code>\.\n {6}<ul>\n {8}<li class="fragment" data-fragment-index="2">You might/);
@@ -150,7 +150,7 @@ async function nested(t, platform) {
 for (const platform of PLATFORMS) {
   test(`Backspace at the start of a nested first item is named as the outdent, Decrease Indent Level (${platform})`, async (t) => {
     const page = await nested(t, platform);
-    await click(page, await pointOf(page, ITEM, 'You might'));
+    await clickText(page, await pointOf(page, ITEM, 'You might'));
     await press(page, 'Home');
     await press(page, 'Backspace');
     assert.equal(await undoLabel(page), 'Undo Decrease Indent Level');
@@ -167,7 +167,7 @@ for (const platform of PLATFORMS) {
 for (const platform of PLATFORMS) {
   test(`Backspace at the start of a first item with a nested list takes its dash off and keeps the nested items in the list (${platform})`, async (t) => {
     const page = await nested(t, platform);
-    await click(page, await pointOf(page, ITEM, 'Dark and light'));
+    await clickText(page, await pointOf(page, ITEM, 'Dark and light'));
     await press(page, 'Home');
     await press(page, 'Backspace');
     const part = listPart(await render(page));

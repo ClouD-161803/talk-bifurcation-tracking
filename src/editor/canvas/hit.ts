@@ -364,6 +364,18 @@ export function lineAt(app: App, x: number, y: number): Element | null {
   return best;
 }
 
+// the elements of the current slide under the point x, y on the screen, from front to back: the
+// lines whose stroke is within 6 px of it, then the movable elements and backdrops as drawn
+export function stackAt(app: App, x: number, y: number): Element[] {
+  const out = linesOf(app).filter((svg) => reach({ x, y }, lineStroke(svg).pts) <= 6);
+  for (const t of document.elementsFromPoint(x, y)) {
+    const back = t.closest('.backdrop');
+    const el = back && app.current()?.contains(back) && app.pairing?.elements.get(back)?.open ? back : movableOf(app, t);
+    if (el && !out.includes(el)) out.push(el);
+  }
+  return out;
+}
+
 // the ends and the middle of each line of the current slide outside skip, in slide pixels, which a
 // drag snaps to. the middle of a curve or an elbow is its grip of the bend
 export function linePoints(app: App, skip: Element[] = []): Point[] {

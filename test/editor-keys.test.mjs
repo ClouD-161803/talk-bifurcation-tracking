@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { byteExact, click, editorPage, press, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, editorPage, press, type } from './helpers/editor.mjs';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
 const PLATFORMS = ['mac', 'other'];
@@ -40,7 +40,7 @@ for (const platform of PLATFORMS) {
     t.after(() => browser.close());
     const page = await keysPage(browser, platform);
     await page.evaluate('Reveal.slide(2)');
-    await click(page, '.reveal section.present > h2');
+    await clickText(page, '.reveal section.present > h2');
     await press(page, 'End');
     await type(page, ' now');
     await byteExact(page, [HEADING]);
@@ -69,7 +69,7 @@ for (const platform of PLATFORMS) {
     t.after(() => browser.close());
     const page = await keysPage(browser, platform);
     await page.evaluate('Reveal.slide(2)');
-    await click(page, '.reveal section.present > h2');
+    await clickText(page, '.reveal section.present > h2');
     await press(page, 'End');
     for (const key of ['Backspace', 'Mod+A', 'Mod+C', 'Mod+X', 'Mod+V', 'D', 'G', 'PageDown', 'Home']) await press(page, key);
     // Select All is the command of the registry, which selects the text of the block as the browser
@@ -110,7 +110,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await slide(page), 0);
     // with a block selected, an arrow nudges it and the slide stays
     await page.evaluate('Reveal.slide(2)');
-    await click(page, '.reveal section.present > h2');
+    await clickText(page, '.reveal section.present > h2');
     await press(page, 'Escape');
     await press(page, 'ArrowRight');
     assert.equal(await slide(page), 2);
@@ -186,7 +186,7 @@ for (const platform of PLATFORMS) {
     }
     assert.deepEqual(back, ['navigator', 'toolbar', 'menubar', 'status', 'inspector', 'notes', 'canvas']);
     // F6 is taken in a text too
-    await click(page, '.reveal section.present h1');
+    await clickText(page, '.reveal section.present h1');
     await press(page, 'F6');
     assert.equal(await where(), 'notes');
     assert.deepEqual(page.errors, []);
@@ -248,7 +248,7 @@ for (const platform of PLATFORMS) {
       window.showOpenFilePicker = async () => { window.__picker = 'open'; throw new DOMException('cancelled', 'AbortError'); };
     })()`);
     await page.evaluate('Reveal.slide(2)');
-    await click(page, '.reveal section.present > h2');
+    await clickText(page, '.reveal section.present > h2');
     await press(page, 'End');
     await type(page, ' now');
     // Save is taken in a text

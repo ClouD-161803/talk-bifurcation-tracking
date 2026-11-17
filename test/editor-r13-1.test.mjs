@@ -8,7 +8,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, deckUrl, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, saveAndReopen } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 // the slide of the demo deck with a paragraph, a list, and a figure in a figure box
@@ -132,7 +132,7 @@ for (const platform of PLATFORMS) {
   test(`${platform}: a paragraph dragged onto the figure is brought in front of its picture`, async (t) => {
     const page = await load(t, platform);
     const scale = await page.evaluate(`document.querySelector('.reveal section.present').getBoundingClientRect().width / 1920`);
-    await click(page, P);
+    await clickText(page, P);
     await press(page, 'Escape');
     await frames(page);
     assert.deepEqual(await selected(page), ['p']);
@@ -181,7 +181,7 @@ for (const platform of PLATFORMS) {
 
     // Send to Back puts it under the picture and the heading, without a move on the slide
     if ((await selected(page))[0] !== 'p') {
-      await click(page, at);
+      await clickText(page, at);
       await press(page, 'Escape');
       await frames(page);
     }
@@ -198,7 +198,7 @@ for (const platform of PLATFORMS) {
   test(`${platform}: the figure is brought in front of a paragraph raised by Bring to Front with a z-index, and moved in the file otherwise`, async (t) => {
     const page = await load(t, platform);
     const scale = await page.evaluate(`document.querySelector('.reveal section.present').getBoundingClientRect().width / 1920`);
-    await click(page, P);
+    await clickText(page, P);
     await press(page, 'Escape');
     const from = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-handle')].find((d) => !d.hidden && d.getClientRects().length).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     await drag(page, from, { dx: 700 * scale, dy: 100 * scale, steps: 12 });
@@ -208,7 +208,7 @@ for (const platform of PLATFORMS) {
     const raised = await render(page);
     // a click on the picture selects the figure, which is then brought in front of the paragraph
     const img = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.reveal section.present figure img')].find((i) => i.getClientRects().length).getBoundingClientRect(); return { x: r.left + 20, y: r.bottom - 20 }; })()`);
-    await click(page, img);
+    await clickText(page, img);
     await frames(page);
     assert.deepEqual(await selected(page), ['figure']);
     assert.deepEqual(await orders(page), { front: true, forward: true, backward: true, back: true });
@@ -220,7 +220,7 @@ for (const platform of PLATFORMS) {
     await checkEdit(page, front, raised);
     // Send to Back puts the figure behind the heading and the list in the flow, with a z-index under
     // 0 in place of its z-index
-    await click(page, img);
+    await clickText(page, img);
     await frames(page);
     assert.deepEqual(await selected(page), ['figure']);
     await press(page, KEYS[platform].back);
@@ -233,12 +233,12 @@ for (const platform of PLATFORMS) {
 
   test(`${platform}: a plate does not have layer commands, and a heading moved over it is put after it in the file`, async (t) => {
     const page = await load(t, platform, PLATE, LAYOUTS);
-    await click(page, '.reveal section.present .plate img');
+    await clickText(page, '.reveal section.present .plate img');
     await frames(page);
     assert.deepEqual(await selected(page), ['div']);
     assert.deepEqual(await orders(page), { front: false, forward: false, backward: false, back: false });
     // the heading is moved by its handle onto the plate, under which it is drawn
-    await click(page, '.reveal section.present > h2');
+    await clickText(page, '.reveal section.present > h2');
     await press(page, 'Escape');
     const from = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-handle')].find((d) => !d.hidden && d.getClientRects().length).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
     const scale = await page.evaluate(`document.querySelector('.reveal section.present').getBoundingClientRect().width / 1920`);
@@ -254,7 +254,7 @@ for (const platform of PLATFORMS) {
     assert.doesNotMatch(front, /z-index/);
     assert.deepEqual(await orders(page), { front: false, forward: false, backward: true, back: true });
     await checkEdit(page, front, moved);
-    await click(page, '.reveal section.present .plate img');
+    await clickText(page, '.reveal section.present .plate img');
     await frames(page);
     assert.deepEqual(await orders(page), { front: false, forward: false, backward: false, back: false });
   });
@@ -265,12 +265,12 @@ for (const platform of PLATFORMS) {
 for (const platform of PLATFORMS) {
   test(`${platform}: a list sent behind the paragraph before it is drawn in the show and in the print view`, async (t) => {
     const page = await load(t, platform);
-    await click(page, P);
+    await clickText(page, P);
     await press(page, 'Escape');
     await press(page, 'ArrowDown');
     await frames(page);
     const nudged = await render(page);
-    await click(page, '.reveal section.present > ul li');
+    await clickText(page, '.reveal section.present > ul li');
     await press(page, 'Escape');
     await frames(page);
     assert.deepEqual(await selected(page), ['ul']);
@@ -283,7 +283,7 @@ for (const platform of PLATFORMS) {
     // two steps of Bring Forward put the list over the heading, then over the paragraph again as in
     // the file, and take the declarations off
     for (const step of [1, 2]) {
-      await click(page, '.reveal section.present > ul li');
+      await clickText(page, '.reveal section.present > ul li');
       await press(page, 'Escape');
       await frames(page);
       assert.deepEqual(await selected(page), ['ul']);
@@ -318,7 +318,7 @@ for (const platform of PLATFORMS) {
 // order of the file, keeps the style of the file, and Reset Slide takes the order off
 const exec = (page, id) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)})).then(() => true)`);
 async function selectP(page) {
-  await click(page, P);
+  await clickText(page, P);
   await press(page, 'Escape');
   await frames(page);
   assert.deepEqual(await selected(page), ['p']);

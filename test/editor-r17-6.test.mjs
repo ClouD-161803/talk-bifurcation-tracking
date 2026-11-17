@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { center, click, drag, press, type } from './helpers/editor.mjs';
+import { center, click, clickText, drag, press, type } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 const LAYOUTS = 'test/pages/editor-layouts.html';
@@ -67,7 +67,7 @@ async function choose(page, bar, label) {
   await wait(page, 200);
   const at = await rect(page, `(${findItem})(${js(label)})`);
   assert.ok(at, `the ${bar} menu does not have ${label}`);
-  await click(page, at);
+  await clickText(page, at);
   await wait(page, 400);
 }
 
@@ -75,7 +75,7 @@ async function choose(page, bar, label) {
 // the focus in W. text is the file after the move
 async function moved(t, platform) {
   const page = await load(t, platform);
-  await click(page, await center(page, IMG));
+  await clickText(page, await center(page, IMG));
   await press(page, 'ArrowRight');
   await wait(page, 1100);
   const text = await render(page);
@@ -89,7 +89,7 @@ async function moved(t, platform) {
 
 async function typeInto(page, id, value) {
   const sel = `#beeson-edit-num-${id}`;
-  await click(page, await center(page, sel));
+  await clickText(page, await center(page, sel));
   await page.evaluate(`document.querySelector(${js(sel)}).select()`);
   await type(page, value);
   await wait(page);
@@ -165,7 +165,7 @@ for (const platform of PLATFORMS) {
     const said = await title(page);
     assert.match(said, /A picture covers 4 texts/);
     const start = await page.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(Reveal.getCurrentSlide().querySelector(':scope > ul > li')); const l = r.getClientRects()[0]; return { x: l.left + 12, y: l.top + l.height / 2 }; })()`);
-    await click(page, start);
+    await clickText(page, start);
     await press(page, 'Escape');
     await wait(page);
     const k = await page.evaluate('Reveal.getCurrentSlide().getBoundingClientRect().width / 1920');

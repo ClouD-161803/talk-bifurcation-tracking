@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, press, saveAndReopen, selectFigure } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const LAYOUTS = 'test/pages/editor-layouts.html';
@@ -89,9 +89,9 @@ for (const platform of PLATFORMS) {
       if (c.text) {
         await page.evaluate(`[...document.querySelectorAll(${JSON.stringify(c.selector)})].find((p) => p.textContent === ${JSON.stringify(c.text)}).setAttribute('data-r67', '')`);
         const at = await page.evaluate(`(() => { const b = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: b.left + 20, y: b.top + b.height / 2 }; })()`);
-        await click(page, at);
+        await clickText(page, at);
         await press(page, 'Escape');
-      } else for (let n = 0; n < c.clicks; n++) await click(page, c.selector);
+      } else for (let n = 0; n < c.clicks; n++) await clickText(page, c.selector);
       await frames(page);
       const before = await widths(page, selector);
       const grips = await gripsAt(page);
@@ -119,7 +119,7 @@ for (const platform of PLATFORMS) {
 const shownItems = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item[data-command]')].map((i) => ({ id: i.dataset.command, label: i.querySelector('.label').textContent, keys: i.querySelector('.keys').textContent }))`);
 
 async function openBar(page, bar) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${JSON.stringify(bar)}).getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`));
@@ -145,7 +145,7 @@ const NOTATION = {
 for (const platform of PLATFORMS) {
   test(`${platform}: a menu, a context menu, a tooltip, and the sheet write the keys of a command in one notation`, async () => {
     const page = await editor(platform, MATH);
-    await click(page, '.reveal section.present .figure-box > img');
+    await clickText(page, '.reveal section.present .figure-box > img');
     await frames(page);
     const menus = new Map();
     for (const bar of ['File', 'Edit', 'Insert', 'Format', 'Arrange', 'Slide', 'View', 'Help']) {

@@ -273,8 +273,8 @@ export function contextItems(app: App, kind: Context, target: Element | null): M
   if (kind === 'element') {
     // Edit Text, enabled on an element that holds a text, follows the items of the kind of the
     // element. it is left out of the menu of a figure with an image or a video, as the menu of an
-    // image in Keynote does not have an item for text, and its caption is edited with a click or
-    // Return
+    // image in Keynote does not have an item for text, and its caption is edited with a click on
+    // the selected figure or Return
     if (target?.matches('figure') && target.querySelector('img, video')) rest = rest.filter((c) => c.id !== 'selection.editText');
     const rank = (c: Command) => SECTIONS.indexOf(sectionOf(c)) + (c.id === 'selection.editText' ? 0.5 : 0);
     const home = (c: Command) => (c.menu ? `${c.menu.bar}/${c.menu.submenu ?? c.menu.group}` : c.id);
@@ -756,9 +756,15 @@ window.addEventListener('contextmenu', (ev) => {
 }, true);
 
 // a context menu takes the focus, and opened from the keyboard it highlights its first item
-export function openContextMenu(app: App, kind: Context, target: Element | null, at: { x: number; y: number }): OpenMenu | null {
+export function openContextMenu(app: App, kind: Context, target: Element | null, at: { x: number; y: number }, more: MenuItem[] = []): OpenMenu | null {
   const items = contextItems(app, kind, target);
   if (!items.length) return null;
+  // more goes last, before the rule and the note of the menu of the browser
+  if (more.length) {
+    const last = items.at(-1);
+    const note = last && 'note' in last ? items.splice(-2) : [];
+    items.push({ rule: true }, ...more, ...note);
+  }
   const keyboard = menuKey;
   menuKey = false;
   return openMenu(app, items, { anchor: at, placement: 'point', label: `${kind} menu`, className: `context ${kind}`, keyboard, focus: true });

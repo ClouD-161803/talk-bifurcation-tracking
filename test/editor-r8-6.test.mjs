@@ -11,7 +11,7 @@ import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
 const PLATFORMS = ['mac', 'other'];
@@ -67,7 +67,7 @@ async function load(t, platform, n = TEXT, deck = LAYOUTS) {
 // the labels of the first two items of the Edit menu, i.e. Undo and Redo, read from the menu
 // opened with a click on the menu bar
 async function editLabels(page) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === 'Edit').getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`));
@@ -146,7 +146,7 @@ for (const platform of PLATFORMS) {
     await sheetOpen(page);
     await type(page, '\\alpha');
     await sleep(400);
-    await click(page, await outside(page));
+    await clickText(page, await outside(page));
     await sheetClosed(page);
     await sleep(200);
     const edited = await oneEntry(page, 'Insert Formula');
@@ -166,7 +166,7 @@ for (const platform of PLATFORMS) {
     // a click away with the field empty
     await exec(page, 'insert.formula');
     await sheetOpen(page);
-    await click(page, await outside(page));
+    await clickText(page, await outside(page));
     await sheetClosed(page);
     await noEntry(page);
     // the commit key with the field empty, which leaves the sheet open as Insert is dimmed
@@ -183,7 +183,7 @@ for (const platform of PLATFORMS) {
 
   test(`a new inline formula of Insert > Formula in a text is one entry, and none after Esc (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, P);
+    await clickText(page, P);
     await press(page, 'End');
     await frames(page);
     await formulaKey(page, platform);
@@ -191,7 +191,7 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     await sheetClosed(page);
     await noEntry(page);
-    await click(page, P);
+    await clickText(page, P);
     await press(page, 'End');
     await formulaKey(page, platform);
     await sheetOpen(page);
@@ -229,7 +229,7 @@ for (const platform of PLATFORMS) {
   for (const [name, label, how, tag] of CONVERSIONS) {
     test(`a paragraph made ${tag} with ${name} is selected after the command, an undo, and a redo (${platform})`, async (t) => {
       const page = await load(t, platform);
-      await click(page, P);
+      await clickText(page, P);
       await press(page, 'Escape');
       await frames(page);
       const block = await selected(page);

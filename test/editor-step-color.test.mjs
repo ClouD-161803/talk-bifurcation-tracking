@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -208,7 +208,7 @@ test('Format > Text Color > Color at a Step… opens the steps of the Text pane,
 
 test('two text elements selected as objects are colored at a step with one class, as one entry of the history', async (t) => {
   const page = await open(t, 'other');
-  await click(page, await center(page, '.reveal section.present > p:not(.fragment)'));
+  await clickText(page, await center(page, '.reveal section.present > p:not(.fragment)'));
   await press(page, 'Escape');
   const step2 = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector('p[data-fragment-index="2"]').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
   await click(page, step2, { modifiers: 'Shift' });

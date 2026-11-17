@@ -17,7 +17,7 @@ import { besidePlace } from '../src/editor/ui/dialog.ts';
 import { GRID, fillLine } from '../src/editor/table.ts';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, captured, click, drag, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, captured, click, clickText, drag, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
 const PANEL = '#beeson-edit-panel-format';
@@ -141,7 +141,7 @@ test('Autofill goes on with a step of numbers and repeats any other line', () =>
 // the caret at the end of the last item of the list of the current slide
 async function caretInLast(page) {
   const r = await boxOf(page, LAST);
-  await click(page, { x: r.right - 4, y: r.bottom - 6 });
+  await clickText(page, { x: r.right - 4, y: r.bottom - 6 });
   await settle(page);
   await page.evaluate(`(() => {
     const r = document.createRange();
@@ -174,7 +174,7 @@ for (const platform of PLATFORMS) {
     await settle(page);
     assert.match(await render(page), /one slide per step\.\\\(x\^2\\\)<\/li>/);
 
-    await click(page, `${LAST} mjx-container`);
+    await clickText(page, `${LAST} mjx-container`);
     await page.waitFor(`!!document.querySelector('.beeson-math')`);
     await sleep(200);
     assert.equal(await page.evaluate(`document.querySelector('.beeson-math .title').textContent`), 'Edit Formula');
@@ -213,7 +213,7 @@ for (const platform of PLATFORMS) {
     const page = await open(platform);
     t.after(() => page.close?.());
     await show(page, STEPS);
-    await click(page, LAST);
+    await clickText(page, LAST);
     await press(page, 'Escape');
     await exec(page, 'insert.formula');
     await page.waitFor(`!!document.querySelector('.beeson-math')`);
@@ -260,7 +260,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'zoom.fit');
     await show(page, STEPS);
     const fit = await zoomOf(page);
-    await click(page, LAST);
+    await clickText(page, LAST);
     await press(page, 'Escape');
     await settle(page);
     await click(page, '.beeson-edit-top [data-command="toolbar.zoom"]');
@@ -290,7 +290,7 @@ const posterBytes = (page, video) => page.evaluate(`fetch(document.querySelector
 // a trusted click on the poster frame slider at a fraction of its length
 async function slideTo(page, fraction) {
   const r = await boxOf(page, SLIDER);
-  await click(page, { x: r.left + 8 + (r.right - r.left - 16) * fraction, y: (r.top + r.bottom) / 2 });
+  await clickText(page, { x: r.left + 8 + (r.right - r.left - 16) * fraction, y: (r.top + r.bottom) / 2 });
 }
 const ASK = 'dialog.beeson-edit-dialog.beeson-poster-ask[open]';
 
@@ -300,7 +300,7 @@ for (const platform of PLATFORMS) {
     t.after(() => page.close?.());
     await show(page, VIDEOS);
     const { mode, video, clip } = await videoOfSlide(page);
-    await click(page, video);
+    await clickText(page, video);
     await settle(page);
     assert.equal(await page.evaluate(`document.querySelector('${PANEL} .ed-panes')?.dataset.pane`), 'video');
     await page.waitFor(`!document.querySelector(${js(SLIDER)}).disabled`);
@@ -338,7 +338,7 @@ for (const platform of PLATFORMS) {
     if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
     await show(page, VIDEOS);
     const { mode, video, clip } = await videoOfSlide(page);
-    await click(page, video);
+    await clickText(page, video);
     await settle(page);
     const before = (await page.evaluate('window.BeesonEditor.status()')).message;
     // the Video pane is filled after the click, and under load later than one settle
@@ -352,7 +352,7 @@ for (const platform of PLATFORMS) {
     assert.ok(asked, `the pane did not offer a way to set the poster: ${(await page.evaluate('window.BeesonEditor.status()')).message}`);
     assert.ok(asked.includes(`${clip}.mp4`), asked);
     await page.send('Page.setInterceptFileChooserDialog', { enabled: true });
-    await click(page, `${ASK} button.primary`);
+    await clickText(page, `${ASK} button.primary`);
     await page.waitFor(`!!document.querySelector('input.beeson-media-input')`);
     const { result } = await page.send('Runtime.evaluate', { expression: `document.querySelector('input.beeson-media-input')` });
     await page.send('DOM.setFileInputFiles', { files: [resolve(`demo/${clip}.mp4`)], objectId: result.objectId });
@@ -386,7 +386,7 @@ for (const platform of PLATFORMS) {
     const { x, y } = middle(await boxOf(page, '.beeson-table-picker .grid > :last-child'));
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     assert.equal(await page.evaluate(`document.querySelector('.beeson-table-picker .size').textContent`), '10 × 8 Table');
-    await click(page, '.beeson-table-picker .more');
+    await clickText(page, '.beeson-table-picker .more');
     await page.waitFor(`!!document.querySelector('dialog.beeson-table-size[open]')`);
     assert.equal(await page.evaluate('document.activeElement.name'), 'columns');
     await type(page, '12');
@@ -410,7 +410,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'insert.table', { rows: 5, columns: 3 });
     await settle(page);
     for (const [r, c, text] of [[1, 0, '1'], [2, 0, '2'], [1, 1, 'Step 1'], [2, 1, 'Step 2'], [1, 2, 'orbit'], [2, 2, 'tube']]) {
-      await click(page, cellAt(r, c));
+      await clickText(page, cellAt(r, c));
       await type(page, text);
     }
     await settle(page);

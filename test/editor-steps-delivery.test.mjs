@@ -9,7 +9,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -71,7 +71,7 @@ for (const platform of PLATFORMS) {
       const page = await open(t, platform, { width, height });
       await slideOf(page, 'li.fragment');
       const box = await rowBox(page, at);
-      await click(page, { x: (box.chip.left + box.chip.right) / 2, y: (box.chip.top + box.chip.bottom) / 2 });
+      await clickText(page, { x: (box.chip.left + box.chip.right) / 2, y: (box.chip.top + box.chip.bottom) / 2 });
       await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
       const menu = await menuBox(page);
       assert.ok(!overlap(menu, box.row), `at ${width} by ${height} the menu ${JSON.stringify(menu)} covers its row ${JSON.stringify(box.row)}`);
@@ -102,7 +102,7 @@ const rows = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-edi
 // an item of the menu of the chip of the row with text, chosen with two trusted clicks
 async function pick(page, text, label) {
   const box = await rowBox(page, text);
-  await click(page, { x: (box.chip.left + box.chip.right) / 2, y: (box.chip.top + box.chip.bottom) / 2 });
+  await clickText(page, { x: (box.chip.left + box.chip.right) / 2, y: (box.chip.top + box.chip.bottom) / 2 });
   await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
   const item = await page.evaluate(`(() => {
     const item = [...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.querySelector('.label').textContent === ${JSON.stringify(label)});
@@ -112,7 +112,7 @@ async function pick(page, text, label) {
   })()`);
   assert.ok(item, `the menu of the chip does not have an enabled item ${label}`);
   await sleep(300);
-  await click(page, item);
+  await clickText(page, item);
   await page.evaluate('window.BeesonEditor.status()');
 }
 
@@ -129,7 +129,7 @@ async function choose(page, label) {
   })()`);
   assert.ok(item, `the open menu does not have an enabled item ${label}`);
   await sleep(300);
-  await click(page, item);
+  await clickText(page, item);
   await page.evaluate('window.BeesonEditor.status()');
 }
 
@@ -158,7 +158,7 @@ for (const platform of PLATFORMS) {
     await slideOf(page, 'li.fragment');
     const source = page.source;
     // the first step starts at a click, hence After Previous is offered from the second on
-    await click(page, await rowChip(page, 'Each step'));
+    await clickText(page, await rowChip(page, 'Each step'));
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.equal(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.textContent.includes('After Previous')).getAttribute('aria-disabled')`), 'true');
     await press(page, 'Escape');
@@ -247,7 +247,7 @@ for (const platform of PLATFORMS) {
     // the list of the slide is delivered by item, hence one card with the list and its items
     assert.deepEqual(await cards(page), [{ head: '1–3', rows: ['  0 Each step is', '  1 Two elements', '  2 When exporti'] }]);
     const head = await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-side .list-head .chip').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, head);
+    await clickText(page, head);
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual(await menuLabels(page), ['List All at Once', '✓ List Item by Item', 'With the Slide']);
     await choose(page, 'List All at Once');
@@ -271,7 +271,7 @@ for (const platform of PLATFORMS) {
     await press(page, REDO[platform]);
     assert.equal(await rendered(page), source);
     // the menu of the chip of an item offers the same delivery
-    await click(page, await rowChip(page, 'Two elements'));
+    await clickText(page, await rowChip(page, 'Two elements'));
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual((await menuLabels(page)).slice(-2), ['List All at Once', '✓ List Item by Item']);
     await press(page, 'Escape');
@@ -352,7 +352,7 @@ test('the meta of a selected list head is drawn in the color of the selection', 
   const page = await open(t, 'mac');
   await slideOf(page, 'li.fragment');
   const text = await page.evaluate(`(() => { const r = document.querySelector('.beeson-edit-side .list-head .text').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
-  await click(page, text);
+  await clickText(page, text);
   await page.waitFor(`!!document.querySelector('.beeson-edit-side .list-head.selected')`);
   const colors = await page.evaluate(`(() => { const h = document.querySelector('.beeson-edit-side .list-head.selected'); const m = h.querySelector('.meta'); return { head: getComputedStyle(h).color, meta: getComputedStyle(m).color }; })()`);
   assert.equal(colors.meta, colors.head);
