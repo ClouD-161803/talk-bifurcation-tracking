@@ -116,6 +116,8 @@ export async function launch({ offline = true, timeout = 120000, setup = 15000, 
     for (const listener of onNetworkCrash) listener();
   });
   let hasExited = false;
+  // set once Chrome has answered a Target.createTarget
+  let started = false;
   const exited = new Promise((done) => child.once('exit', (...a) => {
     hasExited = true;
     done(...a);
@@ -196,7 +198,10 @@ export async function launch({ offline = true, timeout = 120000, setup = 15000, 
       onEvent = null;
       let onCrash;
       try {
-        ({ targetId } = await send('Target.createTarget', { url: 'about:blank' }, undefined, setupLimit));
+        // the first target is given the whole timeout. on a fresh Windows runner, Chrome answers its
+        // first commands after up to a minute, and a try again does not help (issue #136)
+        ({ targetId } = await send('Target.createTarget', { url: 'about:blank' }, undefined, started ? setupLimit : timeout));
+        started = true;
         ({ sessionId } = await send('Target.attachToTarget', { targetId, flatten: true }, undefined, setupLimit));
         call = (method, params, limit = timeout) => send(method, params, sessionId, limit);
         onEvent = ({ method, params, sessionId: from }) => {
