@@ -59,13 +59,14 @@ const bundles = `Promise.all([...document.querySelectorAll('.surface[data-bundle
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
   const label = Number(s.querySelector('.label[data-at="unstable"]').style.opacity);
   const earth = Number(s.querySelector('.label[data-at="Earth"]').style.opacity);
-  return { stage: s.dataset.shown, drawn: drawn / (data.length / 4), digest: [...digest.slice(0, 8)].join('.'), label, earth };
+  const lap = Number(s.closest('section').querySelector('[data-surface-lap]').style.opacity);
+  return { stage: s.dataset.shown, drawn: drawn / (data.length / 4), digest: [...digest.slice(0, 8)].join('.'), label, earth, lap };
 }))`;
 
 // Reveal.getSlides() leaves out the slides that are not numbered, hence the sections are counted here
 const sections = `[...document.querySelectorAll('.reveal .slides > section')]`;
 const slideOf = `${sections}.findIndex((s) => s.querySelector('.surface[data-bundle]'))`;
-const STAGES = ['', 'unstable', 'unstable stable'];
+const STAGES = ['', 'start', 'nudge', 'flow', 'flow unstable', 'flow unstable stable'];
 
 // with the camera at the azimuth az in degrees: the length of the needle of the Earth, its angle in
 // degrees from the direction of the Earth from L1 in the scene, whether the canvas is drawn at its
@@ -107,9 +108,11 @@ test('the bundle of the Floquet slide is drawn at each of its stages, live and i
   // the orbit is drawn before any strip, and more of the canvas is drawn with each strip
   const at = (stage) => live.find((s) => s.stage === stage);
   assert.ok(at('').drawn > 0.002, `${(100 * at('').drawn).toFixed(2)}% of the canvas is drawn without a strip`);
-  assert.ok(at('unstable').drawn > at('').drawn + 0.02 && at('unstable stable').drawn > at('unstable').drawn);
+  assert.ok(at('flow unstable').drawn > at('flow').drawn + 0.02 && at('flow unstable stable').drawn > at('flow unstable').drawn);
   assert.equal(new Set(STAGES.map((stage) => at(stage).digest)).size, STAGES.length);
-  assert.deepEqual(STAGES.map((stage) => at(stage).label), [0, 1, 1]);
+  assert.deepEqual(STAGES.map((stage) => at(stage).label), [0, 0, 0, 0, 1, 1]);
+  // a still view shows the ring filled and the text of the first period at once
+  assert.deepEqual(STAGES.map((stage) => at(stage).lap), [0, 0, 0, 1, 1, 1]);
   assert.ok(live.every((s) => s.earth === 1), 'the label of the Earth is shown at every step');
 
   // the needle is drawn toward the Earth of the scene, within the error of the perspective, and its
@@ -139,7 +142,7 @@ test('a strip is grown from its first segment to its last and then as a sheet, a
   await page.waitFor(deckSettled);
   const h = await page.evaluate(slideOf);
   const probe = `Beeson.surfaces.find((s) => s.el.closest('section') === Reveal.getCurrentSlide()).probe()`;
-  const f = await page.evaluate(`Number(${sections}[${h}].querySelector('[data-surface-state="unstable"]').dataset.fragmentIndex)`);
+  const f = await page.evaluate(`Number(${sections}[${h}].querySelector('[data-surface-state="flow unstable"]').dataset.fragmentIndex)`);
   await page.evaluate(`Reveal.slide(${h}, 0, ${f - 1})`);
   await page.waitFor(`(${probe}).settled`);
 
@@ -154,7 +157,7 @@ test('a strip is grown from its first segment to its last and then as a sheet, a
     }
   };
   await page.evaluate(`Reveal.slide(${h}, 0, ${f})`);
-  const grown = await watch('unstable');
+  const grown = await watch('flow unstable');
   const growing = seen.filter((r) => r.grow > 0 && r.grow < 1);
   assert.ok(growing.length >= 5, `the growth was seen at ${growing.length} frames`);
   for (const r of growing) {
@@ -167,7 +170,7 @@ test('a strip is grown from its first segment to its last and then as a sheet, a
 
   seen.length = 0;
   await page.evaluate(`Reveal.slide(${h}, 0, ${f - 1})`);
-  const shrunk = await watch('');
+  const shrunk = await watch('flow');
   assert.ok(seen.some((r) => r.grow > 0 && r.grow < 1), 'the strip is shrunk over several frames');
   assert.deepEqual(shrunk.strips.map((r) => r.grow), [0, 0]);
   assert.deepEqual(page.errors, []);
