@@ -397,6 +397,8 @@ export class Presence {
   // e.g. by the part that follows a person
   set(fields: Partial<{ following: string | null; mode: PresenceState['mode'] }>): void {
     Object.assign(this.fields, fields);
+    // the selection is read now, since its selectionchange comes after this state
+    this.moved();
     this.due(true);
   }
 

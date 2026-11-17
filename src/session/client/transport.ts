@@ -85,7 +85,11 @@ export class Transport {
     }
   }
 
-  private post<T>(route: string, body: unknown): Promise<T> {
+  get<T>(route: string, query: Record<string, string>): Promise<T> {
+    return this.send(this.url(route, query), { method: 'GET' }, POST_WAIT);
+  }
+
+  post<T>(route: string, body: unknown): Promise<T> {
     return this.send(this.url(route), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, POST_WAIT);
   }
 

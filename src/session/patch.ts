@@ -119,7 +119,7 @@ export function shiftOffset(offset: number, patches: Patch[], after = true): num
 
 // a copy of text, since a slice of 13 or more characters keeps the whole string that it was cut
 // from alive in V8, e.g. a version of the deck kept by a patch in the log of the authority
-export const copy = (text: string): string => (text.length < 16 ? text : JSON.parse(JSON.stringify(text)));
+export const copy = (text: string): string => (text.length < 13 ? text : JSON.parse(JSON.stringify(text)));
 
 // the patches that turn the text after an operation back into the text before it
 export function invert(text: string, patches: Patch[]): Patch[] {
@@ -448,6 +448,9 @@ function aligned(base: string, a0: number, a1: number, text: string, b0: number,
   }
   return out;
 }
+
+// a patch of base aligned again by words, hence narrowed to the words that differ
+export const byWords = (base: string, p: Patch): Patch[] => aligned(base, p.start, p.end, p.text, 0, p.text.length, WORDS);
 
 // at most MAX_PATCHES patches, since valid() refuses more, with neighbors joined in runs of one
 // length, hence a conflict covers one run

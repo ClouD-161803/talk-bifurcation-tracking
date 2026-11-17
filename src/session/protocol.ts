@@ -92,8 +92,13 @@ export type WriteError = { message: string; unwritten: number; file?: 'tex.js' }
 // GET events?token=&since=. ops is null when since is of another epoch or older than the log,
 // and the browser then says hello again. known is sent only when it changed since the last answer
 // to this page, and so is writeError, which is null once a write succeeded after a failed one.
-// after ended, every poll of the page is answered with ended until it says hello. tex is as in
-// HelloAnswer, and a page draws the deck again with tex.js when it changed
+// after ended, every poll of the page is answered with ended until it says hello.
+// history is the rev of the version history when it changed since the last answer to this page.
+// restored is the latest restore, sent once to each page whose version since is before it, also to
+// a page that was dropped meanwhile. a page reads the history again after each hello, since what
+// changed before is not sent to it. tex is as in HelloAnswer, and a page draws the deck again with
+// tex.js when it changed. overwritten is sent as restored is, after a change of index.html from
+// outside that replaced text that a person wrote in the session
 export type EventsAnswer = {
   v: Version;
   ops: AppliedOp[] | null;
@@ -103,7 +108,52 @@ export type EventsAnswer = {
   known?: KnownPerson[];
   writeError?: WriteError | null;
   ended?: Ended;
+  history?: number;
+  restored?: Restored;
+  overwritten?: true;
 };
+
+// a range of the text of a version that was changed since the version before, with the person id
+// of who changed it last, or file. a removal leaves an empty range at its place
+export type Mark = { start: number; end: number; author: string };
+
+// a version of the deck kept by the edit command, newest first in the list. authors are person ids,
+// or file for a change of index.html from outside. slides are the numbers of the slides changed or
+// added since the version before, as the status bar counts them in the text of this version.
+// removed is what a preview cannot outline: the numbers of the slides gone, counted in the text of
+// the version before, and the count of the elements gone from a slide that is still there.
+// restored is the id of the version that this one restored
+export type VersionInfo = {
+  id: string;
+  time: number;
+  authors: string[];
+  name?: string;
+  slides: number[];
+  removed?: { slides: number[]; elements: number };
+  restored?: string;
+  start?: true;
+};
+// GET history/<id>?token=
+export type VersionDetail = VersionInfo & { marks: Mark[] };
+// a text that a person set aside at a conflict, so that it is not lost. author is a person id
+export type AsideInfo = { id: string; time: number; author: string };
+// GET history?token=. rev grows with every change of the list of versions or of the texts set aside
+export type HistoryAnswer = { rev: number; versions: VersionInfo[]; aside: AsideInfo[] };
+// POST history/<id>/name, where id may be current to close a version of the current state at once.
+// an empty name takes the name off. the answer is the version named
+export type VersionNameRequest = { token: Token; name: string };
+export type VersionNameAnswer = VersionInfo;
+// POST history/<id>/restore. id is the new version on top, or null when the deck already read as
+// the version, and v is the version of the text after the restore
+export type RestoreRequest = { token: Token };
+export type RestoreAnswer = { id: string | null; v: Version };
+// POST aside, at most 8 MB of UTF-8 per text
+export type AsideRequest = { token: Token; text: string };
+export type AsideAnswer = AsideInfo;
+// a restore, by the person id by, of the version id, which was closed at time
+export type Restored = { by: string; id: string; time: number };
+
+export const VERSION_NAME_MAX = 80;
 
 export type PresenceRequest = { token: Token; state: unknown };
 export type ByeRequest = { token: Token };
@@ -132,7 +182,7 @@ const JOINER = /^[\u200c\u200d]$/u;
 const shows = (c: string | undefined) => c !== undefined && !HIDDEN.test(c) && !/\s/.test(c);
 
 // the characters of raw that show, with the selectors and joiners that belong to them
-function shown(raw: string): string {
+export function shown(raw: string): string {
   const chars = Array.from(raw);
   const kept: string[] = [];
   chars.forEach((c, i) => {

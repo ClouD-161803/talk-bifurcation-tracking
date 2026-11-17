@@ -8,6 +8,7 @@ import { conflict, diff } from '../patch.ts';
 import type { Side } from '../replica.ts';
 import type { Client } from './client.ts';
 import { make, style } from './dom.ts';
+import { setAside } from './history.ts';
 
 const OFFLINE = 5000;
 
@@ -109,7 +110,31 @@ export function ask(client: Client, base: string, mine: string, theirs: string):
   return dialog.open('ours').then((value) => {
     off();
     dialog.el.remove();
-    return value === 'theirs' ? 'theirs' : 'ours';
+    if (value !== 'theirs') return 'ours';
+    // the version of the person is set aside before the drop, and offered as a download when the
+    // edit command does not keep it
+    let text = mine;
+    try {
+      text = client.port.text();
+    } catch {
+      // the text of the replica is the deck as this page has it
+    }
+    setAside(text, 'Your version of these texts was not sent.').catch((e: unknown) => {
+      const d = client.shell.dialog({
+        title: 'Your version could not be set aside',
+        text: e instanceof Error ? e.message : String(e),
+        buttons: [
+          { label: 'Close', value: 'close' },
+          { label: 'Download my version', value: 'download', primary: true },
+        ],
+        className: 'beeson-session-history-dialog',
+      });
+      void d.open('download').then((v) => {
+        d.el.remove();
+        if (v === 'download') client.shell.download(text);
+      });
+    });
+    return 'theirs';
   });
 }
 

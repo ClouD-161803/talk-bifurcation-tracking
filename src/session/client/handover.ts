@@ -38,6 +38,19 @@ export type Handover = {
   // the groups of two members or more among els, each with the shape of the frame that frames.ts
   // draws around its members, read with the shapes of presence
   groups(els: Element[]): { els: Element[]; shape: Shape }[];
+  // the Version History mode of src/editor/session/history-mode.ts
+  history: HistoryShell;
+};
+
+export type HistoryShell = {
+  // the inspector, which the pane of Version History takes the place of while the mode is on
+  inspector: HTMLElement | null;
+  // the run of File > Version History and of its key, which are defined in a session only
+  onCommand(fn: () => void): void;
+  // the mode on or off: the chrome inert, the commands of the person held, and Esc handed to back
+  setMode(on: boolean, back?: () => void): void;
+  // the rectangle of the canvas in the window
+  canvas(): DOMRect;
 };
 
 // window.BeesonSession, defined by theme/session.js. start() resolves with false when the page is

@@ -6,14 +6,14 @@
 // nearest text among the last one that another program wrote and the ones that the edit command
 // wrote after it. the reads and the writes are done one at a time
 
-import { readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
+import { constants, copyFileSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, type Stats } from 'node:fs';
 import { chmod, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { isUtf8 } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { changes } from '../editor/merge.ts';
 import type { Authority } from '../session/authority.ts';
-import { apply, diff, mergePatches, type Patch } from '../session/patch.ts';
+import { apply, copy, diff, mergePatches, type Patch } from '../session/patch.ts';
 
 export const AUTHOR = 'file';
 const QUIET = 250;
@@ -89,6 +89,26 @@ export function renameRetriedSync(from: string, to: string): void {
   }
 }
 
+// a file that cannot be read set aside as aside, moved or else copied, so that a write in its place
+// does not lose it. false when neither works, e.g. while another program holds it open on Windows,
+// hence the file must then not be written over. a file that is gone counts as set aside
+export function setAsideSync(file: string, aside: string, move = true): boolean {
+  if (move) {
+    try {
+      renameRetriedSync(file, aside);
+      return true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return true;
+    }
+  }
+  try {
+    copyFileSync(file, aside, constants.COPYFILE_EXCL);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // a step of a task of the disk, i.e. a stat, a resolve, a read, or a write of a file, or a pause. a
 // task is a generator of its steps, hence it is left at a step when the edit command stops
 type Step = { stat: string } | { resolve: string } | { read: string } | { write: string; bytes: Buffer; mode: number | null } | { sleep: number };
@@ -107,8 +127,6 @@ function perform(step: Step): Promise<unknown> {
   return writeFile(step.write, step.bytes).then(() => (step.mode === null ? undefined : chmod(step.write, step.mode)));
 }
 
-// a copy of text, since a slice keeps in memory the whole text that it was cut from
-const copy = (text: string) => (text.length < 16 ? text : Buffer.from(text, 'utf16le').toString('utf16le'));
 const weight = (delta: Patch[]) => delta.reduce((n, p) => n + 2 * p.text.length + 32, 0);
 
 // the patches that turn text back into before. the common start and end are skipped by chunks, and

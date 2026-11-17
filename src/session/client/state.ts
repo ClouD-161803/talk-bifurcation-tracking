@@ -1,13 +1,19 @@
 // the save state of a session, a button in .right of the title bar in place of Autosave, whose
-// text is given to the title as well. a click on it while offline reconnects at once, and
-// otherwise it saves, which in a session waits for the acknowledgments. a second button beside it
-// is Try now while a reconnect waits, and Load again while the page is blocked
+// text is given to the title as well. a click on it opens its menu, with Try Now while a
+// reconnect waits and the items that other parts add, or else saves, which in a session waits for
+// the acknowledgments. a second button beside it is Try now while a reconnect waits, and Load again
+// while the page is blocked
 
 import { BLOCKED, type Client } from './client.ts';
 import { keptLine, restoredLine } from './copy.ts';
 import { make, style } from './dom.ts';
 import { failedLine, lostLine, retry as retryUpload } from './media.ts';
+import type { MenuItem, OpenMenu } from '../../editor/ui/menu.ts';
 import { isLeaving } from './people.ts';
+
+// the items of the menu after Try Now, e.g. Version History
+const ITEMS: MenuItem[] = [];
+export const addStateItem = (item: MenuItem): void => void ITEMS.push(item);
 
 // the hit area is 32 px high, around a button of 22 px. in a narrow title bar the buttons take a row
 // of their own, see people.ts. the button is drawn without its text while the title shows it, i.e.
@@ -102,11 +108,26 @@ export function install(client: Client): void {
     button.title = text;
     client.port.setStatus(v.text || null);
   };
-  button.addEventListener('click', () => {
+  button.setAttribute('aria-haspopup', 'menu');
+  let menu: OpenMenu | null = null;
+  button.addEventListener('click', (ev) => {
+    if (menu) return menu.close();
+    const items = client.retryAt === null ? ITEMS : [{ label: 'Try Now', run: () => client.tryNow() }, ...ITEMS];
     if (client.blocked) client.loadAgain();
     else if (doing === 'upload') retryUpload(client);
-    else if (client.retryAt !== null) client.tryNow();
-    else void client.flush().catch(() => {});
+    else if (items.length) {
+      const m = client.shell.menu(items, {
+        anchor: button.getBoundingClientRect(),
+        placement: 'below',
+        owner: button,
+        keyboard: ev.detail === 0,
+        label: button.getAttribute('aria-label') ?? undefined,
+        onClose: () => {
+          if (menu === m) menu = null;
+        },
+      });
+      menu = m;
+    } else void client.flush().catch(() => {});
   });
   action.addEventListener('click', () => {
     if (doing === 'reload') client.loadAgain();

@@ -13,6 +13,7 @@ import { Authority } from '../session/authority.ts';
 import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { AppliedTable, readApplied } from './applied.ts';
 import { Disk, readText, renameRetriedSync } from './disk.ts';
+import { History, type HistoryOptions } from './history.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
@@ -38,6 +39,7 @@ export type StartOptions = {
   port?: number;
   relay?: string;
   log?: (message: string) => void;
+  history?: Omit<HistoryOptions, 'now' | 'clock' | 'log'>;
 };
 
 export type Running = {
@@ -185,6 +187,18 @@ async function sameFile(dir: string, name: string, size: number, hash: string): 
 
 const isJson = (request: Request) => (request.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() === 'application/json';
 
+// the JSON object of a POST, or the answer that refuses it
+function bodyOf(request: Request): Record<string, unknown> | Response {
+  if (!isJson(request)) return error(415, 'the body must be application/json');
+  try {
+    const body = JSON.parse(request.body.toString('utf8'));
+    if (body && typeof body === 'object' && !Array.isArray(body)) return body;
+  } catch {}
+  return error(400, 'the body is not a JSON object');
+}
+
+const isResponse = (x: unknown): x is Response => !!x && typeof (x as Response).status === 'number' && typeof (x as Response).headers === 'object';
+
 export async function start(options: StartOptions = {}): Promise<Running> {
   const log = options.log ?? ((m: string) => process.stderr.write(`${m}\n`));
   // the native realpath resolves the short names of Windows, as realpath of fs/promises does
@@ -207,6 +221,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   // the pages are told of a write that fails, since an operation is acknowledged before it is written
   const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
+  // made once this command holds the lock, so that a second start does not write the history
+  let history!: History;
   let port = 0;
   let relay: RelayLink | null = null;
   let closed = false;
@@ -312,8 +328,43 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     return error(409, 'too many files of this name');
   }
 
+  // the version history and the texts set aside, for every page with a token
+  function historyApi(route: string, request: Request): Response {
+    const parts = route.split('/');
+    if (request.method === 'GET') {
+      if (people.clientOf(new URLSearchParams(request.query).get('token')) === null) return error(404, 'say hello first');
+      if (route === 'history') return json(200, history.list());
+      const v = parts.length === 2 && parts[0] === 'history' ? history.get(parts[1]) : null;
+      return v ? json(200, v) : error(404, 'there is no such version');
+    }
+    if (request.method !== 'POST') return error(405, 'GET or POST');
+    if (closed) return error(503, 'the edit command is stopping');
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    const person = client === null ? null : people.personOf(client);
+    if (person === null) return error(404, 'say hello first');
+    if (route === 'aside') {
+      if (typeof body.text !== 'string') return error(400, 'text is missing');
+      const aside = history.setAside(body.text, person);
+      return aside ? json(200, aside) : error(413, 'the text is larger than 8 MB');
+    }
+    if (parts.length !== 3 || parts[0] !== 'history') return error(404, 'not found');
+    if (parts[2] === 'name') {
+      const named = history.name(parts[1], body.name);
+      if (named === 'long') return error(400, 'the name must be a text of at most 80 characters');
+      return named ? json(200, named) : error(404, 'there is no such version');
+    }
+    if (parts[2] === 'restore') {
+      const restored = history.restore(parts[1], person);
+      return restored ? json(200, { id: restored.id, v: authority.version }) : error(404, 'there is no such version');
+    }
+    return error(404, 'not found');
+  }
+
   async function api(route: string, request: Request): Promise<Response> {
     if (route.startsWith('media/')) return media(route.slice(6), request);
+    if (route === 'history' || route.startsWith('history/') || route === 'aside') return historyApi(route, request);
     if (route === 'share') return share(request);
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
@@ -377,7 +428,16 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   function indexHtml(request: Request): Response {
     let version = authority.version;
     let html = authority.text;
-    if (paramNames(request.query).has('session')) {
+    const names = paramNames(request.query);
+    // a version or a text set aside, for a preview in an iframe
+    if (names.has('version') || names.has('aside')) {
+      if (names.has('edit') || names.has('session')) return error(400, 'a version is shown without edit and session');
+      const query = new URLSearchParams(request.query);
+      const text = names.has('version') ? history.textOf(query.get('version')) : history.asideText(query.get('aside'));
+      if (text === null) return error(404, 'there is no such version');
+      return { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }, body: Buffer.from(disk.bom ? `\ufeff${text}` : text, 'utf8') };
+    }
+    if (names.has('session')) {
       const mode = request.headers['sec-fetch-mode'];
       const navigation = mode ? mode === 'navigate' : (request.headers.accept ?? '').includes('text/html');
       const v = new URLSearchParams(request.query).get('v');
@@ -519,6 +579,30 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   try {
     writeFileSync(join(root, '.session', 'port'), `${port}\n`);
   } catch {}
+  history = new History(join(root, '.session'), authority, { ...options.history, log });
+  history.onChange(() => people.news());
+  people.feed({
+    rev: () => history.rev,
+    write: (answer) => {
+      answer.history = history.rev;
+    },
+  });
+  // a restore is told as a toast to each page of a version before it, also to a page that was
+  // dropped while it was away
+  people.feed({
+    rev: () => history.restores,
+    write: (answer, _seen, since) => {
+      const restored = history.restoredAfter(since);
+      if (restored) answer.restored = restored;
+    },
+  });
+  // a change from outside that replaced text of a person is told in the same way
+  people.feed({
+    rev: () => history.overwritten,
+    write: (answer, _seen, since) => {
+      if (history.overwrittenAfter(since)) answer.overwritten = true;
+    },
+  });
   disk.start();
 
   if (options.relay) {
@@ -555,6 +639,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
           const kept = keepUnwritten(root, disk.bom ? `\ufeff${authority.text}` : authority.text);
           log(kept ? `the text of the session is kept in ${kept}` : 'the text of the session could not be kept in any file');
         }
+        history.stopSync();
         written(unwritten);
         // a share in progress sees closed and stops its link, hence the stop waits behind it. the relay
         // keeps the record of the end for a guest who was not waiting at the edit command

@@ -329,7 +329,7 @@ export function install(app: App): void {
   // the context menu of the place of a right-click, of a Control-click on a Mac, of Shift+F10,
   // or of the Menu key. where no command is declared for the place, the menu of the browser is kept
   function placeOf(target: Element | null): { kind: Context; target: Element | null } | null {
-    if (!target || target.closest('.beeson-edit-menu, dialog, input, textarea, select, aside.notes')) return null;
+    if (!target || target.closest('[inert], .beeson-edit-menu, dialog, input, textarea, select, aside.notes')) return null;
     const row = target.closest('.beeson-edit-nav .row');
     if (row) {
       const rows = [...document.querySelectorAll('.beeson-edit-nav .row')];

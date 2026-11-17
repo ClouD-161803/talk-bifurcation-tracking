@@ -152,6 +152,10 @@ The small box with the name of a person at the upper left corner of the frame of
 
 Avoid "cursor", "tag", and "badge".
 
+## Named version
+
+A version given a name with Name this version in Version History. A named version is kept when the history is shortened, together with the versions after it.
+
 ## Part
 
 A named scope or curve of a TikZ figure that a slide shows as a step.
@@ -217,6 +221,10 @@ Avoid "rasterization" and "preview".
 One run of the edit command on a talk folder, from its start to its stop, together with the people who have joined it.
 
 Avoid "room", and avoid "document" for the deck of a session.
+
+## Set aside
+
+The version of the deck of a person that is kept apart from the deck when this person chooses Keep theirs after a conflict, so that it is not lost. It is listed under Set aside in Version History.
 
 ## Sheet
 
@@ -294,6 +302,12 @@ A figure written in TikZ or pgfplots as a source `figures/name.tex`, compiled by
 
 Avoid "TikZ" alone for the element, and avoid "plot", which means an animated plot.
 
+## Toast
+
+A short message of a session shown above the status bar for 6 s, e.g. Ana restored the version of 2:41 PM, sometimes with a button.
+
+Avoid "notification" and "snackbar".
+
 ## Tone
 
 A color of the theme chosen by name, such as accent, violet, blue, or red, with a value for each mode.
@@ -303,6 +317,12 @@ A color of the theme chosen by name, such as accent, violet, blue, or red, with 
 One polyline of a file of trajectories, traced over its times or its true anomalies.
 
 Avoid "strand" and "record". The attribute `data-strands` of an old talk is `data-trajectories`.
+
+## Version
+
+A state of the deck kept by the edit command during a session, with its time and the people who changed the deck since the version before, and listed in Version History.
+
+Avoid "revision", "snapshot", and "checkpoint".
 
 ## Wipe
 

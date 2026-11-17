@@ -12,7 +12,7 @@ import type { Applied, Port } from '../../editor/session/session.ts';
 import { apply, diff, mergePatches } from '../patch.ts';
 import { early, keeps } from './copy.ts';
 import { NAME, store } from './join.ts';
-import { FULL, type AppliedOp, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Taken, type Token, type Version } from '../protocol.ts';
+import { FULL, type AppliedOp, type Ended, type EventsAnswer, type HelloAnswer, type HelloRequest, type KnownPerson, type OpPost, type Person, type Presence, type Restored, type Taken, type Token, type Version } from '../protocol.ts';
 import type { Side } from '../replica.ts';
 import type { Handover } from './handover.ts';
 import type { Resolved } from './presence.ts';
@@ -45,6 +45,13 @@ export type ClientEvents = {
   // connection, saving, retryAt, blocked, or warning changed
   state: [];
   ended: [Ended];
+  // an answer of hello was taken, after which the history is read again
+  hello: [];
+  // the rev of the version history changed, and a restore was made
+  history: [number];
+  restored: [Restored];
+  // a change of index.html from outside replaced text that a person wrote in the session
+  overwritten: [];
 };
 
 // the parts of the offline path that the core calls, set by conflicts.ts and media.ts
@@ -54,6 +61,8 @@ export type Hooks = {
   side?(sync: Sync, whole: Whole | null, ops: AppliedOp[]): Side | Promise<Side> | null;
   // false while text names a file that is not uploaded yet, after which rewrite() is called
   ready?(text: string): boolean;
+  // a promise while a reload of the page has to wait, e.g. for the end of Version History
+  defer?(): Promise<void> | null;
 };
 
 // the reconnects in s, the last one repeated
@@ -262,6 +271,11 @@ export class Client {
     if (this.presenceDue) void this.flushPresence();
   }
 
+  // the version of the newest operations taken, which the deck reads once they are applied
+  get version(): Version {
+    return this.since;
+  }
+
   setWarning(text: string | null): void {
     if (text === this.warning) return;
     this.warning = text;
@@ -365,6 +379,7 @@ export class Client {
     this.emit('me');
     this.emit('people');
     this.emit('known');
+    this.emit('hello');
   }
 
   private setConnection(connection: Connection): void {
@@ -570,6 +585,14 @@ export class Client {
 
   // the session may end or the page be blocked first, and the dialog of this state takes over
   private async reload(): Promise<void> {
+    const deferred = this.hooks.defer?.();
+    if (deferred) {
+      await deferred;
+      if (this.ended) {
+        this.slides().inert = false;
+        return;
+      }
+    }
     try {
       await this.flush();
     } catch {
@@ -735,6 +758,9 @@ export class Client {
         this.setName(name);
       }
     }
+    if (answer.history !== undefined) this.emit('history', answer.history);
+    if (answer.restored) this.emit('restored', answer.restored);
+    if (answer.overwritten) this.emit('overwritten');
     if (answer.ops === null) {
       this.sync!.lose();
       this.pump();
