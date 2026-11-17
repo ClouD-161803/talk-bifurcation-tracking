@@ -465,15 +465,25 @@ test('a thread sent with an old base is moved to the current text in less than h
   const t0 = process.hrtime.bigint();
   for (const patches of drags) assert.equal(authority.enter(patches, ANN).answer.ok, true);
   const entered = Number(process.hrtime.bigint() - t0);
-  // the best of three, since another process may take the processor for a while
-  let added = Infinity;
-  for (let attempt = 0; attempt < 3 && 2 * added >= entered; attempt++) {
+  // the time of the move is the time of a thread of the old base less the time of a thread of the
+  // current base, since both are written to comments.json in the same way. each is the best of up to
+  // five attempts, since another process may take the processor or the disk for a while
+  const tag = '<p style="left: 2px">Paragraph 2 of slide 9,';
+  const timed = (body) => {
     const t1 = process.hrtime.bigint();
-    const thread = comments.add(BO, { base, anchor: tagRange(read, '<p style="left: 2px">Paragraph 2 of slide 9,'), slide: null, text: 'old base' });
-    added = Math.min(added, Number(process.hrtime.bigint() - t1));
-    reads(authority.text, thread.anchor, '<p style="left: 2px">Paragraph 2 of slide 9,');
+    const thread = comments.add(BO, { ...body, slide: null });
+    const time = Number(process.hrtime.bigint() - t1);
+    reads(authority.text, thread.anchor, tag);
+    return time;
+  };
+  let old = Infinity;
+  let current = Infinity;
+  for (let attempt = 0; attempt < 5 && !(2 * (old - current) < entered); attempt++) {
+    old = Math.min(old, timed({ base, anchor: tagRange(read, tag), text: 'old base' }));
+    current = Math.min(current, timed({ base: authority.version, anchor: tagRange(authority.text, tag), text: 'current base' }));
   }
-  assert.ok(2 * added < entered, `the thread took ${(added / 1e6).toFixed(1)} ms, and the operations ${(entered / 1e6).toFixed(1)} ms`);
+  const ms = (ns) => (ns / 1e6).toFixed(1);
+  assert.ok(2 * (old - current) < entered, `the thread of the old base took ${ms(old)} ms, the thread of the current base ${ms(current)} ms, and the operations ${ms(entered)} ms`);
 });
 
 // a deck where a paragraph inserted above the first of two paragraphs moves the second by the
