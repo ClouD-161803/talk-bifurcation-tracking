@@ -154,7 +154,11 @@ export async function reloadFigure(name: string, hash: string): Promise<boolean>
   });
   loads.set(name, loading);
   await loading;
-  if (window.beesonFigures?.[name] !== was) drawAgain(name);
+  // a new output takes the place of a preview of the editor
+  if (window.beesonFigures?.[name] !== was) {
+    previews.delete(name);
+    drawAgain(name);
+  }
   return window.beesonFigures?.[name]?.hash === hash;
 }
 

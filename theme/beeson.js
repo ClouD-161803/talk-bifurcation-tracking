@@ -3744,7 +3744,10 @@
     });
     loads.set(name, loading);
     await loading;
-    if (window.beesonFigures?.[name] !== was) drawAgain(name);
+    if (window.beesonFigures?.[name] !== was) {
+      previews.delete(name);
+      drawAgain(name);
+    }
     return window.beesonFigures?.[name]?.hash === hash;
   }
   function drawAgain(name) {

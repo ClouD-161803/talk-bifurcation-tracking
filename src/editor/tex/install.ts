@@ -39,8 +39,9 @@ export type TexSheets = {
   cite(target: CiteTarget): void;
   key(ev: KeyboardEvent): boolean;
   pane(el: HTMLElement, cite: HTMLElement): void;
-  // a new TikZ figure of a session made from file, put on the slide
+  // a new TikZ figure of a session made from file, put on the slide, and the sheet Edit Source of a figure
   newFigure(from: Starter, file: File | null): Promise<void>;
+  editSource(figure: HTMLElement): void;
 };
 // what editor.js gives theme/editor-tex.js: the app, the folder of the deck shared with the media
 // files, the tex.js of the deck as the page loaded it, and for the TikZ figures of a session the
@@ -221,6 +222,33 @@ export function install(app: App): void {
         await (await load()).newFigure(from, files[0] ?? null);
       },
     });
+
+  // Format > TikZ Figure > Edit Source…, which a double click on the figure runs as well
+  const figureOf = (a: App): HTMLElement | null => {
+    const els = a.selection.elements();
+    return els.length === 1 && els[0] instanceof HTMLElement && els[0].matches('.tikz') ? els[0] : null;
+  };
+  app.commands.define({
+    id: 'format.tikzSource',
+    label: 'Edit Source…',
+    menu: { bar: 'Format', group: 'tikz', order: 0, submenu: 'TikZ Figure' },
+    enabled: (a) => !!figureOf(a) && a.region() !== 'dialog',
+    run: (a) => {
+      const no = why(a);
+      if (no) {
+        a.note = { text: no, warn: true };
+        return a.report();
+      }
+      const figure = figureOf(a)!;
+      return load().then((s) => s.editSource(figure));
+    },
+  });
+  window.addEventListener('dblclick', (ev) => {
+    const el = ev.target instanceof Element ? ev.target.closest('.tikz') : null;
+    if (!el || !app.current()?.contains(el) || el.hasAttribute('data-locked') || app.region() === 'dialog') return;
+    app.selection.set('elements', [el]);
+    void app.commands.run('format.tikzSource');
+  }, true);
 
   // the keys of the open list are taken before those of the editor, hence this install is run
   // before installKeys of commands.ts
