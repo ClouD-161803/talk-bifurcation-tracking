@@ -14,7 +14,7 @@ import { findTools } from '../scripts/figures.mjs';
 import { fromHeader, writeFigure } from '../src/editor/tex/from-data.ts';
 import { front } from './helpers/apply.mjs';
 import { open, sessionUrl, TALK } from './helpers/client.mjs';
-import { center, click, editorPage } from './helpers/editor.mjs';
+import { center, click, editorPage, press } from './helpers/editor.mjs';
 import { startEdit, stopEdit, talkFolder, until } from './helpers/session.mjs';
 
 const tools = findTools();
@@ -146,8 +146,10 @@ test('From File…, From Data…, and Blank write a source under a free name and
   // a second figure of the same stem takes the next free name
   await page.evaluate(`${E}.exec('insert.tikzFile', ${file(orbit, 'orbit.tex')})`);
   await until(() => TAG('orbit-2').test(read('index.html')), 'index.html to hold the figure orbit-2');
-  // Blank opens Edit Source on its figure, hence it is the last
+  // Blank opens Edit Source on a small drawing, and Insert writes it, hence it is the last
   await page.evaluate(`${E}.exec('insert.tikzBlank')`);
+  await page.waitFor(`document.querySelector('dialog.beeson-edit-tikz')?.open && document.querySelector('dialog.beeson-edit-tikz textarea').value !== ''`);
+  await press(page, 'Mod+Enter');
   await until(() => TAG('figure').test(read('index.html')), 'index.html to hold the figure figure');
   assert.match(read('figures/figure.tex'), /^\\begin\{tikzpicture\}[\s\S]*\\end\{tikzpicture\}\n$/);
   await drawn('figure');

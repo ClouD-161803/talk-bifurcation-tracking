@@ -4,11 +4,12 @@
 // source over the text that the sheet opened with, which another person may have changed since.
 // after Apply, the slide shows the output of the source, or the last good output when its compile
 // fails, and a preview is compiled in the box of the style, as the output is. Blank opens the sheet
-// with Insert, whose Cancel takes the new figure off the slide. the sheet fits the screen of a
-// phone. a test that runs TeX is skipped without latex and dvisvgm
+// on a small drawing with Insert, which writes the source and puts the figure on the slide, and
+// whose Cancel leaves neither. the sheet fits the screen of a phone. a test that runs TeX is
+// skipped without latex and dvisvgm
 
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
@@ -189,20 +190,36 @@ test('after Apply the slide shows the last good output when the compile of the s
   await press(p, 'Escape');
 });
 
-test('Blank opens the sheet with Insert, whose Cancel takes the new figure off the slide, and the sheet fits a phone', { skip: WITHOUT_TEX, timeout: 240000 }, async (t) => {
-  const { edit } = await session(t);
+test('Blank opens the sheet with Insert, which writes the source and puts the figure on the slide, and whose Cancel leaves neither, and the sheet fits a phone', { skip: WITHOUT_TEX, timeout: 240000 }, async (t) => {
+  const { edit, read } = await session(t);
   const p = await page(t, edit);
   const text = await p.evaluate(`${E}.render()`);
-  await p.evaluate(`${E}.exec('insert.tikzBlank')`);
-  await p.waitFor(`document.querySelector('${SHEET}')?.open && document.querySelector('${SHEET} textarea').value !== ''`);
-  assert.deepEqual((await sheet(p)).buttons.filter((b) => b === 'Cancel' || b === 'Insert'), ['Cancel', 'Insert']);
-  assert.match(await p.evaluate(`${E}.render()`), /data-figure="figure"/);
+  const written = () => readdirSync(join(edit.folder, 'figures')).sort();
+  const blank = async () => {
+    await p.evaluate(`${E}.exec('insert.tikzBlank')`);
+    await p.waitFor(`document.querySelector('${SHEET}')?.open && document.querySelector('${SHEET} textarea').value !== ''`);
+    assert.deepEqual((await sheet(p)).buttons.filter((b) => b === 'Cancel' || b === 'Insert'), ['Cancel', 'Insert']);
+    assert.equal(await p.evaluate(`${E}.render()`), text);
+  };
+  const before = written();
+  await blank();
   await button(p, 'Cancel');
   assert.equal(await sheet(p), null);
-  await p.waitFor(`${E}.render() === ${JSON.stringify(text)}`);
+  assert.equal(await p.evaluate(`${E}.render()`), text);
+  assert.deepEqual(written(), before);
 
+  // Insert writes the source under the name figure and puts the figure on the slide, selected
+  await blank();
+  const source = (await sheet(p)).source;
+  await button(p, 'Insert');
+  await until(() => /<div class="tikz" data-figure="figure" style="width: 800px; height: 600px/.test(read('index.html')), 'index.html to hold the figure figure');
+  assert.equal(read('figures/figure.tex'), source);
+  assert.equal(await sheet(p), null);
+  assert.deepEqual(await p.evaluate(`${E}.selection().map((e) => e.dataset.figure)`), ['figure']);
+
+  // the new figure may cover the figure orbit on a phone, hence orbit is selected by the editor
   const phone = await page(t, edit, { name: 'Ben', width: 390, height: 844, mobile: true });
-  await click(phone, await center(phone, FIGURE));
+  await phone.evaluate(`${C}.app.selection.set('elements', [document.querySelector('${FIGURE}')])`);
   await wait(phone);
   await phone.evaluate(`${E}.exec('format.tikzSource')`);
   await phone.waitFor(`document.querySelector('${SHEET}')?.open && document.querySelector('${SHEET} textarea').value !== ''`);
