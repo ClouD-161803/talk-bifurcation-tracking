@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Malformed bundle deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<!-- a bundle whose script has no strips, and one whose strip has no ribs, each reported and left blank -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>Two malformed bundles</h2>
+      <div class="surface" data-bundle="bare"></div>
+      <script type="application/json" id="bare">{"orbit":[[1,0,0],[0,1,0],[-1,0,0]]}</script>
+      <div class="surface" data-bundle="ribless"></div>
+      <script type="application/json" id="ribless">{"orbit":[[1,0,0],[0,1,0],[-1,0,0]],"strips":[{"id":"a","tone":"accent","half_width":0.3,"directions":[[0,0,1],[0,0,1],[0,0,1]]}]}</script>
+    </section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/vendor/three/three.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

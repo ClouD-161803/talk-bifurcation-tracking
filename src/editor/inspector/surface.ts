@@ -254,8 +254,9 @@ export function surfacePane(app: App, run: Run): Control[] {
       followed(note(() => (el && turned.has(el) && liveOf(el) ? 'The fields show the view turned by the drag, which Use Current View writes.' : 'Drag the surface to turn it, and then use its view. A turn of 0 s keeps it still.'))),
       note(linked),
     ]),
-    // an empty cell beside Z Scale keeps the field at the width of the fields above
-    section('Heights', [row([decimalField(app, run, el, 'zscale'), { el: make('div', 'ed-num'), sync: () => {} }])]),
+    // an empty cell beside Z Scale keeps the field at the width of the fields above. a strip bundle
+    // does not have heights
+    ...(el?.hasAttribute('data-bundle') ? [] : [section('Heights', [row([decimalField(app, run, el, 'zscale'), { el: make('div', 'ed-num'), sync: () => {} }])])]),
   ];
 }
 

@@ -374,7 +374,7 @@ export function effectEdit(state: TagState, effect: Effect): TagEdit {
   return out;
 }
 
-const KINDS: [string, string][] = [['h1, h2, h3', 'Heading'], ['.foot', 'Footnote'], ['li', 'Item'], ['ul, ol', 'List'], ['td, th', 'Table cell'], ['cite', 'Citation'], ['p', 'Paragraph'], ['div.math', 'Formula'], ['table', 'Table'], ['tr', 'Table row'], ['pre, code', 'Code'], ['blockquote', 'Quotation'], ['video', 'Video'], ['tycho-viewer', 'Scene'], ['.qr', 'QR code'], ['.caption', 'Caption'], ['.backdrop', 'Backdrop'], ['.surface', 'Surface'], ['.plot', 'Plot'], ['[data-plot-show], [data-plot-tab]', 'Plot step'], ['[data-surface-state]', 'Surface step'], ['.tikz > [data-part]', 'Figure step'], ['.tikz', 'TikZ figure'], ['img, figure, .figure-box, .plate', 'Figure'], ['svg.line', 'Line'], ['.shape', 'Shape']];
+const KINDS: [string, string][] = [['h1, h2, h3', 'Heading'], ['.foot', 'Footnote'], ['li', 'Item'], ['ul, ol', 'List'], ['td, th', 'Table cell'], ['cite', 'Citation'], ['p', 'Paragraph'], ['div.math', 'Formula'], ['table', 'Table'], ['tr', 'Table row'], ['pre, code', 'Code'], ['blockquote', 'Quotation'], ['video', 'Video'], ['tycho-viewer', 'Scene'], ['.qr', 'QR code'], ['.caption', 'Caption'], ['.backdrop', 'Backdrop'], ['.surface', 'Surface'], ['.plot', 'Plot'], ['[data-plot-show], [data-plot-tab], [data-plot-hide]', 'Plot step'], ['[data-surface-state]', 'Surface step'], ['.tikz > [data-part]', 'Figure step'], ['.tikz', 'TikZ figure'], ['img, figure, .figure-box, .plate', 'Figure'], ['svg.line', 'Line'], ['.shape', 'Shape']];
 
 // the text of el with each formula given by its TeX, since an mjx-container does not have text
 function textOf(el: Element, tex: Ctx['tex']): string {
@@ -414,7 +414,7 @@ export function describe(el: Element, tex: Ctx['tex']): { kind: string; text: st
   // a citation is empty, and the theme draws its number from data-n
   if (!text && el.matches('cite')) text = el.getAttribute('data-n') || el.getAttribute('data-key') || '';
   if (!text) {
-    const named = [['data-plot-show', 'Show'], ['data-plot-tab', 'Tab'], ['data-surface-state', 'State'], ['data-part', 'Part'], ['data-backdrop', 'Backdrop'], ['data-trajectories', 'Trajectories']].find(([a]) => el.hasAttribute(a));
+    const named = [['data-plot-show', 'Show'], ['data-plot-hide', 'Hide'], ['data-plot-tab', 'Tab'], ['data-surface-state', 'State'], ['data-part', 'Part'], ['data-backdrop', 'Backdrop'], ['data-trajectories', 'Trajectories']].find(([a]) => el.hasAttribute(a));
     if (named) text = `${named[1]} ${el.getAttribute(named[0]) ?? ''}`.trim();
   }
   return { kind, text: text.length > 90 ? `${text.slice(0, 90)}…` : text };
