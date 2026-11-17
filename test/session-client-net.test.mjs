@@ -242,6 +242,47 @@ test('a page whose theme/session.js does not load says so, and Load again joins'
   clean(page, [/ERR_BLOCKED_BY_CLIENT/]);
 });
 
+// the engine of the port, theme/editor-session.js, is loaded beside theme/session.js, and either
+// failure shows the one dialog, which names each file that failed
+const blocking = (urls) => async (page) => {
+  await page.send('Network.enable', {});
+  await page.send('Network.setBlockedURLs', { urls });
+};
+const failure = (page) => page.evaluate(`({ dialogs: document.querySelectorAll('dialog.beeson-edit-dialog[open]').length, text: ${DIALOG}.querySelector('p').textContent, buttons: [...${DIALOG}.querySelectorAll('.row button')].map((b) => b.textContent) })`);
+const STARTED = `${DIALOG}?.querySelector('h3').textContent === 'The session could not start'`;
+
+test('a page whose theme/editor-session.js does not load says so once, and Load again joins', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const page = await open(browser, sessionUrl(server.edit), { ready: false, before: blocking(['*/theme/editor-session.js']) });
+  await page.waitFor(STARTED);
+  assert.deepEqual(await failure(page), { dialogs: 1, text: 'theme/editor-session.js could not be loaded. Load the page again to join the session.', buttons: ['Load again'] });
+  await blocking([])(page);
+  await page.evaluate(`${button('Load again')}.click()`).catch((e) => {
+    if (!/Inspected target navigated or closed/.test(e.message)) throw e;
+  });
+  await until(async () => (await loads(page).catch(() => 0)) > 1, 'the page to load again');
+  await page.waitFor(`document.readyState === 'complete' && ${ONLINE}`);
+  clean(page, [/ERR_BLOCKED_BY_CLIENT/]);
+});
+
+test('a page whose theme/session.js does not load either, or whose theme/editor-session.js throws, shows one dialog that names the file', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const both = await open(browser, sessionUrl(server.edit), { ready: false, before: blocking(['*/theme/session.js', '*/theme/editor-session.js']) });
+  await both.waitFor(STARTED);
+  assert.deepEqual(await failure(both), { dialogs: 1, text: 'theme/session.js and theme/editor-session.js could not be loaded. Load the page again to join the session.', buttons: ['Load again'] });
+  clean(both, [/ERR_BLOCKED_BY_CLIENT/]);
+  // the assignment of theme/editor-session.js is dropped, and the function that the page reads throws
+  const throwing = `Object.defineProperty(window, 'BeesonEditorSession', { configurable: true, get: () => () => { throw new Error('a broken engine'); }, set() {} });`;
+  const broken = await open(browser, sessionUrl(server.edit), { ready: false, script: throwing });
+  await broken.waitFor(STARTED);
+  assert.deepEqual(await failure(broken), { dialogs: 1, text: 'theme/editor-session.js could not be loaded. Load the page again to join the session.', buttons: ['Load again'] });
+  clean(broken);
+});
+
 test('a page is online as soon as a request after an outage succeeds, while the edit command holds its poll', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
