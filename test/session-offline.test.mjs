@@ -187,6 +187,33 @@ test('a page without IndexedDB edits offline, says that its changes cannot be ke
   clean(page);
 });
 
+test('a page whose first open of IndexedDB answers late keeps its edits in a copy at a later write', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  // the first open of beeson-session, the database of the copies, answers after OPEN_WAIT of
+  // src/session/client/copy.ts, as on a crowded machine
+  const script = `{
+    const open = IDBFactory.prototype.open;
+    let first = true;
+    IDBFactory.prototype.open = function (name, ...rest) {
+      const r = open.call(this, name, ...rest);
+      if (name !== 'beeson-session' || !first) return r;
+      first = false;
+      Object.defineProperty(r, 'onsuccess', { configurable: true, set(fn) { r.addEventListener('success', (e) => setTimeout(() => fn.call(r, e), 3500), { once: true }); } });
+      return r;
+    };
+  }`;
+  const page = await tab(browser, sessionUrl(server.edit), { script });
+  await converge(server, [page]);
+  await goOffline(page);
+  await edit(page, 0, 'p', ' kept late');
+  await copied(page, ' kept late');
+  await goOnline(page);
+  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide kept late</p>'));
+  clean(page);
+});
+
 // Ann edits two texts offline, and Ben replaces the same word of one of them and changes another
 // text meanwhile. Ann comes back after more than 5 s, and the dialog of the conflicts lists the text
 // that both changed
