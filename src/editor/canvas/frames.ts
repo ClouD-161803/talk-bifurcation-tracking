@@ -101,6 +101,11 @@ export function setPreview(app: App, kind: string, on: boolean, stop: () => void
   app.invalidate('selection');
 }
 
+// a click listener that does nothing. chrome moves a touch to the nearest element that responds to a
+// click within the area of the finger, e.g. the paragraph under a grip, and a grip or the rotate
+// handle with this listener keeps the touch
+const tappable = (d: HTMLElement): void => d.addEventListener('click', () => {});
+
 const div = (className: string, parent: HTMLElement): HTMLDivElement => {
   const d = document.createElement('div');
   d.className = className;
@@ -256,6 +261,7 @@ export class Frames {
     this.grips = this.gripSet();
     this.stem = div('beeson-rotor-stem', this.layer);
     this.rotor = div('beeson-rotor', this.layer);
+    tappable(this.rotor);
     this.rotor.textContent = '↻';
     this.rotor.title = 'Drag to rotate, held at multiples of 45°, with Shift in steps of 15°';
     this.spoke = div('beeson-guide spoke', this.layer);
@@ -272,6 +278,7 @@ export class Frames {
     const n = this.gripSets.length;
     const set = Object.fromEntries(HANDLES.map((h) => {
       const g = div('beeson-grip', this.layer);
+      tappable(g);
       // square on a Mac, as in PowerPoint and Keynote for the Mac, and round as in PowerPoint for Windows
       g.classList.toggle('square', this.app.platform === 'mac');
       g.dataset.handle = h;
