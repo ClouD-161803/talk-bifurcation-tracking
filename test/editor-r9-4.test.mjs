@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -162,7 +162,7 @@ for (const platform of PLATFORMS) {
       const page = await load(t, platform, { n: 3 });
       const para = '.reveal section.present > p:first-of-type';
       const math = '.reveal section.present div.math';
-      await click(page, para);
+      await clickText(page, para);
       await press(page, 'Escape');
       await frames(page);
       assert.deepEqual(await selected(page), ['p']);
@@ -201,7 +201,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, { n: 3 });
     const math = '.reveal section.present div.math';
     for (const how of ['the key', 'Cancel']) {
-      await click(page, math);
+      await clickText(page, math);
       await sleep(300);
       assert.equal(await sheetOpen(page), true, 'a click on a formula does not open its sheet');
       if (how === 'Cancel') await click(page, '.beeson-math button:not(.primary)');
@@ -215,7 +215,7 @@ for (const platform of PLATFORMS) {
       assert.match((await styleOf(page, math)) ?? '', /translate/, `an arrow key after ${how} does not nudge the formula`);
       await roundTrip(page);
       // one more Esc clears the selection
-      await click(page, math);
+      await clickText(page, math);
       await sleep(300);
       await press(page, 'Escape');
       await frames(page);
@@ -226,7 +226,7 @@ for (const platform of PLATFORMS) {
       assert.equal(await page.evaluate(`document.activeElement.closest('mjx-container') === null`), true, 'the formula keeps the focus after the selection is cleared');
     }
     // Backspace deletes the formula selected by Esc
-    await click(page, math);
+    await clickText(page, math);
     await sleep(300);
     await press(page, 'Escape');
     await frames(page);
@@ -239,7 +239,7 @@ for (const platform of PLATFORMS) {
   test(`Esc from the sheet of an inline formula selects its block as an object (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 3 });
     const para = '.reveal section.present p[data-fragment-index="2"]';
-    await click(page, `${para} mjx-container`);
+    await clickText(page, `${para} mjx-container`);
     await sleep(300);
     assert.equal(await sheetOpen(page), true);
     await press(page, 'Escape');
@@ -275,7 +275,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, { n: 4 });
     const para = '.reveal section.present > p';
     const head = '.reveal section.present > h2';
-    await click(page, para);
+    await clickText(page, para);
     await press(page, 'Escape');
     await frames(page);
     assert.deepEqual(await selected(page), ['p']);
@@ -286,7 +286,7 @@ for (const platform of PLATFORMS) {
     await objectMenu(page, handle, ['p'], 'the handle of a block');
     await closeMenu(page);
     // two blocks, then the two grouped
-    await click(page, head);
+    await clickText(page, head);
     await press(page, 'Escape');
     await click(page, para, { modifiers: 'Shift' });
     await frames(page);
@@ -300,7 +300,7 @@ for (const platform of PLATFORMS) {
     assert.equal(item(await submenu(page, 'Group'), 'Ungroup')?.off, false);
     await roundTrip(page);
     // Delete of the menu of a selected block
-    await click(page, '.reveal section.present > ul', { button: 'left' });
+    await clickText(page, '.reveal section.present > ul');
     await press(page, 'Escape');
     await frames(page);
     assert.deepEqual(await selected(page), ['ul']);
@@ -313,7 +313,7 @@ for (const platform of PLATFORMS) {
 
   test(`a right-click on a code box selected as an object opens the element menu (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 5 });
-    await click(page, '.reveal section.present pre code');
+    await clickText(page, '.reveal section.present pre code');
     await press(page, 'Escape');
     await frames(page);
     assert.deepEqual(await selected(page), ['pre']);
@@ -354,7 +354,7 @@ for (const platform of PLATFORMS) {
       const at = await drawArrow(page, s.l + s.w * 0.15, y);
       for (const before of ['selected', 'not selected']) {
         if (before === 'selected') {
-          await click(page, at);
+          await clickText(page, at);
           await frames(page);
           assert.deepEqual(await selected(page), ['svg.line']);
         }
@@ -382,7 +382,7 @@ for (const platform of PLATFORMS) {
     const at = await drawArrow(page, s.l + s.w * 0.15, s.t + s.h * 0.85);
     const lines = () => page.evaluate(`[...document.querySelectorAll('.reveal section.present svg.line')].map((l) => ({ style: l.style.translate, marker: l.querySelector('marker')?.id }))`);
     const [first] = await lines();
-    await click(page, at);
+    await clickText(page, at);
     await drag(page, at, { dx: 0, dy: -200, steps: 10, modifiers: platform === 'mac' ? 'Alt' : 'Ctrl', hold: true });
     const readout = await page.evaluate(`[...document.querySelectorAll('.beeson-offset')].filter((r) => !r.hidden && r.getClientRects().length).map((r) => r.textContent).join(' ')`);
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y - 200, button: 'left', clickCount: 1, modifiers: platform === 'mac' ? 1 : 2 });
@@ -410,17 +410,17 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, { n: 12 });
     const qr = await center(page, '.reveal section.present .qr');
     assert.equal(await cursorAt(page, qr), 'move', 'the QR code does not show a move cursor before its lock');
-    await click(page, qr);
+    await clickText(page, qr);
     await page.evaluate(`window.BeesonEditor.exec('arrange.lock')`);
     await frames(page);
     await roundTrip(page);
-    await click(page, qr);
+    await clickText(page, qr);
     await frames(page);
     assert.notEqual(await cursorAt(page, qr), 'move', 'a locked QR code shows a move cursor');
     await page.evaluate('Reveal.slide(3)');
     await frames(page);
     const para = '.reveal section.present > p';
-    await click(page, para);
+    await clickText(page, para);
     await press(page, 'Escape');
     await frames(page);
     assert.deepEqual(await handles(page), ['move']);
@@ -494,7 +494,7 @@ for (const platform of PLATFORMS) {
     assert.equal((await cmd(page, 'edit.stopSpeaking')).enabled, false);
     // the selected text, with the key of Keynote on a Mac
     const para = '.reveal section.present > p:first-of-type';
-    await click(page, para);
+    await clickText(page, para);
     await page.evaluate(`(() => { const t = document.querySelector(${js(para)}).firstChild; getSelection().setBaseAndExtent(t, 8, t, 16); })()`);
     if (platform === 'mac') await press(page, 'Mod+Alt+Shift+S');
     else await page.evaluate(`window.BeesonEditor.exec('edit.startSpeaking')`);
@@ -540,11 +540,11 @@ for (const platform of PLATFORMS) {
     const ways = {
       'reached with Tab': async () => page.evaluate(`document.querySelector(${js(math)} + ' mjx-container').focus()`),
       'clicked': async () => {
-        await click(page, math);
+        await clickText(page, math);
         await sleep(300);
       },
       'selected by Esc from its sheet': async () => {
-        await click(page, math);
+        await clickText(page, math);
         await sleep(300);
         await press(page, 'Escape');
       },
@@ -565,7 +565,7 @@ for (const platform of PLATFORMS) {
       await frames(page);
       assert.equal(await formatTab(page), 'Formula');
       assert.equal(await framed(page), 1, `a display ${how} is not framed while its TeX is in the pane`);
-      await click(page, { x: 1300, y: 960 });
+      await clickText(page, { x: 1300, y: 960 });
       await press(page, 'Escape');
       await frames(page);
     }
@@ -591,7 +591,7 @@ for (const platform of PLATFORMS) {
     const s = await page.evaluate(`(() => { const r = document.querySelector('.reveal section.present').getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width, h: r.height }; })()`);
     const at = await drawArrow(page, s.l + s.w * 0.15, s.t + s.h * 0.85);
     for (const heads of ['end', 'start', 'both', 'none']) {
-      await click(page, at);
+      await clickText(page, at);
       await page.evaluate(`window.BeesonEditor.exec(${js('line.heads.' + heads)})`);
       await frames(page);
       assert.deepEqual(await selected(page), ['svg.line']);

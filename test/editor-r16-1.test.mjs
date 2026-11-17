@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, drag, press, type } from './helpers/editor.mjs';
+import { click, clickText, drag, press, type } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 // the index of the figures slide in index.html
@@ -139,7 +139,7 @@ const centerOf = (page, selector) => page.evaluate(`(() => { const r = document.
 
 // the paragraph and the figure of the figures slide made one group with the key of Group
 async function groupOnFigures(page, platform) {
-  await click(page, IMG);
+  await clickText(page, IMG);
   const p = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector(':scope > p').getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
   await click(page, p, { modifiers: 'Shift' });
   await press(page, platform === 'mac' ? 'Alt+Mod+G' : 'Mod+G');
@@ -170,7 +170,7 @@ async function dragRotor(page, deg) {
 // the fields of the upright figure of the demo deck
 async function uprightFields(t, platform) {
   const page = await load(t, platform);
-  await click(page, IMG);
+  await clickText(page, IMG);
   const rest = await fields(page);
   await page.close();
   return rest;
@@ -182,7 +182,7 @@ for (const platform of PLATFORMS) {
   test(`a figure whose images are turned in the file is made upright by a typed 0 and by Reset Rotation (${platform})`, async (t) => {
     const rest = await uprightFields(t, platform);
     const page = await load(t, platform, LEGACY, `document.querySelectorAll('figure.figure-box > img').forEach((i) => i.setAttribute('style', 'rotate: 20deg'))`);
-    await click(page, IMG);
+    await clickText(page, IMG);
     assert.equal(await fieldValue(page, 'angle'), 20, 'the angle of the figure at the open');
     assert.equal(await enabled(page, 'arrange.resetRotation'), true);
 
@@ -209,7 +209,7 @@ for (const platform of PLATFORMS) {
   // G1: the rotate handle of the figure also gives the angle of its images to the figure
   test(`a figure whose images are turned in the file is turned by its rotate handle as one object (${platform})`, async (t) => {
     const page = await load(t, platform, LEGACY, `document.querySelectorAll('figure.figure-box > img').forEach((i) => i.setAttribute('style', 'rotate: 20deg'))`);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await dragRotor(page, 40);
     const deg = await fieldValue(page, 'angle');
     assert.ok(deg >= 55 && deg <= 65, `the figure is turned to ${deg} degrees`);
@@ -225,18 +225,18 @@ for (const platform of PLATFORMS) {
   // figure at rotate: 310deg with the images at 50deg
   test(`a figure whose picture was turned alone by a second click is made upright by a typed 0 (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, IMG);
+    await clickText(page, IMG);
     const rest = await fields(page);
-    await click(page, IMG);
+    await clickText(page, IMG);
     await typeField(page, 'angle', 50);
     let s = await figureState(page);
     assert.doesNotMatch(s.tags[0], /rotate/, `the figure is turned with its picture selected alone: ${js(s.tags)}`);
     for (const tag of s.tags.slice(1)) assert.match(tag, /rotate: 50deg/, `a picture selected alone is not turned alone: ${js(s.tags)}`);
     const fifty = await undoes(page, STOCK, 'a typed 50 of the picture');
 
-    await click(page, 'section.present > h2');
+    await clickText(page, 'section.present > h2');
     await press(page, 'Escape');
-    await click(page, IMG);
+    await clickText(page, IMG);
     await frames(page);
     assert.equal(await page.evaluate('window.BeesonEditor.selection()[0]?.localName'), 'figure');
     assert.equal(await fieldValue(page, 'angle'), 50);
@@ -252,13 +252,13 @@ for (const platform of PLATFORMS) {
   // and a drag read x 843 and y 120 against 1021 and 212
   test(`the readout of a nudge and of a drag of a turned figure and text gives the fields X and Y (${platform})`, async (t) => {
     const page = await load(t, platform);
-    await click(page, IMG);
+    await clickText(page, IMG);
     for (const deg of [0, 30]) {
       await typeField(page, 'angle', deg);
       await assertNudgeReadout(page, `the figure at ${deg} degrees`);
       await assertDragReadout(page, await centerOf(page, IMG), `the figure at ${deg} degrees`);
     }
-    await click(page, 'section.present > h2');
+    await clickText(page, 'section.present > h2');
     await press(page, 'Escape');
     await frames(page);
     await typeField(page, 'angle', 30);

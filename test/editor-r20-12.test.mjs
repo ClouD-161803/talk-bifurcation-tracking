@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, type } from './helpers/editor.mjs';
+import { click, clickText, press, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test-deck.html';
@@ -66,7 +66,7 @@ async function menu(page, bar, item) {
   await click(page, await rect(page, `[...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((e) => e.textContent.trim() === ${js(bar)})`));
   await sleep(250);
   const at = await page.evaluate(`(() => { const e = [...document.querySelectorAll('[role=menu] [role^=menuitem]')].find((x) => x.getClientRects().length && x.textContent.trim().startsWith(${js(item)})); const r = e.getBoundingClientRect(); return { x: r.left + 20, y: r.top + r.height / 2 }; })()`);
-  await click(page, at);
+  await clickText(page, at);
   await sleep(500);
   await frames(page);
 }
@@ -93,7 +93,7 @@ for (const platform of PLATFORMS) {
       const page = await load(t, platform, DECK, 4);
       const at = `with a pause of ${pause} ms`;
       // an older entry, which stays undoable
-      await click(page, 'section.present h2');
+      await clickText(page, 'section.present h2');
       await press(page, 'End');
       await type(page, 'Q');
       await sleep(1300);
@@ -104,7 +104,7 @@ for (const platform of PLATFORMS) {
       await sleep(pause);
       await press(page, 'Backspace');
       await sleep(300);
-      await click(page, 'section.present figure img.for-light');
+      await clickText(page, 'section.present figure img.for-light');
       await sleep(700);
       assert.equal(await render(page), older, `the emptied box is kept ${at}`);
       const sel = await page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName)`);
@@ -125,7 +125,7 @@ async function copyRange(t, platform) {
   await page.send('Page.bringToFront');
   await page.send('Browser.grantPermissions', { origin: server.origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] });
   const cell = (r, c) => rect(page, `document.querySelector('.reveal section.present table').rows[${r}].cells[${c}]`);
-  await click(page, await cell(1, 0));
+  await clickText(page, await cell(1, 0));
   await sleep(150);
   await click(page, await cell(2, 1), { modifiers: 'Shift' });
   await sleep(150);
@@ -133,7 +133,7 @@ async function copyRange(t, platform) {
   await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base, commands: ['copy'] });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
   await sleep(150);
-  await click(page, await cell(3, 0));
+  await clickText(page, await cell(3, 0));
   await sleep(300);
   return page;
 }
@@ -157,7 +157,7 @@ for (const platform of PLATFORMS) {
         await sleep(300);
         const item = await rect(page, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((i) => i.getClientRects().length && i.querySelector('.label')?.textContent === 'Paste')`);
         assert.ok(item, 'the cell menu does not have Paste');
-        await click(page, item);
+        await clickText(page, item);
         await sleep(500);
       }
       const edited = await render(page);
@@ -196,7 +196,7 @@ for (const platform of PLATFORMS) {
       assert.ok(a.frame.left >= 119.5 && a.frame.right <= 1800.5, `the box ${a.text} ${js(a.frame)} is outside the margins`);
       for (const w of block) assert.ok(!meets(a.ink, w.ink), `the box ${a.text} lies over the words ${w.text}`);
     }
-    await click(page, await page.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(Reveal.getCurrentSlide().querySelector(':scope > p')); const b = r.getBoundingClientRect(); return { x: b.right - 2, y: b.top + b.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(Reveal.getCurrentSlide().querySelector(':scope > p')); const b = r.getBoundingClientRect(); return { x: b.right - 2, y: b.top + b.height / 2 }; })()`));
     await press(page, 'End');
     await type(page, ' and a few more words');
     await sleep(300);
@@ -319,7 +319,7 @@ for (const platform of PLATFORMS) {
     await page.send('Page.bringToFront');
     await page.send('Browser.setPermission', { origin: server.origin, permission: { name: 'clipboard-read' }, setting: 'denied' });
     assert.equal(await page.evaluate(`navigator.clipboard.readText().then(() => 'read', (e) => e.name)`), 'NotAllowedError');
-    await click(page, await rect(page, `document.querySelector('.reveal section.present h2')`).then((p) => ({ x: p.x, y: p.y + 260 })));
+    await clickText(page, await rect(page, `document.querySelector('.reveal section.present h2')`).then((p) => ({ x: p.x, y: p.y + 260 })));
     await sleep(200);
     const base = await render(page);
     await menu(page, 'Edit', 'Paste');

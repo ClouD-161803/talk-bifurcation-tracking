@@ -10,7 +10,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { click, drag, press, previewFrames, recordPreview, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, drag, press, previewFrames, recordPreview, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const PANEL = '#beeson-edit-panel-format';
@@ -88,7 +88,7 @@ async function selectCode(page) {
     const b = r.getBoundingClientRect();
     return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   })()`);
-  await click(page, at);
+  await clickText(page, at);
   await press(page, 'Escape');
   await frames(page);
 }
@@ -105,7 +105,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await page.evaluate(`document.querySelector(${js(box)}).disabled`), false);
     const size = () => page.evaluate(`getComputedStyle(document.querySelector('.reveal section.present pre')).fontSize`);
     assert.equal(await size(), '22px');
-    await click(page, SMALL);
+    await clickText(page, SMALL);
     await frames(page);
     const small = source.replace('<pre><code class="language-python"', '<pre style="font-size: 18px"><code class="language-python"');
     assert.equal(await rendered(page), small);
@@ -115,13 +115,13 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(newProblems(page, small), []);
     await undoRedo(page, platform, source, small);
     // off takes the declaration out, and the tag is as it was, byte for byte
-    await click(page, SMALL);
+    await clickText(page, SMALL);
     await frames(page);
     assert.equal(await rendered(page), source);
     assert.equal(await size(), '22px');
     assert.equal(await page.evaluate(`document.querySelector(${js(box)}).checked`), false);
     await undoRedo(page, platform, small, source);
-    await click(page, SMALL);
+    await clickText(page, SMALL);
     await frames(page);
     await saved(page, small);
     assert.deepEqual(errors(page), []);
@@ -131,13 +131,13 @@ for (const platform of PLATFORMS) {
     const text = readFileSync('test-deck.html', 'utf8').replace('<pre><code class="language-python"', '<pre style="translate: 0px 12px;"><code class="language-python"');
     const page = await open(t, platform, { text });
     await selectCode(page);
-    await click(page, SMALL);
+    await clickText(page, SMALL);
     await frames(page);
     const small = await rendered(page);
     assert.match(small, /<pre style="translate: 0px 12px; font-size: 18px;?"><code class="language-python"/);
     assert.deepEqual(newProblems(page, small), []);
     await undoRedo(page, platform, text, small);
-    await click(page, SMALL);
+    await clickText(page, SMALL);
     await frames(page);
     assert.equal(await rendered(page), text);
     assert.deepEqual(errors(page), []);
@@ -179,7 +179,7 @@ async function choose(page, label) {
   })()`);
   assert.ok(at, `the open menu does not have an enabled item ${label}`);
   await sleep(300);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 
@@ -190,7 +190,7 @@ for (const platform of PLATFORMS) {
   test(`the Delay field of a step After Previous has a stepper in steps of 0.1 s on ${platform}`, async (t) => {
     const page = await open(t, platform, { at: 'li.fragment', tab: 'steps' });
     const source = page.source;
-    await click(page, await rowPart(page, 'Two elements', '.chip'));
+    await clickText(page, await rowPart(page, 'Two elements', '.chip'));
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     await choose(page, 'After Previous');
     const half = source.replace(LI1, LI1.replace('>', ' data-autoslide="500">'));
@@ -202,7 +202,7 @@ for (const platform of PLATFORMS) {
     })()`);
     assert.deepEqual(await field(), { value: '0.5', unit: 's', arrows: ['Increase Delay', 'Decrease Delay'] });
     // a click on the upper arrow adds 0.1 s
-    await click(page, `${STEPPER}:first-child`);
+    await clickText(page, `${STEPPER}:first-child`);
     await frames(page);
     const more = source.replace(LI1, LI1.replace('>', ' data-autoslide="600">'));
     assert.equal(await rendered(page), more);
@@ -211,10 +211,10 @@ for (const platform of PLATFORMS) {
     assert.equal(await undoLabel(page), 'Undo Set Delay of Step');
     await undoRedo(page, platform, half, more);
     // the lower arrow takes 0.1 s off, and the arrow keys of the field step it too, by 1 s with Shift
-    await click(page, `${STEPPER}:last-child`);
+    await clickText(page, `${STEPPER}:last-child`);
     await frames(page);
     assert.equal(await rendered(page), half);
-    await click(page, DELAY);
+    await clickText(page, DELAY);
     await press(page, 'Shift+ArrowUp');
     await frames(page);
     assert.equal(await rendered(page), source.replace(LI1, LI1.replace('>', ' data-autoslide="1500">')));
@@ -234,7 +234,7 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     await undoRedo(page, platform, typed, least);
     // a step at a click has the field and its arrows dimmed
-    await click(page, await rowPart(page, 'When exporting'));
+    await clickText(page, await rowPart(page, 'When exporting'));
     await frames(page);
     assert.deepEqual(await field(), { value: '', unit: 's', arrows: ['Increase Delay (dimmed)', 'Decrease Delay (dimmed)'] });
     assert.deepEqual(newProblems(page, least), []);
@@ -249,11 +249,11 @@ const options = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-
 for (const platform of PLATFORMS) {
   test(`the TeX completion list draws the glyph of each command beside its name, typeset once on ${platform}`, async (t) => {
     const page = await open(t, platform, { at: 'div.math[data-keep]' });
-    await click(page, 'div.math[data-keep] mjx-container');
+    await clickText(page, 'div.math[data-keep] mjx-container');
     await sleep(200);
     await press(page, 'Escape');
     await sleep(200);
-    await click(page, `${PANEL} textarea[name="tex"]`);
+    await clickText(page, `${PANEL} textarea[name="tex"]`);
     await press(page, 'Mod+ArrowDown');
     await type(page, String.raw` + \L`);
     await page.waitFor(`[...document.querySelectorAll('.beeson-complete [role=option]')].every((o) => o.querySelector('.glyph svg'))`);
@@ -310,7 +310,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     assert.equal(await dimmed(page), 6);
     // a press selects the box, and marks the line row in place of the row of the box
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     assert.equal(await page.evaluate(`window.BeesonEditor.state('steps.playFrom').label`), 'Play From Selected Step');
     assert.deepEqual((await rows(page)).filter((r) => r.selected).map((r) => r.meta.split(' · ')[0]), ['Lines 5–7']);
@@ -324,7 +324,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const field = `${PANEL} input[name="line-steps"]`;
     await page.evaluate(`document.querySelector(${js(field)}).select()`);
-    await click(page, field);
+    await clickText(page, field);
     await page.evaluate(`document.querySelector(${js(field)}).select()`);
     await type(page, '1-3|4|5-9');
     await press(page, 'Enter');
@@ -361,7 +361,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(newProblems(page, moved), []);
     await undoRedo(page, platform, text, moved);
     // a step put between two line steps is refused, and the file is kept
-    await click(page, await rowPart(page, 'Copy-paste'));
+    await clickText(page, await rowPart(page, 'Copy-paste'));
     await press(page, 'Alt+ArrowUp');
     await frames(page);
     assert.equal(await rendered(page), moved);
@@ -388,14 +388,14 @@ for (const platform of PLATFORMS) {
     const label = () => page.evaluate(`document.querySelector(${js(play)}).textContent`);
     assert.equal(await label(), 'Preview Steps');
     // a chosen row turns the button into Play From, as in the Animation Pane of PowerPoint
-    await click(page, await rowPart(page, 'if len(members)'));
+    await clickText(page, await rowPart(page, 'if len(members)'));
     await frames(page);
     assert.equal(await label(), 'Play From');
     // each frame of the preview is recorded in the page as it is drawn, since a read of its first
     // step came a step late on a slow runner
     const state = `({ para: !document.querySelector('.reveal section.present p.fragment').classList.contains('beeson-pv-off'), dimmed: ${DIMMED}, label: document.querySelector(${js(play)}).textContent })`;
     await recordPreview(page, state);
-    await click(page, play);
+    await clickText(page, play);
     // the slide starts at the step before the chosen one: the paragraph and line 4 are shown. the
     // last frame is the last step again, with the dimmed lines restored
     const played = await previewFrames(page);
@@ -405,11 +405,11 @@ for (const platform of PLATFORMS) {
     assert.equal(await label(), 'Play From');
     // the chip menu of a row ends with Play From its step, before the delivery of a list, and a
     // line row has only this item
-    await click(page, await rowPart(page, 'Copy-paste', '.chip'));
+    await clickText(page, await rowPart(page, 'Copy-paste', '.chip'));
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.equal((await menuLabels(page)).at(-1), 'Play From Step 1');
     await press(page, 'Escape');
-    await click(page, await rowPart(page, 'members.append', '.chip'));
+    await clickText(page, await rowPart(page, 'members.append', '.chip'));
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.deepEqual(await menuLabels(page), ['Play From Step 4']);
     await recordPreview(page, state);
@@ -422,7 +422,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await page.evaluate(`document.documentElement.classList.contains('beeson-previewing')`), false);
     assert.equal(await dimmed(page), 0);
     // a row shown with the slide has Play From dimmed
-    await click(page, await rowPart(page, 'Code boxes', '.chip'));
+    await clickText(page, await rowPart(page, 'Code boxes', '.chip'));
     await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
     assert.equal((await menuLabels(page)).at(-1), '-Play From Step');
     await press(page, 'Escape');

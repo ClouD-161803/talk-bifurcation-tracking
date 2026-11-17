@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press } from './helpers/editor.mjs';
+import { click, clickText, press } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-r32-3.html';
 const PLATFORMS = ['mac', 'other'];
@@ -111,15 +111,15 @@ const measure = (page) => page.evaluate(DRAWN);
 
 // the kinds of selection, each made with trusted input as a user makes it
 const SELECTIONS = {
-  block: async (page) => { await click(page, 'section.present h2'); await press(page, 'Escape'); },
-  caret: async (page) => { await click(page, 'section.present > p:not(.fragment)'); },
-  figure: async (page) => { await click(page, 'section.present figure img'); },
-  shape: async (page) => { await click(page, 'section.present .shape.tone-blue'); },
-  line: async (page) => { await click(page, await centerOf(page, 'section.present svg.line line')); },
-  group: async (page) => { await click(page, 'section.present .shape.tone-accent'); },
+  block: async (page) => { await clickText(page, 'section.present h2'); await press(page, 'Escape'); },
+  caret: async (page) => { await clickText(page, 'section.present > p:not(.fragment)'); },
+  figure: async (page) => { await clickText(page, 'section.present figure img'); },
+  shape: async (page) => { await clickText(page, 'section.present .shape.tone-blue'); },
+  line: async (page) => { await clickText(page, await centerOf(page, 'section.present svg.line line')); },
+  group: async (page) => { await clickText(page, 'section.present .shape.tone-accent'); },
   backdrop: async (page) => { await page.evaluate(`window.BeesonEditor.exec('preview.selectBackdrop')`); },
   several: async (page) => {
-    await click(page, 'section.present h2');
+    await clickText(page, 'section.present h2');
     await press(page, 'Escape');
     await click(page, 'section.present .shape.tone-blue', { modifiers: 'Shift' });
   },
@@ -200,7 +200,7 @@ for (const platform of PLATFORMS) {
     const before = await select(page, 'caret');
     await start(page, 'preview.slide');
     assert.deepEqual((await measure(page)).drawn, {}, 'drawn during Play Slide');
-    await click(page, MAIN);
+    await clickText(page, MAIN);
     await frames(page);
     assert.equal(await page.evaluate(playingOf('preview.slide')), false, 'Stop does not stop Play Slide');
     assert.deepEqual(await measure(page), before, 'the caret after Stop');
@@ -212,7 +212,7 @@ for (const platform of PLATFORMS) {
     for (const [button, id] of [[MAIN, 'preview.slide'], ['.beeson-edit-side button.play', 'steps.preview']]) {
       const before = await select(page, 'caret');
       assert.equal(before.drawn.caret, 1);
-      await click(page, button);
+      await clickText(page, button);
       await page.waitFor(playingOf(id), 3000);
       await frames(page);
       assert.deepEqual((await measure(page)).drawn, {}, `drawn during ${id}`);
@@ -243,7 +243,7 @@ for (const platform of PLATFORMS) {
     const shape = await select(page, 'shape');
     await select(page, 'block');
     await start(page, 'preview.backdrop');
-    await click(page, 'section.present .shape.tone-blue');
+    await clickText(page, 'section.present .shape.tone-blue');
     await frames(page);
     assert.equal(await page.evaluate(playingOf('preview.backdrop')), false, 'a click does not stop the preview');
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 995 });
@@ -276,7 +276,7 @@ for (const platform of PLATFORMS) {
       for (const key of ['q', 'Backspace', 'Enter']) {
         await page.evaluate('Reveal.slide(0)');
         await frames(page);
-        await click(page, 'section.present p.fragment');
+        await clickText(page, 'section.present p.fragment');
         await press(page, 'End');
         await frames(page);
         const text = await page.evaluate(`document.querySelector('section.present p.fragment').textContent`);

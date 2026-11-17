@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { center, click, press } from './helpers/editor.mjs';
+import { center, click, clickText, press } from './helpers/editor.mjs';
 
 const DECK = 'test-deck.html';
 const PLATFORMS = ['mac', 'other'];
@@ -60,7 +60,7 @@ async function resize(page, width, height) {
 
 // a trusted click on the title bar of the menu bar, then on the item labeled label of its menu
 async function choose(page, bar, label) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)}).getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`));
@@ -72,7 +72,7 @@ async function choose(page, bar, label) {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
   assert.ok(at, `the menu ${bar} does not have an item ${label}`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 
@@ -89,7 +89,7 @@ const cutControls = (page) => page.evaluate(`(() => {
 async function arrangeTab(page) {
   const tab = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].find((b) => b.textContent.trim() === 'Arrange'); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   assert.ok(tab, 'the inspector does not have an Arrange tab');
-  await click(page, tab);
+  await clickText(page, tab);
   await frames(page);
 }
 
@@ -103,7 +103,7 @@ for (const platform of PLATFORMS) {
       for (const clicks of [1, 2]) {
         await press(page, 'Escape');
         await press(page, 'Escape');
-        for (let i = 0; i < clicks; i++) await click(page, 'section.present img');
+        for (let i = 0; i < clicks; i++) await clickText(page, 'section.present img');
         await frames(page);
         await arrangeTab(page);
         const labels = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-inspector .panel.format .ed-btn')].map((b) => b.textContent.trim())`);
@@ -188,7 +188,7 @@ for (const platform of PLATFORMS) {
       const page = await load(t, platform, { n: 5, width: 1440, height: 900 });
       await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
       if (!(await state(page, 'shell.format')).checked) await exec(page, 'shell.format');
-      await click(page, 'section.present pre code');
+      await clickText(page, 'section.present pre code');
       await press(page, 'Escape');
       await frames(page);
       const look = await page.evaluate(`(() => {

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const SLIDE = '.reveal .slides > section.present';
@@ -231,7 +231,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, 0, MOVED);
     const placed = (await boxes(page, `${SLIDE} > p`))['p A moved paragraph of wor'];
     const others = await boxes(page, `${SLIDE} > *`);
-    await click(page, await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(`${SLIDE} > p`)})].find((p) => p.textContent.startsWith('A moved')).getBoundingClientRect(); return { x: r.right - 20, y: r.top + r.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(`${SLIDE} > p`)})].find((p) => p.textContent.startsWith('A moved')).getBoundingClientRect(); return { x: r.right - 20, y: r.top + r.height / 2 }; })()`));
     await frames(page);
     await press(page, 'End');
     await exec(page, 'text.list.ol');
@@ -272,7 +272,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, 1, MOVED);
     assert.equal(await render(page), page.source, 'the list is changed by the open');
     const placed = await boxes(page, `${SLIDE} li`);
-    await click(page, await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(`${SLIDE} li`)})].find((li) => li.textContent === 'Beta').getBoundingClientRect(); return { x: r.right - 10, y: r.top + r.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const r = [...document.querySelectorAll(${js(`${SLIDE} li`)})].find((li) => li.textContent === 'Beta').getBoundingClientRect(); return { x: r.right - 10, y: r.top + r.height / 2 }; })()`));
     await frames(page);
     await press(page, 'End');
     await press(page, 'Enter');
@@ -305,7 +305,7 @@ for (const platform of PLATFORMS) {
   test(`2: a moved list made paragraphs gives each its translate, and Dashes over them gives the list back byte for byte (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
     const tops = Object.values(await boxes(page, `${SLIDE} li`)).map((b) => b.top);
-    await click(page, await page.evaluate(`(() => { const r = document.querySelector(${js(`${SLIDE} ul > li`)}).getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const r = document.querySelector(${js(`${SLIDE} ul > li`)}).getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; })()`));
     await frames(page);
     await press(page, 'Escape');
     await frames(page);
@@ -319,7 +319,7 @@ for (const platform of PLATFORMS) {
     // the theme between two paragraphs, which is wider than that between two items
     const now = Object.values(await boxes(page, `${SLIDE} > p.fragment`)).map((b) => b.top);
     assert.equal(now[0], tops[0], 'the first paragraph is not drawn where the first item was');
-    await click(page, await page.evaluate(`(() => { const r = document.querySelector(${js(`${SLIDE} > p.fragment`)}).getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; })()`));
+    await clickText(page, await page.evaluate(`(() => { const r = document.querySelector(${js(`${SLIDE} > p.fragment`)}).getBoundingClientRect(); return { x: r.left + 40, y: r.top + r.height / 2 }; })()`));
     await frames(page);
     await press(page, 'Mod+A');
     await exec(page, 'text.list.ul');

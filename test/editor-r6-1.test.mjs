@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
 const PLATFORMS = ['mac', 'other'];
@@ -103,7 +103,7 @@ const itemAt = (page, label) => page.evaluate(`(() => {
 })()`);
 
 async function openBar(page, bar) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)}).getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`));
@@ -129,7 +129,7 @@ for (const platform of PLATFORMS) {
   test(`Edit > Delete deletes the selected words of a text and is dimmed with a bare caret (${platform})`, async (t) => {
     const page = await load(t, platform, { n: TEXT });
     const p = '.reveal section.present > p:not(.small)';
-    await click(page, p);
+    await clickText(page, p);
     await frames(page);
     assert.equal((await state(page, 'element.delete')).enabled, false, 'Delete is enabled with a bare caret');
     assert.ok(await selectWords(page, p, 'paragraph '));
@@ -138,7 +138,7 @@ for (const platform of PLATFORMS) {
     await openBar(page, 'Edit');
     const at = await itemAt(page, 'Delete');
     assert.ok(at, 'Delete is not in the Edit menu');
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
     assert.equal(await page.evaluate(`document.querySelector(${js(p)}).textContent.startsWith('A with ')`), true);
     assert.equal((await state(page, 'element.delete')).enabled, false);
@@ -151,7 +151,7 @@ for (const platform of PLATFORMS) {
   test(`the list buttons of the Text pane make a selected paragraph a list and a selected list paragraphs (${platform})`, async (t) => {
     const page = await load(t, platform, { n: MATH });
     const p = '.reveal section.present > p:first-of-type';
-    await click(page, p);
+    await clickText(page, p);
     await press(page, 'Escape');
     await frames(page);
     for (const kind of ['none', 'ul', 'ol']) assert.equal((await state(page, `text.list.${kind}`)).enabled, true, `text.list.${kind} is dimmed on a selected paragraph`);
@@ -160,7 +160,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     await roundTrip(page, [['<p>The lead-in of a display</p>', '<ul>\n    <li>The lead-in of a display</li>\n  </ul>']]);
     // the new list is selected as a block again, and Numbers makes it an ordered list
-    await click(page, '.reveal section.present > ul > li');
+    await clickText(page, '.reveal section.present > ul > li');
     await press(page, 'Escape');
     await frames(page);
     assert.equal((await state(page, 'text.list.ul')).checked, true);
@@ -168,7 +168,7 @@ for (const platform of PLATFORMS) {
     await frames(page);
     await roundTrip(page, [['<ul>\n    <li>The lead-in of a display</li>\n  </ul>', '<ol>\n    <li>The lead-in of a display</li>\n  </ol>']]);
     // Paragraphs on a selected list makes each item a paragraph with the attributes of the item
-    await click(page, '.reveal section.present > ol:last-of-type > li');
+    await clickText(page, '.reveal section.present > ol:last-of-type > li');
     await press(page, 'Escape');
     await frames(page);
     assert.equal((await state(page, 'text.list.ol')).checked, true);
@@ -192,18 +192,18 @@ for (const platform of PLATFORMS) {
     await exec(page, 'find.close');
     await frames(page);
     found.push(...(await clashes('the canvas')));
-    await click(page, '.reveal section.present figure.figure-box img:not([hidden])');
+    await clickText(page, '.reveal section.present figure.figure-box img:not([hidden])');
     await frames(page);
     found.push(...(await clashes('a figure')));
     await press(page, 'Escape');
     const p = '.reveal section.present > p:first-of-type';
-    await click(page, p);
+    await clickText(page, p);
     await frames(page);
     found.push(...(await clashes('a caret in a text')));
     await selectWords(page, p, 'lead-in');
     await frames(page);
     found.push(...(await clashes('words of a text')));
-    await click(page, '.reveal section.present > ol > li');
+    await clickText(page, '.reveal section.present > ol > li');
     await frames(page);
     found.push(...(await clashes('a list item')));
     await press(page, 'Escape');
@@ -236,7 +236,7 @@ for (const platform of PLATFORMS) {
     assert.notEqual(await at(), second, 'the key of Find Previous does not step back in the find panel');
     await press(page, 'Escape');
     const p = '.reveal section.present > p:first-of-type';
-    await click(page, p);
+    await clickText(page, p);
     assert.ok(await selectWords(page, p, 'lead-in'));
     await frames(page);
     await press(page, 'Shift+F3');
@@ -298,7 +298,7 @@ for (const platform of PLATFORMS) {
     // Return puts the caret into the caption
     await press(page, 'Escape');
     await frames(page);
-    await click(page, img);
+    await clickText(page, img);
     await press(page, 'Escape');
     await frames(page);
     assert.equal(await page.evaluate(`window.BeesonEditor.selection().map((e) => e.localName).join()`), 'figure');
@@ -308,7 +308,7 @@ for (const platform of PLATFORMS) {
     await press(page, 'Escape');
     await press(page, 'Escape');
     // a click on the caption edits it too
-    await click(page, '.reveal section.present figure.figure-box figcaption');
+    await clickText(page, '.reveal section.present figure.figure-box figcaption');
     await frames(page);
     assert.equal(await page.evaluate(`document.activeElement?.closest('figcaption')?.textContent ?? null`), 'A caption under a zone.');
     assert.deepEqual(errors(page), []);

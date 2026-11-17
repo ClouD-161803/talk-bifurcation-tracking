@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press } from './helpers/editor.mjs';
+import { click, clickText, press } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-r26-1.html';
 const PLATFORMS = ['mac', 'other'];
@@ -194,7 +194,7 @@ for (const platform of PLATFORMS) {
     for (const id of ['preview.slide', 'preview.backdrop', 'preview.steps']) assert.equal((await state(page, id)).enabled, false, `${id} in Slide Sorter`);
     assert.equal(await page.evaluate(`document.querySelector('${MAIN}').disabled`), true, 'the main part of Preview is not dimmed');
     // the entries of the Play menu
-    await click(page, await page.evaluate(`(() => {
+    await clickText(page, await page.evaluate(`(() => {
       const t = [...document.querySelectorAll('.beeson-edit-header [aria-haspopup="menu"]')].find((b) => b.textContent === 'Play');
       const r = t.getBoundingClientRect();
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -257,7 +257,7 @@ for (const platform of PLATFORMS) {
     await follows('a scroll');
     await exec(page, 'zoom.fit');
     await follows('zoom.fit');
-    await click(page, await centerOf(page, VIEW));
+    await clickText(page, await centerOf(page, VIEW));
     await follows('a click on the View button');
     await exec(page, 'view.rulers');
     await follows('Rulers');
@@ -268,7 +268,7 @@ for (const platform of PLATFORMS) {
 
   test(`Esc that stops a preview keeps the selection, as Stop does (${platform})`, async () => {
     const page = await previewPage(platform, STEPS, { step: 5000 });
-    await click(page, await centerOf(page, 'section.present h2'));
+    await clickText(page, await centerOf(page, 'section.present h2'));
     await press(page, 'Escape');
     assert.deepEqual(await selected(page), ['h2']);
     for (const id of ['preview.steps', 'preview.slide']) {
@@ -297,7 +297,7 @@ for (const platform of PLATFORMS) {
 
   test(`Deselect and its key Mod+Shift+A work while a preview plays (${platform})`, async () => {
     const page = await previewPage(platform, STEPS, { step: 5000 });
-    await click(page, await centerOf(page, 'section.present h2'));
+    await clickText(page, await centerOf(page, 'section.present h2'));
     await press(page, 'Escape');
     assert.deepEqual(await selected(page), ['h2']);
     await exec(page, 'preview.steps');

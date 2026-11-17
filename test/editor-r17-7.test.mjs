@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const LISTS = 'test/pages/editor-r13-3.html';
@@ -214,7 +214,7 @@ for (const platform of PLATFORMS) {
     const typed = await render(page);
     assert.ok(typed.includes(`${SAME} XY</li>`));
     const h2 = await page.evaluate(`(() => { const r = document.querySelector('${SLIDE} h2').getClientRects()[0]; return { x: r.left + 40, y: r.top + r.height / 2 }; })()`);
-    await click(page, h2);
+    await clickText(page, h2);
     await wait(page);
     await press(page, 'Mod+Z');
     await wait(page);
@@ -270,7 +270,7 @@ async function showTab(page, name) {
   if (!(await page.evaluate(`window.BeesonEditor.state('shell.format').checked`))) await exec(page, 'shell.format');
   await wait(page);
   const at = await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].find((b) => b.textContent.trim() === ${js(name)}); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-  if (at) await click(page, at);
+  if (at) await clickText(page, at);
   await wait(page);
 }
 
@@ -283,7 +283,7 @@ async function typedStart(page, value) {
   await wait(page);
   const cut = await render(page);
   assert.ok(cut.includes('<ol start="3">\n    <li>Charlie</li>'));
-  await click(page, await page.evaluate(`(() => { const r = ${find('Charlie')}.getClientRects()[0]; return { x: r.left + 30, y: r.top + r.height / 2 }; })()`));
+  await clickText(page, await page.evaluate(`(() => { const r = ${find('Charlie')}.getClientRects()[0]; return { x: r.left + 30, y: r.top + r.height / 2 }; })()`));
   await showTab(page, 'Text');
   assert.equal(await page.evaluate(`document.querySelector(${js(START)}).value`), '3');
   await click(page, await page.evaluate(`(() => { const r = document.querySelector(${js(START)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`), { count: 3 });
@@ -295,7 +295,7 @@ for (const platform of PLATFORMS) {
   // N53: the shown number was kept only when it was entered with Return
   const LEAVES = {
     Tab: (page) => press(page, 'Tab'),
-    'a click outside the field': async (page) => click(page, await page.evaluate(`(() => { const r = document.querySelector('${SLIDE} h2').getClientRects()[0]; return { x: r.left + 40, y: r.top + r.height / 2 }; })()`)),
+    'a click outside the field': async (page) => clickText(page, await page.evaluate(`(() => { const r = document.querySelector('${SLIDE} h2').getClientRects()[0]; return { x: r.left + 40, y: r.top + r.height / 2 }; })()`)),
   };
   for (const [name, leave] of Object.entries(LEAVES)) {
     test(`the shown number of a cut-off list typed into Start at and entered with ${name} is kept (${platform})`, async (t) => {

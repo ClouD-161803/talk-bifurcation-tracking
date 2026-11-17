@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 // the index of the figures slide in index.html
@@ -71,7 +71,7 @@ async function openBar(page, bar) {
 
 async function choose(page, bar, label) {
   await openBar(page, bar);
-  await click(page, await rect(page, `(${findItem})(${js(label)})`));
+  await clickText(page, await rect(page, `(${findItem})(${js(label)})`));
   await wait(page);
 }
 
@@ -105,7 +105,7 @@ const outcome = async (page) => ({
 });
 
 const caret = async (page) => {
-  await click(page, await word(page));
+  await clickText(page, await word(page));
   await wait(page);
   assert.equal(await page.evaluate(`document.activeElement.matches('p') && document.activeElement.isContentEditable`), true, 'the click does not put the caret into the paragraph');
 };
@@ -118,7 +118,7 @@ const ROUTES = {
   'Edit > Undo': async (page) => {
     await openBar(page, 'Edit');
     assert.equal(await page.evaluate(`(${findItem})('Undo Move') ? true : false`), true, 'the Edit menu does not list Undo Move');
-    await click(page, await rect(page, `(${findItem})('Undo Move')`));
+    await clickText(page, await rect(page, `(${findItem})('Undo Move')`));
   },
 };
 const KEYS = ['Backspace', 'ArrowLeft', 'Mod+D', 'Mod+X', 'q'];
@@ -135,7 +135,7 @@ for (const platform of PLATFORMS) {
       const expected = await outcome(page);
       for (const [route, undo] of Object.entries(ROUTES)) {
         await reopen(page, FIGURES);
-        await click(page, await word(page));
+        await clickText(page, await word(page));
         await press(page, 'Escape');
         await press(page, 'ArrowRight');
         await wait(page);

@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, drag, press, saveAndReopen, selectFigure } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, selectFigure } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -130,7 +130,7 @@ for (const platform of PLATFORMS) {
     await selectFigure(page, 'img.for-light');
     await click(page, await page.evaluate(`(() => { const b = [...document.querySelectorAll('.beeson-edit-inspector .ed-tabs button')].find((b) => b.textContent.trim() === 'Image'); const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
     await frames(page);
-    await click(page, await switchAt(page));
+    await clickText(page, await switchAt(page));
     await sleep(150);
     const shown = `!!document.querySelector('figure > figcaption')`;
     assert.equal(await page.evaluate(shown), true, 'the switch does not show a caption');
@@ -322,7 +322,7 @@ for (const platform of PLATFORMS) {
   test(`a paste of several lines into a list item makes an item of each line (${platform})`, async (t) => {
     const page = await load(t, platform, 2);
     await page.send('Browser.grantPermissions', { origin: server.origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }).catch(() => {});
-    await click(page, await endOf(page));
+    await clickText(page, await endOf(page));
     await press(page, 'End');
     await page.evaluate(`navigator.clipboard.writeText(' one\\ntwo\\nthree')`);
     await command(page, platform, 'v', 'paste');
@@ -340,7 +340,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await render(page), text);
     // Paste of the Edit menu makes the same items
     await page.evaluate('window.BeesonEditor.undo()');
-    await click(page, await endOf(page));
+    await clickText(page, await endOf(page));
     await press(page, 'End');
     await page.evaluate(`window.BeesonEditor.exec('edit.paste', ' one\\ntwo\\nthree')`);
     await frames(page);

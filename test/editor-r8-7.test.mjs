@@ -12,7 +12,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { textProblems, themeClasses } from '../src/editor/model/scope.ts';
-import { byteExact, click, drag, press, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const MODES = ['dark', 'light'];
@@ -107,7 +107,7 @@ async function pick(page) {
   await page.evaluate('document.activeElement instanceof HTMLElement && document.activeElement.blur()');
   for (let i = 0; i < 3 && (await selected(page)).length; i++) await exec(page, 'selection.clear');
   await frames(page);
-  await click(page, IMG);
+  await clickText(page, IMG);
   await frames(page);
   assert.deepEqual(await selected(page), [page.figure], 'the figure is not selected by a click on its picture');
 }
@@ -352,7 +352,7 @@ for (const platform of PLATFORMS) {
         // the heading selected as a block and dragged by its handle to 2 px right of the center
         // of the frame
         const h = await boxIn(page, HEADING);
-        await click(page, await headingPoint(page));
+        await clickText(page, await headingPoint(page));
         await press(page, 'Escape');
         await frames(page);
         assert.deepEqual(await selected(page), ['h2'], 'Esc in the heading does not select it');
@@ -598,7 +598,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, 'dark', 0, TWO);
     const runs = [
       ...SLOTTED.map(([what, run, el, tag]) => [what, run, el, tag, [true, false]]),
-      ['the QR icon of the second slot', (page) => click(page, '.reveal section.present > .figure-box:last-of-type .beeson-placeholder button[data-insert="qr"]'), '.qr', '<div class="qr"', [false, true]],
+      ['the QR icon of the second slot', (page) => clickText(page, '.reveal section.present > .figure-box:last-of-type .beeson-placeholder button[data-insert="qr"]'), '.qr', '<div class="qr"', [false, true]],
     ];
     for (const [what, run, el, tag, into] of runs) {
       await exec(page, 'selection.clear');

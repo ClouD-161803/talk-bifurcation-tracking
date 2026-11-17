@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { launch } from '../scripts/chrome.mjs';
-import { click, editorPage, press, type, typeKeys } from './helpers/editor.mjs';
+import { click, clickText, editorPage, press, type, typeKeys } from './helpers/editor.mjs';
 import { E, applied, applyOn, caretAtEnd, frame, front, sessionPage, showSlide, VIEW } from './helpers/apply.mjs';
 
 let browser;
@@ -66,7 +66,7 @@ const EDITS = [
   }],
   ['moved box', async (a) => {
     await showSlide(a, 'Figures are first class');
-    await click(a, 'section.present > ul > li');
+    await clickText(a, 'section.present > ul > li');
     await a.evaluate(`${E}.exec('arrange.setPosition', { els: [document.querySelector('section.present > ul')], x: 120, y: 260 })`);
   }],
   ['resized box', async (a) => {

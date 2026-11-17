@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const LAYOUTS = 'test/pages/editor-layouts.html';
 const PLATFORMS = ['mac', 'other'];
@@ -109,7 +109,7 @@ const itemAt = (page, label) => page.evaluate(`(() => {
 })()`);
 
 async function openBar(page, bar) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const r = [...document.querySelectorAll('.beeson-edit-menubar [role=menuitem]')].find((b) => b.textContent.trim() === ${js(bar)}).getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`));
@@ -126,7 +126,7 @@ async function choose(page, bar, ...path) {
     if (i < path.length - 1) {
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
       await page.waitFor(`document.querySelectorAll('.beeson-edit-menu').length > ${i + 1}`);
-    } else await click(page, at);
+    } else await clickText(page, at);
   }
   await frames(page);
 }
@@ -140,7 +140,7 @@ async function cardButton(page, name, label) {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
   assert.ok(at, `the card ${name} does not have a button ${label}`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 
@@ -152,7 +152,7 @@ const card = (page, name) => page.evaluate(`(() => {
 // the caret at the end of the paragraph of the slide, put there by a trusted click just past its
 // last character, since a click on its formula opens the editor of the formula
 async function caretInParagraph(page) {
-  await click(page, await page.evaluate(`(() => {
+  await clickText(page, await page.evaluate(`(() => {
     const p = document.querySelector(${js(P)});
     const r = document.createRange();
     r.setStart(p.lastChild, p.lastChild.length - 1);
@@ -202,7 +202,7 @@ for (const platform of PLATFORMS) {
     await clipboard(page, '<!--beeson-->\n<ul>\n  <li class="fragment">Copied <strong>bold</strong> item</li>\n</ul>');
     // the menu of a right-click on the paragraph, and the same menu opened with Shift+F10 at the
     // caret, which a right-click moves
-    await click(page, await page.evaluate(`(() => {
+    await clickText(page, await page.evaluate(`(() => {
       const r = document.querySelector(${js(P)}).getBoundingClientRect();
       return { x: r.right - 4, y: r.top + r.height / 2 };
     })()`), { button: 'right' });
@@ -244,7 +244,7 @@ for (const platform of PLATFORMS) {
       assert.equal(await render(page), page.source);
       await press(page, 'Escape');
     } else {
-      await click(page, P);
+      await clickText(page, P);
       await press(page, 'Escape');
     }
     // the paragraph selected as a block is copied, and pasted on the slide after it, drawn 20 px off
@@ -475,7 +475,7 @@ for (const platform of PLATFORMS) {
     assert.equal(shown.focused, `Open ${name}`);
     assert.match(shown.text, new RegExp(`Open ${name.replace(/\./g, '\\.')}, the file of this deck that you chose on `));
     const at = await page.evaluate(`(() => { const r = document.querySelector('dialog.beeson-edit-dialog:not([hidden]) button.primary').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-    await click(page, at);
+    await clickText(page, at);
     await page.waitFor(`window.BeesonEditor.status().state === 'loaded'`);
     assert.equal(await page.evaluate('window.__picked ?? false'), false);
     assert.deepEqual((await status(page)).problems, []);
@@ -525,7 +525,7 @@ for (const platform of PLATFORMS) {
     // with unsaved changes, the saved file is printed, and the edits are kept
     const step = '<p id="plain-1" class="fragment" data-fragment-index="1">The first step.</p>';
     const edited = step.replace('step.</p>', 'step!</p>');
-    await click(page, await page.evaluate(`(() => {
+    await clickText(page, await page.evaluate(`(() => {
       const p = document.getElementById('plain-1');
       const r = document.createRange();
       r.setStart(p.firstChild, p.firstChild.length - 1);

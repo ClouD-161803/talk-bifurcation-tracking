@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test-deck.html';
@@ -77,7 +77,7 @@ async function caret(page) {
     }
     return null;
   })()`);
-  await click(page, at);
+  await clickText(page, at);
   await wait(page);
   assert.equal(await page.evaluate(`document.activeElement.matches('p') && document.activeElement.isContentEditable`), true, 'the click does not put the caret into the paragraph');
 }
@@ -156,7 +156,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(await moves(), { up: false, down: false }, 'the two are live with the caret in a paragraph');
     await exec(page, 'insert.table', { rows: 3, columns: 3 });
     await wait(page);
-    await click(page, await rect(page, `Reveal.getCurrentSlide().querySelector('table').rows[1].cells[1]`));
+    await clickText(page, await rect(page, `Reveal.getCurrentSlide().querySelector('table').rows[1].cells[1]`));
     await wait(page);
     assert.equal(await page.evaluate(`!!document.activeElement.closest('td, th')`), true, 'the click does not put the caret into a cell');
     assert.deepEqual(await moves(), { up: false, down: false }, 'the two are live with the caret in a cell');
@@ -177,7 +177,7 @@ for (const platform of PLATFORMS) {
     await wait(page);
     const inserted = await render(page);
     await watchKeys(page);
-    await click(page, await rect(page, `Reveal.getCurrentSlide().querySelector('table').rows[1].cells[1]`));
+    await clickText(page, await rect(page, `Reveal.getCurrentSlide().querySelector('table').rows[1].cells[1]`));
     await wait(page);
     assert.equal((await state(page, 'edit.duplicate')).enabled, false);
     await press(page, 'Mod+D');
@@ -204,7 +204,7 @@ for (const platform of PLATFORMS) {
     // the display of the slide, framed by a click and Esc
     const math = await rect(page, `Reveal.getCurrentSlide().querySelector('div.math mjx-container')`);
     if (math) {
-      await click(page, math);
+      await clickText(page, math);
       await press(page, 'Escape');
       await wait(page);
       assert.deepEqual(await page.evaluate('window.BeesonEditor.selection().map((el) => el.className)'), ['math']);
@@ -218,7 +218,7 @@ for (const platform of PLATFORMS) {
     await type(page, 'x^2 + y^2');
     await wait(page);
     const below = await page.evaluate(`(() => { const r = document.querySelector('.reveal .slides').getBoundingClientRect(); return { x: Math.round(r.left + 6), y: Math.round(r.bottom + 12) }; })()`);
-    await click(page, below);
+    await clickText(page, below);
     await wait(page);
     assert.equal(await page.evaluate(`document.activeElement.matches('div.math')`), true, 'the new formula does not have the focus');
     await check(await render(page), await undoLabel(page), 'a new formula');
@@ -234,7 +234,7 @@ async function openBar(page, bar) {
 }
 async function choose(page, bar, label) {
   await openBar(page, bar);
-  await click(page, await rect(page, `(${findItem})(${js(label)})`));
+  await clickText(page, await rect(page, `(${findItem})(${js(label)})`));
   await wait(page);
 }
 const view = async (page) => {

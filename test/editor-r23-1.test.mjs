@@ -12,7 +12,7 @@ import { after, before, test } from 'node:test';
 import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { themeClasses } from '../src/editor/model/scope.ts';
-import { click, press, saveAndReopen, selectPicture, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, selectPicture, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test/pages/editor-r23-1.html';
@@ -103,7 +103,7 @@ async function caretIn(page, selector) {
     const b = r.getBoundingClientRect();
     return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   })()`);
-  await click(page, at);
+  await clickText(page, at);
   await frames(page);
 }
 
@@ -191,7 +191,7 @@ async function choose(page, bar, ...path) {
       return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
     })()`);
     assert.ok(at, `the ${bar} menu does not have ${label}`);
-    await click(page, at);
+    await clickText(page, at);
     await frames(page);
   }
 }
@@ -255,7 +255,7 @@ async function pickItem(page, label) {
   assert.ok(item, `the menu does not have an enabled item ${label}`);
   // an item is taken at a release 250 ms after the press that opened its menu
   await sleep(300);
-  await click(page, item);
+  await clickText(page, item);
   await frames(page);
 }
 
@@ -271,7 +271,7 @@ for (const platform of PLATFORMS) {
     await selectTextElement(page, 'p');
     const control = await page.evaluate(`(() => { const b = document.querySelector(${js(EFFECT)}); return b && { disabled: b.disabled, text: b.textContent }; })()`);
     assert.deepEqual(control, { disabled: false, text: '—' }, 'the Effect control is not enabled for an element shown with the slide');
-    await click(page, EFFECT);
+    await clickText(page, EFFECT);
     await pickItem(page, 'Dim');
     await roundTrip(page, edited([[ALPHA, '<p class="semi-fade-out fragment" data-fragment-index="2">Alpha stays with the slide.</p>']]), 'Undo Set Effect of Step');
     assert.deepEqual(errors(page), []);
@@ -281,7 +281,7 @@ for (const platform of PLATFORMS) {
     const page = await load(t, platform, 3);
     await exec(page, 'view.steps');
     await frames(page);
-    await click(page, await chipOf(page, 'Alpha'));
+    await clickText(page, await chipOf(page, 'Alpha'));
     await pickItem(page, 'Fade Out');
     await roundTrip(page, edited([[ALPHA, '<p class="fade-out fragment" data-fragment-index="2">Alpha stays with the slide.</p>']]), 'Undo Set Effect of Step');
     assert.deepEqual(errors(page), []);

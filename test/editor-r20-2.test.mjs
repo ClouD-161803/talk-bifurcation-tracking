@@ -12,7 +12,7 @@ import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { declarationProblem, textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { ELEMENT_KINDS, elementText } from '../src/editor/model/templates.ts';
-import { byteExact, click, drag, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen } from './helpers/editor.mjs';
 
 const DECK = 'test/pages/editor-r20-2.html';
 const PLATFORMS = ['mac', 'other'];
@@ -172,11 +172,11 @@ for (const platform of PLATFORMS) {
     assert.ok(s.d?.startsWith('M120 1.5L'), s.d);
     await undo(page);
     await byteExact(page);
-    // Esc leaves the mode, and a drag then draws a marquee
+    // Esc leaves the mode, and a drag from an empty point then draws a marquee
     await exec(page, 'insert.shape.rounded');
     await press(page, 'Escape');
     assert.equal((await state(page, 'insert.shape.rounded')).checked, null);
-    await drag(page, a, { dx: 100, dy: 100 });
+    await drag(page, await screen(page, 300, 700), { dx: 100, dy: 100 });
     await byteExact(page);
     assert.deepEqual(errors(page), []);
   });
@@ -303,7 +303,7 @@ for (const platform of PLATFORMS) {
     all = await shapes(page);
     assert.deepEqual(all.map((s) => [s.cls, s.d]), [['shape tone-blue ellipse', null], ['shape tone-blue ellipse', null]]);
     // the pop-up Shape lists the geometries, and a choice in it changes the geometry
-    await click(page, `${PANEL} .ed-shape-kind`);
+    await clickText(page, `${PANEL} .ed-shape-kind`);
     await frames(page);
     const items = await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((i) => i.textContent.trim())`);
     for (const label of ['Rectangle', 'Rounded Rectangle', 'Ellipse', 'Triangle', 'Block Arrow', 'Double Block Arrow', 'Brace', 'Plus', 'Equals']) assert.ok(items.some((t) => t.startsWith(label)), `${label} in ${items}`);
@@ -364,7 +364,7 @@ for (const platform of PLATFORMS) {
     // Return with the shape selected puts the caret at the end of its words
     await press(page, 'Escape');
     await press(page, 'Escape');
-    await click(page, await screen(page, 430, 330));
+    await clickText(page, await screen(page, 430, 330));
     assert.equal(await page.evaluate(`window.BeesonEditor.selection()[0]?.matches('.shape') ?? false`), true);
     await press(page, 'Enter');
     await page.send('Input.insertText', { text: 's' });
@@ -387,11 +387,11 @@ for (const platform of PLATFORMS) {
     await exec(page, 'selection.clear');
     await frames(page);
     // a first click on the words of a shape that is not selected selects the shape
-    await click(page, await screen(page, 700, 450));
+    await clickText(page, await screen(page, 700, 450));
     await frames(page);
     assert.equal(await page.evaluate(`window.BeesonEditor.selection().length === 1 && window.BeesonEditor.selection()[0].matches('.shape.rounded')`), true);
     assert.equal(await page.evaluate(`!!document.activeElement.closest('.shape')`), false);
-    await click(page, await screen(page, 700, 450));
+    await clickText(page, await screen(page, 700, 450));
     await frames(page);
     assert.equal(await page.evaluate(`!!document.activeElement.closest('.shape.rounded')`), true);
     await inScope(page);
@@ -406,7 +406,7 @@ for (const platform of PLATFORMS) {
     for (const n of ['Rounded Rectangle: Goal', 'Rectangle', 'Ellipse', 'Triangle', 'Block Arrow', 'Double Block Arrow', 'Brace', 'Plus', 'Equals']) assert.ok(names.includes(n), `${n} in ${names}`);
     // a click on the empty rectangle selects it, and a drag moves it
     const r = await screen(page, 750, 340);
-    await click(page, r);
+    await clickText(page, r);
     await frames(page);
     assert.equal(await page.evaluate(`[...window.BeesonEditor.selection()[0]?.classList ?? []].filter((c) => !c.startsWith('beeson-')).join(' ')`), 'shape');
     const up = await screen(page, 750, 300);
@@ -417,7 +417,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await byteExact(page);
     // a duplicate, a copy and a paste, and Select All
-    await click(page, r);
+    await clickText(page, r);
     await press(page, 'Mod+D');
     await frames(page);
     assert.equal((await shapes(page)).filter((s) => s.cls === 'shape').length, 2);
@@ -427,7 +427,7 @@ for (const platform of PLATFORMS) {
     await exec(page, 'selection.all');
     assert.equal(await page.evaluate('window.BeesonEditor.selection().length'), 10);
     // a group of two shapes, a lock, and the layer order
-    await click(page, r);
+    await clickText(page, r);
     await click(page, await screen(page, 982, 340), { modifiers: 'Shift' });
     // Align Left moves the ellipse to the left edge of the rectangle
     await exec(page, 'arrange.align.left');
@@ -441,13 +441,13 @@ for (const platform of PLATFORMS) {
     await inScope(page);
     await undo(page);
     await byteExact(page);
-    await click(page, await screen(page, 1460, 400));
+    await clickText(page, await screen(page, 1460, 400));
     await exec(page, 'arrange.lock');
     await frames(page);
     assert.ok((await render(page)).includes('<div class="shape triangle" style="width: 200px; height: 160px; translate: 1360px 260px" data-locked>'));
     await undo(page);
     await byteExact(page);
-    await click(page, await screen(page, 160, 300));
+    await clickText(page, await screen(page, 160, 300));
     assert.equal(await page.evaluate(`window.BeesonEditor.selection()[0]?.matches('.shape.rounded') ?? false`), true);
     await exec(page, 'arrange.order.front');
     await frames(page);
@@ -487,7 +487,7 @@ for (const platform of PLATFORMS) {
     await undo(page);
     await frames(page);
     await byteExact(page);
-    await click(page, await screen(page, 1350, 650));
+    await clickText(page, await screen(page, 1350, 650));
     assert.equal(await page.evaluate(`window.BeesonEditor.selection()[0]?.matches('.shape') ?? false`), true);
     assert.equal((await state(page, 'arrange.resetPosition')).enabled, false);
     assert.equal((await state(page, 'arrange.resetSize')).enabled, false);
@@ -504,7 +504,7 @@ for (const platform of PLATFORMS) {
   test(`a press inside a shape without a fill goes through it, and a press on its outline or its words selects it, on ${platform}`, async () => {
     const page = await shapePage(platform, FRAME);
     // inside the frame, away from its words, a click selects nothing and a drag does not move it
-    await click(page, await screen(page, 300, 400));
+    await clickText(page, await screen(page, 300, 400));
     await frames(page);
     assert.equal(await page.evaluate('window.BeesonEditor.selection().length'), 0);
     await drag(page, await screen(page, 300, 400), { dx: 40, dy: 40 });
@@ -512,12 +512,12 @@ for (const platform of PLATFORMS) {
     await byteExact(page);
     await exec(page, 'selection.clear');
     // on the outline, at the left edge
-    await click(page, await screen(page, 202, 550));
+    await clickText(page, await screen(page, 202, 550));
     await frames(page);
     assert.equal(await page.evaluate(`window.BeesonEditor.selection()[0]?.matches('.shape') ?? false`), true);
     await exec(page, 'selection.clear');
     // on its words
-    await click(page, await screen(page, 800, 550));
+    await clickText(page, await screen(page, 800, 550));
     await frames(page);
     assert.equal(await page.evaluate(`window.BeesonEditor.selection()[0]?.matches('.shape') ?? false`), true);
     assert.deepEqual(errors(page), []);
