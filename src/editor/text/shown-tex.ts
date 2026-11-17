@@ -65,9 +65,12 @@ function texPoint(host: Element, units: { node: Node; length: number }[], n: num
   return [host, host.childNodes.length];
 }
 
+// whether MathJax typesets TeX in the text node n, which it does not in code
+const typesetIn = (n: Node) => !n.parentElement?.closest('code, pre, .mathjax_ignore');
+
 // whether the point (node, offset) of host is in a TeX shown in its text, or at its edge
 function inTex(host: Element, node: Node, offset: number): boolean {
-  const units = unitsOf(host, () => null).filter((u) => u.node instanceof Text);
+  const units = unitsOf(host, () => null).filter((u) => u.node instanceof Text && typesetIn(u.node));
   const at = texOffset(units, node, offset);
   const text = units.map((u) => (u.node as Text).data).join('');
   const before = text.slice(0, at);
@@ -147,7 +150,7 @@ export function install(app: App): void {
     // parenthesis
     const n = s?.isCollapsed ? s.focusNode : null;
     const o = s?.focusOffset ?? 0;
-    if (n instanceof Text && host.contains(n) && n.data[o - 1] === '\\' && /[()]/.test(n.data[o] ?? '')) s!.collapse(n, back ? o - 1 : o + 1);
+    if (n instanceof Text && host.contains(n) && typesetIn(n) && n.data[o - 1] === '\\' && /[()]/.test(n.data[o] ?? '')) s!.collapse(n, back ? o - 1 : o + 1);
     const held = host.isConnected && document.activeElement === host && !!s?.rangeCount && host.contains(s.anchorNode) && host.contains(s.focusNode) && (inTex(host, s.anchorNode!, s.anchorOffset) || inTex(host, s.focusNode!, s.focusOffset));
     if (!held) void typesetAgain(app, host).catch((e) => app.fail(e));
   };
