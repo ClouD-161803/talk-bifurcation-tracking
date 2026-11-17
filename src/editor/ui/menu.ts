@@ -161,7 +161,6 @@ const LAYOUT: Record<string, Record<string, Place>> = {
     'Paragraph Style': { parent: 'Text', group: 'style', flat: true },
     List: { parent: 'Text', group: 'list', flat: true },
     clear: { group: 'copy-style' },
-    'TikZ Figure': { group: 'objects', order: 1000, keep: true },
     '*': { group: 'objects', order: 1000 },
   },
 };

@@ -240,7 +240,7 @@ export function install(app: App): void {
       },
     });
 
-  // Format > TikZ Figure > Edit Source…, which a double click on the figure runs as well
+  // Format > Edit Source…, which a double click on the figure runs as well
   const figureOf = (a: App): HTMLElement | null => {
     const els = a.selection.elements();
     return els.length === 1 && els[0] instanceof HTMLElement && els[0].matches('.tikz') ? els[0] : null;
@@ -248,7 +248,7 @@ export function install(app: App): void {
   app.commands.define({
     id: 'format.tikzSource',
     label: 'Edit Source…',
-    menu: { bar: 'Format', group: 'tikz', order: 0, submenu: 'TikZ Figure' },
+    menu: { bar: 'Format', group: 'mask', order: 97 },
     enabled: (a) => !!figureOf(a) && a.region() !== 'dialog',
     run: (a) => {
       const no = why(a);
