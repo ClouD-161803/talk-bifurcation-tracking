@@ -158,12 +158,10 @@ START2, FLOOR, FIRST_ATTEMPT = -0.3, 0.25, 0.2
 WINDOW_ATTEMPT = 0.35
 # each pen is stretched so that it ends its last attempt at LAST_END, and the end is held for HOLD2
 LAST_END, HOLD2 = 26.0, 1.5
-# the blue pen of family 11 is held for FOLD_HOLD in the attempt from the member whose tangent is closest to
-# vertical, at the fraction HOLD_AT of the attempt, i.e. after its predictor and its constraint line are
-# drawn and before its correction. Its last attempt ends FOLD_END_HOLD before the end of the loop. The time of
-# both holds is taken from its attempts before the close-up, hence its attempts inside the close-up are as
-# long as those of the other pens
-FOLD_HOLD, HOLD_AT, FOLD_END_HOLD = 4.5, 0.45, 3.5
+# the last attempt of the blue pen of family 11 ends FOLD_END_HOLD before the end of the loop. The time of this
+# hold is taken from its attempts before the close-up, hence its attempts inside the close-up are as long as
+# those of the other pens
+FOLD_END_HOLD = 3.5
 # the tangent and the constraint line of the blue pen are drawn in the violet of the dark theme of the deck,
 # the color of tau_j on slide 14. The record of the orange pen on the tab "both" is drawn in ORANGE at an
 # opacity of 0.5 over the dark background, since a head is drawn opaque. The record ends at its last member,
@@ -1387,11 +1385,10 @@ def w_length(d: np.ndarray, W: np.ndarray) -> float:
     return float(math.sqrt(max(float(d @ (W * d)), 0.0)))
 
 
-def phase(slot: tuple[float, float, float], f: float) -> float:
-    """The clock value at the fraction f of an attempt of a pen, given as its start, its duration, and the hold
-    that is inserted at the fraction HOLD_AT of it."""
-    t0, d, pause = slot
-    return t0 + f * d + (pause if f > HOLD_AT else 0.0)
+def phase(slot: tuple[float, float], f: float) -> float:
+    """The clock value at the fraction f of an attempt of a pen, given as its start and its duration."""
+    t0, d = slot
+    return t0 + f * d
 
 
 def caption_channels(p: float, halvings: int) -> dict[str, float]:
@@ -1495,42 +1492,24 @@ def build_continuation(pens: dict, curves: dict, out: Path) -> dict:
             durations.append(max(FLOOR, min(L, 1.0)))
         return durations
 
-    def fold_attempt(pen: dict, family: str) -> tuple[int, float]:
-        """The index of the converged attempt from the member whose tangent is closest to vertical in the diagram,
-        and the angle of this tangent from the vertical, in degrees."""
-        sc = scale(family)
-        off = []
-        for st in pen["steps"]:
-            u = proj(st["tangent"], family) * sc
-            off.append(math.degrees(math.asin(min(1.0, abs(float(u[0])) / float(np.hypot(*u))))))
-        j = int(np.argmin(off))
-        # a failed attempt is retried from the same member, along the same tangent
-        while not pen["steps"][j]["converged"] and j + 1 < len(pen["steps"]):
-            j += 1
-        return j, off[j]
 
     # each pen is played alone, the orange pen on the tab "natural parameter" and the blue pen on the tab "both".
-    # each attempt is given its start, its duration, and the hold within it
+    # each attempt is given its start and its duration
     timing = {}
     end2 = LAST_END + HOLD2
     for key, pen in pens.items():
         durations = raw_times(pen, key[0])
         d = np.array(durations) * (LAST_END - FIRST_ATTEMPT) / sum(durations)
-        pause = np.zeros(len(d))
         if key[0] == "family11" and key[2] == "arclength":
-            j, angle = fold_attempt(pen, key[0])
-            pause[j] = FOLD_HOLD
-            # the attempts before the first one from a member inside the close-up are shortened by both holds
+            # the attempts before the first one from a member inside the close-up are shortened by the end hold
             k = next(i for i, st in enumerate(pen["steps"]) if inside(proj(st["start"], key[0])[None], windows[key[0]])[0])
-            d[:k] *= (end2 - FOLD_END_HOLD - FIRST_ATTEMPT - float(d[k:].sum()) - FOLD_HOLD) / float(d[:k].sum())
-            held = FIRST_ATTEMPT + float(d[:j].sum()) + HOLD_AT * float(d[j])
+            d[:k] *= (end2 - FOLD_END_HOLD - FIRST_ATTEMPT - float(d[k:].sum())) / float(d[:k].sum())
             print(
-                f"  {' '.join(key):28} in the close-up from {FIRST_ATTEMPT + float(d[:k].sum()):.2f}, held at the fold from {held:.2f} "
-                f"to {held + FOLD_HOLD:.2f} with its tangent {angle:.1f} degrees from the vertical, "
+                f"  {' '.join(key):28} in the close-up from {FIRST_ATTEMPT + float(d[:k].sum()):.2f}, "
                 f"last member at {end2 - FOLD_END_HOLD - (1 - MEMBER_AT) * float(d[-1]):.2f}"
             )
-        starts = FIRST_ATTEMPT + np.r_[0.0, np.cumsum(d + pause)[:-1]]
-        timing[key] = [(float(t), float(dd), float(h)) for t, dd, h in zip(starts, d, pause, strict=True)]
+        starts = FIRST_ATTEMPT + np.r_[0.0, np.cumsum(d)[:-1]]
+        timing[key] = [(float(t), float(dd)) for t, dd in zip(starts, d, strict=True)]
 
     # the tangent and the half of the constraint line are drawn at these fractions of the width of the box of a
     # panel, measured in the continuation norm
