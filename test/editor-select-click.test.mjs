@@ -291,3 +291,22 @@ test('on a phone, a tap selects a paragraph as a box, and a second tap puts the 
   assert.equal(await caretIn(page, BACK), true, 'the second tap does not put the caret in');
   assert.deepEqual(page.errors, []);
 });
+
+// a trusted swipe of one finger from the point x, y by dy, in steps of 10 px
+async function swipe(page, { x, y }, dy) {
+  const at = (k) => [{ x, y: y + Math.sign(dy) * k, radiusX: 4, radiusY: 4, force: 1, id: 1 }];
+  await page.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
+  for (let k = 10; k <= Math.abs(dy); k += 10) await page.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(k) });
+  await page.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
+test('on a phone, a swipe that starts on a paragraph that is not selected leaves the paragraph where it is', async (t) => {
+  const page = await open(t, 'other', { width: 390, height: 844, mobile: true });
+  const style = await page.evaluate(`document.querySelector(${js(BACK)}).getAttribute('style')`);
+  await swipe(page, await onWords(page, BACK, 0.5), -120);
+  await frames(page);
+  assert.equal(await page.evaluate(`document.querySelector(${js(BACK)}).getAttribute('style')`), style, 'the swipe moves the paragraph');
+  assert.equal((await page.evaluate('window.BeesonEditor.status()')).dirty, false, 'the swipe changes the deck');
+  assert.deepEqual(await selected(page, [BACK]), [], 'the swipe selects the paragraph');
+  assert.deepEqual(page.errors, []);
+});
