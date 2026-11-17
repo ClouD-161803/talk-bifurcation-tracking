@@ -33,10 +33,13 @@ test('a bundle without strips, or with a strip without ribs or with a malformed 
   assert.match(parseBundle(JSON.stringify({ orbit, strips: [], arrows: { id: 'Sun' } })), /arrows/);
 });
 
-test('a deck with malformed bundles is started, and each bundle is reported and left blank', { timeout: 60000 }, async (t) => {
+// #131: under reduced motion, which is set on the Windows and macOS runners, the deck is drawn
+// still, and its bundles are mounted a second time at the start
+for (const motion of ['no-preference', 'reduce']) test(`a deck with malformed bundles is started, and each bundle is reported once and left blank (${motion})`, { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: motion }] });
   await page.goto(deckUrl('test/pages/bundle-malformed.html'));
   await page.waitFor(deckSettled);
   const mode = await page.evaluate('document.documentElement.dataset.theme');
