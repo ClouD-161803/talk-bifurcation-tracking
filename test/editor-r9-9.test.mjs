@@ -627,8 +627,9 @@ const RECORD = `(() => {
 })()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
 
-// with late, the state of the video is read late ms later, as on a crowded machine
-async function playInPlace(t, platform, late = 0) {
+// with late, the state of the video is read late ms later, and with hold, the main thread of the page
+// is held for hold ms after the click on Play, as on a crowded machine
+async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   const page = await load(t, platform, { n: VIDEO, query: 'edit' });
   await selectVideo(page);
   // the frame at half of the video, captured as the poster
@@ -644,6 +645,7 @@ async function playInPlace(t, platform, late = 0) {
 
   await page.evaluate(RECORD);
   await click(page, await playAt(page));
+  if (hold) await page.evaluate(`(() => { const t = performance.now(); while (performance.now() - t < ${hold}); return true; })()`);
   // the updates of the playing video are read from the record, since it plays on until the read.
   // the first is at the frame it plays from, and the slider is compared with an update 0.5 s later
   const later = `window.__plays.find((p) => !p.paused && p.time > ${from + 0.5})`;
@@ -690,7 +692,10 @@ for (const platform of PLATFORMS) {
   test(`${platform}: Play in the Video pane plays the video in place from the frame of the slider, as a preview that stops on a change of the selection or the slide`, (t) => playInPlace(t, platform));
 }
 
-test('Play in the Video pane is checked from a record of the video when the state is read 3 s late', (t) => playInPlace(t, 'other', 3000));
+test('Play in the Video pane is checked from a record of the video when the state is read 3 s late', (t) => playInPlace(t, 'other', { late: 3000 }));
+
+// #124: on a crowded runner, the listeners of the record ran seconds after the start of the video
+test('Play in the Video pane is checked from a record of the video when the page is held 5 s after the click', (t) => playInPlace(t, 'other', { hold: 5000 }));
 
 // the tag of the outline of a drop, and the buttons of the placeholder drawn under it
 const TAGGED = `(() => {
