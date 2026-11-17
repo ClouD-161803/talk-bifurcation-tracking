@@ -353,3 +353,31 @@ test('Beeson.remount, Beeson.preview, and Beeson.fitWindow draw a backdrop for t
   assert.ok(out.inked > 100, `${out.inked} pixels of the preview are drawn`);
   assert.ok(out.fitted && out.fitted.half > 0 && Number.isFinite(out.fitted.cx), JSON.stringify(out.fitted));
 });
+
+// a thumbnail of the editor may be drawn again before the file of its backdrop is loaded, and its drawing is then
+// out of the page at the load
+test('a drawing of a file that is taken out of the page before the load is redrawn without an error', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(deckUrl('test-deck.html', 'still'));
+  await page.waitFor(deckSettled);
+  const out = await page.evaluate(`(async () => {
+    const div = document.createElement('div');
+    div.style.cssText = 'position: fixed; left: 0; top: 0; width: 192px; height: 108px';
+    div.dataset.trajectories = document.querySelector('.backdrop[data-trajectories]').dataset.trajectories;
+    document.body.append(div);
+    const p = Beeson.preview(div);
+    div.remove();
+    await p.ready;
+    try {
+      p.redraw();
+    } catch (e) {
+      return { trajectories: p.trajectories.length, error: String(e) };
+    }
+    return { trajectories: p.trajectories.length, error: null };
+  })()`);
+  assert.ok(out.trajectories > 0, 'the file of the drawing is not loaded');
+  assert.equal(out.error, null);
+  assert.deepEqual(page.errors, []);
+});
