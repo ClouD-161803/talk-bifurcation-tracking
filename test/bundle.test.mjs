@@ -33,10 +33,13 @@ test('a bundle without strips, or with a strip without ribs or with a malformed 
   assert.match(parseBundle(JSON.stringify({ orbit, strips: [], arrows: { id: 'Sun' } })), /arrows/);
 });
 
-test('a deck with malformed bundles is started, and each bundle is reported and left blank', { timeout: 60000 }, async (t) => {
+// #131: under reduced motion, which is set on the Windows and macOS runners, the deck is drawn
+// still, and its bundles are mounted a second time at the start
+for (const motion of ['no-preference', 'reduce']) test(`a deck with malformed bundles is started, and each bundle is reported once and left blank (${motion})`, { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
   const page = await browser.newPage();
+  await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: motion }] });
   await page.goto(deckUrl('test/pages/bundle-malformed.html'));
   await page.waitFor(deckSettled);
   const mode = await page.evaluate('document.documentElement.dataset.theme');
@@ -45,6 +48,10 @@ test('a deck with malformed bundles is started, and each bundle is reported and 
   await page.waitFor(`document.documentElement.dataset.theme !== '${mode}'`, 5000);
   assert.equal(await page.evaluate(`document.querySelectorAll('.surface[data-bundle] canvas').length`), 0);
   assert.deepEqual(page.errors.map((e) => e.replace(/, since .*/, '')), ['console.error: beeson: the bundle bare is not drawn', 'console.error: beeson: the bundle ribless is not drawn']);
+  // a script corrected later, as in the editor, is drawn at the next mount
+  await page.evaluate(`(document.getElementById('bare').textContent = '{"orbit":[[1,0,0],[0,1,0],[-1,0,0]],"strips":[]}', Beeson.mount(document.body), true)`);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.surface[data-bundle="bare"] canvas').length`), 1, 'the corrected bundle bare is not drawn');
+  assert.equal(page.errors.length, 2);
 });
 
 // the state of each bundle shown, the share of its canvas that is drawn, a digest of the canvas, and

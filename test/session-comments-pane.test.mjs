@@ -1520,12 +1520,13 @@ test('the initials and the tone of a person in the pane are those of the avatar'
 test('a page that is not mentioned gets no toast for a new comment', { timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   await recordToasts(b);
+  // the toasts are read from their record, since a toast may be gone before a read on a slow runner
+  await toastTime(b, 1);
   await openPane(b);
   await post(a, 0, 'Nobody is mentioned');
   await sees(b, THREADS, [{ anchor: 'On Slide 1', texts: ['Nobody is mentioned'] }]);
   await post(a, 1, 'Look, @Ben');
-  await sees(b, TOASTS, ['Ann mentioned you on slide 2']);
-  assert.deepEqual(await b.evaluate('window.__toasts'), ['Ann mentioned you on slide 2']);
+  await sees(b, 'window.__toasts', ['Ann mentioned you on slide 2']);
   clean(a);
   clean(b);
 });
