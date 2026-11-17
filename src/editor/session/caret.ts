@@ -3,7 +3,7 @@
 // between its delimiters, as in the file, hence the offset is the same before and after MathJax
 
 import type { MathLookup } from '../math.ts';
-import { charEdits, shared } from '../merge.ts';
+import { charEdits, shared, type Edit } from '../merge.ts';
 
 // the text of host, and the offset in it of each point (node, at), or -1. with br, a <br> counts as
 // one character
@@ -58,14 +58,23 @@ export function caretOf(host: Element, math: MathLookup, br = false): { offset: 
 
 export const textIn = (host: Element, math: MathLookup, br = false): string => walk(host, math, [], br).text;
 
+let last: { before: string; after: string; runs: Edit[] } | null = null;
+
 // the offset of the caret moved with a change of before into after: kept before each run of changed
 // characters, moved by its length after it, and put at its end inside it. the runs are one, from
-// the first changed character to the last, when more than 500 units differ
+// the first changed character to the last, when more than 500 units differ. the runs of the last
+// pair of texts are kept, since both ends of a selection are moved with one change
 export function mapOffset(offset: number, before: string, after: string): number {
-  const [head, tail] = shared(before, after);
-  const runs = charEdits(before, after, 500) ?? [{ start: head, end: before.length - tail, text: after.slice(head, after.length - tail) }];
+  if (last?.before !== before || last.after !== after) {
+    let runs = charEdits(before, after, 500);
+    if (!runs) {
+      const [head, tail] = shared(before, after);
+      runs = [{ start: head, end: before.length - tail, text: after.slice(head, after.length - tail) }];
+    }
+    last = { before, after, runs };
+  }
   let shift = 0;
-  for (const run of runs) {
+  for (const run of last.runs) {
     if (offset <= run.start) break;
     if (offset < run.end) return run.start + shift + run.text.length;
     shift += run.text.length - (run.end - run.start);
