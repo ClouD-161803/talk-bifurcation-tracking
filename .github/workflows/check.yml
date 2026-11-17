@@ -15,10 +15,11 @@ on:
 permissions:
   contents: read
 
-# a push to a pull request cancels the round of the commit before it. A round on main has a group
-# of its own, hence it is neither cancelled nor held back by a later one
+# a push to a pull request cancels the round of the commit before it, and a push to main the round
+# of the push before it, since a merge after a merge would wait for the runners of each round. A
+# round started by hand has a group of its own, hence it is not cancelled
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.run_id }}
   cancel-in-progress: true
 
 # the tests and each browser are separate jobs, so that they run on separate runners at once
