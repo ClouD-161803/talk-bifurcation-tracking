@@ -165,9 +165,9 @@ test('the script of a figure is one assignment in ASCII to window.beesonFigures'
   assert.deepEqual(run(`${script}${figureScript('orbit', figure)}`), { decay: figure, orbit: figure });
 });
 
-test('a pgfplots figure from a CSV file is fitted to its box, with its curves as parts in the colors of each mode', { skip: WITHOUT_TEX }, (t) => {
+test('a pgfplots figure from a CSV file is fitted to its box, with its curves as parts in the colors of each mode', { skip: WITHOUT_TEX }, async (t) => {
   const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV });
-  const { figure, text, errors } = compileFigure({ dir, name: 'decay', box: { width: 600, height: 480 } });
+  const { figure, text, errors } = await compileFigure({ dir, name: 'decay', box: { width: 600, height: 480 } });
   assert.equal(errors, undefined);
   assert.ok(Math.abs(figure.width - 600) <= 2, `width ${figure.width}`);
   assert.ok(Math.abs(figure.height - 480) <= 2, `height ${figure.height}`);
@@ -191,19 +191,19 @@ test('a pgfplots figure from a CSV file is fitted to its box, with its curves as
   assert.throws(() => readFileSync(join(dir, 'figures', 'decay.js')));
 });
 
-test('a drawing is fitted to its box by a scale of its coordinates, up or down, with its text at 36 px', { skip: WITHOUT_TEX }, (t) => {
+test('a drawing is fitted to its box by a scale of its coordinates, up or down, with its text at 36 px', { skip: WITHOUT_TEX }, async (t) => {
   const dir = folder(t, { 'figures/orbit.tex': ORBIT });
-  const natural = compileFigure({ dir, name: 'orbit' }).figure;
+  const natural = (await compileFigure({ dir, name: 'orbit' })).figure;
   assert.deepEqual(natural.parts, ['moon']);
   for (const box of [{ width: 900, height: 900 }, { width: 400, height: 900 }, { width: 2000, height: 300 }]) {
-    const { figure } = compileFigure({ dir, name: 'orbit', box });
+    const { figure } = await compileFigure({ dir, name: 'orbit', box });
     assert.equal(figure.scale, 1);
     // the drawing fills the box in one of its dimensions, and it is inside the box in the other
     const gaps = [box.width - figure.width, box.height - figure.height];
     assert.ok(Math.min(...gaps) <= 2 && Math.min(...gaps) >= -2 && Math.max(...gaps) >= -2, `${figure.width} by ${figure.height} in ${box.width} by ${box.height}`);
   }
   // a box smaller than the text of the figure: the figure is shown smaller as a whole
-  const { figure } = compileFigure({ dir, name: 'orbit', box: { width: 60, height: 60 } });
+  const { figure } = await compileFigure({ dir, name: 'orbit', box: { width: 60, height: 60 } });
   assert.ok(figure.scale < 1, `scale ${figure.scale}`);
   assert.ok(figure.width <= 61 && figure.height <= 61, `${figure.width} by ${figure.height}`);
 });
@@ -225,53 +225,53 @@ test('a figure is compiled without blocking the event loop', { skip: WITHOUT_TEX
 
 // a box is filled in a dimension in which the drawing has a size. a drawing without a size in one
 // dimension or in both, such as a new blank source, is compiled at scale 1 in its box
-test('a drawing without a width or a height is compiled in its box without an error', { skip: WITHOUT_TEX }, (t) => {
+test('a drawing without a width or a height is compiled in its box without an error', { skip: WITHOUT_TEX }, async (t) => {
   const sources = { empty: '\\begin{tikzpicture}\n\\end{tikzpicture}\n', flat: '\\begin{tikzpicture}\n\\draw[line width=0pt] (0,0) -- (2,0);\n\\end{tikzpicture}\n' };
   const dir = folder(t, Object.fromEntries(Object.entries(sources).map(([name, text]) => [`figures/${name}.tex`, text])));
   for (const name of Object.keys(sources)) {
-    const { errors, figure } = compileFigure({ dir, name, box: { width: 600, height: 400 } });
+    const { errors, figure } = await compileFigure({ dir, name, box: { width: 600, height: 400 } });
     assert.equal(errors, undefined, `${name}: ${JSON.stringify(errors)}`);
     assert.ok(Number.isFinite(figure.width) && Number.isFinite(figure.height), `${name}: ${figure.width} by ${figure.height}`);
   }
 });
 
-test('an error of TeX is given with the file and the line of the source, and with the line of the preamble', { skip: WITHOUT_TEX }, (t) => {
+test('an error of TeX is given with the file and the line of the source, and with the line of the preamble', { skip: WITHOUT_TEX }, async (t) => {
   const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': '\\documentclass{article}\n\\newcommand{\\R}{\\mathbb{R}}\n\\begin{document}\n' });
   const broken = DECAY.replace('\\end{tikzpicture}', '\\undefinedmacro\n\\end{tikzpicture}');
-  const { errors, figure } = compileFigure({ dir, name: 'decay', source: broken });
+  const { errors, figure } = await compileFigure({ dir, name: 'decay', source: broken });
   assert.equal(figure, undefined);
   assert.deepEqual(errors[0], { file: 'figures/decay.tex', line: 6, message: 'Undefined control sequence' });
   writeFileSync(join(dir, 'preamble.tex'), '\\documentclass{article}\n\\usepackage{notapackage}\n\\begin{document}\n');
-  assert.deepEqual(compileFigure({ dir, name: 'decay' }).errors[0], { file: 'preamble.tex', line: 2, message: "LaTeX Error: File `notapackage.sty' not found" });
+  assert.deepEqual((await compileFigure({ dir, name: 'decay' })).errors[0], { file: 'preamble.tex', line: 2, message: "LaTeX Error: File `notapackage.sty' not found" });
   // a macro of the preamble is known in the figure
   writeFileSync(join(dir, 'preamble.tex'), '\\newcommand{\\amp}{\\textit{amplitude}}\n');
-  assert.ok(compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{\\amp}') }).figure);
+  assert.ok((await compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{\\amp}') })).figure);
 });
 
 // MathJax knows the commands of amsmath, amssymb, and bm without a package. the demo preamble thus
 // uses \boldsymbol in \vb and \mathbb in \R without loading one
-test('a figure knows the commands of amsmath, amssymb, and bm that a macro of the preamble uses', { skip: WITHOUT_TEX }, (t) => {
+test('a figure knows the commands of amsmath, amssymb, and bm that a macro of the preamble uses', { skip: WITHOUT_TEX }, async (t) => {
   const preamble = '\\newcommand{\\vb}[1]{\\boldsymbol{#1}}\n\\newcommand{\\R}{\\mathbb{R}}\n';
   const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': preamble });
   for (const label of ['$\\vb{r}$', '$\\R$', '$\\bm{v}$', '$\\text{a}$']) {
-    const { errors } = compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', `{${label}}`) });
+    const { errors } = await compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', `{${label}}`) });
     assert.equal(errors, undefined, `${label}: ${JSON.stringify(errors)}`);
   }
   // a package that the preamble of a paper loads with options does not clash
   writeFileSync(join(dir, 'preamble.tex'), `\\usepackage[intlimits]{amsmath}\n${preamble}`);
-  assert.equal(compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{$\\vb{r}$}') }).errors, undefined);
+  assert.equal((await compileFigure({ dir, name: 'decay', source: DECAY.replace('{amplitude}', '{$\\vb{r}$}') })).errors, undefined);
 });
 
 // the preamble reader takes an operator of amsmath and the kinds of theorem of amsthm, which a
 // preamble defines while it is read, before the wrapper loads a package after it
-test('a figure is compiled with a preamble that defines an operator and kinds of theorem', { skip: WITHOUT_TEX }, (t) => {
+test('a figure is compiled with a preamble that defines an operator and kinds of theorem', { skip: WITHOUT_TEX }, async (t) => {
   const preamble = '\\DeclareMathOperator{\\Jac}{J}\n\\newtheorem{theorem}{Theorem}\n\\theoremstyle{definition}\n\\newtheorem*{remark}{Remark}\n';
   const dir = folder(t, { 'figures/decay.tex': DECAY, 'figures/decay.csv': CSV, 'preamble.tex': preamble });
   const source = DECAY.replace('{amplitude}', '{$\\Jac x$}');
-  assert.equal(compileFigure({ dir, name: 'decay', source }).errors, undefined);
+  assert.equal((await compileFigure({ dir, name: 'decay', source })).errors, undefined);
   // a preamble that loads the same packages itself does not clash
   writeFileSync(join(dir, 'preamble.tex'), `\\usepackage{amsmath,amsthm}\n${preamble}`);
-  assert.equal(compileFigure({ dir, name: 'decay', source }).errors, undefined);
+  assert.equal((await compileFigure({ dir, name: 'decay', source })).errors, undefined);
 });
 
 const page = (body) => `<!doctype html>\n<html>\n<head>\n<meta charset="utf-8">\n<script src="tex.js"></script>\n</head>\n<body>\n<div class="reveal"><div class="slides">\n${body}\n</div></div>\n</body>\n</html>\n`;

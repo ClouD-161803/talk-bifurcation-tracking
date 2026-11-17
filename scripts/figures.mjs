@@ -7,7 +7,7 @@
 //
 // compileFigure does not write anything into the folder of the talk, and writeFigure writes its text,
 // hence a source can be compiled before it is saved.
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,6 +25,8 @@ const SOURCE = 'beeson-figure-source';
 const PREAMBLE = 'beeson-figure-preamble';
 // a figure is fitted to its box within this many px
 const SLACK = 0.5;
+// the time in ms after which a pass of latex or dvisvgm is stopped, e.g. a loop without end
+const PASS_TIME = 120_000;
 
 const read = (file, encoding = 'utf8') => {
   try {
@@ -74,6 +76,34 @@ export function findTools(env = process.env) {
     return null;
   };
   return { latex: find('latex'), dvisvgm: find('dvisvgm') };
+}
+
+// a program run to its end without blocking the event loop, resolved with its status and the last
+// 64 kB of its output, or with error when it does not start or is stopped after PASS_TIME
+function run(command, args, options) {
+  return new Promise((done) => {
+    let child;
+    try {
+      child = spawn(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    } catch (error) {
+      done({ error });
+      return;
+    }
+    const out = { stdout: '', stderr: '' };
+    for (const key of ['stdout', 'stderr']) {
+      child[key].setEncoding('utf8');
+      child[key].on('data', (chunk) => (out[key] = (out[key] + chunk).slice(-65536)));
+    }
+    const timer = setTimeout(() => {
+      out.error = new Error(`it did not end within ${PASS_TIME / 1000} s`);
+      child.kill('SIGKILL');
+    }, PASS_TIME);
+    child.once('error', (error) => (out.error ??= error));
+    child.once('close', (status) => {
+      clearTimeout(timer);
+      done({ ...out, status });
+    });
+  });
 }
 
 export const attributes = (tag) => {
@@ -251,7 +281,7 @@ export function figureScript(name, figure) {
  * figures/name.js, or { errors }, each { file, line, message } with file as a path from dir and
  * line null where TeX does not give one. Nothing is written into dir.
  */
-export function compileFigure({ dir, name, source, box = {}, tools = findTools() }) {
+export async function compileFigure({ dir, name, source, box = {}, tools = findTools() }) {
   const started = Date.now();
   dir = resolve(dir);
   source ??= readFileSync(join(dir, 'figures', `${name}.tex`), 'utf8');
@@ -262,17 +292,17 @@ export function compileFigure({ dir, name, source, box = {}, tools = findTools()
   const temporary = mkdtempSync(join(tmpdir(), 'beeson-figure-'));
   let passes = 0;
   // one compile in a mode, with the size in TeX pt and the files of the talk that TeX read
-  const pass = (mode, fit) => {
+  const pass = async (mode, fit) => {
     passes += 1;
     const wrapper = wrapperOf({ mode, preamble: preamble !== null, ...fit });
     writeFileSync(join(temporary, `${WRAPPER}.tex`), wrapper);
     const env = { ...process.env, TEXINPUTS: `${temporary}${delimiter}${process.env.TEXINPUTS ?? ''}`, max_print_line: '10000', error_line: '254', half_error_line: '238' };
     // the folder of the talk is the working folder of TeX, hence a path in a source is read from it
-    const latex = spawnSync(tools.latex, ['-interaction=nonstopmode', '-halt-on-error', '-no-shell-escape', '-file-line-error', '-recorder', `-output-directory=${temporary}`, `${WRAPPER}.tex`], { cwd: dir, env, encoding: 'utf8', maxBuffer: 1 << 26 });
+    const latex = await run(tools.latex, ['-interaction=nonstopmode', '-halt-on-error', '-no-shell-escape', '-file-line-error', '-recorder', `-output-directory=${temporary}`, `${WRAPPER}.tex`], { cwd: dir, env });
     if (latex.error) return { errors: [{ file: null, line: null, message: `latex does not run: ${latex.error.message}` }] };
     if (latex.status !== 0) return { errors: errorsOf(read(join(temporary, `${WRAPPER}.log`)) ?? latex.stdout ?? '', { name, dir, texts: { [WRAPPER]: wrapper, [SOURCE]: source, [PREAMBLE]: preamble === null ? null : cutPreamble(preamble) } }) };
     const file = join(temporary, `${WRAPPER}.svg`);
-    const svg = spawnSync(tools.dvisvgm, ['--no-fonts', '--precision=2', `--output=${file}`, join(temporary, `${WRAPPER}.dvi`)], { cwd: dir, env, encoding: 'utf8', maxBuffer: 1 << 26 });
+    const svg = await run(tools.dvisvgm, ['--no-fonts', '--precision=2', `--output=${file}`, join(temporary, `${WRAPPER}.dvi`)], { cwd: dir, env });
     const text = read(file);
     if (svg.error || svg.status !== 0 || text === null) {
       return { errors: [{ file: `figures/${name}.tex`, line: null, message: `dvisvgm failed: ${(svg.error?.message ?? svg.stderr ?? '').trim().split(/\r?\n/).pop()}` }] };
@@ -299,14 +329,14 @@ export function compileFigure({ dir, name, source, box = {}, tools = findTools()
       // pgfplots sets the width of an axis close to the width of its picture, and the second pass
       // takes the measured excess off. an axis is never made smaller than 10 pt
       fit = { ...target };
-      out = pass('light', fit);
+      out = await pass('light', fit);
       if (out.errors) return out;
       if (['width', 'height'].some((key) => target[key] !== null && Math.abs(out[key] - target[key]) * PX_PER_PT > SLACK)) {
         for (const key of ['width', 'height']) if (target[key] !== null) fit[key] = Math.max(10, fit[key] - (out[key] - target[key]));
-        out = pass('light', fit);
+        out = await pass('light', fit);
       }
     } else {
-      out = pass('light', fit);
+      out = await pass('light', fit);
       if (boxed && !out.errors) {
         // a drawing is scaled to fill its box in one dimension. its size is a + b scale in each
         // dimension, since text and lines are not scaled. a and b are measured from the pass at
@@ -320,7 +350,7 @@ export function compileFigure({ dir, name, source, box = {}, tools = findTools()
         const scale = keys.length ? Math.min(...keys.map((key) => target[key] / first[key])) : 1;
         if (Math.abs(scale - 1) > 1e-3) {
           fit = { scale };
-          out = pass('light', fit);
+          out = await pass('light', fit);
           if (!out.errors && missed(out)) {
             const scales = keys
               .map((key) => {
@@ -330,7 +360,7 @@ export function compileFigure({ dir, name, source, box = {}, tools = findTools()
             const corrected = Math.max(0.01, Math.min(...scales));
             if (Math.abs(corrected - scale) > 1e-4) {
               fit = { scale: corrected };
-              out = pass('light', fit);
+              out = await pass('light', fit);
             }
           }
         }
@@ -340,7 +370,7 @@ export function compileFigure({ dir, name, source, box = {}, tools = findTools()
     // a figure that does not fit after the passes is shown smaller as a whole, and never larger
     const shrink = ['width', 'height'].filter((key) => target[key] !== null && (out[key] - target[key]) * PX_PER_PT > SLACK).map((key) => target[key] / out[key]);
     const factor = shrink.length ? Math.floor(Math.min(...shrink) * 1e4) / 1e4 : 1;
-    const dark = pass('dark', fit);
+    const dark = await pass('dark', fit);
     if (dark.errors) return dark;
     const light = finishSvg(out.svg, `tikz-${name}-light-`, factor);
     const figure = {
@@ -426,7 +456,7 @@ export function figureProblems(deck) {
  * one line for each figure. An output is kept after an error. Returns false, and sets the exit code
  * to 1, while a figure is not current, e.g. when TeX is not installed.
  */
-export function compileFigures(deck, { log = console.log, tools = findTools() } = {}) {
+export async function compileFigures(deck, { log = console.log, tools = findTools() } = {}) {
   const dir = dirname(resolve(deck));
   let current = true;
   for (const figure of figureStatus(deck)) {
@@ -445,7 +475,7 @@ export function compileFigures(deck, { log = console.log, tools = findTools() } 
       current = false;
       continue;
     }
-    const compiled = compileFigure({ dir, name: figure.name, box: figure.box, tools });
+    const compiled = await compileFigure({ dir, name: figure.name, box: figure.box, tools });
     if (compiled.errors) {
       for (const error of compiled.errors) log(`${error.file ?? figure.source}${error.line === null ? '' : `:${error.line}`}: ${error.message}`);
       log(`${figure.file}: not compiled${figure.state === 'stale' ? ', the last good output is kept' : ''}`);
