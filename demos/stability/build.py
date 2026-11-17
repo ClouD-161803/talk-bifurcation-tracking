@@ -1431,6 +1431,104 @@ def routh_plot():
     }, frames[routh]
 
 
+LU_KM = 384400
+SADDLE_TIME = 1.4
+SADDLE_FRAMES = 141
+SADDLE_REACH = 3800
+
+
+def l1_jacobian(mu):
+    """The Earth-Moon L1 point and the second derivatives a = -Ut_xx and b = -Ut_yy of the effective
+    potential there, which set the planar Jacobian [[0, I], [diag(a, b), 2J]] of the CR3BP."""
+    def dx(x):
+        r1, r2 = abs(x + mu), abs(x - 1 + mu)
+        return x - (1 - mu) * (x + mu) / r1 ** 3 - mu * (x - 1 + mu) / r2 ** 3
+    lo, hi = -mu + 1e-3, 1 - mu - 1e-3
+    for _ in range(100):
+        x = (lo + hi) / 2
+        lo, hi = (x, hi) if (dx(x) > 0) == (dx(lo) > 0) else (lo, x)
+    x = (lo + hi) / 2
+    c = (1 - mu) / abs(x + mu) ** 3 + mu / abs(x - 1 + mu) ** 3
+    return x, 1 + 2 * c, 1 - c
+
+
+def saddle_plot():
+    """The plot of the appendix slide on linear stability, in km about L1 of the Earth-Moon CR3BP,
+    moved by the clock of the linearized planar flow. With the eigenvalues +-lam (real) and +-i om
+    of the Jacobian, an eigenvector of alpha is (1, s, alpha, alpha s) with s = (alpha^2 - a)/(2 alpha),
+    hence the unstable and stable lines have the slopes s and -s in the plane, and the center is an
+    ellipse with the semi-axes 1 and |s| along x and y. The traces are sums A e^(lam tau) of the
+    unstable direction and B e^(-lam tau) of the stable one, for tau from -T/2 to T/2."""
+    x1, a, b = l1_jacobian(MU_EM)
+    p = 4 - a - b
+    lam = math.sqrt((-p + math.sqrt(p * p - 4 * a * b)) / 2)
+    om = math.sqrt((p + math.sqrt(p * p - 4 * a * b)) / 2)
+    slope = (lam * lam - a) / (2 * lam)
+    stretch = (om * om + a) / (2 * om)
+    ts = [SADDLE_TIME * i / (SADDLE_FRAMES - 1) for i in range(SADDLE_FRAMES)]
+    grow = math.exp(lam * SADDLE_TIME / 2)
+    unit = math.hypot(1, slope)
+    def path(big_a, big_b):
+        out = []
+        for t in ts:
+            tau = t - SADDLE_TIME / 2
+            u, s = big_a * math.exp(lam * tau), big_b * math.exp(-lam * tau)
+            out.append([round(u + s), round(slope * (u - s))])
+        return out
+    far = SADDLE_REACH / unit / grow
+    traces = {}
+    for i, (sa, sb) in enumerate([(1, 1), (1, -1), (-1, 1), (-1, -1)]):
+        traces[f'hyp-{i}'] = path(sa * far, sb * far)
+        traces[f'near-{i}'] = path(sa * far * 0.45, sb * far * 0.45)
+    traces['in-0'], traces['in-1'] = path(0, far), path(0, -far)
+    traces['out-0'], traces['out-1'] = path(far, 0), path(-far, 0)
+    ex = 560
+    ellipse = [[round(ex * math.cos(om * t)), round(ex * stretch * math.sin(om * t))] for t in ts]
+    ring = [[round(ex * math.cos(2 * math.pi * k / 120)), round(ex * stretch * math.sin(2 * math.pi * k / 120))]
+            for k in range(121)]
+    xr, yr = (-4200, 4200), (-2600, 2600)
+    line = lambda sgn: [[xr[0], round(sgn * slope * xr[0])], [xr[1], round(sgn * slope * xr[1])]]
+    edge = 3900
+    panel = {
+        'id': 'phase',
+        'equal': True,
+        'margin': [70, 16, 84, 110],
+        'x': {'range': list(xr), 'ticks': [-4000, -2000, 0, 2000, 4000], 'title': r'$\delta x$ in km'},
+        'y': {'range': list(yr), 'ticks': [-2000, 0, 2000], 'title': r'$\delta y$ in km'},
+        'curves': [
+            {'id': 'unstable-line', 'points': line(1), 'tone': 'accent', 'width': 2.5, 'wipe': 0.8},
+            {'id': 'stable-line', 'points': line(-1), 'tone': 'violet', 'width': 2.5, 'wipe': 0.8},
+            {'id': 'center-ring', 'points': ring, 'tone': 'blue', 'width': 2, 'dash': [8, 8], 'wipe': 0.8},
+        ],
+        'labels': [
+            {'id': 'l1-name', 'at': [0, 0], 'text': r'$\mathcal{L}_1$', 'tone': 'text', 'anchor': 'start', 'dx': 14, 'dy': 8},
+            {'id': 'unstable-name', 'at': [-edge, round(slope * -edge)], 'text': rf'$\alpha = {lam:.3f}$',
+             'tone': 'accent', 'anchor': 'start', 'dx': 4, 'dy': -18},
+            {'id': 'stable-name', 'at': [edge, round(-slope * edge)], 'text': rf'$\alpha = -{lam:.3f}$',
+             'tone': 'violet', 'anchor': 'end', 'dx': -4, 'dy': -18},
+            {'id': 'center-name', 'at': [0, round(ex * stretch)], 'text': rf'$\alpha = \pm {om:.3f}\,i$',
+             'tone': 'blue', 'anchor': 'start', 'dx': 16, 'dy': -14},
+        ],
+    }
+    saddle = [*(f'hyp-{i}' for i in range(4)), *(f'near-{i}' for i in range(4)), 'in-0', 'in-1', 'out-0', 'out-1']
+    trace = lambda ident, tone: {'id': ident, 'panel': 'phase', 'kind': 'trace', 'tone': tone, 'width': 3, 'size': 12}
+    marks = [trace(k, 'text') for k in saddle]
+    marks += [trace('center', 'blue'), {'id': 'l1', 'panel': 'phase', 'kind': 'points', 'tone': 'text', 'size': 14}]
+    return {
+        'parameter': {'label': '$t$', 'digits': 2},
+        'duration': 7,
+        'hold': 1.5,
+        'panels': [panel],
+        'marks': marks,
+        'tabs': [{
+            'name': 'L1',
+            'label': r'$\mathcal{L}_1$',
+            'values': [round(t, 4) for t in ts],
+            'data': {**traces, 'center': ellipse, 'l1': [[0, 0]]},
+        }],
+    }, {'x': x1, 'lam': lam, 'om': om, 'slope': slope, 'stretch': stretch}
+
+
 def inject(page, text, block='stability'):
     html = page.read_text()
     start = f'<script type="application/json" id="{block}">'
@@ -1461,6 +1559,11 @@ def main():
         inject(args.deck, routh, 'routh')
         print(f'{len(routh) / 1e3:.0f} kB of JSON for the block id="routh", with the pairs of L4 meeting at '
               f"mu_R = {meet['mu']:.6f}, (a1, a2) = ({meet['a1']:.4f}, {meet['a2']:.4f})")
+        saddle, at = saddle_plot()
+        saddle = json.dumps(saddle, separators=(',', ':'), ensure_ascii=False)
+        inject(args.deck, saddle, 'saddle')
+        print(f'{len(saddle) / 1e3:.0f} kB of JSON for the block id="saddle", with L1 at x = {at["x"]:.6f}, '
+              f'alpha = +-{at["lam"]:.4f} and +-{at["om"]:.4f} i, slopes +-{at["slope"]:.4f}, ellipse {at["stretch"]:.4f}')
     for name, members in dropped.items():
         if members:
             es = ', '.join(f"{m['e']:g}" for m in members)
