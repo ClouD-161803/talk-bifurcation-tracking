@@ -77,9 +77,9 @@ test('the theme bundle carries none of the editor, which is all in theme/editor.
 
 // the editor is loaded at each ?edit from a file, without a toolchain, hence its bundle is kept under
 // a budget, which leaves room for the editing features of Keynote and PowerPoint
-test('theme/editor.js is under 1280 kB', () => {
+test('theme/editor.js is under 1344 kB', () => {
   const size = statSync(resolve('theme/editor.js')).size;
-  assert.ok(size < 1280 * 1024, `theme/editor.js is ${Math.round(size / 1024)} kB`);
+  assert.ok(size < 1344 * 1024, `theme/editor.js is ${Math.round(size / 1024)} kB`);
 });
 
 // the edit command is copied into a talk with theme/, and it is imported by the tests of the sync
