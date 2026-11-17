@@ -8,7 +8,8 @@ import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { press, type, typeKeys } from './helpers/editor.mjs';
+import { editorPage, press, type, typeKeys } from './helpers/editor.mjs';
+import { freshDeck } from './helpers/fresh.mjs';
 
 const DIR = 'test/pages/tex-sheets';
 const DECK = `${DIR}/index.html`;
@@ -121,6 +122,52 @@ test('an Undo after a key and Backspace typed after a pause takes back the typin
   await page.waitFor(`${PARA('Invariant')}.textContent.endsWith(' x')`);
   await undo(page);
   assert.equal(await html(page, 'Invariant'), plain);
+  assert.deepEqual(errors(page), []);
+});
+
+// test/pages/editor-r29-1.html with a line on its third slide from its shape to the right edge of
+// its table, which sits in the flow under a paragraph
+const R29 = 'test/pages/editor-r29-1.html';
+const GLUED = readFileSync(R29, 'utf8')
+  .replaceAll('"../../theme/', '"theme/')
+  .replace('<table><tr>', '<table data-anchor="a2"><tr>')
+  .replace('translate: 1300px 700px"></div>', 'translate: 1300px 700px" data-anchor="a1"></div>\n  <svg class="line" width="1148" height="360" style="translate: 252px 400px; z-index: 1" data-from="a1 0.5 0.5" data-to="a2 1 0.5"><defs><marker id="line-1" orient="auto-start-reverse"><path d="M-4-2.5 1 0-4 2.5z"></path></marker></defs><line x1="1148" y1="360" x2="0" y2="0"></line></svg>');
+
+test('words that move an attached line, taken back by one Backspace, leave the line where it was (#67)', { timeout: 120000 }, async (t) => {
+  const page = await editorPage(browser, { deck: freshDeck(t, GLUED), text: GLUED, page: { width: 1600, height: 1000 } });
+  t.after(() => page.close());
+  await page.evaluate('(Reveal.slide(2), true)');
+  await page.waitFor('Reveal.getIndices().h === 2');
+  const LINE = `window.BeesonEditor.render().match(/<svg class="line"[^>]*>/)[0]`;
+  const drawn = await page.evaluate(LINE);
+  const P = `Reveal.getCurrentSlide().querySelector('p')`;
+  await page.evaluate(`(() => { const p = ${P}; p.focus(); const r = document.createRange(); r.selectNodeContents(p); r.collapse(false); getSelection().removeAllRanges(); getSelection().addRange(r); return true; })()`);
+  await page.waitFor(`document.activeElement === ${P}`);
+  const words = ' and many more words that wrap the paragraph onto a second line and onto a third line of the column';
+  await page.send('Input.insertText', { text: words });
+  await page.waitFor(`${LINE} !== ${js(drawn)}`);
+  await page.evaluate(`(() => {
+    const p = ${P};
+    const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const at = n.data.indexOf(${js(words)});
+      if (at < 0) continue;
+      const r = document.createRange();
+      r.setStart(n, at);
+      r.setEnd(n, at + ${words.length});
+      getSelection().removeAllRanges();
+      getSelection().addRange(r);
+      return true;
+    }
+    throw new Error('the words are not in one text node');
+  })()`);
+  await press(page, 'Backspace');
+  await page.waitFor(`!${P}.textContent.includes('many more words')`);
+  await page.evaluate('new Promise((d) => requestAnimationFrame(() => requestAnimationFrame(() => d(true))))');
+  const place = (tag) => [tag.match(/translate: [^;"]*/)[0], tag.match(/height="[^"]*"/)[0]];
+  assert.deepEqual(place(await page.evaluate(LINE)), place(drawn), 'the line is left where the words pushed it');
+  await undo(page);
+  assert.equal(await page.evaluate(LINE), drawn);
   assert.deepEqual(errors(page), []);
 });
 
