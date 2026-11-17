@@ -98,6 +98,15 @@ export function chromeArgs({ profile, offline = true, wholeFrames = false, platf
  * after a scroll and heavy work in the page needs, see scripts/export-pptx.mjs, and text is drawn
  * without subpixel antialiasing.
  */
+// the state of a page whose load is not answered: its address, its ready state, and the files of
+// its elements that are not loaded. a file is loaded once it has an entry of resource timing, of
+// which a page keeps 250, hence resources tells whether the list of entries is full
+const LOADING = `(() => {
+  const loaded = new Set(performance.getEntriesByType('resource').map((e) => e.name));
+  const files = [...document.querySelectorAll('script[src], link[rel="stylesheet"][href], img[src], iframe[src], video[src], source[src]')].map((el) => el.src || el.href);
+  return { url: location.href, readyState: document.readyState, resources: loaded.size, unloaded: files.filter((f) => !loaded.has(f)) };
+})()`;
+
 export async function launch({ offline = true, timeout = 120000, wholeFrames = false } = {}) {
   const chrome = findChrome();
   const profile = mkdtempSync(join(tmpdir(), 'beeson-chrome-'));
@@ -297,7 +306,13 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
           });
           const { errorText } = await call(method, params);
           if (errorText) throw new Error(`${url}: ${errorText}`);
-          await answered(loaded, `the load of ${url}`);
+          await answered(loaded, `the load of ${url}`).catch(async (error) => {
+            // a load that is not answered is told with the files of the page that are not loaded,
+            // or with the reason why the page could not be read
+            const state = await answered(evaluate(LOADING), 'the state of the page', 5000).catch((e) => e.message.split('\n')[0]);
+            error.message = error.message.replace('\n', `, and the page holds ${JSON.stringify(state)}\n`);
+            throw error;
+          });
         };
         const load = async (method, params) => {
           for (let n = 0; ; n++) {
