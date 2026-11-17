@@ -5105,6 +5105,7 @@ void main() {
     return data;
   }
   var CACHE4 = /* @__PURE__ */ new WeakMap();
+  var REPORTED = /* @__PURE__ */ new WeakMap();
   var Bundle = class _Bundle {
     constructor(el, data, THREE) {
       this.subtle = "";
@@ -5587,17 +5588,22 @@ void main() {
         continue;
       }
       const id = el.dataset.bundle ?? "";
-      const script2 = document.getElementById(id);
-      const data = script2 ? parseBundle(script2.textContent ?? "") : `the JSON script with the id "${id}" is not found`;
+      const text = document.getElementById(id)?.textContent ?? null;
+      if (REPORTED.has(el) && REPORTED.get(el) === text) continue;
+      const report = (reason) => {
+        REPORTED.set(el, text);
+        console.error(`beeson: the bundle ${id} is not drawn, since ${reason}`);
+      };
+      const data = text === null ? `the JSON script with the id "${id}" is not found` : parseBundle(text);
       if (typeof data === "string") {
-        console.error(`beeson: the bundle ${id} is not drawn, since ${data}`);
+        report(data);
         continue;
       }
       if (!renderer() || !window.THREE) continue;
       try {
         out.push(new Bundle(el, data, window.THREE));
       } catch (error) {
-        console.error(`beeson: the bundle ${id} is not drawn, since ${String(error)}`);
+        report(String(error));
       }
     }
     return out;

@@ -137,6 +137,10 @@ async function start(page, id) {
   await frames(page);
 }
 
+// #129: the preview of a magic move of 0.5 s ends about 1.2 s after its start, before the reads of a
+// test on a slow runner. a test that stops the preview with Esc makes the move last 60 s
+const longMove = (page) => page.evaluate('(Reveal.configure({ autoAnimateDuration: 60 }), true)');
+
 // the selection is made fresh on the first slide, with the pointer moved off the slide
 async function select(page, kind) {
   await page.evaluate('Reveal.slide(0)');
@@ -151,6 +155,7 @@ for (const platform of PLATFORMS) {
   for (const id of PREVIEWS) {
     test(`nothing of the selection is drawn while ${id} plays, and Esc draws the same selection again (${platform})`, async () => {
       const page = await previewPage(platform);
+      await longMove(page);
       for (const kind of Object.keys(SELECTIONS)) {
         const before = await select(page, kind);
         assert.ok(Object.keys(before.drawn).length, `the ${kind} selection draws nothing before the preview`);
@@ -174,6 +179,7 @@ for (const platform of PLATFORMS) {
 
   test(`Esc that stops Preview Steps or Preview Transition keeps the selection, the caret, and the focus (${platform})`, async () => {
     const page = await previewPage(platform);
+    await longMove(page);
     for (const id of ['steps.preview', 'slide.previewTransition']) {
       for (const kind of ['block', 'caret', 'several']) {
         const before = await select(page, kind);
