@@ -822,7 +822,7 @@ test('a page that loads again, or rejoins after a restart, while a person who ty
   await caretAtEnd(ana, SECOND);
   await typeKeys(ana, ' more');
   await until(() => server.read().includes('<p>Second slide typed more</p>'), 'the keys of Ana to reach index.html');
-  const lost = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
+  const lost = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/events\?/, /status of 400 .*\/\.session\/hello/];
   clean(ana, lost);
   clean(ben, lost);
 });
