@@ -368,6 +368,9 @@ export function install(app: App): void {
       insertPlain(host, spaced(host, ev.dataTransfer?.getData('text/plain') ?? ''));
       history.afterTyping(host);
       history.break();
+    } else if (type === 'formatUnderline') {
+      ev.preventDefault();
+      void app.commands.run('text.underline');
     } else if (type === 'insertFromDrop' || type.startsWith('format') || type.startsWith('insertOrdered') || type.startsWith('insertUnordered') || type === 'insertHorizontalRule' || type === 'insertLink') {
       ev.preventDefault();
     }

@@ -31,6 +31,7 @@ const CASES = ['sentence', 'lower', 'upper', 'title', 'toggle'];
 const SVG = 'http://www.w3.org/2000/svg';
 
 const CSS = `
+.beeson-edit-inspector .ed-seg .u { font: 14px/1 Georgia, "Times New Roman", serif; text-decoration: underline; }
 .beeson-edit-inspector .ed-seg .s { font: 14px/1 Georgia, "Times New Roman", serif; text-decoration: line-through; }
 .beeson-edit-inspector .ed-btn.painter[aria-pressed="true"] { background: var(--ed-select); color: var(--ed-on-select); }
 .beeson-edit-inspector .ed-btn.case .aa { font: 14px/1 Georgia, "Times New Roman", serif; }
@@ -405,6 +406,7 @@ export function textPane(app: App, run: Run): Control[] {
       row([segmented(app, run, [
         { command: 'text.bold', text: () => make('span', 'b', 'B'), title: 'Bold', pressed: formatState(app, 'bold') },
         { command: 'text.italic', text: () => make('span', 'i', 'I'), title: 'Italic', pressed: formatState(app, 'italic') },
+        { command: 'text.underline', text: () => make('span', 'u', 'U'), title: 'Underline', pressed: formatState(app, 'underline') },
         { command: 'text.strike', text: () => make('span', 's', 'S'), title: 'Strikethrough', pressed: formatState(app, 'strike') },
         { command: 'text.code', text: () => make('span', 'mono', '{ }'), title: 'Code', pressed: formatState(app, 'code') },
         { command: 'text.superscript', text: script('x', '2', 'sup'), title: 'Superscript', pressed: formatState(app, 'superscript') },
