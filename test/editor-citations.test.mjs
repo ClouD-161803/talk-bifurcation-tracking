@@ -119,6 +119,8 @@ async function typeCite(page) {
   await caretAfter(page, 'Invariant');
   await type(page, ' \\cite{');
   await page.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`);
+  // the list is drawn 1.1 s after the key, as on a slow runner
+  await sleep(1100);
 }
 
 // a paste of text onto target, as the clipboard of the browser sends it
