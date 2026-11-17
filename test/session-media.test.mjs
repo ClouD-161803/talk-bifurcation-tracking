@@ -881,14 +881,20 @@ test('an upload refused by an edit command that started again, before the hello 
   const port = server.edit.port;
   const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: NET });
   await converge(server, [ann]);
-  // every hello of Ann is held, hence her upload reaches the new edit command before her hello
+  // the PUT of the upload is held from before the kill until after the start. a page whose rejoin
+  // has begun, 1 s after the kill, starts no upload before its hello, and a slow start of the edit
+  // command outlasts this second. every hello of Ann is held, hence her upload reaches the new edit
+  // command before her hello
+  await ann.evaluate(`(__net.rule('/.session/media/', 'hold', { method: 'PUT', times: 1 }), true)`);
+  await show(ann, 'One');
+  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.waitFor(`__net.held.some((h) => h.url.includes('/.session/media/'))`);
   await ann.evaluate(`(__net.rule('/.session/hello', 'hold'), true)`);
   server.edit.child.kill('SIGKILL');
   await server.edit.exited;
   await ann.waitFor(`${C}.connection === 'offline'`);
   await server.start(['--port', String(port)]);
-  await show(ann, 'One');
-  await dropFiles(ann, [file(server, 'a', 'plot.png', LIGHT)]);
+  await ann.evaluate(`__net.release('/.session/media/')`);
   await ann.waitFor(`__net.count('/.session/media/', 'PUT', 404) === 1`);
   await ann.evaluate(`(__net.clear(), __net.release('/.session/hello'), ${C}.tryNow(), true)`);
   const text = await converge(server, [ann]);
