@@ -411,6 +411,28 @@ test('a trace with tones and a fade is drawn in the tone of each frame and faded
   assert.deepEqual(page.errors, []);
 });
 
+test('a long trace with tones and a fade writes only its newest and its fading segments in a frame', { timeout: 60000 }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ motion: true });
+  await page.goto(deckUrl('test/pages/plot-fade-long.html'));
+  await page.waitFor(deckSettled);
+  // the changes of the attributes of the segments, per frame, from the step until the trace is held
+  await page.evaluate(`(() => {
+    window.writes = 0; window.frames = 0;
+    new MutationObserver((list) => { window.writes += list.length; }).observe(Beeson.plots[0].el, { attributes: true, subtree: true, attributeFilter: ['x1', 'y1', 'x2', 'y2', 'style'] });
+    const count = () => { window.frames++; if (Beeson.plots[0].playing || window.frames < 3) requestAnimationFrame(count); };
+    Reveal.next();
+    requestAnimationFrame(count);
+  })()`);
+  await page.waitFor('!Beeson.plots[0].playing', 10000);
+  const { writes, frames, lines } = await page.evaluate(`({ writes: window.writes, frames: window.frames, lines: Beeson.plots[0].el.querySelectorAll('line.plot-trace').length })`);
+  // the trace has 1999 segments, each written once in full and then while it fades for 0.6 s
+  assert.equal(lines, 1999);
+  assert.ok(writes / frames < 400, `${writes} writes in ${frames} frames`);
+  assert.deepEqual(page.errors, []);
+});
+
 test('a plot is printed at its last frame, with the panels and the tab of each step', { timeout: 60000 }, async (t) => {
   const browser = await launch();
   t.after(() => browser.close());
