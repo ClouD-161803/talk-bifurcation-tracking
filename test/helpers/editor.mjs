@@ -54,8 +54,10 @@ async function platformOf(page) {
  * the root of the repository, and text is the text passed to open(), by default the file itself.
  * With clear, the local storage of the file origin is emptied before the deck is loaded.
  */
-export async function editorPage(browser, { deck = 'test-deck.html', query = 'edit&still', text, page: options, clear = false } = {}) {
+export async function editorPage(browser, { deck = 'test-deck.html', query = 'edit&still', text, page: options, clear = false, client } = {}) {
   const page = await browser.newPage(options);
+  // client is a script that defines window.BeesonSession before the page runs, see session-mode.mjs
+  if (client) await page.send('Page.addScriptToEvaluateOnNewDocument', { source: client });
   // with clear, a draft that an earlier page of the deck left is dropped, whose dialog covers the slide
   if (clear) await page.send('Storage.clearDataForOrigin', { origin: 'file://', storageTypes: 'local_storage' });
   await page.goto(deckUrl(deck, query));
@@ -175,6 +177,7 @@ export async function press(page, keys) {
 // the code, the key code, and the modifier bits of the symbols of a US layout that typeKeys() types
 const SYMBOLS = {
   ' ': ['Space', 32, 0],
+  '!': ['Digit1', 49, BITS.Shift],
   '-': ['Minus', 189, 0],
   '.': ['Period', 190, 0],
   '/': ['Slash', 191, 0],

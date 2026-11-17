@@ -530,6 +530,14 @@ html:not([data-theme="light"]) .reveal .slides section.split .text-column { box-
 .reveal .plot-off { opacity: 0.3; }
 .reveal .plot .plot-later,
 .reveal .plot .plot-hidden { opacity: 0; }
+/* an element of a plot with a delay is shown that many seconds after its step. a curve with a wipe is
+   traced from its first point to its last, as the Wipe of PowerPoint, and a region with an iris is grown
+   as a disk from a point. each is hidden at once when its step is undone */
+.reveal .plot .plot-delayed:not(.plot-hidden) { transition-delay: var(--plot-delay); }
+.reveal .plot .plot-wipe { stroke-dasharray: 1 1; stroke-dashoffset: 0; transition: stroke-dashoffset var(--plot-wipe) ease-in-out var(--plot-delay, 0s), opacity 0s linear var(--plot-delay, 0s); }
+.reveal .plot .plot-iris { transform-box: view-box; transform: scale(1); transition: transform var(--plot-iris) cubic-bezier(0.25, 0.6, 0.3, 1) var(--plot-delay, 0s), opacity 0s linear var(--plot-delay, 0s); }
+.reveal .plot .plot-wipe.plot-hidden { stroke-dashoffset: 1; transition: none; }
+.reveal .plot .plot-iris.plot-hidden { transform: scale(0); transition: none; }
 .reveal .plot-bar { display: flex; flex: none; align-items: center; gap: 28px; height: 44px; }
 .reveal .plot-play { position: relative; flex: none; width: 40px; height: 40px; color: var(--subtle); }
 .reveal .plot-play:hover { color: var(--text); }
@@ -624,6 +632,12 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
 .reveal .slides section:not([data-complete]) .viewer-still.fragment.visible:not(.current-fragment),
 .reveal .slides section:not([data-complete]) .fragment.visible:not(.current-fragment):has(video, tycho-viewer, .viewer-still) { opacity: 1; }
 .reveal .slides section .fragment.play { opacity: 1; visibility: inherit; }
+/* a late step, of the class late, is faded in the seconds of --delay after its step, as the delay of an
+   animation of PowerPoint. the style of a fragment is read once it is visible and before it is current, and a
+   fragment in a shown fragment is not dimmed, hence the delay of such a fragment is set as soon as it is visible.
+   it is faded out without the delay when its step is undone */
+.reveal .slides section .fragment.late.visible.current-fragment,
+.reveal .slides section .fragment.visible .fragment.late.visible { transition-delay: var(--delay); }
 /* the step added to restore the dimmed fragments, kept out of the layout of its slide */
 .reveal .slides section > .fragment[data-restore] { position: absolute; width: 0; height: 0; overflow: hidden; }
 /* stepped math: a held fragment is not dimmed, and the classes named by a shown data-highlight are colored. the

@@ -96,6 +96,10 @@ export class Dialog {
       ev.preventDefault();
       if (options.dismissable !== false) this.close(null);
     });
+    // a close by the browser, e.g. at the second back gesture of Android, answers null as Esc does
+    this.el.addEventListener('close', () => {
+      if (this.done && !this.el.open) this.close(null);
+    });
     this.el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
         ev.preventDefault();

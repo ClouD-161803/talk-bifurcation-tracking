@@ -58,6 +58,9 @@ export interface OpenMenu {
 // the item kinds, each with its rendered element
 type Row = { el: HTMLElement; item: Exclude<MenuItem, { rule: true } | { note: string } | { search: unknown }>; enabled: boolean; submenu: (() => MenuItem[]) | null; text: string };
 
+// the note of a command that does not fit behind its label is on a line below it, which the wider
+// system fonts of Linux and Android need at the same width. the keys, the check, and the arrow of
+// its row are then in line with the label
 const CSS = `
 .beeson-edit-menu { position: fixed; z-index: 90; box-sizing: border-box; min-width: 220px; max-width: 420px; max-height: calc(100vh - 16px); overflow-y: auto; padding: 5px; border: 1px solid var(--ed-menu-line); border-radius: 8px; background: var(--ed-menu); color: var(--ed-text); font: 13px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); outline: none; user-select: none; -webkit-user-select: none; }
 .beeson-edit-menu .item { display: grid; grid-template-columns: 18px 1fr auto 14px; align-items: center; column-gap: 4px; min-height: 22px; padding: 0 8px 0 4px; border-radius: 4px; cursor: default; white-space: nowrap; }
@@ -75,6 +78,10 @@ const CSS = `
 .beeson-edit-menu .note { max-width: 300px; padding: 3px 8px 2px 26px; color: var(--ed-faint); font-size: 12px; white-space: normal; }
 .beeson-edit-menu .item .label .path { margin-left: 8px; color: var(--ed-muted); font-size: 12px; }
 .beeson-edit-menu .item.hi .label .path { color: inherit; opacity: 0.8; }
+.beeson-edit-menu .item .label.noted { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; white-space: normal; }
+.beeson-edit-menu .item .label.noted .path { margin-left: 0; }
+.beeson-edit-menu .item.noted { align-items: start; min-height: 16px; padding-top: 3px; padding-bottom: 3px; }
+.beeson-edit-menu .item.noted .check, .beeson-edit-menu .item.noted .arrow { height: 1.25em; align-items: center; }
 .beeson-edit-menu.help { min-width: 300px; max-width: 560px; }
 .beeson-edit-menu .search { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; margin: -5px -5px 0; padding: 8px 11px 4px 13px; background: var(--ed-menu); }
 .beeson-edit-menu .search .field { position: relative; flex: 1; display: flex; align-items: center; }
@@ -502,6 +509,12 @@ class Menu {
     const name = make('span', 'label', label);
     if ('path' in item && item.path?.length) name.append(make('span', 'path', item.path.join(' ▸ ')));
     if ('icon' in item && item.icon) name.prepend(icon(item.icon, 16));
+    const note = 'command' in item && this.app.commands.get(item.command)?.note?.(this.app);
+    if (note) {
+      el.classList.add('noted');
+      name.classList.add('noted');
+      name.append(make('span', 'path', note));
+    }
     el.append(check, name, make('span', 'keys', keys), arrow);
     return { el, item, enabled, submenu, text: label.toLowerCase() };
   }

@@ -128,9 +128,14 @@ test('the demo deck shows 13 thumbnails within 1 s, numbered by their places, wi
     stepped,
   );
   assert.ok(stepped.includes(true) && stepped.includes(false));
-  // a thumbnail is drawn again after a change of its slide
-  const before = await page.evaluate(`document.querySelectorAll('.beeson-edit-nav .pic')[3].dataset.drawn`);
-  await page.evaluate(`window.Reveal.getSlides()[3].querySelector('h2').append(' again')`);
+  // a thumbnail is drawn again after a change of its slide. the count of its drawings is read in the
+  // task of the change, since the thumbnails are also drawn again shortly after the deck is opened,
+  // and a count read earlier may be out of date at the change
+  const before = await page.evaluate(`(() => {
+    const drawn = document.querySelectorAll('.beeson-edit-nav .pic')[3].dataset.drawn;
+    window.Reveal.getSlides()[3].querySelector('h2').append(' again');
+    return drawn;
+  })()`);
   await page.waitFor(`document.querySelectorAll('.beeson-edit-nav .pic')[3].dataset.drawn !== ${JSON.stringify(before)}`);
   assert.match(await page.evaluate(`document.querySelectorAll('.beeson-edit-nav .pic')[3].shadowRoot.querySelector('h2').textContent`), /again$/);
   assert.deepEqual(errors(page), []);

@@ -15,8 +15,10 @@ import { mountQr } from './qr.ts';
 import { mountShapes } from './shapes.ts';
 import { figuresReady, mountFigures, redrawFigures } from './tikz.ts';
 import { initScrub } from './scrub.ts';
-import { mount as mountSurfaces } from './surface.ts';
+import { mount as mountSurfaces, onRestore } from './surface.ts';
 import type { Surface } from './surface.ts';
+import { mount as mountBundles, type Bundle } from './bundle.ts';
+import { fly } from './fly.ts';
 import { fitView, register, trajectoriesFor, type View } from './trajectories.ts';
 import { builtIn } from './backdrops.ts';
 import { addRestoreSteps, applyAll, applySteps, initSteps, initTimedSteps, typeset, type Internal } from './steps.ts';
@@ -78,7 +80,9 @@ const DEFAULTS: RevealOptions = {
 const TRACED = ['title', 'section', 'closing'];
 
 const backdrops: Orbits[] = [];
-const surfaces: Surface[] = [];
+const surfaces: (Surface | Bundle)[] = [];
+// a surface drawn while the context of WebGL was lost is blank, hence every surface is drawn again
+onRestore(() => { for (const s of surfaces) s.draw(); });
 const plots: PlotView[] = [];
 
 // with the URL parameter edit, the in-place editor is loaded, and the deck is drawn still while it
@@ -130,7 +134,7 @@ const still = () => EDITING || Orbits.reduced() || window.Reveal.isPrintView() |
 
 function remount(): void {
   for (const o of mount(document)) if (!backdrops.includes(o)) backdrops.push(o);
-  if (document.querySelector('.surface')) for (const s of mountSurfaces(document)) if (!surfaces.includes(s)) surfaces.push(s);
+  if (document.querySelector('.surface')) for (const s of [...mountSurfaces(document), ...mountBundles(document)]) if (!surfaces.includes(s)) surfaces.push(s);
   for (const p of mountPlots(document)) if (!plots.includes(p)) plots.push(p);
 }
 
@@ -205,6 +209,11 @@ function mountWithin(root: Element): void {
   for (const o of backdrops) if (root.contains(o.el)) { o.fit(); o.complete(); }
   for (const s of surfaces) if (root.contains(s.el)) { s.fit(); s.sync(false); s.draw(); }
   for (const p of plots) if (root.contains(p.el)) { p.fit(); p.syncSteps(); p.still(); }
+  // a viewer added by the editor is numbered and themed as at the start
+  if (root.matches('tycho-viewer') || root.querySelector('tycho-viewer')) {
+    markViewers();
+    syncViewers(get());
+  }
   const slide = root.closest('.reveal .slides section');
   if (slide) applySteps(slide);
 }
@@ -291,8 +300,9 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   // must be on the page to be edited
   // the show in the frame of the editor posts its events to the editor. the option is not in the
   // address, which the speaker view copies into its frame of the upcoming slide, whose events
-  // would then move the show a step on
-  const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
+  // would then move the show a step on. reveal.js gives the focus to the body when a hidden page is
+  // shown again, for its own keys, which are off in the editor
+  const editing: Partial<RevealOptions> = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
   await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
 
   initChrome();
@@ -368,7 +378,7 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
     const key = (s: { el: HTMLElement }) => JSON.stringify(Object.entries(s.el.dataset).filter(([k]) => k !== 'surfaceState' && k !== 'shown').sort());
     for (const s of surfacesOf(ev.currentSlide)) {
       const from = before.find((b) => key(b) === key(s));
-      if (from) s.follow(from);
+      if (from) s.follow(from as Surface & Bundle);
     }
     for (const p of plotsIn(ev.previousSlide)) if (!ev.currentSlide.contains(p.el)) p.leave();
     show(ev.currentSlide);
@@ -382,7 +392,10 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
     stepPlots(deck.getCurrentSlide());
     syncCitations(deck.getCurrentSlide());
   };
-  deck.on('fragmentshown', step);
+  deck.on('fragmentshown', (event) => {
+    step();
+    if (!still()) fly(deck.getCurrentSlide(), (event as Event & { fragments?: Element[] }).fragments ?? []);
+  });
   deck.on('fragmenthidden', step);
   // a backdrop that is a step is traced from its step on, and blanked when the step is hidden
   const stepped = (event: Event) => {

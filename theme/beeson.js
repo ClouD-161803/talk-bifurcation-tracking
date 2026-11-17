@@ -254,7 +254,7 @@
     }
     return first ? [...first.values()] : [];
   }
-  function fitView(trajectories, box2, slide) {
+  function fitView(trajectories, box3, slide) {
     const xs = [], ys = [], ws = [];
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const s of trajectories) {
@@ -274,7 +274,7 @@
         ws.push(length > 0 ? d / length : 1 / (n - 1));
       }
     }
-    if (!ws.length || !(box2.width > 0) || !(box2.height > 0)) return null;
+    if (!ws.length || !(box3.width > 0) || !(box3.height > 0)) return null;
     const total = ws.reduce((a2, b2) => a2 + b2, 0);
     const quantile = (v, q) => {
       const order = v.map((_, i) => i).sort((a2, b2) => v[a2] - v[b2]);
@@ -288,7 +288,7 @@
     const lo = (1 - FILL) / 2, hi = 1 - lo;
     const qx = [quantile(xs, lo), quantile(xs, hi)], qy = [quantile(ys, lo), quantile(ys, hi)];
     let cx = (qx[0] + qx[1]) / 2, cy = (qy[0] + qy[1]) / 2;
-    const aspect = box2.width / box2.height;
+    const aspect = box3.width / box3.height;
     const held = (half2) => {
       let k = 0;
       for (let i = 0; i < ws.length; i++)
@@ -303,12 +303,12 @@
     }
     let half = b;
     const inner = {
-      left: box2.left > 0.5,
-      right: box2.left + box2.width < slide.width - 0.5,
-      top: box2.top > 0.5,
-      bottom: box2.top + box2.height < slide.height - 0.5
+      left: box3.left > 0.5,
+      right: box3.left + box3.width < slide.width - 0.5,
+      top: box3.top > 0.5,
+      bottom: box3.top + box3.height < slide.height - 0.5
     };
-    const g = 2 * MARGIN / box2.height;
+    const g = 2 * MARGIN / box3.height;
     const need = (span, sides, width) => span / Math.max(width - sides * g, 1e-9);
     half = Math.max(
       half,
@@ -938,13 +938,13 @@
     // begins. two strokes of one color give the same pixels in either order
     order() {
       const ends = /* @__PURE__ */ new Map();
-      const seconds = (i, t) => t / this.Tmax * this.duration + i * this.stagger;
+      const seconds2 = (i, t) => t / this.Tmax * this.duration + i * this.stagger;
       let k = 0;
       for (; k < this.trajectories.length; k++) {
-        const s = this.trajectories[k], color = colorOf(s), begin = seconds(k, s.times[0]);
+        const s = this.trajectories[k], color = colorOf(s), begin = seconds2(k, s.times[0]);
         if (s.glow || alphaOf(s) > 0.5 || widthOf(s) > 1) break;
         if ([...ends].some(([other, end]) => other !== color && end > begin)) break;
-        ends.set(color, Math.max(ends.get(color) ?? -Infinity, seconds(k, s.times[s.times.length - 1])));
+        ends.set(color, Math.max(ends.get(color) ?? -Infinity, seconds2(k, s.times[s.times.length - 1])));
       }
       this.cached = k;
       this.upTo = this.trajectories.map(() => 0);
@@ -1049,11 +1049,11 @@
       this.unghost();
       if (this.fitted && this.trajectories.length) {
         const section = this.el.closest("section");
-        const box2 = { left: this.el.offsetLeft, top: this.el.offsetTop, width: w, height: h };
+        const box3 = { left: this.el.offsetLeft, top: this.el.offsetTop, width: w, height: h };
         const slide = { width: section?.offsetWidth || w, height: section?.offsetHeight || h };
-        const key2 = [box2.left, box2.top, w, h, slide.width, slide.height].join();
+        const key2 = [box3.left, box3.top, w, h, slide.width, slide.height].join();
         if (key2 !== this.fittedFor) {
-          const view = fitView(this.trajectories, box2, slide);
+          const view = fitView(this.trajectories, box3, slide);
           if (view) ({ cx: this.cx, cy: this.cy, half: this.half } = view);
           this.fittedFor = key2;
         }
@@ -1960,7 +1960,13 @@
   }
   function item(o, path2, tone) {
     const cls = str(o.class, `${path2}.class`, "").split(/\s+/).filter(Boolean);
-    return { id: o.id === void 0 ? null : str(o.id, `${path2}.id`), tone: str(o.tone, `${path2}.tone`, tone), cls };
+    const delay = seconds(o.delay, `${path2}.delay`);
+    return { id: o.id === void 0 ? null : str(o.id, `${path2}.id`), tone: str(o.tone, `${path2}.tone`, tone), cls, delay };
+  }
+  function seconds(v, path2) {
+    const s = num(v, path2, 0);
+    if (!(s >= 0)) fail(path2, "a number of seconds, at least 0, is expected");
+    return s;
   }
   function axis(v, path2) {
     if (!isObject2(v)) fail(path2, "an axis { range, ticks, title } is expected");
@@ -1986,7 +1992,8 @@
     return list(v, path2, []).map((r, i) => {
       const p = `${path2}[${i}]`;
       if (!isObject2(r)) fail(p, "a region is expected");
-      return { ...item(r, p, "violet"), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12) };
+      const from = r.from === void 0 ? null : pair(r.from, `${p}.from`);
+      return { ...item(r, p, "violet"), points: pairs(r.points, `${p}.points`), opacity: num(r.opacity, `${p}.opacity`, 0.12), iris: seconds(r.iris, `${p}.iris`), from };
     });
   }
   function curves(v, path2) {
@@ -2000,7 +2007,7 @@
         circle = [num(a[0], `${p}.circle[0]`), num(a[1], `${p}.circle[1]`), num(a[2], `${p}.circle[2]`)];
       } else if (c.points === void 0) fail(p, "points or circle is expected");
       const dash = c.dash === void 0 ? null : list(c.dash, `${p}.dash`).map((d, j) => num(d, `${p}.dash[${j}]`));
-      return { ...item(c, p, "subtle"), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash };
+      return { ...item(c, p, "subtle"), points: circle ? null : pairs(c.points, `${p}.points`), circle, width: num(c.width, `${p}.width`, 2), dash, wipe: seconds(c.wipe, `${p}.wipe`) };
     });
   }
   function labels(v, path2) {
@@ -2060,7 +2067,9 @@
       perFrame(points.length);
       const ghost = num(given2.ghost, `${path2}.ghost`, points.length - 1);
       if (!Number.isInteger(ghost) || ghost < 0 || ghost > points.length - 1) fail(`${path2}.ghost`, `a frame from 0 to ${points.length - 1} is expected`);
-      return { points, ghost };
+      const tones = given2.tones === void 0 ? null : list(given2.tones, `${path2}.tones`).map((t, i) => str(t, `${path2}.tones[${i}]`));
+      if (tones && tones.length !== points.length) fail(`${path2}.tones`, `${tones.length} tones are given, and the trace has ${points.length} points`);
+      return { points, ghost, tones };
     }
     if (m.kind === "label") {
       if (!isObject2(v)) fail(path2, "a label { at, text } is expected");
@@ -2103,6 +2112,7 @@
         width: num(m.width, `${p}.width`, 3),
         hollow: m.hollow === true,
         ghost: m.ghost !== false,
+        fade: seconds(m.fade, `${p}.fade`),
         anchor: anchor(m.anchor, `${p}.anchor`),
         dx: num(m.dx, `${p}.dx`, 0),
         dy: num(m.dy, `${p}.dy`, 0)
@@ -2416,11 +2426,15 @@
       this.emphasis = /* @__PURE__ */ new Set();
       this.shown = /* @__PURE__ */ new Set();
       this.steps = /* @__PURE__ */ new Set();
+      // the ids named in the data-plot-hide of a shown fragment, hidden from its step on
+      this.gone = /* @__PURE__ */ new Set();
       this.stepTab = null;
       // a plot whose slide has a fragment with data-plot-play is held until that fragment is shown
       this.cue = "none";
       // the slide of the plot is shown, and the plot may move
       this.live = false;
+      // the tab is played once, from a fragment with data-plot-once, and held at its last frame
+      this.once = false;
       this.el = el;
       CACHE2.set(el, this);
       this.load(null);
@@ -2444,10 +2458,10 @@
         this.spec = parsePlot(text ?? block?.textContent ?? "");
       } catch (error) {
         const message = `plot ${el.dataset.plot ?? ""}: ${error.message}`;
-        const box2 = document.createElement("div");
-        box2.className = "plot-error";
-        box2.textContent = message;
-        el.append(box2);
+        const box3 = document.createElement("div");
+        box3.className = "plot-error";
+        box3.textContent = message;
+        el.append(box3);
         console.error(message);
         return;
       }
@@ -2650,8 +2664,15 @@
     styleItem(node, it, names) {
       node.style.color = toneColor(it.tone);
       node.classList.add(...it.cls);
+      if (it.delay > 0) {
+        node.classList.add("plot-delayed");
+        node.style.setProperty("--plot-delay", `${it.delay}s`);
+      }
       this.gate(node, names);
-      if (it.id) this.emphasized.push({ node, id: it.id });
+      if (it.id) {
+        node.setAttribute("data-plot-id", it.id);
+        this.emphasized.push({ node, id: it.id });
+      }
     }
     drawStatic() {
       this.svgEl.replaceChildren();
@@ -2668,15 +2689,46 @@
           svg("rect", { x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, clip);
         }
         const statics = svg("g", { "clip-path": `url(#plot-${this.uid}-${p.id})` }, g);
-        for (const r of p.regions) {
-          const node = svg("path", { class: "plot-region", d: `${this.path(b, r.points)}Z`, "fill-opacity": r.opacity }, statics);
-          this.styleItem(node, r, [p.id, r.id]);
-        }
-        for (const c of p.curves) {
+        p.regions.forEach((r, k) => {
+          const d = `${this.path(b, r.points)}Z`;
+          if (!(r.iris > 0)) {
+            this.styleItem(svg("path", { class: "plot-region", d, "fill-opacity": r.opacity }, statics), r, [p.id, r.id]);
+            return;
+          }
+          const id = `plot-${this.uid}-${p.id}-iris-${k}`;
+          svg("path", { d }, svg("clipPath", { id }, defs));
+          const xs = r.points.map((q) => clamp(this.X(b, q[0]), b.x, b.x + b.w)), ys = r.points.map((q) => clamp(this.Y(b, q[1]), b.y, b.y + b.h));
+          const [fx, fy] = r.from ?? [r.points.reduce((s, q) => s + q[0], 0) / r.points.length, r.points.reduce((s, q) => s + q[1], 0) / r.points.length];
+          const X = this.X(b, fx), Y = this.Y(b, fy);
+          const R = Math.max(...[Math.min(...xs), Math.max(...xs)].flatMap((x) => [Math.min(...ys), Math.max(...ys)].map((y) => Math.hypot(x - X, y - Y))));
+          const disk = svg("circle", { class: "plot-region plot-iris", cx: X.toFixed(1), cy: Y.toFixed(1), r: (R + 2).toFixed(1), "fill-opacity": r.opacity }, svg("g", { "clip-path": `url(#${id})` }, statics));
+          disk.style.transformOrigin = `${X.toFixed(1)}px ${Y.toFixed(1)}px`;
+          disk.style.setProperty("--plot-iris", `${r.iris}s`);
+          this.styleItem(disk, r, [p.id, r.id]);
+        });
+        for (const [k, c] of p.curves.entries()) {
           const attrs = { class: "plot-curve", "stroke-width": c.width };
           if (c.dash) attrs["stroke-dasharray"] = c.dash.join(" ");
           const linear2 = p.x.scale === "linear" && p.y.scale === "linear";
           const node = c.circle && linear2 ? svg("ellipse", { ...attrs, cx: this.X(b, c.circle[0]), cy: this.Y(b, c.circle[1]), rx: c.circle[2] * b.sx, ry: c.circle[2] * b.sy }, statics) : svg("path", { ...attrs, d: this.path(b, c.circle ? circlePoints(c.circle) : c.points ?? []) }, statics);
+          let wiped = null;
+          if (c.wipe > 0 && c.dash) {
+            const id = `plot-${this.uid}-${p.id}-wipe-${k}`, pad = 14;
+            const mask = svg("mask", { id, maskUnits: "userSpaceOnUse", x: b.x - pad, y: b.y - pad, width: b.w + 2 * pad, height: b.h + 2 * pad }, defs);
+            wiped = mask.appendChild(node.cloneNode());
+            for (const name of ["class", "stroke-dasharray"]) wiped.removeAttribute(name);
+            for (const [name, value] of [["fill", "none"], ["stroke", "white"], ["stroke-width", String(c.width + 4)]]) wiped.setAttribute(name, value);
+            node.setAttribute("mask", `url(#${id})`);
+          } else if (c.wipe > 0) wiped = node;
+          if (wiped) {
+            wiped.setAttribute("pathLength", "1");
+            wiped.classList.add("plot-wipe");
+            wiped.style.setProperty("--plot-wipe", `${c.wipe}s`);
+            if (wiped !== node) {
+              if (c.delay > 0) wiped.style.setProperty("--plot-delay", `${c.delay}s`);
+              this.gate(wiped, [p.id, c.id]);
+            }
+          }
           this.styleItem(node, c, [p.id, c.id]);
         }
         if (p.axes) {
@@ -2742,17 +2794,62 @@
             });
           });
         } else if (m.kind === "trace") {
-          const { points, ghost } = data, pts = points.map((q) => this.toAxes(b, q));
+          const { points, ghost, tones } = data, pts = points.map((q) => this.toAxes(b, q));
           if (m.ghost && ghost > 0) svg("path", { class: "plot-ghost", d: this.pathS(b, pts.slice(0, ghost + 1)), "stroke-width": m.width }, group2);
           if (fader !== group2) group2.append(fader);
-          const done = svg("path", { class: "plot-trace", "stroke-width": m.width }, fader);
           const head = svg("circle", { class: "plot-dot", r: m.size / 2 }, fader);
-          this.drawers.push((u) => {
-            const p = traceTo(pts, u), [x, y] = p[p.length - 1];
-            done.setAttribute("d", this.pathS(b, p));
-            head.setAttribute("cx", this.XS(b, x).toFixed(1));
-            head.setAttribute("cy", this.YS(b, y).toFixed(1));
-          });
+          if (!tones && !(m.fade > 0)) {
+            const done = svg("path", { class: "plot-trace", "stroke-width": m.width }, fader);
+            fader.insertBefore(done, head);
+            this.drawers.push((u) => {
+              const p = traceTo(pts, u), [x, y] = p[p.length - 1];
+              done.setAttribute("d", this.pathS(b, p));
+              head.setAttribute("cx", this.XS(b, x).toFixed(1));
+              head.setAttribute("cy", this.YS(b, y).toFixed(1));
+            });
+          } else {
+            const parts = [], opacities = [];
+            const tone = (i) => toneColor(tones ? tones[clamp(i, 0, tones.length - 1)] : m.tone);
+            let full = 0, shown = 0, gone = 0, last = -1;
+            this.drawers.push((u) => {
+              const p = traceTo(pts, u), now = this.timeOf(u), n = p.length - 1;
+              if (u < last) {
+                full = Math.min(full, Math.max(0, n - 1));
+                gone = 0;
+              }
+              last = u;
+              while (parts.length < n) {
+                parts.push(fader.insertBefore(svg("line", { class: "plot-trace", "stroke-width": m.width }), head));
+                opacities.push("");
+              }
+              for (let i = n; i < shown; i++) parts[i].style.display = "none";
+              for (let i = Math.min(full, shown); i < n; i++) {
+                const line = parts[i];
+                if (i >= shown) line.style.display = "";
+                line.setAttribute("x1", this.XS(b, p[i][0]).toFixed(1));
+                line.setAttribute("y1", this.YS(b, p[i][1]).toFixed(1));
+                line.setAttribute("x2", this.XS(b, p[i + 1][0]).toFixed(1));
+                line.setAttribute("y2", this.YS(b, p[i + 1][1]).toFixed(1));
+                line.style.color = tone(i);
+              }
+              shown = n;
+              full = Math.max(0, n - 1);
+              if (m.fade > 0) {
+                for (let i = gone; i < n; i++) {
+                  const o = (Math.round(20 * Math.max(0, 1 - (now - this.timeOf(Math.min(i + 0.5, u))) / m.fade)) * 0.03).toFixed(2);
+                  if (o !== opacities[i]) {
+                    parts[i].style.opacity = o;
+                    opacities[i] = o;
+                  }
+                  if (o === "0.00" && i === gone) gone++;
+                }
+              }
+              const [x, y] = p[p.length - 1];
+              head.setAttribute("cx", this.XS(b, x).toFixed(1));
+              head.setAttribute("cy", this.YS(b, y).toFixed(1));
+              head.style.color = tone(Math.round(u));
+            });
+          }
         } else if (m.kind === "label") {
           const d = data, at = d.at.map((q) => this.toAxes(b, q));
           const el = this.label(d.text[0], 0, 0, m.anchor, "plot-mark", [m.panel, m.id], m.tone);
@@ -2830,7 +2927,7 @@
       this.gated = this.gated.filter((g) => g.node.isConnected);
     }
     hidden(names) {
-      return names.some((s) => this.steps.has(s) && !this.shown.has(s));
+      return names.some((s) => this.steps.has(s) && !this.shown.has(s) || this.gone.has(s));
     }
     applyGates() {
       for (const { node, names } of this.gated) node.classList.toggle("plot-hidden", this.hidden(names));
@@ -2856,10 +2953,13 @@
       this.steps = new Set(frags.flatMap((f) => words(f.dataset.plotShow)));
       const visible = frags.filter((f) => f.classList.contains("visible"));
       this.shown = new Set(visible.flatMap((f) => words(f.dataset.plotShow)));
+      this.gone = new Set(visible.flatMap((f) => words(f.dataset.plotHide)));
       const cues = frags.filter((f) => f.hasAttribute("data-plot-play"));
       const cue = !cues.length ? "none" : cues.some((f) => visible.includes(f)) ? "shown" : "held";
       const tabbed = visible.filter((f) => f.dataset.plotTab).sort((a, b) => +(a.dataset.fragmentIndex ?? 0) - +(b.dataset.fragmentIndex ?? 0));
-      const name = tabbed.at(-1)?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
+      const top = tabbed.at(-1);
+      const name = top?.dataset.plotTab ?? this.el.dataset.plotTab ?? null;
+      const run = !!top?.hasAttribute("data-plot-once") && top.classList.contains("current-fragment") && this.live && !reduced();
       let tab = this.tab;
       if (name !== this.stepTab) {
         this.stepTab = name;
@@ -2868,8 +2968,14 @@
       }
       const cued = cue !== this.cue;
       this.cue = cue;
-      if (tab !== this.tab) this.setTab(tab);
-      else this.applyGates();
+      if (tab !== this.tab) {
+        if (this.once) this.pause();
+        this.setTab(tab, run);
+        if (run) {
+          this.once = true;
+          this.play();
+        }
+      } else this.applyGates();
       if (cued && this.live) {
         if (cue === "shown" && this.moves()) {
           this.pause();
@@ -2878,12 +2984,12 @@
         } else this.still();
       }
     }
-    /** Shows the tab i, from its first frame while the plot is played, and at its still frame otherwise. */
-    setTab(i) {
+    /** Shows the tab i, from its first frame while the plot is played or with first set, and at its still frame otherwise. */
+    setTab(i, first = false) {
       if (!this.spec || i === this.tab) return;
       this.tab = i;
       this.markTabs();
-      this.u = this.raf ? 0 : this.stillFrame();
+      this.u = this.raf || first ? 0 : this.stillFrame();
       this.t0 = performance.now();
       this.fade = 1;
       this.pass = 0;
@@ -2932,6 +3038,12 @@
       this.pass = 0;
       const tick = (now) => {
         const t = (now - this.t0) / 1e3, { duration, hold: hold2, fade } = this.plot, length = this.length;
+        if (this.once && t >= length) {
+          this.u = this.frames - 1;
+          this.draw();
+          this.pause();
+          return;
+        }
         const pass = length + hold2 > 0 ? Math.floor(t / (length + hold2)) : 0;
         if (pass !== this.pass) {
           this.pass = pass;
@@ -2949,6 +3061,7 @@
     pause() {
       if (this.raf) cancelAnimationFrame(this.raf);
       this.raf = 0;
+      this.once = false;
       this.setPlaying(false);
       if (this.fade < 1 || this.held.length) {
         this.fade = 1;
@@ -3383,10 +3496,10 @@
           el.append(logo);
         }
       } catch (error) {
-        const box2 = document.createElement("div");
-        box2.className = "qr-error";
-        box2.textContent = `QR code: ${error.message}`;
-        el.append(box2);
+        const box3 = document.createElement("div");
+        box3.className = "qr-error";
+        box3.textContent = `QR code: ${error.message}`;
+        el.append(box3);
       }
     }
   }
@@ -3587,10 +3700,10 @@
     for (const old of el.querySelectorAll(":scope > svg, :scope > .tikz-error")) old.remove();
     const output = window.beesonFigures?.[name];
     if (!output) {
-      const box2 = document.createElement("div");
-      box2.className = "tikz-error";
-      box2.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
-      el.prepend(box2);
+      const box3 = document.createElement("div");
+      box3.className = "tikz-error";
+      box3.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
+      el.prepend(box3);
       return;
     }
     const prefix = `tikz-${name}-${mode2}-`;
@@ -3619,8 +3732,8 @@
   }
 
   // src/scrub.ts
-  function minutes(seconds) {
-    const s = Math.max(0, Math.round(seconds));
+  function minutes(seconds2) {
+    const s = Math.max(0, Math.round(seconds2));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
   function starts(timings, config) {
@@ -4069,6 +4182,10 @@ void main() {
 }`
   );
   var shared;
+  var restored = [];
+  function onRestore(redraw) {
+    restored.push(redraw);
+  }
   function renderer() {
     if (shared !== void 0) return shared;
     shared = null;
@@ -4082,11 +4199,43 @@ void main() {
       r.setPixelRatio(1);
       r.setClearColor(0, 0);
       r.outputColorSpace = THREE.LinearSRGBColorSpace;
+      r.domElement.addEventListener("webglcontextrestored", () => {
+        r.dispose();
+        shared = void 0;
+        for (const redraw of restored) redraw();
+      }, { once: true });
       shared = r;
     } catch (error) {
       console.warn(`beeson: WebGL is not available for the surfaces, ${String(error)}`);
     }
     return shared;
+  }
+  function dragToTurn(el, turn3, end) {
+    let drag = null;
+    el.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      drag = { x: ev.clientX, y: ev.clientY };
+      try {
+        el.setPointerCapture(ev.pointerId);
+      } catch {
+      }
+      el.classList.add("dragging");
+    });
+    el.addEventListener("pointermove", (ev) => {
+      if (!drag) return;
+      const { x, y } = drag;
+      drag = { x: ev.clientX, y: ev.clientY };
+      turn3(ev.clientX - x, ev.clientY - y);
+    });
+    const stop3 = () => {
+      if (!drag) return;
+      drag = null;
+      el.classList.remove("dragging");
+      end();
+    };
+    el.addEventListener("pointerup", stop3);
+    el.addEventListener("pointercancel", stop3);
+    return () => drag !== null;
   }
   var CACHE3 = /* @__PURE__ */ new WeakMap();
   var Surface = class {
@@ -4113,7 +4262,6 @@ void main() {
       this.raf = 0;
       this.last = 0;
       this.resume = 0;
-      this.drag = null;
       this.W = 0;
       this.H = 0;
       this.w = 0;
@@ -4133,7 +4281,7 @@ void main() {
           }
           if (k >= 1) this.settle();
         }
-        if (this.rate && !this.drag && now > this.resume) this.azimuth += dt * this.rate;
+        if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
         this.draw();
         if (this.moving || this.rate || !this.pointsSettled()) this.kick();
       };
@@ -4184,7 +4332,9 @@ void main() {
       this.points = this.makePoints();
       this.scene.add(this.plane, this.glow, this.curve, this.points);
       this.recolor();
-      this.bindDrag();
+      this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => {
+        this.resume = performance.now() + 1500;
+      });
       CACHE3.set(el, this);
       this.sync(false);
       this.fit();
@@ -4761,32 +4911,6 @@ void main() {
       }
       return false;
     }
-    bindDrag() {
-      const el = this.el;
-      el.addEventListener("pointerdown", (ev) => {
-        if (ev.button !== 0) return;
-        this.drag = { x: ev.clientX, y: ev.clientY };
-        try {
-          el.setPointerCapture(ev.pointerId);
-        } catch {
-        }
-        el.classList.add("dragging");
-      });
-      el.addEventListener("pointermove", (ev) => {
-        if (!this.drag) return;
-        const { x, y } = this.drag;
-        this.drag = { x: ev.clientX, y: ev.clientY };
-        this.turn(ev.clientX - x, ev.clientY - y);
-      });
-      const end = () => {
-        if (!this.drag) return;
-        this.drag = null;
-        el.classList.remove("dragging");
-        this.resume = performance.now() + 1500;
-      };
-      el.addEventListener("pointerup", end);
-      el.addEventListener("pointercancel", end);
-    }
     kick() {
       if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
     }
@@ -4858,7 +4982,7 @@ void main() {
   };
   function mount3(root2) {
     const out = [];
-    for (const el of root2.querySelectorAll(".surface")) {
+    for (const el of root2.querySelectorAll(".surface:not([data-bundle])")) {
       const known = CACHE3.get(el);
       if (known) {
         out.push(known);
@@ -4875,6 +4999,643 @@ void main() {
     return out;
   }
 
+  // src/bundle.ts
+  var GROW = 3600;
+  var SHRINK = 1400;
+  var RIBS_END = 0.42;
+  var RIB_DELAY = 0.2;
+  var SHEET_START = 0.42;
+  var TURN2 = 90;
+  var ORBIT_WIDTH = 4;
+  var RIB_WIDTH = 2;
+  var DOT_SIZE = 18;
+  var COMPASS_LEFT = 190;
+  var COMPASS_TOP = 170;
+  var COMPASS_RADIUS = 70;
+  var CIRCLE_WIDTH = 1.5;
+  var NEEDLE_WIDTH = 3;
+  var HEAD = 18;
+  var LABEL_GAP = 10;
+  var SHEET_ALPHA = 0.86;
+  var QUAD = [0, -1, 1, -1, 1, 1, 0, -1, 1, 1, 0, 1];
+  var SHEET_VERTEX = (
+    /* glsl */
+    `
+attribute vec3 aNormal;
+attribute float aAcross;
+varying vec3 vNormal;
+varying float vAcross;
+void main() {
+  vNormal = aNormal;
+  vAcross = aAcross;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`
+  );
+  var SHEET_FRAGMENT = (
+    /* glsl */
+    `
+uniform vec3 uColor;
+uniform vec3 uEdge;
+uniform vec3 uLight;
+uniform float uAlpha;
+varying vec3 vNormal;
+varying float vAcross;
+void main() {
+  vec3 c = mix(uColor, uEdge, vAcross);
+  c *= 0.62 + 0.38 * abs(dot(normalize(vNormal), uLight));
+  gl_FragColor = vec4(c, uAlpha);
+}`
+  );
+  var DOT_VERTEX = (
+    /* glsl */
+    `
+uniform float uSize;
+void main() {
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = uSize;
+}`
+  );
+  var DOT_FRAGMENT = (
+    /* glsl */
+    `
+uniform vec3 uColor;
+uniform vec3 uRing;
+uniform float uSize;
+void main() {
+  float r = length(gl_PointCoord * 2.0 - 1.0);
+  float aa = 2.0 / uSize;
+  float outer = 1.0 - smoothstep(1.0 - aa, 1.0, r);
+  if (outer <= 0.0) discard;
+  float fill = 1.0 - smoothstep(0.62 - aa, 0.62, r);
+  gl_FragColor = vec4(mix(uRing, uColor, fill), outer);
+}`
+  );
+  var add = (a, b, s) => [a[0] + s * b[0], a[1] + s * b[1], a[2] + s * b[2]];
+  var ribGrowth = (g, k, count) => {
+    const start4 = count > 1 ? RIB_DELAY * k / (count - 1) : 0;
+    return ease(clamp2((g - start4) / (RIBS_END - RIB_DELAY), 0, 1));
+  };
+  var sheetGrowth = (g) => ease(clamp2((g - SHEET_START) / (1 - SHEET_START), 0, 1));
+  function parseBundle(text) {
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      return `its JSON is malformed, ${String(error)}`;
+    }
+    const n = Array.isArray(data?.orbit) ? data.orbit.length : 0;
+    if (n < 3) return "its orbit has fewer than three points";
+    const point = (p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+    const bad = data.orbit.findIndex((p) => !point(p));
+    if (bad >= 0) return `the point ${bad} of the orbit is not three numbers`;
+    if (data.libration_point !== void 0 && !point(data.libration_point)) return "its libration_point is not three numbers";
+    if (!Array.isArray(data.strips)) return "it does not have a list of strips";
+    for (const r of data.strips) {
+      if (r?.directions?.length !== n) return `the strip ${r?.id} has ${r?.directions?.length ?? 0} directions for ${n} points of the orbit`;
+      const d = r.directions.findIndex((p) => !point(p));
+      if (d >= 0) return `the direction ${d} of the strip ${r.id} is not three numbers`;
+      if (!(r.half_width > 0)) return `the strip ${r.id} does not have a positive half_width`;
+      if (!Array.isArray(r.ribs)) return `the ribs of the strip ${r.id} are not a list`;
+      if (r.ribs.some((i) => !(Number.isInteger(i) && i >= 0 && i < n))) return `a rib of the strip ${r.id} is not a point of the orbit`;
+    }
+    if (data.arrows !== void 0 && !Array.isArray(data.arrows)) return "its arrows are not a list";
+    for (const a of data.arrows ?? []) {
+      if (!point(a?.toward)) return `the arrow ${a?.id} does not have a point toward of three numbers`;
+    }
+    return data;
+  }
+  var CACHE4 = /* @__PURE__ */ new WeakMap();
+  var Bundle = class _Bundle {
+    constructor(el, data, THREE) {
+      this.subtle = "";
+      this.rate = 0;
+      this.azimuth = 0;
+      this.elevation = 0;
+      this.zoom = 1;
+      this.stateName = null;
+      this.t0 = 0;
+      this.duration = GROW;
+      this.moving = false;
+      this.active = false;
+      this.raf = 0;
+      this.last = 0;
+      this.resume = 0;
+      this.W = 0;
+      this.H = 0;
+      this.w = 0;
+      this.h = 0;
+      this.tick = (now) => {
+        this.raf = 0;
+        const dt = this.last ? Math.min(0.1, (now - this.last) / 1e3) : 0;
+        this.last = now;
+        if (this.moving) {
+          const k = Math.min(1, (now - this.t0) / this.duration);
+          for (const rb of this.strips) {
+            const span = Math.abs(rb.to - rb.from) * (rb.to > rb.from ? GROW : SHRINK);
+            rb.grow = span > 0 ? lerp(rb.from, rb.to, Math.min(1, k * this.duration / span)) : rb.to;
+          }
+          if (k >= 1) this.settle();
+        }
+        if (this.rate && !this.dragging() && now > this.resume) this.azimuth += dt * this.rate;
+        this.draw();
+        if (this.moving || this.rate) this.kick();
+      };
+      this.el = el;
+      this.THREE = THREE;
+      this.orbit = data.orbit;
+      this.point = data.libration_point ?? null;
+      this.setCamera();
+      for (const old of el.querySelectorAll(":scope > canvas.surface-image")) old.remove();
+      this.canvas = document.createElement("canvas");
+      this.canvas.className = "surface-image";
+      this.canvas.setAttribute("aria-hidden", "true");
+      el.prepend(this.canvas);
+      el.setAttribute("data-prevent-swipe", "");
+      this.labels = [...el.querySelectorAll(".label")];
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
+      this.camera.up.set(0, 0, 1);
+      this.line = this.makeLine(this.orbit.length, ORBIT_WIDTH, 2);
+      this.orbit.forEach((p, i) => this.setSegment(this.line.geometry, i, p, this.orbit[(i + 1) % this.orbit.length]));
+      this.dot = this.makeDot();
+      this.scene.add(this.line, this.dot);
+      this.strips = data.strips.map((r, i) => this.makeStrip(r, i));
+      const points = [...this.orbit];
+      for (const r of this.strips) this.orbit.forEach((p, i) => points.push(add(p, r.directions[i], r.half), add(p, r.directions[i], -r.half)));
+      const lo = [0, 1, 2].map((k) => Math.min(...points.map((p) => p[k])));
+      const hi = [0, 1, 2].map((k) => Math.max(...points.map((p) => p[k])));
+      this.center = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+      this.radius = 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+      const from = this.point ?? this.center;
+      this.arrows = (data.arrows ?? []).map((a) => {
+        const d = add(a.toward, from, -1);
+        return { id: a.id, u: add([0, 0, 0], d, 1 / (Math.hypot(...d) || 1)) };
+      });
+      this.dragging = dragToTurn(el, (dx, dy) => this.turn(dx, dy), () => {
+        this.resume = performance.now() + 1500;
+      });
+      this.recolor();
+      CACHE4.set(el, this);
+      this.sync(false);
+      this.fit();
+    }
+    // the segments of a line as quads of width pixels, for count segments set with setSegment()
+    makeLine(count, width, order) {
+      const THREE = this.THREE, geometry = new THREE.BufferGeometry();
+      const corner = new Float32Array(12 * count);
+      for (let i = 0; i < count; i++) corner.set(QUAD, 12 * i);
+      geometry.setAttribute("corner", new THREE.BufferAttribute(corner, 2));
+      geometry.setAttribute("start", new THREE.BufferAttribute(new Float32Array(18 * count), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("end", new THREE.BufferAttribute(new Float32Array(18 * count), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setDrawRange(0, 6 * count);
+      const material = new THREE.ShaderMaterial({
+        vertexShader: LINE_VERTEX,
+        fragmentShader: LINE_FRAGMENT,
+        transparent: true,
+        depthWrite: false,
+        uniforms: {
+          uColor: { value: new THREE.Vector3() },
+          uAlpha: { value: 1 },
+          uWidth: { value: width },
+          uSoft: { value: 0 },
+          uViewport: { value: new THREE.Vector2(1, 1) },
+          uBias: { value: 3e-3 }
+        }
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = order;
+      mesh.userData.width = width;
+      return mesh;
+    }
+    setSegment(geometry, k, a, b) {
+      const start4 = geometry.getAttribute("start"), end = geometry.getAttribute("end");
+      for (let v = 0; v < 6; v++) {
+        start4.setXYZ(6 * k + v, a[0], a[1], a[2]);
+        end.setXYZ(6 * k + v, b[0], b[1], b[2]);
+      }
+      start4.needsUpdate = end.needsUpdate = true;
+    }
+    makeDot() {
+      const THREE = this.THREE, geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(this.point ?? [0, 0, 0]), 3));
+      const material = new THREE.ShaderMaterial({
+        vertexShader: DOT_VERTEX,
+        fragmentShader: DOT_FRAGMENT,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        uniforms: { uColor: { value: new THREE.Vector3() }, uRing: { value: new THREE.Vector3() }, uSize: { value: DOT_SIZE } }
+      });
+      const dot2 = new THREE.Points(geometry, material);
+      dot2.frustumCulled = false;
+      dot2.renderOrder = 4;
+      dot2.visible = this.point !== null;
+      return dot2;
+    }
+    // the sheet of a strip as a mesh of three rows of points across it, at its two edges and on the
+    // orbit, whose positions are set by grow in place()
+    makeStrip(r, i) {
+      const THREE = this.THREE, n = this.orbit.length, geometry = new THREE.BufferGeometry();
+      const normal = new Float32Array(9 * n), across = new Float32Array(3 * n);
+      for (let k = 0; k < n; k++) {
+        const a = this.orbit[(k + n - 1) % n], b = this.orbit[(k + 1) % n], d = r.directions[k];
+        const t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const c = [t[1] * d[2] - t[2] * d[1], t[2] * d[0] - t[0] * d[2], t[0] * d[1] - t[1] * d[0]];
+        const l = Math.hypot(...c) || 1;
+        for (let j = 0; j < 3; j++) {
+          normal.set([c[0] / l, c[1] / l, c[2] / l], 3 * (3 * k + j));
+          across[3 * k + j] = j === 1 ? 0 : 1;
+        }
+      }
+      const index = [];
+      for (let k = 0; k < n; k++) {
+        const m = (k + 1) % n;
+        for (let j = 0; j < 2; j++) {
+          const a = 3 * k + j, b = 3 * m + j;
+          index.push(a, b, b + 1, a, b + 1, a + 1);
+        }
+      }
+      geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(9 * n), 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("aNormal", new THREE.BufferAttribute(normal, 3));
+      geometry.setAttribute("aAcross", new THREE.BufferAttribute(across, 1));
+      geometry.setIndex(index);
+      const uniforms = {
+        uColor: { value: new THREE.Vector3() },
+        uEdge: { value: new THREE.Vector3() },
+        uLight: { value: new THREE.Vector3(-0.45, -0.35, 0.82).normalize() },
+        uAlpha: { value: SHEET_ALPHA }
+      };
+      const material = (colorWrite) => new THREE.ShaderMaterial({
+        vertexShader: SHEET_VERTEX,
+        fragmentShader: SHEET_FRAGMENT,
+        side: THREE.DoubleSide,
+        transparent: true,
+        colorWrite,
+        uniforms
+      });
+      const sheet = new THREE.Mesh(geometry, material(true)), depth = new THREE.Mesh(geometry, material(false));
+      depth.renderOrder = 0.1 * i;
+      sheet.renderOrder = 1 + 0.1 * i;
+      const segments = this.makeLine(r.ribs.length, RIB_WIDTH, 3 + 0.1 * i);
+      for (const o of [sheet, depth, segments]) {
+        o.frustumCulled = false;
+        this.scene.add(o);
+      }
+      return { id: r.id, tone: r.tone, half: r.half_width, ribs: r.ribs, directions: r.directions, sheet, depth, segments, grow: 0, from: 0, to: 0, drawn: "" };
+    }
+    /** Reads the colors of the theme from the custom properties of the element, e.g. after a flip of the mode. */
+    recolor() {
+      const cs = getComputedStyle(this.el), css = (name, fallback) => rgb(cs.getPropertyValue(name), fallback);
+      const bg = css("--bg", [0.02, 0.02, 0.02]), text = css("--text", [0.95, 0.95, 0.94]);
+      const set2 = (target, c) => target.set(c[0], c[1], c[2]);
+      this.subtle = cs.getPropertyValue("--subtle").trim() || "#a6a6a0";
+      set2(this.line.material.uniforms.uColor.value, text);
+      set2(this.dot.material.uniforms.uColor.value, text);
+      set2(this.dot.material.uniforms.uRing.value, bg);
+      for (const r of this.strips) {
+        const tone = css(`--${r.tone}`, [0.94, 0.5, 0.31]);
+        set2(r.sheet.material.uniforms.uColor.value, tone);
+        set2(r.sheet.material.uniforms.uEdge.value, mix3(tone, bg, 0.35));
+        set2(r.segments.material.uniforms.uColor.value, mix3(tone, text, 0.4));
+      }
+    }
+    // the strips named by the visible fragment of the slide with data-surface-state and the highest
+    // fragment index, or by the data-surface-state of the element, or none. an unknown name is reported
+    target() {
+      let best = null, index = -Infinity;
+      for (const f of this.el.closest("section")?.querySelectorAll(".fragment.visible[data-surface-state]") ?? []) {
+        const i = num4(f.dataset.fragmentIndex, 0);
+        if (i >= index) {
+          best = f;
+          index = i;
+        }
+      }
+      const names = (best?.dataset.surfaceState ?? this.el.dataset.surfaceState ?? "").split(/\s+/).filter(Boolean);
+      const unknown = names.filter((name) => !this.strips.some((r) => r.id === name));
+      if (unknown.length) console.error(`beeson: unknown strip "${unknown.join(" ")}" of the bundle ${this.el.dataset.bundle}, known: ${this.strips.map((r) => r.id).join(", ")}`);
+      return names;
+    }
+    /** Sets the strips shown from the fragments of the slide, grown or shrunk, or at once. */
+    sync(animate) {
+      const names = this.target(), name = names.join(" ");
+      if (name === this.stateName) return;
+      const jump = !animate || this.stateName === null;
+      this.stateName = name;
+      this.el.dataset.shown = name;
+      let longest = 0;
+      for (const r of this.strips) {
+        r.from = r.grow;
+        r.to = names.includes(r.id) ? 1 : 0;
+        longest = Math.max(longest, Math.abs(r.to - r.from) * (r.to > r.from ? GROW : SHRINK));
+      }
+      if (jump || longest === 0) {
+        this.settle();
+        this.draw();
+        return;
+      }
+      this.duration = longest;
+      this.t0 = performance.now();
+      this.moving = true;
+      this.kick();
+    }
+    // the end of a change, at once
+    settle() {
+      this.moving = false;
+      for (const r of this.strips) r.grow = r.from = r.to;
+    }
+    /**
+     * The strips as drawn now, read by the tests: for each, its growth from 0 to 1, the growth of its
+     * sheet, and that of each of its segments. With settled, the change of state has ended. For each
+     * arrow, in the slide pixels of the element, its needle from the middle of the compass to the tip,
+     * and its direction in the scene, from the libration point to a point 0.1 toward its point.
+     */
+    probe() {
+      return {
+        state: this.stateName ?? "",
+        settled: !this.moving,
+        strips: this.strips.map((r) => ({ id: r.id, grow: r.grow, sheet: sheetGrowth(r.grow), ribs: r.ribs.map((_, k) => ribGrowth(r.grow, k, r.ribs.length)) })),
+        arrows: this.arrows.map((a, i) => {
+          const from = this.point ?? this.center, { middle, tips } = this.compass();
+          return { id: a.id, needle: [middle, tips[i]], scene: [this.screen(from), this.screen(add(from, a.u, 0.1))] };
+        })
+      };
+    }
+    /** Sizes the canvas from the box of the element on the screen, and draws. */
+    fit() {
+      const r = this.el.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+      const w = this.el.offsetWidth, h = this.el.offsetHeight;
+      if (!r.width || !r.height || !w || !h) return;
+      this.W = Math.max(1, Math.round(r.width * dpr));
+      this.H = Math.max(1, Math.round(r.height * dpr));
+      this.w = w;
+      this.h = h;
+      this.canvas.width = this.W;
+      this.canvas.height = this.H;
+      const px = dpr * r.height / h;
+      for (const mesh of [this.line, ...this.strips.map((rb) => rb.segments)]) {
+        mesh.material.uniforms.uViewport.value.set(this.W, this.H);
+        mesh.material.uniforms.uWidth.value = mesh.userData.width * px;
+      }
+      this.dot.material.uniforms.uSize.value = DOT_SIZE * px;
+      this.camera.aspect = this.W / this.H;
+      this.draw();
+    }
+    // the camera on a sphere about the middle of the box of the drawing, at the distance at which the
+    // sphere around the box fills the narrower field of view, divided by data-zoom
+    aim() {
+      const [cx, cy, cz] = this.center, R = this.radius;
+      const v = this.camera.fov * Math.PI / 360, half = Math.min(v, Math.atan(Math.tan(v) * this.camera.aspect));
+      const d = R / Math.sin(half) / this.zoom, c = Math.cos(this.elevation);
+      this.camera.position.set(cx + d * c * Math.cos(this.azimuth), cy + d * c * Math.sin(this.azimuth), cz + d * Math.sin(this.elevation));
+      this.camera.near = Math.max(0.01, d - 2 * R);
+      this.camera.far = d + 2 * R;
+      this.camera.lookAt(cx, cy, cz);
+      this.camera.updateProjectionMatrix();
+      this.camera.updateMatrixWorld();
+    }
+    // the points of the sheets and the segments at the growth of each strip, set only when it has
+    // changed since the last frame
+    place() {
+      const n = this.orbit.length;
+      for (const r of this.strips) {
+        const key = String(r.grow);
+        if (key === r.drawn) continue;
+        r.drawn = key;
+        const s = sheetGrowth(r.grow) * r.half;
+        const position = r.sheet.geometry.getAttribute("position");
+        for (let k = 0; k < n; k++) {
+          const p = this.orbit[k], d = r.directions[k];
+          position.setXYZ(3 * k, ...add(p, d, -s));
+          position.setXYZ(3 * k + 1, ...p);
+          position.setXYZ(3 * k + 2, ...add(p, d, s));
+        }
+        position.needsUpdate = true;
+        r.sheet.visible = r.depth.visible = s > 0;
+        r.ribs.forEach((i, k) => {
+          const g = ribGrowth(r.grow, k, r.ribs.length) * r.half, p = this.orbit[i], d = r.directions[i];
+          this.setSegment(r.segments.geometry, k, add(p, d, -g), add(p, d, g));
+        });
+        r.segments.visible = r.grow > 0;
+      }
+    }
+    // a point of the drawing in the slide pixels of the element, under the camera of now
+    screen(v) {
+      const p = new this.THREE.Vector3(...v).project(this.camera);
+      return [(p.x + 1) / 2 * this.w, (1 - p.y) / 2 * this.h];
+    }
+    // the compass in the slide pixels of the element: its middle, and the tip of the needle of each
+    // arrow, along the direction of the arrow under the turn of the camera, without perspective. the
+    // needle of a direction toward the camera or away from it is short
+    compass() {
+      const middle = [COMPASS_LEFT, COMPASS_TOP];
+      const q = this.camera.quaternion.clone().invert(), v = new this.THREE.Vector3();
+      const at = (d) => {
+        v.set(...d).applyQuaternion(q);
+        return [middle[0] + COMPASS_RADIUS * v.x, middle[1] - COMPASS_RADIUS * v.y];
+      };
+      return { middle, tips: this.arrows.map((a) => at(a.u)) };
+    }
+    // the circle of the plane of the orbit about the middle of the compass, and a needle with a head
+    // toward the point of each arrow, over the image of the scene
+    drawCompass(ctx) {
+      if (!this.arrows.length) return;
+      const { middle, tips } = this.compass();
+      const q = this.camera.quaternion.clone().invert(), v = new this.THREE.Vector3();
+      ctx.save();
+      ctx.scale(this.W / this.w, this.H / this.h);
+      ctx.strokeStyle = ctx.fillStyle = this.subtle;
+      ctx.lineWidth = CIRCLE_WIDTH;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        v.set(Math.cos(i * Math.PI / 32), Math.sin(i * Math.PI / 32), 0).applyQuaternion(q);
+        ctx.lineTo(middle[0] + COMPASS_RADIUS * v.x, middle[1] - COMPASS_RADIUS * v.y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = NEEDLE_WIDTH;
+      for (const t of tips) {
+        const l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
+        if (l < 1) continue;
+        const e = [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l], head = Math.min(HEAD, l), b = 0.4 * head;
+        const base = [t[0] - e[0] * head, t[1] - e[1] * head];
+        ctx.beginPath();
+        ctx.moveTo(...middle);
+        ctx.lineTo(base[0], base[1]);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(t[0], t[1]);
+        ctx.lineTo(base[0] - e[1] * b, base[1] + e[0] * b);
+        ctx.lineTo(base[0] + e[1] * b, base[1] - e[0] * b);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    // the labels at their anchors in the pixels of the slide. data-at is L1, for the libration point,
+    // the id of a strip, or the id of an arrow. the label of a strip is at the outer end of the
+    // segment of its rib data-rib, from 0, on the side data-side, 1 or -1, and it is faded in with its
+    // sheet. the label of an arrow is past the head of its needle, by LABEL_GAP and by its half extent
+    // along the needle, or above the middle of the compass when the needle is too short to show
+    label() {
+      const { middle, tips } = this.compass();
+      for (const lab of this.labels) {
+        const at = lab.dataset.at ?? "";
+        const i = this.arrows.findIndex((a) => a.id === at);
+        if (i >= 0) {
+          const t = tips[i], l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
+          const e = l < 1 ? [0, -1] : [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l];
+          const reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
+          lab.style.left = `${t[0] + e[0] * reach + num4(lab.dataset.dx, 0)}px`;
+          lab.style.top = `${t[1] + e[1] * reach + num4(lab.dataset.dy, 0)}px`;
+          lab.style.opacity = "1";
+          continue;
+        }
+        let anchor2 = null, alpha = 1;
+        const r = this.strips.find((rb) => rb.id === at);
+        if (r) {
+          const k = clamp2(Math.round(num4(lab.dataset.rib, 0)), 0, r.ribs.length - 1), i2 = r.ribs[k];
+          anchor2 = add(this.orbit[i2], r.directions[i2], r.half * (num4(lab.dataset.side, 1) < 0 ? -1 : 1));
+          alpha = sheetGrowth(r.grow);
+        } else if (this.point && /^L\d$/.test(at)) anchor2 = this.point;
+        if (!anchor2) continue;
+        const [x, y] = this.screen(anchor2);
+        lab.style.left = `${x + num4(lab.dataset.dx, 0)}px`;
+        lab.style.top = `${y + num4(lab.dataset.dy, -30)}px`;
+        lab.style.opacity = String(alpha);
+      }
+    }
+    /** Draws the orbit and the strips at their growth and the camera of now, and places the labels. */
+    draw() {
+      if (!this.W) return;
+      const r = renderer();
+      if (!r) return;
+      this.place();
+      this.aim();
+      this.label();
+      if (r.domElement.width !== this.W || r.domElement.height !== this.H) r.setSize(this.W, this.H, false);
+      r.render(this.scene, this.camera);
+      const ctx = this.canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, this.W, this.H);
+      ctx.drawImage(r.domElement, 0, 0);
+      this.drawCompass(ctx);
+    }
+    kick() {
+      if (this.active && !this.raf) this.raf = requestAnimationFrame(this.tick);
+    }
+    // the camera and the turn read from the attributes of the element
+    setCamera() {
+      const w = this.view().written;
+      this.rate = w.turn > 0 ? 2 * Math.PI / w.turn : 0;
+      this.azimuth = w.azimuth * Math.PI / 180;
+      this.elevation = w.elevation * Math.PI / 180;
+      this.zoom = w.zoom;
+    }
+    /** Turns the camera as a drag by dx and dy screen pixels does. */
+    turn(dx, dy) {
+      const scale = this.el.getBoundingClientRect().width / (this.el.offsetWidth || 1) || 1;
+      this.azimuth -= dx / scale * 5e-3;
+      this.elevation = clamp2(this.elevation + dy / scale * 4e-3, -1.45, 1.45);
+      if (!this.raf) this.draw();
+    }
+    /** The camera drawn now and the values read from the attributes of the element, with the angles in degrees, as of a Surface for the editor. A bundle does not scale its heights, hence its zscale is 1. */
+    view() {
+      const d = this.el.dataset, deg = 180 / Math.PI;
+      return {
+        azimuth: this.azimuth * deg,
+        elevation: this.elevation * deg,
+        zoom: this.zoom,
+        written: { azimuth: num4(d.azimuth, -60), elevation: num4(d.elevation, 32), zoom: num4(d.zoom, 1), turn: num4(d.turn, TURN2), zscale: 1 }
+      };
+    }
+    /** Reads the camera and the turn from the attributes of the element again, e.g. after the editor changed them. */
+    configure() {
+      this.setCamera();
+      this.draw();
+    }
+    /** Takes the azimuth, the elevation, and the pause after a drag of the camera of other, a bundle. */
+    follow(other) {
+      if (!(other instanceof _Bundle)) return;
+      this.azimuth = other.azimuth;
+      this.elevation = other.elevation;
+      this.resume = other.resume;
+    }
+    /** Starts the turning of the camera and the growth of the strips, while the slide is shown. */
+    start() {
+      this.active = true;
+      this.last = 0;
+      if (this.moving || this.rate) this.kick();
+      else this.draw();
+    }
+    /** Stops the animation, and ends a change at once. */
+    stop() {
+      this.active = false;
+      cancelAnimationFrame(this.raf);
+      this.raf = 0;
+      if (this.moving) this.settle();
+    }
+  };
+  function mount4(root2) {
+    const out = [];
+    for (const el of root2.querySelectorAll(".surface[data-bundle]")) {
+      const known = CACHE4.get(el);
+      if (known) {
+        out.push(known);
+        continue;
+      }
+      const id = el.dataset.bundle ?? "";
+      const script2 = document.getElementById(id);
+      const data = script2 ? parseBundle(script2.textContent ?? "") : `the JSON script with the id "${id}" is not found`;
+      if (typeof data === "string") {
+        console.error(`beeson: the bundle ${id} is not drawn, since ${data}`);
+        continue;
+      }
+      if (!renderer() || !window.THREE) continue;
+      try {
+        out.push(new Bundle(el, data, window.THREE));
+      } catch (error) {
+        console.error(`beeson: the bundle ${id} is not drawn, since ${String(error)}`);
+      }
+    }
+    return out;
+  }
+
+  // src/fly.ts
+  function box2(nodes) {
+    const rects = nodes.map((n) => n.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
+    if (!rects.length) return null;
+    const left = Math.min(...rects.map((r) => r.left)), right = Math.max(...rects.map((r) => r.right));
+    const top = Math.min(...rects.map((r) => r.top)), bottom = Math.max(...rects.map((r) => r.bottom));
+    return { x: (left + right) / 2, y: (top + bottom) / 2, w: right - left };
+  }
+  function flyIn(slide, el) {
+    const from = box2([...slide.querySelectorAll(el.dataset.flyFrom ?? "")]);
+    const to = box2(el.dataset.flyTo ? [...el.querySelectorAll(el.dataset.flyTo)] : [el]);
+    const own = el.getBoundingClientRect();
+    if (!from || !to || !to.w || !el.offsetWidth) return;
+    const k = own.width / el.offsetWidth;
+    const seconds2 = Number(el.dataset.flyDuration ?? 1.2);
+    el.style.transition = "none";
+    el.style.transformOrigin = `${(to.x - own.left) / k}px ${(to.y - own.top) / k}px`;
+    el.style.transform = `translate(${(from.x - to.x) / k}px, ${(from.y - to.y) / k}px) scale(${from.w / to.w})`;
+    void el.offsetWidth;
+    el.style.transition = `transform ${seconds2}s cubic-bezier(0.45, 0, 0.25, 1), opacity 0s`;
+    el.style.transform = "";
+    setTimeout(() => {
+      el.style.transition = "";
+      el.style.transformOrigin = "";
+    }, seconds2 * 1e3 + 50);
+  }
+  function fly(slide, shown) {
+    for (const f of shown) {
+      for (const el of [f, ...f.querySelectorAll("[data-fly-from]")]) {
+        if (el instanceof HTMLElement && el.dataset.flyFrom) flyIn(slide, el);
+      }
+    }
+  }
+
   // src/steps.ts
   var TONES2 = ["accent", "violet", "blue", "red"];
   function resolve(steps, current) {
@@ -4887,8 +5648,10 @@ void main() {
       for (const name of steps[i].highlight) lit.set(name, steps[i].tone);
     }
     const named = new Set(steps.filter((s) => s.visible && s.index === current).flatMap((s) => s.highlight));
+    const focused = steps.some((s) => s.visible && s.focus);
     const held = steps.map((s) => {
       if (!s.visible || s.index === current) return false;
+      if (focused) return true;
       const through = s.keep === "next" ? indices.find((k) => k > s.index) ?? s.index : s.keep;
       if (through !== null && current <= through) return true;
       return s.holds.some((name) => named.has(name));
@@ -4907,7 +5670,7 @@ void main() {
       const unindexed = frags.filter((f) => !f.hasAttribute("data-fragment-index"));
       const last = unindexed.length ? [unindexed[unindexed.length - 1]] : frags.filter((f) => Number(f.dataset.fragmentIndex) === Math.max(...frags.map((g) => Number(g.dataset.fragmentIndex))));
       const boxes = new Set(frags.filter(isCopy).map((f) => f.parentElement));
-      const dimsBox = [...boxes].some((box2) => !last.some((f) => f.parentElement === box2 && isCopy(f)));
+      const dimsBox = [...boxes].some((box3) => !last.some((f) => f.parentElement === box3 && isCopy(f)));
       if (!dimsBox && !frags.some((f) => !last.includes(f) && hasContent(f) && !isCopy(f) && !holdsVideo(f))) continue;
       if (last.some(delayed)) {
         slide.setAttribute(MOVES_ON, "");
@@ -4924,7 +5687,7 @@ void main() {
     const frags = [...slide.querySelectorAll(".fragment")];
     if (!slide.querySelector("section")) slide.toggleAttribute("data-complete", !slide.hasAttribute(MOVES_ON) && frags.every((f) => f.classList.contains("visible")));
     const names = [...new Set(frags.flatMap((f) => words2(f.dataset.highlight)))];
-    if (!names.length && !frags.some((f) => f.hasAttribute("data-keep"))) return;
+    if (!names.length && !frags.some((f) => f.hasAttribute("data-keep") || f.hasAttribute("data-focus"))) return;
     const select2 = (name) => `.${CSS.escape(name)}`;
     const steps = frags.map((f) => {
       const keep = f.getAttribute("data-keep");
@@ -4935,7 +5698,8 @@ void main() {
         highlight: words2(f.dataset.highlight),
         unhighlight: words2(f.dataset.unhighlight),
         tone: TONES2.find((t) => t !== "accent" && t === f.dataset.tone) ?? "accent",
-        holds: names.filter((name) => f.matches(select2(name)) || f.querySelector(select2(name)))
+        holds: names.filter((name) => f.matches(select2(name)) || f.querySelector(select2(name))),
+        focus: f.hasAttribute("data-focus")
       };
     });
     const current = Math.max(-1, ...steps.filter((s) => s.visible).map((s) => s.index));
@@ -5121,9 +5885,9 @@ void main() {
     const deck = document.querySelector(".reveal");
     const live = [...document.querySelectorAll(".backdrop")].map((el) => Orbits.of(el)).filter((o) => o?.tracing);
     if (!deck || !live.length || !CSS.supports("view-transition-class", "a") || !CSS.supports("selector(:active-view-transition)")) return null;
-    const box2 = deck.getBoundingClientRect();
-    root.style.setProperty("--flip-deck-x", `${x - box2.left}px`);
-    root.style.setProperty("--flip-deck-y", `${y - box2.top}px`);
+    const box3 = deck.getBoundingClientRect();
+    root.style.setProperty("--flip-deck-x", `${x - box3.left}px`);
+    root.style.setProperty("--flip-deck-y", `${y - box3.top}px`);
     deck.style.setProperty("view-transition-name", "flip-deck");
     const canvases = live.flatMap((o) => o.canvases);
     canvases.forEach((c, k) => {
@@ -5138,12 +5902,12 @@ void main() {
     };
     const layer = document.createElement("div");
     layer.className = "flip-ghost";
-    Object.assign(layer.style, { left: `${box2.left}px`, top: `${box2.top}px`, width: `${box2.width}px`, height: `${box2.height}px` });
+    Object.assign(layer.style, { left: `${box3.left}px`, top: `${box3.top}px`, width: `${box3.width}px`, height: `${box3.height}px` });
     return {
       // called in the update of the view transition before the next mode is applied, hence the
       // canvases are redrawn after it in the new view of the deck
       lift() {
-        for (const o of live) o.ghost(layer, box2);
+        for (const o of live) o.ghost(layer, box3);
         document.body.append(layer);
         unname();
       },
@@ -5466,6 +6230,9 @@ void main() {
   var TRACED = ["title", "section", "closing"];
   var backdrops = [];
   var surfaces = [];
+  onRestore(() => {
+    for (const s of surfaces) s.draw();
+  });
   var plots = [];
   var EDITING = new URLSearchParams(location.search).has("edit");
   var PLAYED = !EDITING && window.parent !== window && new URLSearchParams(location.search).has("from-editor");
@@ -5495,7 +6262,7 @@ void main() {
   function remount() {
     for (const o of mount(document)) if (!backdrops.includes(o)) backdrops.push(o);
     if (document.querySelector(".surface")) {
-      for (const s of mount3(document)) if (!surfaces.includes(s)) surfaces.push(s);
+      for (const s of [...mount3(document), ...mount4(document)]) if (!surfaces.includes(s)) surfaces.push(s);
     }
     for (const p of mountPlots(document)) if (!plots.includes(p)) plots.push(p);
   }
@@ -5530,12 +6297,12 @@ void main() {
     const loop = o.el.hasAttribute("data-loop");
     if (slide.hasAttribute("data-auto-animate")) {
       o.complete();
-      const seconds = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
+      const seconds2 = Number(slide.dataset.autoAnimateDuration ?? window.Reveal.getConfig().autoAnimateDuration ?? 1);
       setTimeout(() => {
         if (window.Reveal.getCurrentSlide() !== slide) return;
         o.fit();
         if (loop) o.start();
-      }, seconds * 1e3 + 50);
+      }, seconds2 * 1e3 + 50);
     } else if (animated(o, slide)) {
       o.reset();
       o.start();
@@ -5573,6 +6340,10 @@ void main() {
       p.syncSteps();
       p.still();
     }
+    if (root2.matches("tycho-viewer") || root2.querySelector("tycho-viewer")) {
+      markViewers();
+      syncViewers(get());
+    }
     const slide = root2.closest(".reveal .slides section");
     if (slide) applySteps(slide);
   }
@@ -5592,9 +6363,9 @@ void main() {
     void o.ready.then(() => o.complete());
     return o;
   }
-  async function fitWindow(el, box2) {
+  async function fitWindow(el, box3) {
     const trajectories = el.dataset.trajectories !== void 0 ? (await trajectoriesFor(el)).trajectories : builtIn(el.dataset.backdrop ?? "");
-    const b = box2 ?? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
+    const b = box3 ?? { left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight };
     return b.width && b.height ? fitView(trajectories, b, { width: 1920, height: 1080 }) : null;
   }
   function completeAll() {
@@ -5643,7 +6414,7 @@ void main() {
       hooks.internal = reveal;
       addRestoreSteps(document);
     } });
-    const editing = EDITING ? { showHiddenSlides: true } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
+    const editing = EDITING ? { showHiddenSlides: true, focusBodyOnPageVisibilityChange: false } : PLAYED && !RECEIVER ? { postMessageEvents: true } : {};
     await deck.initialize({ ...DEFAULTS, ...editing, ...options, plugins });
     initChrome();
     initSteps(deck);
@@ -5728,7 +6499,10 @@ void main() {
       stepPlots(deck.getCurrentSlide());
       syncCitations(deck.getCurrentSlide());
     };
-    deck.on("fragmentshown", step2);
+    deck.on("fragmentshown", (event) => {
+      step2();
+      if (!still2()) fly(deck.getCurrentSlide(), event.fragments ?? []);
+    });
     deck.on("fragmenthidden", step2);
     const stepped = (event) => {
       const shown = event.fragments ?? [];

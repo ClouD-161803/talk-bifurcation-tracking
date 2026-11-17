@@ -360,9 +360,9 @@ function toLine(aside: HTMLElement, li: HTMLLIElement): void {
   caretAt(line[0] ?? out.find((n) => n instanceof Element && n.localName === 'br')!);
 }
 
-// fn run on the aside of c as one input of typing, which the command around it names
-function change(app: App, c: Caret, fn: () => void): void {
-  app.history.beforeTyping(c.aside);
+// fn run on the aside of c as one input of typing, named by label or by the command around it
+function change(app: App, c: Caret, fn: () => void, label?: string): void {
+  app.history.beforeTyping(c.aside, label);
   fn();
   app.history.afterTyping(c.aside);
   app.markDirty();
@@ -437,7 +437,10 @@ function installDashes(app: App): void {
     if (!c || c.li || !c.range.collapsed) return;
     const first = lineOf(c).nodes[0];
     if (!(first instanceof Text) || c.range.startContainer !== first || c.range.startOffset !== 2 || !/^[-–][  ]/u.test(first.data)) return;
-    void app.history.transact('Arrows', () => change(app, c, () => {
+    // this listener runs before the one of text/typing.ts, hence the typed space is recorded here.
+    // the item is an entry of typing, which a change of the notes by others in a session keeps
+    app.history.afterTyping(c.aside);
+    change(app, c, () => {
       first.deleteData(0, 2);
       if (first.data) c.range.setStart(first, 0);
       else {
@@ -445,6 +448,7 @@ function installDashes(app: App): void {
         first.remove();
       }
       toItem(c);
-    })).catch((e) => app.fail(e));
+    }, 'Arrows');
+    app.history.break();
   });
 }

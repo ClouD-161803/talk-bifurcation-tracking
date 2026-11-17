@@ -424,6 +424,24 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(errors(page), []);
   });
 
+  test(`an insert of a script right after a dash item of the speaker notes is an undo of its own (${platform})`, async (t) => {
+    const page = await load(t, platform, TEXT);
+    if (!(await state(page, 'view.notes')).checked) await exec(page, 'view.notes');
+    await frames(page);
+    await caretIn(page, NOTES);
+    await enter(page);
+    await typeKeys(page, '- ');
+    await page.evaluate(`document.execCommand('insertText', false, 'x')`);
+    await frames(page);
+    const notes = (item) => page.source.replace('Notes of a content slide.</aside>', `Notes of a content slide.<ul><li>${item}</li></ul></aside>`);
+    assert.equal(await render(page), notes('x'));
+    assert.equal(await undoLabel(page), 'Undo Typing');
+    await undo(page);
+    assert.equal(await render(page), notes('<br>'));
+    assert.equal(await undoLabel(page), 'Undo Arrows');
+    assert.deepEqual(errors(page), []);
+  });
+
   test(`Arrows and Paragraphs of Format > Text make a line of the notes an item and back (${platform})`, async (t) => {
     const page = await load(t, platform, TEXT);
     if (!(await state(page, 'view.notes')).checked) await exec(page, 'view.notes');

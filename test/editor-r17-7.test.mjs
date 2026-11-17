@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, clickText, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, press, saveAndReopen, type, typeKeys } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const LISTS = 'test/pages/editor-r13-3.html';
@@ -223,6 +223,33 @@ for (const platform of PLATFORMS) {
     await typedAt(page, page.source, `${SAME}|</li>`, 'q');
     await undoAll(page);
   });
+
+  // the caret is not put at the end of the item, where the text did not change
+  for (const [keys, label, text, at] of [['XY', 'Undo Typing', SAME, 4], ['"', 'Undo Smart Quote', SAME.replace('Two ', 'Two "'), 5]]) {
+    test(`an undo of ${label.slice(5).toLowerCase()} inside an item after a click into the heading puts the caret where the text changed (${platform})`, async (t) => {
+      const page = await load(t, platform, 'test-deck.html', 2);
+      await caretIn(page, SAME, 4);
+      await typeKeys(page, keys);
+      await page.waitFor(`${find(SAME.slice(0, 3))}.textContent.length > ${SAME.length}`);
+      const h2 = await page.evaluate(`(() => { const r = document.querySelector('${SLIDE} h2').getClientRects()[0]; return { x: r.left + 40, y: r.top + r.height / 2 }; })()`);
+      await clickText(page, h2);
+      await page.waitFor(`document.querySelector('${SLIDE} h2').contains(getSelection().focusNode)`);
+      assert.equal(await undoLabel(page), label);
+      await press(page, 'Mod+Z');
+      // the redo is enabled once the step has ended, with the caret put
+      await page.waitFor(`window.BeesonEditor.state('edit.redo').enabled`);
+      const caret = await page.evaluate(`(() => {
+        const li = ${find(SAME.slice(0, 3))};
+        const s = getSelection();
+        if (!s.rangeCount || !s.isCollapsed || !li.contains(s.focusNode)) return null;
+        const r = document.createRange();
+        r.setStart(li, 0);
+        r.setEnd(s.focusNode, s.focusOffset);
+        return { text: li.textContent, at: r.toString().length };
+      })()`);
+      assert.deepEqual(caret, { text, at });
+    });
+  }
 }
 
 for (const platform of PLATFORMS) {
