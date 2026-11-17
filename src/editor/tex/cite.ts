@@ -272,8 +272,11 @@ export function citations(store: Store): { cite(target: CiteTarget): void; key(e
     ev.preventDefault();
     ev.stopImmediatePropagation();
     app.history.beforeTyping(host);
-    a.next.insertData(0, ev.data);
-    s.collapse(a.next, ev.data.length);
+    // a space at the end of the text element is typed as a no-break space, as in substitute.ts,
+    // since a plain space there is not drawn and Chrome puts the next key before the citation
+    const data = a.next.data || a.next.nextSibling ? ev.data : ev.data.replace(/ $/, '\u00a0');
+    a.next.insertData(0, data);
+    s.collapse(a.next, data.length);
     app.history.afterTyping(host);
     app.markDirty();
     app.invalidate('content');
