@@ -708,6 +708,17 @@ test('an operation that arrives during the stop is refused rather than lost', { 
   assert.ok(kept || refused, `the late operation was answered ${late.status} ${late.text} and is not in index.html`);
 });
 
+test('a SIGTERM sent as soon as the edit command prints its address stops it with its last write', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (let i = 0; i < 5; i++) {
+    const child = spawn(process.execPath, [EDIT, talk, '--port', '0', '--no-open'], { env: { ...process.env, XDG_CONFIG_HOME: config, APPDATA: config }, stdio: ['ignore', 'pipe', 'ignore'] });
+    child.stdout.once('data', () => child.kill('SIGTERM'));
+    const [code, signal] = await new Promise((done) => child.once('exit', (...end) => done(end)));
+    assert.deepEqual({ code, signal }, { code: 0, signal: null }, `run ${i + 1}`);
+  }
+});
+
 test('a second start in the same talk folder hands over the address of the first', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
