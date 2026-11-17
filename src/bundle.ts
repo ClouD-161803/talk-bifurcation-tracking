@@ -161,6 +161,10 @@ type Strip = {
 type Arrow = { id: string; u: Vec };
 
 const CACHE = new WeakMap<HTMLElement, Bundle>();
+// the text of the JSON script of each element reported by mount(), or null for a missing script.
+// mount() is called again at each change of the page, and it reports an element again only when this
+// text has changed
+const REPORTED = new WeakMap<HTMLElement, string | null>();
 
 /** One drawing per `.surface` element with data-bundle, made with mount(). */
 export class Bundle {
@@ -690,15 +694,14 @@ export function mount(root: ParentNode): Bundle[] {
     const known = CACHE.get(el);
     if (known) { out.push(known); continue; }
     const id = el.dataset.bundle ?? '';
-    const script = document.getElementById(id);
-    const data = script ? parseBundle(script.textContent ?? '') : `the JSON script with the id "${id}" is not found`;
-    if (typeof data === 'string') {
-      console.error(`beeson: the bundle ${id} is not drawn, since ${data}`);
-      continue;
-    }
+    const text = document.getElementById(id)?.textContent ?? null;
+    if (REPORTED.has(el) && REPORTED.get(el) === text) continue;
+    const report = (reason: string) => { REPORTED.set(el, text); console.error(`beeson: the bundle ${id} is not drawn, since ${reason}`); };
+    const data = text === null ? `the JSON script with the id "${id}" is not found` : parseBundle(text);
+    if (typeof data === 'string') { report(data); continue; }
     if (!renderer() || !window.THREE) continue;
     // a fault the parser does not catch leaves this bundle blank, and the deck is started
-    try { out.push(new Bundle(el, data, window.THREE)); } catch (error) { console.error(`beeson: the bundle ${id} is not drawn, since ${String(error)}`); }
+    try { out.push(new Bundle(el, data, window.THREE)); } catch (error) { report(String(error)); }
   }
   return out;
 }

@@ -351,6 +351,23 @@ test('a tex.js replaced from outside, as npm run tex writes it, draws its macros
   clean(ben, MISSING);
 });
 
+// npm run tex writes tex.js in place, hence a page may read it cut off between two writes. the cut
+// tex.js is held on disk here until the page has read it
+test('a tex.js read cut off while a program writes it is not run, and the page draws the whole tex.js once it is written', { timeout: 300_000 }, async (t) => {
+  const server = await texTalk(t);
+  const [ann] = await pages(t, server, [sessionUrl(server.edit)]);
+  await onEvery([ann], `${RED} && ${HEAD} === 'conjecture.'`);
+  const changed = server.read('tex.js').replace('  "macros": {\n', '  "macros": {\n    "Q": "\\\\mathbb{Q}",\n');
+  await ann.evaluate(`(${C}.on('tex', () => (window.__drawn = ${C}.tex)), true)`);
+  const count = await ann.evaluate(`${C}.tex`);
+  server.write('tex.js', changed.slice(0, changed.indexOf('mathbb')));
+  await ann.waitFor(`${C}.tex !== ${count} && window.__drawn === ${C}.tex`, 30_000);
+  assert.equal(await ann.evaluate(RED), true, 'the page keeps the macros of the tex.js before');
+  server.write('tex.js', changed);
+  await onEvery([ann], `!${RED}`);
+  clean(ann, MISSING);
+});
+
 test('a page that stays open across a kill and a start of the edit command draws a tex.js changed after the start, also when the new count of the changes reaches the count of the page', { timeout: 300_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
   const server = await texTalk(t);
   const page = await tab(browser, sessionUrl(server.edit));

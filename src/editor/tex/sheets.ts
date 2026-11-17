@@ -431,12 +431,21 @@ function sheets(host: TexHost): TexSheets {
 
   // the deck drawn with the tex.js next to it, which changed on disk, e.g. in a session. its text
   // is not JSON, hence it is run as an inline script. the redraws run one at a time, so that an
-  // older text is not drawn last
+  // older text is not drawn last. a text that does not parse, e.g. one read while npm run tex writes
+  // it, is not run, since the end of the write is a change of tex.js on disk that is drawn again
   let redrawing: Promise<void> = Promise.resolve();
+  const parses = (text: string): boolean => {
+    try {
+      new Function(text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const redraw = (): Promise<void> =>
     (redrawing = redrawing.catch(() => {}).then(async () => {
       const found = await fetched('tex.js');
-      if (found === null) return;
+      if (found === null || !parses(found)) return;
       const script = document.createElement('script');
       script.textContent = found;
       document.head.append(script);
