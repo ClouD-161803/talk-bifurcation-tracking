@@ -176,3 +176,34 @@ test('a source saved with a byte-order mark is written over the text that a page
   assert.equal(stale.status, 409);
   assert.equal(stale.json().text, edited);
 });
+
+test('a stop of the edit command ends a compile that runs, and the command ends in its usual time', { skip: process.platform === 'win32' ? 'the fake latex is a shell script' : false, timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t, DECK);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(talk, 'figures'));
+  writeFileSync(join(talk, 'figures', 'orbit.tex'), DRAWING);
+  // a latex of TeX Live that does not end, with the id of each of its runs in pids
+  const bin = join(root, 'texlive');
+  const pids = join(root, 'pids');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'latex'), `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)"; exit 0; fi\necho $$ >> '${pids}'\nexec sleep 600\n`);
+  writeFileSync(join(bin, 'dvisvgm'), '#!/bin/sh\nexit 1\n');
+  for (const name of ['latex', 'dvisvgm']) chmodSync(join(bin, name), 0o755);
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config, BEESON_TEXBIN: bin } });
+  t.after(() => stopEdit(edit));
+  const pid = Number(await until(() => readFileSync(pids, { encoding: 'utf8', flag: 'a+' }).trim(), 'latex to start'));
+  const stopped = Date.now();
+  edit.child.kill('SIGTERM');
+  const code = await Promise.race([edit.exited, new Promise((done) => setTimeout(() => done('hung'), 15_000))]);
+  assert.notEqual(code, 'hung', 'the edit command did not end within 15 s of SIGTERM');
+  assert.equal(code, 0);
+  assert.ok(Date.now() - stopped < 15_000);
+  await until(() => {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  }, 'latex to end', 5_000);
+});

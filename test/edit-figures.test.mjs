@@ -270,3 +270,29 @@ test('a figure whose preamble changes during its compile is compiled again', asy
   assert.equal(w.state().uncompiled, 0);
   await w.stop();
 });
+
+test('a stop ends the compile that runs, and a newer preview of a page ends the preview of this page that runs', async (t) => {
+  const f = folder(t, { 'figures/a.tex': DRAWING });
+  const signals = [];
+  // a compile that ends only when its signal is aborted
+  const compile = ({ name, signal }) => {
+    signals.push(signal);
+    return new Promise((done) => signal.addEventListener('abort', () => done({ errors: [{ file: null, line: null, message: 'stopped' }] }), { once: true }));
+  };
+  f.write('figures/a.js', output(f.dir, 'a', DRAWING, { width: 600, height: 400 }).text);
+  const { w } = watcher(f, deck(tag('a')), { compiler: { compile } });
+  await w.idle();
+  const first = w.preview('page-1', 'a', `${DRAWING}% 1\n`, { width: 100, height: 100 });
+  await new Promise((done) => setTimeout(done, 20));
+  assert.equal(signals.length, 1);
+  const second = w.preview('page-1', 'a', `${DRAWING}% 2\n`, { width: 100, height: 100 });
+  assert.deepEqual(await first, { superseded: true });
+  assert.equal(signals[0].aborted, true);
+  await new Promise((done) => setTimeout(done, 20));
+  assert.equal(signals.length, 2);
+  // the stop ends the compile of the second preview at once
+  const stop = w.stop();
+  assert.deepEqual(await second, { superseded: true });
+  await stop;
+  assert.equal(signals[1].aborted, true);
+});
