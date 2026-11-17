@@ -259,22 +259,22 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
   <div class="pair">
     <div class="fragment" data-fragment-index="2" data-surface-state="extrema" data-surface-points="L1 L2 L3">
       <p class="small">Collinear, Earth–Moon \(\mu\)</p>
-      <div class="math">\[\begin{aligned} \LL1 &\approx (0.8369, 0, 0), \\ \LL2 &\approx (1.1557, 0, 0), \\ \LL3 &\approx (-1.0051, 0, 0), \end{aligned}\]</div>
+      <div class="math">\[\begin{aligned} \mathcal{L}_1 &\approx (0.8369, 0, 0), \\ \mathcal{L}_2 &\approx (1.1557, 0, 0), \\ \mathcal{L}_3 &\approx (-1.0051, 0, 0), \end{aligned}\]</div>
     </div>
     <div class="fragment" data-fragment-index="3" data-surface-state="extrema" data-surface-points="L4 L5">
       <p class="small">Triangular</p>
-      <div class="math">\[\begin{aligned} \LL4 &= \left(\tfrac{1}{2} - \mu, \tfrac{\sqrt 3}{2}, 0\right), \\ \LL5 &= \left(\tfrac{1}{2} - \mu, -\tfrac{\sqrt 3}{2}, 0\right). \end{aligned}\]</div>
+      <div class="math">\[\begin{aligned} \mathcal{L}_4 &= \left(\tfrac{1}{2} - \mu, \tfrac{\sqrt 3}{2}, 0\right), \\ \mathcal{L}_5 &= \left(\tfrac{1}{2} - \mu, -\tfrac{\sqrt 3}{2}, 0\right). \end{aligned}\]</div>
     </div>
   </div>
   <p><span class="fragment" data-fragment-index="4" data-highlight="hl-sad" data-surface-state="extrema" data-surface-accent="L1 L2 L3">The collinear points are <span class="hl-sad">center \(\times\) center \(\times\) saddle</span>,</span> <span class="fragment" data-fragment-index="5" data-highlight="hl-cen" data-tone="violet" data-surface-state="extrema" data-surface-accent="L1 L2 L3" data-surface-violet="L4 L5">the triangular <span class="hl-cen">center \(\times\) center \(\times\) center</span>.</span></p>
   <p class="fragment" data-fragment-index="6" style="translate: 0px -6px">The triangular points become unstable for mass ratio above the Routh value, \(\mu &gt; \mu_R \approx 0.0385\).</p>
   <div class="qr corner fragment" data-final data-qr="https://claudiovestini.com/files/MAE541_Term_Paper.pdf"></div>
   <div class="surface" data-function="effective-potential" data-mu="0.03" data-surface-state="effective">
-    <span class="label" data-at="L1">\(\LL1\)</span>
-    <span class="label" data-at="L2">\(\LL2\)</span>
-    <span class="label" data-at="L3">\(\LL3\)</span>
-    <span class="label" data-at="L4">\(\LL4\)</span>
-    <span class="label" data-at="L5">\(\LL5\)</span>
+    <span class="label" data-at="L1">\(\mathcal{L}_1\)</span>
+    <span class="label" data-at="L2">\(\mathcal{L}_2\)</span>
+    <span class="label" data-at="L3">\(\mathcal{L}_3\)</span>
+    <span class="label" data-at="L4">\(\mathcal{L}_4\)</span>
+    <span class="label" data-at="L5">\(\mathcal{L}_5\)</span>
   </div>
   <aside class="notes"><p>For questions: μ_R = (1 − √(23/27))/2 = 0.038521. The surface is drawn at μ = 0.03.<br><br>The most geometrically driven of you will notice that sqrt(3)/2 is the height of an equilateral triangle. Indeed the triangular points are called so because they form equilateral triangles with the primary and secondary, and are 1 unit away from each.<br><br>Say 84 percent of the way is L1, 15 percent of the way out L2, about 1 earth moon distance out is L3. Thus farthest from earth is L2 followed by L4,5. JWST is orbiting Sun–Earth L2, about 1.5mil km from earth (this is ~0.1557 AU).</p>
   </aside>
@@ -341,7 +341,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
   <h2>Differential correction</h2>
   <div style="display: flex; gap: 48px; align-items: flex-start">
     <div style="flex: 0 0 800px">
-      <p>&ldquo;Correct&rdquo; free variables \(\boldsymbol X \in \R^N\) until they satisfy constraints \(\boldsymbol F : \R^N \to \R^M\),</p>
+      <p>&ldquo;Correct&rdquo; free variables \(\boldsymbol X \in \mathbb{R}^N\) until they satisfy constraints \(\boldsymbol F : \mathbb{R}^N \to \mathbb{R}^M\),</p>
       <div class="fragment" data-fragment-index="1">
         <div class="math">\[\boldsymbol F(\boldsymbol X) = \boldsymbol\phi(t_0 + T; \boldsymbol x_0, t_0) - \boldsymbol x_0 = \boldsymbol 0,\]</div>
         <p class="small" style="margin-bottom: 24px">where each entry in \(\boldsymbol X\) is drawn from the initial state \(\boldsymbol x_0\) and the period \(T\), and \(\boldsymbol F\) from the final state.</p>
@@ -349,7 +349,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
       <p class="fragment" data-fragment-index="2">Along flow map \(\boldsymbol\phi\), the Jacobian is</p>
       <div class="fragment" data-fragment-index="3">
         <div class="math" style="font-size: 0.85em">\[\DXF = \begin{bmatrix} &amp; \class{hl-f}{\vert} \\ \left[ \class{hl-stm}{\dfrac{\partial\boldsymbol\phi}{\partial\boldsymbol x_0}} - \boldsymbol I \right]&amp; \class{hl-f}{\dfrac{\partial\boldsymbol\phi}{\partial T}} \\ &amp; \class{hl-f}{\vert} \end{bmatrix}_T = \begin{bmatrix} &amp; \class{hl-f}{\vert} \\[-3pt] \left[ \class{hl-stm}{\boldsymbol\Phi} - \boldsymbol I \right]&amp; \,\class{hl-f}{\boldsymbol f}\, \\[-3pt] &amp; \class{hl-f}{\vert} \end{bmatrix}_T,\]</div>
-        <p class="small">of dimension \(M \times N\), where \(\boldsymbol\Phi\) is the state transition matrix (STM) of the dynamics \(\boldsymbol f: \R^n \to \R^n\).</p>
+        <p class="small">of dimension \(M \times N\), where \(\boldsymbol\Phi\) is the state transition matrix (STM) of the dynamics \(\boldsymbol f: \mathbb{R}^n \to \mathbb{R}^n\).</p>
       </div>
     </div>
     <div style="flex: 1 1 0">
@@ -452,7 +452,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      step and the natural-parameter pen alone -->
 <section data-viewer-speed="0.25">
   <h2>Continuation: natural parameter</h2>
-  <p>Add a parameter \(p \in \R\) to the constraint, so that</p>
+  <p>Add a parameter \(p \in \mathbb{R}\) to the constraint, so that</p>
   <div class="fragment" data-fragment-index="1">
     <div class="math">\[\boldsymbol F(\boldsymbol X, p) = \boldsymbol 0\]</div>
     <p class="small">gives an underdetermined system in \((\boldsymbol X, p)\), which is the family.</p>
@@ -531,7 +531,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
     </div>
   </div>
   <div class="surface" data-bundle="eigendirections">
-    <span class="label" data-at="L1">\(\LL1\)</span>
+    <span class="label" data-at="L1">\(\mathcal{L}_1\)</span>
     <span class="label" data-at="flow">\(\boldsymbol x_0\)</span>
     <span class="label" data-at="unstable" data-rib="3">unstable</span>
     <span class="label" data-at="stable" data-rib="9" data-side="-1">stable</span>
@@ -624,7 +624,7 @@ html[data-theme="light"] { --member-1: #c4c2bb; --member-2: #aeaca5; --member-3:
      bar of the zone moves only the zone -->
 <section class="narrow">
   <h2>Lyapunov to Halo bifurcation (CR3BP)</h2>
-  <p>Around the \(\LL1\) point of the Earth–Moon CR3BP, the planar Lyapunov orbit family bifurcates into a spatial Halo family at \(\class{kplus}{C = 3.174378}\).</p>
+  <p>Around the \(\mathcal{L}_1\) point of the Earth–Moon CR3BP, the planar Lyapunov orbit family bifurcates into a spatial Halo family at \(\class{kplus}{C = 3.174378}\).</p>
   <div class="figure-box stability fragment fade-out" data-fragment-index="1"><img class="for-dark" src="figures/dylan/lyapunov-l1-orbits-dark.png" alt="DyLAN, the L1 Lyapunov family colored by the Jacobi constant, with the member at the Halo bifurcation dashed"><img class="for-light" src="figures/dylan/lyapunov-l1-orbits-light.png" alt="DyLAN, the L1 Lyapunov family colored by the Jacobi constant, with the member at the Halo bifurcation dashed"></div>
   <div class="fragment orbits-under" data-fragment-index="1" data-keep="2" data-fly-from=".figure-box.fade-out > img"><img class="for-dark" src="figures/dylan/lyapunov-l1-orbits-dark.png" alt="DyLAN, the L1 Lyapunov family colored by the Jacobi constant, with the member at the Halo bifurcation dashed"><img class="for-light" src="figures/dylan/lyapunov-l1-orbits-light.png" alt="DyLAN, the L1 Lyapunov family colored by the Jacobi constant, with the member at the Halo bifurcation dashed"></div>
   <span class="fragment" data-fragment-index="2" data-highlight="kplus" data-plot-play></span>
