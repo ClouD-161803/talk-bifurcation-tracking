@@ -25,7 +25,7 @@ const IMAGE = resolve('demo/figure-light.png');
 // a request to an edit command that is not running fails in the console of the page, the first
 // poll after a restart is answered 404, since the token is of the edit command before, and a
 // request after End session through the relay is answered 410
-const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 502/, /status of 410/, /status of 404 .*\/\.session\/events\?/];
+const REFUSED = [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 502/, /status of 410/, /status of 404 .*\/\.session\/events\?/];
 
 // the characters from to to of the first text node of the text element of expression selected
 async function select(page, expression, from, to) {
