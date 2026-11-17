@@ -47,6 +47,8 @@ const CSS = `
 .beeson-edit-titlebar.narrow { overflow: hidden; }
 .beeson-edit-titlebar.narrow .beeson-edit-menubar [role=menuitem] { padding: 0 4px; }
 .beeson-edit-titlebar.narrow .right .name { display: none; }
+.beeson-edit-note { position: absolute; top: 100%; left: 8px; right: 8px; width: fit-content; max-width: 480px; margin: 6px auto 0; padding: 6px 10px; box-sizing: border-box; border: 1px solid var(--ed-menu-line); border-radius: 8px; background: var(--ed-menu); color: var(--ed-guide); font: 12px/1.35 var(--ed-font); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2); overflow-wrap: anywhere; }
+.beeson-edit-note[hidden] { display: none; }
 `;
 
 export function install(app: App): void {
@@ -180,6 +182,28 @@ export function install(app: App): void {
     if (row.scrollWidth > row.clientWidth) row.classList.add('narrow');
   }
 
+  // a warning that the title bar has no room for is shown under it until the next key or tap,
+  // which leaves it in the title bar alone
+  const note = make('div', 'beeson-edit-note');
+  note.setAttribute('aria-live', 'polite');
+  note.hidden = true;
+  let noted = '';
+  const hide = () => {
+    note.hidden = true;
+    removeEventListener('keydown', hide, true);
+    removeEventListener('pointerdown', hide, true);
+  };
+  function warn(): void {
+    const text = app.line.warn ? app.line.text : '';
+    if (text === noted) return;
+    noted = text;
+    if (!text || (getComputedStyle(stateEl).display !== 'none' && !doc.classList.contains('gone'))) return hide();
+    note.textContent = text;
+    note.hidden = false;
+    addEventListener('keydown', hide, true);
+    addEventListener('pointerdown', hide, true);
+  }
+
   const fail = (e: unknown) => app.fail(e);
   wire(which, () => app.files.showProblems(), fail);
   wire(autosave, () => app.commands.run('file.autosave'), fail);
@@ -192,10 +216,12 @@ export function install(app: App): void {
     stateEl.title = app.line.title;
     stateEl.classList.toggle('warn', app.line.warn);
     fit();
+    warn();
   });
   new ResizeObserver(fit).observe(row);
   app.onRefresh(['content', 'selection', 'slide', 'structure', 'layout'], dim);
   const header = document.querySelector('.beeson-edit-header');
   if (header) header.prepend(row);
   else document.body.append(row);
+  row.after(note);
 }
