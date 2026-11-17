@@ -66,7 +66,37 @@ test('a TikZ figure is shown with every part in the editor, moved as a figure, a
   assert.deepEqual(errors(page), []);
 });
 
-test('the Steps pane lists the step of a part as a row named Part with the name of the part', { timeout: 120000 }, async (t) => {
+// the center of the shown grip of handle, in CSS pixels of the viewport, or null without one
+const grip = (page, handle) => page.evaluate(`(() => {
+  const g = [...document.querySelectorAll('.beeson-grip[data-handle="${handle}"]')].find((g) => !g.hidden && g.getClientRects().length && !g.classList.contains('locked'));
+  if (!g) return null;
+  const r = g.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`);
+
+test('a TikZ figure is resized with its grips, which write its new box in px into its style', { timeout: 120000 }, async (t) => {
+  const page = await open(t, 1);
+  await click(page, `${SLIDE} .tikz`);
+  await wait(page);
+  const se = await grip(page, 'se');
+  assert.ok(se, 'a selected TikZ figure does not have a grip at its lower right corner');
+  const scale = await page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); return s.getBoundingClientRect().width / s.offsetWidth; })()`);
+  // the box is not held at its proportions, since the next compile fits the figure to it
+  await drag(page, se, { dx: 100 * scale, dy: -50 * scale });
+  await wait(page);
+  const resized = (await render(page)).match(/<div class="figure-box tikz" data-figure="two" style="width: (\d+)px; height: (\d+)px">/);
+  assert.ok(resized, 'the resize does not write the width and the height of the figure');
+  assert.ok(Math.abs(Number(resized[1]) - 700) <= 2 && Math.abs(Number(resized[2]) - 350) <= 2, resized[0]);
+  await byteExact(page, [[BOX, resized[0]]]);
+  // the Size fields of the Arrange pane give the box, one axis at a time
+  await page.evaluate(`window.BeesonEditor.exec('arrange.setSize', { w: 640 })`);
+  await page.evaluate(`window.BeesonEditor.exec('arrange.setSize', { h: 480 })`);
+  await wait(page);
+  assert.match(await render(page), /<div class="figure-box tikz" data-figure="two" style="width: 640px; height: 480px">/);
+  assert.deepEqual(errors(page), []);
+});
+
+test('the Steps pane lists the step of a part as a row named Part with the name of the part',{ timeout: 120000 }, async (t) => {
   const page = await open(t, 1);
   await page.evaluate(`window.BeesonEditor.exec('view.steps')`);
   await wait(page);
