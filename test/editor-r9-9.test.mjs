@@ -617,12 +617,18 @@ const PLAYED = `(() => {
   const play = slider?.parentElement.querySelector('button.ed-play');
   return { paused: v.paused, time: v.currentTime, slider: Number(slider?.value), label: play?.getAttribute('aria-label') ?? null, before: !!play && !!(play.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING) };
 })()`;
-// RECORD writes the time of the selected video and of the slider into window.__plays at each update
+// RECORD writes the time of the selected video and of the slider into window.__plays at each update,
+// and the state of the video in the task of the first click on Play, after the handler of the
+// editor, into window.__click
 const RECORD = `(() => {
   const v = window.BeesonEditor.selection()[0];
   window.__plays = [];
+  window.__click = null;
   const add = () => window.__plays.push({ at: performance.now(), paused: v.paused, time: v.currentTime, slider: Number(document.querySelector('${PANEL} input[name=poster-frame]')?.value) });
   for (const type of ['playing', 'timeupdate']) v.addEventListener(type, add);
+  document.addEventListener('click', (e) => {
+    if (!window.__click && e.target.closest?.('${PANEL} button.ed-play')) window.__click = { at: performance.now(), paused: v.paused, time: v.currentTime };
+  });
   return true;
 })()`;
 const playAt = (page) => page.evaluate(`(() => { const r = document.querySelector('${PANEL} button.ed-play').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
@@ -652,8 +658,15 @@ async function playInPlace(t, platform, { late = 0, hold = 0 } = {}) {
   await page.waitFor(`!!${later}`, 60000);
   await page.waitFor(`document.querySelector('${PANEL} button.ed-play')?.getAttribute('aria-label') === 'Pause'`);
   await sleep(late);
-  const first = await page.evaluate('window.__plays.find((p) => !p.paused)');
-  assert.ok(first.time >= from - 0.1 && first.time < from + 2, `the video plays from ${first.time} and not from the frame ${from} of the slider`);
+  const started = await page.evaluate('window.__click');
+  assert.ok(started && !started.paused && Math.abs(started.time - from) < 0.1, `Play starts the video at ${JSON.stringify(started)} and not at the frame ${from} of the slider`);
+  // a listener of the record reads the time when it is run, which on a crowded machine is seconds
+  // after the update. the first time read is then at most this delay past the frame of the slider,
+  // or past the end of the video and wrapped to its start, since the video loops
+  const { first, duration } = await page.evaluate('({ first: window.__plays.find((p) => !p.paused), duration: window.BeesonEditor.selection()[0].duration })');
+  const ran = (first.at - started.at) / 1000;
+  const time = first.time < from - 0.1 && from + ran >= duration ? first.time + duration : first.time;
+  assert.ok(time >= from - 0.1 && time < from + ran + 0.5, `the video plays from ${first.time}, read ${ran} s after the click, and not from the frame ${from} of the slider`);
   const on = await page.evaluate(later);
   assert.ok(Math.abs(on.slider - on.time) < 0.5, `the slider at ${on.slider} does not follow the video at ${on.time}`);
   s = await page.evaluate(PLAYED);
