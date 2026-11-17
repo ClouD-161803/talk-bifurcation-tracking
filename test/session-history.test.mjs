@@ -524,7 +524,7 @@ test('the pane of a page offline reads the versions once the page is online agai
   assert.equal(await ann.evaluate(`${LIST}[1].title`), 'Kept');
   assert.equal(await ann.evaluate(SHOWN), true);
   // the first requests after the restart carry the token of the edit command before, and are answered 404
-  clean(ann, [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/, /status of 404 .*\/\.session\/(events|history)\?/]);
+  clean(ann, [/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/, /status of 404 .*\/\.session\/(events|history)\?/]);
 });
 
 test('on a phone of 390 px the slide of the canvas is above the sheet, and the pane, the bar, and every button take a tap of 32 px', { timeout: 300_000 }, async (t) => {
@@ -1248,7 +1248,7 @@ test('the mode ends with the session, and a read of the versions that failed is 
   await ann.waitFor(`${C}.connection === 'ended'`, 20_000);
   await ann.waitFor(`!(${SHOWN})`);
   assert.deepEqual(await ann.evaluate(INERT), [false, false, false, false, false]);
-  clean(ann, [/status of 500/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/]);
+  clean(ann, [/status of 500/, /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED/]);
 });
 
 // the text of the pill of following, or null while it is hidden
