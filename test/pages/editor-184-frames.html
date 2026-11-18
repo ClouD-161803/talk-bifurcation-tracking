@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Editor frames deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<script src="../../theme/mathjax-config.js"></script>
+<script src="../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+<!-- the frames, the padlocks, and the group icon of the selection: loose text elements and shapes,
+     a locked paragraph, a group of three shapes, a group of two paragraphs, and a line -->
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <h2>Frames on a slide</h2>
+  <p class="plain" style="width: 700px">A plain paragraph</p>
+  <p class="held" data-locked style="width: 700px">A locked paragraph</p>
+  <p class="pair" data-group="g2" style="width: 500px">A first paired paragraph</p>
+  <p class="pair" data-group="g2" style="width: 500px">A second paired paragraph</p>
+  <div class="shape rounded loose" style="width: 300px; height: 150px; translate: 1300px 250px"><p>Loose</p></div>
+  <div class="shape ellipse m1" data-group="g1" style="width: 200px; height: 120px; translate: 1000px 650px"></div>
+  <div class="shape rectangle m2" data-group="g1" style="width: 200px; height: 120px; translate: 1250px 650px"></div>
+  <div class="shape rectangle m3" data-group="g1" style="width: 200px; height: 120px; translate: 1500px 650px"></div>
+  <svg class="line" width="300" height="1" style="translate: 300px 950px"><line x1="0" y1="0" x2="300" y2="0"></line></svg>
+</section>
+
+</div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>
