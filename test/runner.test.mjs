@@ -140,6 +140,17 @@ test('a test file that does not end fails after 15 to 30 minutes', () => {
   assert.ok(limit >= 900000 && limit <= 1800000, `the limit of ${command} is ${limit} ms`);
 });
 
+// a test file that reaches its limit is run once more. A job that is ended at its own limit during
+// the second run is cancelled, and the round then fails without the name of a test
+test('the test job is not ended before the second run of a test file that reached its limit', () => {
+  const file = Number(/^--test-timeout=(\d+)$/.exec(options.find((option) => option.startsWith('--test-timeout')) ?? '')?.[1]);
+  const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
+  const job = Number(/^  test:\n(?:.*\n)*?    timeout-minutes: (\d+)$/m.exec(workflow)?.[1]);
+  // the first run of the files of a job takes up to 40 minutes, i.e. 20 more than the limit of a
+  // file, and the second run of the file takes up to this limit
+  assert.ok(job * 60000 >= 2 * file + 1200000, `the limit of the test job is ${job} min, and that of a test file ${file / 60000} min`);
+});
+
 test('the test step of the check workflow is the test command with the shard of its job', () => {
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
   const step = /^ +- run: (node .* scripts\/test\.mjs .*)$/m.exec(workflow)?.[1];
