@@ -8,10 +8,10 @@
 import type { Deck } from './reveal.d.ts';
 
 // the elements that take a click of their own
-const OWN = [
+export const OWN = [
   'a[href]', 'button', 'input', 'select', 'textarea', 'label', 'summary', 'iframe', 'video', 'audio',
   '[contenteditable]:not([contenteditable="false"])', '.plot', '.surface', 'tycho-viewer', '.qr',
-  '.run', '.foot', '.slide-number', '.progress', '.scrub', '.theme-switch', '.r-overlay',
+  '.run', '.foot', '.slide-number', '.scrub', '.theme-switch', '.r-overlay',
 ].join(', ');
 
 // the farthest the pointer moves from its press to its release in a click, in CSS px

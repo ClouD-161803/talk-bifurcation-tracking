@@ -408,6 +408,7 @@ export class Navigator implements Pane {
       if (kept.has(s)) continue;
       r.el.remove();
       this.rows.delete(s);
+      this.hidePeek();
     }
     let changed = false;
     let prev: Element = this.drop;
@@ -701,7 +702,7 @@ export class Navigator implements Pane {
   // canvases of a backdrop are painted from the originals, since a cloned canvas is blank, a backdrop
   // that is not drawn on its slide yet is drawn by the theme, and a tycho viewer shows a still of its scene
   private showPeek(slide: Element, row: HTMLElement): void {
-    if (this.drag || isHidden(slide) || shownWhole(row)) return;
+    if (this.drag || !slide.isConnected || isHidden(slide) || shownWhole(row)) return;
     const stage = slide.parentElement as HTMLElement;
     const width = stage.offsetWidth || 1920;
     const height = stage.offsetHeight || 1080;

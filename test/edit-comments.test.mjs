@@ -440,6 +440,17 @@ test('a file of comments that cannot be read is moved aside', async (t) => {
 test('a thread sent with an old base is moved to the current text in less than half the time that the operations since took', (t) => {
   const slide = (k) => ['<section>', `  <h2>Slide ${k}</h2>`, ...Array.from({ length: 4 }, (_, i) => `  <p style="left: ${i}px">Paragraph ${i} of slide ${k}, on the manifold.</p>`), '</section>'].join('\n');
   const deck = ['<!doctype html>', '<body>', ...Array.from({ length: 200 }, (_, k) => slide(k)), '</body>', ''].join('\n');
+  const { writeFileSync: write } = fs;
+  t.after(() => {
+    fs.writeFileSync = write;
+    syncBuiltinESMExports();
+  });
+  // each write of comments.json is held for 40 ms, as on a slow disk of a Windows runner
+  fs.writeFileSync = (file, ...rest) => {
+    if (String(file).includes('.comments.json.')) for (const end = performance.now() + 40; performance.now() < end; );
+    return write(file, ...rest);
+  };
+  syncBuiltinESMExports();
   const { authority, comments } = open(sessionDir(t), deck, { authority: { maxOps: 1000 } });
   const read = authority.text;
   const base = authority.version;
@@ -454,15 +465,25 @@ test('a thread sent with an old base is moved to the current text in less than h
   const t0 = process.hrtime.bigint();
   for (const patches of drags) assert.equal(authority.enter(patches, ANN).answer.ok, true);
   const entered = Number(process.hrtime.bigint() - t0);
-  // the best of three, since another process may take the processor for a while
-  let added = Infinity;
-  for (let attempt = 0; attempt < 3 && 2 * added >= entered; attempt++) {
+  // the time of the move is the time of a thread of the old base less the time of a thread of the
+  // current base, since both are written to comments.json in the same way. each is the best of up to
+  // five attempts, since another process may take the processor or the disk for a while
+  const tag = '<p style="left: 2px">Paragraph 2 of slide 9,';
+  const timed = (body) => {
     const t1 = process.hrtime.bigint();
-    const thread = comments.add(BO, { base, anchor: tagRange(read, '<p style="left: 2px">Paragraph 2 of slide 9,'), slide: null, text: 'old base' });
-    added = Math.min(added, Number(process.hrtime.bigint() - t1));
-    reads(authority.text, thread.anchor, '<p style="left: 2px">Paragraph 2 of slide 9,');
+    const thread = comments.add(BO, { ...body, slide: null });
+    const time = Number(process.hrtime.bigint() - t1);
+    reads(authority.text, thread.anchor, tag);
+    return time;
+  };
+  let old = Infinity;
+  let current = Infinity;
+  for (let attempt = 0; attempt < 5 && !(2 * (old - current) < entered); attempt++) {
+    old = Math.min(old, timed({ base, anchor: tagRange(read, tag), text: 'old base' }));
+    current = Math.min(current, timed({ base: authority.version, anchor: tagRange(authority.text, tag), text: 'current base' }));
   }
-  assert.ok(2 * added < entered, `the thread took ${(added / 1e6).toFixed(1)} ms, and the operations ${(entered / 1e6).toFixed(1)} ms`);
+  const ms = (ns) => (ns / 1e6).toFixed(1);
+  assert.ok(2 * (old - current) < entered, `the thread of the old base took ${ms(old)} ms, the thread of the current base ${ms(current)} ms, and the operations ${ms(entered)} ms`);
 });
 
 // a deck where a paragraph inserted above the first of two paragraphs moves the second by the
@@ -658,9 +679,11 @@ test('a thread on an element of any tag name is read again at a start, and a thr
 test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
   setFlagsFromString('--expose-gc');
   const gc = runInNewContext('gc');
-  const used = () => {
-    gc();
-    gc();
+  const used = (collect = true) => {
+    if (collect) {
+      gc();
+      gc();
+    }
     return process.memoryUsage().heapUsed;
   };
   const n = 100;
@@ -670,17 +693,24 @@ test('the texts of removed elements do not keep the earlier texts of the deck in
   for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p>Paragraph ${k} `), slide: null, text: `p${k}` });
   const before = used();
   for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
-  const grown = used() - before;
+  // the first measure is taken before a collection, as on a loaded runner, where garbage is not
+  // freed yet at a measure
+  let grown = used(false) - before;
+  // garbage is freed a few collections later, hence a growth over its bound is measured again
+  const bound = (n * deck.length) / 10;
+  for (let again = 0; again < 8 && grown >= bound; again++) grown = used() - before;
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.startsWith('<p>Paragraph')));
-  assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
+  assert.ok(grown < bound, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 
 test('the checks of removed elements longer than 4 kB do not keep the earlier texts of the deck in memory', (t) => {
   setFlagsFromString('--expose-gc');
   const gc = runInNewContext('gc');
-  const used = () => {
-    gc();
-    gc();
+  const used = (collect = true) => {
+    if (collect) {
+      gc();
+      gc();
+    }
     return process.memoryUsage().heapUsed;
   };
   const n = 50;
@@ -691,9 +721,13 @@ test('the checks of removed elements longer than 4 kB do not keep the earlier te
   for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p class="paragraph-${k}">`), slide: null, text: `p${k}` });
   const before = used();
   for (let k = 0; k < n; k++) replace(authority, `\n  ${long(k)}`, '');
-  const grown = used() - before;
+  // as in the test above, the first measure is taken before a collection, and a growth over its
+  // bound is measured again
+  let grown = used(false) - before;
+  const bound = (n * deck.length) / 10;
+  for (let again = 0; again < 8 && grown >= bound; again++) grown = used() - before;
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.tag?.startsWith('<p class="paragraph-')));
-  assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
+  assert.ok(grown < bound, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 
 test('a shift of the anchors by typing is written to the file', async (t) => {

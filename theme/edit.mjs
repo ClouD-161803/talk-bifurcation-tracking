@@ -6459,7 +6459,19 @@ async function main(argv) {
 `);
     process.exit(2);
   }
-  let running;
+  let running, stopping = false;
+  const stop = () => {
+    stopping = true;
+    if (!running) return;
+    void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
+    void running.unwritten.then((unwritten) => setTimeout(() => process.exit(unwritten ? 1 : 0), 3e3).unref());
+  };
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
+    try {
+      process.on(signal, stop);
+    } catch {
+    }
+  }
   try {
     running = await start({ folder, port, relay, history: historyOptions() });
   } catch (e) {
@@ -6488,10 +6500,6 @@ Keep this window open while you edit, and close it or press Ctrl+C to stop.
   if (open2) openBrowser(page);
   for (const stream of [process.stdout, process.stderr]) stream.on("error", () => {
   });
-  const stop = () => {
-    void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
-    void running.unwritten.then((unwritten) => setTimeout(() => process.exit(unwritten ? 1 : 0), 3e3).unref());
-  };
   const fail2 = (e) => {
     process.stderr.write(`The edit command failed: ${e?.stack ?? e}
 `);
@@ -6500,12 +6508,7 @@ Keep this window open while you edit, and close it or press Ctrl+C to stop.
   };
   process.on("uncaughtException", fail2);
   process.on("unhandledRejection", fail2);
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"]) {
-    try {
-      process.on(signal, stop);
-    } catch {
-    }
-  }
+  if (stopping) stop();
 }
 var isMain = (() => {
   try {

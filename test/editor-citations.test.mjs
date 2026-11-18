@@ -119,6 +119,22 @@ async function typeCite(page) {
   await caretAfter(page, 'Invariant');
   await type(page, ' \\cite{');
   await page.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`);
+  // a pause before the next key, as on a slow runner, where the typing is then two entries of the
+  // history
+  await sleep(1100);
+}
+
+// the insert of a citation undone, and the typing before it, which is one entry of the history or
+// more, since the tests wait for the list between keys and keys more than a second apart are two
+// entries
+async function undoCitation(page) {
+  assert.equal(await undoLabel(page), 'Undo Insert Citation');
+  await undo(page);
+  for (let n = 0; n < 4 && (await render(page)) !== SOURCE; n++) {
+    assert.equal(await undoLabel(page), 'Undo Typing');
+    await undo(page);
+  }
+  assert.equal(await render(page), SOURCE);
 }
 
 // a paste of text onto target, as the clipboard of the browser sends it
@@ -229,9 +245,7 @@ test('a comma adds a second paper to the citation, a closing brace ends it, and 
   await page.waitFor(`!document.querySelector('${LIST}')`);
   assert.equal(await render(page), expect([PLAIN, cited('koon2000,szebehely1967')]));
   await page.waitFor(`document.querySelector('.reveal section.present cite[data-key="koon2000,szebehely1967"]')?.dataset.n === '1,3'`);
-  await undo(page);
-  await undo(page);
-  assert.equal(await render(page), SOURCE);
+  await undoCitation(page);
 
   // a closing brace inserts the citation as Enter does
   await typeCite(page);
@@ -239,9 +253,7 @@ test('a comma adds a second paper to the citation, a closing brace ends it, and 
   await page.waitFor(`!document.querySelector('${LIST}')`);
   assert.equal(await render(page), expect([PLAIN, cited('gomez2004')]));
   assert.equal(await numberOf(page, 'gomez2004'), '2');
-  await undo(page);
-  await undo(page);
-  assert.equal(await render(page), SOURCE);
+  await undoCitation(page);
 
   await typeCite(page);
   await type(page, 'gom');

@@ -146,8 +146,7 @@ test('a click on an avatar follows the person to the slide, and brings the selec
   await t.test('Enter and Space on the focused avatar stop and follow again, and the menu goes to the slide', async () => {
     await front(ben);
     await ben.evaluate(`document.querySelector(${JSON.stringify(avatar('Ana'))}).focus()`);
-    // a key of Enter that a button takes as a click carries its text
-    for (const type of ['keyDown', 'keyUp']) await ben.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
+    await key(ben, 'Enter');
     await following(ben, null);
     await key(ben, 'Space');
     await following(ben, anaId);
@@ -219,9 +218,9 @@ test('following stops at the avatar, Stop, Escape, a selection, a slide, an edit
     await ben.evaluate(`void ${C}.app.commands.run('file.present')`);
     await ben.waitFor(`!!document.querySelector('body > .beeson-edit-show')`);
     await stopped('a show');
-    await front(ana);
+    // the page of Ben stays in front. a page that is not in front is taken out of full screen, and
+    // its show ends when the blur of its window comes more than 100 ms after this change
     await ana.waitFor(`${C}.resolved().some((r) => r.name === 'Ben' && r.mode === 'present')`);
-    await front(ben);
     await ben.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await ben.waitFor(`!document.querySelector('.beeson-edit-show')`);
     await front(ana);
@@ -601,10 +600,11 @@ test('a deck of 200 slides with three people typing finds the slides of each ope
     await ana.waitFor(`(() => { const row = ${C}.app.nav.rowOf(Reveal.getSlides()[${n - 1}]); return row.classList.contains('changed') && row.querySelector('.no').title === 'Changed by ${name} since you last saw it.'; })()`);
   }
   // a read of the slides of an operation is bound by a tenth of one parse of the same deck, taken
-  // in the same page, and measured again before the test fails
+  // in the same page, and measured again before the test fails. slidesAt keeps the parse of its
+  // last text, hence each of the three texts differs from the one before it
   const parse = () => ana.evaluate(`(() => {
-    const c = ${C}, text = c.port.text(), t = performance.now();
-    for (let i = 0; i < 3; i++) c.shell.slidesAt(text, [{ start: 0, end: 1, text: '' }]);
+    const c = ${C}, text = c.port.text(), texts = [1, 2, 3].map((n) => text + ' '.repeat(n)), t = performance.now();
+    for (const x of texts) c.shell.slidesAt(x, [{ start: 0, end: 1, text: '' }]);
     return (performance.now() - t) / 3;
   })()`);
   const read = () => ana.evaluate(`(() => {

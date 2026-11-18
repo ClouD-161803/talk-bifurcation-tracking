@@ -449,12 +449,28 @@ const REDO = process.platform === 'darwin' ? 'Mod+Shift+Z' : 'Mod+Y';
 // in window.__asking
 const AT_REDO = `(${C}.on('settled', () => ${C}.snapshot().mine.includes(' Zed') && setTimeout(() => (window.__asking ??= ${C}.asking))), true)`;
 
+// the first open of the database of the copies answers after 4 s, after the wait of copy.ts for
+// it, OPEN_WAIT, as on a slow runner
+const SLOW_OPEN = `{
+  const opened = IDBFactory.prototype.open;
+  let first = true;
+  IDBFactory.prototype.open = function (name, ...rest) {
+    const r = opened.call(this, name, ...rest);
+    if (name !== 'beeson-session' || !first) return r;
+    first = false;
+    let onsuccess = null;
+    Object.defineProperty(r, 'onsuccess', { configurable: true, get: () => onsuccess, set: (fn) => (onsuccess = fn) });
+    r.addEventListener('success', (e) => window.setTimeout(() => onsuccess?.call(r, e), 4000));
+    return r;
+  };
+}`;
+
 // a page offline whose copy held ' Zed' on slide One, and then holds its Undo
 async function undone(t) {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  const page = await open(browser, sessionUrl(server.edit), { script: NET });
+  const page = await open(browser, sessionUrl(server.edit), { script: `${NET}\n${SLOW_OPEN}` });
   await converge(server, [page]);
   await page.evaluate(OFFLINE);
   await page.waitFor(`/^Offline/.test(${STATE})`);

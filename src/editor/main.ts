@@ -21,6 +21,7 @@ import { install as installNotes } from './notes.ts';
 import { install as installOverflow } from './overflow.ts';
 import { install as installTyping } from './text/typing.ts';
 import { install as installMathPop } from './text/mathpop.ts';
+import { install as installShownTex } from './text/shown-tex.ts';
 import { install as installCanvas } from './shell/canvas.ts';
 import { install as installToolbar } from './shell/toolbar.ts';
 import { install as installStatusbar } from './shell/statusbar.ts';
@@ -139,6 +140,7 @@ installFollow(app);
 installOverflow(app);
 installTyping(app);
 installMathPop(app);
+installShownTex(app);
 // before installKeys, since the keys of the list of the citations are taken before those of the editor
 installTex(app);
 installSelection(app);

@@ -83,18 +83,19 @@ test('a click on a video plays it and a second click pauses it, without moving t
   assert.deepEqual(page.errors, []);
 });
 
-test('a click on the scrubber shows the slide of its tick at the first step, without a step more', async (t) => {
+test('a click on the scrubber shows the slide of its tick with every step, without a step more', async (t) => {
   const page = await open(t);
   await page.evaluate('Reveal.slide(1)');
-  // the band is opened by the mouse near the bottom of the window
+  // the band is opened by the mouse at rest at the bottom of the window
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 960, y: 1075 });
-  await page.waitFor(`document.querySelector('.scrub').getBoundingClientRect().height > 10`);
+  await page.waitFor(`document.querySelector('.reveal').classList.contains('scrubbing')`);
   const tick = await page.evaluate(`(() => {
     const r = document.querySelector('.scrub-tick.first').getBoundingClientRect();
     return { x: r.left + 2, y: document.querySelector('.scrub').getBoundingClientRect().bottom - 4 };
   })()`);
   await click(page, tick);
-  assert.deepEqual(await settled(page), { slide: 0, shown: [] });
+  // a step more from the last step of the first slide would show the second slide again
+  assert.deepEqual(await settled(page), { slide: 0, shown: ['One', 'Two'] });
   assert.deepEqual(page.errors, []);
 });
 

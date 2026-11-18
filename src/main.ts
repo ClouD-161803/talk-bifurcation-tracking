@@ -15,6 +15,7 @@ import { mountQr } from './qr.ts';
 import { mountShapes } from './shapes.ts';
 import { figuresReady, mountFigures, redrawFigures } from './tikz.ts';
 import { initScrub } from './scrub.ts';
+import { initOverview } from './overview.ts';
 import { mount as mountSurfaces, onRestore } from './surface.ts';
 import type { Surface } from './surface.ts';
 import { mount as mountBundles, type Bundle } from './bundle.ts';
@@ -28,13 +29,32 @@ import { coverAll, initVideos } from './video.ts';
 import { initViewers } from './viewers.ts';
 import type { RevealOptions, SlideEvent } from './reveal.d.ts';
 
-// the number of a slide out of the numbered slides. a slide with data-visibility="uncounted", e.g. a
-// title, section, or closing slide, is not numbered, and a slide of the appendix is numbered A1, A2, and so on.
-// reveal.js writes the total only when it is a number
-function numberOf(slide: HTMLElement | null | undefined): [string, string, string] {
+// the number of a slide out of counted, the numbered slides in order. a slide with data-visibility="uncounted",
+// e.g. a title, section, or closing slide, is not numbered, and a slide of the appendix is numbered A1, A2, and
+// so on. reveal.js writes the total only when it is a number
+function numberOf(slide: HTMLElement | null | undefined, counted: HTMLElement[]): [string, string, string] {
   if (slide?.dataset.appendix) return [`A${slide.dataset.appendix}`, '', ''];
   if (!slide || slide.dataset.visibility === 'uncounted') return ['', '', ''];
-  return [String(window.Reveal.getSlidePastCount(slide) + 1), '/', window.Reveal.getTotalSlides() as unknown as string];
+  return [String(counted.indexOf(slide) + 1), '/', counted.length as unknown as string];
+}
+
+// reveal.js numbers the pages of the print view one by one, and the step N of a slide n as "n.N". Each
+// page is numbered here as its slide in the deck, in the markup of reveal.js without the link. The
+// first page of a slide holds the slide, one of slides, and the pages of its steps hold clones
+function numberPages(slides: Set<Element>): void {
+  const pages = [...document.querySelectorAll<HTMLElement>('.reveal .pdf-page')];
+  const own = pages.map((page) => page.querySelector<HTMLElement>(':scope > section'));
+  const counted = own.filter((s): s is HTMLElement => !!s && slides.has(s) && s.dataset.visibility !== 'uncounted');
+  let html = '';
+  pages.forEach((page, i) => {
+    const slide = own[i];
+    if (slide && slides.has(slide)) {
+      const [a, delimiter, b] = numberOf(slide, counted);
+      html = typeof b === 'number' ? `<span class="slide-number-a">${a}</span><span class="slide-number-delimiter">${delimiter}</span><span class="slide-number-b">${b}</span>` : a;
+    }
+    const number = page.querySelector('.slide-number-pdf');
+    if (number) number.innerHTML = html;
+  });
 }
 
 // the title, section, and closing slides are left out of the count, and so are the slides after the closing
@@ -64,8 +84,11 @@ const DEFAULTS: RevealOptions = {
   // with center off, reveal.js measures an element by its offset, which does not count them
   autoAnimateStyles: ['opacity', 'color', 'background-color', 'padding', 'font-size', 'line-height', 'letter-spacing', 'border-width', 'border-color', 'border-radius', 'outline', 'outline-offset', 'translate', 'rotate'],
   progress: true,
-  slideNumber: (slide: HTMLElement) => numberOf(slide),
+  slideNumber: (slide: HTMLElement) => numberOf(slide, window.Reveal.getSlides()),
   controls: false,
+  // off, since the box on G counts the unnumbered slides too, and shows another slide than the one
+  // whose number is typed
+  jumpToSlide: false,
   center: false,
   pdfSeparateFragments: true,
   // one page per step, as in Keynote and PowerPoint, with what runs past the slide cut off in the
@@ -278,7 +301,9 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   // in the print view, a page is cloned per fragment state after ready, and the clones are
   // mounted here. the viewers are numbered before the clones are made
   markViewers();
+  const slides = new Set(document.querySelectorAll('.reveal .slides section'));
   deck.on('pdf-ready', () => {
+    numberPages(slides);
     completeAll();
     mountShapes(document);
     // a clone of a TikZ figure is drawn again with ids of its own
@@ -324,6 +349,7 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   if (!EDITING && !deck.isPrintView() && !/print-pdf/.test(location.search)) {
     if (!PLAYED) initFullscreen();
     initScrub(deck);
+    initOverview(deck);
     // the videos and the viewers of the style play are played at their steps, and not while the deck
     // is edited, when every step is shown
     initVideos(deck);

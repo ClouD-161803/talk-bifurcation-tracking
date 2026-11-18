@@ -84,12 +84,43 @@ for (const platform of PLATFORMS) {
   });
 }
 
-// the layer of a preview of a transition: its kind, its phase, and the opacity of each shot
-const previewState = (page) => page.evaluate(`(() => {
-  const layer = document.querySelector('.beeson-edit-preview');
-  if (!layer) return null;
-  return { kind: layer.dataset.kind, phase: layer.dataset.phase ?? 'hold', shots: [...layer.querySelectorAll('.shot')].map((s) => Number(getComputedStyle(s).opacity)) };
+// the next preview of a transition is recorded in window.previews, as its layer is at the start of each
+// phase and at its end. a phase may be over before the test reads it on a slow runner (issue #132), hence
+// the record is made in the page. each entry is made of the kind, the opacity of each shot, the opacities
+// of the animations of each shot, and the number of animations of the heading of the next slide. with
+// escape, Esc is sent at the start of the phase play
+const record = (page, { escape = false } = {}) => page.evaluate(`(() => {
+  const log = (window.previews = []);
+  const state = (layer) => {
+    const shots = [...layer.querySelectorAll('.shot')];
+    return {
+      kind: layer.dataset.kind,
+      phase: layer.dataset.phase ?? 'hold',
+      shots: shots.map((s) => Number(getComputedStyle(s).opacity)),
+      fades: shots.map((s) => s.getAnimations().map((a) => a.effect.getKeyframes().map((k) => Number(k.opacity)))),
+      moving: shots[1]?.shadowRoot?.querySelector('h2')?.getAnimations().length ?? 0,
+    };
+  };
+  new MutationObserver(() => {
+    const layer = document.querySelector('.beeson-edit-preview');
+    if (!layer) {
+      if (log.length && log.at(-1).phase !== 'ended') log.push({ phase: 'ended' });
+      return;
+    }
+    const now = state(layer);
+    if (log.at(-1)?.phase === now.phase) return;
+    log.push(now);
+    if (${escape} && now.phase === 'play') {
+      (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      log.push({ phase: 'escaped', removed: !document.querySelector('.beeson-edit-preview') });
+    }
+  }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-phase'] });
+  return true;
 })()`);
+const recorded = async (page) => {
+  await page.waitFor(`window.previews.at(-1)?.phase === 'ended'`, 10000);
+  return page.evaluate('window.previews');
+};
 const idle = (page) => page.evaluate(`({ h: Reveal.getIndices().h, undo: window.BeesonEditor.state('edit.undo').enabled })`);
 
 for (const platform of PLATFORMS) {
@@ -99,14 +130,13 @@ for (const platform of PLATFORMS) {
     const items = await page.evaluate(`window.BeesonEditor.state('slide.previewTransition')`);
     assert.equal(items.enabled, true);
     assert.equal(items.label, 'Preview Transition');
+    await record(page);
     await exec(page, 'slide.previewTransition');
-    const hold = await previewState(page);
-    assert.deepEqual(hold, { kind: 'fade', phase: 'hold', shots: [1, 0] });
-    await page.waitFor(`document.querySelector('.beeson-edit-preview')?.dataset.phase === 'play'`);
-    await wait(120);
-    const mid = await previewState(page);
-    assert.ok(mid.shots[1] > 0 && mid.shots[1] < 1, `the slide is not faded in: ${JSON.stringify(mid)}`);
-    await page.waitFor(`!document.querySelector('.beeson-edit-preview')`, 5000);
+    const [hold, play, end] = await recorded(page);
+    assert.deepEqual([hold.kind, hold.phase, hold.shots], ['fade', 'hold', [1, 0]]);
+    assert.equal(play.phase, 'play');
+    assert.deepEqual(play.fades, [[[1, 0]], [[0, 1]]], 'the slide before is not faded out, and the slide faded in');
+    assert.equal(end.phase, 'ended');
     assert.deepEqual(await idle(page), before);
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), page.source);
     assert.deepEqual(errors(page), []);
@@ -118,12 +148,13 @@ for (const platform of PLATFORMS) {
     const edited = await page.evaluate('window.BeesonEditor.render()');
     if (!(await page.evaluate(`window.BeesonEditor.state('view.steps').checked`))) await exec(page, 'view.steps');
     await frames(page);
+    await record(page, { escape: true });
     await click(page, '.beeson-edit-transition .preview');
-    assert.equal((await previewState(page)).kind, 'none');
-    await page.waitFor(`document.querySelector('.beeson-edit-preview')?.dataset.phase === 'play'`);
-    assert.deepEqual((await previewState(page)).shots, [0, 1]);
-    await press(page, 'Escape');
-    assert.equal(await previewState(page), null);
+    const log = await recorded(page);
+    assert.deepEqual(log.map((p) => p.phase), ['hold', 'play', 'escaped', 'ended']);
+    assert.equal(log[0].kind, 'none');
+    assert.deepEqual(log[1].shots, [0, 1]);
+    assert.equal(log[2].removed, true, 'Esc does not end the preview');
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), edited);
     assert.deepEqual(errors(page), []);
   });
@@ -135,15 +166,12 @@ for (const platform of PLATFORMS) {
     await page.evaluate('Reveal.slide(3)');
     await frames(page);
     const edited = await page.evaluate('window.BeesonEditor.render()');
+    await record(page);
     await exec(page, 'slide.previewTransition');
-    assert.equal((await previewState(page)).kind, 'magic');
-    await page.waitFor(`document.querySelector('.beeson-edit-preview')?.dataset.phase === 'play'`);
-    const moving = await page.evaluate(`(() => {
-      const to = document.querySelectorAll('.beeson-edit-preview .shot')[1].shadowRoot;
-      return to.querySelector('h2').getAnimations().length;
-    })()`);
-    assert.equal(moving, 1, 'the heading of the next slide is not moved');
-    await page.waitFor(`!document.querySelector('.beeson-edit-preview')`, 5000);
+    const [hold, play] = await recorded(page);
+    assert.equal(hold.kind, 'magic');
+    assert.equal(play.phase, 'play');
+    assert.equal(play.moving, 1, 'the heading of the next slide is not moved');
     assert.equal(await page.evaluate('Reveal.getIndices().h'), 3);
     assert.equal(await page.evaluate('window.BeesonEditor.render()'), edited);
     assert.deepEqual(errors(page), []);

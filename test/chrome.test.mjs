@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -320,7 +320,14 @@ test('an earlier net::ERR_NO_BUFFER_SPACE does not reload a later goto', { timeo
   ]);
 });
 
-function pipeChrome(t, mode) {
+// a start of the fake Chrome longer than the timeout of the tests below, as of a Node.js process
+// on a crowded machine (issue #110)
+const startHold = 700;
+
+// with hold set, the fake Chrome is held for hold ms before it runs, as a slow start of its process.
+// The returned function resolves once the fake Chrome reads its pipe. A test that awaits it before
+// newPage() does not count the start as a command without an answer
+function pipeChrome(t, mode, { hold = 0 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'slides-pipe-chrome-'));
   const previous = process.env.CHROME_PATH;
   t.after(() => {
@@ -332,18 +339,26 @@ function pipeChrome(t, mode) {
   writeFileSync(
     exe,
     `#!/usr/bin/env node
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${hold});
 const fs = require('node:fs');
 const mode = ${JSON.stringify(mode)};
 const input = fs.createReadStream(null, { fd: 3 });
 const output = fs.createWriteStream(null, { fd: 4 });
 const send = (msg) => output.write(JSON.stringify(msg) + '\\0');
+fs.writeFileSync(__dirname + '/ready', '');
 let buf = '';
 let creates = 0;
 let targets = 0;
 const closed = [];
+// with slowStart, nothing is answered in the first 1.5 s, as by a Chrome started on a fresh Windows runner
+const ready = Date.now() + (mode === 'slowStart' ? 1500 : 0);
 input.setEncoding('utf8');
-input.on('data', (chunk) => {
+input.on('data', function read(chunk) {
   buf += chunk;
+  if (Date.now() < ready) {
+    setTimeout(() => read(''), ready - Date.now());
+    return;
+  }
   for (let end; (end = buf.indexOf('\\0')) >= 0;) {
     const msg = JSON.parse(buf.slice(0, end));
     buf = buf.slice(end + 1);
@@ -379,36 +394,53 @@ input.on('data', (chunk) => {
     { mode: 0o755 },
   );
   process.env.CHROME_PATH = exe;
+  return async () => {
+    while (!existsSync(join(root, 'ready'))) await sleep(10);
+  };
 }
 
 // on a Windows runner, newPage() can hang on Page.enable on a fresh about:blank tab right after
 // closing an earlier page, while later targets on the same browser succeed
 test('newPage recovers when a fresh target does not answer Page.enable', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
-  pipeChrome(t, 'hangFirst');
+  const ready = pipeChrome(t, 'hangFirst', { hold: startHold });
   const browser = await launch({ timeout: 400 });
+  await ready();
   t.after(() => browser.close());
   const page = await browser.newPage();
   const state = await page.evaluate('state');
   assert.deepEqual(state, { creates: 2, targets: 2, closed: ['t1'] });
 });
 
+// on a fresh Windows runner, the first Target.createTarget of each test file was not answered in three
+// tries of 15 s each, while the later pages of the same files were opened in seconds (issue #136)
+test('the first page of a Chrome that starts slower than the setup of a page is opened within the timeout', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
+  pipeChrome(t, 'slowStart');
+  const browser = await launch({ timeout: 4000, setup: 300 });
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  assert.deepEqual(await page.evaluate('state'), { creates: 1, targets: 1, closed: [] });
+});
+
 test('newPage recovers when Target.createTarget hangs or Target.closeTarget hangs during cleanup', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
-  pipeChrome(t, 'hangCreateFirst');
+  const readyA = pipeChrome(t, 'hangCreateFirst', { hold: startHold });
   const browserA = await launch({ timeout: 400 });
+  await readyA();
   t.after(() => browserA.close());
   const pageA = await browserA.newPage();
   assert.deepEqual(await pageA.evaluate('state'), { creates: 2, targets: 1, closed: [] });
 
-  pipeChrome(t, 'hangCloseFirst');
+  const readyB = pipeChrome(t, 'hangCloseFirst', { hold: startHold });
   const browserB = await launch({ timeout: 400 });
+  await readyB();
   t.after(() => browserB.close());
   const pageB = await browserB.newPage();
   assert.deepEqual(await pageB.evaluate('state'), { creates: 2, targets: 2, closed: ['t1'] });
 });
 
 test('newPage recovers immediately when a fresh target detaches during setup', { skip: process.platform === 'win32', timeout: 5000 }, async (t) => {
-  pipeChrome(t, 'detachFirst');
+  const ready = pipeChrome(t, 'detachFirst', { hold: startHold });
   const browser = await launch({ timeout: 3000 });
+  await ready();
   t.after(() => browser.close());
   const started = Date.now();
   const page = await browser.newPage();
@@ -417,8 +449,43 @@ test('newPage recovers immediately when a fresh target detaches during setup', {
 });
 
 test('newPage still fails when every target hangs on Page.enable', { skip: process.platform === 'win32', timeout: 8000 }, async (t) => {
-  pipeChrome(t, 'hangAll');
+  const ready = pipeChrome(t, 'hangAll', { hold: startHold });
   const browser = await launch({ timeout: 500 });
+  await ready();
   t.after(() => browser.close());
   await assert.rejects(browser.newPage(), /did not answer Page\.enable/);
+});
+
+// on Windows, a process of Chrome can hold a file of the profile for longer than close() tries to
+// remove it, and a test whose assertions passed then failed in its cleanup (issue #116). the
+// profile of this test is put in a read-only folder, from which rmSync cannot remove it
+test('close() ends without an error when the profile cannot be removed, and names the profile on stderr', { skip: process.platform === 'win32' || process.getuid?.() === 0, timeout: 15000 }, async (t) => {
+  pipeChrome(t, 'answerAll');
+  const parent = mkdtempSync(join(tmpdir(), 'slides-locked-'));
+  const previous = process.env.TMPDIR;
+  process.env.TMPDIR = parent;
+  t.after(() => {
+    chmodSync(parent, 0o755);
+    rmSync(parent, { recursive: true, force: true });
+  });
+  let browser;
+  try {
+    browser = await launch({ timeout: 5000 });
+  } finally {
+    if (previous === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = previous;
+  }
+  const [profile] = readdirSync(parent);
+  chmodSync(parent, 0o555);
+  const written = [];
+  const write = process.stderr.write;
+  t.mock.method(process.stderr, 'write', function (chunk, ...rest) {
+    written.push(String(chunk));
+    return write.call(this, chunk, ...rest);
+  });
+
+  await browser.close();
+
+  assert.ok(existsSync(join(parent, profile)));
+  assert.equal(written.filter((text) => text.includes(join(parent, profile))).length, 1, written.join(''));
 });

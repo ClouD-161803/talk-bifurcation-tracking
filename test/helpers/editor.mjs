@@ -159,19 +159,35 @@ async function maskOf(page, modifiers) {
   return names.reduce((bits, name) => bits | (name === 'Mod' ? (mac ? BITS.Meta : BITS.Ctrl) : BITS[name] ?? 0), 0);
 }
 
-/** A trusted press of a key string, e.g. 'Mod+Z', 'Shift+ArrowUp', or 'Escape'. */
-export async function press(page, keys) {
+/**
+ * Opens the sheet of the first formula matched by selector by focusing it and pressing Enter, as
+ * Tab and Enter do, since a click on an inline formula shows its TeX in its text.
+ */
+export async function openFormula(page, selector) {
+  await page.evaluate(`(() => { const m = document.querySelector(${JSON.stringify(selector)}); m.focus(); return true; })()`);
+  await press(page, 'Enter');
+}
+
+/**
+ * Trusted presses of a key string, e.g. 'Mod+Z', 'Shift+ArrowUp', or 'Escape', count times. The
+ * presses are sent at once, as typeKeys sends its keys, hence they are one entry of the history.
+ */
+export async function press(page, keys, count = 1) {
   const names = keys.split('+');
   const name = names.pop();
   for (const m of names) if (m !== 'Mod' && !(m in BITS)) throw new Error(`the modifier ${m} is not known to press()`);
   const modifiers = await maskOf(page, names.join('+'));
   const shift = names.includes('Shift');
   const [key, code, keyCode] = keyOf(name, shift);
-  // a printable key without a command modifier types its character
-  const text = key.length === 1 && !(modifiers & (BITS.Ctrl | BITS.Meta)) ? key : undefined;
+  // a printable key or Enter without a command modifier sends its character, as a keyboard does.
+  // without it, Chrome does not press a focused button or toggle a summary at Enter
+  const command = modifiers & (BITS.Ctrl | BITS.Meta);
+  const text = command ? undefined : key.length === 1 ? key : key === 'Enter' ? '\r' : undefined;
   const base = { key, code, windowsVirtualKeyCode: keyCode, modifiers };
-  await page.send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text, unmodifiedText: text } : {}) });
-  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  const down = { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text, unmodifiedText: text } : {}) };
+  const sent = [];
+  for (let i = 0; i < count; i++) sent.push(page.send('Input.dispatchKeyEvent', down), page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base }));
+  await Promise.all(sent);
 }
 
 // the code, the key code, and the modifier bits of the symbols of a US layout that typeKeys() types

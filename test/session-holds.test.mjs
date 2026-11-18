@@ -478,10 +478,21 @@ test('a drag in the navigator of a slide where a text element is held is refused
   await frame(ben);
   assert.equal(await ben.evaluate(ORDER), 'One,Two', 'a refused drag leaves the slides in their order');
   assert.equal(await ben.evaluate(BUBBLE), null, 'the release of a refused drag is not refused again');
+  // every state that the page of Ana sends while it applies the move, since a state without her
+  // caret ends her hold on every other page until her next state
+  await ana.evaluate(`(() => {
+    const c = ${C};
+    const send = c.sendPresence.bind(c);
+    window.__states = [];
+    c.sendPresence = (s) => (window.__states.push(s), send(s));
+    return true;
+  })()`);
   await drag(ben, one, { dy: two.y - one.y + 30, steps: 12 });
   await frame(ben);
   assert.equal(await ben.evaluate(ORDER), 'Two,One', 'a drag of a slide where nothing is held is taken');
   assert.equal(await ben.evaluate(BUBBLE), null, 'a drag of a slide where nothing is held');
+  await until(async () => (await ana.evaluate(ORDER)) === 'Two,One', 'the move of slide One on the page of Ana');
+  assert.deepEqual(await ana.evaluate(`window.__states.filter((s) => !s.caret).length`), 0, 'the page of Ana sends her caret in every state through the move');
   assert.ok(await caretOf(ben, 'Ana', p), 'the caret of Ana stays in her paragraph');
   await caretAtEnd(ana, p);
   await typeKeys(ana, ' more');

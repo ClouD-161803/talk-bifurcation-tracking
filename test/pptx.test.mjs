@@ -389,7 +389,9 @@ const stepOf = (parts, n) => parts.get(relationships(parts, `ppt/slides/slide${n
 // row of the next page, and on the last page the scroll stops a pixel short of its top
 test('the picture of each step is its page of the print view, the last page too', { timeout: 300000 }, async (t) => {
   const parts = exportDeck('test/pages/print-rows.html');
-  const browser = await launch();
+  // with wholeFrames, since the export draws its text without subpixel antialiasing. on Linux and
+  // Windows, the page number of a picture otherwise differs from the one of its page
+  const browser = await launch({ wholeFrames: true });
   t.after(() => browser.close());
   const page = await browser.newPage({ scale: 2 });
   // every picture is taken before the comparisons, which are made in the same page
