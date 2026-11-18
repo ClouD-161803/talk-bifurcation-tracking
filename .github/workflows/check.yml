@@ -33,8 +33,9 @@ jobs:
         os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
         # the test files are split over seven runners, since the suite is over an hour long on one.
         # With the two jobs of check and the job tex, a round of a pull request has 10 jobs, hence
-        # two pull requests are checked at once on the 20 runners of the free plan. Twelve runners
-        # gave the result 4 minutes earlier for 40% more minutes of the runners
+        # two pull requests are checked at once on the 20 runners of the free plan. In a trial with
+        # twelve runners, the longest job took 27 minutes in place of 31, since the files are split
+        # by their index, and one runner then had nearly twice the tests of the mean
         shard: [1, 2, 3, 4, 5, 6, 7]
     runs-on: ${{ matrix.os }}
     # the longest job of a round takes 30 to 40 minutes. A test file that reaches its limit of 20
