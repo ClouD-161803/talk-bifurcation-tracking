@@ -10,6 +10,8 @@ import fs, { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync
 import { syncBuiltinESMExports } from 'node:module';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { start } from '../theme/edit.mjs';
 import { DECK, post, raw, talkFolder, until, within } from './helpers/session.mjs';
 import { entries, unzipTo } from './helpers/zip.mjs';
@@ -602,4 +604,39 @@ test('a page downloads its zip in pieces, which a second request, a DELETE, or a
   assert.equal(dropped.status, 200);
   assert.deepEqual(dropped.json(), {});
   assert.equal((await pieceOf(port, key, ann, id, 0)).status, 404);
+});
+
+test('a zip that is kept holds about its bytes in memory, also the zip of a folder of many small files', { timeout: 120_000 }, async (t) => {
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc');
+  const { root, talk } = talkFolder(t);
+  const files = 3000;
+  for (let i = 0; i < files; i++) put(talk, `data/${i % 30}/orbit-${i}.txt`, `${JSON.stringify({ name: `orbit ${i}`, states: Array(40).fill([1, 0, 0, 0, 1, 0]) })}\n`);
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const token = await hello(t, port, key, 'Ann');
+  const held = () => {
+    gc();
+    gc();
+    return process.memoryUsage().arrayBuffers;
+  };
+  // Node.js cuts a small Buffer from a slab that it shares between Buffers, and a zip that kept such
+  // a Buffer would keep its slab whole. the slab is 8 kB up to Node 22 and 64 kB in Node 26, where
+  // the chunks of zlib are cut from it as well, so that four files fill one. the zip is built with
+  // the larger slab on every version, with which 3000 kept Buffers hold about 48 MB
+  const { poolSize } = Buffer;
+  Buffer.poolSize = 64 * 1024;
+  t.after(() => (Buffer.poolSize = poolSize));
+  const before = held();
+  const made = await makeZip(port, key, token);
+  assert.equal(made.status, 200, made.text);
+  const { id, size } = made.json();
+  const grown = held() - before;
+  assert.ok(grown < 2 * size + MB, `a zip of ${(size / MB).toFixed(1)} MB holds ${(grown / MB).toFixed(1)} MB`);
+  const pieces = [];
+  for (let at = 0; at < size; at += PIECE) pieces.push((await pieceOf(port, key, token, id, at)).body);
+  const got = byName(Buffer.concat(pieces));
+  assert.equal(got.size, files + 1);
+  assert.equal(got.get('data/7/orbit-2977.txt').bytes.toString('utf8'), readFileSync(join(talk, 'data', '7', 'orbit-2977.txt'), 'utf8'));
+  assert.equal((await dropZip(port, key, token, id)).status, 200);
 });
