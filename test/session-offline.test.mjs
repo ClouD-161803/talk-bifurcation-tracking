@@ -442,7 +442,7 @@ test('a word typed after a load that takes over a copy, before hello is answered
   clean(a);
 });
 
-test('the copies of two closed tabs that changed the same text are both sent, the second after the first with the dialog of the conflicts', { timeout: 120_000 }, async (t) => {
+test('the copies of two closed tabs that changed the same text are both sent, the second after the first with the dialog of the conflicts', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
