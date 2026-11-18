@@ -24,7 +24,8 @@ import { injectStyle } from '../ui/dom.ts';
 const CSS = `
 html.beeson-dragging.beeson-copying, html.beeson-dragging.beeson-copying * { cursor: copy !important; }
 html.beeson-sizing, html.beeson-sizing * { cursor: var(--beeson-grip-cursor) !important; user-select: none !important; }
-html.beeson-pick .reveal * { cursor: default; }
+html.beeson-editing.beeson-pick .reveal .slides * { cursor: move; }
+html.beeson-editing.beeson-pick-locked .reveal .slides * { cursor: default; }
 `;
 
 // the cursor of a held grip kept over the page while it is dragged, as the resize cursor of a held
@@ -1154,7 +1155,7 @@ export function install(app: App): void {
     if (!p) return;
     press = null;
     app.stage?.edgeScroll(null);
-    document.documentElement.classList.remove('beeson-dragging', 'beeson-sizing', 'beeson-rotating', 'beeson-pick');
+    document.documentElement.classList.remove('beeson-dragging', 'beeson-sizing', 'beeson-rotating');
     view.moving = null;
     view.resizing = false;
     view.turn = null;
@@ -1195,6 +1196,7 @@ export function install(app: App): void {
     if (p.kind === 'move' && p.moved) quiet = true;
     frames.draw();
     app.invalidate('content');
+    pickCursor();
   };
 
   // the elements of a copy by a drag are put back, and a copy of each is written after it, at the
@@ -1234,9 +1236,8 @@ export function install(app: App): void {
     const el = pickOf(app, target);
     const band = el ? null : onCanvas(target, app, { x: ev.clientX, y: ev.clientY }) ? bandAt(app, ev.clientX, ev.clientY) : null;
     document.documentElement.classList.toggle('beeson-band', !!band);
-    // the arrow over a text element that a click selects as a box, and the I-beam once it is selected
-    const host = el && app.hostOf(target);
-    document.documentElement.classList.toggle('beeson-pick', !!host && boxFirst(el) && app.selection.only() !== el && !editingIn(el));
+    under = target;
+    pickCursor();
     const next = el ?? band;
     if (next) {
       if (next !== view.hover) {
@@ -1248,6 +1249,19 @@ export function install(app: App): void {
       frames.draw();
     }
   };
+
+  // the move cursor over a text element that a press selects or drags as a box, the arrow over a
+  // locked one that a press only selects, and the I-beam where a press puts the caret or selects
+  // words. the cursor is set again when the selection or the caret changes under a resting pointer
+  let under: Element | null = null;
+  const pickCursor = () => {
+    const el = pickOf(app, under);
+    const box = !!el && !!app.hostOf(under) && boxFirst(el) && !editingIn(el);
+    document.documentElement.classList.toggle('beeson-pick', box && !locked(el));
+    document.documentElement.classList.toggle('beeson-pick-locked', box && locked(el) && app.selection.only() !== el);
+  };
+  app.onRefresh(['selection', 'content', 'slide'], pickCursor);
+  for (const type of ['focusin', 'focusout']) document.addEventListener(type, () => queueMicrotask(pickCursor));
 
   const near = (el: Element, ev: PointerEvent): boolean => {
     const r = el.getBoundingClientRect();
@@ -1303,6 +1317,7 @@ export function install(app: App): void {
   });
   app.listen('slide', () => {
     view.hover = null;
+    under = null;
     if (press) onUp(null);
   });
 }
