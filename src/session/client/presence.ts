@@ -347,7 +347,9 @@ export class Presence {
       this.timer = this.restTimer = this.typingTimer = this.idleTimer = 0;
       this.publish();
     });
-    app.selection.listen(() => this.moved());
+    // the selection is read once the code that set it ends, since an apply that moves the slide of
+    // the caret sets the selection at the slide change and puts the caret back only after it
+    app.selection.listen(() => queueMicrotask(() => this.moved()));
     app.listen('slide', () => this.due(true));
     document.addEventListener('selectionchange', () => this.moved());
     let hiding = 0;
