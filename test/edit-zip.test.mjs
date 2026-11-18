@@ -6,13 +6,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import fs, { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import fs, { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import fsp from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
+import { startRelay } from '../scripts/relay.mjs';
 import { start } from '../theme/edit.mjs';
 import { DECK, post, raw, startEdit, talkFolder, until, within } from './helpers/session.mjs';
 import { entries, unzipTo } from './helpers/zip.mjs';
@@ -807,4 +808,39 @@ test('a JSON file that is wrapped for the zip counts once against the limit', { 
   const over = await makeZip(edit.port, edit.key, token);
   assert.equal(over.status, 413);
   assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 3 MB for a download.` });
+});
+
+test('through the relay, a folder over 64 MB is refused, and a download gives the zip of a direct download', { timeout: 120_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET, idleMs: 5000, pullMs: 1000 });
+  t.after(() => relay.close());
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const big = put(talk, 'big.bin', '');
+  truncateSync(big, 65 * MB);
+  const edit = await startEdit(talk, { args: ['--relay', relay.url], env: { SLIDES_RELAY_SECRET: SECRET, XDG_CONFIG_HOME: config, APPDATA: config } });
+  const { key } = edit;
+  await until(async () => (await raw(relay.port, 'GET', `/${key}/index.html`)).status === 200, 'the edit command to register with the relay');
+  const guest = await hello(t, relay.port, key, 'Guest');
+
+  const over = await makeZip(relay.port, key, guest);
+  assert.equal(over.status, 413);
+  const size = (Math.ceil(((65 * MB + Buffer.byteLength(DECK)) / MB) * 10) / 10).toFixed(1);
+  assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 64 MB for a download through the relay.` });
+  assert.equal(size, '65.1');
+  const direct = await makeZip(edit.port, key, guest);
+  assert.equal(direct.status, 200, direct.text);
+  assert.equal((await dropZip(edit.port, key, guest, direct.json().id)).status, 200);
+
+  unlinkSync(big);
+  put(talk, 'media/photo.png', randomBytes(5 * MB));
+  put(talk, 'notes.txt', 'notes\n'.repeat(1000));
+  put(talk, 'Edit.command', '#!/bin/sh\n');
+  const relayed = await download(relay.port, key, guest);
+  const host = await hello(t, edit.port, key, 'Host');
+  const local = await download(edit.port, key, host);
+  const shape = (zip) => entries(zip).map(({ name, bytes, method, mode }) => ({ name, bytes: bytes.toString('base64'), method, mode }));
+  assert.deepEqual(shape(relayed.zip), shape(local.zip));
+  assert.equal((await dropZip(relay.port, key, guest, relayed.id)).status, 200);
+  assert.equal((await dropZip(edit.port, key, host, local.id)).status, 200);
+  await until(() => relay.held() === 0, 'the relay to hold nothing');
 });
