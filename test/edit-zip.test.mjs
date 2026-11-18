@@ -303,7 +303,20 @@ test('an entry has the time of its file to 2 s, and a time outside the years of 
   const at = (file, date) => utimesSync(put(talk, file, file), date, date);
   at('now.txt', new Date(2026, 4, 17, 13, 45, 31));
   at('early.txt', new Date(1975, 0, 1, 12));
-  at('late.txt', new Date(2200, 5, 15, 10, 20, 30));
+  // on Windows, Node.js reads a time from 2106-02-07 on back modulo 2^32 s, hence the late time is
+  // given by stat and not by the disk
+  put(talk, 'late.txt', 'late.txt');
+  const { stat } = fsp;
+  fsp.stat = async (file, ...rest) => {
+    const info = await stat(file, ...rest);
+    if (String(file).endsWith('late.txt')) info.mtime = new Date(2200, 5, 15, 10, 20, 30);
+    return info;
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fsp.stat = stat;
+    syncBuiltinESMExports();
+  });
   const running = await inProcess(t, root, talk);
   const token = await hello(t, running.port, running.key, 'Ann');
   const got = byName((await download(running.port, running.key, token)).zip);
