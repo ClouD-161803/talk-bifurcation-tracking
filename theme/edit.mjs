@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 
 // src/edit/command.ts
 import { createReadStream, mkdirSync as mkdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync2, unlinkSync as unlinkSync6, writeFileSync as writeFileSync6 } from "node:fs";
-import { mkdir, readdir, readFile as readFile3, realpath as realpath3, stat as stat4, writeFile as writeFile6 } from "node:fs/promises";
+import { mkdir, readdir as readdir2, readFile as readFile4, realpath as realpath4, stat as stat5, writeFile as writeFile6 } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createHash as createHash2, randomBytes as randomBytes7 } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join as join7, resolve, sep as sep2 } from "node:path";
+import { basename as basename2, join as join8, resolve, sep as sep3 } from "node:path";
 
 // src/session/protocol.ts
 var VERSION_NAME_MAX = 80;
@@ -298,11 +298,11 @@ function mergeEdits(base, ours, all, prefer, apart = false, twice = false) {
   const hit = apart ? clash : overlaps;
   const both = ours.filter((o) => all.some((h) => equal(o, h)));
   const keys = twice && both.length === 1 && both[0].start === both[0].end;
-  const same = (a, b) => !keys && equal(a, b);
-  const others = all.filter((h) => !ours.some((o) => same(o, h)));
+  const same2 = (a, b) => !keys && equal(a, b);
+  const others = all.filter((h) => !ours.some((o) => same2(o, h)));
   const conflicts = ours.filter((o) => others.some((h) => hit(o, h)));
   const keptTheirs = prefer === "theirs" ? all : all.filter((h) => !conflicts.some((o) => hit(o, h)));
-  const keptOurs = (prefer === "ours" ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => same(o, h)));
+  const keptOurs = (prefer === "ours" ? ours : ours.filter((o) => !conflicts.includes(o))).filter((o) => !keptTheirs.some((h) => same2(o, h)));
   return { text: apply(base, [...keptOurs, ...keptTheirs]), conflicts };
 }
 function charEdits(a, b, max) {
@@ -1981,11 +1981,11 @@ function slideChanges(before2, beforeSlides, after, afterSlides, marks) {
   to.forEach((j, i) => {
     if (j >= 0 && moved2[i] < 0) matched.push({ i, j, same: false });
   });
-  const same = new Set(matched.filter((p) => p.same).map((p) => p.j));
+  const same2 = new Set(matched.filter((p) => p.same).map((p) => p.j));
   const slides = /* @__PURE__ */ new Set();
   afterSlides.forEach((s, j) => {
     if (past.has(j)) slides.add(s.number);
-    if (!same.has(j) && marks.some((m) => m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end)) slides.add(s.number);
+    if (!same2.has(j) && marks.some((m) => m.start < m.end ? m.start < s.end && s.start < m.end : s.start < m.start && m.start < s.end)) slides.add(s.number);
   });
   const gone = beforeSlides.filter((_, i) => to[i] < 0).map((s) => s.number);
   let elements = 0;
@@ -2285,7 +2285,7 @@ function slow(before2, patches, after, items, given) {
     if (patches.some((p) => p !== q && touches(p, a.start, q.start))) return true;
     return !(q.end - k >= end && before2.startsWith(before2.slice(a.start, q.start), q.end - k));
   };
-  const wrapped = (a, text, found) => {
+  const wrapped2 = (a, text, found) => {
     const s = slideAt(s1, found.start);
     const { close } = elementClose(after, found, s ? s.end : after.length);
     if (close <= found.end) return null;
@@ -2312,7 +2312,7 @@ function slow(before2, patches, after, items, given) {
     const text = before2.slice(a.start, end);
     if (!patches.some((q) => touches(q, a.start, end)) || found && after.startsWith(text, found.start)) return { anchor: found, text };
     if (found && e > a.end) {
-      if (stays(a, close, end)) return { anchor: wrapped(a, text, found) ?? swapped(a, close, text, found) ?? found, text };
+      if (stays(a, close, end)) return { anchor: wrapped2(a, text, found) ?? swapped(a, close, text, found) ?? found, text };
       const o2 = findInserted(after, text, inserted, found.start);
       return { anchor: o2 >= 0 ? { start: o2, end: o2 + a.end - a.start, tag: a.tag } : null, text };
     }
@@ -5318,6 +5318,229 @@ function sigOf(file) {
 }
 var statSig = (file) => stat3(file).then(signature, () => "");
 
+// src/edit/zip.ts
+import { readdir, readFile as readFile3, realpath as realpath3, stat as stat4 } from "node:fs/promises";
+import { join as join7, sep as sep2 } from "node:path";
+import { gzip } from "node:zlib";
+var OUTPUTS = /* @__PURE__ */ new Set(["check", "slides.pdf", "slides.pptx"]);
+var MOST_FILES = 65535;
+var PACKED = /\.(png|jpe?g|gif|webp|avif|mp4|m4v|webm|mov|ogv|woff2?|zip|gz)$/i;
+var LAUNCHER = /\.(command|sh)$/i;
+var AT = ["http://talk.invalid/t/", "https://deck.invalid/d/"];
+var NAMED2 = /data-trajectories\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]*))/gi;
+var SCRIPT = /^[^?#&]*\.js[\0- ]*(?:[?#][^]*)?$/i;
+var OPEN = Buffer.from("Beeson.trajectories(");
+var CLOSE = Buffer.from(");\n");
+var TooLarge = class extends Error {
+  constructor(bytes, files) {
+    super("the talk folder is too large for a zip");
+    this.bytes = bytes;
+    this.files = files;
+  }
+};
+var nameOf = (name) => process.platform === "darwin" ? name.normalize("NFC") : name;
+var same = (name) => name.normalize("NFD").toLowerCase().toUpperCase().normalize("NFD");
+var loose = (name) => same(name).replace(new RegExp("\\p{M}", "gu"), "");
+async function walk(root, dir, above, out) {
+  const real = await realpath3(join7(root, ...dir)).catch(() => null);
+  if (real === null || above.includes(real) || dir.length > 0 && !real.startsWith(root + sep2)) return;
+  const names = await readdir(real).catch(() => []);
+  for (const name of names.sort()) {
+    if (!servedSegment(name)) continue;
+    const lower = name.toLowerCase();
+    if (dir.length === 0 && (OUTPUTS.has(lower) || lower === "index.html")) continue;
+    const path = [...dir, name];
+    const info2 = await stat4(join7(root, ...path)).catch(() => null);
+    if (info2?.isDirectory()) await walk(root, path, [...above, real], out);
+    if (!info2?.isFile()) continue;
+    const file = await fileInside(root, path);
+    if (!file) continue;
+    out.push({ name: nameOf(path.join("/")), file, size: info2.size, mtime: info2.mtime, run: (info2.mode & 73) !== 0 || LAUNCHER.test(name) });
+    if (out.length > MOST_FILES) throw new TooLarge(0, out.length);
+  }
+}
+function inFolder(value, bases) {
+  try {
+    const urls = bases.map((base) => new URL(decodeAttr(value), base));
+    const rests = urls.map((url, i) => url.href.startsWith(AT[i]) ? url.href.slice(AT[i].length) : null);
+    return rests[0] !== null && rests[0] === rests[1] ? urls : null;
+  } catch {
+    return null;
+  }
+}
+async function wrapped(root, html, found) {
+  const files = /* @__PURE__ */ new Map();
+  const suffixes = /* @__PURE__ */ new Map();
+  if ([...html.matchAll(NAMED2)].every((m) => SCRIPT.test(m[1] ?? m[2] ?? m[3]))) return { html, files };
+  const tokens = tokenize(html);
+  let bases = AT;
+  for (const t of tokens) {
+    const href = t.type === "start" && t.name === "base" ? t.attrs.find((a) => a.name === "href")?.value : null;
+    if (href == null) continue;
+    bases = inFolder(href, AT)?.map((url) => url.href) ?? null;
+    break;
+  }
+  if (!bases) return { html, files };
+  const taken = /* @__PURE__ */ new Set();
+  for (const { name } of found) for (let end = name.length; end > 0; end = name.lastIndexOf("/", end - 1)) taken.add(loose(name.slice(0, end)));
+  const ends = [];
+  for (const t of tokens) {
+    if (t.type !== "start") continue;
+    for (const a of t.attrs) {
+      if (a.name !== "data-trajectories" || a.value === null) continue;
+      const raw = a.value.replace(/[\0- ]+$/, "");
+      const url = inFolder(raw, bases)?.[0];
+      if (!url || /\.js$/i.test(url.pathname)) continue;
+      const segments = segmentsOf(url.pathname.slice("/t/".length));
+      const file = segments && await fileInside(root, segments);
+      if (!segments || !file) continue;
+      const name = segments.join("/");
+      let suffix = suffixes.get(name);
+      if (suffix === void 0) {
+        suffix = ".js";
+        for (let n = 2; taken.has(loose(name + suffix)); n++) suffix = `-${n}.js`;
+        suffixes.set(name, suffix);
+        taken.add(loose(name + suffix));
+        files.set(name + suffix, file);
+      }
+      const cut = raw.replace(REFERENCE_IN_ATTR, (m) => (/[?#]/.test(decodeAttr(m)) ? "?" : "x").padEnd(m.length, "x")).search(/[?#]/);
+      ends.push({ at: a.start + html.slice(a.start, a.end).lastIndexOf(a.value) + (cut < 0 ? raw.length : cut), suffix });
+    }
+  }
+  for (const end of ends.sort((a, b) => b.at - a.at)) html = `${html.slice(0, end.at)}${end.suffix}${html.slice(end.at)}`;
+  return { html, files };
+}
+var gz = (bytes, level) => new Promise((done, fail2) => gzip(bytes, { level }, (e, z) => e ? fail2(e) : done(z)));
+var BLOCK = 64 * 1024;
+var SPARE = 64;
+async function zipOf(root, top, { html, bom, tex }, limit, admit) {
+  const found = [];
+  await walk(root, [], [], found);
+  const now = /* @__PURE__ */ new Date();
+  let texFile = found.find((f) => f.name === "tex.js");
+  if (!texFile) {
+    const other = found.find((f) => same(f.name) === same("tex.js"));
+    const [a, b] = other ? await Promise.all([join7(root, "tex.js"), other.file].map((file) => stat4(file, { bigint: true }).catch(() => null))) : [];
+    if (other && a && b && a.dev === b.dev && a.ino === b.ino) texFile = Object.assign(other, { name: "tex.js" });
+  }
+  if (tex !== null) {
+    const content = Buffer.from(tex, "utf8");
+    if (texFile) Object.assign(texFile, { content, size: content.length });
+    else if (!found.some((f) => same(f.name).startsWith(same("tex.js/")))) found.push({ name: "tex.js", file: "", size: content.length, mtime: now, run: false, content });
+  }
+  const made = await wrapped(root, html, found);
+  const index = Buffer.from(bom ? `\uFEFF${made.html}` : made.html, "utf8");
+  const wraps2 = [];
+  for (const [name, file] of made.files) {
+    const info2 = await stat4(file).catch(() => null);
+    if (info2) wraps2.push({ name, file, size: info2.size + OPEN.length + CLOSE.length, mtime: info2.mtime, run: false, wrap: true });
+  }
+  const sources = [...found, ...wraps2].sort((a, b) => a.name < b.name ? -1 : 1);
+  const bytes = found.reduce((n, s) => n + s.size, index.length);
+  if (bytes > limit || sources.length + 1 > MOST_FILES) throw new TooLarge(bytes, sources.length + 1);
+  const head = (name) => 76 + 2 * Buffer.byteLength(`${top}/${name}`);
+  const most = sources.reduce((n, s) => n + head(s.name) + s.size, head("index.html") + index.length + 22);
+  if (!admit(most)) return null;
+  const parts = [];
+  let block = Buffer.allocUnsafeSlow(0);
+  let held = 0;
+  let filled = 0;
+  const flush = () => {
+    if (filled > held) parts.push(block.subarray(held, filled));
+    held = filled;
+  };
+  const put = (bytes2) => {
+    if (bytes2.length >= BLOCK / 8) {
+      flush();
+      if (bytes2.buffer.byteLength - bytes2.length <= SPARE) parts.push(bytes2);
+      else {
+        const copy2 = Buffer.allocUnsafeSlow(bytes2.length);
+        bytes2.copy(copy2);
+        parts.push(copy2);
+      }
+      return;
+    }
+    if (filled + bytes2.length > block.length) {
+      flush();
+      block = Buffer.allocUnsafeSlow(BLOCK);
+      held = filled = 0;
+    }
+    filled += bytes2.copy(block, filled);
+  };
+  const central = [];
+  let at = 0;
+  const add = async (name, content, mtime, run) => {
+    const z = await gz(content, PACKED.test(name) ? 0 : 6);
+    if (z[3] !== 0) throw new Error("gzip wrote a header with a field");
+    const deflated = z.subarray(10, z.length - 8);
+    const stored = deflated.length >= content.length;
+    const data = stored ? content : deflated;
+    const path = Buffer.from(`${top}/${name}`, "utf8");
+    const year = Math.min(mtime.getFullYear(), 2107);
+    const day = year < 1980 ? 33 : year - 1980 << 9 | mtime.getMonth() + 1 << 5 | mtime.getDate();
+    const time = year < 1980 ? 0 : mtime.getHours() << 11 | mtime.getMinutes() << 5 | mtime.getSeconds() >> 1;
+    const local = Buffer.alloc(30 + path.length);
+    local.writeUInt32LE(67324752, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(2048, 6);
+    local.writeUInt16LE(stored ? 0 : 8, 8);
+    local.writeUInt16LE(time, 10);
+    local.writeUInt16LE(day, 12);
+    local.writeUInt32LE(z.readUInt32LE(z.length - 8), 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(content.length, 22);
+    local.writeUInt16LE(path.length, 26);
+    path.copy(local, 30);
+    const entry = Buffer.alloc(46 + path.length);
+    entry.writeUInt32LE(33639248, 0);
+    entry.writeUInt16LE(3 << 8 | 20, 4);
+    local.copy(entry, 6, 4, 30);
+    entry.writeUInt32LE((32768 | (run ? 493 : 420)) << 16 >>> 0, 38);
+    entry.writeUInt32LE(at, 42);
+    path.copy(entry, 46);
+    put(local);
+    put(data);
+    central.push(entry);
+    at += local.length + data.length;
+  };
+  await add("index.html", index, now, false);
+  let grown = 0;
+  for (const s of sources) {
+    const read = s.content ?? await readFile3(s.file).catch(() => null);
+    if (read === null) continue;
+    const content = s.wrap ? Buffer.concat([OPEN, read, CLOSE]) : read;
+    grown += Math.max(0, content.length - s.size);
+    if (bytes + grown > limit) throw new TooLarge(bytes + grown, sources.length + 1);
+    await add(s.name, content, s.mtime, s.run);
+  }
+  let directory = 0;
+  for (const entry of central) {
+    put(entry);
+    directory += entry.length;
+  }
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(101010256, 0);
+  end.writeUInt16LE(central.length, 8);
+  end.writeUInt16LE(central.length, 10);
+  end.writeUInt32LE(directory, 12);
+  end.writeUInt32LE(at, 16);
+  put(end);
+  flush();
+  return { parts, size: at + directory + end.length };
+}
+function piece(zip, start2, length) {
+  const end = Math.min(zip.size, start2 + length);
+  const out = [];
+  let at = 0;
+  for (const part of zip.parts) {
+    if (at >= end) break;
+    const next = at + part.length;
+    if (next > start2) out.push(part.subarray(Math.max(0, start2 - at), Math.min(part.length, end - at)));
+    at = next;
+  }
+  return Buffer.concat(out);
+}
+
 // src/edit/command.ts
 var DEFAULT_PORT = 8765;
 var JSON_MAX = 16 * 1024 * 1024;
@@ -5327,6 +5550,10 @@ var MEDIA_TYPES = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", 
 var LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2e3;
 var END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1e3;
 var CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
+var ZIP_MAX = Number(process.env.SLIDES_ZIP_MAX_BYTES) || 512 * 1024 * 1024;
+var ZIP_PIECE = 2 * 1024 * 1024;
+var ZIP_KEPT = Number(process.env.SLIDES_ZIP_KEPT_MS) || 12e4;
+var MB = 1024 * 1024;
 var AlreadyRunning = class extends Error {
   constructor(found) {
     super(`the edit command already runs for this folder at ${found.url}`);
@@ -5359,9 +5586,9 @@ async function holderOf(file, root, key, log) {
 }
 function keepUnwritten(root, text) {
   const name = `unwritten-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.html`;
-  for (const dir of [join7(root, ".session"), tmpdir()]) {
+  for (const dir of [join8(root, ".session"), tmpdir()]) {
     try {
-      const file = join7(dir, name);
+      const file = join8(dir, name);
       writeFileSync6(file, text, { flag: "wx" });
       return file;
     } catch {
@@ -5370,13 +5597,13 @@ function keepUnwritten(root, text) {
   return null;
 }
 function keyOf2(root) {
-  const dir = join7(root, ".session");
+  const dir = join8(root, ".session");
   mkdirSync4(dir, { recursive: true });
   try {
-    writeFileSync6(join7(dir, ".gitignore"), "*\n", { flag: "wx" });
+    writeFileSync6(join8(dir, ".gitignore"), "*\n", { flag: "wx" });
   } catch {
   }
-  const file = join7(dir, "key");
+  const file = join8(dir, "key");
   try {
     const key2 = readFileSync8(file, "utf8").trim();
     if (/^[A-Za-z0-9_-]{22,128}$/.test(key2)) return key2;
@@ -5389,7 +5616,7 @@ function keyOf2(root) {
 }
 function savedPort(root) {
   try {
-    const port = Number(readFileSync8(join7(root, ".session", "port"), "utf8").trim());
+    const port = Number(readFileSync8(join8(root, ".session", "port"), "utf8").trim());
     return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
   } catch {
     return null;
@@ -5417,14 +5644,14 @@ async function sameFile(dir, name, size2, hash) {
   const dot = name.lastIndexOf(".");
   const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const family = new RegExp(`^${escape(name.slice(0, dot))}(?:-(\\d+))?${escape(name.slice(dot))}$`);
-  const found = (await readdir(dir, { withFileTypes: true })).flatMap((d) => {
+  const found = (await readdir2(dir, { withFileTypes: true })).flatMap((d) => {
     const m = d.isFile() ? family.exec(d.name) : null;
     return m ? [{ name: d.name, n: Number(m[1] ?? 1) }] : [];
   });
   for (const f of found.sort((a, b) => a.n - b.n)) {
-    const file = join7(dir, f.name);
+    const file = join8(dir, f.name);
     try {
-      if ((await stat4(file)).size === size2 && sha256(await readFile3(file)) === hash) return f.name;
+      if ((await stat5(file)).size === size2 && sha256(await readFile4(file)) === hash) return f.name;
     } catch {
     }
   }
@@ -5445,13 +5672,23 @@ async function start(options = {}) {
   const log = options.log ?? ((m) => process.stderr.write(`${m}
 `));
   const root = realpathSync2.native(resolve(options.folder ?? "."));
-  const index = join7(root, "index.html");
+  const index = join8(root, "index.html");
   const { text, bom } = readText(index);
   const key = keyOf2(root);
-  const lockFile = join7(root, ".session", "lock");
+  const fit = (name) => {
+    let out = "";
+    for (const c of name) {
+      if (out.length + c.length > 64) break;
+      out += c;
+    }
+    return out.replace(/[\s.]+$/, "");
+  };
+  const DEVICE = /^(con|prn|aux|nul|clock\$|conin\$|conout\$|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3])(?= *\.|$)/i;
+  const zipName = fit(fit(basename2(root).normalize("NFC").replace(/[<>:"/\\|?*\p{Cc}\p{Cf}]/gu, "-").replace(/^[\s.~]+/, "")).replace(DEVICE, "$1-")) || "talk";
+  const lockFile = join8(root, ".session", "lock");
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
-  const appliedFile = join7(root, ".session", "applied.json");
+  const appliedFile = join8(root, ".session", "applied.json");
   const authority = new Authority(text, { applied: readApplied(appliedFile) });
   const appliedTable = new AppliedTable(appliedFile, log);
   const tex = new TexWriter(root, text, { log, onChange: () => people.texChanged(), onWriteError: (m) => people.texFailed(m) });
@@ -5460,7 +5697,7 @@ async function start(options = {}) {
     tex.written(written2);
   };
   const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
-  const people = new People(authority, join7(root, ".session", "people.json"), log);
+  const people = new People(authority, join8(root, ".session", "people.json"), log);
   let history;
   let comments;
   let port = 0;
@@ -5526,6 +5763,65 @@ async function start(options = {}) {
     }
     relay = next;
   }
+  const zips = /* @__PURE__ */ new Map();
+  const dropZip = (client) => {
+    clearTimeout(zips.get(client)?.timer);
+    zips.delete(client);
+  };
+  const dropAfter = (client, id, ms) => {
+    const timer = setTimeout(() => zips.get(client)?.id === id && zips.delete(client), ms);
+    timer.unref();
+    return timer;
+  };
+  let building = 0;
+  const zipsFull = (bytes) => {
+    let held = building;
+    for (const z of zips.values()) held += z.zip.size;
+    return held > 0 && held + bytes > ZIP_MAX;
+  };
+  async function zipApi(route, request) {
+    const query = new URLSearchParams(request.query);
+    const client = people.clientOf(query.get("token"));
+    if (client === null || !people.present(client)) return error(404, "say hello first");
+    if (route === "zip") {
+      if (request.method !== "POST") return error(405, "POST");
+      if (closed) return error(503, "the edit command is stopping");
+      dropZip(client);
+      const limit = request.direct ? ZIP_MAX : Math.min(ZIP_MAX, RELAY_ANSWER);
+      const tex2 = deriveTex(root, authority.text);
+      const deck = { html: authority.text, bom: disk.bom, tex: tex2.sources && !tex2.unread.length ? tex2.text : null };
+      let reserved = 0;
+      let zip;
+      try {
+        zip = await zipOf(root, zipName, deck, limit, (most) => !zipsFull(most) && (building += reserved = most, true));
+      } catch (e) {
+        if (!(e instanceof TooLarge)) throw e;
+        if (e.files > MOST_FILES) return error(413, `The zip of the talk folder would hold more than ${MOST_FILES.toLocaleString("en-US")} files, the most that a zip holds.`);
+        const size2 = (Math.ceil(e.bytes / MB * 10) / 10).toFixed(1);
+        return error(413, `The talk folder is ${size2} MB, over the limit of ${Math.floor(limit / MB)} MB for a download${request.direct ? "" : " through the relay"}.`);
+      } finally {
+        building -= reserved;
+      }
+      dropZip(client);
+      if (closed) return error(503, "the edit command is stopping");
+      if (!zip || zipsFull(zip.size)) return error(503, "The edit command is busy with other downloads of the talk folder. Try again in a minute.");
+      const id = randomBytes7(8).toString("hex");
+      zips.set(client, { id, zip, timer: dropAfter(client, id, ZIP_KEPT / 4) });
+      return json(200, { id, size: zip.size, name: `${zipName}.zip` });
+    }
+    const held = zips.get(client);
+    if (!held || held.id !== route.slice("zip/".length)) return error(404, "the zip is not kept any more");
+    if (request.method === "DELETE") {
+      dropZip(client);
+      return json(200, {});
+    }
+    if (request.method !== "GET") return error(405, "GET or DELETE");
+    const at = Number(query.get("at") ?? 0);
+    if (!Number.isInteger(at) || at < 0 || at >= held.zip.size) return error(416, "at is not a byte of the zip");
+    clearTimeout(held.timer);
+    held.timer = dropAfter(client, held.id, ZIP_KEPT);
+    return { status: 200, headers: { "Content-Type": "application/zip", "Cache-Control": "no-store" }, body: piece(held.zip, at, ZIP_PIECE) };
+  }
   async function media(name, request) {
     if (request.method !== "PUT") return error(405, "PUT");
     const client = people.clientOf(new URLSearchParams(request.query).get("token"));
@@ -5534,22 +5830,22 @@ async function start(options = {}) {
     if (!clean) return error(415, "the file must be an image, a video, or json");
     if (request.body.length > MEDIA_MAX) return error(413, "the file is larger than 64 MB");
     if (!request.direct && request.body.length > GUEST_MEDIA_MAX) return error(413, "the file is larger than 16 MB, the limit of an upload through the relay");
-    const dir = join7(root, "media");
+    const dir = join8(root, "media");
     await mkdir(dir, { recursive: true });
-    const real = await realpath3(dir);
-    if (!real.startsWith(root + sep2)) return error(403, "media/ leaves the talk folder");
+    const real = await realpath4(dir);
+    if (!real.startsWith(root + sep3)) return error(403, "media/ leaves the talk folder");
     const sent = request.headers["x-content-sha256"];
     if (sent !== void 0) {
       const hash = sha256(request.body);
       if (sent.toLowerCase() !== hash) return error(400, "the file does not have the SHA-256 of x-content-sha256");
-      const same = await sameFile(real, clean, request.body.length, hash);
-      if (same) return json(200, { path: `media/${same}` });
+      const same2 = await sameFile(real, clean, request.body.length, hash);
+      if (same2) return json(200, { path: `media/${same2}` });
     }
     const dot = clean.lastIndexOf(".");
     for (let i = 1; i < 1e3; i++) {
       const candidate = i === 1 ? clean : `${clean.slice(0, dot)}-${i}${clean.slice(dot)}`;
       try {
-        await writeFile6(join7(real, candidate), request.body, { flag: "wx" });
+        await writeFile6(join8(real, candidate), request.body, { flag: "wx" });
         return json(200, { path: `media/${candidate}` });
       } catch (e) {
         if (e.code !== "EEXIST") throw e;
@@ -5631,6 +5927,7 @@ async function start(options = {}) {
     if (route === "history" || route.startsWith("history/") || route === "aside") return historyApi(route, request);
     if (route === "comments" || route.startsWith("comments/")) return commentsApi(route, request);
     if (route === "share") return share(request);
+    if (route === "zip" || route.startsWith("zip/")) return zipApi(route, request);
     if (route === "events") {
       if (request.method !== "GET") return error(405, "GET");
       const query = new URLSearchParams(request.query);
@@ -5824,11 +6121,11 @@ async function start(options = {}) {
     }
   };
   try {
-    writeFileSync6(join7(root, ".session", "port"), `${port}
+    writeFileSync6(join8(root, ".session", "port"), `${port}
 `);
   } catch {
   }
-  history = new History(join7(root, ".session"), authority, { ...options.history, log });
+  history = new History(join8(root, ".session"), authority, { ...options.history, log });
   history.onChange(() => people.news());
   people.feed({
     rev: () => history.rev,
@@ -5849,7 +6146,7 @@ async function start(options = {}) {
       if (history.overwrittenAfter(since)) answer.overwritten = true;
     }
   });
-  comments = new Comments(join7(root, ".session"), authority, history.found, { ...options.comments, log });
+  comments = new Comments(join8(root, ".session"), authority, history.found, { ...options.comments, log });
   comments.onChange(() => people.news());
   people.feed({
     rev: () => comments.v,
@@ -5886,6 +6183,7 @@ async function start(options = {}) {
     unwritten,
     close: () => closing ??= (async () => {
       closed = true;
+      for (const client of [...zips.keys()]) dropZip(client);
       unlock();
       people.end();
       const unwritten2 = await disk.stop();

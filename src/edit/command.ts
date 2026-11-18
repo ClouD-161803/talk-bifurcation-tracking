@@ -8,7 +8,7 @@ import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/pro
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
 import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { AppliedTable, readApplied } from './applied.ts';
@@ -17,8 +17,9 @@ import { Disk, readText, renameRetriedSync } from './disk.ts';
 import { History, type HistoryOptions } from './history.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
-import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
-import { TexWriter } from './tex.ts';
+import { ADDRESS_RULE, loadConfig, RELAY_ANSWER, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
+import { deriveTex, TexWriter } from './tex.ts';
+import { MOST_FILES, piece, TooLarge, zipOf, type Zip } from './zip.ts';
 
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
@@ -33,6 +34,17 @@ const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
 const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
 // the time in ms for which a stopped edit command still answers a poll with ended, longer in the tests
 const CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
+// the most bytes of the files of a talk folder that a page downloads as a zip without the relay,
+// which is also the most that the zips kept at one time hold, smaller in the tests. through the
+// relay, the limit of a folder is the largest answer of the relay
+const ZIP_MAX = Number(process.env.SLIDES_ZIP_MAX_BYTES) || 512 * 1024 * 1024;
+// the bytes of one piece of a zip. the relay takes a piece within its 60 s from an upload of
+// 0.3 Mbit/s, and it holds one piece of a download rather than its session share
+const ZIP_PIECE = 2 * 1024 * 1024;
+// the time in ms for which a zip is kept after a page last asked for a piece of it, shorter in the
+// tests. a zip of which a piece was not asked for yet is kept for a quarter of this time
+const ZIP_KEPT = Number(process.env.SLIDES_ZIP_KEPT_MS) || 120_000;
+const MB = 1024 * 1024;
 
 export type StartOptions = {
   folder?: string;
@@ -209,6 +221,23 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const index = join(root, 'index.html');
   const { text, bom } = readText(index);
   const key = keyOf(root);
+  // the name of the zip and of its one folder: the name of the talk folder without what Windows
+  // refuses in a file name, and without what Chrome replaces in the name of a download, i.e. a
+  // control or a format character, and a ~ or a space at its start. it does not start with a dot,
+  // which hides a folder, and it is not a device of Windows, e.g. aux. it is cut to 64 units of
+  // UTF-16, in which Windows counts a path of at most 259, since Extract All puts the folder into
+  // one of the same name
+  const fit = (name: string) => {
+    let out = '';
+    for (const c of name) {
+      if (out.length + c.length > 64) break;
+      out += c;
+    }
+    return out.replace(/[\s.]+$/, '');
+  };
+  // a name may be a device only once it is cut, and the - of a device counts in the 64 units
+  const DEVICE = /^(con|prn|aux|nul|clock\$|conin\$|conout\$|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3])(?= *\.|$)/i;
+  const zipName = fit(fit(basename(root).normalize('NFC').replace(/[<>:"/\\|?*\p{Cc}\p{Cf}]/gu, '-').replace(/^[\s.~]+/, '')).replace(DEVICE, '$1-')) || 'talk';
   const lockFile = join(root, '.session', 'lock');
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
@@ -297,6 +326,82 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       throw new Error('the edit command is stopping');
     }
     relay = next;
+  }
+
+  // the zip of the talk folder of each page that downloads one, by its client, kept in memory from
+  // its POST until its DELETE, or until the page stops asking for pieces
+  const zips = new Map<string, { id: string; zip: Zip; timer: ReturnType<typeof setTimeout> }>();
+  const dropZip = (client: string) => {
+    clearTimeout(zips.get(client)?.timer);
+    zips.delete(client);
+  };
+  // the zip id of client is dropped after ms
+  const dropAfter = (client: string, id: string, ms: number) => {
+    const timer = setTimeout(() => zips.get(client)?.id === id && zips.delete(client), ms);
+    timer.unref();
+    return timer;
+  };
+  // the most bytes of the zips that are being built
+  let building = 0;
+  // whether the zips kept and being built do not leave room for one of bytes. a zip alone has room
+  const zipsFull = (bytes: number) => {
+    let held = building;
+    for (const z of zips.values()) held += z.zip.size;
+    return held > 0 && held + bytes > ZIP_MAX;
+  };
+
+  // POST zip builds the zip of the page and answers its id, its size, and its name. GET zip/<id>
+  // answers the piece that starts at the byte of at, and DELETE zip/<id> frees the zip
+  async function zipApi(route: string, request: Request): Promise<Response> {
+    const query = new URLSearchParams(request.query);
+    const client = people.clientOf(query.get('token'));
+    if (client === null || !people.present(client)) return error(404, 'say hello first');
+    if (route === 'zip') {
+      if (request.method !== 'POST') return error(405, 'POST');
+      if (closed) return error(503, 'the edit command is stopping');
+      dropZip(client);
+      const limit = request.direct ? ZIP_MAX : Math.min(ZIP_MAX, RELAY_ANSWER);
+      // tex.js is written only after index.html, hence the zip holds the one of the text of the
+      // session, where the edit command writes it
+      const tex = deriveTex(root, authority.text);
+      const deck = { html: authority.text, bom: disk.bom, tex: tex.sources && !tex.unread.length ? tex.text : null };
+      // the room of a zip is taken before its files are read, so that the pages that ask at one
+      // time do not each hold a zip
+      let reserved = 0;
+      let zip: Zip | null;
+      try {
+        zip = await zipOf(root, zipName, deck, limit, (most) => !zipsFull(most) && ((building += reserved = most), true));
+      } catch (e) {
+        if (!(e instanceof TooLarge)) throw e;
+        // the tex.js of the session and each wrapped file are files of the zip as well
+        if (e.files > MOST_FILES) return error(413, `The zip of the talk folder would hold more than ${MOST_FILES.toLocaleString('en-US')} files, the most that a zip holds.`);
+        // rounded up, so that a folder just over the limit is not given as the limit
+        const size = (Math.ceil((e.bytes / MB) * 10) / 10).toFixed(1);
+        return error(413, `The talk folder is ${size} MB, over the limit of ${Math.floor(limit / MB)} MB for a download${request.direct ? '' : ' through the relay'}.`);
+      } finally {
+        building -= reserved;
+      }
+      // the earlier zip of a page that asked twice
+      dropZip(client);
+      if (closed) return error(503, 'the edit command is stopping');
+      if (!zip || zipsFull(zip.size)) return error(503, 'The edit command is busy with other downloads of the talk folder. Try again in a minute.');
+      const id = randomBytes(8).toString('hex');
+      // a page whose download was stopped while the zip was built does not ask for a piece
+      zips.set(client, { id, zip, timer: dropAfter(client, id, ZIP_KEPT / 4) });
+      return json(200, { id, size: zip.size, name: `${zipName}.zip` });
+    }
+    const held = zips.get(client);
+    if (!held || held.id !== route.slice('zip/'.length)) return error(404, 'the zip is not kept any more');
+    if (request.method === 'DELETE') {
+      dropZip(client);
+      return json(200, {});
+    }
+    if (request.method !== 'GET') return error(405, 'GET or DELETE');
+    const at = Number(query.get('at') ?? 0);
+    if (!Number.isInteger(at) || at < 0 || at >= held.zip.size) return error(416, 'at is not a byte of the zip');
+    clearTimeout(held.timer);
+    held.timer = dropAfter(client, held.id, ZIP_KEPT);
+    return { status: 200, headers: { 'Content-Type': 'application/zip', 'Cache-Control': 'no-store' }, body: piece(held.zip, at, ZIP_PIECE) };
   }
 
   async function media(name: string, request: Request): Promise<Response> {
@@ -410,6 +515,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'history' || route.startsWith('history/') || route === 'aside') return historyApi(route, request);
     if (route === 'comments' || route.startsWith('comments/')) return commentsApi(route, request);
     if (route === 'share') return share(request);
+    if (route === 'zip' || route.startsWith('zip/')) return zipApi(route, request);
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
       const query = new URLSearchParams(request.query);
@@ -689,6 +795,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     close: () =>
       (closing ??= (async () => {
         closed = true;
+        for (const client of [...zips.keys()]) dropZip(client);
         // a start during the stop begins a new edit command rather than finding this one
         unlock();
         people.end();
