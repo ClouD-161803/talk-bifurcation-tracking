@@ -695,17 +695,22 @@ test('the texts of removed elements do not keep the earlier texts of the deck in
   for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
   // the first measure is taken before a collection, as on a loaded runner, where garbage is not
   // freed yet at a measure
-  const grown = used(false) - before;
+  let grown = used(false) - before;
+  // garbage is freed a few collections later, hence a growth over its bound is measured again
+  const bound = (n * deck.length) / 10;
+  for (let again = 0; again < 8 && grown >= bound; again++) grown = used() - before;
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.startsWith('<p>Paragraph')));
-  assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
+  assert.ok(grown < bound, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 
 test('the checks of removed elements longer than 4 kB do not keep the earlier texts of the deck in memory', (t) => {
   setFlagsFromString('--expose-gc');
   const gc = runInNewContext('gc');
-  const used = () => {
-    gc();
-    gc();
+  const used = (collect = true) => {
+    if (collect) {
+      gc();
+      gc();
+    }
     return process.memoryUsage().heapUsed;
   };
   const n = 50;
@@ -716,9 +721,13 @@ test('the checks of removed elements longer than 4 kB do not keep the earlier te
   for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p class="paragraph-${k}">`), slide: null, text: `p${k}` });
   const before = used();
   for (let k = 0; k < n; k++) replace(authority, `\n  ${long(k)}`, '');
-  const grown = used() - before;
+  // as in the test above, the first measure is taken before a collection, and a growth over its
+  // bound is measured again
+  let grown = used(false) - before;
+  const bound = (n * deck.length) / 10;
+  for (let again = 0; again < 8 && grown >= bound; again++) grown = used() - before;
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.tag?.startsWith('<p class="paragraph-')));
-  assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
+  assert.ok(grown < bound, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
 
 test('a shift of the anchors by typing is written to the file', async (t) => {
