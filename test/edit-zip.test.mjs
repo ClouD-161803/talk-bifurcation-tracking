@@ -730,3 +730,37 @@ test('pages that ask at one time do not each build a zip: the room of a zip is t
   const later = await makeZip(port, key, bo);
   assert.equal(later.status, 200, later.text);
 });
+
+test('a page whose zip is built while the edit command stops is told so, and not that the edit command is busy', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  put(talk, 'media/a.png', randomBytes(MB));
+  // the read of media/a.png waits for release()
+  const { readFile } = fsp;
+  let reads = 0;
+  let release;
+  const gate = new Promise((done) => (release = done));
+  fsp.readFile = async (file, ...rest) => {
+    if (String(file).endsWith('a.png')) {
+      reads++;
+      await gate;
+    }
+    return readFile(file, ...rest);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    release();
+    fsp.readFile = readFile;
+    syncBuiltinESMExports();
+  });
+  const running = await inProcess(t, root, talk);
+  const token = await hello(t, running.port, running.key, 'Ann');
+  const made = makeZip(running.port, running.key, token);
+  await until(() => reads === 1, 'the zip to read media/a.png');
+  // the edit command answers the requests in flight for a moment after it was stopped
+  const closing = running.close();
+  release();
+  const answer = await within(made, 10_000, 'the answer to the page');
+  assert.equal(answer.status, 503);
+  assert.deepEqual(answer.json(), { error: 'the edit command is stopping' });
+  await closing;
+});
