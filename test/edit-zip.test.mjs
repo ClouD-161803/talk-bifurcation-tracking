@@ -272,3 +272,23 @@ test('a talk folder named after a device of Windows, with a long name, or with a
     assert.equal(entries(got.zip)[0].name, `${name}/index.html`);
   }
 });
+
+test('on macOS, a name that is stored decomposed is zipped composed, as a deck writes it', { skip: process.platform !== 'darwin', timeout: 60_000 }, async (t) => {
+  const { root } = talkFolder(t);
+  const [composed, decomposed] = ['\u00e9', 'e\u0301'].map((e) => `caf${e}`);
+  assert.notEqual(composed, decomposed);
+  const talk = join(root, `${decomposed} talk`);
+  put(talk, 'index.html', DECK.replace('</body>', `<section><div data-trajectories="${decomposed}/o.json"></div></section>\n</body>`));
+  put(talk, `media/${decomposed}.png`, 'png');
+  put(talk, `${decomposed}/o.json`, '[]');
+  put(talk, `${decomposed}/o.json.js`, 'taken');
+  assert.ok(readdirSync(join(talk, 'media')).includes(`${decomposed}.png`), 'the file system keeps the decomposed name');
+  const running = await inProcess(t, root, talk);
+  const token = await hello(t, running.port, running.key, 'Ann');
+  const { zip, name } = await download(running.port, running.key, token);
+  assert.equal(name, `${composed} talk.zip`);
+  const got = byName(zip, `${composed} talk`);
+  // the wrapped file keeps the name that the deck writes, with a number, since its name is taken
+  assert.deepEqual([...got.keys()], ['index.html', `${composed}/o.json`, `${composed}/o.json.js`, `${decomposed}/o.json-2.js`, `media/${composed}.png`].sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a < b ? -1 : 1)));
+  assert.ok(got.get('index.html').bytes.toString('utf8').includes(`data-trajectories="${decomposed}/o.json-2.js"`));
+});
