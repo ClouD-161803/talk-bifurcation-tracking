@@ -589,7 +589,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (parts.length !== 3 || parts[0] !== 'history') return error(404, 'not found');
     if (parts[2] === 'name') {
       const named = history.name(parts[1], body.name);
-      if (named === 'long') return error(400, 'the name must be a text of at most 80 characters');
+      if (named === 'long') return error(400, 'the tag must be a text of at most 80 characters');
       return named ? json(200, named) : error(404, 'there is no such version');
     }
     if (parts[2] === 'restore') {

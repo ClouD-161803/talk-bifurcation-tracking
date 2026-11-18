@@ -85,7 +85,7 @@ const MEASURE = `(() => {
     rows,
     slides: slides.length,
     oneRow: new Set(slides.map((b) => Math.round(b.getBoundingClientRect().top))).size <= 1,
-    name: !!${button(BAR, 'Name this version')},
+    name: !!${button(BAR, 'Tag this version')},
     sheet: { phone: innerWidth < 600, low: pane.height < innerHeight * 0.55 - 1, rows: shown.length, chosen: shown.length === 1 && shown[0].getAttribute('aria-current') === 'true', versions: box(${button(PANE, 'Versions')}) },
   };
 })()`;
@@ -131,7 +131,7 @@ test('on a phone in portrait and in landscape, with 1, 8, and 40 changed slides,
         await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
         const items = await ann.evaluate(`[...document.querySelectorAll('.beeson-edit-menu .item')].map((b) => b.textContent)`);
         const wide = await ann.evaluate(`document.querySelector('${BAR}').getBoundingClientRect().width >= 600`);
-        assert.deepEqual([items, m.name], wide ? [['Download This Version'], true] : [['Name this version', 'Download This Version'], false]);
+        assert.deepEqual([items, m.name], wide ? [['Download This Version'], true] : [['Tag this version', 'Download This Version'], false]);
         await press(ann, 'Escape');
         await ann.waitFor(`!document.querySelector('.beeson-edit-menu')`);
         if (narrow) {

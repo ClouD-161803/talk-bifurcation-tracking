@@ -196,10 +196,6 @@ The small box with the name of a person at the upper left corner of the frame of
 
 Avoid "cursor", "tag", and "badge".
 
-## Named version
-
-A version given a name with Name this version in Version History. A named version is kept when the history is shortened, together with the versions after it.
-
 ## Overview
 
 The view of reveal.js in which the slides of a show are shown small in one row. It is opened with the key O, or on a touch screen with a pinch closed at the full view, since a pinch on a zoomed page is the zoom of the browser. The row is moved with the arrow keys, a swipe, or a sideways wheel, and a slide is shown with a tap, a click, or a pinch open on it.
@@ -357,6 +353,12 @@ Avoid "co-authoring", "multiplayer", and "live share". "Collaboration" is kept f
 ## Tab
 
 One named data set of an animated plot, chosen with its button under the plot.
+
+## Tagged version
+
+A version given a tag with Tag this version in Version History. A tagged version is kept when the history is shortened, together with the versions after it.
+
+Avoid "named version".
 
 ## Talk folder
 
