@@ -126,6 +126,8 @@ const session = await build({
   entryPoints: ['src/session/client/main.ts'],
   outfile: fileURLToPath(new URL('theme/session.js', root)),
   minifyWhitespace: true,
+  // the syntax is shortened to keep the bundle under its budget, and the names are kept
+  minifySyntax: true,
   metafile: true,
   write: false,
   banner: { js: `/*! session.js ${version}, the client of the synchronous editor of the beeson theme. MIT license. */` },
