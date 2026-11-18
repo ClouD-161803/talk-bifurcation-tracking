@@ -1,8 +1,10 @@
 // the commands of Align, Distribute, and the size and position fields of the Arrange tab of the
-// inspector, in the Arrange menu. Align to Slide and Align to Selection is a switch, as in
-// PowerPoint, and a single element is aligned to the slide in either case, as in Keynote. every
-// command of a selection is one entry of the history, with the offsets written as translate and the
-// widths as width, in slide pixels, by writePlace of canvas/drag.ts
+// inspector, in the Arrange menu. Align to Slide and Align to Selection is a switch of Align, as in
+// PowerPoint. with Align to Slide, the default, two objects or more are aligned to the slide as one
+// ensemble that keeps their places relative to each other. with Align to Selection, they are
+// aligned to each other. a single object is aligned to the slide in either case, as in Keynote.
+// every command of a selection is one entry of the history, with the offsets written as translate
+// and the widths as width, in slide pixels, by writePlace of canvas/drag.ts
 
 import type { App } from '../app.ts';
 import type { Command } from '../commands.ts';
@@ -18,8 +20,8 @@ export type Side = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
 export const SIDES: Side[] = ['left', 'center', 'right', 'top', 'middle', 'bottom'];
 const SIDE_LABELS: Record<Side, string> = { left: 'Left', center: 'Center', right: 'Right', top: 'Top', middle: 'Middle', bottom: 'Bottom' };
 
-// the reference of Align and Distribute, kept for the session
-let reference: 'slide' | 'selection' = 'selection';
+// the reference of Align, kept for the session
+let reference: 'slide' | 'selection' = 'slide';
 
 // the last typed size of objects on the axis w or h: the values that its field showed before, the
 // changes of the places, and the pictures given object-fit contain for their box
@@ -131,8 +133,6 @@ function objects(app: App): { els: Element[]; b: Box }[] {
   return [...byGroup.values()].map((els) => ({ els, b: groupBoxOf(app, els) ?? boxOf(app, els[0]) }));
 }
 
-const toSlideRef = (n: number) => reference === 'slide' || n === 1;
-
 // each element moved by its offset dx and dy, as one entry of the history
 function shift(app: App, label: string, moves: { el: Element; dx: number; dy: number }[]): void {
   const changes = moves.map(({ el, dx, dy }) => {
@@ -148,7 +148,9 @@ function shift(app: App, label: string, moves: { el: Element; dx: number; dy: nu
 function align(app: App, side: Side): void {
   const items = objects(app);
   if (!items.length) return;
-  const ref = toSlideRef(items.length) ? slideBox(app) : union(items.map((i) => i.b));
+  const toEach = reference === 'selection' && items.length > 1;
+  const ref = toEach ? union(items.map((i) => i.b)) : slideBox(app);
+  const whole = union(items.map((i) => i.b));
   const at = (b: Box) => {
     switch (side) {
       case 'left': return { dx: ref.left - b.left, dy: 0 };
@@ -159,14 +161,14 @@ function align(app: App, side: Side): void {
       case 'bottom': return { dx: 0, dy: ref.top + ref.height - (b.top + b.height) };
     }
   };
-  shift(app, `align ${side}`, items.flatMap((i) => i.els.map((el) => ({ el, ...at(i.b) }))));
+  shift(app, `align ${side}`, items.flatMap((i) => i.els.map((el) => ({ el, ...at(toEach ? i.b : whole) }))));
 }
 
 // the objects spaced evenly along an axis in the order of their start, as in Keynote: the first and
-// the last of them are kept in place, or put at the edges of the slide with Align to Slide, and the
-// gaps between them are made equal. objects that do not fit between the two have their centers
-// spaced evenly instead, and each is kept inside the span of the selection. one object is spaced
-// evenly across the slide, i.e. centered on it, since PowerPoint distributes one object on the slide
+// the last of them are kept in place, and the gaps between them are made equal. objects that do
+// not fit between the two have their centers spaced evenly instead, and each is kept inside the
+// span of the selection. one object is spaced evenly across the slide, i.e. centered on it, since
+// PowerPoint distributes one object on the slide. Distribute does not follow the switch of Align
 function distribute(app: App, axis: 'x' | 'y'): void {
   const items = objects(app);
   if (!items.length) return;
@@ -174,11 +176,10 @@ function distribute(app: App, axis: 'x' | 'y'): void {
   const size = (b: Box) => (axis === 'x' ? b.width : b.height);
   items.sort((a, b) => start(a.b) - start(b.b) || size(a.b) - size(b.b));
   const n = items.length;
-  const toSlide = toSlideRef(n);
-  const ref = toSlide ? slideBox(app) : union(items.map((i) => i.b));
+  const ref = n === 1 ? slideBox(app) : union(items.map((i) => i.b));
   const lo = start(ref), hi = lo + size(ref);
   const first = items[0].b, last = items[n - 1].b;
-  const f = toSlide ? lo : start(first), z = toSlide ? hi - size(last) : start(last);
+  const f = start(first), z = start(last);
   const to = new Map<Box, number>(n === 1 ? [[first, lo + (size(ref) - size(first)) / 2]] : [[first, f], [last, z]]);
   const inner = items.slice(1, -1).map((i) => i.b);
   const gap = n === 1 ? 0 : (z - f - size(first) - inner.reduce((s, b) => s + size(b), 0)) / (n - 1);
@@ -196,11 +197,11 @@ function distribute(app: App, axis: 'x' | 'y'): void {
   shift(app, `distribute ${axis === 'x' ? 'horizontally' : 'vertically'}`, moves);
 }
 
-// Distribute acts on one object, which is aligned to the slide, and is dimmed for two objects within
-// their own span
+// Distribute acts on one object, which is centered on the slide, and is dimmed for two objects, which
+// it would leave in place
 const canDistribute = (app: App) => {
   const n = objects(app).length;
-  return n === 1 || n >= 3 || (reference === 'slide' && n === 2);
+  return n === 1 || n >= 3;
 };
 
 // whether the width of every target is written by the editor, by the scope rule, and whether its

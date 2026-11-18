@@ -244,6 +244,7 @@ for (const platform of PLATFORMS) {
         await click(page, await headingPoint(page), { modifiers: 'Shift' });
         await frames(page);
         assert.deepEqual((await selected(page)).sort(), [page.figure, 'h2'].sort());
+        await exec(page, 'arrange.alignTo.selection');
         for (const side of ['right', 'bottom']) {
           const ref = { left: 0, top: 0, width: Math.max(right(h), right(frame)), height: Math.max(bottom(h), bottom(frame)) };
           await exec(page, `arrange.align.${side}`);

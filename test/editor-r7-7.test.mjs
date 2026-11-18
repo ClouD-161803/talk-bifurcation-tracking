@@ -245,30 +245,18 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(errors(page), []);
   });
 
-  test(`Distribute of two elements with Align to Slide puts them at the edges of the slide (${platform})`, async (t) => {
+  test(`Distribute is dimmed for two elements with Align to Slide and with Align to Selection (${platform})`, async (t) => {
     const page = await load(t, platform, { n: MATH });
     const p = await rect(page, P);
     await selectFigure(page, IMG);
     await click(page, { x: p.right + 3, y: p.y }, { modifiers: 'Shift' });
     await frames(page);
-    assert.equal((await state(page, 'arrange.distribute.horizontal')).enabled, false, 'two elements are distributed within their own box');
     assert.equal((await state(page, 'arrange.alignTo.selection')).enabled, true);
-    await tap(page, 'Slide');
-    assert.equal((await state(page, 'arrange.distribute.horizontal')).enabled, true);
-    await tap(page, 'Horizontally');
-    const text = await render(page);
-    const x = (tag) => Number(text.match(new RegExp(`${tag.slice(0, -1)} style="translate: (-?\\d+)px 0px">`))?.[1]);
-    const [px, fx] = [x(LEAD.slice(0, 3)), x(FIGURE)];
-    assert.ok(Number.isFinite(px) && Number.isFinite(fx), `the offsets are ${px} and ${fx}`);
-    await byteExact(page, [
-      [LEAD, `<p style="translate: ${px}px 0px">The lead-in of a display</p>`],
-      [FIGURE, `${FIGURE.slice(0, -1)} style="translate: ${fx}px 0px">`],
-    ]);
-    const slide = await rect(page, '.reveal .slides');
-    const edges = [await rect(page, P), await rect(page, FIGURE_BOX)].map((r) => [r.left, r.right]);
-    assert.ok(edges.some(([l]) => Math.abs(l - slide.left) <= 1.5), `a frame is not at the left edge: ${js(edges)}`);
-    assert.ok(edges.some(([, r]) => Math.abs(r - slide.right) <= 1.5), `a frame is not at the right edge: ${js(edges)}`);
-    await roundTrip(page, text);
+    for (const ref of ['Slide', 'Selection']) {
+      await tap(page, ref);
+      assert.equal((await state(page, 'arrange.distribute.horizontal')).enabled, false, `two elements are distributed with Align to ${ref}`);
+    }
+    assert.equal(await render(page), page.source);
     assert.deepEqual(errors(page), []);
   });
 
