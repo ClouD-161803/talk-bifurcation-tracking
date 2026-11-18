@@ -218,9 +218,9 @@ test('following stops at the avatar, Stop, Escape, a selection, a slide, an edit
     await ben.evaluate(`void ${C}.app.commands.run('file.present')`);
     await ben.waitFor(`!!document.querySelector('body > .beeson-edit-show')`);
     await stopped('a show');
-    await front(ana);
+    // the page of Ben stays in front. a page that is not in front is taken out of full screen, and
+    // its show ends when the blur of its window comes more than 100 ms after this change
     await ana.waitFor(`${C}.resolved().some((r) => r.name === 'Ben' && r.mode === 'present')`);
-    await front(ben);
     await ben.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await ben.waitFor(`!document.querySelector('.beeson-edit-show')`);
     await front(ana);
