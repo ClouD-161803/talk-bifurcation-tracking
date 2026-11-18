@@ -659,7 +659,9 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
 .reveal.fade .slides > section > section:not([data-transition]) { transition: opacity 400ms ease-out; transform: none; }
 
 /* ---- chrome outside the slide, placed in slide coordinates through --slide-scale ---- */
-.reveal .progress { height: 3px; background: transparent; left: calc(50% - 960px * var(--slide-scale, 1)); width: calc(1920px * var(--slide-scale, 1)); }
+/* the progress line does not take a click, at which reveal.js would show the slide of its place. A
+   slide is chosen on the band of the scrubber */
+.reveal .progress { height: 3px; background: transparent; left: calc(50% - 960px * var(--slide-scale, 1)); width: calc(1920px * var(--slide-scale, 1)); pointer-events: none; }
 .reveal .progress span { background: var(--accent); transition: width 400ms ease-out; }
 .reveal .slide-number {
   right: calc(50% - 840px * var(--slide-scale, 1));
@@ -674,17 +676,21 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
 }
 .reveal .slide-number a { color: inherit; text-decoration: none; }
 .reveal .slide-number-delimiter { margin: 0 0.2em; }
-/* the scrubber of src/scrub.ts, over the progress line while the mouse is near the bottom of the
-   window. The band is laid out while hidden, since its box is the zone that opens it. Its track
-   starts at the 3 px of the progress line and grows, and a tick is a gap in the track at the start
-   of a numbered slide, under the slide number and the start time */
+/* the scrubber of src/scrub.ts, over the progress line. The box of the band is its track and its
+   rows of numbers and names, which take the pointer while the band is open, and the reach that
+   opens the band is measured from its bottom edge. The heading of the hovered slide and the shade
+   are drawn above the box, where the pointer is left to the slide. The track starts at the 3 px of
+   the progress line and grows, and a tick is a gap in the track at the start of a numbered slide,
+   under the slide number and the start time. --rows is the height of the track and the row of
+   numbers */
 .reveal .scrub {
+  --rows: 2.2em;
   position: absolute;
   z-index: 35;
   bottom: 0;
   left: calc(50% - 960px * var(--slide-scale, 1));
   width: calc(1920px * var(--slide-scale, 1));
-  height: 5.6em;
+  height: calc(var(--rows) + 1.4em);
   font-size: max(13px, calc(22px * var(--slide-scale, 1)));
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -692,14 +698,21 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
   visibility: hidden;
   pointer-events: none;
 }
+.reveal .scrub.timed { --rows: 3.2em; }
 .reveal.scrubbing .scrub { visibility: visible; pointer-events: auto; }
 .reveal.scrubbing .progress { opacity: 0; }
+/* a finger at rest on a slide does not select its text or open the menu of a link */
+.reveal.scrubbing { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .reveal .scrub::before {
   content: '';
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--rows) + 4.2em);
   background: linear-gradient(to top, var(--bg) 70%, transparent);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 150ms ease-out;
 }
 .reveal.scrubbing .scrub::before { opacity: 1; }
@@ -727,7 +740,7 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
   opacity: 0;
   transition: opacity 150ms ease-out;
 }
-.reveal.scrubbing .scrub-tick { opacity: 1; }
+.reveal.scrubbing .scrub-tick, .reveal.scrubbing .scrub-name { opacity: 1; }
 .reveal .scrub-tick.first { align-items: flex-start; transform: none; }
 .reveal .scrub-tick.last { align-items: flex-end; transform: translateX(-100%); }
 .reveal .scrub-tick::after {
@@ -740,15 +753,47 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
   height: 0.45em;
   background: var(--bg);
 }
-.reveal .scrub-tick.first::after, .reveal .scrub-tick.last::after { display: none; }
-.reveal .scrub-tick.hover::after { display: block; height: 0.8em; background: var(--text); }
-.reveal .scrub-tick.quiet:not(.now):not(.hover) > span { visibility: hidden; }
-.reveal .scrub-tick.now { color: var(--accent); }
-.reveal .scrub-tick.hover { color: var(--text); }
+/* the first slide of a section has a taller tick, in the violet of structure, and its number
+   starts at the tick, as the name of the section over it */
+.reveal .scrub-tick.section:not(.last) { align-items: flex-start; transform: none; }
+.reveal .scrub-tick.section::after { left: 0; height: 0.8em; background: var(--violet); }
+.reveal .scrub-tick.first::after { left: 0; margin-left: 0; }
+.reveal .scrub-tick.last::after { left: auto; right: 0; }
+.reveal .scrub-tick.first:not(.section):not(.hover)::after, .reveal .scrub-tick.last:not(.section):not(.hover)::after { display: none; }
+.reveal .scrub-tick.hover::after { height: 0.8em; background: var(--text); }
+.reveal .scrub-tick.quiet:not(.now):not(.hover):not(.viewed) > span { visibility: hidden; }
 .reveal .scrub-time { font-size: 0.8em; }
+/* the name of a section over the start of its stretch of the track, and that of the closing slide
+   at the end */
+.reveal .scrub-name {
+  position: absolute;
+  bottom: var(--rows);
+  max-width: 40%;
+  padding: 0.1em 0 0.25em;
+  overflow: hidden;
+  color: var(--violet);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+/* the last viewed slide has an angle that points back before its number or its name */
+.reveal .scrub-tick.viewed { color: var(--subtle); }
+.reveal .scrub-tick.viewed > span:first-child::before, .reveal .scrub-name.viewed > span::before {
+  content: '';
+  display: inline-block;
+  width: 0.36em;
+  height: 0.36em;
+  margin: 0 0.3em 0.12em 0.1em;
+  border: solid currentColor;
+  border-width: 0 0 0.09em 0.09em;
+  transform: rotate(45deg);
+}
+.reveal .scrub-tick.now, .reveal .scrub-name.now { color: var(--accent); }
+.reveal .scrub-tick.hover, .reveal .scrub-name.hover { color: var(--text); }
 .reveal .scrub-heading {
   position: absolute;
-  bottom: 3.4em;
+  bottom: calc(var(--rows) + 1.6em);
   max-width: 60%;
   padding-bottom: 0.25em;
   overflow: hidden;
@@ -756,8 +801,11 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
   white-space: nowrap;
   text-overflow: ellipsis;
   transform: translateX(-50%);
+  pointer-events: none;
 }
 .reveal .scrub-heading:empty { display: none; }
+/* the heading is drawn clear of a finger on the band */
+.reveal .scrub.finger .scrub-heading { bottom: calc(var(--rows) + 3.4em); max-width: 90%; }
 .theme-switch {
   position: absolute;
   z-index: 40;
@@ -882,6 +930,7 @@ html.reveal-print .reveal .plot-play { display: none; }
   .reveal .scrub::before,
   .reveal .scrub-track,
   .reveal .scrub-tick,
+  .reveal .scrub-name,
   .reveal a,
   .theme-switch { transition: none; }
 }

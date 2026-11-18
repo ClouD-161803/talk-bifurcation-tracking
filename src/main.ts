@@ -66,6 +66,9 @@ const DEFAULTS: RevealOptions = {
   progress: true,
   slideNumber: (slide: HTMLElement) => numberOf(slide),
   controls: false,
+  // off, since the box on G counts the unnumbered slides too, and shows another slide than the one
+  // whose number is typed
+  jumpToSlide: false,
   center: false,
   pdfSeparateFragments: true,
   // one page per step, as in Keynote and PowerPoint, with what runs past the slide cut off in the
