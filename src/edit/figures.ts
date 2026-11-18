@@ -7,7 +7,7 @@
 // of a source that is not saved is compiled before them, and nothing is written for it
 
 import { randomBytes } from 'node:crypto';
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync, type Stats } from 'node:fs';
 import { readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compileFigure, deckFigures, figureHash, figureStates, findTools, readFigure, STYLE } from '../../scripts/figures.mjs';
@@ -15,6 +15,9 @@ import type { FigureError, FigureState } from '../session/protocol.ts';
 import { renameRetried, signature } from './disk.ts';
 
 const STABLE = 300;
+// a file changed this recently in ms may change again without a change of its size, time, or inode,
+// since the time of a file is kept in ticks of up to 2 s, e.g. of 16 ms on Windows and 2 s on FAT
+const RECENT = 2000;
 // the key of the list of the files of figures/ among the watched files
 const LISTING = '\0figures';
 
@@ -52,6 +55,8 @@ export class FigureWatcher {
   // the files that the figures read, as absolute paths, with their signatures, and a change of them
   private watched = new Map<string, string>();
   private seen: { sig: string; at: number } | null = null;
+  // the watched files changed within RECENT ms of their signature, which are read again at each poll
+  private recent = new Set<string>();
   // the outputs read, by their signatures
   private read = new Map<string, { sig: string; figure: Output | null }>();
   private outputs: Record<string, string | null> = {};
@@ -160,7 +165,7 @@ export class FigureWatcher {
     const file = join(this.dir, 'figures', `${name}.js`);
     const sig = this.watched.get(file) ?? '';
     const cached = this.read.get(name);
-    if (cached && sig && cached.sig === sig) return cached.figure;
+    if (cached && sig && cached.sig === sig && !this.recent.has(file)) return cached.figure;
     const figure = readFigure(this.dir, name) as Output | null;
     this.read.set(name, { sig, figure });
     return figure;
@@ -177,7 +182,12 @@ export class FigureWatcher {
   // the state of each figure from the files on disk, and the stale figures queued
   private evaluate(): void {
     const watched = new Map<string, string>();
-    const watch = (path: string) => watched.set(path, sigSync(path));
+    this.recent = new Set();
+    const watch = (path: string) => {
+      const s = statOf(path);
+      if (s && s.mtimeMs > Date.now() - RECENT) this.recent.add(path);
+      watched.set(path, s ? signature(s) : '');
+    };
     watch(join(this.dir, 'preamble.tex'));
     watch(STYLE);
     // the outputs are read with the signatures taken before the read
@@ -214,7 +224,7 @@ export class FigureWatcher {
       [...this.watched.keys()].map(async (path) => [path, path === LISTING ? await listingOf(this.dir) : await stat(path).then(signature, () => '')] as const),
     );
     const now = performance.now();
-    if (sigs.some(([path, sig]) => this.watched.get(path) !== sig)) {
+    if (this.recent.size || sigs.some(([path, sig]) => this.watched.get(path) !== sig)) {
       const all = sigs.map(([path, sig]) => `${path}\n${sig}`).join('\n');
       if (this.seen?.sig !== all) this.seen = { sig: all, at: now };
       else if (now - this.seen.at >= this.stable) {
@@ -309,11 +319,11 @@ export class FigureWatcher {
   }
 }
 
-function sigSync(path: string): string {
+function statOf(path: string): Stats | null {
   try {
-    return signature(statSync(path));
+    return statSync(path);
   } catch {
-    return '';
+    return null;
   }
 }
 
