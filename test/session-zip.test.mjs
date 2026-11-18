@@ -63,9 +63,9 @@ function deck() {
     swap(slide('Chapter one'), 'data-trajectories="demo/broucke-sample.js"', 'data-trajectories="data/broucke.json"'),
     swap(slide('Figures are first class citizens'), String.raw`\(\mathcal{L}_{1}\)`, String.raw`\(\LL{1}\)`),
     videos,
-    // figures/cr3bp.js was compiled for a box of 760 by 640 px, and check.mjs reports another box
+    // figures/cr3bp.js was compiled for a box of 604 by 396 px, and check.mjs reports another box
     // as stale
-    '<section>\n  <h2>A TikZ figure</h2>\n  <div class="figure-box tikz" data-figure="cr3bp" style="width: 760px; height: 640px"></div>\n</section>',
+    '<section>\n  <h2>A TikZ figure</h2>\n  <div class="figure-box tikz" data-figure="cr3bp" style="width: 604px; height: 396px"></div>\n</section>',
   ];
   const head = text.slice(0, text.indexOf('<div class="slides">') + '<div class="slides">'.length);
   const tail = text.slice(text.indexOf('</div>\n</div>\n<script', text.lastIndexOf('</section>')));
