@@ -49,7 +49,7 @@ const CSS = `
 .beeson-overlay { position: fixed; inset: 0; z-index: 51; pointer-events: none; }
 .beeson-frame { position: fixed; pointer-events: none; box-sizing: border-box; border: 1px solid var(--ed-muted, var(--subtle, #bbb)); opacity: 0.3; }
 .beeson-frame:where(.selected, .union, .entered, .caret) { border: 1px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55); opacity: 1; }
-.beeson-frame.entered { border-style: dashed; }
+.beeson-frame.entered { border: 3px solid rgba(0, 0, 0, 0.55); box-shadow: none; outline: 1px dashed #fff; outline-offset: -2px; }
 .beeson-overlay [hidden] { display: none !important; }
 .beeson-grip { position: fixed; width: 9px; height: 9px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; border: 1px solid #444; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; }
 .beeson-frame.locked { opacity: 0.45; }
@@ -476,7 +476,8 @@ export class Frames {
     const scope = scopeOf();
     const inside = scope.length && selected.length ? membersOf(app, scope[scope.length - 1]).filter((el) => el.getClientRects().length) : [];
     this.entered.hidden = !inside.length;
-    if (inside.length) place(this.entered, groupFrame(inside, 0));
+    // the dashes are drawn in the middle of a dark band of 3 px, where the line of the other frames is
+    if (inside.length) place(this.entered, grow(groupFrame(inside, 0), 1));
     const host = app.hostOf(document.activeElement);
     const typed = host?.closest('.reveal .slides') && !selected.some((el) => el.contains(host)) ? host : null;
     this.caret.hidden = !typed;

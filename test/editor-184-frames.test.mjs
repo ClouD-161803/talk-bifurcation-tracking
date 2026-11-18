@@ -81,7 +81,9 @@ for (const theme of ['dark', 'light']) {
     await pick(page, '.shape.m1');
     assertWhite(await looks(page, '.beeson-overlay .beeson-frame.union'), 'a group');
     await pick(page, '.shape.m1');
-    assertWhite(await looks(page, '.beeson-overlay .beeson-frame.entered'), 'an entered group', 'dashed');
+    // the white dashes of an entered group are drawn over a dark band, which shows between them
+    const entered = await page.evaluate(`[...document.querySelectorAll('.beeson-overlay .beeson-frame.entered')].filter((d) => !d.hidden).map((d) => { const s = getComputedStyle(d); return [s.borderTopWidth, s.borderTopColor, s.outlineStyle, s.outlineWidth, s.outlineColor, s.outlineOffset, s.opacity]; })`);
+    assert.deepEqual(entered, [['3px', HALO, 'dashed', '1px', WHITE, '-2px', '1']], 'the frame of an entered group');
     assertWhite(await looks(page, '.beeson-overlay .beeson-frame.selected'), 'a member of an entered group');
 
     await clear(page);
