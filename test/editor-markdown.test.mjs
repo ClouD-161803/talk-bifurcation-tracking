@@ -48,12 +48,12 @@ async function load(t) {
   return page;
 }
 
-// each character typed as a trusted key, as the substitutions are made only for typed characters
+// each character typed as a trusted key, as the substitutions are made only for typed characters.
+// the keys are sent at once, since two keys more than 1 s apart are two entries of the history
 async function typeKeys(page, text) {
-  for (const c of text) {
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: c, text: c, unmodifiedText: c });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: c });
-  }
+  const sent = [];
+  for (const c of text) sent.push(page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: c, text: c, unmodifiedText: c }), page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: c }));
+  await Promise.all(sent);
   await sleep(100);
 }
 
