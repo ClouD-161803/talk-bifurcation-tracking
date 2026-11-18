@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs, { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import fsp from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -689,4 +690,43 @@ test('a folder over the limit is refused with its size, and the zips kept at one
   const over = await makeZip(port, key, ann);
   assert.equal(over.status, 413);
   assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 3 MB for a download.` });
+});
+
+test('pages that ask at one time do not each build a zip: the room of a zip is taken before its files are read', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  put(talk, 'media/a.png', randomBytes(2 * MB));
+  // the reads of media/a.png wait for release()
+  const { readFile } = fsp;
+  let reads = 0;
+  let release;
+  const gate = new Promise((done) => (release = done));
+  fsp.readFile = async (file, ...rest) => {
+    if (String(file).endsWith('a.png')) {
+      reads++;
+      await gate;
+    }
+    return readFile(file, ...rest);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    release();
+    fsp.readFile = readFile;
+    syncBuiltinESMExports();
+  });
+  const { port, key } = await inProcess(t, root, talk, small.start);
+  const ann = await hello(t, port, key, 'Ann');
+  const bo = await hello(t, port, key, 'Bo');
+  const first = makeZip(port, key, ann);
+  await until(() => reads === 1, 'the first zip to read media/a.png');
+  const busy = await within(makeZip(port, key, bo), 10_000, 'the answer to the second page while the first zip is built');
+  assert.equal(busy.status, 503);
+  assert.deepEqual(busy.json(), { error: BUSY });
+  assert.equal(reads, 1, 'the files are not read for the second page');
+  release();
+  const made = await first;
+  assert.equal(made.status, 200, made.text);
+  assert.equal((await makeZip(port, key, bo)).status, 503, 'the zip of the first page is kept');
+  assert.equal((await dropZip(port, key, ann, made.json().id)).status, 200);
+  const later = await makeZip(port, key, bo);
+  assert.equal(later.status, 200, later.text);
 });
