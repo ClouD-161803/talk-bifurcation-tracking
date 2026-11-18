@@ -285,7 +285,8 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const deleted = await render(page);
     assert.doesNotMatch(deleted, /A first figure/);
-    assert.match(deleted, /<figure class="figure-box" data-group="g2 g1" style="translate: -300px 100px">/);
+    // g1 is left with one member, and its name is taken off this member in the same entry
+    assert.match(deleted, /<figure class="figure-box" data-group="g2" style="translate: -300px 100px">/);
     assert.match(deleted, /A third figure/);
     await undo(page);
     assert.equal(await render(page), before);

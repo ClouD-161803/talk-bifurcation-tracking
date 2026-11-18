@@ -479,7 +479,8 @@ export class Frames {
     // the dashes are drawn in the middle of a dark band of 3 px, where the line of the other frames is
     if (inside.length) place(this.entered, grow(groupFrame(inside, 0), 1));
     const host = app.hostOf(document.activeElement);
-    const typed = host?.closest('.reveal .slides') && !selected.some((el) => el.contains(host)) ? host : null;
+    // the notes show the caret only, as in Keynote
+    const typed = host?.closest('.reveal .slides') && !host.closest('aside.notes') && !selected.some((el) => el.contains(host)) ? host : null;
     this.caret.hidden = !typed;
     if (typed) place(this.caret, grow(typed.getBoundingClientRect(), 6));
 
