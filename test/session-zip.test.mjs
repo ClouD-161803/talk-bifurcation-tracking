@@ -9,12 +9,14 @@
 // that edits without a session does not have the command
 
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { launch } from '../scripts/chrome.mjs';
+import { deckSettled, deckUrl, launch } from '../scripts/chrome.mjs';
 import { startRelay } from '../scripts/relay.mjs';
 import { deckTex } from '../scripts/tex.mjs';
+import { launch as launchWebDriver, serve } from '../scripts/webdriver.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show } from './helpers/client.mjs';
 import { click, type } from './helpers/editor.mjs';
@@ -286,7 +288,105 @@ function assertZip(zip, folder, text) {
   return all;
 }
 
-test('a guest downloads the talk folder through the relay with its last edit, and the host downloads the same folder', { timeout: 840_000 }, async (t) => {
+// a program found on the PATH
+const onPath = (name) => (process.env.PATH ?? '').split(delimiter).some((dir) => dir && (existsSync(join(dir, name)) || existsSync(join(dir, `${name}.exe`))));
+
+// the reason why check.mjs cannot drive browser on this machine, or null
+function cannotRun(browser) {
+  if (browser === 'firefox') {
+    const gecko = process.env.GECKOWEBDRIVER;
+    const found = gecko ? ['geckodriver', 'geckodriver.exe'].some((n) => existsSync(join(gecko, n))) : onPath('geckodriver');
+    return found ? null : 'geckodriver is not found in GECKOWEBDRIVER or on the PATH';
+  }
+  if (browser === 'safari') {
+    if (process.platform !== 'darwin') return 'Safari runs on macOS only';
+    return existsSync('/usr/bin/safaridriver') ? null : '/usr/bin/safaridriver is not found';
+  }
+  return null;
+}
+
+/**
+ * Runs node scripts/check.mjs on deck in browser, and resolves with its exit code and output. Firefox
+ * on Linux without a display is run under xvfb-run, as in the workflow check, since WebGL in
+ * software needs a window there.
+ */
+function check(browser, deck, out, limit) {
+  const args = [resolve('scripts/check.mjs'), '--deck', deck, '--out', out, ...(browser === 'chrome' ? [] : ['--browser', browser])];
+  const xvfb = browser === 'firefox' && process.platform === 'linux' && !process.env.DISPLAY && onPath('xvfb-run');
+  const [command, argv] = xvfb ? ['xvfb-run', ['-a', '-s', '-screen 0 1920x1080x24', process.execPath, ...args]] : [process.execPath, args];
+  return new Promise((done) => {
+    // in a group of its own on macOS and Linux, so that the browser that it started is stopped with it
+    const unix = process.platform !== 'win32';
+    const child = spawn(command, argv, { stdio: ['ignore', 'pipe', 'pipe'], detached: unix });
+    let output = '';
+    const timer = setTimeout(() => {
+      output += `\nkilled after ${limit} ms`;
+      try {
+        if (unix) process.kill(-child.pid, 'SIGKILL');
+        else spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+      } catch {
+        child.kill();
+      }
+    }, limit);
+    for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => (output += chunk));
+    child.once('error', (e) => (output += `\n${e.message}`));
+    child.once('close', (code) => {
+      clearTimeout(timer);
+      done({ code, output });
+    });
+  });
+}
+
+// the answers of safaridriver when remote automation is off, or when another session holds Safari
+const SAFARI_OFF = /Allow remote automation|safaridriver --enable|did not start|session not created|Could not create a session/i;
+
+// the warnings of the console of a page of Chrome, kept in window.__warnings
+const WARNINGS = `window.__warnings = [];
+  { const warn = console.warn; console.warn = function (...a) { window.__warnings.push(a.map(String).join(' ')); return warn.apply(this, a); }; }`;
+
+/**
+ * Opens the unzipped deck in the browser name, and asserts that the backdrops of the wrapped file
+ * and of brand/transfer.js have trajectories and are painted, and that nothing was loaded from
+ * elsewhere. Chrome and Firefox open the deck from the disk, and Safari from a local port. In
+ * Chrome, the console is read as well.
+ */
+async function backdropsDrawn(name, deckFile) {
+  const chrome = name === 'chrome';
+  const site = name === 'safari' ? await serve(dirname(deckFile)) : null;
+  const browser = chrome ? await launch() : await launchWebDriver(name);
+  try {
+    const page = await browser.newPage();
+    if (chrome) await page.send('Page.addScriptToEvaluateOnNewDocument', { source: WARNINGS });
+    const from = site ? `${site.origin}/` : 'file:';
+    await page.goto(site ? `${site.origin}/index.html?still` : deckUrl(deckFile, 'still'));
+    await page.waitFor(deckSettled, 60_000);
+    assert.ok((await page.evaluate('location.href')).startsWith(from), `the deck is opened from ${from}`);
+    const read = (path) => `(async () => {
+      const b = Beeson.backdrops.find((b) => b.el.dataset.trajectories === ${JSON.stringify(path)});
+      if (!b) return null;
+      const { h, v } = Reveal.getIndices(b.el.closest('section'));
+      Reveal.slide(h, v);
+      await b.ready;
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      return { trajectories: b.trajectories.length, painted: b.base.getContext('2d').getImageData(0, 0, b.base.width, b.base.height).data.some(Boolean) };
+    })()`;
+    for (const path of ['data/broucke.json.js', 'brand/transfer.js']) {
+      await page.waitFor(`${read(path)}.then((r) => !!r?.painted)`, 30_000).catch(() => {});
+      const seen = await page.evaluate(read(path));
+      assert.ok(seen && seen.trajectories > 0 && seen.painted, `in ${name}, the backdrop of ${path} reads ${JSON.stringify(seen)}`);
+    }
+    if (chrome) {
+      assert.deepEqual((await page.evaluate('window.__warnings')).filter((w) => /is not drawn/.test(w)), []);
+      assert.deepEqual(page.errors, []);
+    }
+    assert.deepEqual(await page.evaluate(`performance.getEntriesByType('resource').map((e) => e.name).filter((n) => !n.startsWith(${JSON.stringify(from)}))`), []);
+  } finally {
+    await browser.close();
+    await site?.close();
+  }
+}
+
+test('a guest downloads the talk folder through the relay with its last edit, and the unzipped deck is shown in Chrome, Firefox, and Safari with the backdrop of its wrapped file', { timeout: 2_520_000 }, async (t) => {
   const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
   t.after(() => relay.close());
   const server = await zipTalk(t, { relay });
@@ -363,4 +463,36 @@ test('a guest downloads the talk folder through the relay with its last edit, an
     clean(host);
     await host.close();
   });
+
+  // check.mjs opens the deck from file:// in Chrome and in Firefox, which are started with every
+  // other host blocked. it serves the deck to Safari from a local port
+  for (const name of ['chrome', 'firefox', 'safari']) {
+    const titles = [`scripts/check.mjs shows the unzipped deck in ${name} without a page error`, `in ${name}, the backdrops of the wrapped file and of brand/transfer.js draw their trajectories`];
+    const reason = cannotRun(name);
+    if (reason) {
+      t.diagnostic(`${name}: not run, since ${reason}`);
+      for (const title of titles) await t.test(title, { skip: reason }, () => {});
+      continue;
+    }
+    let off = false;
+    await t.test(titles[0], { timeout: 300_000 }, async (s) => {
+      assert.ok(deckFile, 'the deck was unzipped');
+      const start = Date.now();
+      const { code, output } = await check(name, deckFile, join(server.root, `check ${name}`), 270_000);
+      t.diagnostic(`${name}: check.mjs ran ${((Date.now() - start) / 1000).toFixed(1)} s`);
+      if (name === 'safari' && code !== 0 && SAFARI_OFF.test(output)) {
+        off = true;
+        t.diagnostic(`safari: not run, since safaridriver did not start a session:\n${output.slice(-600)}`);
+        s.skip('safaridriver did not start a session');
+        return;
+      }
+      assert.equal(code, 0, output);
+      assert.match(output, /no page errors/);
+      assert.match(output, /dark: 5 slides saved/);
+    });
+    await t.test(titles[1], { skip: off && 'safaridriver did not start a session', timeout: 240_000 }, async () => {
+      assert.ok(deckFile, 'the deck was unzipped');
+      await backdropsDrawn(name, deckFile);
+    });
+  }
 });
