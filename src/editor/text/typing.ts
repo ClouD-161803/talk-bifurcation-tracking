@@ -8,6 +8,7 @@ import type { App, Typing } from '../app.ts';
 import { mathReady, setContentWithTex } from '../math.ts';
 import { hasTex } from '../typeset.ts';
 import { fromPoint } from './flow.ts';
+import { showTex } from './shown-tex.ts';
 import { injectStyle } from '../ui/dom.ts';
 
 const CSS = `
@@ -466,7 +467,8 @@ export function install(app: App): void {
   // a formula is not editable, and the caret is kept beside it. at a click behind a formula at the
   // end of a line, Chrome puts the caret at the start of the text, Safari before the formula, and
   // Firefox inside it, where typing is lost. Firefox puts it inside at the end of a line as well,
-  // and holds it before a formula at the end of a text, hence the arrows step over a formula
+  // and holds it before a formula at the end of a text, hence the arrows step into the TeX of an
+  // inline formula, see shown-tex.ts, and over a display
   const besideMath = (math: Element, after: boolean) => {
     const r = document.createRange();
     if (after) r.setStartAfter(math);
@@ -493,7 +495,8 @@ export function install(app: App): void {
     const math = nextMath(ev.key === 'ArrowRight');
     if (!math || !host.contains(math)) return;
     ev.preventDefault();
-    besideMath(math, ev.key === 'ArrowRight');
+    // the caret goes into the TeX of an inline formula, and over a display
+    if (!showTex(app, math, ev.key === 'ArrowRight' ? 'start' : 'end')) besideMath(math, ev.key === 'ArrowRight');
   });
   document.addEventListener('selectionchange', () => {
     const s = getSelection();
