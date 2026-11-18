@@ -1275,10 +1275,16 @@ test('a change of index.html from outside takes about as long at the end of a de
     authority.enter(patches.map((p, k) => ({ start: p.start - k, end: p.end - k - 1, text: 'Slide' })), 'file');
     return ms;
   };
-  const early = Math.min(change(0), change(0), change(0));
-  const late = Math.min(change(4200), change(4200), change(4200));
+  // the changes at the start and at the end take turns, so that a burst of load holds both. each time
+  // is the best of up to ten attempts, taken again only while the bound is not met
+  let early = Infinity;
+  let late = Infinity;
+  for (let attempt = 0; attempt < 10 && !(late < 2.5 * early); attempt++) {
+    early = Math.min(early, change(0));
+    late = Math.min(late, change(4200));
+  }
   t.diagnostic(`${late.toFixed(1)} ms at the end, ${early.toFixed(1)} ms at the start`);
-  assert.ok(late <= 3 * early, `a change at the end of the deck takes ${late.toFixed(1)} ms, and one at its start ${early.toFixed(1)} ms`);
+  assert.ok(late < 2.5 * early, `a change at the end of the deck takes ${late.toFixed(1)} ms, and one at its start ${early.toFixed(1)} ms`);
 });
 
 test('a change of index.html from outside is told where it replaces a word of a person after she made a word of the same version bold in one operation', { timeout: 60_000 }, (t) => {
