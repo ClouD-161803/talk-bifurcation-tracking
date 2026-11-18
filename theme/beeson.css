@@ -753,10 +753,10 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
   height: 0.45em;
   background: var(--bg);
 }
-/* the first slide of a section has a taller tick, in the violet of structure, and its number
-   starts at the tick, as the name of the section over it */
+/* the first slide of a section has a taller tick, in the accent over the track and a gap in it
+   as the other ticks, and its number starts at the tick, as the name of the section over it */
 .reveal .scrub-tick.section:not(.last) { align-items: flex-start; transform: none; }
-.reveal .scrub-tick.section::after { left: 0; height: 0.8em; background: var(--violet); }
+.reveal .scrub-tick.section::after { left: 0; height: 0.8em; background: linear-gradient(to top, var(--bg) 0.45em, var(--accent) 0); }
 .reveal .scrub-tick.first::after { left: 0; margin-left: 0; }
 .reveal .scrub-tick.last::after { left: auto; right: 0; }
 .reveal .scrub-tick.first:not(.section):not(.hover)::after, .reveal .scrub-tick.last:not(.section):not(.hover)::after { display: none; }
@@ -771,7 +771,7 @@ html[data-theme="dark"] .reveal .invert { filter: invert(1) hue-rotate(180deg); 
   max-width: 40%;
   padding: 0.1em 0 0.25em;
   overflow: hidden;
-  color: var(--violet);
+  color: var(--accent);
   white-space: nowrap;
   text-overflow: ellipsis;
   opacity: 0;
