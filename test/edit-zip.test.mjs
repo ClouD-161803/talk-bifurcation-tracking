@@ -844,3 +844,24 @@ test('through the relay, a folder over 64 MB is refused, and a download gives th
   assert.equal((await dropZip(edit.port, key, host, local.id)).status, 200);
   await until(() => relay.held() === 0, 'the relay to hold nothing');
 });
+
+// a talk folder of 65,535 empty files takes a few seconds on macOS and Linux, and minutes on Windows.
+// on a busy machine its zip takes over a minute, hence the edit command is given 4 min for each
+// answer. the limit is longer than the hello, the two answers, and the 4 pieces of the zip
+test('a folder of more files than a zip holds is refused', { skip: !unix, timeout: 900_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  // with index.html, the folder holds the 65,535 files that a zip holds
+  for (let n = 0; n < 65_534; n++) {
+    if (n % 256 === 0) mkdirSync(join(talk, String(n >> 8)));
+    writeFileSync(join(talk, String(n >> 8), String(n & 255)), '');
+  }
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const token = await hello(t, port, key, 'Ann');
+  const { zip } = await download(port, key, token, 240_000);
+  assert.equal(entries(zip).length, 65_535);
+  put(talk, 'one more.txt', '');
+  const over = await makeZip(port, key, token, 240_000);
+  assert.equal(over.status, 413);
+  assert.deepEqual(over.json(), { error: 'The zip of the talk folder would hold more than 65,535 files, the most that a zip holds.' });
+});
