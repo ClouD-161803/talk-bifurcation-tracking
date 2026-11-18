@@ -240,6 +240,13 @@ async function enter(page) {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
 }
 
+// Space, which presses the button that has the focus on every system
+async function space(page) {
+  const base = { key: ' ', code: 'Space', windowsVirtualKeyCode: 32, modifiers: 0 };
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: ' ', unmodifiedText: ' ' });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+}
+
 // a trusted tap with touch, or a click with the mouse
 async function press(page, expression, { tap = false } = {}) {
   const at = await centerOf(page, expression);
@@ -644,5 +651,28 @@ test('Cancel during a download closes the dialog, downloads nothing, and the edi
   assert.deepEqual(await host.evaluate('window.__saved'), []);
   assert.deepEqual(readdirSync(dir), []);
   assert.deepEqual(await host.evaluate('window.__zip.map((r) => r.method)'), ['POST', 'GET', 'DELETE']);
+  clean(host);
+});
+
+test('on a Mac, Return during a download does not press Cancel, which Space presses', { timeout: 360_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await zipTalk(t);
+  // on a Mac, Return presses the default button of a dialog, and this dialog does not have one
+  const host = await editorOn(browser, `${sessionUrl(server.edit)}&edit-platform=mac`, { name: 'Ann' });
+  await host.evaluate('window.__hold.piece = true');
+  await choose(host, PATH);
+  await host.waitFor(`window.__held.length > 0 && /^Downloading ${NAME}\\.zip: 0\\.0 of /.test(window.__said.at(-1)?.text)`);
+  const seen = `({ buttons: window.__said.at(-1)?.buttons, focus: document.activeElement?.textContent, pressed: window.__pressed, zip: window.__zip.map((r) => r.method) })`;
+  const way = { buttons: ['Cancel'], focus: 'Cancel', pressed: [], zip: ['POST', 'GET'] };
+  assert.deepEqual(await host.evaluate(seen), way);
+  await enter(host);
+  assert.deepEqual(await host.evaluate(seen), way);
+  await space(host);
+  await host.waitFor('window.__said.at(-1) === null');
+  assert.deepEqual(await host.evaluate('window.__pressed'), ['Cancel']);
+  await host.waitFor(`window.__zip.some((r) => r.method === 'DELETE')`);
+  await host.evaluate('(window.__hold.piece = false, window.__release())');
+  assert.deepEqual(await host.evaluate('window.__saved'), []);
   clean(host);
 });
