@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { start } from '../theme/edit.mjs';
@@ -291,4 +291,18 @@ test('on macOS, a name that is stored decomposed is zipped composed, as a deck w
   // the wrapped file keeps the name that the deck writes, with a number, since its name is taken
   assert.deepEqual([...got.keys()], ['index.html', `${composed}/o.json`, `${composed}/o.json.js`, `${decomposed}/o.json-2.js`, `media/${composed}.png`].sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a < b ? -1 : 1)));
   assert.ok(got.get('index.html').bytes.toString('utf8').includes(`data-trajectories="${decomposed}/o.json-2.js"`));
+});
+
+test('an entry has the time of its file to 2 s, and a time outside the years of a zip is written as the nearest one', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  const at = (file, date) => utimesSync(put(talk, file, file), date, date);
+  at('now.txt', new Date(2026, 4, 17, 13, 45, 31));
+  at('early.txt', new Date(1975, 0, 1, 12));
+  at('late.txt', new Date(2200, 5, 15, 10, 20, 30));
+  const running = await inProcess(t, root, talk);
+  const token = await hello(t, running.port, running.key, 'Ann');
+  const got = byName((await download(running.port, running.key, token)).zip);
+  assert.deepEqual(got.get('now.txt').modified, new Date(2026, 4, 17, 13, 45, 30));
+  assert.deepEqual(got.get('early.txt').modified, new Date(1980, 0, 1));
+  assert.deepEqual(got.get('late.txt').modified, new Date(2107, 5, 15, 10, 20, 30));
 });
