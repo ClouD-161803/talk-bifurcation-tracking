@@ -28,7 +28,9 @@ const timeout = Number(process.execArgv.find((arg) => arg.startsWith('--test-tim
 // one run of files. the returned map has the names of the failed tests of each failed file
 async function once(options) {
   const failed = new Map();
-  const stream = run({ timeout, ...options });
+  // as many files at once as node --test runs, i.e. one fewer than the cores. run() by itself runs
+  // one file at a time
+  const stream = run({ timeout, concurrency: true, ...options });
   stream.on('test:fail', ({ file, name, details }) => {
     const key = relative(process.cwd(), file ?? name).replaceAll('\\', '/');
     const names = failed.get(key) ?? [];
