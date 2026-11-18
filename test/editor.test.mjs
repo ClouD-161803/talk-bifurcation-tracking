@@ -863,7 +863,7 @@ test('Esc leaves a text and selects its block for the arrow keys, Tab reaches a 
   assert.equal(await page.evaluate(`document.querySelector('.reveal section.present p').style.translate`), '1px 10px');
   // Enter on the handle, which Tab reaches, puts the block back
   await page.evaluate(`document.querySelector('.beeson-handle').focus()`);
-  assert.deepEqual(await page.evaluate(`(() => { const h = document.querySelector('.beeson-handle'); return { focused: document.activeElement === h, role: h.getAttribute('role'), label: h.getAttribute('aria-label') }; })()`), { focused: true, role: 'button', label: 'Move the text element: the arrow keys nudge it, Enter puts it back' });
+  assert.deepEqual(await page.evaluate(`(() => { const h = document.querySelector('.beeson-handle'); return { focused: document.activeElement === h, role: h.getAttribute('role'), label: h.getAttribute('aria-label') }; })()`), { focused: true, role: 'button', label: 'Move the text element. Nudge it with the arrow keys, and put it back with Enter' });
   await page.evaluate(`document.querySelector('.beeson-handle').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))`);
   assert.equal(await page.evaluate(`document.querySelector('.reveal section.present p').style.translate`), '');
   await key('Escape');

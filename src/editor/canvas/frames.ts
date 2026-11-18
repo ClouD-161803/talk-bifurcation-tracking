@@ -283,10 +283,10 @@ export class Frames {
     this.spoke = div('beeson-guide spoke', this.layer);
     this.handle = div('beeson-handle', this.layer);
     this.handle.textContent = '⠿';
-    this.handle.title = 'Drag to move, double-click to put back, arrow keys nudge';
+    this.handle.title = 'Drag to move, double-click to put back, or nudge with the arrow keys';
     this.handle.tabIndex = 0;
     this.handle.setAttribute('role', 'button');
-    this.handle.setAttribute('aria-label', 'Move the text element: the arrow keys nudge it, Enter puts it back');
+    this.handle.setAttribute('aria-label', 'Move the text element. Nudge it with the arrow keys, and put it back with Enter');
     this.readout = div('beeson-offset', this.layer);
     this.grouping = this.button('beeson-grouping', () => {
       if (this.groupAct) runGroupAction(this.app, this.groupAct).catch((e) => this.app.fail(e));
