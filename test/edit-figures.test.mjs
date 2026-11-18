@@ -3,7 +3,7 @@
 // the second poll
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -198,6 +198,26 @@ test('an output written by another program is told with its hash, and an output 
   await twoPolls(w);
   assert.equal(c.calls.length, 3);
   assert.equal(w.state().outputs.a, output(f.dir, 'a', DRAWING, box).figure.hash);
+  await w.stop();
+});
+
+test('an output written again with the same size and time, as within one tick of the clock of Windows, is read again', async (t) => {
+  const f = folder(t, { 'figures/a.tex': DRAWING });
+  const { w, c } = watcher(f, deck(tag('a')));
+  await w.idle();
+  assert.equal(c.calls.length, 1);
+  // the time of the file system is set to one recent second for both writes, hence the size, the
+  // time, and the inode of figures/a.js do not change
+  const file = join(f.dir, 'figures', 'a.js');
+  const second = Math.floor(Date.now() / 1000);
+  utimesSync(file, second, second);
+  await twoPolls(w);
+  const stale = output(f.dir, 'a', `${DRAWING}% old\n`, { width: 600, height: 400 });
+  assert.equal(stale.text.length, f.read('figures/a.js').length);
+  f.write('figures/a.js', stale.text);
+  utimesSync(file, second, second);
+  await twoPolls(w);
+  assert.equal(c.calls.length, 2);
   await w.stop();
 });
 
