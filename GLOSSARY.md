@@ -300,6 +300,10 @@ Avoid "co-authoring", "multiplayer", and "live share". "Collaboration" is kept f
 
 One named data set of an animated plot, chosen with its button under the plot.
 
+## Talk folder
+
+The folder of a talk, in which `index.html` is kept next to `theme/`, `brand/`, and the other files that the deck loads, e.g. `media/`, `figures/`, and `tex.js`. In a session, it is downloaded as a zip with File > Export To > Talk Folder….
+
 ## Text box
 
 A paragraph that is added to a slide with Insert > Text Box and placed freely, as in PowerPoint and Keynote. A text box is one kind of text element.
