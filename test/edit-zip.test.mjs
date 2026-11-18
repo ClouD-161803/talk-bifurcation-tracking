@@ -542,3 +542,25 @@ test('a JSON file named by data-trajectories is wrapped into a script file next 
   assert.equal(got.has('orbits/\u00e9.json.js'), false);
   for (const n of ['orbits/js.js.js', 'orbits/missing.json.js', 'outside.json.js', 'orbits/m1.json.js', 'orbits/m2.json.js', 'orbits/m3.json.js', 'orbits/out.json.js', 'orbits/out.json']) assert.equal(got.has(n), false, n);
 });
+
+test('a path of data-trajectories is read from the base element of the deck, and a deck whose base leaves the talk folder is not changed', { timeout: 60_000 }, async (t) => {
+  const json = JSON.stringify({ trajectories: [] });
+  // the only JSON file of this deck is named with a hash that ends in .js
+  const based = (href, path) => DECK.replace('<body>', `<head><base href="${href}"></head>\n<body>`).replace('</body>', `<section><div data-trajectories="${path}"></div></section>\n</body>`);
+  const inside = based('orbits/', 'w.json#x.js');
+  const outside = based('https://example.com/talk/', 'w.json');
+  for (const [deck, text, file] of [
+    [inside, inside.replace('w.json#x.js', 'w.json.js#x.js'), 'orbits/w.json.js'],
+    [outside, outside, null],
+  ]) {
+    const { root, talk } = talkFolder(t, deck);
+    put(talk, 'w.json', json);
+    put(talk, 'orbits/w.json', json);
+    const running = await inProcess(t, root, talk);
+    const token = await hello(t, running.port, running.key, 'Ann');
+    const got = byName((await download(running.port, running.key, token)).zip);
+    assert.equal(got.get('index.html').bytes.toString('utf8'), text);
+    assert.deepEqual([...got.keys()].filter((n) => n.endsWith('.json.js')), file ? [file] : []);
+    if (file) assert.equal(got.get(file).bytes.toString('utf8'), `Beeson.trajectories(${json});\n`);
+  }
+});
