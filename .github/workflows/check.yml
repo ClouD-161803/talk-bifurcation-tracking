@@ -61,11 +61,14 @@ jobs:
       # scripts/test.mjs, and a test that then passes is named in a warning of the round
       - run: node --test-force-exit --test-timeout=1200000 --import ./test/helpers/blocking-stdout.mjs scripts/test.mjs --shard=${{ matrix.shard }}/7
 
-  # the one check that is required on main. It fails when a job of the round failed or was cancelled.
-  # Without always(), it is skipped after a failed job, and a skipped check counts as passed
+  # the one check that is required on main. It fails when a job of the round failed or reached its
+  # limit. Without a status function in its condition, it is skipped after a failed job, and a
+  # skipped check counts as passed. It is not run in a cancelled round: the round of the next push is
+  # started only when the cancelled one has ended, and with always() it waited until pass had found
+  # a runner. Hence pass is skipped in a round that is cancelled by hand
   pass:
     needs: [test, check, tex]
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
