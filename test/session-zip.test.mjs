@@ -19,7 +19,7 @@ import { deckTex } from '../scripts/tex.mjs';
 import { launch as launchWebDriver, serve } from '../scripts/webdriver.mjs';
 import { caretAtEnd, front } from './helpers/apply.mjs';
 import { C, clean, converge, ONLINE, open, sessionUrl, show } from './helpers/client.mjs';
-import { click, type } from './helpers/editor.mjs';
+import { click, press as key, type } from './helpers/editor.mjs';
 import { startEdit, stopEdit, talkFolder, until, within } from './helpers/session.mjs';
 import { entries, unzipTo } from './helpers/zip.mjs';
 
@@ -237,21 +237,6 @@ async function centerOf(page, expression) {
 }
 
 const touch = (page, type, points) => page.send('Input.dispatchTouchEvent', { type, touchPoints: points });
-
-// Return with its character, as a keyboard sends it. press() of test/helpers/editor.mjs sends the
-// key without it, which does not press a focused button in Chrome
-async function enter(page) {
-  const base = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: 0 };
-  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '\r', unmodifiedText: '\r' });
-  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-}
-
-// Space, which presses the button that has the focus on every system
-async function space(page) {
-  const base = { key: ' ', code: 'Space', windowsVirtualKeyCode: 32, modifiers: 0 };
-  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: ' ', unmodifiedText: ' ' });
-  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-}
 
 // a trusted tap with touch, or a click with the mouse
 async function press(page, expression, { tap = false } = {}) {
@@ -558,7 +543,7 @@ test('on a phone, Talk Folder… is reached through the File menu, tells about p
   const held = { buttons: ['Cancel', 'Download (disabled)'], focus: 'Download', posts: 1 };
   assert.deepEqual(await phone.evaluate(way), held);
   await press(phone, BUTTON('Download'), { tap: true });
-  await enter(phone);
+  await key(phone, 'Enter');
   await phone.waitFor(`window.__pressed.join() === 'Cancel,Download,Download,Download'`).catch(() => {});
   assert.deepEqual(await phone.evaluate('window.__pressed'), ['Cancel', 'Download', 'Download', 'Download']);
   assert.deepEqual(await phone.evaluate(way), held);
@@ -672,9 +657,10 @@ test('on a Mac, Return during a download does not press Cancel, which Space pres
   const seen = `({ buttons: window.__said.at(-1)?.buttons, focus: document.activeElement?.textContent, pressed: window.__pressed, zip: window.__zip.map((r) => r.method) })`;
   const way = { buttons: ['Cancel'], focus: 'Cancel', pressed: [], zip: ['POST', 'GET'] };
   assert.deepEqual(await host.evaluate(seen), way);
-  await enter(host);
+  await key(host, 'Enter');
   assert.deepEqual(await host.evaluate(seen), way);
-  await space(host);
+  // Space presses the button that has the focus on every system
+  await key(host, 'Space');
   await host.waitFor('window.__said.at(-1) === null');
   assert.deepEqual(await host.evaluate('window.__pressed'), ['Cancel']);
   await host.waitFor(`window.__zip.some((r) => r.method === 'DELETE')`);
