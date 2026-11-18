@@ -98,6 +98,10 @@ Avoid "spotlight" and "watch".
 
 The filter of the Comments pane under which the open threads that you wrote, replied to, or are mentioned in are listed.
 
+## Full view
+
+The page of a deck at the scale at which it is opened, i.e. not zoomed by the browser.
+
 ## Guest
 
 A person who has joined a session through its link, in any browser.
@@ -192,6 +196,12 @@ Avoid "cursor", "tag", and "badge".
 
 A version given a name with Name this version in Version History. A named version is kept when the history is shortened, together with the versions after it.
 
+## Overview
+
+The view of reveal.js in which the slides of a show are shown small in one row. It is opened with the key O, or on a touch screen with a pinch closed at the full view, since a pinch on a zoomed page is the zoom of the browser. The row is moved with the arrow keys, a swipe, or a sideways wheel, and a slide is shown with a tap, a click, or a pinch open on it.
+
+Avoid "Slide Sorter", which is the grid of the editor.
+
 ## Part
 
 A named scope or curve of a TikZ figure that a slide shows as a step.
@@ -203,6 +213,18 @@ Avoid "part" for an element of a slide or for a mark of an animated plot. A part
 A page of a PDF on a slide, shown as the image of its render for each mode, or as one render in the colors of the PDF. Its PDF is named in `data-pdf` and its page in `data-page`.
 
 Avoid "PDF image" and "embedded PDF".
+
+## Pinch closed
+
+Two fingers moved together on a touch screen.
+
+Avoid "pinch in" and "zoom out".
+
+## Pinch open
+
+Two fingers moved apart on a touch screen.
+
+Avoid "pinch out" and "zoom in".
 
 ## Plate
 

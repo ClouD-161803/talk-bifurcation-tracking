@@ -42,7 +42,7 @@ You will also be able to accomplish what other slide editor apps do NOT enable y
 
 ## Presenting
 
-To present your slides, click on the Present button at the top of your editor. This will enter presentation mode. While in presentation mode, press `d` (or click on the top right toggle) to flip between dark and light themes, `s` to enter speaker view (with your notes), `p` to toggle on/off a pointer, `f` to enter (or leave) full screen mode (which hides the tabs and the address bar), and `o` for an overview of your slides. The theme defaults to dark. If you want your slides to default to light theme, add `?theme=light` to the address.
+To present your slides, click on the Present button at the top of your editor. This will enter presentation mode. While in presentation mode, press `d` (or click on the top right toggle) to flip between dark and light themes, `s` to enter speaker view (with your notes), `p` to toggle on/off a pointer, `f` to enter (or leave) full screen mode (which hides the tabs and the address bar), and `o` for an overview of your slides. In the overview, swipe sideways with two fingers on your trackpad (or tilt your mouse wheel) to scroll through the slides, and click on one to jump to it. On a phone or a tablet, pinch closed to open the overview, and pinch open over a slide to jump to it. The theme defaults to dark. If you want your slides to default to light theme, add `?theme=light` to the address.
 
 Title, section, and closing slides are never numbered, and the slides after the closing slide default to being the appendix, numbered A1, A2, and so on.
 
