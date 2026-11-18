@@ -865,3 +865,30 @@ test('a folder of more files than a zip holds is refused', { skip: !unix, timeou
   assert.equal(over.status, 413);
   assert.deepEqual(over.json(), { error: 'The zip of the talk folder would hold more than 65,535 files, the most that a zip holds.' });
 });
+
+test('the edit command answers a page while it builds a zip', { timeout: 120_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  put(talk, 'big.bin', randomBytes(30 * MB));
+  const { readFile } = fsp;
+  let reading = false;
+  fsp.readFile = (file, ...rest) => {
+    if (String(file).endsWith('big.bin')) reading = true;
+    return readFile(file, ...rest);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fsp.readFile = readFile;
+    syncBuiltinESMExports();
+  });
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const token = await hello(t, port, key, 'Ann');
+  const order = [];
+  const zipping = makeZip(port, key, token).then((answer) => (order.push('zip'), answer));
+  await until(() => reading, 'the zip to read big.bin');
+  const page = await raw(port, 'GET', `/${key}/index.html`);
+  order.push('index.html');
+  assert.equal(page.status, 200);
+  assert.equal((await zipping).status, 200);
+  assert.deepEqual(order, ['index.html', 'zip']);
+});
