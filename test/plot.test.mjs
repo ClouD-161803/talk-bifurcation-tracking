@@ -396,6 +396,8 @@ test('a trace with tones and a fade is drawn in the tone of each frame and faded
   })()`;
 
   await page.evaluate('Reveal.next()');
+  // the first read comes after the trace has played, as on a slow runner
+  await new Promise((resolve) => setTimeout(resolve, 3000));
   // the sample is kept in the same call as its test, between frames 2 and 3, where the newest
   // segment is within half a frame of the head, i.e. 0.2 s of a fade of 0.6 s
   await page.waitFor(`(() => { const s = ${probe}; window.sample = s; return s.playing && s.frame >= 2 && s.frame < 3; })()`, 5000);
