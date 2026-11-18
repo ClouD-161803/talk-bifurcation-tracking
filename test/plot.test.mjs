@@ -395,13 +395,20 @@ test('a trace with tones and a fade is drawn in the tone of each frame and faded
       head: view.el.querySelector('.plot-dot')?.style.color };
   })()`;
 
-  await page.evaluate('Reveal.next()');
+  // the samples of the plot, per frame, from the step until the trace is held
+  await page.evaluate(`(() => {
+    window.samples = [];
+    const record = () => { const s = ${probe}; window.samples.push(s); if (s.playing || window.samples.length < 3) requestAnimationFrame(record); };
+    Reveal.next();
+    requestAnimationFrame(record);
+  })()`);
   // the first read comes after the trace has played, as on a slow runner
   await new Promise((resolve) => setTimeout(resolve, 3000));
-  // the sample is kept in the same call as its test, between frames 2 and 3, where the newest
-  // segment is within half a frame of the head, i.e. 0.2 s of a fade of 0.6 s
-  await page.waitFor(`(() => { const s = ${probe}; window.sample = s; return s.playing && s.frame >= 2 && s.frame < 3; })()`, 5000);
-  const run = await page.evaluate('window.sample');
+  await page.waitFor(`!${probe}.playing`, 5000);
+  // between frames 2 and 3 the newest segment is within half a frame of the head, i.e. 0.2 s of a fade of 0.6 s
+  const samples = await page.evaluate('window.samples');
+  const run = samples.find((s) => s.playing && s.frame >= 2 && s.frame < 3);
+  assert.ok(run, JSON.stringify(samples.map((s) => [s.playing, s.frame])));
   assert.ok(run.opacity.at(-1) > 0.35, JSON.stringify(run));
   assert.ok(run.opacity.every((o, i) => i === 0 || o >= run.opacity[i - 1]), JSON.stringify(run));
 
