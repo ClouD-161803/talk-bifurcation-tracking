@@ -11,6 +11,17 @@ import { join } from 'node:path';
 const command = JSON.parse(readFileSync('package.json', 'utf8')).scripts.test;
 const options = command.split(' ').slice(1, -1);
 
+// runs the test command on file from the root of the repository, without NODE_TEST_CONTEXT, since
+// node does not run the files of a test command inside a test. Resolves to the exit code and the
+// TAP report of the run in ended
+function run(file, env = {}) {
+  const { NODE_TEST_CONTEXT, ...rest } = process.env;
+  const child = spawn(process.execPath, [...options, '--test-reporter=tap', file], { env: { ...rest, ...env }, stdio: ['ignore', 'pipe', 'ignore'] });
+  let report = '';
+  child.stdout.on('data', (data) => (report += data));
+  return { child, ended: new Promise((done) => child.once('close', (code) => done({ code, report }))) };
+}
+
 // most test files close their server after their browser, and on Windows the close of the browser
 // fails at times. The server was then left open, and the run waited for the file until the limit
 // of its job
@@ -26,17 +37,43 @@ test('a test file with a failed cleanup and a server left open is ended', { time
      // a file that is not ended by the test command ends by itself, after the wait of the test
      setTimeout(() => server.close(), 30000);
      after(() => {
-       throw new Error('the browser is not closed');
-       server.close();
+       if (process.env.FAIL) throw new Error('the browser is not closed');
      });
      test('a test', () => {});`,
   );
-  // without NODE_TEST_CONTEXT, since node does not run the files of a test command inside a test
-  const { NODE_TEST_CONTEXT, ...env } = process.env;
-  const run = spawn(process.execPath, [...options, 'open.test.mjs'], { cwd: root, env, stdio: 'ignore' });
-  t.after(() => run.kill());
-  const ended = await Promise.race([new Promise((done) => run.once('exit', () => done(true))), new Promise((done) => setTimeout(() => done(false), 20000).unref())]);
-  assert.ok(ended, `node ${options.join(' ')} is still running after 20 s`);
+  for (const [fail, code] of [['', 0], ['1', 1]]) {
+    const { child, ended } = run(join(root, 'open.test.mjs'), { FAIL: fail });
+    t.after(() => child.kill());
+    const result = await Promise.race([ended, new Promise((done) => setTimeout(done, 20000).unref())]);
+    assert.ok(result, `node ${options.join(' ')} is still running after 20 s`);
+    assert.equal(result.code, code, `the exit code with a ${fail ? 'failed' : 'passed'} cleanup`);
+    assert.match(result.report, /^ok 1 - a test$/m);
+  }
+});
+
+// the reports of the last tests of a file were lost at times when its process was ended, since the
+// writes of its reports to the pipe of the test command were still queued. Their loss is random,
+// hence each file is run ten times
+test('every test of a test file is reported, and a failed last test by its name and message', { timeout: 120000 }, async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(
+    join(root, 'many.test.mjs'),
+    `import { test } from 'node:test';
+     for (let n = 0; n < 300; n++) {
+       test(\`test \${n} \${'x'.repeat(120)}\`, () => {
+         if (process.env.FAIL && n === 299) throw new Error('the last test fails');
+       });
+     }`,
+  );
+  for (const fail of ['', '1']) {
+    for (let k = 0; k < 10; k++) {
+      const { code, report } = await run(join(root, 'many.test.mjs'), { FAIL: fail }).ended;
+      assert.equal(code, fail ? 1 : 0);
+      assert.equal(report.match(/^(not )?ok \d+ - test /gm)?.length, 300, `the tests reported in run ${k + 1}${fail ? ' with a failed last test' : ''}`);
+      if (fail) assert.match(report, /^not ok 300 - test 299 x+\n(.*\n)*? +error: 'the last test fails'$/m);
+    }
+  }
 });
 
 // on Windows, a test file was not ended after its last test, without an error, and the run waited
