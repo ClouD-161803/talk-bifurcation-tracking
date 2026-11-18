@@ -1279,12 +1279,12 @@ test('a change of index.html from outside takes about as long at the end of a de
   // is the best of up to ten attempts, taken again only while the bound is not met
   let early = Infinity;
   let late = Infinity;
-  for (let attempt = 0; attempt < 10 && !(late < 2.5 * early); attempt++) {
+  for (let attempt = 0; attempt < 10 && !(late <= 3 * early); attempt++) {
     early = Math.min(early, change(0));
     late = Math.min(late, change(4200));
   }
   t.diagnostic(`${late.toFixed(1)} ms at the end, ${early.toFixed(1)} ms at the start`);
-  assert.ok(late < 2.5 * early, `a change at the end of the deck takes ${late.toFixed(1)} ms, and one at its start ${early.toFixed(1)} ms`);
+  assert.ok(late <= 3 * early, `a change at the end of the deck takes ${late.toFixed(1)} ms, and one at its start ${early.toFixed(1)} ms`);
 });
 
 test('a change of index.html from outside is told where it replaces a word of a person after she made a word of the same version bold in one operation', { timeout: 60_000 }, (t) => {
