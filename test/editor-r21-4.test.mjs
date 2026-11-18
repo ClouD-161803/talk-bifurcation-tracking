@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { press } from './helpers/editor.mjs';
+import { press, readAtPlay } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const SLIDE = '.reveal .slides > section.present';
@@ -49,11 +49,12 @@ async function load(t, platform, deck, slide = 0) {
 
 // the computed opacity of the paragraph that starts with each of words, in the clone drawn into
 // the first element that matches host
-const opacities = (page, host, words) => page.evaluate(`(() => {
+const opacitiesOf = (host, words) => `(() => {
   const root = document.querySelector(${js(host)})?.shadowRoot;
   if (!root) return null;
   return ${js(words)}.map((w) => { const p = [...root.querySelectorAll('p')].find((e) => e.textContent.startsWith(w)); return p ? getComputedStyle(p).opacity : null; });
-})()`);
+})()`;
+const opacities = (page, host, words) => page.evaluate(opacitiesOf(host, words));
 
 // V14. on slide 3 of the fixture of R20.8, Zeta is a step set to Dim at index 1, which the show
 // draws at the ghost opacity from its step on. Eta and Theta are plain steps after it
@@ -80,10 +81,8 @@ for (const platform of PLATFORMS) {
 
   test(`V14 ${platform}: Preview Transition draws a step set to Dim at the ghost opacity on the slide it leaves`, async (t) => {
     const page = await load(t, platform, 'test/pages/editor-r20-8.html', 2);
-    await exec(page, 'slide.previewTransition');
-    await page.waitFor(`document.querySelector('.beeson-edit-preview')?.dataset.phase === 'play'`, 10000);
-    assert.deepEqual(await opacities(page, '.beeson-edit-preview .shot', ['Zeta', 'Eta', 'Theta']), [GHOST, '1', '1']);
-    await press(page, 'Escape');
+    const dim = await readAtPlay(page, opacitiesOf('.beeson-edit-preview .shot', ['Zeta', 'Eta', 'Theta']), () => exec(page, 'slide.previewTransition'));
+    assert.deepEqual(dim, [GHOST, '1', '1']);
     assert.equal(await render(page), page.source);
     assert.deepEqual(errors(page), []);
   });

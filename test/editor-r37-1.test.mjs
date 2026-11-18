@@ -53,6 +53,19 @@ function sameText(actual, expected, message = 'the text differs') {
 const undoLabel = (page) => page.evaluate(`window.BeesonEditor.state('edit.undo').label`);
 const exec = (page, id, arg) => page.evaluate(`Promise.resolve(window.BeesonEditor.exec(${js(id)}${arg === undefined ? '' : `, ${js(arg)}`})).then(() => true)`);
 
+// runs the command of a preview, steps.preview or steps.playFrom, after the script before of the
+// page. the editor sets the class beeson-previewing in the task of the command, hence a command
+// that did not start the preview fails here with its state, and not at a wait for the class
+async function startPreview(page, { id = 'steps.preview', before = '' } = {}) {
+  const state = await page.evaluate(`(() => {
+    ${before}
+    const command = window.BeesonEditor.state(${js(id)});
+    window.BeesonEditor.exec(${js(id)});
+    return { started: document.documentElement.classList.contains('beeson-previewing'), command, fragments: document.querySelectorAll('.reveal section.present .fragment').length };
+  })()`);
+  assert.ok(state.started, `the command did not start the preview: ${JSON.stringify(state)}`);
+}
+
 // the editor on a deck served over HTTP at a slide, with the Steps pane or the Format tab shown
 // reduced motion is the setting of the Windows runner of GitHub, and under it a kiosk viewer is
 // not started by the tycho runtime at its load. With motion, the page is shown without it
@@ -292,8 +305,7 @@ for (const platform of PLATFORMS) {
     const VIDEO = `[...document.querySelectorAll('.reveal section.present video')].find((v) => v.getClientRects().length)`;
     await sleep(500);
     assert.deepEqual(await page.evaluate(`(() => { const v = ${VIDEO}; return { paused: v.paused, time: v.currentTime }; })()`), { paused: true, time: 0 }, 'the editor plays the video');
-    await page.evaluate(`window.BeesonEditor.exec('steps.preview'); true`);
-    await page.waitFor(`document.documentElement.classList.contains('beeson-previewing')`);
+    await startPreview(page);
     assert.equal(await page.evaluate(`${VIDEO}.paused`), true, 'the video is played before its step');
     await page.waitFor(`!${VIDEO}.paused && ${VIDEO}.currentTime > 0`);
     await page.waitFor(`!document.documentElement.classList.contains('beeson-previewing')`);
@@ -307,18 +319,16 @@ for (const platform of PLATFORMS) {
   // does not dim it at the later steps
   test(`${platform}: a preview of the Steps pane keeps the video of slide 12 at full opacity before and after its step`, async (t) => {
     const page = await open(t, platform, { deck: 'test-deck.html', slide: CLICK_SLIDE });
-    await page.evaluate(`(() => {
+    await startPreview(page, {
+      before: `
       window.__seen = [];
       const look = () => {
         const v = [...document.querySelectorAll('.reveal section.present video')].find((v) => v.getClientRects().length);
         if (document.documentElement.classList.contains('beeson-previewing')) window.__seen.push({ step: document.documentElement.dataset.previewStep, paused: v.paused, opacity: getComputedStyle(v).opacity });
         requestAnimationFrame(look);
       };
-      requestAnimationFrame(look);
-      window.BeesonEditor.exec('steps.preview');
-      return true;
-    })()`);
-    await page.waitFor(`document.documentElement.classList.contains('beeson-previewing')`);
+      requestAnimationFrame(look);`,
+    });
     await page.waitFor(`!document.documentElement.classList.contains('beeson-previewing')`, 20000);
     const seen = await page.evaluate('window.__seen');
     assert.ok(seen.some((s) => s.step === '0') && seen.some((s) => !s.paused), 'the preview did not show the slide before the step of the video and then play it');
@@ -511,7 +521,8 @@ for (const platform of PLATFORMS) {
     const page = await open(t, platform, { deck: VIEWERS, motion: true });
     await page.waitFor(`!!document.getElementById('play').state`);
     await page.waitFor(`document.getElementById('play').playing`);
-    await page.evaluate(`(() => {
+    await startPreview(page, {
+      before: `
       window.__seen = [];
       const html = document.documentElement;
       const v = document.getElementById('play');
@@ -523,11 +534,8 @@ for (const platform of PLATFORMS) {
         if (html.classList.contains('beeson-previewing')) see();
         requestAnimationFrame(look);
       };
-      requestAnimationFrame(look);
-      window.BeesonEditor.exec('steps.preview');
-      return true;
-    })()`);
-    await page.waitFor(`document.documentElement.classList.contains('beeson-previewing')`);
+      requestAnimationFrame(look);`,
+    });
     await page.waitFor(`!document.documentElement.classList.contains('beeson-previewing')`, 20000);
     const seen = await page.evaluate('window.__seen');
     const before = seen.filter((s) => s.step === '0' || s.step === '1');
@@ -553,15 +561,14 @@ for (const platform of PLATFORMS) {
     await frames(page);
     // the scene is read at the first step of the preview, since on a slow runner the page is read
     // by the test only after the next step
-    await page.evaluate(`(() => {
+    await startPreview(page, {
+      id: 'steps.playFrom',
+      before: `
       const html = document.documentElement;
       const v = document.getElementById('play');
       window.__from = [];
-      new MutationObserver(() => window.__from.push({ playing: v.playing, time: v.time, step: html.dataset.previewStep })).observe(html, { attributes: true, attributeFilter: ['data-preview-step'] });
-      window.BeesonEditor.exec('steps.playFrom');
-      return true;
-    })()`);
-    await page.waitFor(`document.documentElement.classList.contains('beeson-previewing')`);
+      new MutationObserver(() => window.__from.push({ playing: v.playing, time: v.time, step: html.dataset.previewStep })).observe(html, { attributes: true, attributeFilter: ['data-preview-step'] });`,
+    });
     await page.waitFor('window.__from.length > 0');
     const now = (await page.evaluate('window.__from'))[0];
     assert.ok(now.playing && now.time < 1, `the scene is not played from its start: ${JSON.stringify(now)}`);

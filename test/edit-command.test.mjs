@@ -523,6 +523,39 @@ test('a request body aborted by the browser does not stop the edit command',{ ti
   await until(() => text(join(talk, 'index.html')).startsWith('<!-- kept -->'), 'the operation to be written');
 });
 
+// a program that writes a file in place, as npm run tex writes tex.js, empties it first. the file
+// is then shorter at the read of its bytes than at the read of its size
+test('a file made shorter while it is answered ends its connection, and the next answer is not sent in its place', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const size = 64 * 1024 * 1024;
+  const file = join(talk, 'media', 'clip.mp4');
+  mkdirSync(join(talk, 'media'));
+  writeFileSync(file, Buffer.alloc(size, 'a'));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const get = (path) => `GET ${edit.base}${path} HTTP/1.1\r\nHost: 127.0.0.1:${edit.port}\r\n\r\n`;
+  const received = await new Promise((done) => {
+    const chunks = [];
+    const socket = connect(edit.port, '127.0.0.1', () => socket.write(get('media/clip.mp4')));
+    // at the first bytes the length is announced, and most of the file is not read yet, since the
+    // edit command reads on only as this socket takes its bytes. a second request then waits on
+    // the same connection
+    socket.once('data', () => {
+      writeFileSync(file, 'a');
+      socket.write(get('index.html'));
+    });
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.on('error', () => {});
+    socket.on('close', () => done(Buffer.concat(chunks).toString('latin1')));
+  });
+  const head = received.slice(0, received.indexOf('\r\n\r\n'));
+  assert.match(head, new RegExp(`^HTTP/1\\.1 200 [^]*\\r\\nContent-Length: ${size}(\\r\\n|$)`));
+  assert.ok(received.length - head.length - 4 < size, 'the file was made shorter before its last bytes were read');
+  assert.equal(received.split('HTTP/1.1 ').length - 1, 1, 'the bytes of a second answer are not sent where the browser reads the rest of the file');
+  assert.equal((await raw(edit.port, 'GET', `${edit.base}media/clip.mp4`)).text, 'a');
+});
+
 test('share requests at the same time leave no relay link running after the end of sharing', { timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
