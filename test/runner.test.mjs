@@ -161,14 +161,16 @@ test('the test step of the check workflow is the test command with the shard of 
 });
 
 // pass is the one check that is required on main. A job that pass does not need could fail without
-// failing it. Without always(), pass is skipped after a failed job, and a skipped check counts as
-// passed
-test('the check pass needs every other job of the check workflow, and is run after a failed job', () => {
+// failing it. Without a status function in its condition, pass is skipped after a failed job, and a
+// skipped check counts as passed. With always(), pass was also run in a round that the next push
+// had cancelled, and the round of this push was not started until pass had found a runner, which
+// took 31 minutes in one round
+test('the check pass needs every other job of the check workflow, and is run after a failed job but not in a cancelled round', () => {
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
   const jobs = workflow.slice(workflow.search(/^jobs:$/m));
   const names = [...jobs.matchAll(/^  ([\w-]+):$/gm)].map((row) => row[1]);
   const pass = jobs.slice(jobs.search(/^  pass:$/m)).split(/^  [\w-]+:$/m)[1];
   const needs = /^    needs: \[(.+)\]$/m.exec(pass)?.[1].split(', ');
   assert.deepEqual(needs?.toSorted(), names.filter((name) => name !== 'pass').toSorted());
-  assert.match(pass, /^    if: \$\{\{ always\(\) \}\}$/m);
+  assert.match(pass, /^    if: \$\{\{ !cancelled\(\) \}\}$/m);
 });
