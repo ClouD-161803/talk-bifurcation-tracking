@@ -1261,12 +1261,16 @@ test('a change of index.html from outside takes about as long at the end of a de
     history.close();
   }
   // the time in ms of a change from outside of the headings of 600 slides from slide `from` on, in
-  // patches of its own, since the diff of the deck would take most of the time
+  // patches of its own, since the diff of the deck would take most of the time. held is the number
+  // of changes at the end that are still to be held for 40 ms, as when another process takes the
+  // processor of a crowded runner for a while
+  let held = 3;
   const change = (from) => {
     const patches = [];
     for (const m of authority.text.matchAll(/<h2>Slide (\d+)/g)) if (m[1] >= from && m[1] < from + 600) patches.push({ start: m.index + 4, end: m.index + 9, text: 'Page' });
     const start = performance.now();
     authority.enter(patches, 'file');
+    if (from > 0 && held-- > 0) for (const end = performance.now() + 40; performance.now() < end; );
     const ms = performance.now() - start;
     authority.enter(patches.map((p, k) => ({ start: p.start - k, end: p.end - k - 1, text: 'Slide' })), 'file');
     return ms;
