@@ -3796,6 +3796,7 @@
       band.append(el);
       return { slide, at, el };
     };
+    const all = () => [...document.querySelectorAll(".reveal .slides section:not(:has(> section))")];
     const build = () => {
       for (const t of [...ticks, ...names]) t.el.remove();
       ticks = [];
@@ -3805,7 +3806,7 @@
       const times = starts(numbered.map((s) => s.dataset.timing), deck.getConfig());
       band.classList.toggle("timed", !!times);
       let section = false;
-      for (const slide of deck.getHorizontalSlides()) {
+      for (const slide of all()) {
         const i = deck.getSlidePastCount(slide);
         const at = Math.min(i / last, 1);
         if (numbered[i] !== slide) {
@@ -3983,7 +3984,7 @@
     });
     document.addEventListener("keydown", () => show2(false), true);
     band.addEventListener("click", (ev) => go(pick(ev.target, ev.clientX)));
-    const index = (slide) => deck.getHorizontalSlides().indexOf(slide);
+    const index = (slide) => all().indexOf(slide);
     let from = null;
     const leave3 = (left) => {
       if (Math.abs(index(deck.getCurrentSlide()) - index(left.slide)) > 1) viewed = left;

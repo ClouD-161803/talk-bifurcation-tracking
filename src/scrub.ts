@@ -106,6 +106,10 @@ export function initScrub(deck: Deck): void {
     return { slide, at, el };
   };
 
+  // every slide in the order of the deck, the slides that are not numbered and those of a stack
+  // among them
+  const all = () => [...document.querySelectorAll<HTMLElement>('.reveal .slides section:not(:has(> section))')];
+
   // the ticks are placed where the progress of reveal.js stands at the first step of each slide. the
   // slides of reveal.js leave out those with data-visibility="uncounted", which are not numbered. of
   // these, a section slide and a closing slide have a name at the place of the next tick, and so
@@ -119,7 +123,7 @@ export function initScrub(deck: Deck): void {
     const times = starts(numbered.map((s) => s.dataset.timing), deck.getConfig() as Timing);
     band.classList.toggle('timed', !!times);
     let section = false;
-    for (const slide of deck.getHorizontalSlides() as HTMLElement[]) {
+    for (const slide of all()) {
       const i = deck.getSlidePastCount(slide);
       const at = Math.min(i / last, 1);
       if (numbered[i] !== slide) {
@@ -335,7 +339,7 @@ export function initScrub(deck: Deck): void {
   // slide. the moves in the overview are one move, from the slide at which the overview was opened
   // to the slide shown when it is closed. at a click on a slide, reveal.js closes the overview
   // before it shows the slide, in one task, hence the move is settled in a microtask
-  const index = (slide: HTMLElement) => (deck.getHorizontalSlides() as HTMLElement[]).indexOf(slide);
+  const index = (slide: HTMLElement) => all().indexOf(slide);
   let from: typeof here | null = null;
   const leave = (left: typeof here) => {
     if (Math.abs(index(deck.getCurrentSlide() as HTMLElement) - index(left.slide)) > 1) viewed = left;
