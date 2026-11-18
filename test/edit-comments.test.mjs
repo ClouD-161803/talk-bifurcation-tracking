@@ -679,9 +679,11 @@ test('a thread on an element of any tag name is read again at a start, and a thr
 test('the texts of removed elements do not keep the earlier texts of the deck in memory', (t) => {
   setFlagsFromString('--expose-gc');
   const gc = runInNewContext('gc');
-  const used = () => {
-    gc();
-    gc();
+  const used = (collect = true) => {
+    if (collect) {
+      gc();
+      gc();
+    }
     return process.memoryUsage().heapUsed;
   };
   const n = 100;
@@ -691,7 +693,9 @@ test('the texts of removed elements do not keep the earlier texts of the deck in
   for (let k = 0; k < n; k++) comments.add(ANN, { base: authority.version, anchor: tagRange(deck, `<p>Paragraph ${k} `), slide: null, text: `p${k}` });
   const before = used();
   for (let k = 0; k < n; k++) replace(authority, `\n  <p>Paragraph ${k} of the slide</p>`, '');
-  const grown = used() - before;
+  // the first measure is taken before a collection, as on a loaded runner, where garbage is not
+  // freed yet at a measure
+  const grown = used(false) - before;
   assert.ok(comments.list(ANN).comments.every((c) => c.removed?.text?.startsWith('<p>Paragraph')));
   assert.ok(grown < (n * deck.length) / 10, `the heap grew by ${(grown / 1e6).toFixed(1)} MB`);
 });
