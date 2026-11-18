@@ -93,25 +93,15 @@ test('the test step of the check workflow is the test command with the shard of 
   assert.equal(step?.replace(` --test-shard=\${{ matrix.shard }}/${shards.length}`, ''), command.replaceAll('\\"', '"'));
 });
 
-// the result of the shards is reported under test (ubuntu-latest) and test (windows-latest) by a
-// second job. With a list of systems of its own, this job would report test (windows-latest) as
-// passed for a draft, whose shards are not run on Windows
-test('the result of the shards is reported for the operating systems of the shards only', () => {
+// pass is the one check that is required on main. A job that pass does not need could fail without
+// failing it. Without always(), pass is skipped after a failed job, and a skipped check counts as
+// passed
+test('the check pass needs every other job of the check workflow, and is run after a failed job', () => {
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
-  const systems = [...workflow.slice(0, workflow.search(/^  pass:$/m)).matchAll(/^ +os: (.+)$/gm)].map((row) => row[1]);
-  assert.equal(systems.length, 2, `${systems.length} lists of operating systems above the job pass`);
-  assert.equal(systems[1], systems[0]);
-});
-
-// the checks required on main are named after the operating system and the browser of a job of
-// check. A job without a name is named after every value of its row, hence a row with a third key
-// is reported under another name, and its required check is waited for without an end
-test('each job of check is reported under the name of its operating system and its browser', () => {
-  const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
-  const job = workflow.slice(workflow.search(/^  check:$/m));
-  const rows = [...job.matchAll(/^ +- \{ (.+) \}$/gm)].map((row) => Object.fromEntries(row[1].split(', ').map((pair) => pair.split(': '))));
-  assert.ok(rows.length >= 5, `the matrix of check has ${rows.length} rows`);
-  const name = /^ {4}name: (.+)$/m.exec(job)?.[1];
-  const names = rows.map((row) => name?.replace(/\$\{\{ matrix\.(\w+) \}\}/g, (_, key) => row[key] ?? '') ?? `check (${Object.values(row).join(', ')})`);
-  assert.deepEqual(names, rows.map((row) => `check (${row.os}, ${row.browser})`));
+  const jobs = workflow.slice(workflow.search(/^jobs:$/m));
+  const names = [...jobs.matchAll(/^  ([\w-]+):$/gm)].map((row) => row[1]);
+  const pass = jobs.slice(jobs.search(/^  pass:$/m)).split(/^  [\w-]+:$/m)[1];
+  const needs = /^    needs: \[(.+)\]$/m.exec(pass)?.[1].split(', ');
+  assert.deepEqual(needs?.toSorted(), names.filter((name) => name !== 'pass').toSorted());
+  assert.match(pass, /^    if: \$\{\{ always\(\) \}\}$/m);
 });

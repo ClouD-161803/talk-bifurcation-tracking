@@ -1,43 +1,43 @@
 name: check
 
-# a branch is checked through its pull request, hence a push is checked only on main. A round on
-# any branch is started by hand under Actions > check > Run workflow
+# a push to a pull request is checked on Ubuntu: the tests, the deck in Chrome and in Firefox, and
+# the figures. Every system and browser is checked on main after each merge, and in a round that is
+# started by hand on any branch under Actions > check > Run workflow
 on:
   push:
     branches: [main]
-  # with ready_for_review, a round is started when a draft is marked as ready, since the test shards
-  # on Windows are run only from then on
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 # the token of a job can only read the repository, and it is not left in the checkout
 permissions:
   contents: read
 
-# a push to a pull request cancels the round of the commit before it, and a push to main the round
-# of the push before it, since a merge after a merge would wait for the runners of each round. A
-# round started by hand has a group of its own, hence it is not cancelled
+# a push to a pull request cancels the round of the commit before it. A round on main is not
+# cancelled, since a failure of main would then not be seen. While one round on main runs, GitHub
+# keeps only the newest of the rounds that wait, hence the last of a row of merges is always checked.
+# A round started by hand has a group of its own
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # the tests and each browser are separate jobs, so that they run on separate runners at once
 jobs:
+  # the tests read the demo deck, hence a talk made with "Use this template" checks only its deck
   test:
+    if: ${{ github.repository == 'beeson-group/slides' }}
     strategy:
       fail-fast: false
       matrix:
-        # the macOS runners draw WebGL in SwiftShader, too slowly for the timings of the tests. A draft
-        # is tested on Ubuntu only, since two rounds on both systems wait for the runners of each
-        # other. To test a draft on Windows, start a round by hand, or mark the draft as ready
-        os: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
+        # the macOS runners draw WebGL in SwiftShader, too slowly for the timings of the tests
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
         # the test files are split over seven runners, since the suite is over an hour long on one.
-        # With the five jobs of check and the job tex, 20 jobs are run at once, the limit of the free
-        # plan, and 13 for a draft
+        # With the two jobs of check and the job tex, a round of a pull request has 10 jobs, hence
+        # two pull requests are checked at once on the 20 runners of the free plan. Twelve runners
+        # gave the result 4 minutes earlier for 40% more minutes of the runners
         shard: [1, 2, 3, 4, 5, 6, 7]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,40 +50,22 @@ jobs:
       - run: npm run vendor
       - run: npm run build
       - run: npm run typecheck
-      # the tests read the demo deck, hence a talk made with "Use this template" checks only its deck
       # npm test with the shard of the job, an option that is read only before the files. With
       # --test-force-exit, a test file that leaves a server open after a failed cleanup is ended, and
       # with --test-timeout, a test file that does not end fails by name after 20 minutes. The module
       # of --import makes the writes to standard output blocking, hence no report is lost at the end
       - run: node --test --test-force-exit --test-timeout=1200000 --import ./test/helpers/blocking-stdout.mjs --test-shard=${{ matrix.shard }}/7 "test/*.test.mjs"
-        if: ${{ github.repository == 'beeson-group/slides' }}
 
-  # the checks test (ubuntu-latest) and test (windows-latest) are required on main, hence the result
-  # of the fourteen shards is reported under both names. Without always(), the job is skipped after a
-  # failed shard, and a skipped check counts as passed. The matrix is the one of the shards, hence
-  # test (windows-latest) is not reported for a draft, and it is waited for until the draft is ready
-  tests:
-    name: test (${{ matrix.os }})
-    needs: test
-    if: ${{ always() }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - run: test "${{ needs.test.result }}" = success
-
-  # one check for the whole round, to require on main in place of the two above: it passes only if
-  # every test shard and every job of check passed
+  # the one check that is required on main. It fails when a job of the round failed or was cancelled.
+  # Without always(), it is skipped after a failed job, and a skipped check counts as passed
   pass:
     needs: [test, check, tex]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: test "${{ needs.test.result }}" = success && test "${{ needs.check.result }}" = success && test "${{ needs.tex.result }}" = success
+      - run: exit 1
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
 
   # the TikZ figures are compiled with TeX Live only on this runner. The test shards and the jobs of
   # check do not have TeX, hence they skip the compile tests and compare the hash of each output
@@ -101,7 +83,13 @@ jobs:
       - run: npm ci
       # latex, dvisvgm, TikZ and pgfplots, and the fonts of the wrapper of a figure. dvisvgm is a
       # package of its own on Ubuntu
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-pictures lmodern dvisvgm
+      # a mirror of Ubuntu that does not answer is asked again, since the install then hangs up to
+      # the limit of the job
+      - run: |
+          for attempt in 1 2 3; do
+            sudo timeout 240 sh -c 'apt-get update && apt-get install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-pictures lmodern dvisvgm' && break
+            test "$attempt" -lt 3
+          done
       - run: latex --version && dvisvgm --version
       - run: node --test test/figures.test.mjs
       # the demo figures are compiled again from their sources, since the bytes of an output differ
@@ -109,21 +97,16 @@ jobs:
       - run: rm figures/*.js && npm run tex
 
   check:
-    # the checks of this job are required on main under the operating system and the browser, hence
     # the name is given without the key record of the matrix
     name: check (${{ matrix.os }}, ${{ matrix.browser }})
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: ubuntu-latest, browser: chrome }
-          - { os: ubuntu-latest, browser: firefox }
-          - { os: macos-latest, browser: chrome }
-          - { os: macos-latest, browser: safari }
-          # npm run pptx records the scene and the traced backdrops of the deck on one runner, with
-          # WebGL and H.264 in software. The demo deck takes 10 minutes on Windows, 16 on Ubuntu, and
-          # over 40 on macOS, hence the other two write the file without a recording
-          - { os: windows-latest, browser: chrome, record: true }
+        # npm run pptx records the scene and the traced backdrops of the deck on one runner, with
+        # WebGL and H.264 in software. The demo deck takes 10 minutes on Windows, 16 on Ubuntu, and
+        # over 40 on macOS, hence only the job on Windows has record, and the others write the file
+        # without a recording. A pull request is checked in the first two only
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-latest","browser":"chrome"},{"os":"ubuntu-latest","browser":"firefox"}]' || '[{"os":"ubuntu-latest","browser":"chrome"},{"os":"ubuntu-latest","browser":"firefox"},{"os":"macos-latest","browser":"chrome"},{"os":"macos-latest","browser":"safari"},{"os":"windows-latest","browser":"chrome","record":true}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.record && 45 || 15 }}
     steps:
