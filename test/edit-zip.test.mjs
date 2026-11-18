@@ -790,3 +790,21 @@ test('a file that grows after it was listed counts against the limit with the by
   const size = (Math.ceil(((3.5 * MB + Buffer.byteLength(DECK)) / MB) * 10) / 10).toFixed(1);
   assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 3 MB for a download.` });
 });
+
+test('a JSON file that is wrapped for the zip counts once against the limit', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t, DECK.replace('</body>', '<section><div data-trajectories="orbits/o.json"></div></section>\n</body>'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const json = `[${'1,'.repeat(MB)}1]`;
+  put(talk, 'orbits/o.json', json);
+  const edit = await startEdit(talk, { env: { SLIDES_ZIP_MAX_BYTES: String(3 * MB), XDG_CONFIG_HOME: config, APPDATA: config } });
+  const token = await hello(t, edit.port, edit.key, 'Ann');
+  const got = byName((await download(edit.port, edit.key, token)).zip);
+  assert.equal(got.get('orbits/o.json').bytes.length, json.length);
+  assert.equal(got.get('orbits/o.json.js')?.bytes.toString('utf8'), `Beeson.trajectories(${json});\n`);
+
+  put(talk, 'media/extra.png', randomBytes(1.5 * MB));
+  const size = (Math.ceil(((json.length + 1.5 * MB + Buffer.byteLength(readFileSync(join(talk, 'index.html')))) / MB) * 10) / 10).toFixed(1);
+  const over = await makeZip(edit.port, edit.key, token);
+  assert.equal(over.status, 413);
+  assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 3 MB for a download.` });
+});
