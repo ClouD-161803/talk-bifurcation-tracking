@@ -280,3 +280,27 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(page.errors, []);
   });
 }
+
+test('press() of Enter runs the default action of the key on a focused button and summary', async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  // a native button and summary without a keydown listener, as a keyboard meets them
+  await page.evaluate(`(() => {
+    window.__pressed = 0;
+    const button = document.body.appendChild(document.createElement('button'));
+    button.addEventListener('click', () => window.__pressed++);
+    document.body.appendChild(document.createElement('details')).appendChild(document.createElement('summary'));
+    button.focus();
+  })()`);
+  await press(page, 'Enter');
+  await page.waitFor('window.__pressed === 1');
+  await page.evaluate(`document.querySelector('summary').focus()`);
+  await press(page, 'Enter');
+  await page.waitFor(`document.querySelector('details').open`);
+  // with a command modifier, Enter is a command and does not press the button
+  await page.evaluate(`document.querySelector('button').focus()`);
+  await press(page, 'Mod+Enter');
+  await page.evaluate('new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
+  assert.equal(await page.evaluate('window.__pressed'), 1);
+});

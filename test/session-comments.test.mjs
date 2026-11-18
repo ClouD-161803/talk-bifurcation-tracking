@@ -462,7 +462,9 @@ test('offline, the Comment command opens a draft, which is kept until the page i
 
   await server.start(['--port', String(port)]);
   await front(a);
-  await click(a, '.beeson-session-action');
+  // the page may be online by its own retry before a click on Try now on a slow runner, hence it
+  // is reconnected through the client. the first test of session-client-offline clicks Try now
+  await a.evaluate(`${C}.tryNow()`);
   await a.waitFor(ONLINE);
   await sees(a, `document.querySelector('${PANE} .draft .actions .primary').disabled`, false);
   assert.equal(await a.evaluate(`document.querySelector('${PANE} .draft textarea').value`), 'Written offline');

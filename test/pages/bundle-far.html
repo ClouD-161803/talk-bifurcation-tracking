@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Strip bundle far from the opened slide</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+</head>
+<body>
+<!-- the bundle of bundle.html on the first slide, followed by four slides, so that a page opened at the
+     last slide does not lay the first one out. a strip bundle on a tilted circle, with a strip a along the radius and a strip b along the
+     normal of the plane of the circle, shown by two steps, and a compass toward a far point -->
+<div class="reveal">
+  <div class="slides">
+    <section>
+      <h2>A strip bundle</h2>
+      <p class="fragment" data-surface-state="a">The strip a is grown.</p>
+      <p class="fragment" data-surface-state="a b">The strip b is grown beside it.</p>
+      <div class="surface" data-bundle="ring">
+        <span class="label" data-at="L1">L1</span>
+        <span class="label" data-at="a" data-rib="2">a</span>
+        <span class="label" data-at="b" data-rib="5" data-side="-1">b</span>
+        <span class="label" data-at="Sun">Sun</span>
+      </div>
+      <script type="application/json" id="ring">{"orbit":[[1,0,0],[0.9914,0.1044,0.0388],[0.9659,0.2071,0.075],[0.9239,0.3061,0.1061],[0.866,0.4,0.1299],[0.7934,0.487,0.1449],[0.7071,0.5657,0.15],[0.6088,0.6347,0.1449],[0.5,0.6928,0.1299],[0.3827,0.7391,0.1061],[0.2588,0.7727,0.075],[0.1305,0.7932,0.0388],[0,0.8,0],[-0.1305,0.7932,-0.0388],[-0.2588,0.7727,-0.075],[-0.3827,0.7391,-0.1061],[-0.5,0.6928,-0.1299],[-0.6088,0.6347,-0.1449],[-0.7071,0.5657,-0.15],[-0.7934,0.487,-0.1449],[-0.866,0.4,-0.1299],[-0.9239,0.3061,-0.1061],[-0.9659,0.2071,-0.075],[-0.9914,0.1044,-0.0388],[-1,0,0],[-0.9914,-0.1044,0.0388],[-0.9659,-0.2071,0.075],[-0.9239,-0.3061,0.1061],[-0.866,-0.4,0.1299],[-0.7934,-0.487,0.1449],[-0.7071,-0.5657,0.15],[-0.6088,-0.6347,0.1449],[-0.5,-0.6928,0.1299],[-0.3827,-0.7391,0.1061],[-0.2588,-0.7727,0.075],[-0.1305,-0.7932,0.0388],[0,-0.8,0],[0.1305,-0.7932,-0.0388],[0.2588,-0.7727,-0.075],[0.3827,-0.7391,-0.1061],[0.5,-0.6928,-0.1299],[0.6088,-0.6347,-0.1449],[0.7071,-0.5657,-0.15],[0.7934,-0.487,-0.1449],[0.866,-0.4,-0.1299],[0.9239,-0.3061,-0.1061],[0.9659,-0.2071,-0.075],[0.9914,-0.1044,-0.0388]],"libration_point":[0,0,0],"strips":[{"id":"a","tone":"accent","half_width":0.3,"ribs":[0,6,12,18,24,30,36,42],"directions":[[1,0,0],[0.9914,0.1305,0],[0.9659,0.2588,0],[0.9239,0.3827,0],[0.866,0.5,0],[0.7934,0.6088,0],[0.7071,0.7071,0],[0.6088,0.7934,0],[0.5,0.866,0],[0.3827,0.9239,0],[0.2588,0.9659,0],[0.1305,0.9914,0],[0,1,0],[-0.1305,0.9914,0],[-0.2588,0.9659,0],[-0.3827,0.9239,0],[-0.5,0.866,0],[-0.6088,0.7934,0],[-0.7071,0.7071,0],[-0.7934,0.6088,0],[-0.866,0.5,0],[-0.9239,0.3827,0],[-0.9659,0.2588,0],[-0.9914,0.1305,0],[-1,0,0],[-0.9914,-0.1305,0],[-0.9659,-0.2588,0],[-0.9239,-0.3827,0],[-0.866,-0.5,0],[-0.7934,-0.6088,0],[-0.7071,-0.7071,0],[-0.6088,-0.7934,0],[-0.5,-0.866,0],[-0.3827,-0.9239,0],[-0.2588,-0.9659,0],[-0.1305,-0.9914,0],[0,-1,0],[0.1305,-0.9914,0],[0.2588,-0.9659,0],[0.3827,-0.9239,0],[0.5,-0.866,0],[0.6088,-0.7934,0],[0.7071,-0.7071,0],[0.7934,-0.6088,0],[0.866,-0.5,0],[0.9239,-0.3827,0],[0.9659,-0.2588,0],[0.9914,-0.1305,0]]},{"id":"b","tone":"violet","half_width":0.25,"ribs":[0,6,12,18,24,30,36,42],"directions":[[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1],[0,0,1]]}],"arrows":[{"id":"Sun","toward":[-4,0,0]}]}</script>
+    </section>
+    <section><h2>Slide 2</h2></section>
+    <section><h2>Slide 3</h2></section>
+    <section><h2>Slide 4</h2></section>
+    <section><h2>Slide 5</h2></section>
+  </div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/vendor/three/three.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>

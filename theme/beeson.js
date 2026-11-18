@@ -5528,6 +5528,7 @@ void main() {
         const at = lab.dataset.at ?? "";
         const i = this.arrows.findIndex((a) => a.id === at);
         if (i >= 0) {
+          if (!lab.offsetWidth && !lab.offsetHeight) continue;
           const t = tips[i], l = Math.hypot(t[0] - middle[0], t[1] - middle[1]);
           const e = l < 1 ? [0, -1] : [(t[0] - middle[0]) / l, (t[1] - middle[1]) / l];
           const reach = LABEL_GAP + 0.5 * (Math.abs(e[0]) * lab.offsetWidth + Math.abs(e[1]) * lab.offsetHeight);
@@ -6236,10 +6237,25 @@ void main() {
   }
 
   // src/main.ts
-  function numberOf(slide) {
+  function numberOf(slide, counted) {
     if (slide?.dataset.appendix) return [`A${slide.dataset.appendix}`, "", ""];
     if (!slide || slide.dataset.visibility === "uncounted") return ["", "", ""];
-    return [String(window.Reveal.getSlidePastCount(slide) + 1), "/", window.Reveal.getTotalSlides()];
+    return [String(counted.indexOf(slide) + 1), "/", counted.length];
+  }
+  function numberPages(slides2) {
+    const pages = [...document.querySelectorAll(".reveal .pdf-page")];
+    const own = pages.map((page) => page.querySelector(":scope > section"));
+    const counted = own.filter((s) => !!s && slides2.has(s) && s.dataset.visibility !== "uncounted");
+    let html = "";
+    pages.forEach((page, i) => {
+      const slide = own[i];
+      if (slide && slides2.has(slide)) {
+        const [a, delimiter, b] = numberOf(slide, counted);
+        html = typeof b === "number" ? `<span class="slide-number-a">${a}</span><span class="slide-number-delimiter">${delimiter}</span><span class="slide-number-b">${b}</span>` : a;
+      }
+      const number = page.querySelector(".slide-number-pdf");
+      if (number) number.innerHTML = html;
+    });
   }
   function markUncounted(scope) {
     let appendix = 0;
@@ -6265,7 +6281,7 @@ void main() {
     // with center off, reveal.js measures an element by its offset, which does not count them
     autoAnimateStyles: ["opacity", "color", "background-color", "padding", "font-size", "line-height", "letter-spacing", "border-width", "border-color", "border-radius", "outline", "outline-offset", "translate", "rotate"],
     progress: true,
-    slideNumber: (slide) => numberOf(slide),
+    slideNumber: (slide) => numberOf(slide, window.Reveal.getSlides()),
     controls: false,
     center: false,
     pdfSeparateFragments: true,
@@ -6448,7 +6464,9 @@ void main() {
     mountCitations();
     void mountFigures(document, get());
     markViewers();
+    const slides2 = new Set(document.querySelectorAll(".reveal .slides section"));
     deck.on("pdf-ready", () => {
+      numberPages(slides2);
       completeAll();
       mountShapes(document);
       void mountFigures(document, get());

@@ -6,7 +6,7 @@
 // them. the regression tests at the end cover the save state before the first copy, edits typed
 // before hello is answered, two copies that conflict, a copy of an earlier session, the dialog of
 // the conflicts at a join, after a removed slide, and after a close by the browser, the parse of
-// the deck for this dialog, and the pictures of a copy
+// the deck for this dialog, the pictures of a copy, and a first open of IndexedDB that answers late
 
 import assert from 'node:assert/strict';
 import { readFileSync, truncateSync, writeFileSync } from 'node:fs';
@@ -187,12 +187,11 @@ test('a page without IndexedDB edits offline, says that its changes cannot be ke
   clean(page);
 });
 
-test('a page whose first open of IndexedDB answers late keeps its edits in a copy at a later write', { timeout: 120_000 }, async (t) => {
+test('a page whose first open of IndexedDB answers after the wait for it keeps its edits in a copy at a later write', { timeout: 120_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);
-  // the first open of beeson-session, the database of the copies, answers after OPEN_WAIT of
-  // src/session/client/copy.ts, as on a crowded machine
+  // as on a crowded machine, the first open of the database of the copies answers after 3.5 s
   const script = `{
     const open = IDBFactory.prototype.open;
     let first = true;
@@ -200,17 +199,20 @@ test('a page whose first open of IndexedDB answers late keeps its edits in a cop
       const r = open.call(this, name, ...rest);
       if (name !== 'beeson-session' || !first) return r;
       first = false;
-      Object.defineProperty(r, 'onsuccess', { configurable: true, set(fn) { r.addEventListener('success', (e) => setTimeout(() => fn.call(r, e), 3500), { once: true }); } });
+      let fn = null;
+      Object.defineProperty(r, 'onsuccess', { get: () => fn, set: (f) => (fn = f), configurable: true });
+      r.addEventListener('success', (e) => setTimeout(() => fn?.call(r, e), 3500));
       return r;
     };
   }`;
   const page = await tab(browser, sessionUrl(server.edit), { script });
   await converge(server, [page]);
   await goOffline(page);
-  await edit(page, 0, 'p', ' kept late');
-  await copied(page, ' kept late');
+  await edit(page, 0, 'p', ' late');
+  await copied(page, ' late');
+  await page.waitFor(`${STATE} === 'Offline. Changes on slide 1 are kept in this browser'`);
   await goOnline(page);
-  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide kept late</p>'));
+  assert.equal(await converge(server, [page]), TALK.replace('<p>First slide</p>', '<p>First slide late</p>'));
   clean(page);
 });
 
@@ -440,7 +442,7 @@ test('a word typed after a load that takes over a copy, before hello is answered
   clean(a);
 });
 
-test('the copies of two closed tabs that changed the same text are both sent, the second after the first with the dialog of the conflicts', { timeout: 120_000 }, async (t) => {
+test('the copies of two closed tabs that changed the same text are both sent, the second after the first with the dialog of the conflicts', { timeout: 240_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t);

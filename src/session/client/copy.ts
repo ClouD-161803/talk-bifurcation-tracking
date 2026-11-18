@@ -81,29 +81,24 @@ const lockOf = (id: string): string => `beeson-session-copy:${id}`;
 type Locks = { request(name: string, fn: () => Promise<void>): Promise<void>; query(): Promise<{ held?: { name?: string }[] }> };
 const locks = (): Locks | undefined => (navigator as { locks?: Locks }).locks;
 
+// the one open of the database, which a write waits for at most OPEN_WAIT. an open that answers
+// later serves the next write, and an open that failed is tried again at the next write
 let opened: Promise<IDBDatabase> | null = null;
 function db(): Promise<IDBDatabase> {
-  if (opened) return opened;
-  let late = false;
-  const p = new Promise<IDBDatabase>((done, fail) => {
-    setTimeout(() => {
-      late = true;
-      fail(new Error('IndexedDB did not answer'));
-    }, OPEN_WAIT);
+  opened ??= new Promise((done, fail) => {
     const r = indexedDB.open(DB, 1);
     r.onupgradeneeded = () => r.result.createObjectStore(STORE, { keyPath: 'id' }).createIndex('key', 'key');
     r.onsuccess = () => {
-      // a database that answers after OPEN_WAIT is closed, since the next write opens it again
-      if (late) return r.result.close();
       // the browser closes the database e.g. at Clear site data, and the next write opens it again
       r.result.onclose = () => (opened = null);
       done(r.result);
     };
-    r.onerror = () => fail(r.error);
+    r.onerror = () => {
+      opened = null;
+      fail(r.error);
+    };
   });
-  // a failed open is forgotten, hence the next write tries again
-  p.catch(() => opened === p && (opened = null));
-  return (opened = p);
+  return Promise.race([opened, new Promise<never>((_, fail) => setTimeout(() => fail(new Error('IndexedDB did not answer')), OPEN_WAIT))]);
 }
 
 // one transaction on the store, which resolves with the result of the request of fn once it commits

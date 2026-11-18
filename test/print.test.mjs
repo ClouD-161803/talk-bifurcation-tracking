@@ -141,6 +141,38 @@ test('a slide with a picture past its bottom is printed on one page', { timeout:
   assert.ok(foot.height > 0 && foot.inside, 'the footnote of the last slide is cut');
 });
 
+// reveal.js numbered the pages of the print view one by one, and a step N of a slide as "n.N". A page
+// is numbered as its slide is in the deck, hence a title, section, or closing slide is not numbered,
+// and a slide after the closing slide is numbered A1, A2, and so on
+test('a page of the print view is numbered as its slide is in the deck', { timeout: PRINT }, async (t) => {
+  const browser = await launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  const deck = 'test/pages/print-numbers.html';
+  await page.goto(deckUrl(deck, 'still'));
+  await page.waitFor(`!!window.Reveal?.isReady()`);
+  const shown = await page.evaluate(`Object.fromEntries([...document.querySelectorAll('.reveal .slides > section')].map((slide) => {
+      window.Reveal.slide(window.Reveal.getIndices(slide).h);
+      return [slide.querySelector('h1, h2').textContent, document.querySelector('.slide-number').textContent.replace(/\\s+/g, '')];
+    }))`);
+  await printView(page, deckUrl(deck, 'print-pdf&still'));
+
+  const printed = await page.evaluate(`[...document.querySelectorAll('.pdf-page')].map((p) =>
+    [p.querySelector('h1, h2').textContent, p.querySelector('.slide-number-pdf')?.textContent.replace(/\\s+/g, '') ?? ''])`);
+
+  assert.deepEqual(printed, [
+    ['Title', ''],
+    // the last step restores the dimmed fragments
+    ['Steps', '1/2'], ['Steps', '1/2'], ['Steps', '1/2'], ['Steps', '1/2'],
+    ['Section', ''],
+    ['Plain', '2/2'],
+    ['Closing', ''],
+    ['Appendix one', 'A1'],
+    ['Appendix two', 'A2'],
+  ]);
+  assert.deepEqual(printed.map(([heading, number]) => [heading, shown[heading]]), printed);
+});
+
 test('the check fails on a video without a poster', () => {
   const out = mkdtempSync(join(tmpdir(), 'beeson-poster-'));
   try {

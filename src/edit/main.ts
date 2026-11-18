@@ -5,7 +5,7 @@
 import { spawn } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { AlreadyRunning, start } from './command.ts';
+import { AlreadyRunning, start, type Running } from './command.ts';
 import { NotUtf8 } from './disk.ts';
 import type { HistoryOptions } from './history.ts';
 
@@ -76,7 +76,23 @@ async function main(argv: string[]): Promise<void> {
     process.stderr.write(`--port takes a number from 0 to 65535. ${USAGE}\n`);
     process.exit(2);
   }
-  let running;
+  // the signals are caught before the start, so that one sent right after the address still stops
+  // the edit command with its write. one sent during the start stops it once the start is done
+  let running: Running | undefined, stopping = false;
+  // a close that the relay or an open connection holds ends 3 s after index.html is written, with
+  // the status of this write. a stop of the disk that hangs, as on a file system that does not
+  // answer, is not ended
+  const stop = () => {
+    stopping = true;
+    if (!running) return;
+    void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
+    void running.unwritten.then((unwritten) => setTimeout(() => process.exit(unwritten ? 1 : 0), 3000).unref());
+  };
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'] as const) {
+    try {
+      process.on(signal, stop);
+    } catch {}
+  }
   try {
     running = await start({ folder, port, relay, history: historyOptions() });
   } catch (e) {
@@ -98,33 +114,21 @@ async function main(argv: string[]): Promise<void> {
     process.stderr.write(`${message}\n`);
     process.exit(1);
   }
-  // a close that the relay or an open connection holds ends 3 s after index.html is written, with
-  // the status of this write. a stop of the disk that hangs, as on a file system that does not
-  // answer, is not ended
-  const stop = () => {
-    void running.close().then((unwritten) => process.exit(unwritten ? 1 : 0), () => process.exit(1));
-    void running.unwritten.then((unwritten) => setTimeout(() => process.exit(unwritten ? 1 : 0), 3000).unref());
-  };
-  // a fault that escapes every handler still writes index.html before the exit
-  const fail = (e: unknown) => {
-    process.stderr.write(`The edit command failed: ${(e as Error)?.stack ?? e}\n`);
-    void running.close().finally(() => process.exit(1));
-    void running.unwritten.then(() => setTimeout(() => process.exit(1), 3000).unref());
-  };
-  // the handlers are set before the address is printed, since a caller may stop the command at once
-  process.on('uncaughtException', fail);
-  process.on('unhandledRejection', fail);
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'] as const) {
-    try {
-      process.on(signal, stop);
-    } catch {}
-  }
   process.stdout.write(`${JSON.stringify({ url: running.url, port: running.port, key: running.key })}\n`);
   const page = `${running.url}index.html?edit&session`;
   process.stderr.write(`Editing ${running.root}\nat ${page}\nKeep this window open while you edit, and close it or press Ctrl+C to stop.\n`);
   if (open) openBrowser(page);
   // a write to a terminal that was closed fails, and must not end the command before its stop
   for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
+  // a fault that escapes every handler still writes index.html before the exit
+  const fail = (e: unknown) => {
+    process.stderr.write(`The edit command failed: ${(e as Error)?.stack ?? e}\n`);
+    void running!.close().finally(() => process.exit(1));
+    void running!.unwritten.then(() => setTimeout(() => process.exit(1), 3000).unref());
+  };
+  process.on('uncaughtException', fail);
+  process.on('unhandledRejection', fail);
+  if (stopping) stop();
 }
 
 const isMain = (() => {

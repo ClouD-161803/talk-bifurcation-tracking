@@ -53,6 +53,24 @@ export async function removeProfile(profile) {
   }
 }
 
+// a profile that close() could not remove, since a process of Chrome on Windows can hold one of its
+// files for longer than removeProfile tries. each is tried once more at the exit of this process
+const leftProfiles = new Set();
+
+function leaveProfile(profile, error) {
+  process.stderr.write(`The profile of Chrome at ${profile} was left behind: ${error.message}\n`);
+  if (!leftProfiles.size) {
+    process.once('exit', () => {
+      for (const left of leftProfiles) {
+        try {
+          rmSync(left, { recursive: true, force: true });
+        } catch {}
+      }
+    });
+  }
+  leftProfiles.add(profile);
+}
+
 /** Returns the Chrome flags for a profile, offline mode, frame rastering, platform, and CI. */
 export function chromeArgs({ profile, offline = true, wholeFrames = false, platform = process.platform, ci = Boolean(process.env.CI) } = {}) {
   return [
@@ -90,15 +108,25 @@ export function chromeArgs({ profile, offline = true, wholeFrames = false, platf
   ];
 }
 
+// the state of a page whose load is not answered: its address, its ready state, and the files of
+// its elements that are not loaded. a file is loaded once it has an entry of resource timing, of
+// which a page keeps 250, hence resources tells whether the list of entries is full
+const LOADING = `(() => {
+  const loaded = new Set(performance.getEntriesByType('resource').map((e) => e.name));
+  const files = [...document.querySelectorAll('script[src], link[rel="stylesheet"][href], img[src], iframe[src], video[src], source[src]')].map((el) => el.src || el.href);
+  return { url: location.href, readyState: document.readyState, resources: loaded.size, unloaded: files.filter((f) => !loaded.has(f)) };
+})()`;
+
 /**
  * Starts Chrome and returns an object with newPage() and close(). With offline set, every host
  * name is mapped to a failed lookup, thus each network load of a deck is reported as an error.
  * Without it, only 127.0.0.1 is reached. A request that is not answered within timeout ms fails.
- * With wholeFrames set, a frame is drawn only once every layer in it is rastered, which a screenshot
+ * A step of the setup of a new page is given setup ms, at most timeout ms, before the page is tried
+ * again. With wholeFrames set, a frame is drawn only once every layer in it is rastered, which a screenshot
  * after a scroll and heavy work in the page needs, see scripts/export-pptx.mjs, and text is drawn
  * without subpixel antialiasing.
  */
-export async function launch({ offline = true, timeout = 120000, wholeFrames = false } = {}) {
+export async function launch({ offline = true, timeout = 120000, setup = 15000, wholeFrames = false } = {}) {
   const chrome = findChrome();
   const profile = mkdtempSync(join(tmpdir(), 'beeson-chrome-'));
   const args = chromeArgs({ profile, offline, wholeFrames });
@@ -115,6 +143,8 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
     for (const listener of onNetworkCrash) listener();
   });
   let hasExited = false;
+  // set once Chrome has answered a Target.createTarget
+  let started = false;
   const exited = new Promise((done) => child.once('exit', (...a) => {
     hasExited = true;
     done(...a);
@@ -180,7 +210,7 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
   async function newPage({ width = 1920, height = 1080, mobile = false, scale = 1, motion = false, drafts = false } = {}) {
     // on Windows runners, a fresh about:blank tab right after closing a page can hang or detach
     // before answering Page.enable. close a wedged tab and try another target twice at most
-    const setupLimit = Math.min(timeout, 15000);
+    const setupLimit = Math.min(timeout, setup);
     const cleanupLimit = Math.min(timeout, 2000);
     let targetId;
     let sessionId;
@@ -195,7 +225,10 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
       onEvent = null;
       let onCrash;
       try {
-        ({ targetId } = await send('Target.createTarget', { url: 'about:blank' }, undefined, setupLimit));
+        // the first target is given the whole timeout. on a fresh Windows runner, Chrome answers its
+        // first commands after up to a minute, and a try again does not help (issue #136)
+        ({ targetId } = await send('Target.createTarget', { url: 'about:blank' }, undefined, started ? setupLimit : timeout));
+        started = true;
         ({ sessionId } = await send('Target.attachToTarget', { targetId, flatten: true }, undefined, setupLimit));
         call = (method, params, limit = timeout) => send(method, params, sessionId, limit);
         onEvent = ({ method, params, sessionId: from }) => {
@@ -297,7 +330,13 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
           });
           const { errorText } = await call(method, params);
           if (errorText) throw new Error(`${url}: ${errorText}`);
-          await answered(loaded, `the load of ${url}`);
+          await answered(loaded, `the load of ${url}`).catch(async (error) => {
+            // a load that is not answered is told with the files of the page that are not loaded,
+            // or with the reason why the page could not be read
+            const state = await answered(evaluate(LOADING), 'the state of the page', 5000).catch((e) => e.message.split('\n')[0]);
+            error.message = error.message.replace('\n', `, and the page holds ${JSON.stringify(state)}\n`);
+            throw error;
+          });
         };
         const load = async (method, params) => {
           for (let n = 0; ; n++) {
@@ -386,7 +425,8 @@ export async function launch({ offline = true, timeout = 120000, wholeFrames = f
       // chrome_crashpad_handler and GoogleUpdater inherit the stderr of Chrome and outlive it, and an
       // open pipe would keep this process alive until they exit
       for (const stream of child.stdio) stream?.destroy();
-      await removeProfile(profile);
+      // a test whose assertions passed does not fail on a profile that is left
+      await removeProfile(profile).catch((error) => leaveProfile(profile, error));
     }
   }
 

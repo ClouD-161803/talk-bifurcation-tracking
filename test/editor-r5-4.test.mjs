@@ -316,6 +316,30 @@ for (const platform of ['mac', 'other']) {
   });
 }
 
+// the lock cancelled the beforeinput of Enter, but the typing of text/typing.ts still broke the
+// line of the locked block by hand
+test('Enter and Shift+Enter at a caret in a locked block do not break its line', async (t) => {
+  const page = await open('other');
+  t.after(() => page.close());
+  await show(page, 2);
+  const lead = '.reveal section.present > p';
+  await clickText(page, lead);
+  await press(page, 'Escape');
+  await press(page, 'Mod+L');
+  await settle(page);
+  const locked = await render(page);
+  assert.ok(locked.includes(LEAD.replace('<p>', '<p data-locked>')));
+  await click(page, lead, { count: 2 });
+  // a collapsed caret at the end of the word chosen by the double click
+  await page.evaluate('getSelection().collapseToEnd()');
+  for (const key of ['Enter', 'Shift+Enter']) await press(page, key);
+  await press(page, 'Escape');
+  await settle(page);
+  const typed = await render(page);
+  assert.ok(typed === locked, `the line of the locked block was broken: ${typed.match(/<p data-locked>.*?<\/p>/s)?.[0]}`);
+  assert.deepEqual(errors(page), []);
+});
+
 // the index of the slide "Embedding videos" of index.html, with a video for each mode
 const VIDEOS = 10;
 const clipOf = (mode) => `<video class="for-${mode}" src="demo/clip-${mode}.mp4" poster="demo/clip-${mode}.png" muted loop data-autoplay></video>`;

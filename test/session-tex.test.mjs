@@ -552,7 +552,10 @@ test('File > Preamble… and File > Bibliography… are off in a session with a 
   await show(ann, 'Citations');
   await caretAtEnd(ann, `document.querySelector('.reveal section.present p:nth-of-type(3)')`);
   await ann.evaluate(`Promise.resolve(window.BeesonEditor.exec('insert.citation')).then(() => true)`);
-  await ann.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`);
+  await ann.waitFor(`document.querySelectorAll('${LIST} li[data-key]').length === 3`).catch(async (e) => {
+    const state = await ann.evaluate(`({ list: !!document.querySelector('${LIST}'), items: document.querySelectorAll('${LIST} li[data-key]').length, note: document.querySelector('${LIST} .note')?.textContent ?? null, active: document.activeElement?.localName, region: ${C}.app.region(), enabled: window.BeesonEditor.state('insert.citation').enabled })`);
+    throw new Error(`the list of Insert > Citation… holds ${JSON.stringify(state)}: ${e.message}`);
+  });
   assert.equal(await ann.evaluate(`document.querySelector('${LIST} input').placeholder`), 'Author, year, title, or key');
   await ann.evaluate(`(() => {
     const input = document.querySelector('${LIST} input');

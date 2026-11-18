@@ -77,14 +77,6 @@ async function roundTrip(page, edited, undos = 1) {
   return text;
 }
 
-// Return with its text, as a keyboard sends it, since press() sends a key without a text, which
-// does not break a line of the notes in Chrome
-async function enter(page) {
-  const base = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: 0 };
-  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '\r', unmodifiedText: '\r' });
-  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
-}
-
 // a press of a bracket key with the command modifier, which press() does not know
 async function bracket(page, platform, key) {
   const modifiers = platform === 'mac' ? 4 : 2;
@@ -399,15 +391,15 @@ for (const platform of PLATFORMS) {
     await frames(page);
     const notes = '<aside class="notes">Notes of a content slide.</aside>';
     await caretIn(page, NOTES);
-    await enter(page);
+    await press(page, 'Enter');
     await typeKeys(page, '- first');
     await frames(page);
     assert.equal(await render(page), page.source.replace(notes, '<aside class="notes">Notes of a content slide.<ul><li>first</li></ul></aside>'));
     // Return starts the next item, and Return in an empty item ends the list
-    await enter(page);
+    await press(page, 'Enter');
     await typeKeys(page, 'second');
-    await enter(page);
-    await enter(page);
+    await press(page, 'Enter');
+    await press(page, 'Enter');
     await typeKeys(page, 'after');
     await frames(page);
     const listed = '<aside class="notes">Notes of a content slide.<ul><li>first</li><li>second</li></ul>after</aside>';
@@ -429,7 +421,7 @@ for (const platform of PLATFORMS) {
     if (!(await state(page, 'view.notes')).checked) await exec(page, 'view.notes');
     await frames(page);
     await caretIn(page, NOTES);
-    await enter(page);
+    await press(page, 'Enter');
     await typeKeys(page, '- ');
     await page.evaluate(`document.execCommand('insertText', false, 'x')`);
     await frames(page);

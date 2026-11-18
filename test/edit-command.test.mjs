@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import { createServer, request as httpRequest } from 'node:http';
 import { connect, createServer as createNetServer } from 'node:net';
@@ -474,7 +475,31 @@ if (process.platform !== 'win32') {
   }
 }
 
-test('a request body aborted by the browser does not stop the edit command', { timeout: 60_000 }, async (t) => {
+test('a SIGTERM sent right after the address is printed stops the edit command as usual', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // the edit command sends itself SIGTERM once the line with the address is written, as a caller
+  // that stops it in the first data event of its stdout may do before it runs on
+  const preload = join(root, 'signal.mjs');
+  writeFileSync(preload, `const write = process.stdout.write.bind(process.stdout);
+process.stdout.write = (chunk, ...rest) => {
+  const written = write(chunk, ...rest);
+  if (String(chunk).startsWith('{"url"')) process.kill(process.pid, 'SIGTERM');
+  return written;
+};
+`);
+  const env = { ...process.env, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}`, XDG_CONFIG_HOME: config, APPDATA: config };
+  const child = spawn(process.execPath, [EDIT, talk, '--no-open', '--port', '0'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  t.after(() => child.exitCode === null && child.signalCode === null && child.kill('SIGKILL'));
+  let stderr = '';
+  child.stderr.on('data', (chunk) => (stderr += chunk));
+  child.stdout.resume();
+  const { code, signal } = await new Promise((done) => child.once('exit', (code, signal) => done({ code, signal })));
+  assert.deepEqual({ code, signal }, { code: 0, signal: null }, stderr);
+  assert.ok(!existsSync(join(talk, '.session', 'lock')), 'the stop removes the lock');
+});
+
+test('a request body aborted by the browser does not stop the edit command',{ timeout: 60_000 }, async (t) => {
   const { root, talk, config } = talkFolder(t);
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
@@ -706,17 +731,6 @@ test('an operation that arrives during the stop is refused rather than lost', { 
   const kept = text(join(talk, 'index.html')).startsWith('<!-- late -->\n');
   const refused = late.status !== 200 || late.json().ok === false;
   assert.ok(kept || refused, `the late operation was answered ${late.status} ${late.text} and is not in index.html`);
-});
-
-test('a SIGTERM sent as soon as the edit command prints its address stops it with its last write', { timeout: 60_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
-  const { root, talk, config } = talkFolder(t);
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (let i = 0; i < 5; i++) {
-    const child = spawn(process.execPath, [EDIT, talk, '--port', '0', '--no-open'], { env: { ...process.env, XDG_CONFIG_HOME: config, APPDATA: config }, stdio: ['ignore', 'pipe', 'ignore'] });
-    child.stdout.once('data', () => child.kill('SIGTERM'));
-    const [code, signal] = await new Promise((done) => child.once('exit', (...end) => done(end)));
-    assert.deepEqual({ code, signal }, { code: 0, signal: null }, `run ${i + 1}`);
-  }
 });
 
 test('a second start in the same talk folder hands over the address of the first', { timeout: 60_000 }, async (t) => {
