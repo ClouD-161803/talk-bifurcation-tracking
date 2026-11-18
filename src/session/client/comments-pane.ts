@@ -1099,7 +1099,7 @@ export function install(client: Client): void {
 
   // a draft opened offline can be sent once the page is back online
   const live = () => client.connection !== 'ended';
-  shell.define({
+  client.shell.define({
     id: 'insert.comment',
     label: 'Comment',
     keys: { mac: ['Mod+Alt+M'], other: ['Shift+F2'] },
@@ -1125,7 +1125,7 @@ export function install(client: Client): void {
       if (slide) pane.startDraft(el, slide);
     },
   });
-  shell.define({
+  client.shell.define({
     id: 'view.comments',
     label: 'Comments',
     keys: { mac: ['Ctrl+Mod+4'], other: ['Ctrl+Shift+4'] },
@@ -1134,7 +1134,7 @@ export function install(client: Client): void {
     checked: () => shell.tab.shown(),
     run: () => shell.tab.set(!shell.tab.shown()),
   });
-  shell.define({
+  client.shell.define({
     id: 'view.commentBadges',
     label: 'Comment Badges',
     keys: { mac: ['Shift+C'], other: ['Shift+C'] },

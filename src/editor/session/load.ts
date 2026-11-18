@@ -45,7 +45,7 @@ export function load(app: App, port: Port): () => Promise<boolean> {
       return new Promise(() => {});
     }
     const bar = document.querySelector<HTMLElement>('.beeson-edit-titlebar .right') ?? document.body;
-    return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text), menu: (items, options) => openMenu(app, items, options), slidesAt, changedSlides, onSlides, media, presence: hooks(app), slides: slideHooks(app), groups: (els) => groups(app, els), history: historyShell(app), comments: commentsShell(app) });
+    return entry.start({ app, port, dialog: (o) => new Dialog(o), icon, bar, download: (text) => void download(fileName(), text), define: (command) => (app.commands.define(command), app.invalidate()), menu: (items, options) => openMenu(app, items, options), slidesAt, changedSlides, onSlides, media, presence: hooks(app), slides: slideHooks(app), groups: (els) => groups(app, els), history: historyShell(app), comments: commentsShell(app) });
   };
 }
 
