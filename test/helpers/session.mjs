@@ -83,11 +83,12 @@ async function stopBounded(state) {
   }
 }
 
-// a raw request, so that a path is sent as written and every header can be set
-export function raw(port, method, path, { headers = {}, body, host = `127.0.0.1:${port}` } = {}) {
+// a raw request, so that a path is sent as written and every header can be set. it fails when
+// nothing arrives for timeout
+export function raw(port, method, path, { headers = {}, body, host = `127.0.0.1:${port}`, timeout = 60_000 } = {}) {
   return new Promise((done, fail) => {
     const bytes = body === undefined ? undefined : Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
-    const req = httpRequest({ host: '127.0.0.1', port, method, path, agent: false, headers: { host, ...(bytes ? { 'content-length': bytes.length } : {}), ...headers }, timeout: 60_000 }, (res) => {
+    const req = httpRequest({ host: '127.0.0.1', port, method, path, agent: false, headers: { host, ...(bytes ? { 'content-length': bytes.length } : {}), ...headers }, timeout }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {

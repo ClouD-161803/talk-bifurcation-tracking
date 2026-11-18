@@ -23,6 +23,8 @@ export type Handover = {
   bar: HTMLElement;
   // a download of a copy of the deck under the name of its file
   download(text: string): void;
+  // a command added to the menus, the toolbar, and the keys
+  define(command: Command): void;
   // a menu of ui/menu.ts, e.g. of an avatar, which closes any menu open before
   menu(items: MenuItem[], options: MenuOptions): OpenMenu;
   // the numbers of the slides, from 1, of the ranges in a text of the deck, as the navigator counts them
@@ -60,8 +62,6 @@ export type HistoryShell = {
 export type CommentsShell = {
   // the tab Comments of the inspector, hidden until it is enabled
   tab: CommentsTab;
-  // a command added to the menus, the toolbar, and the keys
-  define(command: Command): void;
   // the kind and the text of an element, e.g. Heading and Low-thrust transfers
   describe(el: Element): { kind: string; text: string };
   // the selected element, else the text element of the caret, and the slide that holds it, or the

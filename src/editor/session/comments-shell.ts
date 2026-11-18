@@ -12,10 +12,6 @@ export function commentsShell(app: App): CommentsShell {
   const slideOf = (el: Element | null) => el?.closest('.reveal .slides section') ?? null;
   return {
     tab: commentsTab!,
-    define(command) {
-      app.commands.define(command);
-      app.invalidate();
-    },
     describe: (el) => describe(el, (m) => mathLookup()(m)?.tex ?? null),
     target() {
       const s = app.selection;

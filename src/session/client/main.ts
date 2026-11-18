@@ -23,11 +23,12 @@ import { install as share, pageLink } from './share.ts';
 import { install as state } from './state.ts';
 import { withClass } from './dom.ts';
 import { timing } from './toast.ts';
+import { install as zip } from './zip.ts';
 import { mayRetry } from './transport.ts';
 
 // each part reads the Client and its events. the avatars go before the save state, and Share
 // before the parts that follow a person, draw the dots of the slides, and fill the lines of Share
-const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, history, comments, presence, layer, floor, people, share, follow, dots, activity];
+const PARTS: ((client: Client) => void)[] = [state, end, copy, conflicts, media, history, comments, presence, layer, floor, people, share, zip, follow, dots, activity];
 
 let current: Client | null = null;
 

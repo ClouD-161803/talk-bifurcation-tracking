@@ -35,6 +35,7 @@ dialog.beeson-edit-dialog .row { display: flex; flex-wrap: wrap; justify-content
 dialog.beeson-edit-dialog .row button { font: inherit; min-width: 72px; padding: 4px 14px; border: 1px solid var(--ed-control-line); border-radius: 6px; background: var(--ed-control); color: var(--ed-text); cursor: default; white-space: nowrap; box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.12); }
 dialog.beeson-edit-dialog .row button:hover { filter: brightness(0.97); }
 dialog.beeson-edit-dialog .row button.primary { border-color: transparent; background: var(--ed-select); color: var(--ed-on-select); }
+dialog.beeson-edit-dialog .row button:is(:disabled, [aria-disabled="true"]) { opacity: 0.4; }
 dialog.beeson-edit-dialog .row button[hidden] { display: none; }
 dialog.beeson-edit-dialog button:focus-visible { outline: 3px solid var(--ed-focus); outline-offset: 1px; }
 dialog.beeson-edit-dialog :is(input, select, textarea):focus-visible { outline: 3px solid var(--ed-focus); outline-offset: 0; }
@@ -106,12 +107,13 @@ export class Dialog {
         if (options.dismissable !== false) this.close(null);
       } else if (ev.key === 'Tab') trapTab(this.el, ev);
       else if (ev.key === 'Enter' && !ev.isComposing && (returnPressesDefault || ev.target instanceof HTMLInputElement)) {
-        // Return in a field, or anywhere in a sheet on a Mac, presses the default button
+        // Return in a field, or anywhere in a sheet on a Mac, presses the default button. in a sheet
+        // without one, Return on a button of a Mac does not press this button, as Space does
         const primary = this.row.querySelector<HTMLButtonElement>('button.primary:not(:disabled)');
-        if (!primary) return;
+        if (!primary && !(returnPressesDefault && ev.target instanceof HTMLButtonElement)) return;
         ev.preventDefault();
         ev.stopPropagation();
-        primary.click();
+        primary?.click();
       }
       // the keys that press a button are kept from the key handler of reveal.js, which cancels them
       else if ((ev.key === 'Enter' || ev.key === ' ') && ev.target instanceof HTMLButtonElement) ev.stopPropagation();
