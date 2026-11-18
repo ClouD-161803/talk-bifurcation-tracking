@@ -17,7 +17,7 @@ import { besidePlace } from '../src/editor/ui/dialog.ts';
 import { GRID, fillLine } from '../src/editor/table.ts';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, captured, click, clickText, drag, editorPage, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, captured, click, clickText, drag, editorPage, openFormula, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const THEME = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
 const PANEL = '#beeson-edit-panel-format';
@@ -174,7 +174,7 @@ for (const platform of PLATFORMS) {
     await settle(page);
     assert.match(await render(page), /one slide per step\.\\\(x\^2\\\)<\/li>/);
 
-    await clickText(page, `${LAST} mjx-container`);
+    await openFormula(page, `${LAST} mjx-container`);
     await page.waitFor(`!!document.querySelector('.beeson-math')`);
     await sleep(200);
     assert.equal(await page.evaluate(`document.querySelector('.beeson-math .title').textContent`), 'Edit Formula');
