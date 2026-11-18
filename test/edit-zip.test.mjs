@@ -6,11 +6,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import fs, { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { start } from '../theme/edit.mjs';
-import { DECK, post, raw, talkFolder, within } from './helpers/session.mjs';
+import { DECK, post, raw, talkFolder, until, within } from './helpers/session.mjs';
 import { entries, unzipTo } from './helpers/zip.mjs';
 
 const MB = 1024 * 1024;
@@ -305,4 +306,41 @@ test('an entry has the time of its file to 2 s, and a time outside the years of 
   assert.deepEqual(got.get('now.txt').modified, new Date(2026, 4, 17, 13, 45, 30));
   assert.deepEqual(got.get('early.txt').modified, new Date(1980, 0, 1));
   assert.deepEqual(got.get('late.txt').modified, new Date(2107, 5, 15, 10, 20, 30));
+});
+
+test('index.html of the zip is the text of the session before it is written, with the byte order mark of the file', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t, `﻿${DECK}`);
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const ann = (await post(port, api(key, 'hello'), { name: 'Ann' })).json();
+  // the writes of index.html fail while held is set, as in a read-only folder
+  const { renameSync } = fs;
+  let held = true;
+  let refused = 0;
+  fs.renameSync = (from, to) => {
+    if (held && to.endsWith(join('talk', 'index.html'))) {
+      refused++;
+      throw Object.assign(new Error('EROFS: read-only file system, rename'), { code: 'EROFS' });
+    }
+    return renameSync(from, to);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.renameSync = renameSync;
+    syncBuiltinESMExports();
+  });
+
+  const at = DECK.indexOf('First slide');
+  const op = (await post(port, api(key, 'op'), { token: ann.token, seq: 1, base: ann.v, patches: [{ start: at, end: at + 5, text: 'Opening' }] })).json();
+  assert.equal(op.ok, true);
+  await until(() => refused > 0, 'a write of the operation to fail');
+  const { zip } = await download(port, key, ann.token);
+  const index = entries(zip)[0].bytes;
+  assert.deepEqual([...index.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  assert.equal(index.toString('utf8'), `﻿${running.authority.text}`);
+  assert.ok(index.toString('utf8').includes('Opening slide'));
+  assert.ok(index.equals((await raw(port, 'GET', `/${key}/index.html`)).body));
+  assert.equal(readFileSync(join(talk, 'index.html'), 'utf8').includes('Opening slide'), false, 'the file on disk is not written yet');
+  held = false;
+  await until(() => readFileSync(join(talk, 'index.html'), 'utf8').includes('Opening slide'), 'the operation to be written');
 });
