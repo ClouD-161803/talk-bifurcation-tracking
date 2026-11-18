@@ -1232,13 +1232,14 @@ export function install(app: App): void {
   // is on its way to the handle at its upper left
   const hover = (ev: PointerEvent) => {
     const target = ev.target instanceof Element ? ev.target : null;
-    if (target && (target === frames.handle || target.closest('.beeson-grip'))) return;
+    if (target && (target === frames.handle || target.closest('.beeson-grip, .beeson-table-bars'))) return;
     const el = pickOf(app, target);
     const band = el ? null : onCanvas(target, app, { x: ev.clientX, y: ev.clientY }) ? bandAt(app, ev.clientX, ev.clientY) : null;
     document.documentElement.classList.toggle('beeson-band', !!band);
     under = target;
     pickCursor();
-    const next = el ?? band;
+    const hot = frames.current();
+    const next = hot && hot !== el && toward(hot, ev) ? hot : el ?? band;
     if (next) {
       if (next !== view.hover) {
         view.hover = next;
@@ -1262,6 +1263,16 @@ export function install(app: App): void {
   };
   app.onRefresh(['selection', 'content', 'slide'], pickCursor);
   for (const type of ['focusin', 'focusout']) document.addEventListener(type, () => queueMicrotask(pickCursor));
+
+  // whether the pointer of ev is on the way from el to its handle, i.e. in the strip from the left
+  // edge of the handle to the left edge of el over the height of el, or on the handle. there the
+  // hover stays on el, also over another element behind the strip
+  const toward = (el: Element, ev: PointerEvent): boolean => {
+    if (frames.handle.hidden) return false;
+    const r = el.getBoundingClientRect();
+    const h = frames.handle.getBoundingClientRect();
+    return ev.clientX >= h.left && ev.clientX <= r.left && ev.clientY >= Math.min(h.top, r.top) && ev.clientY <= Math.max(h.bottom, r.bottom);
+  };
 
   const near = (el: Element, ev: PointerEvent): boolean => {
     const r = el.getBoundingClientRect();
