@@ -43,7 +43,10 @@ async function sent(client: Client): Promise<void> {
     timer = window.setTimeout(() => fail(new Told('Your last changes are not sent yet. Try again once they are saved.')), SEND_WAIT);
   });
   try {
-    await Promise.race([client.app.session?.save(), late]);
+    // the editor has the port of the session from before the client is made until the session has
+    // ended, when the command is off and its dialog is closed. a page without the port is told an
+    // error, and is not given a zip without its last changes
+    await Promise.race([client.app.session!.save(), late]);
   } catch (e) {
     throw e instanceof Told ? e : new Told(`${(e as Error).message.replace(/\.$/, '')}.`);
   } finally {
