@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import fs, { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import fs, { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -343,4 +343,47 @@ test('index.html of the zip is the text of the session before it is written, wit
   assert.equal(readFileSync(join(talk, 'index.html'), 'utf8').includes('Opening slide'), false, 'the file on disk is not written yet');
   held = false;
   await until(() => readFileSync(join(talk, 'index.html'), 'utf8').includes('Opening slide'), 'the operation to be written');
+});
+
+test('tex.js of the zip is the one of the text of the session, before the edit command has written it', { timeout: 60_000 }, async (t) => {
+  const cite = (key) => `<section><p>A paper <cite data-key="${key}"></cite></p></section>\n`;
+  const { root, talk } = talkFolder(t, DECK.replace('</body>', `${cite('ann2020')}</body>`));
+  const entry = (key, title, year) => `@article{${key},\n  author = {Ann Author},\n  title = {${title}},\n  journal = {Journal of Tests},\n  year = {${year}}\n}\n`;
+  put(talk, 'references.bib', `${entry('ann2020', 'The first paper', 2020)}\n${entry('bo2021', 'The second paper', 2021)}`);
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const ann = (await post(port, api(key, 'hello'), { name: 'Ann' })).json();
+  // a talk folder whose tex.js was never written gets the one of its sources in the zip
+  const before = byName((await download(port, key, ann.token)).zip).get('tex.js')?.bytes.toString('utf8');
+  assert.ok(before?.includes('The first paper') && !before.includes('The second paper'), before);
+  assert.equal(existsSync(join(talk, 'tex.js')), false);
+
+  // the writes of index.html fail while held is set, hence tex.js is not written either
+  const { renameSync } = fs;
+  let held = true;
+  let refused = 0;
+  fs.renameSync = (from, to) => {
+    if (held && to.endsWith(join('talk', 'index.html'))) {
+      refused++;
+      throw Object.assign(new Error('EROFS: read-only file system, rename'), { code: 'EROFS' });
+    }
+    return renameSync(from, to);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.renameSync = renameSync;
+    syncBuiltinESMExports();
+  });
+  const at = running.authority.text.indexOf('</body>');
+  const op = (await post(port, api(key, 'op'), { token: ann.token, seq: 1, base: ann.v, patches: [{ start: at, end: at, text: cite('bo2021') }] })).json();
+  assert.equal(op.ok, true);
+  await until(() => refused > 0, 'a write of the operation to fail');
+  const got = byName((await download(port, key, ann.token)).zip);
+  assert.ok(got.get('index.html').bytes.toString('utf8').includes('data-key="bo2021"'));
+  const tex = got.get('tex.js').bytes.toString('utf8');
+  assert.ok(tex.includes('The first paper') && tex.includes('The second paper'), tex);
+  assert.equal(existsSync(join(talk, 'tex.js')), false, 'tex.js is not written yet');
+  held = false;
+  await until(() => existsSync(join(talk, 'tex.js')), 'tex.js to be written');
+  assert.equal(readFileSync(join(talk, 'tex.js'), 'utf8'), tex);
 });
