@@ -19,6 +19,7 @@ import { isSmart, setSmart, type Smart } from '../text/substitute.ts';
 import { injectStyle } from '../ui/dom.ts';
 import { CONTAINER } from '../canvas/hit.ts';
 import { modeOf, type Mode } from './figure.ts';
+import { isShape, isShapeTone, setShapeTone, toneOfShape } from './shape.ts';
 import * as notes from '../notes.ts';
 import { kindsOf, type Kind } from '../../kinds.ts';
 
@@ -46,7 +47,7 @@ function inCode(app: App): boolean {
   return app.selection.elements().some((el) => !!el.closest('pre'));
 }
 
-const TONE_LABELS: Record<Exclude<inline.Tone, 'text'>, string> = { accent: 'Accent', violet: 'Violet', blue: 'Blue', red: 'Red', subtle: 'Subtle', muted: 'Muted' };
+const TONE_LABELS: Record<inline.Tone, string> = { accent: 'Accent', violet: 'Violet', blue: 'Blue', red: 'Red', subtle: 'Subtle', muted: 'Muted', text: 'Text' };
 // fn run so that an undo and a redo select the text of the slide again, e.g. the caret before an
 // outdent, which the history of the text elements alone puts at the end of the text that changed
 async function marked(app: App, fn: () => void | Promise<void>): Promise<void> {
@@ -208,28 +209,30 @@ export function install(app: App): void {
     run: (a) => (carry.canSizeCode(a, false) ? carry.sizeCode(a, false) : carry.canStyle(a) ? carry.chooseStyle(a, (s) => textElements.stepped(s, false)) : textElements.setStyle(a, (s) => textElements.stepped(s, false))),
   });
 
-  define({
-    id: 'text.tone.text',
-    label: 'Text',
-    in: FORMAT,
-    menu: menu('tone', 40, 'Text Color'),
-    undoable: true,
-    undo: 'Text Color',
-    enabled: (a) => inline.inlineTargets(a).length > 0 || carry.canFormat(a),
-    checked: (a) => (carry.canFormat(a) ? [null, 'text'].includes(carry.toneOf(a)) : inline.inlineTargets(a).length > 0 && inline.textColored(a)),
-    run: (a) => (carry.canFormat(a) ? carry.chooseTone(a, 'text') : inline.setTone(a, 'text')),
-  });
-  inline.TONES.filter((tone) => tone !== 'text').forEach((tone, i) =>
+  // with shapes selected as boxes, a text color is written as the tone of each shape, and on the
+  // words of the other selected text elements. Subtle is not a tone of a shape
+  const boxes = (a: App) => a.selection.elements().filter(isShape);
+  const words = (a: App, shapes: Element[]) => inline.inlineTargets(a).filter((t) => !shapes.some((el) => el.contains(t.host)));
+  inline.TONES.forEach((tone, i) =>
     define({
       id: `text.tone.${tone}`,
       label: TONE_LABELS[tone],
       in: FORMAT,
-      menu: menu('tone', 41 + i, 'Text Color'),
+      menu: menu('tone', tone === 'text' ? 40 : 41 + i, 'Text Color'),
       undoable: true,
       undo: 'Text Color',
-      enabled: (a) => inline.inlineTargets(a).length > 0 || carry.canFormat(a),
-      checked: (a) => (carry.canFormat(a) ? carry.toneOf(a) : inline.toneAt(a)) === tone,
-      run: (a) => (carry.canFormat(a) ? carry.chooseTone(a, tone) : inline.setTone(a, tone)),
+      enabled: (a) => (boxes(a).length ? isShapeTone(tone) : inline.inlineTargets(a).length > 0 || carry.canFormat(a)),
+      checked: (a) => {
+        const shapes = boxes(a), rest = words(a, shapes);
+        const on = carry.canFormat(a) ? (carry.toneOf(a) ?? 'text') === tone : rest.length ? (tone === 'text' ? inline.textColored(a, rest) : inline.toneAt(a, rest) === tone) : shapes.length > 0;
+        return on && shapes.every((el) => toneOfShape(el) === tone);
+      },
+      run: (a) => {
+        const shapes = boxes(a);
+        if (!shapes.length) return carry.canFormat(a) ? carry.chooseTone(a, tone) : inline.setTone(a, tone);
+        setShapeTone(a, shapes, tone);
+        inline.setTone(a, tone, words(a, shapes));
+      },
     }));
 
   textElements.PARAGRAPH_STYLES.forEach((style, i) =>

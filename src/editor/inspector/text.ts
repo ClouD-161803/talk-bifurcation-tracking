@@ -10,6 +10,7 @@ import type { App } from '../app.ts';
 import { entering } from '../commands/edit.ts';
 import { TONES as STEP_TONES, colorSteps, wordColors, type ColorStep } from '../commands/math.ts';
 import { deckKinds, theoremOf } from '../commands/text.ts';
+import { isShape, toneOfShape } from '../commands/shape.ts';
 import { kindOf, listKind, type ListKind, selectedTextElements, startList, styleOf, styleWhy } from '../text/elements.ts';
 import { around, FORMATS, inlineTargets, isTone, type FormatName } from '../text/inline.ts';
 import { injectStyle, make } from '../ui/dom.ts';
@@ -136,10 +137,12 @@ function formatState(app: App, name: FormatName): () => boolean | 'mixed' | null
   };
 }
 
-// the tones of the texts of several text elements, with text for the text color of the theme
+// the tones of the texts of several text elements, with text for the text color of the theme. a
+// shape selected as a box is read by its tone, which a swatch sets, and not by its words
 const tonesOf = (app: App): Set<string> | null => {
-  const tones = perText(app, (host, n) => around(host, n, isTone)?.classList[0].slice(5) ?? 'text');
-  return tones && new Set(tones);
+  const shapes = app.selection.elements().filter(isShape);
+  const tones = perText(app, (host, n) => (shapes.some((el) => el.contains(host)) ? null : around(host, n, isTone)?.classList[0].slice(5) ?? 'text'));
+  return tones && new Set([...tones.filter((t) => t !== null), ...shapes.map(toneOfShape)]);
 };
 
 const BULLETS: ListKind[] = ['ul', 'dots', 'dashes'];

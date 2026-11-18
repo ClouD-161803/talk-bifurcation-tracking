@@ -120,7 +120,7 @@ test('the class left of the words of a shape is a class of the theme', () => {
 for (const platform of PLATFORMS) {
   test(`V1: the Text pane formats every word of a selected shape, as of a paragraph selected as a block, on ${platform}`, async () => {
     const page = await shapePage(platform, WORDS);
-    const ids = ['text.bigger', 'text.tone.accent', 'text.bold'];
+    const ids = ['text.bigger', 'text.bold'];
     const edits = {};
     for (const id of ids) edits[id] = await blockEdit(page, id);
     const paragraphDisabled = await disabledInText(page);
@@ -128,7 +128,8 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(await selected(page), ['div.shape.rounded.tone-accent']);
     assert.equal(await caretInShape(page), false);
     for (const id of [...ids, 'text.italic', 'text.smaller', 'text.tone.violet', 'text.align.left']) assert.equal((await state(page, id)).enabled, true, id);
-    assert.deepEqual((await disabledInText(page)).filter((b) => !paragraphDisabled.includes(b)), [], 'the buttons of the Text tab disabled for a selected shape and not for a paragraph');
+    // Subtle is not a tone of a shape, which a text color colors as a shape
+    assert.deepEqual((await disabledInText(page)).filter((b) => !paragraphDisabled.includes(b)), ['text.tone.subtle'], 'the buttons of the Text tab disabled for a selected shape and not for a paragraph');
     for (const id of ids) {
       await selectShape(page);
       await exec(page, id);
@@ -140,6 +141,12 @@ for (const platform of PLATFORMS) {
       await byteExact(page, [[SHAPE_P, `translate: 1100px 400px">${edits[id]}</div>`]]);
       await undo(page);
     }
+    await selectShape(page);
+    await exec(page, 'text.tone.violet');
+    await frames(page);
+    await byteExact(page, [['<div class="shape rounded tone-accent" style="width: 500px; height: 300px; translate: 1100px 400px">', '<div class="shape rounded tone-violet" style="width: 500px; height: 300px; translate: 1100px 400px">']]);
+    await undo(page);
+    await byteExact(page);
     // Dashes sets the words as a list, and the shape stays selected
     await selectShape(page);
     await exec(page, 'text.list.ul');
@@ -150,9 +157,9 @@ for (const platform of PLATFORMS) {
     await frames(page);
     await byteExact(page);
     await selectShape(page);
-    await exec(page, 'text.tone.accent');
+    await exec(page, 'text.bold');
     const { text } = await saveAndReopen(page, `r21-1-v1-${platform}.html`);
-    assert.ok(text.includes(`${edits['text.tone.accent']}</div>`));
+    assert.ok(text.includes(`${edits['text.bold']}</div>`));
     assert.deepEqual(errors(page), []);
   });
 
