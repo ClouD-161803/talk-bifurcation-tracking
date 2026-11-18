@@ -202,6 +202,9 @@ Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5 });`
 // a touch screen alone on Windows
 const PHONE = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux armv8l' });`;
 
+// a tablet of Windows, i.e. a page with a touch screen alone on a system that opens a deck from the disk
+const WINDOWS = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Win32' });`;
+
 // a page of the editor on the deck of zipTalk at url, with PAGE. its MathJax, backdrops, and video
 // take longer to start than the small deck of TALK in test/helpers/client.mjs, for which open()
 // waits 15 s
@@ -576,6 +579,23 @@ test('a tablet with a trackpad is told about phones and tablets as well, and to 
   await press(tablet, BUTTON('Download'));
   await downloaded(dir, ZIP);
   await tablet.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(MOVED)}`, 10_000);
+  assert.deepEqual(await tablet.evaluate('window.__saved'), [ZIP]);
+  clean(tablet);
+});
+
+test('a tablet of Windows without a keyboard or a mouse downloads the zip at once, as a computer does', { timeout: 420_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await zipTalk(t);
+  const tablet = await editorOn(browser, `${sessionUrl(server.edit)}&edit-platform=other`, { name: 'Eve', width: 1280, height: 800, mobile: true, script: WINDOWS });
+  assert.deepEqual(await tablet.evaluate(`[matchMedia('(any-pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches, navigator.platform]`), [true, 'Win32']);
+  const dir = join(server.root, 'tablet downloads');
+  await downloadsTo(tablet, dir);
+  await choose(tablet, PATH, { tap: true });
+  await downloaded(dir, ZIP);
+  await tablet.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(DONE)}`, 10_000);
+  const said = await tablet.evaluate('window.__said');
+  assert.deepEqual(said.filter((state) => state.text === PHONES || state.buttons.includes('Download')), [], JSON.stringify(said));
   assert.deepEqual(await tablet.evaluate('window.__saved'), [ZIP]);
   clean(tablet);
 });
