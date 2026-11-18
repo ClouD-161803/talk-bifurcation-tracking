@@ -35,10 +35,15 @@ The rules below are for work on the template itself: the theme, the editor, the 
 - The demo deck in `index.html` is the start of every new talk. It is also the page published on GitHub Pages from `main`.
 - The tests of `npm test` are run on `test-deck.html`, a frozen copy of the demo deck. Hence you can change the demo deck without changing the tests.
 
-## Before you hand work over
+## Verifying
 
-- Run `npm run build`, `npm run typecheck`, the test files of what you changed, and `npm run check`. Hand work over only when all of them pass.
-- Run one test file with `node --test test/<name>.test.mjs`. The whole suite takes over an hour on one machine. In the workflow `check`, it is split over seven runners per system.
+On a laptop, the whole suite of `npm test` takes over an hour, with every core busy. In each round of the workflow `check`, the suite is split over seven runners. On a laptop, run only the test files of your change.
+
+- Run test files with `npm test -- test/<name>.test.mjs`, which takes several files at once. Outside CI, they are run at the lowest priority of the system.
+- Find the test files of a change by searching `test/` for the commands, classes, and functions that you changed.
+- Do not run the whole suite, with `npm test -- --all` or a glob of test files, unless the person you work for asks. Push, and watch the round instead.
+- Before you call a failure unrelated to your change, run its test file alone on `main`.
+- Before you hand work over, run `npm run build`, `npm run typecheck`, the test files of your change, and `npm run check`. Hand work over only when all of them pass.
 - Run `node --test test/perf.test.mjs` yourself after you change how backdrops are drawn. This test is skipped on CI.
 - In the workflow `check`, `npm test` is run only in beeson-group/slides. In a talk, only the checks of the deck are run.
 - A PR is checked on Ubuntu only: the tests, the deck in Chrome and in Firefox, and the figures. Windows, macOS, and Safari are checked on `main` after each merge.
@@ -49,6 +54,7 @@ The rules below are for work on the template itself: the theme, the editor, the 
 
 A round is one run of the workflow `check` on a commit. A flaky test is a test that fails in a round without a fault in the code under test. On GitHub runners, with two to four cores, WebGL and video are drawn in software. Hence pages are many times slower there than on a laptop.
 
+- Write a new test into the test file of its feature. Add a test file only for a feature that does not have one, and name the file after the feature, not after an issue or a review round.
 - A test file with a failed test is run once more in the same job. A test that then passes is flaky. It is named in a warning of the round, and the round does not fail.
 - Read the warnings of a round before the merge. Fix a flaky test of the code that you changed. For any other flaky test, open a `Bug` issue, or extend its open issue.
 - Reproduce the failure of a flaky test first by forcing its condition. Do not run a failed job again in place of a fix.
