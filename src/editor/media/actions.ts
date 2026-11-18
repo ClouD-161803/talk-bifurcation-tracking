@@ -394,7 +394,7 @@ export async function askForFile(url: string, noun: string, accept: string): Pro
   let picked: Promise<File[]> | null = null;
   await ask({
     title: `Choose the ${noun} File`,
-    text: `The browser does not let a deck opened from a file read the files next to it. Choose ${name} once in the file chooser, and it can be read until the deck is closed.`,
+    text: `The files next to a deck opened from a file cannot be read until you choose them. Choose ${name} once in the file chooser, and it can be read until the deck is closed.`,
     buttons: [
       { label: 'Cancel', value: 'cancel' },
       { label: `Choose ${name}…`, value: 'choose', primary: true },

@@ -146,7 +146,7 @@ for (const platform of PLATFORMS) {
   test(`a text laid over the figure of its slide by a change of the layout is marked and named in the status (${platform})`, async (t) => {
     // beeson.css draws the block of a closing slide in front of the figure, with a z-index of 2,
     // hence the status names the texts first there
-    for (const [id, said] of [['slide.layout.wide', /A picture covers \d+ texts?/], ['slide.layout.title', /A picture covers \d+ texts?/], ['slide.layout.closing', /\d+ texts? covers? a picture/]]) {
+    for (const [id, said] of [['slide.layout.wide', /\d+ texts? (is|are) under a picture/], ['slide.layout.title', /\d+ texts? (is|are) under a picture/], ['slide.layout.closing', /\d+ texts? (is|are) over a picture/]]) {
       const page = await load(t, platform, { n: FIGURES });
       assert.equal((await page.evaluate('window.BeesonEditor.status()')).overflow, 0, 'the slide is reported before the change');
       await exec(page, id);

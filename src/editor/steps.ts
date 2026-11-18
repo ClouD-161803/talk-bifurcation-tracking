@@ -814,7 +814,7 @@ export class Steps {
     final.addEventListener('change', () => this.runOn('steps.final', { on: final.checked }));
     this.final = final;
     const label = make('label');
-    label.title = 'Show the element after every other step of the slide, as data-final does';
+    label.title = 'Show the element after every other step of the slide, as with data-final';
     label.append(final, document.createTextNode('Show last, after every step'));
     field('Start', this.start);
     field('Delay', delayBox);
@@ -900,7 +900,7 @@ export class Steps {
     this.list.replaceChildren();
     this.list.classList.remove('wide');
     if (!els.length) {
-      this.list.append(make('div', 'step empty', 'This slide has no element that can be a step.'));
+      this.list.append(make('div', 'step empty', 'This slide does not have an element that can be a step.'));
       return;
     }
     const G = plan.groups.length;
@@ -991,7 +991,7 @@ export class Steps {
       stepBox.append(row(i, G + f));
       stepBoxes.push(stepBox);
     });
-    if (!stepBoxes.length) stepBoxes.push(make('div', 'step empty', 'No element of this slide is a step. Choose a step in the menu of a row, or drag a row here.'));
+    if (!stepBoxes.length) stepBoxes.push(make('div', 'step empty', 'The elements of this slide are not steps. Choose a step in the menu of a row, or drag a row here.'));
     this.list.append(...stepBoxes);
     const rest = els.map((_, i) => i).filter((i) => stepAt(plan, i) < 0);
     const parts = free?.parts ?? [];

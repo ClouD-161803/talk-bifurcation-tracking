@@ -367,7 +367,7 @@ test('Restore turns the deck of both pages and index.html back, keeps a text typ
     await tapOrClick(ann, `document.querySelectorAll('${PANE} .versions .row.version')[1]`);
     await press$(ann, BAR, 'Restore this version');
     await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'Restore this version?'`);
-    assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-session-history-dialog[open] p').textContent`), `The deck goes back to how it was at ${start}. The current version stays in the history.`);
+    assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-session-history-dialog[open] p').textContent`), `The deck goes back to how it was at ${start}. The current version is kept in the history.`);
     await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'Restore');
     await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'The version could not be restored'`);
     assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-session-history-dialog[open] p').textContent`), 'the disk is full');
@@ -1014,7 +1014,7 @@ test('the restore of a version of another year names its year, and the time of t
   await tapOrClick(ann, `[...document.querySelectorAll('${PANE} .versions .row.version')].find((r) => r.querySelector('.title').textContent === 'Submitted')`);
   await press$(ann, BAR, 'Restore this version');
   await ann.waitFor(`document.querySelector('${DIALOG} h3')?.textContent === 'Restore this version?'`);
-  assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} p').textContent`), `The deck goes back to how it was on ${day} at ${time}. The current version stays in the history.`);
+  assert.equal(await ann.evaluate(`document.querySelector('${DIALOG} p').textContent`), `The deck goes back to how it was on ${day} at ${time}. The current version is kept in the history.`);
   await press$(ann, DIALOG, 'Restore');
   await ann.waitFor(`!(${SHOWN})`, 20_000);
   await ben.waitFor('window.__toasts.length > 0');
@@ -1082,8 +1082,8 @@ test('an apply that needs a reload is held while the mode is on, which the row C
   const at = bo.text.indexOf('Beeson.start({});');
   const answer = (await post(port, `${base}.session/op`, { token: bo.token, seq: 1, base: bo.v, patches: [{ start: at, end: at + 17, text: 'Beeson.start({ });' }] })).json();
   assert.equal(answer.ok, true);
-  await ann.waitFor(`document.querySelector('${PANE} .row.current .sub')?.textContent === 'The deck changed. It is loaded again when Version History is closed.'`, 20_000);
-  assert.deepEqual(await ann.evaluate(current), ['Current version', 'The deck changed. It is loaded again when Version History is closed.']);
+  await ann.waitFor(`document.querySelector('${PANE} .row.current .sub')?.textContent === 'The deck was changed. It is loaded again when Version History is closed.'`, 20_000);
+  assert.deepEqual(await ann.evaluate(current), ['Current version', 'The deck was changed. It is loaded again when Version History is closed.']);
   assert.equal(await ann.evaluate('window.__before'), true);
   assert.equal(await ann.evaluate(`${SHOWN} && !!document.querySelector('.beeson-session-preview:not([hidden])')`), true);
   await press$(ann, PANE, 'Back to editor');
@@ -1587,7 +1587,7 @@ test('Show changes tints a paragraph with a dollar or a backslash that MathJax s
   assert.deepEqual(seen, { math: { tints: ['typed in p[0]', 'typed in p[1]', 'typed in p[2]', 'typed in p[3]'], outlined: lines.map((_, k) => `p[${k}]`) } });
 });
 
-const OVERWRITTEN = 'A change of index.html from outside replaced text of this session. The text is kept in Version History.';
+const OVERWRITTEN = 'index.html was changed outside the editor, and text of this session was replaced. This text is kept in Version History.';
 
 const TOAST = `(() => {
   const span = document.querySelector('.beeson-session-toast span');

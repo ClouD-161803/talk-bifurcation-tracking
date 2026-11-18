@@ -162,7 +162,7 @@ function colorPart(app: App, run: Run, shared: Shared): Control {
       b.disabled = !f;
     }
     const o = current();
-    stepText.textContent = o ? o.label : 'No later step';
+    stepText.textContent = o ? o.label : 'The slide does not have a later step';
     step.disabled = !options.length;
     const sel = selected();
     apply.disabled = !f || !sel || !o;
@@ -252,7 +252,7 @@ export function formulaPane(app: App, run: Run): Control[] {
     texSection,
     ...(display ? [section(null, [checkbox(app, run, 'math.hold', 'Hold through the next step'), note(() => 'The display is held at full opacity while the sentence after it is shown, and while a symbol of it is colored.')])] : []),
     colorPart(app, run, shared),
-    section(null, [row([note(() => (app.platform === 'mac' ? '⌥⌘E puts an inline formula at the caret of a text.' : 'Alt+= puts an inline formula at the caret of a text.'))])]),
+    section(null, [row([note(() => (app.platform === 'mac' ? 'Press ⌥⌘E to put an inline formula at the caret of a text.' : 'Press Alt+= to put an inline formula at the caret of a text.'))])]),
   ];
 }
 

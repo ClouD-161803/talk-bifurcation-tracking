@@ -21,7 +21,7 @@ function loaded(video: HTMLVideoElement, event: string): Promise<void> {
       else done();
     };
     const ok = () => finish();
-    const bad = () => finish(new Error('the browser cannot play this video'));
+    const bad = () => finish(new Error('your browser cannot play this video'));
     video.addEventListener(event, ok);
     video.addEventListener('error', bad);
   });

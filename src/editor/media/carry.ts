@@ -172,7 +172,7 @@ async function folderOf(address: string, where: string): Promise<Folder | null> 
       if (v === 'choose') picked = pick();
     },
   });
-  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in ${where}. The browser lets this page read them only once you choose this folder.`;
+  dialog.text.textContent = `The images, videos, and backdrops that you pasted are files in ${where}. You have to choose this folder before they can be read.`;
   // the dialog of the reads gives way to this one, and comes back at its answer
   busy?.close(null);
   const v = await dialog.open('choose');
@@ -245,7 +245,7 @@ async function carry(app: App, arrival: Arrival, refs: Ref[][], paths: string[])
     for (const r of [...refs[i]].reverse()) if (to.has(r.path)) out = `${out.slice(0, r.start)}${r.name}="${to.get(r.path)}"${out.slice(r.end)}`;
     return out;
   });
-  const why = refused.length && !canPick() ? ', since this browser cannot open a folder' : '';
+  const why = refused.length && !canPick() ? ', since your browser cannot open folders' : '';
   if (lost.length) arrival.notes.push(`${listed(lost)} ${lost.length > 1 ? 'were' : 'was'} not copied from ${from}${why}.`);
   // the theme reads a trajectory file from the disk only, and once per page
   const drawn = [...new Set(refs.flat().filter((r) => r.name === 'data-trajectories' && to.has(r.path)).map((r) => to.get(r.path)!))];

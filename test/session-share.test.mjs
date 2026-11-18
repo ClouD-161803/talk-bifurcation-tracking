@@ -148,7 +148,7 @@ test('Change Name is seen on the other page, also for one word and an emoji, and
 
   await t.test('a name held by another person asks, and Use another name keeps the dialog', async () => {
     await rename('ben carter');
-    await ann.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'Ben Carter has joined this deck before. Is that you?')`);
+    await ann.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'Ben Carter has joined this deck before. Is this you?')`);
     await press(ann, dialogButton('beeson-edit-dialog', 'Use another name'));
     await ann.waitFor(`document.querySelector('dialog.beeson-session-rename')?.open && document.activeElement === document.querySelector('dialog.beeson-session-rename input')`);
     assert.equal(await ann.evaluate(`${C}.name`), 'Ann Smith');

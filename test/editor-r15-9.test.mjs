@@ -116,7 +116,7 @@ for (const platform of PLATFORMS) {
     assert.ok(c.under.length > 0, 'the new table does not cover a text');
     const n = c.under.length;
     const s = await status(page);
-    assert.ok(s.message.includes(`A table covers ${n} text${n === 1 ? '' : 's'}`), `the status reads ${js(s.message)} for ${js(c.under)}`);
+    assert.ok(s.message.includes(`${n} text${n === 1 ? ' is' : 's are'} under a table`), `the status reads ${js(s.message)} for ${js(c.under)}`);
     assert.ok(!/over a figure/.test(s.message), s.message);
     assert.deepEqual(c.marked, c.under, 'the outlined texts are not those under the table');
     assert.equal(await onTop(page, ':scope > table', c.under[0]), 'figure', 'the table is not drawn over the text');
@@ -126,7 +126,7 @@ for (const platform of PLATFORMS) {
     assert.equal((await status(page)).overflow, 0, 'the report stays after an undo of the insert');
     await redo(page);
     await settle(page);
-    assert.ok((await status(page)).message.includes('A table covers'), 'the report is not back after a redo of the insert');
+    assert.ok((await status(page)).message.includes('under a table'), 'the report is not back after a redo of the insert');
     // the table is moved by 30 slide px by its handle and still covers a text
     const k = await scaleOf(page);
     await drag(page, await handle(page), { dx: 30 * k, dy: 0, steps: 8 });
@@ -136,7 +136,7 @@ for (const platform of PLATFORMS) {
     assert.notEqual(await render(page), page.source);
     const m = await status(page);
     assert.equal(m.overflow, 0, `the table moved by the user is reported: ${js(m.message)}`);
-    assert.ok(!/cover/.test(m.message), m.message);
+    assert.ok(!/ (under|over) a /.test(m.message), m.message);
     assert.deepEqual(moved.marked, []);
     await undo(page);
     await undo(page);
@@ -163,7 +163,7 @@ for (const platform of PLATFORMS) {
     assert.ok(c.under.length >= 3, `the figure is not over the text column: ${js(c.under)}`);
     const s = await status(page);
     assert.equal(s.overflow, 0, `the status reads ${js(s.message)}`);
-    assert.ok(!/cover|over a figure/.test(s.message), s.message);
+    assert.ok(!/ (under|over) a /.test(s.message), s.message);
     assert.deepEqual(c.marked, []);
     assert.deepEqual(errors(page), []);
   });
@@ -178,7 +178,7 @@ for (const platform of PLATFORMS) {
     assert.ok(c.under.length >= 2, `the layout Wide does not leave two texts under the picture: ${js(c.under)}`);
     assert.equal(await onTop(page, ':scope > figure img', c.under[0]), 'figure');
     const n = c.under.length;
-    assert.ok((await status(page)).message.includes(`A picture covers ${n} texts`), (await status(page)).message);
+    assert.ok((await status(page)).message.includes(`${n} texts are under a picture`), (await status(page)).message);
     assert.deepEqual(c.marked, c.under);
     // the paragraph is nudged down by the keys
     await clickText(page, await lineStart(page, '.reveal section.present > p'));
@@ -191,7 +191,7 @@ for (const platform of PLATFORMS) {
     assert.ok(!p.marked.includes(para), `the nudged paragraph is outlined: ${js(p.marked)}`);
     assert.deepEqual(p.marked, p.under.filter((x) => x !== para), 'the other texts left the report');
     const rest = p.under.length - 1;
-    assert.ok((await status(page)).message.includes(`A picture covers ${rest} text${rest === 1 ? '' : 's'}`), (await status(page)).message);
+    assert.ok((await status(page)).message.includes(`${rest} text${rest === 1 ? ' is' : 's are'} under a picture`), (await status(page)).message);
     // the picture is nudged left
     await clickText(page, '.reveal section.present figure img');
     await press(page, 'ArrowLeft');
@@ -199,7 +199,7 @@ for (const platform of PLATFORMS) {
     const f = await covered(page, ':scope > figure img');
     assert.ok(f.under.length >= 2, `the nudged picture is not over the texts: ${js(f.under)}`);
     assert.deepEqual(f.marked, []);
-    assert.ok(!/cover/.test((await status(page)).message), (await status(page)).message);
+    assert.ok(!/ (under|over) a /.test((await status(page)).message), (await status(page)).message);
     assert.deepEqual(errors(page), []);
   });
 
@@ -218,7 +218,7 @@ for (const platform of PLATFORMS) {
     assert.equal(await onTop(page, ':scope > figure img', para), 'text');
     const rest = c.under.length - 1;
     const s = await status(page);
-    assert.ok(s.message.includes(`A picture covers ${rest} text${rest === 1 ? '' : 's'}. 1 text covers a picture`), s.message);
+    assert.ok(s.message.includes(`${rest} text${rest === 1 ? ' is' : 's are'} under a picture. 1 text is over a picture`), s.message);
     assert.deepEqual(c.marked, c.under);
     assert.deepEqual(errors(page), []);
   });
@@ -247,7 +247,7 @@ for (const platform of PLATFORMS) {
     assert.ok(qr.under.length > 0, `the QR code is not over a text after Wide: ${js(qr.under)}`);
     const n = both.under.length;
     const s = await status(page);
-    assert.match(s.message, new RegExp(`A (picture and a QR code|QR code and a picture) cover ${n} texts`), `the status reads ${js(s.message)} for ${js(both.under)}`);
+    assert.match(s.message, new RegExp(`${n} texts are under a (picture and a QR code|QR code and a picture)`), `the status reads ${js(s.message)} for ${js(both.under)}`);
     assert.deepEqual(both.marked, both.under);
     assert.deepEqual(errors(page), []);
   });
@@ -313,7 +313,7 @@ for (const platform of PLATFORMS) {
     assert.ok(Math.abs(b.qr.bottom - b.h1.top - 10) < 1, `the QR code does not reach into the heading: ${js(b)}`);
     const s = await status(page);
     assert.equal(s.overflow, 1, `the heading is not reported: ${js(s.message)}`);
-    assert.match(s.message, /(A QR code covers 1 text|1 text covers a QR code)/);
+    assert.match(s.message, /1 text is (under|over) a QR code/);
     assert.equal(b.marked, true, 'the heading is not outlined');
     assert.deepEqual(errors(page), []);
   });

@@ -829,7 +829,7 @@ export class Presenter {
       this.parts.audience.textContent = 'Opening the show…';
       return;
     }
-    this.parts.audience.textContent = 'The show is in its own tab';
+    this.parts.audience.textContent = 'The show is open in a separate tab';
     const { h, f } = reveal.getIndices();
     const there = `${h}/${f ?? -1}`;
     if (this.sent !== null && there !== this.sent && h < this.list.length) {

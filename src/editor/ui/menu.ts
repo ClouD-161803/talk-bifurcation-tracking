@@ -462,7 +462,7 @@ class Menu {
     s.rows = found.map((e) => this.attach(this.row({ command: e.command, path: e.path })));
     if (s.input.value.trim()) {
       s.results.append(make('div', 'heading', 'Menu Items'));
-      if (!s.rows.length) s.results.append(make('div', 'note', 'No menu items match'));
+      if (!s.rows.length) s.results.append(make('div', 'note', 'The search does not match any menu item'));
       for (const r of s.rows) s.results.append(r.el);
     }
     this.rows = [...s.rows, ...this.rows];

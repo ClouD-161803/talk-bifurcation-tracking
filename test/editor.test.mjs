@@ -670,7 +670,7 @@ test('a formula is reached with Tab and opened with Enter, and the controls carr
   assert.deepEqual((await page.evaluate(openDeck)).problems, []);
   await page.evaluate(`(() => { const c = document.querySelector('.reveal .slides .math mjx-container'); Reveal.slide(Reveal.getIndices(c.closest('section')).h); })()`);
   const info = await page.evaluate(`(() => { const c = document.querySelector('.reveal section.present .math mjx-container'); c.focus(); return { tabindex: c.getAttribute('tabindex'), role: c.getAttribute('role'), label: c.getAttribute('aria-label'), focused: document.activeElement === c }; })()`);
-  assert.deepEqual(info, { tabindex: '0', role: 'button', label: 'Formula, Enter opens its TeX', focused: true });
+  assert.deepEqual(info, { tabindex: '0', role: 'button', label: 'Formula. Press Enter to open its TeX', focused: true });
   await page.evaluate(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true }))`);
   assert.equal(await page.evaluate(`document.querySelector('.beeson-math textarea')?.getAttribute('aria-label')`), 'TeX of the formula');
   assert.equal(await page.evaluate(`document.activeElement === document.querySelector('.beeson-math textarea')`), true);
@@ -871,7 +871,7 @@ test('Esc leaves a text and selects its block for the arrow keys, Tab reaches a 
   assert.equal(await page.evaluate('window.BeesonEditor.render()'), deckText);
   // a figure is in the tab order, and the focus selects it
   const figure = await page.evaluate(`(() => { const f = document.querySelector('.reveal section.present .figure-box'); f.focus(); return { tabindex: f.getAttribute('tabindex'), label: f.getAttribute('aria-label'), focused: document.activeElement === f, selected: !document.querySelector('.beeson-frame.selected').hidden, imgInOrder: document.querySelector('.reveal section.present .figure-box > img').hasAttribute('tabindex') }; })()`);
-  assert.deepEqual(figure, { tabindex: '0', label: 'Figure: the arrow keys move it, Esc deselects it', focused: true, selected: true, imgInOrder: false });
+  assert.deepEqual(figure, { tabindex: '0', label: 'Figure. Move it with the arrow keys, and deselect it with Esc', focused: true, selected: true, imgInOrder: false });
   await key('ArrowLeft');
   assert.equal(await page.evaluate(`document.querySelector('.reveal section.present .figure-box').style.translate`), '-1px');
   await key('Escape');

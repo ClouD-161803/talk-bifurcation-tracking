@@ -266,18 +266,18 @@ for (const platform of PLATFORMS) {
     let s = await checked();
     assert.equal(await fieldValue(page, 'angle'), 30, 'the change of the layout took the angle off');
     assert.deepEqual(s.outlined, [], `at 30° by the field: ${js(s)}`);
-    assert.doesNotMatch(s.message, /covers?/);
+    assert.doesNotMatch(s.message, / (under|over) a /);
     await typeField(page, 'angle', 0);
     await dragRotor(page, 38);
     assert.ok((await fieldValue(page, 'angle')) > 30, 'the rotate handle did not turn the figure');
     s = await checked();
     assert.deepEqual(s.outlined, [], `after the rotate handle: ${js(s)}`);
-    assert.doesNotMatch(s.message, /covers?/);
+    assert.doesNotMatch(s.message, / (under|over) a /);
     // the turned figure moved over the paragraph is reported at the next check
     await typeField(page, 'x', 200);
     s = await checked();
     assert.ok(s.outlined.includes('p'), `the turned figure over the paragraph: ${js(s)}`);
-    assert.match(s.message, /A picture covers \d+ texts?/);
+    assert.match(s.message, /\d+ texts? (is|are) under a picture/);
     assert.deepEqual(errors(page), []);
   });
 

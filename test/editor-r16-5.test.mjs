@@ -130,7 +130,7 @@ for (const platform of PLATFORMS) {
       await exec(page, 'slide.layout.wide');
       await settle(page);
       const s = await status(page);
-      const m = s.message.match(/A picture covers (\d+) texts/);
+      const m = s.message.match(/(\d+) texts are under a picture/);
       assert.ok(m, `the layout Wide is not reported: ${js(s.message)}`);
       const marked = await outlined(page);
       assert.equal(marked, Number(m[1]));
@@ -143,7 +143,7 @@ for (const platform of PLATFORMS) {
       assert.equal(await page.evaluate(`document.querySelectorAll('.reveal section.present .qr').length`), kept ? 70 : 0);
       await show(page, FIGURES);
       const later = await status(page);
-      assert.ok(later.message.includes(`A picture covers ${m[1]} texts`), `the report of slide 5 is lost: ${js(later.message)}`);
+      assert.ok(later.message.includes(`${m[1]} texts are under a picture`), `the report of slide 5 is lost: ${js(later.message)}`);
       assert.equal(await outlined(page), marked);
       assert.deepEqual(errors(page), []);
     });
@@ -210,7 +210,7 @@ for (const platform of PLATFORMS) {
     const { page, b, s } = await turned(t, platform, (g) => ({ x: g.line.right - 40, y: g.h1.top + 30 - g.size / Math.SQRT2 }));
     assert.ok(b.qr.bottom > b.h1.top + 28, `the QR code does not reach into the box of the heading: ${js(b)}`);
     assert.equal(s.overflow, 1, `the heading is not reported: ${js(s.message)}`);
-    assert.match(s.message, /(A QR code covers 1 text|1 text covers a QR code)/);
+    assert.match(s.message, /1 text is (under|over) a QR code/);
     assert.equal(b.marked, true, 'the heading is not outlined');
     assert.deepEqual(errors(page), []);
   });

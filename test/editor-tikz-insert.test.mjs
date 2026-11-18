@@ -73,7 +73,7 @@ test('Insert > TikZ Figure is a submenu after Video… and in the list of the Me
   for (const id of ['insert.tikzData', 'insert.tikzFile', 'insert.tikzBlank']) {
     await page.evaluate(`${E}.exec(${JSON.stringify(id)})`);
     await wait(page);
-    assert.match(await message(page), /^TikZ figures are compiled by the edit command\. Start it with Edit\.command, Edit\.cmd, or Edit\.sh next to the deck, or with npm run edit/);
+    assert.match(await message(page), /^TikZ figures are compiled only while the edit command runs\. Start it with Edit\.command, Edit\.cmd, or Edit\.sh next to the deck, or with npm run edit/);
     assert.equal(await page.evaluate(`${E}.render()`), text);
   }
 

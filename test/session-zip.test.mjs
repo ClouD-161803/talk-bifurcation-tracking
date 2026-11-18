@@ -423,7 +423,7 @@ test('a guest downloads the talk folder through the relay with its last edit, an
     assert.deepEqual(said.at(-1), { text: DONE, buttons: ['Done'] });
     const shown = texts(said);
     const size = (zip.length / MB).toFixed(1);
-    assert.deepEqual(shown.slice(0, 2), ['Sending your last changes…', "The host's edit command is building the zip…"]);
+    assert.deepEqual(shown.slice(0, 2), ['Sending your last changes…', 'The zip is being built on the computer of the host…']);
     const progress = shown.slice(2, -1);
     assert.ok(progress.length >= 2, `the progress reads ${JSON.stringify(progress)}`);
     for (const line of progress) assert.match(line, new RegExp(`^Downloading ${NAME}\\.zip: \\d+\\.\\d of ${size.replace('.', '\\.')} MB$`));
@@ -465,7 +465,7 @@ test('a guest downloads the talk folder through the relay with its last edit, an
     const zip = await downloaded(dir, ZIP);
     await host.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(DONE)}`, 10_000);
     const shown = texts(await host.evaluate('window.__said'));
-    assert.equal(shown[0], 'The edit command is building the zip…');
+    assert.equal(shown[0], 'The zip is being built…');
     const requests = await host.evaluate('window.__zip');
     assert.ok(requests[0].url.startsWith(server.edit.url), requests[0].url);
     const all = assertZip(zip, server.folder, server.read());

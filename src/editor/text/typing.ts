@@ -338,7 +338,7 @@ export function install(app: App): void {
       if (!app.hostOf(c)) continue;
       c.setAttribute('tabindex', '0');
       c.setAttribute('role', 'button');
-      c.setAttribute('aria-label', 'Formula, Enter opens its TeX');
+      c.setAttribute('aria-label', 'Formula. Press Enter to open its TeX');
     }
   }
 

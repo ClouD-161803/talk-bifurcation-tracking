@@ -77,7 +77,7 @@ export function install(app: App): void {
   autosave.append(make('span', 'name', 'Autosave'), make('span', 'track'));
   if (!canWrite()) {
     autosave.disabled = true;
-    autosave.title = 'Autosave needs a browser that writes the file in place, i.e. Chrome or Edge';
+    autosave.title = 'Autosave is available where the file can be written in place, i.e. in Chrome or Edge';
   }
   right.append(which, autosave);
   row.append(bar, doc, right);

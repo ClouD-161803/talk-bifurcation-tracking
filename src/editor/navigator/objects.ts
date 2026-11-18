@@ -315,7 +315,7 @@ export function install(app: App): void {
       rows = plan.map((p) => ({ item: p.item, row: rowOf(p.item, p.level, selected) }));
       list.replaceChildren(...rows.map((r) => r.row), drop);
       empty.hidden = rows.length > 0;
-      empty.textContent = query ? 'No matching objects' : 'No objects on this slide';
+      empty.textContent = query ? 'The search does not match any object' : 'This slide does not have objects';
       rows.find((r) => r.row.getAttribute('aria-selected') === 'true')?.row.scrollIntoView({ block: 'nearest' });
     }
     for (const r of rows) r.row.tabIndex = keyOf(r.item) === current ? 0 : -1;

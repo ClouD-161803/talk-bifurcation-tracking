@@ -156,14 +156,14 @@ for (const platform of PLATFORMS) {
   });
 
   // N20: the style of the list was 'translate: 0px 20px' at the check and 'translate: 0px 20px;'
-  // after the undo, hence the report stayed 'A picture covers 1 text'
+  // after the undo, hence the report stayed '1 text is under a picture'
   test(`after Wide, an undo of a drag of the list brings the report of its items back (${platform})`, async (t) => {
     const page = await load(t, platform);
     await exec(page, 'slide.layout.wide');
     await wait(page, 300);
     const wide = await render(page);
     const said = await title(page);
-    assert.match(said, /A picture covers 4 texts/);
+    assert.match(said, /4 texts are under a picture/);
     const start = await page.evaluate(`(() => { const r = document.createRange(); r.selectNodeContents(Reveal.getCurrentSlide().querySelector(':scope > ul > li')); const l = r.getClientRects()[0]; return { x: l.left + 12, y: l.top + l.height / 2 }; })()`);
     await clickText(page, start);
     await press(page, 'Escape');
@@ -173,7 +173,7 @@ for (const platform of PLATFORMS) {
     await drag(page, handle, { dx: 0, dy: 40 * k, steps: 8 });
     await wait(page, 300);
     assert.notEqual(await render(page), wide, 'the drag did not move the list');
-    assert.match(await title(page), /A picture covers 1 text\b/);
+    assert.match(await title(page), /1 text is under a picture\b/);
     await undo(page);
     await wait(page, 300);
     assert.equal(await render(page), wide);
@@ -181,7 +181,7 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(errors(page), []);
   });
 
-  // N22: a picture, a table, and a QR code over texts read '3 figures cover 4 texts'
+  // N22: a picture, a table, and a QR code over texts read '4 texts are under 3 figures'
   test(`the report names a picture, a table, and a QR code over texts by their kinds (${platform})`, async (t) => {
     const page = await load(t, platform);
     // a new table is put off the words where it can be, hence it is moved over the list
@@ -196,15 +196,15 @@ for (const platform of PLATFORMS) {
     await exec(page, 'slide.layout.wide');
     await wait(page, 400);
     const said = await title(page);
-    const m = said.replace(/^Unsaved changes\. /, '').match(/^(.+) cover (\d+) texts$/);
+    const m = said.replace(/^Unsaved changes\. /, '').match(/^(\d+) texts are under (.+)$/);
     assert.ok(m, `the report reads ${js(said)}`);
-    const parts = m[1].replace(/^A /, 'a ').split(/, and |, | and /);
+    const parts = m[2].split(/, and |, | and /);
     assert.deepEqual([...parts].sort(), ['a QR code', 'a picture', 'a table'], `the report reads ${js(said)}`);
-    assert.match(m[1], /^A [^,]+, a [^,]+, and a [^,]+$/, 'three kinds are not named with a serial comma');
+    assert.match(m[2], /^a [^,]+, a [^,]+, and a [^,]+$/, 'three kinds are not named with a serial comma');
     assert.deepEqual(errors(page), []);
   });
 
-  // N13: two tables and a plot over texts read '3 figures cover 5 texts'. a deck plot is named in
+  // N13: two tables and a plot over texts read '5 texts are under 3 figures'. a deck plot is named in
   // editor-r20-1, since a plot is not inserted by the editor
   test(`the report names two tables and a QR code over texts by their kinds and counts (${platform})`, async (t) => {
     const page = await load(t, platform);
@@ -218,9 +218,9 @@ for (const platform of PLATFORMS) {
     await wait(page, 400);
     const said = await title(page);
     assert.doesNotMatch(said, /figures/, `the report reads ${js(said)}`);
-    const m = said.replace(/^Unsaved changes\. /, '').match(/^(.+) cover (\d+) texts$/);
+    const m = said.replace(/^Unsaved changes\. /, '').match(/^(\d+) texts are under (.+)$/);
     assert.ok(m, `the report reads ${js(said)}`);
-    const parts = m[1].replace(/^A /, 'a ').split(/, and |, | and /);
+    const parts = m[2].split(/, and |, | and /);
     assert.ok(parts.includes('2 tables'), `the report reads ${js(said)}`);
     assert.ok(parts.includes('a QR code'), `the report reads ${js(said)}`);
     assert.equal(new Set(parts).size, parts.length, `a kind is named twice in ${js(said)}`);

@@ -98,7 +98,7 @@ for (const platform of PLATFORMS) {
     // the place nearest to the center of the slide that keeps the room of the bars to the figure
     assert.deepEqual(round(table), [654, 433, 498, 213]);
     // the report of the title bar is kept
-    assert.match(await title(page), /A table covers \d+ texts?$/);
+    assert.match(await title(page), /\d+ texts? (is|are) under a table$/);
     await exec(page, 'insert.table', { rows: 3, columns: 3 });
     await sleep(300);
     const tables = await boxes(page, ':scope > table');

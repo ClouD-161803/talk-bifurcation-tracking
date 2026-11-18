@@ -272,7 +272,7 @@ for (const through of ['the edit command', 'the relay']) {
     }
     const page = await open(browser, url, { wait: false, ready: false });
     await page.waitFor(`[...document.querySelectorAll('dialog[open] h3')].some((h) => h.textContent === 'This page is not the deck of the session')`, 20_000);
-    assert.deepEqual(await page.evaluate(DIALOG_SHOWN), { text: 'A session edits index.html of the talk folder. This deck is edited without a session.', buttons: ['OK'] });
+    assert.deepEqual(await page.evaluate(DIALOG_SHOWN), { text: 'In a session, index.html of the talk folder is edited. This deck is edited without a session.', buttons: ['OK'] });
     await page.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent === 'OK').click()`);
     await page.waitFor(`!document.querySelector('dialog[open]') && window.BeesonEditor && window.BeesonEditor.ready.then(() => true)`);
     const text = await copySlide(page, 'One');

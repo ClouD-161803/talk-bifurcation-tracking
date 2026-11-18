@@ -443,7 +443,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const dir = join(root, 'media');
     await mkdir(dir, { recursive: true });
     const real = await realpath(dir);
-    if (!real.startsWith(root + sep)) return error(403, 'media/ leaves the talk folder');
+    if (!real.startsWith(root + sep)) return error(403, 'the path is outside the talk folder');
     // with the hash of the page, a file sent again, e.g. after its answer was lost, is not copied
     const sent = request.headers['x-content-sha256'];
     if (sent !== undefined) {
@@ -499,7 +499,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     const dir = join(root, 'figures');
     await mkdir(dir, { recursive: true });
     const real = await realpath(dir);
-    if (!real.startsWith(root + sep)) return error(403, 'figures/ leaves the talk folder');
+    if (!real.startsWith(root + sep)) return error(403, 'the path is outside the talk folder');
     if (route === 'data') {
       if (typeof body.stem !== 'string') return error(400, 'stem is missing');
       const clean = `${cleanStem((body.stem.split(/[\\/]/).pop() ?? '').replace(/\.csv$/i, ''), 'data')}.csv`;

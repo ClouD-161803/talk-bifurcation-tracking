@@ -206,7 +206,7 @@ export function figurePane(host: TexHost, el: HTMLElement, figure: HTMLElement):
       sec('Labels', row(null, seg)),
     );
     const off = make('div', 'ed-sec');
-    off.append(make('div', 'ed-note', 'The source is no longer in the shape that From Data writes, hence these fields are off. Edit it with Edit Source…'));
+    off.append(make('div', 'ed-note', 'The source is no longer in the shape written with From Data, hence these fields are off. Edit it with Edit Source…'));
     body.replaceChildren(...(shape ? [] : [off]), fields);
   }
 

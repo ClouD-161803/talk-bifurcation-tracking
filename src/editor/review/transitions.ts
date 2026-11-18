@@ -167,7 +167,7 @@ const setMagic = (app: App, s: Element, on: boolean) => {
 // loses it when it is not moved into the slide after it
 export function setTransition(app: App, slide: Element, t: Transition): void {
   const next = nextShown(app, slide);
-  if (!next) throw new Error('A transition needs a slide after this one');
+  if (!next) throw new Error('This is the last slide, and a transition is set only before another slide');
   // a slide is left by slide-out only while it is pushed, and else as it is entered. the next slide
   // keeps its slide-out while it pushes the slide after it
   const [enter, leave] = halvesOf(slide);

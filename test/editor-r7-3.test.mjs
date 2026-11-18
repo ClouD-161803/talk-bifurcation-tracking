@@ -315,7 +315,7 @@ for (const platform of PLATFORMS) {
     assert.equal(match.keys, mac ? '⌥⇧⌘V' : '');
 
     await search(page, 'zzzq');
-    assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-menu .results .note')?.textContent`), 'No menu items match');
+    assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-menu .results .note')?.textContent`), 'The search does not match any menu item');
 
     // the arrow keys move the highlight through the results, and Return runs the highlighted one
     await search(page, 'spelling');

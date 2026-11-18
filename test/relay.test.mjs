@@ -160,7 +160,7 @@ test('a second registration of the key of a live session is refused', { timeout:
   const second = await startEdit(copy, { args: ['--relay', relay.url], env });
   t.after(() => stopEdit(second));
   assert.equal(second.key, first.key);
-  await until(() => second.stderr.includes('already shared by another edit command'), 'the second edit command to be refused');
+  await until(() => second.stderr.includes('already shared from another edit command'), 'the second edit command to be refused');
   for (let i = 0; i < 6; i++) assert.equal(await (await guest()).text(), DECK);
 });
 

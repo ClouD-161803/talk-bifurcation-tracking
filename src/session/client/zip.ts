@@ -140,7 +140,7 @@ export function install(client: Client): void {
       try {
         await sent(client);
         if (stop.signal.aborted) return;
-        tell(client.host ? 'The edit command is building the zip…' : "The host's edit command is building the zip…");
+        tell(client.host ? 'The zip is being built…' : 'The zip is being built on the computer of the host…');
         const mb = (bytes: number) => (bytes / MB).toFixed(1);
         const { made, blob } = await fetchZip(client, stop.signal, (made, read) => tell(`Downloading ${made.name}: ${mb(read)} of ${mb(made.size)} MB`));
         if (stop.signal.aborted) return;

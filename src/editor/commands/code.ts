@@ -72,7 +72,7 @@ export function languageOf(app: App, code: Element): string | null {
 
 const LINES = 'data-line-numbers';
 // why Number the Lines is dimmed, since reveal.js steps through the lines of a numbered box only
-const NUMBERS_WHY = 'The line steps need the line numbers.';
+const NUMBERS_WHY = 'Line steps are shown only with line numbers.';
 // the size of the code of a small box
 const SMALL = '18px';
 

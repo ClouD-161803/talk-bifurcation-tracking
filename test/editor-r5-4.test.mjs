@@ -390,7 +390,7 @@ for (const platform of ['mac', 'other']) {
     assert.ok(asked.includes(`${clip}.mp4`), asked);
     // the button says that it asks for the file
     assert.equal(button[0], 'Capture Poster…');
-    assert.match(button[1], /asks once for the file/);
+    assert.match(button[1], /asked once for the file/);
     // a chooser opened by a trusted click is cancelled at once in headless Chrome unless the
     // protocol intercepts it, and the input then keeps waiting for its files
     await page.send('Page.setInterceptFileChooserDialog', { enabled: true });

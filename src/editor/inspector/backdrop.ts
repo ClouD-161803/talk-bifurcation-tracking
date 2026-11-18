@@ -96,7 +96,7 @@ export function backdropPane(app: App, run: Run): Control[] {
           checked: (el?.getAttribute('data-trajectories-colormap') ?? null) === c,
           run: () => run('backdrop.colormap', { value: c, el }),
         })), on),
-        note(() => 'The trajectories are chosen and colored by the data-trajectories attributes of the file, as REFERENCE.md describes.'),
+        note(() => 'The trajectories are chosen and colored in the data-trajectories attributes of the file, as described in REFERENCE.md.'),
       ]),
     ]),
     section('Window', [
@@ -122,7 +122,7 @@ export function backdropPane(app: App, run: Run): Control[] {
         command: 'backdrop.duration',
         commit: (value) => run('backdrop.duration', { value, el }),
       }), button(app, run, { command: 'backdrop.preview', arg: { el }, text: 'Preview' })]),
-      note(() => (traced ? 'A backdrop of a title, section, or closing slide is traced in the show without Live.' : 'Live traces the backdrop when its slide is shown.')),
+      note(() => (traced ? 'A backdrop of a title, section, or closing slide is traced in the show without Live.' : 'With Live, the backdrop is traced when its slide is shown.')),
     ]),
     section(null, [row([button(app, run, { command: 'arrange.lock', icon: 'lock', text: 'Lock' }), button(app, run, { command: 'arrange.unlock', icon: 'unlock', text: 'Unlock' })])]),
   );
