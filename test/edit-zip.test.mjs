@@ -445,3 +445,100 @@ test('on a disk that tells the cases apart, a Tex.js is kept next to the tex.js 
   assert.equal(got.get('Tex.js').bytes.toString('utf8'), 'a file of the talk');
   assert.ok(got.get('tex.js').bytes.toString('utf8').includes('The first paper'), 'tex.js is the one of the session');
 });
+
+test('a JSON file named by data-trajectories is wrapped into a script file next to it, and index.html names the script file', { timeout: 60_000 }, async (t) => {
+  // each pair is the deck text and the same text in index.html of the zip
+  const pairs = [
+    ['<div data-trajectories="orbits/a.json"></div>', '<div data-trajectories="orbits/a.json.js"></div>'],
+    ["<div data-trajectories='orbits/b.json'></div>", "<div data-trajectories='orbits/b.json.js'></div>"],
+    ['<div data-trajectories=orbits/c.json></div>', '<div data-trajectories=orbits/c.json.js></div>'],
+    ['<div data-trajectories="orbits/d%20e.json"></div>', '<div data-trajectories="orbits/d%20e.json.js"></div>'],
+    ['<div data-trajectories="orbits/a.json"></div>', '<div data-trajectories="orbits/a.json.js"></div>'],
+    ['<div data-trajectories="orbits/q.json?v=2"></div>', '<div data-trajectories="orbits/q.json.js?v=2"></div>'],
+    ['<div data-trajectories="orbits/h.json#t"></div>', '<div data-trajectories="orbits/h.json.js#t"></div>'],
+    ['<div data-trajectories="orbits/f&amp;g.json"></div>', '<div data-trajectories="orbits/f&amp;g.json.js"></div>'],
+    // the path ends at the first ? or #, also in a value with an & and at one written as a reference
+    ['<div data-trajectories="orbits/r.json?v=2&amp;t=3"></div>', '<div data-trajectories="orbits/r.json.js?v=2&amp;t=3"></div>'],
+    ['<div data-trajectories="orbits/s.json?v=2&t=3"></div>', '<div data-trajectories="orbits/s.json.js?v=2&t=3"></div>'],
+    ['<div data-trajectories="orbits/u.json&#63;v=2"></div>', '<div data-trajectories="orbits/u.json.js&#63;v=2"></div>'],
+    ['<div data-trajectories="orbits/w.json&#x23;x.js"></div>', '<div data-trajectories="orbits/w.json.js&#x23;x.js"></div>'],
+    ['<div data-trajectories="orbits/js.js"></div>'],
+    ['<div data-trajectories="orbits/missing.json"></div>'],
+    ['<div data-trajectories="../outside.json"></div>'],
+    ['<div data-trajectories="orbits/../../outside.json"></div>'],
+    ['<div data-trajectories="https://example.com/orbits/a.json"></div>'],
+    // a path from the root of the address or with a scheme is not a path of the talk folder
+    ['<div data-trajectories="/t/orbits/a.json"></div>'],
+    ['<div data-trajectories="http:orbits/a.json"></div>'],
+    ['<div data-trajectories="//talk.invalid/t/orbits/a.json"></div>'],
+    // the talk folder has a file orbits/k.json.js, which is not written over
+    ['<div data-trajectories="orbits/k.json"></div>', '<div data-trajectories="orbits/k.json-2.js"></div>'],
+    // nor is orbits/case.json.js, which is the same file on a disk that does not tell the cases apart
+    ['<div data-trajectories="orbits/Case.json"></div>', '<div data-trajectories="orbits/Case.json-2.js"></div>'],
+    // nor is the name of a folder taken, here orbits/dir.json.js with a file in it
+    ['<div data-trajectories="orbits/dir.json"></div>', '<div data-trajectories="orbits/dir.json-2.js"></div>'],
+    // nor is orbits/Straße.json.js, which the disk of a Mac takes for orbits/STRASSE.json.js
+    ['<div data-trajectories="orbits/STRASSE.json"></div>', '<div data-trajectories="orbits/STRASSE.json-2.js"></div>'],
+    // nor is the script whose name is the capital of orbits/\u0390.json.js, an iota with a dialytika
+    // and a tonos, of which the capital is three characters
+    ['<div data-trajectories="orbits/\u0390.json"></div>', '<div data-trajectories="orbits/\u0390.json-2.js"></div>'],
+    // nor is the script that the disk of a Mac takes for orbits/\u1fb7.json.js, an alpha with a
+    // perispomeni and an iota below it. in the name of this script, the two accents are in the other order
+    ['<div data-trajectories="orbits/\u1fb7.json"></div>', '<div data-trajectories="orbits/\u1fb7.json-2.js"></div>'],
+    // nor is a script whose name differs only in its accents, here orbits/e.json.js. an exFAT disk
+    // of a Mac takes two names for one when an accent is before or behind a Hangul vowel in them,
+    // which the disk of a test does not show
+    ['<div data-trajectories="orbits/\u00e9.json"></div>', '<div data-trajectories="orbits/\u00e9.json-2.js"></div>'],
+    ['<!-- <div data-trajectories="orbits/m1.json"></div> -->'],
+    [`<script>const s = '<div data-trajectories="orbits/m2.json"></div>';</script>`],
+    ['<pre>&lt;div data-trajectories="orbits/m3.json"&gt;&lt;/div&gt;</pre>'],
+    ...(unix ? [['<div data-trajectories="orbits/out.json"></div>']] : []),
+  ];
+  const deckOf = (i) => DECK.replace('</body>', `<section>\n${pairs.map((p) => p[i] ?? p[0]).join('\n')}\n</section>\n</body>`);
+  const { root, talk } = talkFolder(t, deckOf(0));
+  const json = (n) => JSON.stringify({ trajectories: [{ name: n }] });
+  const wrapped = ['a', 'b', 'c', 'd e', 'q', 'h', 'f&g', 'r', 's', 'u', 'w'];
+  for (const n of [...wrapped, 'k', 'Case', 'dir', 'STRASSE', '\u0390', '\u1fb7', '\u00e9', 'm1', 'm2', 'm3']) put(talk, `orbits/${n}.json`, json(n));
+  put(talk, 'orbits/dir.json.js/a.txt', 'a file in a folder');
+  put(talk, 'orbits/Stra\u00dfe.json.js', 'a script with a sharp s');
+  put(talk, 'orbits/\u03aa\u0301.json.js', 'a script with an iota');
+  put(talk, 'orbits/\u1fbc\u0342.json.js', 'a script with an iota below');
+  put(talk, 'orbits/e.json.js', 'a script without the accent');
+  put(talk, 'orbits/case.json.js', 'another script of the talk folder');
+  put(talk, 'orbits/js.js', 'Beeson.trajectories({});\n');
+  put(talk, 'orbits/k.json.js', 'a script of the talk folder');
+  put(root, 'outside.json', json('outside'));
+  if (unix) symlinkSync(join(root, 'outside.json'), join(talk, 'orbits', 'out.json'));
+  const running = await inProcess(t, root, talk);
+  const token = await hello(t, running.port, running.key, 'Ann');
+  const got = byName((await download(running.port, running.key, token)).zip);
+
+  assert.equal(got.get('index.html').bytes.toString('utf8'), deckOf(1));
+  for (const n of wrapped) {
+    const original = readFileSync(join(talk, 'orbits', `${n}.json`));
+    assert.ok(got.get(`orbits/${n}.json`).bytes.equals(original), `orbits/${n}.json is kept`);
+    assert.equal(got.get(`orbits/${n}.json.js`)?.bytes.toString('utf8'), `Beeson.trajectories(${original});\n`, `orbits/${n}.json.js`);
+    assert.equal(got.get(`orbits/${n}.json.js`).mode, 0o644);
+  }
+  assert.equal(got.get('orbits/k.json.js').bytes.toString('utf8'), 'a script of the talk folder');
+  assert.equal(got.get('orbits/k.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'k.json'))});\n`);
+  assert.equal(got.get('orbits/case.json.js').bytes.toString('utf8'), 'another script of the talk folder');
+  assert.equal(got.get('orbits/Case.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'Case.json'))});\n`);
+  assert.equal(got.has('orbits/Case.json.js'), false);
+  assert.equal(got.get('orbits/dir.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'dir.json'))});\n`);
+  assert.equal(got.get('orbits/dir.json.js/a.txt').bytes.toString('utf8'), 'a file in a folder');
+  assert.equal(got.has('orbits/dir.json.js'), false);
+  assert.equal(got.get('orbits/Stra\u00dfe.json.js').bytes.toString('utf8'), 'a script with a sharp s');
+  assert.equal(got.get('orbits/STRASSE.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', 'STRASSE.json'))});\n`);
+  assert.equal(got.has('orbits/STRASSE.json.js'), false);
+  assert.equal(got.get('orbits/\u03aa\u0301.json.js').bytes.toString('utf8'), 'a script with an iota');
+  assert.equal(got.get('orbits/\u0390.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u0390.json'))});\n`);
+  assert.equal(got.has('orbits/\u0390.json.js'), false);
+  assert.equal(got.get('orbits/\u1fbc\u0342.json.js').bytes.toString('utf8'), 'a script with an iota below');
+  assert.equal(got.get('orbits/\u1fb7.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u1fb7.json'))});\n`);
+  assert.equal(got.has('orbits/\u1fb7.json.js'), false);
+  assert.equal(got.get('orbits/e.json.js').bytes.toString('utf8'), 'a script without the accent');
+  assert.equal(got.get('orbits/\u00e9.json-2.js')?.bytes.toString('utf8'), `Beeson.trajectories(${readFileSync(join(talk, 'orbits', '\u00e9.json'))});\n`);
+  assert.equal(got.has('orbits/\u00e9.json.js'), false);
+  for (const n of ['orbits/js.js.js', 'orbits/missing.json.js', 'outside.json.js', 'orbits/m1.json.js', 'orbits/m2.json.js', 'orbits/m3.json.js', 'orbits/out.json.js', 'orbits/out.json']) assert.equal(got.has(n), false, n);
+});
