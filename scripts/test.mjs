@@ -13,6 +13,11 @@ import { relative } from 'node:path';
 // more failed files than this are not run again, since that many are not flaky at once
 const AGAIN = 5;
 
+// text for a workflow command of GitHub, and for the value of one of its properties. GitHub reads
+// these characters as parts of the command
+const data = (text) => text.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+const property = (text) => data(text).replaceAll(':', '%3A').replaceAll(',', '%2C');
+
 const args = process.argv.slice(2);
 const shard = args.map((arg) => /^--shard=(\d+)\/(\d+)$/.exec(arg)).find(Boolean);
 const named = args.filter((arg) => !arg.startsWith('--'));
@@ -48,7 +53,7 @@ for (const [file, names] of first) {
   if (second.has(file)) continue;
   for (const name of names) {
     const text = `${name} failed in ${file} and passed when the file was run again`;
-    console.log(process.env.GITHUB_ACTIONS ? `::warning file=${file},title=Passed in its second run::${text}` : `# warning: ${text}`);
+    console.log(process.env.GITHUB_ACTIONS ? `::warning file=${property(file)},title=Passed in its second run::${data(text)}` : `# warning: ${text}`);
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `- ${text}\n`);
   }
 }
