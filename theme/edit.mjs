@@ -5768,10 +5768,17 @@ async function start(options = {}) {
     if (close) headers.Connection = "close";
     const head = req.method === "HEAD";
     if (b !== void 0 && typeof b === "object" && !Buffer.isBuffer(b)) {
-      headers["Content-Length"] = String(b.end - b.start + 1);
+      const length = b.end - b.start + 1;
+      headers["Content-Length"] = String(length);
       res.writeHead(response.status, headers);
-      if (head || b.end < b.start) res.end();
-      else createReadStream(b.file, { start: b.start, end: b.end }).on("error", () => res.destroy()).pipe(res);
+      if (head || length <= 0) {
+        res.end();
+        return;
+      }
+      const stream = createReadStream(b.file, { start: b.start, end: b.end });
+      stream.on("error", () => res.destroy());
+      stream.on("end", () => stream.bytesRead < length ? res.destroy() : res.end());
+      stream.pipe(res, { end: false });
       return;
     }
     const bytes = b === void 0 ? Buffer.alloc(0) : Buffer.isBuffer(b) ? b : Buffer.from(b);

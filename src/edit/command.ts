@@ -562,10 +562,20 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (close) headers.Connection = 'close';
     const head = req.method === 'HEAD';
     if (b !== undefined && typeof b === 'object' && !Buffer.isBuffer(b)) {
-      headers['Content-Length'] = String(b.end - b.start + 1);
+      const length = b.end - b.start + 1;
+      headers['Content-Length'] = String(length);
       res.writeHead(response.status, headers);
-      if (head || b.end < b.start) res.end();
-      else createReadStream(b.file, { start: b.start, end: b.end }).on('error', () => res.destroy()).pipe(res);
+      if (head || length <= 0) {
+        res.end();
+        return;
+      }
+      // a file made shorter since its size was read, e.g. one that a program writes in place, ends
+      // before the length that was sent. the connection is then closed, since the browser would
+      // wait on it for the rest, and would read the next answer as these bytes
+      const stream = createReadStream(b.file, { start: b.start, end: b.end });
+      stream.on('error', () => res.destroy());
+      stream.on('end', () => (stream.bytesRead < length ? res.destroy() : res.end()));
+      stream.pipe(res, { end: false });
       return;
     }
     const bytes = b === undefined ? Buffer.alloc(0) : Buffer.isBuffer(b) ? b : Buffer.from(b);
