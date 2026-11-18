@@ -6,11 +6,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { start } from '../theme/edit.mjs';
-import { post, raw, talkFolder } from './helpers/session.mjs';
+import { post, raw, talkFolder, within } from './helpers/session.mjs';
 import { entries, unzipTo } from './helpers/zip.mjs';
 
 const MB = 1024 * 1024;
@@ -184,4 +184,31 @@ test('the zip holds every file that the edit command serves, with its bytes and 
   assert.equal(readFileSync(join(out, 'talk', 'notes.txt'), 'utf8'), got.get('notes.txt').bytes.toString('utf8'));
   assert.ok(readFileSync(join(out, 'talk', 'a b', 'é ü.txt')).equals(got.get('a b/é ü.txt').bytes));
   if (unix) assert.equal(statSync(join(out, 'talk', 'Edit.command')).mode & 0o111, 0o111, 'Edit.command is run after the unzip');
+});
+
+test('links are followed inside the talk folder only, and a link to its own folder does not hold up the zip', { skip: !unix, timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  put(talk, 'sub/a.txt', 'a');
+  put(talk, 'notes.txt', 'notes');
+  put(root, 'outside/secret.txt', 'secret');
+  symlinkSync(join(root, 'outside', 'secret.txt'), join(talk, 'secret.txt'));
+  symlinkSync(join(root, 'outside'), join(talk, 'outdir'));
+  symlinkSync(join(talk, 'sub'), join(talk, 'alias'));
+  symlinkSync(join(talk, 'notes.txt'), join(talk, 'link.txt'));
+  symlinkSync(join(talk, 'sub'), join(talk, 'sub', 'self'));
+  symlinkSync(talk, join(talk, 'sub', 'up'));
+  // links inside the talk folder stand for short names of Windows, e.g. GIT~1
+  put(talk, '.git/config', 'token');
+  put(talk, 'node_modules/x/index.js', 'x');
+  symlinkSync(join(talk, '.git'), join(talk, 'GIT~1'));
+  symlinkSync(join(talk, 'node_modules'), join(talk, 'NODE_M~1'));
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const token = await hello(t, port, key, 'Ann');
+  const made = await within(makeZip(port, key, token), 30_000, 'the zip of a folder with a loop of links');
+  assert.equal(made.status, 200, made.text);
+  const { zip } = await download(port, key, token);
+  const got = byName(zip);
+  assert.deepEqual([...got.keys()], ['index.html', 'alias/a.txt', 'link.txt', 'notes.txt', 'sub/a.txt']);
+  for (const n of ['alias/a.txt', 'link.txt', 'sub/a.txt']) assert.ok(got.get(n).bytes.equals((await raw(port, 'GET', `/${key}/${n}`)).body), n);
 });
