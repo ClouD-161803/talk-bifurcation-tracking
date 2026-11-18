@@ -107,6 +107,9 @@ export class Client {
   saving = false;
   // the time of the next reconnect in ms of Date.now(), or null
   retryAt: number | null = null;
+  // the time in ms of Date.now() at which the poll first failed since the last reconnect, or null.
+  // a failed operation alone leaves the page offline while its poll brings the edits of others
+  lostAt: number | null = null;
   // the first hello was refused since the session is full, and is sent again at the next reconnect
   full = false;
   // an operation of this page was refused as invalid after a resync, and nothing is sent any more
@@ -713,6 +716,7 @@ export class Client {
           sync.move(answer.client, answer.applied);
           // after the new token, which a presence state that waits is then sent with
           this.online();
+          this.lostAt = null;
           if (answer.text !== undefined) {
             this.fresh = { text: answer.text, v: answer.v };
             this.inbox = [];
@@ -739,6 +743,7 @@ export class Client {
         answer = await this.transport.events(this.token, this.since);
       } catch (e) {
         if (this.ended || this.gone || generation !== this.generation) continue;
+        this.lostAt ??= Date.now();
         if (e instanceof Failure && (e.status === 404 || e.status === 400)) {
           // the wait grows with each refusal, as the reconnect after a failure does
           if (Date.now() - this.rejoinedAt < BOUNCE) {
@@ -757,6 +762,7 @@ export class Client {
       }
       if (this.ended || this.gone || generation !== this.generation) continue;
       this.online();
+      this.lostAt = null;
       this.bounces = 0;
       await this.take(answer);
     }
