@@ -13,7 +13,7 @@ import { test } from 'node:test';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { start } from '../theme/edit.mjs';
-import { DECK, post, raw, talkFolder, until, within } from './helpers/session.mjs';
+import { DECK, post, raw, startEdit, talkFolder, until, within } from './helpers/session.mjs';
 import { entries, unzipTo } from './helpers/zip.mjs';
 
 const MB = 1024 * 1024;
@@ -639,4 +639,27 @@ test('a zip that is kept holds about its bytes in memory, also the zip of a fold
   assert.equal(got.size, files + 1);
   assert.equal(got.get('data/7/orbit-2977.txt').bytes.toString('utf8'), readFileSync(join(talk, 'data', '7', 'orbit-2977.txt'), 'utf8'));
   assert.equal((await dropZip(port, key, token, id)).status, 200);
+});
+
+test('a zip is dropped once its page has not asked for a piece during SLIDES_ZIP_KEPT_MS, and after a quarter of this time when no piece was asked for', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // long enough for a runner that stalls between two pieces, or for 2 s before the first piece
+  const kept = 8000;
+  const edit = await startEdit(talk, { env: { SLIDES_ZIP_KEPT_MS: String(kept), XDG_CONFIG_HOME: config, APPDATA: config } });
+  const token = await hello(t, edit.port, edit.key, 'Ann');
+  // the zip of a download that was stopped while it was built
+  const unasked = (await makeZip(edit.port, edit.key, token)).json();
+  await new Promise((done) => setTimeout(done, kept / 2));
+  assert.equal((await pieceOf(edit.port, edit.key, token, unasked.id, 0)).status, 404, 'a zip without a piece asked for is dropped');
+  const made = await makeZip(edit.port, edit.key, token);
+  const { id, size } = made.json();
+  // each piece keeps the zip for another SLIDES_ZIP_KEPT_MS
+  const asked = Date.now();
+  while (Date.now() - asked < 1.5 * kept) {
+    assert.equal((await pieceOf(edit.port, edit.key, token, id, 0)).status, 200, `${Date.now() - asked} ms after the first piece`);
+    await new Promise((done) => setTimeout(done, kept / 10));
+  }
+  // an at past the end is answered without keeping the zip any longer
+  await until(async () => (await pieceOf(edit.port, edit.key, token, id, size)).status === 404, 'the zip to be dropped');
 });
