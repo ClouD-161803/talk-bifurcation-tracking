@@ -50,11 +50,13 @@ jobs:
       - run: npm run vendor
       - run: npm run build
       - run: npm run typecheck
-      # npm test with the shard of the job, an option that is read only before the files. With
-      # --test-force-exit, a test file that leaves a server open after a failed cleanup is ended, and
-      # with --test-timeout, a test file that does not end fails by name after 20 minutes. The module
-      # of --import makes the writes to standard output blocking, hence no report is lost at the end
-      - run: node --test --test-force-exit --test-timeout=1200000 --import ./test/helpers/blocking-stdout.mjs --test-shard=${{ matrix.shard }}/7 "test/*.test.mjs"
+      # npm test with the shard of the job. It is written out, since npm does not pass an option
+      # on to the script in PowerShell. With --test-force-exit, a test file that leaves a server
+      # open after a failed cleanup is ended, and with --test-timeout, a test file that does not end
+      # fails by name after 20 minutes. The module of --import makes the writes to standard output
+      # blocking, hence no report is lost at the end. A file with a failed test is run once more by
+      # scripts/test.mjs, and a test that then passes is named in a warning of the round
+      - run: node --test-force-exit --test-timeout=1200000 --import ./test/helpers/blocking-stdout.mjs scripts/test.mjs --shard=${{ matrix.shard }}/7
 
   # the one check that is required on main. It fails when a job of the round failed or was cancelled.
   # Without always(), it is skipped after a failed job, and a skipped check counts as passed

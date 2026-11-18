@@ -7,16 +7,17 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// the options of node in the test command, before the files
+// the options of node in the test command, and its script
 const command = JSON.parse(readFileSync('package.json', 'utf8')).scripts.test;
-const options = command.split(' ').slice(1, -1);
+const options = command.split(' ').slice(1);
 
 // runs the test command on file from the root of the repository, without NODE_TEST_CONTEXT, since
 // node does not run the files of a test command inside a test. Resolves to the exit code and the
-// TAP report of the run in ended
+// TAP report of the run in ended. The variables of GitHub Actions are left out, hence a warning of
+// a run is not read as one of the round
 function run(file, env = {}) {
-  const { NODE_TEST_CONTEXT, ...rest } = process.env;
-  const child = spawn(process.execPath, [...options, '--test-reporter=tap', file], { env: { ...rest, ...env }, stdio: ['ignore', 'pipe', 'ignore'] });
+  const { NODE_TEST_CONTEXT, GITHUB_ACTIONS, GITHUB_STEP_SUMMARY, ...rest } = process.env;
+  const child = spawn(process.execPath, [...options, file], { env: { ...rest, ...env }, stdio: ['ignore', 'pipe', 'ignore'] });
   let report = '';
   child.stdout.on('data', (data) => (report += data));
   return { child, ended: new Promise((done) => child.once('close', (code) => done({ code, report }))) };
@@ -51,9 +52,37 @@ test('a test file with a failed cleanup and a server left open is ended', { time
   }
 });
 
+// a failed test file is run once more. On a runner, one test in about 1,700 fails without a fault
+// in the code under test often enough that most rounds had a failed job
+test('a test that fails in one run of its file is named in a warning, and one that fails in two runs fails the command', { timeout: 60000 }, async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(
+    join(root, 'twice.test.mjs'),
+    `import { existsSync, writeFileSync } from 'node:fs';
+     import { test } from 'node:test';
+     test('a test before', () => {});
+     test('a test of two runs', () => {
+       const second = existsSync(process.env.SEEN);
+       writeFileSync(process.env.SEEN, '');
+       if (!second || process.env.FAIL) throw new Error('the test fails');
+     });`,
+  );
+  for (const fail of ['', '1']) {
+    rmSync(join(root, 'seen'), { force: true });
+    const { code, report } = await run(join(root, 'twice.test.mjs'), { FAIL: fail, SEEN: join(root, 'seen') }).ended;
+    assert.equal(code, fail ? 1 : 0);
+    const runs = report.split(/^# second run of .*twice\.test\.mjs$/m);
+    assert.equal(runs.length, 2, 'the file is run twice');
+    assert.match(runs[0], /^not ok 2 - a test of two runs$/m);
+    assert.match(runs[1], fail ? /^not ok 2 - a test of two runs$/m : /^ok 2 - a test of two runs$/m);
+    assert.equal(/^# warning: a test of two runs failed in .*twice\.test\.mjs and passed when the file was run again$/m.test(runs[1]), !fail);
+  }
+});
+
 // the reports of the last tests of a file were lost at times when its process was ended, since the
 // writes of its reports to the pipe of the test command were still queued. Their loss is random,
-// hence each file is run ten times
+// hence each file is run ten times. A file with a failed test is reported twice, for its two runs
 test('every test of a test file is reported, and a failed last test by its name and message', { timeout: 120000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -70,8 +99,12 @@ test('every test of a test file is reported, and a failed last test by its name 
     for (let k = 0; k < 10; k++) {
       const { code, report } = await run(join(root, 'many.test.mjs'), { FAIL: fail }).ended;
       assert.equal(code, fail ? 1 : 0);
-      assert.equal(report.match(/^(not )?ok \d+ - test /gm)?.length, 300, `the tests reported in run ${k + 1}${fail ? ' with a failed last test' : ''}`);
-      if (fail) assert.match(report, /^not ok 300 - test 299 x+\n(.*\n)*? +error: 'the last test fails'$/m);
+      const runs = report.split(/^# second run of .*$/m);
+      assert.equal(runs.length, fail ? 2 : 1);
+      for (const part of runs) {
+        assert.equal(part.match(/^(not )?ok \d+ - test /gm)?.length, 300, `the tests reported in run ${k + 1}${fail ? ' with a failed last test' : ''}`);
+        if (fail) assert.match(part, /^not ok 300 - test 299 x+\n(.*\n)*? +error: 'the last test fails'$/m);
+      }
     }
   }
 });
@@ -86,11 +119,11 @@ test('a test file that does not end fails after 15 to 30 minutes', () => {
 
 test('the test step of the check workflow is the test command with the shard of its job', () => {
   const workflow = readFileSync('.github/workflows/check.yml', 'utf8');
-  const step = /^ +- run: (node --test .*)$/m.exec(workflow)?.[1];
+  const step = /^ +- run: (node .* scripts\/test\.mjs .*)$/m.exec(workflow)?.[1];
   // the shards of the matrix are counted, hence a shard is not left out when their number is changed
   const shards = /^ +shard: \[([\d, ]+)\]$/m.exec(workflow)?.[1].split(',').map(Number);
   assert.deepEqual(shards, shards?.map((_, k) => k + 1), 'the shards of the matrix are not 1 to their number');
-  assert.equal(step?.replace(` --test-shard=\${{ matrix.shard }}/${shards.length}`, ''), command.replaceAll('\\"', '"'));
+  assert.equal(step?.replace(` --shard=\${{ matrix.shard }}/${shards.length}`, ''), command);
 });
 
 // pass is the one check that is required on main. A job that pass does not need could fail without
