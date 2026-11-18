@@ -193,6 +193,11 @@ const PAGE = `{
   }, true);
 }`;
 
+// an iPad with a trackpad: iPadOS names itself a Mac with a touch screen, and the page has a fine
+// pointer
+const IPAD = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel' });
+Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5 });`;
+
 // a phone of Android. without it, the page has the platform of its runner, which is a computer for
 // a touch screen alone on Windows
 const PHONE = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux armv8l' });`;
@@ -555,4 +560,22 @@ test('on a phone, Talk Folder… is reached through the File menu, tells about p
   assert.equal((await phone.evaluate('window.__zip')).filter((r) => r.method === 'POST').length, 1);
   assertZip(zip, server.folder, server.read());
   clean(phone);
+});
+
+test('a tablet with a trackpad is told about phones and tablets as well, and to move the zip to a computer', { timeout: 420_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await zipTalk(t);
+  const tablet = await editorOn(browser, sessionUrl(server.edit), { name: 'Di', script: IPAD });
+  assert.deepEqual(await tablet.evaluate(`[matchMedia('(any-pointer: fine)').matches, navigator.platform, navigator.maxTouchPoints]`), [true, 'MacIntel', 5]);
+  const dir = join(server.root, 'tablet downloads');
+  await downloadsTo(tablet, dir);
+  await choose(tablet, PATH);
+  await tablet.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(PHONES)}`);
+  assert.deepEqual(await tablet.evaluate('({ said: window.__said, zip: window.__zip })'), { said: [{ text: PHONES, buttons: ['Cancel', 'Download'] }], zip: [] });
+  await press(tablet, BUTTON('Download'));
+  await downloaded(dir, ZIP);
+  await tablet.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(MOVED)}`, 10_000);
+  assert.deepEqual(await tablet.evaluate('window.__saved'), [ZIP]);
+  clean(tablet);
 });
