@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // the options of node in the test command, and its script
@@ -17,7 +17,7 @@ const options = command.split(' ').slice(1);
 // a run is not read as one of the round
 function run(file, env = {}) {
   const { NODE_TEST_CONTEXT, GITHUB_ACTIONS, GITHUB_STEP_SUMMARY, ...rest } = process.env;
-  const child = spawn(process.execPath, [...options, file], { env: { ...rest, ...env }, stdio: ['ignore', 'pipe', 'ignore'] });
+  const child = spawn(process.execPath, [...options, ...[file].flat()], { env: { ...rest, ...env }, stdio: ['ignore', 'pipe', 'ignore'] });
   let report = '';
   child.stdout.on('data', (data) => (report += data));
   return { child, ended: new Promise((done) => child.once('close', (code) => done({ code, report }))) };
@@ -50,6 +50,36 @@ test('a test file with a failed cleanup and a server left open is ended', { time
     assert.equal(result.code, code, `the exit code with a ${fail ? 'failed' : 'passed'} cleanup`);
     assert.match(result.report, /^ok 1 - a test$/m);
   }
+});
+
+// run() of node:test runs one test file at a time unless it is given a number, where node --test
+// runs one file fewer than the machine has cores. With one file at a time, the test jobs of a round
+// took 43 to 49 minutes on Ubuntu, where they took 20 to 33 with node --test. Each of the two files
+// waits for the start of the other one
+test('the test files are run at the same time, as node --test runs them', { timeout: 60000, skip: availableParallelism() < 3 && 'node --test runs one file at a time on fewer than three cores' }, async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const files = ['one', 'two'].map((name, k, names) => {
+    const file = join(root, `${name}.test.mjs`);
+    writeFileSync(
+      file,
+      `import { existsSync, writeFileSync } from 'node:fs';
+       import { join } from 'node:path';
+       import { test } from 'node:test';
+       test('${name} is run with the other file', async () => {
+         writeFileSync(join(process.env.ROOT, '${name}'), '');
+         const other = join(process.env.ROOT, '${names[1 - k]}');
+         for (let n = 0; n < 100 && !existsSync(other); n++) await new Promise((done) => setTimeout(done, 100));
+         if (!existsSync(other)) throw new Error('the other file was not started in 10 s');
+       });`,
+    );
+    return file;
+  });
+  const { code, report } = await run(files, { ROOT: root }).ended;
+  assert.equal(code, 0);
+  // run one after the other, the first file fails, and passes in its second run
+  assert.doesNotMatch(report, /^# second run of /m);
+  assert.equal(report.match(/^ok \d+ - \w+ is run with the other file$/gm)?.length, 2);
 });
 
 // a failed test file is run once more. On a runner, one test in about 1,700 fails without a fault
