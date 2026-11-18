@@ -3688,6 +3688,8 @@
     }
     for (const el of figures) syncParts(el);
   });
+  var previews = /* @__PURE__ */ new Map();
+  var compiling = null;
   function draw2(el, mode2) {
     const name = el.dataset.figure ?? "";
     const key = `${name} ${mode2}`;
@@ -3697,11 +3699,11 @@
     if (!state) watcher?.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "data-part"] });
     drawn.set(el, { n, key });
     for (const old of el.querySelectorAll(":scope > svg, :scope > .tikz-error")) old.remove();
-    const output = window.beesonFigures?.[name];
+    const output = previews.get(name) ?? window.beesonFigures?.[name];
     if (!output) {
       const box3 = document.createElement("div");
       box3.className = "tikz-error";
-      box3.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
+      box3.textContent = !name ? "a TikZ figure without a name in data-figure" : name === compiling ? `figure ${name} is being compiled` : `figure ${name} is not compiled: run npm run tex`;
       el.prepend(box3);
       return;
     }
@@ -3725,6 +3727,47 @@
     return done;
   }
   var figuresReady = () => pending;
+  async function reloadFigure(name, hash) {
+    if (!/^[\w-]+$/.test(name)) return false;
+    await loads.get(name);
+    if (window.beesonFigures?.[name]?.hash === hash) return true;
+    const was = window.beesonFigures?.[name];
+    const loading = new Promise((done) => {
+      const script2 = document.createElement("script");
+      script2.src = `figures/${name}.js?v=${encodeURIComponent(hash)}`;
+      script2.onload = script2.onerror = () => {
+        script2.remove();
+        done();
+      };
+      document.head.append(script2);
+    });
+    loads.set(name, loading);
+    await loading;
+    if (window.beesonFigures?.[name] !== was) {
+      previews.delete(name);
+      drawAgain(name);
+    }
+    return window.beesonFigures?.[name]?.hash === hash;
+  }
+  function drawAgain(name) {
+    for (const el of figuresUnder(document)) {
+      const state = drawn.get(el);
+      if (el.dataset.figure !== name || !state) continue;
+      state.key = "";
+      draw2(el, latest);
+    }
+  }
+  function previewFigure(name, output) {
+    if (output) previews.set(name, output);
+    else previews.delete(name);
+    drawAgain(name);
+  }
+  function compilingFigure(name) {
+    if (name === compiling) return;
+    const was = compiling;
+    compiling = name;
+    for (const n of [was, name]) if (n && !previews.has(n) && !window.beesonFigures?.[n]) drawAgain(n);
+  }
   function redrawFigures(mode2) {
     latest = mode2;
     for (const el of figuresUnder(document)) if (drawn.has(el)) draw2(el, mode2);
@@ -6819,10 +6862,11 @@ void main() {
     animated,
     surfaces,
     plots,
-    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs
+    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs. reload is
+    // called by the editor after the edit command wrote an output
     figures: { get ready() {
       return figuresReady();
-    } },
+    }, reload: reloadFigure, preview: previewFigure, compiling: compilingFigure },
     // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
     trajectories: register,
     // called by the editor after a structural change of the slides

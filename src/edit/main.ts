@@ -25,6 +25,7 @@ export { slideChanges, slidesOf } from '../session/slides.ts';
 export { checkAnchors, moveAnchors, REMOVED_MAX, slideAnchorAt, slideAt, startTagAt } from '../session/anchor.ts';
 export { Comments } from './comments.ts';
 export { deriveTex, TexWriter } from './tex.ts';
+export { FigureWatcher } from './figures.ts';
 
 const USAGE = 'usage: node theme/edit.mjs [folder] [--port N] [--no-open] [--relay URL]';
 

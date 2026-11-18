@@ -103,6 +103,7 @@ async function start(given: Handover): Promise<boolean> {
   const client = new Client(handover);
   current = client;
   for (const install of PARTS) install(client);
+  port.figures({ state: () => client.figures, token: () => client.token, on: (fn) => void client.on('figures', fn), host: () => client.host });
   void restore(client)
     .then((kept) => join(client, text, v, kept))
     .catch((e) => app.fail(e));

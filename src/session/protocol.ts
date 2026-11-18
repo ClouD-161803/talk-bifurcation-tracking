@@ -50,6 +50,24 @@ export type AppliedOp = {
 export type HelloRequest = { name: string; person?: string; token?: Token; v?: Version; claim?: boolean; was?: string; retire?: Token[] };
 // the answer of hello and of name when another person holds the name, and nothing is changed
 export type Taken = { taken: { name: string } };
+// an error of a compile of a TikZ figure, with file as a path from the talk folder, and file or line
+// null where TeX does not give one
+export type FigureError = { file: string | null; line: number | null; message: string };
+// the TikZ figures of the deck as the edit command compiles them. outputs holds the hash of the
+// output figures/name.js on disk of each figure with a valid name, or null without an output, and a
+// page loads an output again when its hash differs from the one of the figure it drew. compiling is
+// the figure being compiled into its output, errors the errors of the last compile of each figure
+// that failed, compiled the time in ms of the last compile of each figure, and uncompiled the count
+// of the figures whose output is stale or missing. compiler is missing without latex or dvisvgm
+export type FigureState = {
+  outputs: Record<string, string | null>;
+  compiling: string | null;
+  errors: Record<string, FigureError[]>;
+  compiled: Record<string, number>;
+  uncompiled: number;
+  compiler: 'found' | 'missing';
+};
+
 // the operations after the v of the request when they are in the log, and the whole text otherwise.
 // applied is the seq of the last operation of the client id was that the text holds, left out when
 // this client id is not known, e.g. after its operations left the table of the edit command. tex is
@@ -65,6 +83,7 @@ export type HelloAnswer = {
   people: Person[];
   known: KnownPerson[];
   tex: number;
+  figures: FigureState;
   applied?: number;
 } & ({ ops: AppliedOp[]; text?: undefined } | { text: string; ops?: undefined });
 
@@ -100,7 +119,7 @@ export type WriteError = { message: string; unwritten: number; file?: 'tex.js' }
 // a page that was dropped meanwhile. comments holds the threads changed since the last answer to
 // this page. a page reads the history and the comments again after each hello, since what changed
 // before is not sent to it. tex is as in HelloAnswer, and a page draws the deck again with tex.js
-// when it changed. overwritten is sent as restored is, after a change of index.html from outside
+// when it changed. figures is sent when it changed since the last answer to this page. overwritten is sent as restored is, after a change of index.html from outside
 // that replaced text that a person wrote in the session
 export type EventsAnswer = {
   v: Version;
@@ -108,6 +127,7 @@ export type EventsAnswer = {
   presence: Presence[];
   people: Person[];
   tex: number;
+  figures?: FigureState;
   known?: KnownPerson[];
   writeError?: WriteError | null;
   ended?: Ended;
