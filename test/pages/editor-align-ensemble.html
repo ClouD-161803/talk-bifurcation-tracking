@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Editor align deck</title>
+<link rel="stylesheet" href="../../theme/vendor/reveal/reset.css">
+<link rel="stylesheet" href="../../theme/vendor/reveal/reveal.css">
+<link rel="stylesheet" href="../../theme/vendor/fonts/stix-two-text.css">
+<link rel="stylesheet" href="../../theme/beeson.css">
+<script src="../../theme/mathjax-config.js"></script>
+<script src="../../theme/vendor/mathjax/tex-svg.js"></script>
+</head>
+<body>
+<!-- the deck of the tests of Align and Distribute of a selection as one ensemble, issue 184: two rounded rectangles side by side, a third shape under them, and a locked shape at the left -->
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <h2>Shapes</h2>
+  <div class="shape rounded" style="width: 400px; height: 200px; translate: 400px 300px"><p>A</p></div>
+  <div class="shape rounded" style="width: 400px; height: 200px; translate: 900px 300px"><p>B</p></div>
+  <div class="shape rounded" style="width: 200px; height: 200px; translate: 1500px 700px"><p>C</p></div>
+  <div class="shape rounded" style="width: 200px; height: 200px; translate: 100px 700px" data-locked><p>L</p></div>
+</section>
+
+</div>
+</div>
+<script src="../../theme/vendor/reveal/reveal.js"></script>
+<script src="../../theme/vendor/reveal/notes.js"></script>
+<script src="../../theme/beeson.js"></script>
+<script>Beeson.start({});</script>
+</body>
+</html>
