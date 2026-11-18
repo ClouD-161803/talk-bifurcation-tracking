@@ -11,7 +11,8 @@ import type { App } from '../app.ts';
 import { HOST } from '../app.ts';
 import { injectStyle } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
-import { groupOf, lockEls, membersOf } from '../commands/order.ts';
+import { GROUP_ACTIONS, groupAction, groupOf, lockEls, membersOf, runGroupAction } from '../commands/order.ts';
+import type { GroupAction } from '../commands/order.ts';
 import { scopeOf } from '../model/groups.ts';
 import { apartOf, turnersOf } from './drag.ts';
 import type { Box, Guide, Handle, Spacing } from './snap.ts';
@@ -60,10 +61,10 @@ html.beeson-rotating, html.beeson-rotating * { cursor: grabbing !important; user
 .beeson-grip[data-handle=ne], .beeson-grip[data-handle=sw] { cursor: nesw-resize; }
 .beeson-grip[data-handle=n], .beeson-grip[data-handle=s] { cursor: ns-resize; }
 .beeson-grip[data-handle=e], .beeson-grip[data-handle=w] { cursor: ew-resize; }
-.beeson-handle, .beeson-lock { position: fixed; width: 22px; height: 22px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--ed-line, var(--line, #555)); background: var(--ed-panel, var(--bg, #000)); color: var(--ed-text, var(--text, #eee)); font: 14px/20px system-ui, sans-serif; text-align: center; cursor: move; user-select: none; pointer-events: auto; }
-.beeson-handle:hover, .beeson-handle:focus-visible, .beeson-lock:hover, .beeson-lock:focus-visible { border-color: var(--ed-text, var(--text, #eee)); outline: none; }
-.beeson-lock { display: grid; place-items: center; cursor: default; touch-action: manipulation; }
-.beeson-lock.closed { background: var(--ed-text, var(--text, #eee)); color: var(--ed-panel, var(--bg, #000)); }
+.beeson-handle, .beeson-lock, .beeson-grouping { position: fixed; width: 22px; height: 22px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--ed-line, var(--line, #555)); background: var(--ed-panel, var(--bg, #000)); color: var(--ed-text, var(--text, #eee)); font: 14px/20px system-ui, sans-serif; text-align: center; cursor: move; user-select: none; pointer-events: auto; }
+.beeson-handle:hover, .beeson-handle:focus-visible, .beeson-lock:hover, .beeson-lock:focus-visible, .beeson-grouping:hover, .beeson-grouping:focus-visible { border-color: var(--ed-text, var(--text, #eee)); outline: none; }
+.beeson-lock, .beeson-grouping { display: grid; place-items: center; cursor: default; touch-action: manipulation; }
+.beeson-lock.closed, .beeson-grouping.filled { background: var(--ed-text, var(--text, #eee)); color: var(--ed-panel, var(--bg, #000)); }
 .beeson-guide { position: fixed; background: var(--ed-guide, #e8590c); }
 .beeson-guide.v { width: 1px; }
 .beeson-guide.h { height: 1px; }
@@ -255,6 +256,9 @@ export class Frames {
   private readonly locks: HTMLDivElement[] = [];
   private lockTargets: Element[][] = [];
   private columns = new Map<Element, Box>();
+  // the group button of the selection and its action
+  private readonly grouping: HTMLDivElement;
+  private groupAct: GroupAction | null = null;
   private readonly app: App;
 
   constructor(app: App) {
@@ -284,6 +288,9 @@ export class Frames {
     this.handle.setAttribute('role', 'button');
     this.handle.setAttribute('aria-label', 'Move the text element: the arrow keys nudge it, Enter puts it back');
     this.readout = div('beeson-offset', this.layer);
+    this.grouping = this.button('beeson-grouping', () => {
+      if (this.groupAct) runGroupAction(this.app, this.groupAct).catch((e) => this.app.fail(e));
+    });
   }
 
   // a button of the column left of a frame, pressed with a click, a tap, Enter, or Space. a press on
@@ -583,6 +590,29 @@ export class Frames {
       const column = { left: at.left, top: f.at.top - 6, width: HANDLE, height: at.top + HANDLE - (f.at.top - 6) };
       for (const el of f.els) this.columns.set(el, column);
     });
+    // the group button, under the padlock of one frame, or a row above the box of a selection of
+    // several frames, in the same column
+    const act = columns.length ? groupAction(app) : null;
+    this.groupAct = act;
+    this.grouping.hidden = !act;
+    if (act) {
+      const label = GROUP_ACTIONS[act];
+      if (this.grouping.title !== label) {
+        const filled = act === 'ungroup' || act === 'takeOut';
+        this.grouping.title = label;
+        this.grouping.setAttribute('aria-label', label);
+        this.grouping.classList.toggle('filled', filled);
+        this.grouping.innerHTML = groupIcon(filled);
+      }
+      const all = bounds(selected);
+      const at = columns.length === 1 ? { ...buttons[0], top: buttons[0].top + ROW } : { left: all.left - 6 - HANDLE_GAP - HANDLE, top: all.top - 6 - ROW, width: HANDLE, height: HANDLE };
+      Object.assign(this.grouping.style, { left: `${at.left}px`, top: `${at.top}px` });
+      buttons.push(at);
+      if (columns.length === 1) {
+        const column = this.columns.get(columns[0].els[0]) as Box;
+        for (const el of columns[0].els) this.columns.set(el, { ...column, height: column.height + ROW });
+      }
+    }
 
     // the canvas is given room for every grip, the rotate handle, and the buttons past the slide,
     // kept through a gesture so that the slide does not move under the pointer
@@ -681,6 +711,11 @@ export class Frames {
     this.gaps.slice(n).forEach((d) => (d.hidden = true));
   }
 }
+
+// the icon of the group button, on the grid of ui/icons.ts: a dashed frame around two outlined
+// squares where the action makes or grows a group, and a solid frame around two filled squares where
+// it takes a group apart or leaves it
+const groupIcon = (filled: boolean): string => `<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="15" height="15" rx="1"${filled ? '' : ' stroke-dasharray="2 2.6"'}/><rect x="5.5" y="5.5" width="5" height="5"${filled ? ' fill="currentColor"' : ''}/><rect x="9.5" y="9.5" width="5" height="5"${filled ? ' fill="currentColor"' : ''}/></svg>`;
 
 let installed: Frames | null = null;
 

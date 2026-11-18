@@ -603,7 +603,7 @@ export function install(app: App): void {
     quiet = false;
     const target = ev.target instanceof Element ? ev.target : null;
     // a button of the column left of a frame, e.g. a padlock, acts at its click
-    if (!target || target.closest('.beeson-lock')) return;
+    if (!target || target.closest('.beeson-lock, .beeson-grouping')) return;
     const sel = app.selection;
     if (target === frames.rotor) {
       const el = sel.only();
@@ -1233,7 +1233,7 @@ export function install(app: App): void {
   // is on its way to the handle at its upper left
   const hover = (ev: PointerEvent) => {
     const target = ev.target instanceof Element ? ev.target : null;
-    if (target && (target === frames.handle || target.closest('.beeson-grip, .beeson-lock, .beeson-table-bars'))) return;
+    if (target && (target === frames.handle || target.closest('.beeson-grip, .beeson-lock, .beeson-grouping, .beeson-table-bars'))) return;
     const el = pickOf(app, target);
     const band = el ? null : onCanvas(target, app, { x: ev.clientX, y: ev.clientY }) ? bandAt(app, ev.clientX, ev.clientY) : null;
     document.documentElement.classList.toggle('beeson-band', !!band);

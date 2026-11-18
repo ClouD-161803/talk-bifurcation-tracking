@@ -13,6 +13,8 @@ import { keepBeside } from './place.ts';
 import { docOf, onSlides } from './slide.ts';
 import { clearRange, selectedRange } from './table.ts';
 import { removeJoining } from '../text/elements.ts';
+import { dissolve } from './order.ts';
+import { groupsOf } from '../model/groups.ts';
 
 // the selected elements that are in the file, with the figure of a picture selected inside it, and
 // without the slides
@@ -51,7 +53,10 @@ export function install(app: App): void {
       await a.history.selecting('Delete', async () => {
         if (kept.length) a.selection.set('elements', kept);
         else a.selection.clear();
+        // the groups of the deleted elements, which a group left with one member is taken off
+        const ids = outer.flatMap((el) => [el, ...el.querySelectorAll('[data-group]')].flatMap(groupsOf));
         await removeJoining(a, outer.reverse(), 'delete');
+        dissolve(a, ids);
         keep((el, translate) => doc.setTag(el, { translate }, 'move'));
         held((el, translate) => doc.setTag(el, { translate }, 'move'));
       });

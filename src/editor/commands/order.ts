@@ -606,6 +606,69 @@ function setLock(app: App, on: boolean, targets: Element[] = lockTargets(app, on
   app.invalidate('selection');
 }
 
+// a group left with one member is dissolved, i.e. the name of each group of ids that has one member
+// or none on the page is taken off its last member and off the image of the other mode beside it,
+// after Take out of Group, Delete, and Cut. the scope is left at a dissolved group
+export function dissolve(app: App, ids: Iterable<string>): void {
+  for (const id of new Set(ids)) {
+    if (membersOf(app, id).length > 1) continue;
+    for (const el of (app.current() ?? document).querySelectorAll(`[data-group~="${CSS.escape(id)}"]`)) {
+      app.doc.setTag(el, { attrs: { 'data-group': groupValue(groupsOf(el).filter((n) => n !== id)) } }, 'ungroup');
+    }
+    const at = scopeOf().indexOf(id);
+    if (at >= 0) setScope(scopeOf().slice(0, at));
+  }
+}
+
+// the action of the group button of the selection, by the objects of the selection at the level of
+// the scope: Ungroup on one whole group, Take out of Group on members of the entered group, Add to
+// Group on one whole group with elements outside it, and Group on two objects or more. it is not
+// offered on a locked selection, which these commands do not change
+export type GroupAction = 'ungroup' | 'takeOut' | 'add' | 'group';
+export const GROUP_ACTIONS: Record<GroupAction, string> = { ungroup: 'Ungroup', takeOut: 'Take out of Group', add: 'Add to Group', group: 'Group' };
+export function groupAction(app: App): GroupAction | null {
+  const els = objectEls(app);
+  if (!els.length || lockedSelection(app)) return null;
+  const ids = new Set(els.map(groupOf).filter((g): g is string => !!g));
+  const loose = els.filter((el) => !groupOf(el)).length;
+  if (ids.size === 1 && !loose) return 'ungroup';
+  if (scopeOf().length && els.every((el) => within(el))) return 'takeOut';
+  if (ids.size === 1) return 'add';
+  return ids.size + loose > 1 ? 'group' : null;
+}
+
+export async function runGroupAction(app: App, action: GroupAction): Promise<void> {
+  if (action === 'group' || action === 'ungroup') return app.commands.run(`arrange.${action}`);
+  if (app.commands.refused('arrange.group')) return;
+  await app.history.selecting(GROUP_ACTIONS[action], () => (action === 'add' ? addToGroup(app) : takeOutOfGroup(app)));
+}
+
+// Add to Group gives each element outside the selected group the list of the group, i.e. the
+// names of a member up to the name of the group, and selects the whole group
+function addToGroup(app: App): void {
+  const els = objectEls(app);
+  const id = els.map(groupOf).find((g): g is string => !!g);
+  const member = els.find((el) => groupOf(el) === id);
+  if (!id || !member) return;
+  const list = groupsOf(member);
+  const value = groupValue(list.slice(0, list.indexOf(id) + 1));
+  for (const el of els) if (!groupOf(el)) app.doc.setTag(el, { attrs: { 'data-group': value } }, 'group');
+  app.selection.set('elements', membersOf(app, id));
+}
+
+// Take out of Group takes the name of the entered group off the selected members, leaves the group,
+// and keeps them selected
+function takeOutOfGroup(app: App): void {
+  const els = objectEls(app);
+  const id = scopeOf().at(-1);
+  if (!id) return;
+  for (const el of els) app.doc.setTag(el, { attrs: { 'data-group': groupValue(groupsOf(el).filter((n) => n !== id)) } }, 'ungroup');
+  setScope(scopeOf().slice(0, -1));
+  dissolve(app, [id]);
+  app.selection.set('elements', els);
+  app.invalidate('selection');
+}
+
 // the lock or the unlock of els by a padlock of the canvas, as one entry of the history, as Lock and
 // Unlock of the Arrange menu
 export async function lockEls(app: App, els: Element[], on: boolean): Promise<void> {
