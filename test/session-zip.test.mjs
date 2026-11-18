@@ -33,6 +33,7 @@ const PATH = ['File', 'Export To', 'Talk Folder…'];
 const PHONES = 'On a phone or a tablet, a deck is opened from a web server, such as the site of the repository. The talk folder is downloaded as a zip, which is unzipped and presented on a computer.';
 const DONE = `Unzip ${ZIP} first, unless your browser has already unzipped it. Then open index.html in the unzipped folder with a double click. On a phone or a tablet, a deck is opened from a web server instead.`;
 const MOVED = `Move ${ZIP} to a computer and unzip it there. Then open index.html in the unzipped folder with a double click.`;
+const FAILED = 'The talk folder could not be downloaded. Try again.';
 // the files of a talk folder that a deck does not load, which the zip leaves out
 const LEFT_OUT = ['.env', 'node_modules/x/a.js', 'check/a.png', 'slides.pdf', 'slides.pptx'];
 
@@ -675,4 +676,50 @@ test('on a Mac, Return during a download does not press Cancel, which Space pres
   await host.evaluate('(window.__hold.piece = false, window.__release())');
   assert.deepEqual(await host.evaluate('window.__saved'), []);
   clean(host);
+});
+
+// a signal ends a process at once on Windows, where a page is thus not told the end of the session
+test('the end of the session closes the dialog of a download that is on its way or that failed, and not the one of a finished download', { timeout: 840_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await zipTalk(t);
+  const pages = [];
+  for (const name of ['Ann', 'Ben', 'Cy']) pages.push(await editorOn(browser, sessionUrl(server.edit), { name }));
+  const [waiting, refused, finished] = pages;
+  // the button that has the focus before the menu is opened
+  const HOME = `[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Navigator')`;
+  for (const page of [waiting, refused]) await page.evaluate(`(${HOME}.focus(), true)`);
+  await waiting.evaluate('window.__hold.piece = true');
+  await choose(waiting, PATH);
+  await waiting.waitFor(`window.__held.length > 0 && /^Downloading ${NAME}\\.zip: 0\\.0 of /.test(window.__said.at(-1)?.text)`);
+  // the edit command has dropped the zip of this page, which a page cannot ask for again
+  await refused.evaluate(`window.__hold.piece = 'gone'`);
+  await choose(refused, PATH);
+  await refused.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(FAILED)}`);
+  assert.deepEqual((await refused.evaluate('window.__said')).at(-1), { text: FAILED, buttons: ['Close'] });
+  await downloadsTo(finished, join(server.root, 'downloads'));
+  await choose(finished, PATH);
+  await finished.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(DONE)}`, 60_000);
+
+  await stopEdit(server.edit);
+  const open = `[...document.querySelectorAll('dialog.beeson-edit-dialog[open] h3')].map((h) => h.textContent).sort()`;
+  for (const page of [waiting, refused]) {
+    await page.waitFor(`${open}.join() === 'The session has ended'`, 30_000);
+    assert.equal((await page.evaluate('window.__said')).at(-1), null);
+    assert.equal(await page.evaluate('document.activeElement?.textContent'), 'Close');
+    // the focus is given back through both dialogs, to where it was before the menu
+    await press(page, BUTTON('Close'));
+    await page.waitFor(`${open}.length === 0`, 10_000);
+    assert.equal(await page.evaluate(`document.activeElement === ${HOME}`), true, 'the focus is on the button that had it before Talk Folder…');
+  }
+  // the download was stopped with its dialog: the piece that is held was told the abort
+  await waiting.waitFor('window.__aborted === 1', 10_000);
+  // the download did not end with a request to try again, which a page of an ended session cannot follow
+  assert.deepEqual((await waiting.evaluate('window.__said')).filter((state) => state && state.buttons.join() !== 'Cancel'), []);
+  // what to do with the zip is still read once the end of the session is closed
+  await finished.waitFor(`${open}.join() === 'Talk Folder,The session has ended'`, 30_000);
+  assert.deepEqual((await finished.evaluate('window.__said')).at(-1), { text: DONE, buttons: ['Done'] });
+  await waiting.evaluate('(window.__hold.piece = false, window.__release())');
+  assert.deepEqual(await waiting.evaluate('window.__saved'), []);
+  assert.deepEqual(await refused.evaluate('window.__saved'), []);
 });
