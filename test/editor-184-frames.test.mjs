@@ -260,3 +260,140 @@ test('on a phone, a tap on the padlock locks the selected element', { timeout: 1
   assert.deepEqual(await selection(page), ['shape rounded loose'], 'the selection is not kept');
   assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
 });
+
+// the group button of the selection, with its label, whether it is drawn filled, its place, and its
+// center, or null where it is not drawn
+const grouping = (page) => page.evaluate(`(() => {
+  const d = [...document.querySelectorAll('.beeson-overlay .beeson-grouping')].find((d) => !d.hidden);
+  if (!d) return null;
+  const r = d.getBoundingClientRect();
+  return { label: d.getAttribute('aria-label'), title: d.title, filled: d.classList.contains('filled'), left: r.left, top: r.top, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`);
+const groupsOf = (page, selector) => page.evaluate(`[...document.querySelectorAll('.reveal section.present ${selector}')].map((el) => el.getAttribute('data-group'))`);
+const render = (page) => page.evaluate('window.BeesonEditor.render()');
+async function press1(page, button) {
+  await click(page, button);
+  await settle(page);
+}
+
+test('the group button ungroups a selected group, and groups two elements or two groups', async (t) => {
+  const page = await load(t);
+  await pick(page, '.shape.m1');
+  let b = await grouping(page);
+  assert.ok(b, 'a selected group does not have a group button');
+  assert.deepEqual([b.label, b.title, b.filled], ['Ungroup', 'Ungroup', true]);
+  const lock = (await padlocks(page))[0];
+  assert.ok(Math.abs(b.left - lock.left) <= 1 && Math.abs(b.top - (lock.top + 23)) <= 1, 'the group button is not under the padlock');
+  await press1(page, b);
+  assert.deepEqual(await groupsOf(page, '.shape.m1, .shape.m2, .shape.m3'), [null, null, null], 'the group is not taken apart');
+  assert.equal((await selection(page)).length, 3, 'the former members are not selected');
+  b = await grouping(page);
+  assert.deepEqual([b?.label, b?.filled], ['Group', false], 'the former members are not offered Group');
+  await undo(page);
+  await byteExact(page);
+  await redo(page);
+  assert.deepEqual(await groupsOf(page, '.shape.m1'), [null], 'a redo does not ungroup');
+  await undo(page);
+  await byteExact(page);
+
+  // two elements
+  await clear(page);
+  await pick(page, 'p.plain');
+  await pick(page, '.shape.loose', 'Shift');
+  b = await grouping(page);
+  assert.deepEqual([b?.label, b?.filled], ['Group', false], 'two elements are not offered Group');
+  const p = await box(page, 'p.plain'), loose = await box(page, '.shape.loose');
+  assert.ok(Math.abs(b.left - (Math.min(p.left, loose.left) - 6 - 10 - 22)) <= 1, 'the group button is not in the column of the selection');
+  assert.ok(Math.abs(b.top - (Math.min(p.top, loose.top) - 6 - 23)) <= 1, 'the group button is not a row above the selection');
+  await press1(page, b);
+  const [one, two] = [...(await groupsOf(page, 'p.plain')), ...(await groupsOf(page, '.shape.loose'))];
+  assert.ok(one && one === two, 'the two elements are not grouped');
+  assert.equal((await grouping(page))?.label, 'Ungroup', 'the new group is not offered Ungroup');
+  await undo(page);
+  await byteExact(page);
+
+  // two groups
+  await clear(page);
+  await pick(page, '.shape.m1');
+  await pick(page, 'p.pair', 'Shift');
+  assert.equal((await grouping(page))?.label, 'Group', 'two groups are not offered Group');
+  // one element by itself has no group button
+  await clear(page);
+  await pick(page, 'p.plain');
+  assert.equal(await grouping(page), null, 'one element has a group button');
+  assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+});
+
+test('the group button adds elements to a group, and takes members out of an entered group', async (t) => {
+  const page = await load(t);
+  await pick(page, '.shape.m1');
+  await pick(page, '.shape.loose', 'Shift');
+  let b = await grouping(page);
+  assert.deepEqual([b?.label, b?.filled], ['Add to Group', false], 'a group and an element are not offered Add to Group');
+  await press1(page, b);
+  assert.deepEqual(await groupsOf(page, '.shape.loose'), ['g1'], 'the element is not added to the group');
+  assert.equal((await selection(page)).length, 4, 'the whole group is not selected');
+  assert.equal((await grouping(page))?.label, 'Ungroup');
+  await undo(page);
+  await byteExact(page);
+  await redo(page);
+  assert.deepEqual(await groupsOf(page, '.shape.loose'), ['g1'], 'a redo does not add the element');
+  await undo(page);
+  await byteExact(page);
+
+  // a member taken out of its entered group stays selected, outside the group
+  await clear(page);
+  await pick(page, '.shape.m1');
+  await pick(page, '.shape.m1');
+  b = await grouping(page);
+  assert.deepEqual([b?.label, b?.filled], ['Take out of Group', true], 'a member of an entered group is not offered Take out of Group');
+  const lock = (await padlocks(page))[0];
+  assert.ok(Math.abs(b.left - lock.left) <= 1 && Math.abs(b.top - (lock.top + 23)) <= 1, 'the group button is not under the padlock');
+  await press1(page, b);
+  assert.deepEqual(await groupsOf(page, '.shape.m1, .shape.m2, .shape.m3'), [null, 'g1', 'g1'], 'the member is not taken out of the group');
+  assert.deepEqual(await selection(page), ['shape ellipse m1'], 'the member is not kept selected');
+  assert.equal(await page.evaluate(`[...document.querySelectorAll('.beeson-overlay .beeson-frame.entered')].some((d) => !d.hidden)`), false, 'the group is not left');
+  await undo(page);
+  await byteExact(page);
+
+  // a group left with one member is dissolved, in the same entry
+  await clear(page);
+  await pick(page, 'p.pair');
+  await pick(page, 'p.pair');
+  assert.equal((await grouping(page))?.label, 'Take out of Group');
+  await press1(page, await grouping(page));
+  assert.deepEqual(await groupsOf(page, 'p.pair'), [null, null], 'the group of one member is not dissolved');
+  await undo(page);
+  await byteExact(page);
+  await redo(page);
+  assert.deepEqual(await groupsOf(page, 'p.pair'), [null, null], 'a redo does not dissolve the group');
+  await undo(page);
+  await byteExact(page);
+  assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+});
+
+for (const id of ['element.delete', 'edit.cut']) {
+  test(`a group left with one member by ${id} is dissolved, in the same entry of the history`, async (t) => {
+    const page = await load(t);
+    await pick(page, 'p.pair');
+    await pick(page, 'p.pair');
+    assert.equal((await selection(page)).length, 1, 'one member of the group is not selected');
+    await page.evaluate(`window.BeesonEditor.exec(${JSON.stringify(id)}).then(() => true)`);
+    await settle(page);
+    assert.deepEqual(await groupsOf(page, 'p.pair'), [null], `the group of one member is not dissolved after ${id}`);
+    assert.match(await render(page), /<p class="pair" style="width: 500px">A second paired paragraph<\/p>/);
+    await undo(page);
+    await byteExact(page);
+
+    // a group of three left with two members is kept
+    await clear(page);
+    await pick(page, '.shape.m1');
+    await pick(page, '.shape.m1');
+    await page.evaluate(`window.BeesonEditor.exec(${JSON.stringify(id)}).then(() => true)`);
+    await settle(page);
+    assert.deepEqual(await groupsOf(page, '.shape[data-group], .shape.m2, .shape.m3'), ['g1', 'g1'], 'a group of two members is dissolved');
+    await undo(page);
+    await byteExact(page);
+    assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+  });
+}
