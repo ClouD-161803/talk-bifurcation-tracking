@@ -13,7 +13,7 @@ import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
 import { editProblems, textProblems, themeClasses } from '../src/editor/model/scope.ts';
 import { tokenize } from '../src/editor/tokens.ts';
-import { center, click, clickText, press, previewFrames, recordPreview, saveAndReopen, selectFigure, selectPicture } from './helpers/editor.mjs';
+import { center, click, clickText, press, previewFrames, readAtPlay, recordPreview, saveAndReopen, selectFigure, selectPicture } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test/pages/editor-r20-8.html';
@@ -309,11 +309,8 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(checked, ['push']);
     assert.equal(await page.evaluate(`!!document.querySelector('.beeson-edit-transition [data-command="slide.transition.push"]')`), true);
     await roundTrip(page, expected, 'Undo Transition');
-    await exec(page, 'slide.previewTransition');
-    await page.waitFor(`document.querySelector('.beeson-edit-preview')?.dataset.phase === 'play'`);
-    const kind = await page.evaluate(`(() => { const l = document.querySelector('.beeson-edit-preview'); return [l.dataset.kind, [...l.querySelectorAll('.shot')].map((s) => s.getAnimations().length)]; })()`);
+    const kind = await readAtPlay(page, `(() => { const l = document.querySelector('.beeson-edit-preview'); return [l.dataset.kind, [...l.querySelectorAll('.shot')].map((s) => s.getAnimations().length)]; })()`, () => exec(page, 'slide.previewTransition'));
     assert.deepEqual(kind, ['push', [1, 1]]);
-    await press(page, 'Escape');
     // Fade gives the file back
     await exec(page, 'slide.transition.fade');
     assert.equal(await render(page), SOURCE);

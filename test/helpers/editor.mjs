@@ -248,6 +248,27 @@ export async function previewFrames(page, timeout = 60000) {
 }
 
 /**
+ * Runs start(), which starts a Preview Transition, and returns the value of the expression read in
+ * the page at the start of the phase play, once the preview has ended. The preview is removed
+ * 0.35 s plus the time of its transition after this start, hence a read from the test may come
+ * after it on a slow runner.
+ */
+export async function readAtPlay(page, read, start, timeout = 20000) {
+  await page.evaluate(`(() => {
+    window.__transition = null;
+    new MutationObserver((records, observer) => {
+      if (document.querySelector('.beeson-edit-preview')?.dataset.phase !== 'play') return;
+      observer.disconnect();
+      window.__transition = { read: ${read} };
+    }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-phase'] });
+    return true;
+  })()`);
+  await start();
+  await page.waitFor(`!!window.__transition && !document.querySelector('.beeson-edit-preview')`, timeout);
+  return (await page.evaluate('window.__transition')).read;
+}
+
+/**
  * Waits for the expression done after a poster is captured by a click on the Poster Frame slider or
  * by a key, and fails with the message of a capture that fails. The capture waits up to 60 s for its
  * copy of the video to load and 60 s for each seek, see src/editor/media/poster.ts.

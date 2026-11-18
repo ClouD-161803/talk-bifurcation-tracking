@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, clickText, press, saveAndReopen } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, readAtPlay, saveAndReopen } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 // a deck of five slides whose second slide is hidden
@@ -451,11 +451,9 @@ for (const platform of PLATFORMS) {
     assert.deepEqual(await page.evaluate(TAGS), [[null, true], [null, true], ['none', false]], 'None on slide 4 is not written as the cut from slide 4 into slide 5');
     assert.deepEqual(await page.evaluate(SEG), ['none']);
     // Preview on slide 4 plays its own transition, from slide 4 into slide 5
-    await click(page, '.beeson-edit-transition .preview');
-    const plan = await page.evaluate(`(() => { const l = document.querySelector('.beeson-edit-preview'); return l && { kind: l.dataset.kind, shots: [...l.querySelectorAll('.shot')].map((s) => s.shadowRoot.querySelector('h1, h2')?.textContent.trim()) }; })()`);
+    const plan = await readAtPlay(page, `(() => { const l = document.querySelector('.beeson-edit-preview'); return l && { kind: l.dataset.kind, shots: [...l.querySelectorAll('.shot')].map((s) => s.shadowRoot.querySelector('h1, h2')?.textContent.trim()) }; })()`, () => click(page, '.beeson-edit-transition .preview'));
     const headings = await page.evaluate(`[...document.querySelectorAll('.reveal .slides > section')].slice(3, 5).map((s) => s.querySelector('h1, h2').textContent.trim())`);
     assert.deepEqual(plan, { kind: 'none', shots: headings }, 'Preview on slide 4 does not play the cut from slide 4 into slide 5');
-    await press(page, 'Escape');
     // Fade on slide 3 takes the Magic Move off both slides
     await goTo(2);
     assert.deepEqual(await page.evaluate(SEG), ['magic']);
