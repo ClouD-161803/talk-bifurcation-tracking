@@ -3,24 +3,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { availableParallelism, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { availableParallelism, constants, getPriority, tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // the options of node in the test command, and its script
 const command = JSON.parse(readFileSync('package.json', 'utf8')).scripts.test;
 const options = command.split(' ').slice(1);
+// the same options with the files of the repository given by their absolute paths, for a run in
+// another folder. node reads the module of --import as a URL on Windows
+const absolute = options.map((option, k) => (!option.endsWith('.mjs') ? option : options[k - 1] === '--import' ? pathToFileURL(resolve(option)).href : resolve(option)));
 
-// runs the test command on file from the root of the repository, without NODE_TEST_CONTEXT, since
-// node does not run the files of a test command inside a test. Resolves to the exit code and the
-// TAP report of the run in ended. The variables of GitHub Actions are left out, hence a warning of
-// a run is not read as one of the round
-function run(file, env = {}) {
+// runs the test command on file from the root of the repository, or from cwd, without
+// NODE_TEST_CONTEXT, since node does not run the files of a test command inside a test. Resolves to
+// the exit code, the TAP report, and the errors of the run in ended. The variables of GitHub Actions
+// are left out, hence a warning of a run is not read as one of the round
+function run(file, env = {}, cwd = undefined) {
   const { NODE_TEST_CONTEXT, GITHUB_ACTIONS, GITHUB_STEP_SUMMARY, ...rest } = process.env;
-  const child = spawn(process.execPath, [...options, ...[file].flat()], { env: { ...rest, ...env }, stdio: ['ignore', 'pipe', 'ignore'] });
+  const child = spawn(process.execPath, [...(cwd ? absolute : options), ...[file].flat()], { cwd, env: { ...rest, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   let report = '';
+  let errors = '';
   child.stdout.on('data', (data) => (report += data));
-  return { child, ended: new Promise((done) => child.once('close', (code) => done({ code, report }))) };
+  child.stderr.on('data', (data) => (errors += data));
+  return { child, ended: new Promise((done) => child.once('close', (code) => done({ code, report, errors }))) };
 }
 
 // most test files close their server after their browser, and on Windows the close of the browser
@@ -159,6 +165,50 @@ test('every test of a test file is reported, and a failed last test by its name 
         if (fail) assert.match(part, /^not ok 300 - test 299 x+\n(.*\n)*? +error: 'the last test fails'$/m);
       }
     }
+  }
+});
+
+// the whole suite takes over an hour on a laptop, with every core busy, and it is run by CI in
+// each round. A test command without test files is mostly an agent that runs the suite by habit
+test('the test command runs every test file only with --all or a shard, and otherwise asks for the test files', { timeout: 60000 }, async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'test'));
+  writeFileSync(join(root, 'test', 'one.test.mjs'), `import { test } from 'node:test';\ntest('one', () => {});`);
+  for (const args of [[], ['--all'], ['--shard=1/1']]) {
+    const { code, report, errors } = await run(args, {}, root).ended;
+    const ran = args.length > 0;
+    assert.equal(code, ran ? 0 : 1, `the exit code with ${args.join(' ') || 'no arguments'}`);
+    assert.equal(/^ok 1 - one$/m.test(report), ran, `the test is run with ${args.join(' ') || 'no arguments'}`);
+    if (!ran) assert.match(errors, /npm test -- test\/.*npm test -- --all/s);
+  }
+});
+
+// a laptop stays usable while the test files of a change are run. The browsers of the test files are
+// started by them, hence at the same priority. A runner of CI is not used for anything else
+test('outside CI, the test files and the processes that they start are run at the lowest priority', { timeout: 60000 }, async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(
+    join(root, 'priority.test.mjs'),
+    `import assert from 'node:assert/strict';
+     import { spawn } from 'node:child_process';
+     import { getPriority } from 'node:os';
+     import { test } from 'node:test';
+     test('the priority', async () => {
+       const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)']);
+       await new Promise((done) => child.once('spawn', done));
+       try {
+         assert.deepEqual([getPriority(), getPriority(child.pid)], [Number(process.env.PRIORITY), Number(process.env.PRIORITY)]);
+       } finally {
+         child.kill();
+       }
+     });`,
+  );
+  // on CI the priority of the command is kept, which is the one of this test
+  for (const [ci, priority] of [['', constants.priority.PRIORITY_LOW], ['true', getPriority()]]) {
+    const { code, report } = await run(join(root, 'priority.test.mjs'), { CI: ci, PRIORITY: String(priority) }).ended;
+    assert.equal(code, 0, `the priority ${ci ? 'on' : 'outside'} CI is not ${priority}:\n${report}`);
   }
 });
 
