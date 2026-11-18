@@ -9,7 +9,7 @@ import { after, before, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, drag, press, saveAndReopen, selectFigure, type } from './helpers/editor.mjs';
+import { byteExact, center, click, drag, press, saveAndReopen, selectFigure, type, typeKeys } from './helpers/editor.mjs';
 
 const LAYOUTS_DECK = 'test/pages/editor-layouts.html';
 const FIGURE = '<figure class="figure-box">';
@@ -248,9 +248,7 @@ test('a text box is a p after the last block of the column, with the caret in it
   assert.equal((await settle(page)).undo, false);
   assert.equal(await render(page), page.source);
   await page.evaluate(`window.BeesonEditor.exec('insert.text')`);
-  await type(page, 'A new text');
-  await sleep(100);
-  await type(page, ' box');
+  await typeKeys(page, 'A new text box');
   await settle(page);
   const ul = page.source.slice(page.source.indexOf('<ul style="translate: 0px 20px">'), page.source.indexOf('</ul>', page.source.indexOf('<ul style="translate: 0px 20px">')) + 5);
   // the box is moved down with the list above it, by the 20 px of its translate, and it is kept

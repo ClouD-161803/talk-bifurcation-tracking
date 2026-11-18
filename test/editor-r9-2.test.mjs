@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, drag, press, saveAndReopen, type, typeKeys } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -179,16 +179,6 @@ for (const platform of PLATFORMS) {
     await roundTrip(page);
     await noRawTex(page);
   });
-}
-
-// text typed key by key at the caret, as the shoot of the council types it, with a frame after
-// each key so that the substitution of the key is made before the next one
-async function typeKeys(page, text) {
-  for (const ch of text) {
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: ch, text: ch, unmodifiedText: ch });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: ch });
-  }
-  await frames(page);
 }
 
 // the caret put into the block of selector by a click, then moved after the first occurrence of

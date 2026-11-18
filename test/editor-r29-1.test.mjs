@@ -8,7 +8,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch, printView } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { click, clickText, drag, press, saveAndReopen, type, typeKeys } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const SLIDE = '.reveal .slides > section.present';
@@ -273,10 +273,7 @@ for (const platform of PLATFORMS) {
     await clickText(page, await call(page, screenOf, { x: p.left + p.width - 4, y: p.top + p.height / 2 }));
     await frames(page);
     await press(page, 'End');
-    for (const word of ' and many more words that wrap the paragraph onto a second line and onto a third line of the column'.split(/(?= )/)) {
-      await type(page, word);
-      await sleep(20);
-    }
+    await typeKeys(page, ' and many more words that wrap the paragraph onto a second line and onto a third line of the column');
     await sleep(150);
     await press(page, 'Escape');
     await frames(page);

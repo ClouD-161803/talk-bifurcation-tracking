@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, click, clickText, press, type } from './helpers/editor.mjs';
+import { byteExact, click, clickText, press, type, typeKeys } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -135,10 +135,7 @@ for (const platform of PLATFORMS) {
   test(`an undo of a word typed into a new text box leaves the empty box (${platform})`, async (t) => {
     const page = await load(t, platform, 4);
     await newBox(page);
-    for (const key of 'Hello') {
-      await type(page, key);
-      await sleep(120);
-    }
+    await typeKeys(page, 'Hello');
     await sleep(1200);
     await type(page, '!');
     await sleep(300);
