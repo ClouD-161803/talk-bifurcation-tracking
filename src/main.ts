@@ -15,6 +15,7 @@ import { mountQr } from './qr.ts';
 import { mountShapes } from './shapes.ts';
 import { figuresReady, mountFigures, redrawFigures } from './tikz.ts';
 import { initScrub } from './scrub.ts';
+import { initOverview } from './overview.ts';
 import { mount as mountSurfaces, onRestore } from './surface.ts';
 import type { Surface } from './surface.ts';
 import { mount as mountBundles, type Bundle } from './bundle.ts';
@@ -324,6 +325,7 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   if (!EDITING && !deck.isPrintView() && !/print-pdf/.test(location.search)) {
     if (!PLAYED) initFullscreen();
     initScrub(deck);
+    initOverview(deck);
     // the videos and the viewers of the style play are played at their steps, and not while the deck
     // is edited, when every step is shown
     initVideos(deck);

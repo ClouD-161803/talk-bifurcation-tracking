@@ -3866,6 +3866,85 @@
     });
   }
 
+  // src/overview.ts
+  var PINCH = 0.7;
+  var PAUSE = 150;
+  var FULL = 1.03;
+  var distance = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  function initOverview(deck) {
+    const reveal = deck.getRevealElement();
+    let swipe = { x: 0, y: 0, from: 0, to: 0, step: 0, last: -Infinity };
+    const width = () => {
+      const slides2 = deck.getHorizontalSlides();
+      const h = deck.getIndices().h;
+      const next = slides2[h + 1] ?? slides2[h - 1];
+      return next ? Math.abs(next.getBoundingClientRect().left - slides2[h].getBoundingClientRect().left) : 0;
+    };
+    const onWheel = (ev) => {
+      if (ev.ctrlKey) return;
+      ev.preventDefault();
+      const unit = ev.deltaMode === 1 ? 40 : ev.deltaMode === 2 ? window.innerWidth : 1;
+      const h = deck.getIndices().h;
+      if (ev.timeStamp - swipe.last > PAUSE) swipe = { x: 0, y: 0, from: h, to: h, step: width(), last: 0 };
+      swipe.from += h - swipe.to;
+      swipe.to = h;
+      swipe.last = ev.timeStamp;
+      swipe.x += ev.deltaX * unit;
+      swipe.y += ev.deltaY * unit;
+      if (Math.abs(ev.deltaX) <= Math.abs(ev.deltaY)) return;
+      if (!swipe.step || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;
+      const passed = Math.sign(swipe.x) * Math.ceil(Math.abs(swipe.x) / swipe.step);
+      swipe.to = Math.min(Math.max(swipe.from + passed, 0), deck.getHorizontalSlides().length - 1);
+      if (swipe.to !== h) deck.slide(swipe.to);
+    };
+    deck.on("overviewshown", () => {
+      window.addEventListener("wheel", onWheel, { passive: false });
+      reveal.style.touchAction = "none";
+    });
+    deck.on("overviewhidden", () => {
+      window.removeEventListener("wheel", onWheel);
+      reveal.style.touchAction = "";
+    });
+    let pinch = null;
+    document.addEventListener("touchstart", (ev) => {
+      pinch = null;
+      if (ev.touches.length !== 2) return;
+      const zoom = window.visualViewport?.scale ?? 1;
+      const own = ev.target instanceof Element && ev.target.closest("tycho-viewer");
+      if (!deck.isOverview() && (zoom >= FULL || own)) return;
+      const [a, b] = [ev.touches[0], ev.touches[1]];
+      pinch = { from: distance(ev.touches), x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+    }, { passive: true });
+    const read2 = (scale) => {
+      if (!pinch) return;
+      if (!deck.isOverview() && scale < PINCH) {
+        pinch = null;
+        deck.toggleOverview(true);
+      } else if (deck.isOverview() && scale > 1 / PINCH) {
+        const under = document.elementFromPoint(pinch.x, pinch.y)?.closest(".slides section:not(.stack)");
+        pinch = null;
+        deck.toggleOverview(false);
+        if (under) deck.slide(Number(under.dataset.indexH), Number(under.dataset.indexV ?? 0));
+      }
+    };
+    document.addEventListener("touchmove", (ev) => {
+      if (pinch && ev.touches.length === 2) read2(distance(ev.touches) / pinch.from);
+    }, { passive: true });
+    const lift = (ev) => {
+      if (ev.touches.length < 2) pinch = null;
+    };
+    document.addEventListener("touchend", lift, { passive: true });
+    document.addEventListener("touchcancel", lift, { passive: true });
+    const gesture = (ev) => {
+      const scale = ev.scale;
+      if (!pinch) return;
+      if (deck.isOverview() || scale < 1) ev.preventDefault();
+      read2(scale);
+    };
+    document.addEventListener("gesturestart", gesture, { passive: false });
+    document.addEventListener("gesturechange", gesture, { passive: false });
+  }
+
   // src/contour.ts
   function isolines(g, nx, ny, x0, y0, dx, dy = dx, close = false) {
     const at = (i, j) => g[j * (nx + 1) + i];
@@ -6443,6 +6522,7 @@ void main() {
     if (!EDITING && !deck.isPrintView() && !/print-pdf/.test(location.search)) {
       if (!PLAYED) initFullscreen();
       initScrub(deck);
+      initOverview(deck);
       initVideos(deck);
       initViewers(deck);
       if (internal) initClick(deck, () => internal.cueAutoSlide(), ENDS ? () => toEditor("edit") : void 0);
