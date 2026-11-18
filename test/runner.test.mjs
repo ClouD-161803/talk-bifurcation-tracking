@@ -80,6 +80,29 @@ test('a test that fails in one run of its file is named in a warning, and one th
   }
 });
 
+// GitHub reads a percent sign and a line break in the text of a workflow command, and a colon and
+// a comma in the value of a property, as parts of the command. A warning with one of them was cut
+test('the warning of a round has the characters of a workflow command escaped', { timeout: 60000 }, async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'slides-runner-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(
+    join(root, 'a,b.test.mjs'),
+    `import { existsSync, writeFileSync } from 'node:fs';
+     import { test } from 'node:test';
+     test('100% of a::b\\nand c', () => {
+       const second = existsSync(process.env.SEEN);
+       writeFileSync(process.env.SEEN, '');
+       if (!second) throw new Error('the test fails');
+     });`,
+  );
+  const { code, report } = await run(join(root, 'a,b.test.mjs'), { SEEN: join(root, 'seen'), GITHUB_ACTIONS: 'true' }).ended;
+  assert.equal(code, 0);
+  const warning = /^::warning file=(.*),title=Passed in its second run::(.*)$/m.exec(report);
+  assert.ok(warning, 'the warning is written as a workflow command');
+  assert.match(warning[1], /^[^,:]*a%2Cb\.test\.mjs$/);
+  assert.match(warning[2], /^100%25 of a::b%0Aand c failed in .*a,b\.test\.mjs and passed when the file was run again$/);
+});
+
 // the reports of the last tests of a file were lost at times when its process was ended, since the
 // writes of its reports to the pipe of the test command were still queued. Their loss is random,
 // hence each file is run ten times. A file with a failed test is reported twice, for its two runs
