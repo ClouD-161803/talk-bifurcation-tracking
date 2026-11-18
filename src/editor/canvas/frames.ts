@@ -45,24 +45,23 @@ export const wh = (w: number, h: number) => `w: ${Math.round(w)} px  h: ${Math.r
 
 const CSS = `
 .beeson-overlay { position: fixed; inset: 0; z-index: 51; pointer-events: none; }
-.beeson-frame { position: fixed; pointer-events: none; box-sizing: border-box; border: 1px dashed var(--ed-muted, var(--subtle, #bbb)); }
-.beeson-frame.selected { border: 2px solid var(--ed-select, #7048e8); }
-.beeson-frame.union.group { border: 2px solid var(--ed-select, #7048e8); }
-.beeson-frame.entered { border: 1px dashed var(--ed-select, #7048e8); opacity: 0.6; }
+.beeson-frame { position: fixed; pointer-events: none; box-sizing: border-box; border: 1px solid var(--ed-muted, var(--subtle, #bbb)); opacity: 0.3; }
+.beeson-frame:where(.selected, .union, .entered, .caret) { border: 1px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55); opacity: 1; }
+.beeson-frame.entered { border-style: dashed; }
 .beeson-overlay [hidden] { display: none !important; }
-.beeson-grip { position: fixed; width: 9px; height: 9px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; border: 1.5px solid var(--ed-select, #7048e8); background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; }
+.beeson-grip { position: fixed; width: 10px; height: 10px; margin: -6px 0 0 -6px; border-radius: 50%; border: 1px solid #444; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; }
 .beeson-frame.selected.locked { border-color: #8a8a8a; }
 .beeson-grip.square { border-radius: 0; }
 .beeson-grip.locked { width: 9px; height: 9px; border: 0; border-radius: 0; background: linear-gradient(45deg, transparent 42%, #8a8a8a 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, #8a8a8a 42% 58%, transparent 58%); box-shadow: none; pointer-events: none; }
-.beeson-rotor { position: fixed; width: 14px; height: 14px; margin: -7px 0 0 -7px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--ed-select, #7048e8); background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); color: var(--ed-select, #7048e8); font: 600 10px/11px system-ui, sans-serif; text-align: center; cursor: grab; user-select: none; pointer-events: auto; touch-action: none; }
-.beeson-rotor-stem { position: fixed; width: 1px; height: 11px; margin-left: -0.5px; background: var(--ed-select, #7048e8); transform-origin: 50% 0; }
+.beeson-rotor { position: fixed; width: 14px; height: 14px; margin: -7px 0 0 -7px; box-sizing: border-box; border-radius: 50%; border: 1px solid #444; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); color: #444; font: 600 10px/12px system-ui, sans-serif; text-align: center; cursor: grab; user-select: none; pointer-events: auto; touch-action: none; }
+.beeson-rotor-stem { position: fixed; width: 1px; height: 11px; margin-left: -0.5px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); transform-origin: 50% 0; }
 html.beeson-rotating, html.beeson-rotating * { cursor: grabbing !important; user-select: none !important; }
 .beeson-grip[data-handle=nw], .beeson-grip[data-handle=se] { cursor: nwse-resize; }
 .beeson-grip[data-handle=ne], .beeson-grip[data-handle=sw] { cursor: nesw-resize; }
 .beeson-grip[data-handle=n], .beeson-grip[data-handle=s] { cursor: ns-resize; }
 .beeson-grip[data-handle=e], .beeson-grip[data-handle=w] { cursor: ew-resize; }
 .beeson-handle { position: fixed; width: 22px; height: 22px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--ed-line, var(--line, #555)); background: var(--ed-panel, var(--bg, #000)); color: var(--ed-text, var(--text, #eee)); font: 14px/20px system-ui, sans-serif; text-align: center; cursor: move; user-select: none; pointer-events: auto; }
-.beeson-handle:hover, .beeson-handle:focus-visible { border-color: var(--ed-select, #7048e8); outline: none; }
+.beeson-handle:hover, .beeson-handle:focus-visible { border-color: var(--ed-text, var(--text, #eee)); outline: none; }
 .beeson-guide { position: fixed; background: var(--ed-guide, #e8590c); }
 .beeson-guide.v { width: 1px; }
 .beeson-guide.h { height: 1px; }
@@ -231,8 +230,10 @@ export class Frames {
   // the one frame of a selected group, and the frame of each group of a selection with other objects
   private readonly union: HTMLDivElement;
   private readonly unions: HTMLDivElement[] = [];
-  // the group that a click entered, drawn dimmed around its members
+  // the group that a click entered, drawn dashed around its members
   private readonly entered: HTMLDivElement;
+  // the frame of a text with the caret that no other frame holds, e.g. a cell of a table
+  private readonly caret: HTMLDivElement;
   // the distance of the rotate handle above the frame, kept while it is dragged
   private rotorAt = ROTOR;
   // the box of a selected group on the screen, as last drawn, which its one set of grips resizes,
@@ -255,6 +256,7 @@ export class Frames {
     this.frames.push(div('beeson-frame selected', this.layer));
     this.union = div('beeson-frame union group', this.layer);
     this.entered = div('beeson-frame entered', this.layer);
+    this.caret = div('beeson-frame caret', this.layer);
     // the first guide on each axis is always there, at the line snapped to
     this.guides.push(div('beeson-guide v', this.layer), div('beeson-guide h', this.layer));
     this.marquee = div('beeson-marquee', this.layer);
@@ -417,6 +419,10 @@ export class Frames {
     const inside = scope.length && selected.length ? membersOf(app, scope[scope.length - 1]).filter((el) => el.getClientRects().length) : [];
     this.entered.hidden = !inside.length;
     if (inside.length) place(this.entered, groupFrame(inside, 0));
+    const host = app.hostOf(document.activeElement);
+    const typed = host?.closest('.reveal .slides') && !selected.some((el) => el.contains(host)) ? host : null;
+    this.caret.hidden = !typed;
+    if (typed) place(this.caret, grow(typed.getBoundingClientRect(), 6));
 
     const only = app.selection.only();
     // a set of grips for each element with grips, and one for each group, at its frame

@@ -85,7 +85,7 @@ for (const theme of ['dark', 'light']) {
     assertWhite(await looks(page, '.beeson-overlay .beeson-frame.selected'), 'a member of an entered group');
 
     await clear(page);
-    await pick(page, 'svg.line line');
+    await pick(page, 'svg.line');
     const ends = await looks(page, '.beeson-line-end');
     assert.ok(ends.length > 0, 'the ends of the line are not shown');
     for (const e of ends) assert.equal(e.color, RING, 'the ring of an end of a line');

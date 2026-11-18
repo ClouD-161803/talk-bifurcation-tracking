@@ -12,9 +12,9 @@ import { showTex } from './shown-tex.ts';
 import { injectStyle } from '../ui/dom.ts';
 
 const CSS = `
-html.beeson-editing .reveal [contenteditable="true"] { cursor: text; outline: 1px dashed transparent; outline-offset: 6px; border-radius: 2px; }
-html.beeson-editing .reveal [contenteditable="true"]:hover { outline-color: var(--subtle, #bbb); }
-html.beeson-editing .reveal [contenteditable="true"]:focus { outline: 2px solid var(--violet, #96f); }
+html.beeson-editing .reveal [contenteditable="true"] { cursor: text; outline: 1px solid transparent; outline-offset: 6px; border-radius: 2px; }
+html.beeson-editing .reveal [contenteditable="true"]:hover { outline-color: color-mix(in srgb, var(--ed-muted, var(--subtle, #bbb)) 30%, transparent); }
+html.beeson-editing .reveal [contenteditable="true"]:focus { outline-color: transparent; }
 html.beeson-editing .reveal [contenteditable="true"] mjx-container { cursor: pointer; border-radius: 2px; }
 html.beeson-editing .reveal [contenteditable="true"] mjx-container:hover, html.beeson-editing .reveal [contenteditable="true"] mjx-container:focus-visible { outline: 1px dashed var(--accent, #f80); outline-offset: 4px; }
 `;
