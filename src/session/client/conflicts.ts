@@ -1,8 +1,8 @@
-// the dialog of the conflicts after a break: at a reconnect after the page was offline for over
-// OFFLINE ms with edits that wait, and at a join that took over a copy of copy.ts, the texts that
-// the person and someone else both changed are listed with their slides, and the person keeps
-// either version. every other edit of both sides is merged either way. a typing race of pages that
-// are online is merged without a dialog, and the edit of this page wins
+// the dialog of the conflicts after a break: at a reconnect more than OFFLINE ms after the poll of
+// the page failed, with edits that wait, and at a join that took over a copy of copy.ts, the texts
+// that the person and someone else both changed are listed with their slides, and the person keeps
+// either version. every other edit of both sides is merged either way. a typing race of pages whose
+// polls are answered is merged without a dialog, and the edit of this page wins
 
 import { conflict, diff } from '../patch.ts';
 import type { Side } from '../replica.ts';
@@ -18,12 +18,12 @@ dialog.beeson-session-conflicts .row button { min-height: 32px; }
 dialog.beeson-session-conflicts li { overflow-wrap: anywhere; }
 `;
 
-type State = { armed: boolean; since: number | null };
+type State = { armed: boolean; offline: boolean };
 const states = new WeakMap<Client, State>();
 
 function stateOf(client: Client): State {
   let st = states.get(client);
-  if (!st) states.set(client, (st = { armed: false, since: null }));
+  if (!st) states.set(client, (st = { armed: false, offline: false }));
   return st;
 }
 
@@ -142,12 +142,12 @@ export function install(client: Client): void {
   const st = stateOf(client);
   client.on('state', () => {
     if (client.connection === 'offline' || client.connection === 'no-host') {
-      st.since ??= Date.now();
+      st.offline = true;
       return;
     }
-    if (client.connection === 'online' && st.since !== null) {
-      if (Date.now() - st.since > OFFLINE && !client.acked()) st.armed = true;
-      st.since = null;
+    if (client.connection === 'online' && st.offline) {
+      if (client.lostAt !== null && Date.now() - client.lostAt > OFFLINE && !client.acked()) st.armed = true;
+      st.offline = false;
     }
     // every edit of the break was sent without a conflict
     if (st.armed && client.acked()) st.armed = false;

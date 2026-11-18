@@ -6,7 +6,8 @@
 // them. the regression tests at the end cover the save state before the first copy, edits typed
 // before hello is answered, two copies that conflict, a copy of an earlier session, the dialog of
 // the conflicts at a join, after a removed slide, and after a close by the browser, the parse of
-// the deck for this dialog, the pictures of a copy, and a first open of IndexedDB that answers late
+// the deck for this dialog, the pictures of a copy, a first open of IndexedDB that answers late, and
+// an operation that fails while the poll is answered, which does not open the dialog of the conflicts
 
 import assert from 'node:assert/strict';
 import { readFileSync, truncateSync, writeFileSync } from 'node:fs';
@@ -857,6 +858,34 @@ test('the end of the session closes the dialog of the conflicts, keeps the versi
   await ann.waitFor(`!document.querySelector('dialog.beeson-session-conflicts')`);
   assert.equal(await ann.evaluate(`document.querySelector('dialog.beeson-edit-dialog[open] p').textContent`), 'Your changes up to now are in index.html. Your changes on slides 1 and 2 did not reach index.html.');
   assert.equal(await ann.evaluate(`${el(0, 'p')}.textContent`), 'Opening slide');
+  clean(ann);
+  clean(ben);
+});
+
+test('an operation that fails while the poll of its page is answered does not open the dialog of the conflicts, and a text that another person changes meanwhile is merged', { timeout: 120_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await talk(t);
+  const url = sessionUrl(server.edit);
+  const ann = await tab(browser, url);
+  const ben = await open(browser, url, { name: 'Ben' });
+  await converge(server, [ann, ben]);
+  // the operations of Ann fail, while her poll waits at the edit command, which has no news for it.
+  // window.__offAt is the time at which Ann was last taken offline
+  await ann.evaluate(`(${C}.on('state', () => (window.__offAt = ${C}.connection === 'offline' ? (window.__offAt ?? Date.now()) : null)), true)`);
+  await ann.evaluate('window.__blockOps = true');
+  await show(ann, 'One');
+  await select(ann, el(0, 'p'), 0, 5);
+  await type(ann, 'Opening');
+  await ann.waitFor(`${C}.connection === 'offline' && Date.now() - window.__offAt > 5500`, 20_000);
+  await show(ben, 'One');
+  await select(ben, el(0, 'p'), 0, 5);
+  await type(ben, 'Initial');
+  await front(ann);
+  await ann.waitFor(`${C}.base.text.includes('<p>Initial slide</p>') || !!document.querySelector('dialog.beeson-session-conflicts[open]')`, 20_000);
+  assert.equal(await ann.evaluate(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`), false);
+  await ann.evaluate(`(window.__blockOps = false, ${C}.tryNow(), true)`);
+  assert.equal(await converge(server, [ann, ben]), TALK.replace('<p>First slide</p>', '<p>Opening slide</p>'));
   clean(ann);
   clean(ben);
 });
