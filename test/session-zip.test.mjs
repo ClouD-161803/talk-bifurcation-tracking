@@ -599,3 +599,28 @@ test('a tablet of Windows without a keyboard or a mouse downloads the zip at onc
   assert.deepEqual(await tablet.evaluate('window.__saved'), [ZIP]);
   clean(tablet);
 });
+
+test('a guest whose talk folder is over the limit of a download through the relay is told its size and the limit, and nothing is downloaded', { timeout: 360_000 }, async (t) => {
+  const relay = await startRelay({ host: '127.0.0.1', secret: SECRET });
+  t.after(() => relay.close());
+  const server = await zipTalk(t, { relay, env: { SLIDES_ZIP_MAX_BYTES: String(MB) } });
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const guest = await editorOn(browser, server.guestUrl, { name: 'Ben' });
+  const dir = join(server.root, 'guest downloads');
+  await downloadsTo(guest, dir);
+  await choose(guest, PATH);
+  await guest.waitFor(`window.__said.at(-1)?.buttons?.join() === 'Close'`);
+  // the bytes of the talk folder: index.html with the wrapped name, and each file of the folder that
+  // is not left out. the wrapped copy of the JSON file does not count
+  const index = Buffer.byteLength(server.read()) + '.js'.length;
+  const bytes = files(server.folder).filter((f) => f !== 'index.html' && !LEFT_OUT.includes(f)).reduce((n, f) => n + statSync(join(server.folder, f)).size, index);
+  const size = (Math.ceil((bytes / MB) * 10) / 10).toFixed(1);
+  assert.deepEqual((await guest.evaluate('window.__said')).at(-1), { text: `The talk folder is ${size} MB, over the limit of 1 MB for a download through the relay.`, buttons: ['Close'] });
+  assert.deepEqual(await guest.evaluate('window.__zip.map((r) => r.method)'), ['POST']);
+  assert.deepEqual(await guest.evaluate('window.__saved'), []);
+  assert.deepEqual(readdirSync(dir), []);
+  await press(guest, BUTTON('Close'));
+  await guest.waitFor('window.__said.at(-1) === null');
+  clean(guest, [/status of 413/]);
+});
