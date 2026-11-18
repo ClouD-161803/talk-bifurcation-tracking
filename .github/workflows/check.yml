@@ -51,10 +51,10 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       # the tests read the demo deck, hence a talk made with "Use this template" checks only its deck
-      # npm test on the files of the shard of the job, split by their durations in test/timings.json.
-      # With --test-force-exit, a test file that leaves a server open after a failed cleanup is ended,
-      # and with --test-timeout, a test file that does not end fails by name after 20 minutes
-      - run: node scripts/shard.mjs ${{ matrix.shard }}/7
+      # npm test with the shard of the job, an option that is read only before the files. With
+      # --test-force-exit, a test file that leaves a server open after a failed cleanup is ended, and
+      # with --test-timeout, a test file that does not end fails by name after 20 minutes
+      - run: node --test --test-force-exit --test-timeout=1200000 --test-shard=${{ matrix.shard }}/7 "test/*.test.mjs"
         if: ${{ github.repository == 'beeson-group/slides' }}
 
   # the checks test (ubuntu-latest) and test (windows-latest) are required on main, hence the result

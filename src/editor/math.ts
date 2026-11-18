@@ -9,9 +9,10 @@ export type MathLookup = (el: Element) => MathInfo | null;
 
 type MathItem = { math: string; display: boolean; start: { delim?: string }; end: { delim?: string }; typesetRoot?: Element };
 type MathJaxApi = {
-  startup: { promise: Promise<unknown>; document: { getMathItemsWithin(nodes: Element[]): MathItem[] } };
+  startup: { promise: Promise<unknown>; document: { getMathItemsWithin(nodes: Element[]): MathItem[]; clearMathItemsWithin(nodes: Element[]): MathItem[] } };
   typesetClear(nodes: Element[]): void;
   typesetPromise(nodes: Element[]): Promise<unknown>;
+  typeset?(nodes: Element[]): void;
   tex2svgPromise?(tex: string, options?: { display?: boolean }): Promise<Element>;
 };
 
