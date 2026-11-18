@@ -32,6 +32,7 @@ const WRAP = 'Beeson.trajectories(';
 const PATH = ['File', 'Export To', 'Talk Folder…'];
 const PHONES = 'On a phone or a tablet, a deck is opened from a web server, such as the site of the repository. The talk folder is downloaded as a zip, which is unzipped and presented on a computer.';
 const DONE = `Unzip ${ZIP} first, unless your browser has already unzipped it. Then open index.html in the unzipped folder with a double click. On a phone or a tablet, a deck is opened from a web server instead.`;
+const MOVED = `Move ${ZIP} to a computer and unzip it there. Then open index.html in the unzipped folder with a double click.`;
 // the files of a talk folder that a deck does not load, which the zip leaves out
 const LEFT_OUT = ['.env', 'node_modules/x/a.js', 'check/a.png', 'slides.pdf', 'slides.pptx'];
 
@@ -191,6 +192,10 @@ const PAGE = `{
     if (button) window.__pressed.push(button.textContent);
   }, true);
 }`;
+
+// a phone of Android. without it, the page has the platform of its runner, which is a computer for
+// a touch screen alone on Windows
+const PHONE = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Linux armv8l' });`;
 
 // a page of the editor on the deck of zipTalk at url, with PAGE. its MathJax, backdrops, and video
 // take longer to start than the small deck of TALK in test/helpers/client.mjs, for which open()
@@ -495,4 +500,59 @@ test('a guest downloads the talk folder through the relay with its last edit, an
       await backdropsDrawn(name, deckFile);
     });
   }
+});
+
+test('on a phone, Talk Folder… is reached through the File menu, tells about phones and tablets first, and downloads the zip only after Download', { timeout: 540_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await zipTalk(t);
+  // the editor is told that the phone is not a Mac, as on Android, where Return presses the button
+  // that has the focus. on a Mac it presses the default button of a dialog
+  const phone = await editorOn(browser, `${sessionUrl(server.edit)}&edit-platform=other`, { name: 'Cy', width: 390, height: 844, mobile: true, script: PHONE });
+  assert.deepEqual(await phone.evaluate(`[matchMedia('(any-pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches, navigator.platform]`), [true, 'Linux armv8l'], 'the page has a touch screen alone');
+  const dir = join(server.root, 'phone downloads');
+  await downloadsTo(phone, dir);
+
+  await choose(phone, PATH, { tap: true });
+  await phone.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(PHONES)}`);
+  assert.deepEqual(await phone.evaluate('window.__said'), [{ text: PHONES, buttons: ['Cancel', 'Download'] }]);
+  await press(phone, BUTTON('Cancel'), { tap: true });
+  await phone.waitFor('window.__said.at(-1) === null');
+  assert.deepEqual(await phone.evaluate('({ zip: window.__zip, saved: window.__saved })'), { zip: [], saved: [] });
+
+  await choose(phone, PATH, { tap: true });
+  await phone.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(PHONES)}`);
+  // a screen reader reads the sentence with the title of the dialog
+  const described = `document.getElementById(document.querySelector('dialog.beeson-edit-dialog[open]').getAttribute('aria-describedby'))`;
+  assert.equal(await phone.evaluate(`${described}?.textContent`), PHONES);
+  // and each later text of the download once it is written
+  assert.equal(await phone.evaluate(`${described}.getAttribute('aria-live')`), 'polite');
+  // the pieces of the zip are held, hence the zip is still on its way at the second tap and at the key
+  await phone.evaluate('window.__hold.piece = true');
+  await press(phone, BUTTON('Download'), { tap: true });
+  await phone.waitFor(`window.__held.length > 0 && /^Downloading ${NAME}\\.zip: 0\\.0 of /.test(window.__said.at(-1)?.text)`);
+  // Download keeps its place and the focus without an effect while the zip is on its way, so that a
+  // second tap or Return does not land on Cancel
+  const way = `({ buttons: window.__said.at(-1)?.buttons, focus: document.activeElement?.textContent, posts: window.__zip.filter((r) => r.method === 'POST').length })`;
+  const held = { buttons: ['Cancel', 'Download (disabled)'], focus: 'Download', posts: 1 };
+  assert.deepEqual(await phone.evaluate(way), held);
+  await press(phone, BUTTON('Download'), { tap: true });
+  await enter(phone);
+  await phone.waitFor(`window.__pressed.join() === 'Cancel,Download,Download,Download'`).catch(() => {});
+  assert.deepEqual(await phone.evaluate('window.__pressed'), ['Cancel', 'Download', 'Download', 'Download']);
+  assert.deepEqual(await phone.evaluate(way), held);
+  await phone.evaluate('(window.__hold.piece = false, window.__release())');
+  const zip = await downloaded(dir, ZIP);
+  await phone.waitFor(`window.__said.at(-1)?.text === ${JSON.stringify(MOVED)}`, 10_000);
+  const said = await phone.evaluate('window.__said');
+  const states = said.slice(said.lastIndexOf(null) + 1);
+  assert.deepEqual(states[0], { text: PHONES, buttons: ['Cancel', 'Download'] });
+  assert.deepEqual(states.at(-1), { text: MOVED, buttons: ['Done'] });
+  assert.ok(states.length > 2, JSON.stringify(states));
+  for (const state of states.slice(1, -1)) assert.deepEqual(state.buttons, ['Cancel', 'Download (disabled)'], JSON.stringify(state));
+  assert.deepEqual(await phone.evaluate('window.__saved'), [ZIP]);
+  assert.deepEqual(readdirSync(dir), [ZIP]);
+  assert.equal((await phone.evaluate('window.__zip')).filter((r) => r.method === 'POST').length, 1);
+  assertZip(zip, server.folder, server.read());
+  clean(phone);
 });
