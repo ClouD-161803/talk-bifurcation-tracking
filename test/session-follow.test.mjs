@@ -146,8 +146,7 @@ test('a click on an avatar follows the person to the slide, and brings the selec
   await t.test('Enter and Space on the focused avatar stop and follow again, and the menu goes to the slide', async () => {
     await front(ben);
     await ben.evaluate(`document.querySelector(${JSON.stringify(avatar('Ana'))}).focus()`);
-    // a key of Enter that a button takes as a click carries its text
-    for (const type of ['keyDown', 'keyUp']) await ben.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
+    await key(ben, 'Enter');
     await following(ben, null);
     await key(ben, 'Space');
     await following(ben, anaId);
@@ -219,9 +218,9 @@ test('following stops at the avatar, Stop, Escape, a selection, a slide, an edit
     await ben.evaluate(`void ${C}.app.commands.run('file.present')`);
     await ben.waitFor(`!!document.querySelector('body > .beeson-edit-show')`);
     await stopped('a show');
-    await front(ana);
+    // the page of Ben stays in front. a page that is not in front is taken out of full screen, and
+    // its show ends when the blur of its window comes more than 100 ms after this change
     await ana.waitFor(`${C}.resolved().some((r) => r.name === 'Ben' && r.mode === 'present')`);
-    await front(ben);
     await ben.evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await ben.waitFor(`!document.querySelector('.beeson-edit-show')`);
     await front(ana);

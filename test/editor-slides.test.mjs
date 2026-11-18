@@ -150,6 +150,38 @@ test('the slides after the closing slide are numbered by their places, as in the
   assert.deepEqual(errors(page), []);
 });
 
+test('the preview of a row is not shown when its slide is deleted before the preview delay', async (t) => {
+  const page = await open('mac');
+  t.after(() => page.close?.());
+  const titled = 'Show your steps one at a time';
+  assert.equal((await rows(page))[2].title, titled);
+  await pick(page, 2);
+  // the pointer is moved onto the slide, so that a row moved under it does not end the timer of the
+  // preview. the keydown of Backspace deletes the slide in a listener of the editor that runs first.
+  // the pointerenter is then sent to the row of the slide in the same task, before the 300 ms of
+  // the preview could have passed
+  const slide = await page.evaluate(`(() => {
+    const b = window.Reveal.getCurrentSlide().getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+  })()`);
+  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: slide.x, y: slide.y });
+  await page.evaluate(`(() => {
+    const row = document.querySelectorAll('.beeson-edit-nav .row')[2];
+    addEventListener('keydown', (e) => {
+      if (e.key !== 'Backspace') return;
+      row.dispatchEvent(new PointerEvent('pointerenter'));
+      // started after the timer of the preview with the same delay, hence it fires after it
+      setTimeout(() => (window.peekDue = true), 300);
+    }, { capture: true, once: true });
+  })()`);
+  await press(page, 'Backspace');
+  await page.waitFor('window.peekDue === true');
+  await settle(page);
+  assert.ok(!(await titles(page)).includes(titled), 'the slide is deleted');
+  assert.equal(await page.evaluate(`document.querySelector('.beeson-edit-peek').hidden`), true);
+  assert.deepEqual(errors(page), []);
+});
+
 for (const platform of ['mac', 'other']) {
   const mod = platform === 'mac' ? 'Meta' : 'Ctrl';
 

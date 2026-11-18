@@ -599,7 +599,11 @@ class Pane {
         error.hidden = true;
       }
     };
-    (box as HTMLElement & { sync?: () => void }).sync = sync;
+    // a render of the pane fills an open list again, e.g. for a person who became known to the page
+    (box as HTMLElement & { sync?: () => void }).sync = () => {
+      sync();
+      if (!people.hidden) update();
+    };
     // the marks moved by the change from last to the value of the field, and those that the change
     // touches dropped
     const move = () => {
@@ -623,13 +627,19 @@ class Pane {
       area.setSelectionRange(m.start, m.start);
     };
     const query = () => /(?:^|\s)@([^\s@]{0,40})$/.exec(area.value.slice(0, area.selectionStart ?? 0));
+    let drawn = '';
     const close = () => {
+      drawn = '';
       people.hidden = true;
       choices = [];
       area.setAttribute('aria-expanded', 'false');
       area.removeAttribute('aria-activedescendant');
     };
     const draw = () => {
+      // a list drawn again under the pointer would lose a click on it
+      const sign = JSON.stringify([active, choices.map((c) => [c.person, c.name, this.colorOf(c.person), this.client.people.some((p) => p.person === c.person)])]);
+      if (sign === drawn) return;
+      drawn = sign;
       people.replaceChildren(...choices.map((c, k) => {
         const li = make('li');
         li.id = `${people.id}-${k}`;
@@ -653,12 +663,15 @@ class Pane {
       if (!m) return close();
       const q = m[1].toLowerCase();
       const here = new Set(this.client.people.map((p) => p.person));
+      const was = people.hidden ? null : choices[active]?.person;
       choices = this.client.known
         .filter((k) => k.person !== this.client.person && k.name.toLowerCase().includes(q))
         .sort((a, b) => Number(here.has(b.person)) - Number(here.has(a.person)) || Number(b.name.toLowerCase().startsWith(q)) - Number(a.name.toLowerCase().startsWith(q)) || a.name.localeCompare(b.name))
         .slice(0, 6);
       if (!choices.length) return close();
-      active = Math.min(active, choices.length - 1);
+      // the highlight stays on its person while this person is in the list
+      const at = choices.findIndex((c) => c.person === was);
+      active = at < 0 ? Math.min(active, choices.length - 1) : at;
       people.hidden = false;
       area.setAttribute('aria-expanded', 'true');
       draw();

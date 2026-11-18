@@ -43,18 +43,28 @@ export async function showSlide(page, heading) {
 
 /** The caret put at the end of the text element of expression, with the focus in it. */
 export async function caretAtEnd(page, expression) {
-  const ok = await page.evaluate(`(() => {
+  // true, or what the page held when the focus did not go to the text element
+  const state = await page.evaluate(`(() => {
     const host = ${expression};
-    if (!host) return false;
+    if (!host) return 'not found';
     host.focus();
     const r = document.createRange();
     r.selectNodeContents(host);
     r.collapse(false);
     getSelection().removeAllRanges();
     getSelection().addRange(r);
-    return document.activeElement === host;
+    if (document.activeElement === host) return true;
+    const a = document.activeElement;
+    return {
+      contenteditable: host.getAttribute('contenteditable'),
+      connected: host.isConnected,
+      drawn: host.getClientRects().length > 0,
+      current: !!window.Reveal?.getCurrentSlide?.()?.contains(host),
+      active: a && a.localName + (a.id ? '#' + a.id : '') + (typeof a.className === 'string' && a.className ? '.' + a.className.trim().split(/\\s+/).join('.') : ''),
+      visibility: document.visibilityState,
+    };
   })()`);
-  assert.ok(ok, `the caret is in ${expression}`);
+  assert.equal(state, true, `the caret is in ${expression}, and the page holds ${JSON.stringify(state)}`);
 }
 
 /** The apply of text on page, with its reload flag and the tags of the elements it changed. */

@@ -83,8 +83,11 @@ export async function copied(page, part, timeout = 15_000) {
   return (await rows(page)).find((r) => r.mine.includes(part)).id;
 }
 
-/** Waits on a page of the same origin until the page of the copy id is gone for the Web Locks API. */
-export const released = (page, id) => page.waitFor(`navigator.locks.query().then((q) => !q.held.some((l) => l.name === 'beeson-session-copy:${id}'))`);
+/**
+ * Waits on a page of the same origin until the page of the copy id is gone for the Web Locks API,
+ * for 60 s, since a closed page of a slow Chrome may hold its lock for longer than 15 s.
+ */
+export const released = (page, id, timeout = 60_000) => page.waitFor(`navigator.locks.query().then((q) => !q.held.some((l) => l.name === 'beeson-session-copy:${id}'))`, timeout);
 
 // the open dialog of the conflicts at a reconnect, as its title, the items of its list, and its buttons
 export const CONFLICTS = `(() => {

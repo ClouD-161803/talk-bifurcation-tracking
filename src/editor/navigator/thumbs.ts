@@ -213,10 +213,20 @@ export function drawBackdrops(slide: Element, clone: Element): void {
   });
 }
 
+// the surfaces and strip bundles of slide that were never drawn, drawn with slide laid out. fit in
+// src/surface.ts and src/bundle.ts draws only in a laid-out slide, and the theme calls it again
+// when the slide is shown, hence a far slide that was never shown has a blank canvas.surface-image
+function drawSurfaces(slide: Element): void {
+  const all = (window as unknown as { Beeson?: { surfaces?: { el: HTMLElement; fit(): void }[] } }).Beeson?.surfaces ?? [];
+  const due = all.filter((s) => slide.contains(s.el) && !s.el.querySelector(':scope > canvas.surface-image')?.hasAttribute('width'));
+  if (due.length && slide instanceof HTMLElement) laidOut(slide, () => due.forEach((s) => s.fit()));
+}
+
 // a clone of slide for its thumbnail, with every step shown, or the first range of steps of a slide whose
 // elements are hidden at a step. its canvases are painted from the originals at the scale of the
 // thumbnail, a tycho viewer shows a still of its scene, and a video shows its poster
 export function cloneSlide(slide: Element, scale: number): HTMLElement {
+  drawSurfaces(slide);
   const clone = slide.cloneNode(true) as HTMLElement;
   clone.querySelectorAll('aside.notes').forEach((n) => n.remove());
   const from = [...slide.querySelectorAll('canvas')];
