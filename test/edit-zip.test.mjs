@@ -564,3 +564,42 @@ test('a path of data-trajectories is read from the base element of the deck, and
     if (file) assert.equal(got.get(file).bytes.toString('utf8'), `Beeson.trajectories(${json});\n`);
   }
 });
+
+test('a page downloads its zip in pieces, which a second request, a DELETE, or another page does not reach', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  put(talk, 'media/big.png', randomBytes(5 * MB));
+  const running = await inProcess(t, root, talk);
+  const { port, key } = running;
+  const ann = await hello(t, port, key, 'Ann');
+  const bo = await hello(t, port, key, 'Bo');
+  const cy = await hello(t, port, key, 'Cy');
+  assert.equal((await post(port, api(key, 'bye'), { token: cy })).status, 200);
+  for (const token of ['', 'n'.repeat(22), cy]) {
+    const refused = await makeZip(port, key, token);
+    assert.equal(refused.status, 404, token);
+    assert.deepEqual(refused.json(), { error: 'say hello first' });
+  }
+  assert.equal((await raw(port, 'GET', `${api(key, 'zip')}?token=${ann}`)).status, 405);
+
+  const first = await download(port, key, ann);
+  assert.ok(first.size > 2 * PIECE, 'the zip is asked for in three pieces');
+  assert.equal(entries(first.zip).length, 2);
+  assert.ok((await raw(port, 'GET', `${api(key, `zip/${first.id}`)}?token=${ann}`)).body.equals(first.zip.subarray(0, PIECE)), 'a piece without at starts at 0');
+  for (const at of [PIECE - 5, first.size - 10]) assert.ok((await pieceOf(port, key, ann, first.id, at)).body.equals(first.zip.subarray(at, at + PIECE)), `the piece at ${at}`);
+  for (const at of [first.size, -1, 1.5, 'x']) assert.equal((await pieceOf(port, key, ann, first.id, at)).status, 416, `at=${at}`);
+  const other = await pieceOf(port, key, bo, first.id, 0);
+  assert.equal(other.status, 404);
+  assert.deepEqual(other.json(), { error: 'the zip is not kept any more' });
+  assert.equal((await raw(port, 'PUT', `${api(key, `zip/${first.id}`)}?token=${ann}`, { body: '' })).status, 405);
+
+  const second = await makeZip(port, key, ann);
+  assert.equal(second.status, 200);
+  const { id } = second.json();
+  assert.notEqual(id, first.id);
+  assert.equal((await pieceOf(port, key, ann, first.id, 0)).status, 404, 'the first zip is dropped');
+  assert.equal((await pieceOf(port, key, ann, id, 0)).status, 200);
+  const dropped = await dropZip(port, key, ann, id);
+  assert.equal(dropped.status, 200);
+  assert.deepEqual(dropped.json(), {});
+  assert.equal((await pieceOf(port, key, ann, id, 0)).status, 404);
+});
