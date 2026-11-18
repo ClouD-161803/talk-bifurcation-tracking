@@ -2493,6 +2493,7 @@ var json = (status, value) => ({
 });
 var error = (status, message) => json(status, { error: message });
 var hiddenSegment = (s) => s.startsWith(".") || s.endsWith(".") || s.endsWith(" ") || s.toLowerCase() === "node_modules";
+var servedSegment = (s) => s !== "" && !hiddenSegment(s) && !/[\\/:\0]/.test(s);
 function segmentsOf(rest) {
   const out = [];
   for (const raw of rest.split("/")) {
@@ -2502,7 +2503,7 @@ function segmentsOf(rest) {
     } catch {
       return null;
     }
-    if (s === "" || hiddenSegment(s) || /[\\/:\0]/.test(s)) return null;
+    if (!servedSegment(s)) return null;
     out.push(s);
   }
   return out;
