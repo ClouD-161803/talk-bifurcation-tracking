@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { byteExact, center, click, clickText, drag, press, saveAndReopen, type } from './helpers/editor.mjs';
+import { byteExact, center, click, clickText, drag, openFormula, press, saveAndReopen, type } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 
@@ -239,7 +239,7 @@ for (const platform of PLATFORMS) {
   test(`Esc from the sheet of an inline formula selects its block as an object (${platform})`, async (t) => {
     const page = await load(t, platform, { n: 3 });
     const para = '.reveal section.present p[data-fragment-index="2"]';
-    await clickText(page, `${para} mjx-container`);
+    await openFormula(page, `${para} mjx-container`);
     await sleep(300);
     assert.equal(await sheetOpen(page), true);
     await press(page, 'Escape');
