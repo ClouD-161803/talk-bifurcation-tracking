@@ -1152,7 +1152,39 @@ test('only a name picked from the list is a mention, and a name typed by hand is
   clean(b);
 });
 
-test('the list of people at an @ stays open while the field loses the focus and has it again, and closes once the focus leaves', { timeout: 300_000 }, async (t) => {
+test('an open list of people at an @ is filled again when the people known to the page change, and keeps the highlighted person', { timeout: 300_000 }, async (t) => {
+  const { pages: [a, b] } = await pair(t, ['Ann', 'Ben', 'Annabel']);
+  const LIST = `[...document.querySelectorAll('${PANE} .draft .people li')].map((li) => li.children[1].textContent)`;
+  const PICKED = `document.querySelector('${PANE} .draft .people li[aria-selected="true"]')?.children[1].textContent ?? null`;
+  // the page of Ben knows only the people not named here, until all of them are known again
+  const without = (name) => b.evaluate(`(() => { const c = ${C}; window.__known ??= c.known; c.known = window.__known.filter((p) => p.name !== ${JSON.stringify(name)}); c.emit('known'); return true; })()`);
+  const all = () => b.evaluate(`(() => { const c = ${C}; c.known = window.__known; c.emit('known'); return true; })()`);
+  await show(b, 'One');
+  await click(b, '.reveal .slides > section:nth-child(1) p');
+  await press(b, COMMENT_KEY);
+  await b.waitFor(`document.activeElement?.matches('${DRAFT}')`);
+  await b.waitFor(`${C}.known.some((p) => p.name === 'Annabel')`);
+  // as when Annabel is named to the page of Ben only after the keys
+  await without('Annabel');
+  await typeKeys(b, '@An');
+  await sees(b, LIST, ['Ann']);
+  await all();
+  await sees(b, LIST, ['Ann', 'Annabel']);
+  // the highlight stays on its person when the list changes under it
+  await press(b, 'ArrowDown');
+  await sees(b, PICKED, 'Annabel');
+  await without('Ann');
+  await sees(b, LIST, ['Annabel']);
+  await all();
+  await sees(b, LIST, ['Ann', 'Annabel']);
+  assert.equal(await b.evaluate(PICKED), 'Annabel');
+  await press(b, 'Enter');
+  assert.equal(await b.evaluate('document.activeElement.value'), '@Annabel ');
+  clean(a);
+  clean(b);
+});
+
+test('the list of people at an @ stays open while the field loses the focus and has it again, and closes once the focus leaves',{ timeout: 300_000 }, async (t) => {
   const { pages: [a, b] } = await pair(t);
   const LIST = `!document.querySelector('${PANE} .draft .people').hidden`;
   await show(b, 'One');
