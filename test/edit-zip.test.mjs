@@ -10,7 +10,7 @@ import { chmodSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, syml
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { start } from '../theme/edit.mjs';
-import { post, raw, talkFolder, within } from './helpers/session.mjs';
+import { DECK, post, raw, talkFolder, within } from './helpers/session.mjs';
 import { entries, unzipTo } from './helpers/zip.mjs';
 
 const MB = 1024 * 1024;
@@ -211,4 +211,64 @@ test('links are followed inside the talk folder only, and a link to its own fold
   const got = byName(zip);
   assert.deepEqual([...got.keys()], ['index.html', 'alias/a.txt', 'link.txt', 'notes.txt', 'sub/a.txt']);
   for (const n of ['alias/a.txt', 'link.txt', 'sub/a.txt']) assert.ok(got.get(n).bytes.equals((await raw(port, 'GET', `/${key}/${n}`)).body), n);
+});
+
+test('the top folder of the zip is named after the talk folder without the characters that Windows refuses', { skip: !unix, timeout: 60_000 }, async (t) => {
+  const { root } = talkFolder(t);
+  const talk = join(root, 'Talk: draft?.');
+  put(talk, 'index.html', DECK);
+  const running = await inProcess(t, root, talk);
+  const token = await hello(t, running.port, running.key, 'Ann');
+  const { zip, name } = await download(running.port, running.key, token);
+  assert.equal(name, 'Talk- draft-.zip');
+  assert.equal(entries(zip)[0].name, 'Talk- draft-/index.html');
+});
+
+test('a talk folder named after a device of Windows, with a long name, or with a character that Windows or Chrome does not take in a name, gives a zip and a top folder that both take', { skip: !unix, timeout: 180_000 }, async (t) => {
+  const names = [
+    ['aux', 'aux-'],
+    ['COM1.talk', 'COM1-.talk'],
+    ['auxiliary', 'auxiliary'],
+    // the digits that Windows reserves as well, and a device name with spaces before the dot
+    ['LPT\u00b9', 'LPT\u00b9-'],
+    ['com\u00b3.x', 'com\u00b3-.x'],
+    ['con .txt', 'con- .txt'],
+    // Extract All of Windows names a folder after the zip around the top folder, and a path of
+    // Windows holds 259 characters, hence the name is cut to 64, without a dot or a space at its end
+    ['x'.repeat(100), 'x'.repeat(64)],
+    [`${'y'.repeat(63)}. a long name`, 'y'.repeat(63)],
+    // Windows counts a path in the units of UTF-16, of which an emoji has two, and an emoji is not cut
+    ['\u{1f600}'.repeat(40), '\u{1f600}'.repeat(32)],
+    [`${'z'.repeat(63)}\u{1f600}`, 'z'.repeat(63)],
+    ['CONIN$', 'CONIN$-'],
+    ['conout$.x', 'conout$-.x'],
+    ['clock$', 'clock$-'],
+    // the - of a device counts in the 64, and a name that is cut to a device is one
+    [`COM1.${'a'.repeat(59)}`, `COM1-.${'a'.repeat(58)}`],
+    [`con${' '.repeat(59)}.x`, 'con-'],
+    [`aux${' '.repeat(61)}x`, 'aux-'],
+    // a dot, a space, or a ~ at the start, the last of which Chrome replaces in the name of a
+    // download, and a name of which nothing is left
+    ['.talk', 'talk'],
+    [' talk', 'talk'],
+    ['~talk', 'talk'],
+    ['...', 'talk'],
+    // a decomposed name is composed, on every system
+    ['cafe\u0301', 'caf\u00e9'],
+    // the control and the format characters, which Chrome replaces as well: DEL, NEL, the override of
+    // the direction, and the joiner
+    ['a\u007fb\u0085c', 'a-b-c'],
+    ['talk\u202egpj.exe', 'talk-gpj.exe'],
+    ['ta\u200dlk', 'ta-lk'],
+  ];
+  for (const [folder, name] of names) {
+    const { root } = talkFolder(t);
+    const talk = join(root, 'devices', folder);
+    put(talk, 'index.html', DECK);
+    const running = await inProcess(t, root, talk);
+    const token = await hello(t, running.port, running.key, 'Ann');
+    const got = await download(running.port, running.key, token);
+    assert.equal(got.name, `${name}.zip`);
+    assert.equal(entries(got.zip)[0].name, `${name}/index.html`);
+  }
 });
