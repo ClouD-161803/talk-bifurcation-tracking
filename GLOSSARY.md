@@ -132,6 +132,10 @@ To grow a region of an animated plot as a disk from a point until the region is 
 
 The key `spread` of an old talk is `iris`.
 
+## Jump
+
+A move of the show to a slide that is neither the next one nor the previous one, e.g. with the scrubber, in the overview, with the Home or the End key, or with a link. After a jump back, the slide is shown with every step, and after a jump ahead, at its first step.
+
 ## Kind
 
 The sort of a theorem, e.g. lemma, definition, or proof, written in `data-kind`, which gives its title, its style, and its counter.
@@ -143,6 +147,12 @@ Avoid "type" and "environment".
 A short text placed at a point of a backdrop or of a surface, such as the name of L1 or of the Moon.
 
 Avoid "lab", the class of a label in an old talk, which is `label`.
+
+## Last viewed slide
+
+The slide and the step that were left at the last jump. On the band of the scrubber, an angle that points back is drawn before its number or its name, and a click on it shows the slide at the step left.
+
+Avoid "mark", which is a drawn element of an animated plot.
 
 ## Late step
 
@@ -224,6 +234,12 @@ What a person in a session sees of the others: who is there, the slide each one 
 
 Avoid "awareness" and "cursors".
 
+## Reach
+
+The height at the bottom edge of the window within which a pointer opens the band of the scrubber. It is higher for a finger than for a mouse.
+
+Avoid "strip", which is the surface of a strip bundle.
+
 ## Reference
 
 The short entry of a cited paper in the footnote line of its slide, e.g. Koon et al., Chaos 10 (2000).
@@ -241,6 +257,16 @@ Avoid "server" and "hub".
 The PNG of the page of a PDF figure, written by the editor or by `npm run tex`, in the colors of a mode or in those of the PDF.
 
 Avoid "rasterization" and "preview".
+
+## Rest
+
+The time for which a pointer stays in the reach before the band of the scrubber is opened. A pointer on its way to a control low on a slide crosses the reach without a rest.
+
+Avoid "delay", which is the delay of a step, and avoid "dwell".
+
+## Scrubber
+
+A line of progress with ticks, on which a place is chosen with the pointer. The scrubber of a show is its progress line, magnified into a band while it is open. A tick is the place of a numbered slide on the band. The name of a section is the text of its running head, and the name of the closing slide is its heading, both written over the ticks. The scrubber of an animated plot is the line under the plot, with a tick at each event.
 
 ## Session
 
