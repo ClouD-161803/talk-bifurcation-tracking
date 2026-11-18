@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 import { deckSettled, launch } from '../scripts/chrome.mjs';
 import { serve } from '../scripts/webdriver.mjs';
-import { click, clickText, press, typeKeys } from './helpers/editor.mjs';
+import { click, clickText, openFormula, press, typeKeys } from './helpers/editor.mjs';
 
 const PLATFORMS = ['mac', 'other'];
 const DECK = 'test/pages/editor-clipboard-keys.html';
@@ -164,7 +164,7 @@ for (const platform of PLATFORMS) {
   test(`an inline formula framed with Esc is copied and pasted with its text element by the keys (${platform})`, async (t) => {
     const page = await load(t, platform);
     const li = `Reveal.getCurrentSlide().querySelector('li')`;
-    await clickText(page, await page.evaluate(`(() => { const r = ${li}.querySelector('mjx-container').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`));
+    await openFormula(page, '.reveal section.present li mjx-container');
     await page.waitFor(`!!document.activeElement?.matches('.beeson-math textarea')`);
     await press(page, 'Escape');
     await page.waitFor(`(() => { const s = window.BeesonEditor.selection(); return !document.querySelector('.beeson-math') && s.length === 1 && s[0].contains(${li}); })()`);

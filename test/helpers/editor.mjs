@@ -160,6 +160,15 @@ async function maskOf(page, modifiers) {
 }
 
 /**
+ * Opens the sheet of the first formula matched by selector by focusing it and pressing Enter, as
+ * Tab and Enter do, since a click on an inline formula shows its TeX in its text.
+ */
+export async function openFormula(page, selector) {
+  await page.evaluate(`(() => { const m = document.querySelector(${JSON.stringify(selector)}); m.focus(); return true; })()`);
+  await press(page, 'Enter');
+}
+
+/**
  * Trusted presses of a key string, e.g. 'Mod+Z', 'Shift+ArrowUp', or 'Escape', count times. The
  * presses are sent at once, as typeKeys sends its keys, hence they are one entry of the history.
  */

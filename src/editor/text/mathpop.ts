@@ -1,6 +1,6 @@
 // the TeX of a formula is edited in a sheet beside the line or the list item that holds it, as the
 // Edit Equation popover of Keynote, flipped to the other side where the window ends: a title, a tall field of the TeX, a live preview, and Cancel with Apply, or Insert for a new
-// formula. a click on a formula, or Enter on a focused one, opens the sheet, and a TeX with an
+// formula. a click on a display, or Enter on a focused formula, opens the sheet, and a TeX with an
 // error is refused before the slide is touched. an empty TeX is shown as a gray prompt and is not
 // applied. the field completes the macros of the deck and the commands of TeX after a
 // backslash, and texEditor gives the same field with its preview to the Formula pane of the
@@ -11,6 +11,7 @@ import type { Entry } from '../history.ts';
 import { completionText, completions, contentWithInline, contentWithTex, deckMacros, glyphOf, isName, mathLookup, previewTex, type Macro } from '../math.ts';
 import { popoverBeside, type Side } from '../ui/dialog.ts';
 import { injectStyle, make } from '../ui/dom.ts';
+import { showTex } from './shown-tex.ts';
 import { placeCaret } from './typing.ts';
 
 const CSS = `
@@ -528,8 +529,9 @@ export function install(app: App): void {
     if (container && app.hostOf(container)) {
       ev.preventDefault();
       // a Shift-click or a command-click only adds the object of the formula to the selection or
-      // takes it out
-      if (!ev.shiftKey && !(app.platform === 'mac' ? ev.metaKey : ev.ctrlKey)) openMath(container);
+      // takes it out. a click on an inline formula shows its TeX selected in its text, unless a
+      // sheet is open, which is then given to the formula clicked
+      if (!ev.shiftKey && !(app.platform === 'mac' ? ev.metaKey : ev.ctrlKey) && (popover || !showTex(app, container, 'all'))) openMath(container);
     } else if (popover && target && !popover.contains(target) && !target.closest('.beeson-complete, .beeson-edit-menu')) {
       if (away) void away();
       else closeMath(false);
