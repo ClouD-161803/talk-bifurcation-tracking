@@ -65,7 +65,7 @@ jobs:
   # limit. Without a status function in its condition, it is skipped after a failed job, and a
   # skipped check counts as passed. It is not run in a cancelled round: the round of the next push is
   # started only when the cancelled one has ended, and with always() it waited until pass had found
-  # a runner. Hence pass is skipped in a round that is cancelled by hand
+  # a runner. In a cancelled round, pass is reported as cancelled, which does not count as passed
   pass:
     needs: [test, check, tex]
     if: ${{ !cancelled() }}

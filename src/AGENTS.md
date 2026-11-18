@@ -44,7 +44,6 @@ The rules below are for work on the template itself: the theme, the editor, the 
 - A PR is checked on Ubuntu only: the tests, the deck in Chrome and in Firefox, and the figures. Windows, macOS, and Safari are checked on `main` after each merge.
 - Before the merge of a change that is specific to Windows, macOS, or Safari, start a round on every system with `gh workflow run check --ref <branch>`. Watch this round as well.
 - Fix a failed round on `main` before other changes are merged.
-- Do not cancel a round of the last commit of a PR. The check `pass` of a canceled round is skipped, and GitHub counts a skipped check as passed.
 
 ## Writing a test
 
