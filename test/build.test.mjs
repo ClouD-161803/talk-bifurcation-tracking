@@ -8,11 +8,12 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-// a copy of the source and of build.mjs in a folder with a space in its name
+// a copy of the source and of build.mjs in a folder with a space in its name, with the compiler of
+// the figures, which the edit command bundles
 function copy(t) {
   const root = mkdtempSync(join(tmpdir(), 'slides build-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const path of ['build.mjs', 'package.json', 'tsconfig.json', 'src']) {
+  for (const path of ['build.mjs', 'package.json', 'tsconfig.json', 'src', 'scripts/figures.mjs']) {
     cpSync(resolve(path), join(root, path), { recursive: true });
   }
   symlinkSync(resolve('node_modules'), join(root, 'node_modules'), 'junction');

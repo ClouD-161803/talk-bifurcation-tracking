@@ -12,7 +12,7 @@ import type { Ended } from '../session/protocol.ts';
 // the largest file, or range of a file, that is answered through the relay
 export const RELAY_BODY = 16 * 1024 * 1024;
 // the largest answer that the relay takes, e.g. index.html, which a guest loads whole
-const RELAY_ANSWER = 64 * 1024 * 1024;
+export const RELAY_ANSWER = 64 * 1024 * 1024;
 const PULLS = 4;
 // the files answered through the relay at once, each read into memory before it is pushed
 const FILE_ANSWERS = 8;

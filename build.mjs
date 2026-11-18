@@ -68,6 +68,8 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node20',
+  // the whitespace is taken out to keep the bundle under its budget
+  minifyWhitespace: true,
   banner: { js: `/*! edit.mjs ${version}, the edit command of the synchronous editor of the beeson theme. MIT license. */` },
 });
 
@@ -126,6 +128,8 @@ const session = await build({
   entryPoints: ['src/session/client/main.ts'],
   outfile: fileURLToPath(new URL('theme/session.js', root)),
   minifyWhitespace: true,
+  // the syntax is shortened to keep the bundle under its budget, and the names are kept
+  minifySyntax: true,
   metafile: true,
   write: false,
   banner: { js: `/*! session.js ${version}, the client of the synchronous editor of the beeson theme. MIT license. */` },

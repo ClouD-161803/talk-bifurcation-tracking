@@ -52,6 +52,10 @@ Avoid "note", which is a speaker note, and "annotation". Write "HTML comment" fo
 
 A rule of slides that is followed by default and may be argued with, as opposed to a hard invariant.
 
+## Data file
+
+A file of the talk folder that a TikZ figure reads, e.g. a CSV file of a pgfplots `table`. From Data… writes a CSV file into `figures/` as the data file of a new figure, and the edit command compiles a figure again after a change of one of its data files.
+
 ## data-own-keys
 
 The attribute of a field of the editor in which the keys of commands that the field takes for itself are named, separated by spaces. In the field of a comment, it is `Mod+Enter`, i.e. Cmd+Enter on a Mac and Ctrl+Enter elsewhere, which then sends the comment and does not start Present. A key named there is taken with the other of these two modifiers as well, e.g. Ctrl+Enter on a Mac.
@@ -68,7 +72,7 @@ Avoid "card". The heading over the scrubber of the progress line is not a card e
 
 ## Edit command
 
-The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, and `index.html` and `tex.js` are written.
+The program that a host runs during a session, `theme/edit.mjs`, started with `npm run edit` or with a launcher. With it, the talk folder is served to the browsers of the session, the one text of the deck that everyone edits is kept, `index.html` and `tex.js` are written, and the TikZ figures are compiled.
 
 Avoid "server" and "daemon".
 
@@ -97,6 +101,10 @@ Avoid "spotlight" and "watch".
 ## For You
 
 The filter of the Comments pane under which the open threads that you wrote, replied to, or are mentioned in are listed.
+
+## Full view
+
+The page of a deck at the scale at which it is opened, i.e. not zoomed by the browser.
 
 ## Guest
 
@@ -132,6 +140,10 @@ To grow a region of an animated plot as a disk from a point until the region is 
 
 The key `spread` of an old talk is `iris`.
 
+## Jump
+
+A move of the show to a slide that is neither the next one nor the previous one, e.g. with the scrubber, in the overview, with the Home or the End key, or with a link. After a jump back, the slide is shown with every step, and after a jump ahead, at its first step.
+
 ## Kind
 
 The sort of a theorem, e.g. lemma, definition, or proof, written in `data-kind`, which gives its title, its style, and its counter.
@@ -143,6 +155,12 @@ Avoid "type" and "environment".
 A short text placed at a point of a backdrop or of a surface, such as the name of L1 or of the Moon.
 
 Avoid "lab", the class of a label in an old talk, which is `label`.
+
+## Last viewed slide
+
+The slide and the step that were left at the last jump. On the band of the scrubber, an angle that points back is drawn before its number or its name, and a click on it shows the slide at the step left.
+
+Avoid "mark", which is a drawn element of an animated plot.
 
 ## Late step
 
@@ -182,17 +200,35 @@ Avoid "cursor", "tag", and "badge".
 
 A version given a name with Name this version in Version History. A named version is kept when the history is shortened, together with the versions after it.
 
+## Overview
+
+The view of reveal.js in which the slides of a show are shown small in one row. It is opened with the key O, or on a touch screen with a pinch closed at the full view, since a pinch on a zoomed page is the zoom of the browser. The row is moved with the arrow keys, a swipe, or a sideways wheel, and a slide is shown with a tap, a click, or a pinch open on it.
+
+Avoid "Slide Sorter", which is the grid of the editor.
+
 ## Part
 
 A named scope or curve of a TikZ figure that a slide shows as a step.
 
-Avoid "part" for an element of a slide or for a mark of an animated plot. A part is written with the key `part` in the source and with `data-part` on its span in the deck.
+Avoid "part" for an element of a slide or for a mark of an animated plot. A part is written with the key `part` in the source and with `data-part` on its span in the deck. Avoid "Figure Part" for its row in the Steps pane, which reads Part and its name.
 
 ## PDF figure
 
 A page of a PDF on a slide, shown as the image of its render for each mode, or as one render in the colors of the PDF. Its PDF is named in `data-pdf` and its page in `data-page`.
 
 Avoid "PDF image" and "embedded PDF".
+
+## Pinch closed
+
+Two fingers moved together on a touch screen.
+
+Avoid "pinch in" and "zoom out".
+
+## Pinch open
+
+Two fingers moved apart on a touch screen.
+
+Avoid "pinch out" and "zoom in".
 
 ## Plate
 
@@ -224,6 +260,12 @@ What a person in a session sees of the others: who is there, the slide each one 
 
 Avoid "awareness" and "cursors".
 
+## Reach
+
+The height at the bottom edge of the window within which a pointer opens the band of the scrubber. It is higher for a finger than for a mouse.
+
+Avoid "strip", which is the surface of a strip bundle.
+
 ## Reference
 
 The short entry of a cited paper in the footnote line of its slide, e.g. Koon et al., Chaos 10 (2000).
@@ -242,6 +284,16 @@ The PNG of the page of a PDF figure, written by the editor or by `npm run tex`, 
 
 Avoid "rasterization" and "preview".
 
+## Rest
+
+The time for which a pointer stays in the reach before the band of the scrubber is opened. A pointer on its way to a control low on a slide crosses the reach without a rest.
+
+Avoid "delay", which is the delay of a step, and avoid "dwell".
+
+## Scrubber
+
+A line of progress with ticks, on which a place is chosen with the pointer. The scrubber of a show is its progress line, magnified into a band while it is open. A tick is the place of a numbered slide on the band. The name of a section is the text of its running head, and the name of the closing slide is its heading, both written over the ticks. The scrubber of an animated plot is the line under the plot, with a tick at each event.
+
 ## Session
 
 One run of the edit command on a talk folder, from its start to its stop, together with the people who have joined it.
@@ -254,7 +306,7 @@ The version of the deck of a person that is kept apart from the deck when this p
 
 ## Sheet
 
-A panel of the editor in which a source is edited with a live preview, i.e. the Preamble sheet and the Bibliography sheet, and the sheet of a formula.
+A panel of the editor in which a source is edited with a live preview, i.e. the Preamble sheet and the Bibliography sheet, the sheet of a formula, and the Edit Source sheet of a TikZ figure.
 
 Avoid "window", "dialog", and "pane". A dialog of a session that is fitted to the visible part of the page is not a sheet either, and its class is `beeson-session-fit`, not `beeson-session-sheet`.
 
@@ -263,6 +315,12 @@ Avoid "window", "dialog", and "pane". A dialog of a session that is fitted to th
 The view of the editor in which every slide is shown as a thumbnail in a grid, grouped by section, to select and reorder the slides and the sections, as in PowerPoint and Keynote.
 
 Avoid "Chapters Table".
+
+## Source
+
+The text from which an output is compiled: `figures/name.tex` for a TikZ figure, and `preamble.tex` and `references.bib` for `tex.js`. The source of a TikZ figure is changed in its Edit Source sheet, or with the fields of the TikZ Figure pane when From Data… wrote it.
+
+Avoid "Edit TeX…" for Edit Source….
 
 ## Step
 
@@ -300,6 +358,10 @@ Avoid "co-authoring", "multiplayer", and "live share". "Collaboration" is kept f
 
 One named data set of an animated plot, chosen with its button under the plot.
 
+## Talk folder
+
+The folder of a talk, in which `index.html` is kept next to `theme/`, `brand/`, and the other files that the deck loads, e.g. `media/`, `figures/`, and `tex.js`. In a session, it is downloaded as a zip with File > Export To > Talk Folder….
+
 ## Text box
 
 A paragraph that is added to a slide with Insert > Text Box and placed freely, as in PowerPoint and Keynote. A text box is one kind of text element.
@@ -330,9 +392,9 @@ Avoid "conversation" and "discussion".
 
 ## TikZ figure
 
-A figure written in TikZ or pgfplots as a source `figures/name.tex`, compiled by `npm run tex` into the output `figures/name.js` with an SVG for each mode, and drawn into a `div.tikz` with the same name in `data-figure`.
+A figure written in TikZ or pgfplots as a source `figures/name.tex`, compiled by `npm run tex` or the edit command into the output `figures/name.js` with an SVG for each mode, and drawn into a `div.tikz` with the same name in `data-figure`. It is compiled at the size of its box, i.e. the `width` and the `height` in px of its `style`. A new one is inserted with Insert > TikZ Figure > From Data…, From File…, or Blank.
 
-Avoid "TikZ" alone for the element, and avoid "plot", which means an animated plot.
+Avoid "TikZ" alone for the element, also as its kind in the editor, and avoid "plot", which means an animated plot. Avoid "Plot…" and "Data Plot…" for From Data…, "TeX File…" for From File…, and "Drawing" and "Empty" for Blank.
 
 ## Toast
 

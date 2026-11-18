@@ -28,7 +28,7 @@ Hard invariants are never traded away for other goals. When a change would break
 - Set heights in px in a `style` only on shapes, backdrops, table rows, and images, videos, or TyCHO viewers that have a width.
 - Give figures a version for each mode with `for-dark` and `for-light`, or the class `white-figure` or `invert`. Otherwise a figure may be visible in one mode only.
 - Put a PDF on a slide as a PDF figure, described under Figures in `REFERENCE.md`, rather than converting it by hand. Run `npm run tex` after you add or change one, and commit its renders.
-- Write each TikZ figure as a lone `tikzpicture` in `figures/name.tex`, with the colors of `styles/beeson-tikz.sty`. `npm run tex` compiles it into `figures/name.js` with a TeX that has `latex` and `dvisvgm`. Commit this output.
+- Write each TikZ figure as a lone `tikzpicture` in `figures/name.tex`, with the colors of `styles/beeson-tikz.sty`. `npm run tex` compiles it into `figures/name.js` with a TeX that has `latex` and `dvisvgm`. While the edit command runs, it compiles the figure by itself after each change. Commit this output.
 - Write math macros used on more than one slide into `preamble.tex`. Write papers cited on slides into `references.bib`. Run `npm run tex` after you change either file.
 - Put the speaker notes of a slide in an `aside.notes`.
 - Do not write `data-moves-on`. It is set by the theme when the deck is started.

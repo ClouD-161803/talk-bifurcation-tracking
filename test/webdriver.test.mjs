@@ -22,6 +22,18 @@ test('Firefox is headless without a display, and in a window with one', () => {
   assert.deepEqual(firefoxOptions({ DISPLAY: ':99' }).args, []);
 });
 
+test('Firefox sends every host but this machine to a proxy on a closed port', () => {
+  for (const env of [{}, { DISPLAY: ':99', FIREFOX_PATH: 'firefox-bin' }]) {
+    assert.deepEqual(firefoxOptions(env).prefs, {
+      'network.proxy.type': 1,
+      'network.proxy.http': '127.0.0.1',
+      'network.proxy.http_port': 9,
+      'network.proxy.ssl': '127.0.0.1',
+      'network.proxy.ssl_port': 9,
+    });
+  }
+});
+
 test('Safari is driven by the safaridriver of the system', () => {
   assert.equal(driverOf('safari', {}).command, '/usr/bin/safaridriver');
 });

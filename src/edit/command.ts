@@ -4,21 +4,23 @@
 // false and without the check of the Host header, since the relay already matched the key
 
 import { createReadStream, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { Authority } from '../session/authority.ts';
 import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { AppliedTable, readApplied } from './applied.ts';
 import { Comments, isCommentId, isFailure, type CommentsOptions, type Failure } from './comments.ts';
-import { Disk, readText, renameRetriedSync } from './disk.ts';
+import { Disk, readText, renameRetried, renameRetriedSync } from './disk.ts';
 import { History, type HistoryOptions } from './history.ts';
 import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
-import { ADDRESS_RULE, loadConfig, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
-import { TexWriter } from './tex.ts';
+import { ADDRESS_RULE, loadConfig, RELAY_ANSWER, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
+import { deriveTex, TexWriter } from './tex.ts';
+import { FigureWatcher, type Box } from './figures.ts';
+import { MOST_FILES, piece, TooLarge, zipOf, type Zip } from './zip.ts';
 
 export const DEFAULT_PORT = 8765;
 const JSON_MAX = 16 * 1024 * 1024;
@@ -33,6 +35,17 @@ const LOCK_WAIT = Number(process.env.SLIDES_LOCK_TIMEOUT_MS) || 2000;
 const END_WAIT = Number(process.env.SLIDES_END_WAIT_MS) || 1000;
 // the time in ms for which a stopped edit command still answers a poll with ended, longer in the tests
 const CLOSE_WAIT = Number(process.env.SLIDES_CLOSE_WAIT_MS) || 200;
+// the most bytes of the files of a talk folder that a page downloads as a zip without the relay,
+// which is also the most that the zips kept at one time hold, smaller in the tests. through the
+// relay, the limit of a folder is the largest answer of the relay
+const ZIP_MAX = Number(process.env.SLIDES_ZIP_MAX_BYTES) || 512 * 1024 * 1024;
+// the bytes of one piece of a zip. the relay takes a piece within its 60 s from an upload of
+// 0.3 Mbit/s, and it holds one piece of a download rather than its session share
+const ZIP_PIECE = 2 * 1024 * 1024;
+// the time in ms for which a zip is kept after a page last asked for a piece of it, shorter in the
+// tests. a zip of which a piece was not asked for yet is kept for a quarter of this time
+const ZIP_KEPT = Number(process.env.SLIDES_ZIP_KEPT_MS) || 120_000;
+const MB = 1024 * 1024;
 
 export type StartOptions = {
   folder?: string;
@@ -159,10 +172,31 @@ export function cleanName(raw: string): string | null {
   if (dot < 0) return null;
   const ext = name.slice(dot + 1).toLowerCase();
   if (!MEDIA_TYPES.has(ext)) return null;
-  let stem = name.slice(0, dot).toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 80);
-  if (!stem) stem = 'media';
-  if (/^(con|prn|aux|nul|com\d|lpt\d)$/.test(stem)) stem = `${stem}-file`;
-  return `${stem}.${ext}`;
+  return `${cleanStem(name.slice(0, dot), 'media')}.${ext}`;
+}
+
+// a stem of a file name made safe for every system, or fallback when nothing is left of it
+function cleanStem(raw: string, fallback: string): string {
+  let stem = raw.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-{2,}/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 80);
+  if (!stem) stem = fallback;
+  if (RESERVED.test(stem)) stem = `${stem}-file`;
+  return stem;
+}
+
+// the names that Windows keeps for its devices
+const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
+const FIGURE_NAME = /^[\w-]+$/;
+
+// the box of a preview, each size a number of px or null
+function boxOf(value: unknown): Box | null {
+  if (!value || typeof value !== 'object') return null;
+  const box: Box = { width: null, height: null };
+  for (const key of ['width', 'height'] as const) {
+    const size = (value as Record<string, unknown>)[key] ?? null;
+    if (size !== null && !(typeof size === 'number' && size > 0 && size <= 100_000)) return null;
+    box[key] = size;
+  }
+  return box;
 }
 
 const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -209,6 +243,23 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const index = join(root, 'index.html');
   const { text, bom } = readText(index);
   const key = keyOf(root);
+  // the name of the zip and of its one folder: the name of the talk folder without what Windows
+  // refuses in a file name, and without what Chrome replaces in the name of a download, i.e. a
+  // control or a format character, and a ~ or a space at its start. it does not start with a dot,
+  // which hides a folder, and it is not a device of Windows, e.g. aux. it is cut to 64 units of
+  // UTF-16, in which Windows counts a path of at most 259, since Extract All puts the folder into
+  // one of the same name
+  const fit = (name: string) => {
+    let out = '';
+    for (const c of name) {
+      if (out.length + c.length > 64) break;
+      out += c;
+    }
+    return out.replace(/[\s.]+$/, '');
+  };
+  // a name may be a device only once it is cut, and the - of a device counts in the 64 units
+  const DEVICE = /^(con|prn|aux|nul|clock\$|conin\$|conout\$|com[0-9\u00b9\u00b2\u00b3]|lpt[0-9\u00b9\u00b2\u00b3])(?= *\.|$)/i;
+  const zipName = fit(fit(basename(root).normalize('NFC').replace(/[<>:"/\\|?*\p{Cc}\p{Cf}]/gu, '-').replace(/^[\s.~]+/, '')).replace(DEVICE, '$1-')) || 'talk';
   const lockFile = join(root, '.session', 'lock');
   const earlier = await holderOf(lockFile, root, key, log);
   if (earlier) throw new AlreadyRunning(earlier);
@@ -220,10 +271,16 @@ export async function start(options: StartOptions = {}): Promise<Running> {
   const onWritten = (n: number, written: string) => {
     if (authority.written(n)) appliedTable.write(authority.table());
     tex.written(written);
+    figures.written(written);
   };
   // the pages are told of a write that fails, since an operation is acknowledged before it is written
-  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => tex.poll(), onWriteError: (e) => people.writeFailed(e) });
+  const disk = new Disk(index, authority, bom, { log, onWritten, onPoll: () => {
+      tex.poll();
+      figures.poll();
+    }, onWriteError: (e) => people.writeFailed(e) });
   const people = new People(authority, join(root, '.session', 'people.json'), log);
+  // the stale figures are compiled in the background, and the pages load each new output
+  const figures = new FigureWatcher(root, text, { log, onChange: () => people.news() });
   // made once this command holds the lock, so that a second start does not write the history
   let history!: History;
   let comments!: Comments;
@@ -299,6 +356,82 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     relay = next;
   }
 
+  // the zip of the talk folder of each page that downloads one, by its client, kept in memory from
+  // its POST until its DELETE, or until the page stops asking for pieces
+  const zips = new Map<string, { id: string; zip: Zip; timer: ReturnType<typeof setTimeout> }>();
+  const dropZip = (client: string) => {
+    clearTimeout(zips.get(client)?.timer);
+    zips.delete(client);
+  };
+  // the zip id of client is dropped after ms
+  const dropAfter = (client: string, id: string, ms: number) => {
+    const timer = setTimeout(() => zips.get(client)?.id === id && zips.delete(client), ms);
+    timer.unref();
+    return timer;
+  };
+  // the most bytes of the zips that are being built
+  let building = 0;
+  // whether the zips kept and being built do not leave room for one of bytes. a zip alone has room
+  const zipsFull = (bytes: number) => {
+    let held = building;
+    for (const z of zips.values()) held += z.zip.size;
+    return held > 0 && held + bytes > ZIP_MAX;
+  };
+
+  // POST zip builds the zip of the page and answers its id, its size, and its name. GET zip/<id>
+  // answers the piece that starts at the byte of at, and DELETE zip/<id> frees the zip
+  async function zipApi(route: string, request: Request): Promise<Response> {
+    const query = new URLSearchParams(request.query);
+    const client = people.clientOf(query.get('token'));
+    if (client === null || !people.present(client)) return error(404, 'say hello first');
+    if (route === 'zip') {
+      if (request.method !== 'POST') return error(405, 'POST');
+      if (closed) return error(503, 'the edit command is stopping');
+      dropZip(client);
+      const limit = request.direct ? ZIP_MAX : Math.min(ZIP_MAX, RELAY_ANSWER);
+      // tex.js is written only after index.html, hence the zip holds the one of the text of the
+      // session, where the edit command writes it
+      const tex = deriveTex(root, authority.text);
+      const deck = { html: authority.text, bom: disk.bom, tex: tex.sources && !tex.unread.length ? tex.text : null };
+      // the room of a zip is taken before its files are read, so that the pages that ask at one
+      // time do not each hold a zip
+      let reserved = 0;
+      let zip: Zip | null;
+      try {
+        zip = await zipOf(root, zipName, deck, limit, (most) => !zipsFull(most) && ((building += reserved = most), true));
+      } catch (e) {
+        if (!(e instanceof TooLarge)) throw e;
+        // the tex.js of the session and each wrapped file are files of the zip as well
+        if (e.files > MOST_FILES) return error(413, `The zip of the talk folder would hold more than ${MOST_FILES.toLocaleString('en-US')} files, the most that a zip holds.`);
+        // rounded up, so that a folder just over the limit is not given as the limit
+        const size = (Math.ceil((e.bytes / MB) * 10) / 10).toFixed(1);
+        return error(413, `The talk folder is ${size} MB, over the limit of ${Math.floor(limit / MB)} MB for a download${request.direct ? '' : ' through the relay'}.`);
+      } finally {
+        building -= reserved;
+      }
+      // the earlier zip of a page that asked twice
+      dropZip(client);
+      if (closed) return error(503, 'the edit command is stopping');
+      if (!zip || zipsFull(zip.size)) return error(503, 'The edit command is busy with other downloads of the talk folder. Try again in a minute.');
+      const id = randomBytes(8).toString('hex');
+      // a page whose download was stopped while the zip was built does not ask for a piece
+      zips.set(client, { id, zip, timer: dropAfter(client, id, ZIP_KEPT / 4) });
+      return json(200, { id, size: zip.size, name: `${zipName}.zip` });
+    }
+    const held = zips.get(client);
+    if (!held || held.id !== route.slice('zip/'.length)) return error(404, 'the zip is not kept any more');
+    if (request.method === 'DELETE') {
+      dropZip(client);
+      return json(200, {});
+    }
+    if (request.method !== 'GET') return error(405, 'GET or DELETE');
+    const at = Number(query.get('at') ?? 0);
+    if (!Number.isInteger(at) || at < 0 || at >= held.zip.size) return error(416, 'at is not a byte of the zip');
+    clearTimeout(held.timer);
+    held.timer = dropAfter(client, held.id, ZIP_KEPT);
+    return { status: 200, headers: { 'Content-Type': 'application/zip', 'Cache-Control': 'no-store' }, body: piece(held.zip, at, ZIP_PIECE) };
+  }
+
   async function media(name: string, request: Request): Promise<Response> {
     if (request.method !== 'PUT') return error(405, 'PUT');
     const client = people.clientOf(new URLSearchParams(request.query).get('token'));
@@ -330,6 +463,106 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       }
     }
     return error(409, 'too many files of this name');
+  }
+
+  // the writes of the sources and of the data files of the figures run one at a time, hence a source
+  // is compared with the text it was edited from and written before another write
+  let figureWrites: Promise<unknown> = Promise.resolve();
+  const oneAtATime = <T>(task: () => Promise<T>): Promise<T> => {
+    const run = figureWrites.then(task, task);
+    figureWrites = run.catch(() => {});
+    return run;
+  };
+
+  // the TikZ figures: preview compiles a source that is not saved, source writes figures/name.tex,
+  // or a new figure under a free name from stem, and data writes a CSV file into figures/
+  async function figuresApi(route: string, request: Request): Promise<Response> {
+    if (!['preview', 'source', 'data'].includes(route)) return error(404, 'not found');
+    if (request.method !== 'POST') return error(405, 'POST');
+    if (closed) return error(503, 'the edit command is stopping');
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    // a token is enough, as for the version history
+    const client = people.clientOf(body.token);
+    if (client === null) return error(404, 'say hello first');
+    // TeX reads every file that the account of the host may, hence a guest does not send it a source
+    if (!request.direct) return error(403, 'only the host changes a TikZ figure');
+    if (route === 'preview') {
+      const box = boxOf(body.box);
+      if (typeof body.name !== 'string' || !FIGURE_NAME.test(body.name) || typeof body.source !== 'string' || !box) return error(400, 'name, source, or box is not valid');
+      if (figures.state().compiler === 'missing') return error(503, 'latex or dvisvgm is not found on the computer of the host');
+      return json(200, await figures.preview(client, body.name, body.source, box));
+    }
+    const text = route === 'data' ? body.text : body.source;
+    if (typeof text !== 'string') return error(400, `${route === 'data' ? 'text' : 'source'} is missing`);
+    if (Buffer.byteLength(text) > RELAY_BODY) return error(413, 'the file is larger than 16 MB');
+    const dir = join(root, 'figures');
+    await mkdir(dir, { recursive: true });
+    const real = await realpath(dir);
+    if (!real.startsWith(root + sep)) return error(403, 'figures/ leaves the talk folder');
+    if (route === 'data') {
+      if (typeof body.stem !== 'string') return error(400, 'stem is missing');
+      const clean = `${cleanStem((body.stem.split(/[\\/]/).pop() ?? '').replace(/\.csv$/i, ''), 'data')}.csv`;
+      const bytes = Buffer.from(text, 'utf8');
+      return oneAtATime(async () => {
+        const same = await sameFile(real, clean, bytes.length, sha256(bytes));
+        if (same) return json(200, { path: `figures/${same}` });
+        for (let i = 1; i < 1000; i++) {
+          const candidate = i === 1 ? clean : `${clean.slice(0, -4)}-${i}.csv`;
+          try {
+            await writeFile(join(real, candidate), bytes, { flag: 'wx' });
+            figures.changed();
+            return json(200, { path: `figures/${candidate}` });
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+          }
+        }
+        return error(409, 'too many files of this name');
+      });
+    }
+    if (body.base !== null && typeof body.base !== 'string') return error(400, 'base is missing');
+    if (body.name === undefined) {
+      if (typeof body.stem !== 'string') return error(400, 'name or stem is missing');
+      const stem = cleanStem(body.stem.replace(/\.tex$/i, ''), 'figure');
+      return oneAtATime(async () => {
+        for (let i = 1; i < 1000; i++) {
+          const name = i === 1 ? stem : `${stem}-${i}`;
+          if ((await stat(join(real, `${name}.js`)).catch(() => null)) !== null) continue;
+          try {
+            await writeFile(join(real, `${name}.tex`), text, { flag: 'wx' });
+            figures.changed();
+            return json(200, { name });
+          } catch (e) {
+            if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+          }
+        }
+        return error(409, 'too many figures of this name');
+      });
+    }
+    const name = body.name;
+    if (typeof name !== 'string' || !FIGURE_NAME.test(name) || RESERVED.test(name)) return error(400, 'the name of a figure is letters, digits, - and _');
+    return oneAtATime(async () => {
+      const file = join(real, `${name}.tex`);
+      const current = await readFile(file, 'utf8').catch((e) => {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw e;
+      });
+      // a page reads the text without a byte-order mark, as fetch() drops it, and the mark of the
+      // file is kept
+      const bom = current?.startsWith('\ufeff') ? '\ufeff' : '';
+      const unmarked = bom ? current!.slice(1) : current;
+      if (unmarked !== body.base) return json(409, { error: `figures/${name}.tex changed since it was read`, text: unmarked });
+      const tmp = join(real, `.${name}.tex.${randomBytes(6).toString('hex')}.tmp`);
+      try {
+        await writeFile(tmp, bom + text.replace(/^\ufeff/, ''));
+        await renameRetried(tmp, file);
+      } catch (e) {
+        await unlink(tmp).catch(() => {});
+        return error(500, `could not write figures/${name}.tex: ${(e as Error).message}`);
+      }
+      figures.changed();
+      return json(200, { name });
+    });
   }
 
   // the version history and the texts set aside, for every page with a token
@@ -410,6 +643,8 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'history' || route.startsWith('history/') || route === 'aside') return historyApi(route, request);
     if (route === 'comments' || route.startsWith('comments/')) return commentsApi(route, request);
     if (route === 'share') return share(request);
+    if (route === 'zip' || route.startsWith('zip/')) return zipApi(route, request);
+    if (route.startsWith('figures/')) return figuresApi(route.slice('figures/'.length), request);
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
       const query = new URLSearchParams(request.query);
@@ -437,7 +672,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if ('full' in joined) return error(503, FULL);
       const { member, token } = joined;
       const applied = typeof hello.was === 'string' ? authority.applied(hello.was) : undefined;
-      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), tex: people.tex(), ...(applied === undefined ? {} : { applied }) };
+      const answer = { client: member.client, token, person: member.person, name: member.name, color: member.color, host: member.host, v: authority.version, people: people.list(), known: people.known(), tex: people.tex(), figures: figures.state(), ...(applied === undefined ? {} : { applied }) };
       const ops = typeof hello.v === 'string' ? authority.since(hello.v) : null;
       return json(200, ops ? { ...answer, ops } : { ...answer, text: authority.text });
     }
@@ -657,6 +892,12 @@ export async function start(options: StartOptions = {}): Promise<Running> {
       if (history.overwrittenAfter(since)) answer.overwritten = true;
     },
   });
+  people.feed({
+    rev: () => figures.rev,
+    write: (answer) => {
+      answer.figures = figures.state();
+    },
+  });
   comments = new Comments(join(root, '.session'), authority, history.found, { ...options.comments, log });
   comments.onChange(() => people.news());
   people.feed({
@@ -699,9 +940,13 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     close: () =>
       (closing ??= (async () => {
         closed = true;
+        for (const client of [...zips.keys()]) dropZip(client);
         // a start during the stop begins a new edit command rather than finding this one
         unlock();
         people.end();
+        // a compile that runs is stopped at once, and index.html, the history, and the comments do
+        // not wait for it
+        const figuresStopped = figures.stop();
         const unwritten = await disk.stop();
         await tex.stop();
         await appliedTable.stop();
@@ -713,6 +958,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
         // comments.stopSync logs the file and the reason when it is not written
         const all = unwritten + (comments.stopSync() ? 0 : 1);
         written(all);
+        await figuresStopped;
         // a share in progress sees closed and stops its link, hence the stop waits behind it. the relay
         // keeps the record of the end for a guest who was not waiting at the edit command
         await Promise.race([serial(async () => relay?.stop(people.endedBy())), new Promise((done) => setTimeout(done, 2500))]);

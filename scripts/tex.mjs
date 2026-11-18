@@ -71,7 +71,7 @@ async function main() {
   writeFileSync(file, text);
   const count = (items, one, many = `${one}s`) => `${Object.keys(items).length} ${Object.keys(items).length === 1 ? one : many}`;
   console.log(`tex.js: ${count(tex.macros, 'macro')}, ${count(tex.environments, 'environment')}, ${count(tex.theorems, 'kind of theorem', 'kinds of theorem')}, and ${count(tex.references, 'reference')}`);
-  compileFigures(deck);
+  await compileFigures(deck);
   await renderPdfFigures(deck);
   const name = basename(deck);
   for (const line of skippedLines(preamble, bibliography, missing, name)) console.log(line);

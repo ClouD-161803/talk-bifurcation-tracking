@@ -64,8 +64,12 @@ export const error = (status: number, message: string): Response => json(status,
 // spelling that Windows reads as such, i.e. with a trailing dot or space
 const hiddenSegment = (s: string) => s.startsWith('.') || s.endsWith('.') || s.endsWith(' ') || s.toLowerCase() === 'node_modules';
 
+// a segment of a path that is served: one that is not empty or hidden, and that does not hold a
+// separator, a colon, or a NUL
+export const servedSegment = (s: string) => s !== '' && !hiddenSegment(s) && !/[\\/:\0]/.test(s);
+
 // the segments of a path below the talk folder, decoded, or null when a segment is malformed or
-// hidden, or holds a separator, a colon, or a NUL
+// not served
 export function segmentsOf(rest: string): string[] | null {
   const out: string[] = [];
   for (const raw of rest.split('/')) {
@@ -75,7 +79,7 @@ export function segmentsOf(rest: string): string[] | null {
     } catch {
       return null;
     }
-    if (s === '' || hiddenSegment(s) || /[\\/:\0]/.test(s)) return null;
+    if (!servedSegment(s)) return null;
     out.push(s);
   }
   return out;

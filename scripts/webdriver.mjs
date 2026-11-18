@@ -81,7 +81,10 @@ export function driverOf(browser, env) {
   if (browser === 'safari') return { command: '/usr/bin/safaridriver', capabilities: { browserName: 'safari' } };
   if (browser !== 'firefox') throw new Error(`unknown browser ${browser}, use chrome, firefox, or safari`);
   // with a display, as under xvfb-run on a runner, since WebGL in software needs a window on Linux
-  const options = { args: env.DISPLAY ? [] : ['-headless'], ...(env.FIREFOX_PATH ? { binary: env.FIREFOX_PATH } : {}) };
+  // every host but this machine is sent to a proxy on a closed port, as Chrome is started with
+  // every other host blocked in chrome.mjs. Firefox does not send this machine to a proxy
+  const prefs = { 'network.proxy.type': 1, 'network.proxy.http': '127.0.0.1', 'network.proxy.http_port': 9, 'network.proxy.ssl': '127.0.0.1', 'network.proxy.ssl_port': 9 };
+  const options = { args: env.DISPLAY ? [] : ['-headless'], prefs, ...(env.FIREFOX_PATH ? { binary: env.FIREFOX_PATH } : {}) };
   return {
     command: env.GECKOWEBDRIVER ? join(env.GECKOWEBDRIVER, 'geckodriver') : 'geckodriver',
     capabilities: { browserName: 'firefox', 'moz:firefoxOptions': options },

@@ -13,8 +13,9 @@ import { mountPlots, type PlotView } from './plot.ts';
 import { markViewers, stillViewers } from './print.ts';
 import { mountQr } from './qr.ts';
 import { mountShapes } from './shapes.ts';
-import { figuresReady, mountFigures, redrawFigures } from './tikz.ts';
+import { compilingFigure, figuresReady, mountFigures, previewFigure, redrawFigures, reloadFigure } from './tikz.ts';
 import { initScrub } from './scrub.ts';
+import { initOverview } from './overview.ts';
 import { mount as mountSurfaces, onRestore } from './surface.ts';
 import type { Surface } from './surface.ts';
 import { mount as mountBundles, type Bundle } from './bundle.ts';
@@ -85,6 +86,9 @@ const DEFAULTS: RevealOptions = {
   progress: true,
   slideNumber: (slide: HTMLElement) => numberOf(slide, window.Reveal.getSlides()),
   controls: false,
+  // off, since the box on G counts the unnumbered slides too, and shows another slide than the one
+  // whose number is typed
+  jumpToSlide: false,
   center: false,
   pdfSeparateFragments: true,
   // one page per step, as in Keynote and PowerPoint, with what runs past the slide cut off in the
@@ -345,6 +349,7 @@ async function start(options: Partial<RevealOptions> = {}): Promise<void> {
   if (!EDITING && !deck.isPrintView() && !/print-pdf/.test(location.search)) {
     if (!PLAYED) initFullscreen();
     initScrub(deck);
+    initOverview(deck);
     // the videos and the viewers of the style play are played at their steps, and not while the deck
     // is edited, when every step is shown
     initVideos(deck);
@@ -478,8 +483,9 @@ const Beeson = {
   animated,
   surfaces,
   plots,
-  // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs
-  figures: { get ready(): Promise<void> { return figuresReady(); } },
+  // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs. reload is
+  // called by the editor after the edit command wrote an output
+  figures: { get ready(): Promise<void> { return figuresReady(); }, reload: reloadFigure, preview: previewFigure, compiling: compilingFigure },
   // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
   trajectories: register,
   // called by the editor after a structural change of the slides

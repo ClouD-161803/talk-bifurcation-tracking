@@ -234,14 +234,19 @@ export function install(app: App): void {
 
   // the list of a split button: its variants, with a rule where their group of the menu changes,
   // then the submenu that the split names in the menu of the first, unless the variants list it,
-  // e.g. the shapes of Insert > Shape
+  // e.g. the shapes of Insert > Shape. variants in another submenu of the menu are listed as that
+  // submenu, once, e.g. Insert > TikZ Figure in the list of Media
   const splitItems = (first: Command, variants: Command[]): MenuItem[] => {
     const out: MenuItem[] = [];
+    const subs = new Set<string>();
     let last: string | undefined;
     for (const v of variants.length > 1 ? variants : []) {
+      const sub = v.menu?.submenu !== first.toolbar?.split ? v.menu?.submenu : undefined;
+      if (sub && subs.has(sub)) continue;
       if (out.length && v.menu?.group !== last) out.push({ rule: true });
       last = v.menu?.group;
-      out.push({ command: v.id, icon: itemIcon(v.id) });
+      if (sub) subs.add(sub);
+      out.push(sub ? { label: sub, items: () => menuItems(app, v.menu!.bar, sub) } : { command: v.id, icon: itemIcon(v.id) });
     }
     let sub = first.menu && first.toolbar?.split ? menuItems(app, first.menu.bar, first.toolbar.split) : [];
     if (sub.every((i) => 'rule' in i || ('command' in i && variants.some((v) => v.id === i.command)))) sub = [];

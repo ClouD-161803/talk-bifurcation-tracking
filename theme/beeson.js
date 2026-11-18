@@ -1695,7 +1695,6 @@
     ".run",
     ".foot",
     ".slide-number",
-    ".progress",
     ".scrub",
     ".theme-switch",
     ".r-overlay"
@@ -3689,6 +3688,8 @@
     }
     for (const el of figures) syncParts(el);
   });
+  var previews = /* @__PURE__ */ new Map();
+  var compiling = null;
   function draw2(el, mode2) {
     const name = el.dataset.figure ?? "";
     const key = `${name} ${mode2}`;
@@ -3698,11 +3699,11 @@
     if (!state) watcher?.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "data-part"] });
     drawn.set(el, { n, key });
     for (const old of el.querySelectorAll(":scope > svg, :scope > .tikz-error")) old.remove();
-    const output = window.beesonFigures?.[name];
+    const output = previews.get(name) ?? window.beesonFigures?.[name];
     if (!output) {
       const box3 = document.createElement("div");
       box3.className = "tikz-error";
-      box3.textContent = name ? `figure ${name} is not compiled: run npm run tex` : "a TikZ figure without a name in data-figure";
+      box3.textContent = !name ? "a TikZ figure without a name in data-figure" : name === compiling ? `figure ${name} is being compiled` : `figure ${name} is not compiled: run npm run tex`;
       el.prepend(box3);
       return;
     }
@@ -3726,6 +3727,47 @@
     return done;
   }
   var figuresReady = () => pending;
+  async function reloadFigure(name, hash) {
+    if (!/^[\w-]+$/.test(name)) return false;
+    await loads.get(name);
+    if (window.beesonFigures?.[name]?.hash === hash) return true;
+    const was = window.beesonFigures?.[name];
+    const loading = new Promise((done) => {
+      const script2 = document.createElement("script");
+      script2.src = `figures/${name}.js?v=${encodeURIComponent(hash)}`;
+      script2.onload = script2.onerror = () => {
+        script2.remove();
+        done();
+      };
+      document.head.append(script2);
+    });
+    loads.set(name, loading);
+    await loading;
+    if (window.beesonFigures?.[name] !== was) {
+      previews.delete(name);
+      drawAgain(name);
+    }
+    return window.beesonFigures?.[name]?.hash === hash;
+  }
+  function drawAgain(name) {
+    for (const el of figuresUnder(document)) {
+      const state = drawn.get(el);
+      if (el.dataset.figure !== name || !state) continue;
+      state.key = "";
+      draw2(el, latest);
+    }
+  }
+  function previewFigure(name, output) {
+    if (output) previews.set(name, output);
+    else previews.delete(name);
+    drawAgain(name);
+  }
+  function compilingFigure(name) {
+    if (name === compiling) return;
+    const was = compiling;
+    compiling = name;
+    for (const n of [was, name]) if (n && !previews.has(n) && !window.beesonFigures?.[n]) drawAgain(n);
+  }
   function redrawFigures(mode2) {
     latest = mode2;
     for (const el of figuresUnder(document)) if (drawn.has(el)) draw2(el, mode2);
@@ -3757,7 +3799,11 @@
     });
   }
   var GAP3 = 3.2;
-  var REACH2 = 48;
+  var REACH2 = 16;
+  var FINGER_REACH = 44;
+  var REST = 200;
+  var SLOP2 = 10;
+  var LIFTED = 500;
   function initScrub(deck) {
     const reveal = deck.getRevealElement();
     const band = document.createElement("div");
@@ -3772,61 +3818,121 @@
     band.append(track, headingBox);
     reveal.append(band);
     let ticks = [];
+    let names = [];
     let hovered = null;
     let open2 = false;
     let zone = band.getBoundingClientRect();
+    const place2 = () => ({ slide: deck.getCurrentSlide(), f: deck.getIndices().f });
+    let here = place2();
+    let viewed = null;
+    let rest = 0;
+    let x = 0;
+    let press = null;
+    let lifted = -Infinity;
+    const item2 = (name, slide, at, text) => {
+      const el = document.createElement("div");
+      el.className = name;
+      el.classList.toggle("viewed", slide === viewed?.slide);
+      const span = document.createElement("span");
+      span.textContent = text;
+      el.append(span);
+      band.append(el);
+      return { slide, at, el };
+    };
+    const all = () => [...document.querySelectorAll(".reveal .slides section:not(:has(> section))")];
     const build = () => {
-      for (const t of ticks) t.el.remove();
-      const slides2 = deck.getSlides();
+      for (const t of [...ticks, ...names]) t.el.remove();
+      ticks = [];
+      names = [];
+      const numbered = deck.getSlides();
       const last = Math.max(1, deck.getTotalSlides() - 1);
-      const times = starts(slides2.map((s) => s.dataset.timing), deck.getConfig());
-      ticks = slides2.map((slide, i) => {
-        const at = Math.min(deck.getSlidePastCount(slide) / last, 1);
-        const el = document.createElement("div");
-        el.className = "scrub-tick";
-        el.style.left = `${at * 100}%`;
-        if (i === 0) el.classList.add("first");
-        if (i === slides2.length - 1 && slides2.length > 1) el.classList.add("last");
-        const number = document.createElement("span");
-        number.textContent = String(deck.getSlidePastCount(slide) + 1);
-        el.append(number);
+      const times = starts(numbered.map((s) => s.dataset.timing), deck.getConfig());
+      band.classList.toggle("timed", !!times);
+      let section = false;
+      for (const slide of all()) {
+        const i = deck.getSlidePastCount(slide);
+        const at = Math.min(i / last, 1);
+        if (numbered[i] !== slide) {
+          section || (section = slide.classList.contains("section"));
+          if (slide.matches(".section, .closing") || slide === viewed?.slide) names.push(item2("scrub-name", slide, at, slide.dataset.appendix ? `A${slide.dataset.appendix}` : heading(slide)));
+          continue;
+        }
+        const t = item2("scrub-tick", slide, at, String(i + 1));
+        t.el.style.left = `${at * 100}%`;
+        t.el.classList.toggle("first", i === 0);
+        t.el.classList.toggle("last", i > 0 && i === numbered.length - 1);
+        t.el.classList.toggle("section", section);
+        section = false;
         if (times) {
           const time = document.createElement("span");
           time.className = "scrub-time";
           time.textContent = minutes(times[i]);
-          el.append(time);
+          t.el.append(time);
         }
-        band.append(el);
-        return { slide, at, el };
-      });
+        ticks.push(t);
+      }
     };
     const thin = () => {
       zone = band.getBoundingClientRect();
       const em = parseFloat(getComputedStyle(band).fontSize) || 16;
-      const spacing = zone.width / Math.max(1, ticks.length - 1);
-      const k = Math.max(1, Math.ceil(GAP3 * em / spacing));
-      ticks.forEach((t, i) => t.el.classList.toggle("quiet", i % k !== 0 && i !== ticks.length - 1));
+      const sectioned = ticks.some((t) => t.el.classList.contains("section"));
+      const k = Math.max(1, Math.ceil(GAP3 * em / (zone.width / Math.max(1, ticks.length - 1))));
+      const boxes = ticks.map((t) => t.el.getBoundingClientRect());
+      const lastLeft = boxes.at(-1)?.left ?? 0;
+      let before = -Infinity;
+      ticks.forEach((t, i) => {
+        const at = t.at * zone.width;
+        const far = at - before >= GAP3 * em;
+        const shown = i === ticks.length - 1 || boxes[i].right + em <= lastLeft && (sectioned ? far && (i === 0 || t.el.classList.contains("section")) : i % k === 0);
+        if (shown) before = at;
+        t.el.classList.toggle("quiet", !shown);
+      });
+      for (const n of names) n.el.style.maxWidth = "";
+      const widths = names.map((n) => Math.ceil(n.el.getBoundingClientRect().width));
+      const cut = Math.min(1, (zone.width - em * (names.length - 1)) / Math.max(1, widths.reduce((a, b) => a + b, 0)));
+      let edge = 0;
+      const lefts = names.map((n, i) => {
+        const left = Math.max(n.at * zone.width, edge);
+        edge = left + widths[i] * cut + em;
+        return left;
+      });
+      edge = zone.width;
+      for (let i = names.length - 1; i >= 0; i -= 1) {
+        const left = Math.min(lefts[i], edge - widths[i] * cut);
+        edge = left - em;
+        names[i].el.style.left = `${left}px`;
+        if (cut < 1) names[i].el.style.maxWidth = `${widths[i] * cut}px`;
+      }
     };
     const mark = () => {
       fill2.style.transform = `scaleX(${deck.getTotalSlides() < 2 ? 0 : deck.getProgress()})`;
       const current = deck.getCurrentSlide();
-      for (const t of ticks) t.el.classList.toggle("now", t.slide === current);
+      for (const t of [...ticks, ...names]) t.el.classList.toggle("now", t.slide === current);
     };
     const hover = (t) => {
       if (t === hovered) return;
       hovered?.el.classList.remove("hover");
       hovered = t;
-      if (!t) {
-        headingBox.textContent = "";
-        return;
-      }
+      headingBox.textContent = "";
+      if (!t) return;
       t.el.classList.add("hover");
-      headingBox.textContent = heading(t.slide);
+      const text = t.el.firstElementChild?.textContent ?? "";
+      const box3 = t.el.getBoundingClientRect();
+      let at = t.at * zone.width;
+      if (names.includes(t)) {
+        if (press || t.el.scrollWidth > t.el.clientWidth) headingBox.textContent = text;
+        at = box3.left + box3.width / 2 - zone.left;
+      } else headingBox.textContent = press ? `${text} \xB7 ${heading(t.slide)}` : heading(t.slide);
       const half = headingBox.offsetWidth / 2;
-      const x = Math.min(Math.max(t.at * zone.width, half), zone.width - half);
-      headingBox.style.left = `${x}px`;
+      headingBox.style.left = `${Math.min(Math.max(at, half), zone.width - half)}px`;
+    };
+    const unrest = () => {
+      if (!rest) return;
+      window.clearTimeout(rest);
+      rest = 0;
     };
     const show2 = (on) => {
+      unrest();
       if (on === open2) return;
       open2 = on;
       if (on) {
@@ -3834,36 +3940,209 @@
         thin();
         mark();
       } else hover(null);
+      if (!on && press?.state === "open") press.state = "off";
+      band.classList.toggle("finger", on && !!press);
       reveal.classList.toggle("scrubbing", on);
     };
-    const nearest2 = (x) => {
-      const at = (x - zone.left) / zone.width;
+    const nearest2 = (to) => {
+      const at = (to - zone.left) / zone.width;
       let best = ticks[0] ?? null;
       for (const t of ticks) if (Math.abs(t.at - at) < Math.abs((best?.at ?? 0) - at)) best = t;
       return best;
     };
-    document.addEventListener("pointermove", (ev) => {
-      if (ev.pointerType !== "mouse" && ev.pointerType !== "pen") return;
-      const top = open2 ? zone.top : zone.bottom - REACH2;
-      const near = ev.clientY >= top && ev.clientY <= zone.bottom && ev.clientX >= zone.left && ev.clientX <= zone.right;
-      show2(near);
-      if (near) hover(nearest2(ev.clientX));
-    }, { passive: true });
-    document.documentElement.addEventListener("pointerleave", () => show2(false));
-    document.addEventListener("keydown", () => show2(false), true);
-    band.addEventListener("click", (ev) => {
-      const t = nearest2(ev.clientX);
+    const pick = (target, to) => {
+      const el = target instanceof Element ? target.closest(".scrub-name") : null;
+      return names.find((n) => n.el === el) ?? nearest2(to);
+    };
+    const go = (t) => {
       if (!t) return;
       const { h, v } = deck.getIndices(t.slide);
-      deck.slide(h, v, -1);
+      deck.slide(h, v, t.slide === viewed?.slide ? viewed.f : void 0);
+    };
+    const inside = (ev, reach) => ev.clientX >= zone.left && ev.clientX <= zone.right && ev.clientY <= zone.bottom && ev.clientY >= (open2 ? zone.top : zone.bottom - reach);
+    const opened = () => {
+      if (press) press.state = "open";
+      show2(true);
+      hover(pick(press && document.elementFromPoint(press.x, press.y), x));
+    };
+    document.addEventListener("pointerdown", (ev) => {
+      lifted = -Infinity;
+      unrest();
+      if (press?.state === "rest") press = null;
+      if (press && ev.isPrimary && ev.pointerType !== "mouse" && ev.pointerId !== press.id) {
+        press = null;
+        show2(false);
+      }
+      if (ev.pointerType === "mouse" || !ev.isPrimary || press || open2 || !inside(ev, FINGER_REACH)) return;
+      if (ev.target instanceof Element && ev.target.closest(OWN2)) return;
+      press = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, state: "rest" };
+      x = ev.clientX;
+      rest = window.setTimeout(opened, REST);
+    }, true);
+    document.addEventListener("pointermove", (ev) => {
+      if (press?.id === ev.pointerId) {
+        x = ev.clientX;
+        if (press.state !== "rest") ev.stopPropagation();
+        if (press.state === "open" && ev.clientY >= zone.top) hover(pick(document.elementFromPoint(ev.clientX, ev.clientY), x));
+        else if (press.state === "open") {
+          press.state = "off";
+          show2(false);
+        } else if (press.state === "rest" && Math.hypot(x - press.x, ev.clientY - press.y) > SLOP2) {
+          press = null;
+          unrest();
+        }
+        return;
+      }
+      if (ev.pointerType === "touch") return;
+      x = ev.clientX;
+      if (open2) {
+        if (inside(ev, 0)) hover(pick(ev.target, x));
+        else show2(false);
+      } else if (inside(ev, REACH2) && !ev.buttons) rest || (rest = window.setTimeout(opened, REST));
+      else unrest();
+    }, true);
+    const lift = (ev) => {
+      if (press?.id !== ev.pointerId) return;
+      const { state } = press;
+      press = null;
+      if (state === "rest") return unrest();
+      lifted = ev.timeStamp;
+      const t = hovered;
+      show2(false);
+      if (state === "open" && ev.type === "pointerup") go(t);
+    };
+    document.addEventListener("pointerup", lift, true);
+    document.addEventListener("pointercancel", lift, true);
+    document.addEventListener("contextmenu", (ev) => {
+      if (press && press.state !== "rest") ev.preventDefault();
+    }, true);
+    document.addEventListener("click", (ev) => {
+      if (ev.timeStamp - lifted > LIFTED) return;
+      lifted = -Infinity;
+      ev.preventDefault();
+      ev.stopPropagation();
+    }, true);
+    document.documentElement.addEventListener("pointerleave", (ev) => {
+      if (ev.pointerType !== "touch") show2(false);
     });
-    for (const event of ["slidechanged", "fragmentshown", "fragmenthidden"]) deck.on(event, () => {
-      if (open2) mark();
+    document.addEventListener("keydown", () => show2(false), true);
+    band.addEventListener("click", (ev) => go(pick(ev.target, ev.clientX)));
+    const index = (slide) => all().indexOf(slide);
+    let from = null;
+    const leave3 = (left) => {
+      if (Math.abs(index(deck.getCurrentSlide()) - index(left.slide)) > 1) viewed = left;
+    };
+    const redraw = () => {
+      if (!open2) return;
+      const slide = hovered?.slide;
+      hover(null);
+      build();
+      thin();
+      mark();
+      hover([...ticks, ...names].find((t) => t.slide === slide) ?? null);
+    };
+    deck.on("overviewshown", () => {
+      from = here;
     });
-    deck.on("resize", () => {
+    deck.on("overviewhidden", () => queueMicrotask(() => {
+      if (from) leave3(from);
+      from = null;
+      redraw();
+    }));
+    deck.on("slidechanged", () => {
+      if (!from) leave3(here);
+      here = place2();
+      redraw();
+    });
+    for (const event of ["fragmentshown", "fragmenthidden"]) {
+      deck.on(event, () => {
+        if (deck.getCurrentSlide() === here.slide) here = place2();
+        if (open2) mark();
+      });
+    }
+    window.addEventListener("resize", () => {
       zone = band.getBoundingClientRect();
       if (open2) thin();
     });
+  }
+
+  // src/overview.ts
+  var PINCH = 0.7;
+  var PAUSE = 150;
+  var FULL = 1.03;
+  var distance = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  function initOverview(deck) {
+    const reveal = deck.getRevealElement();
+    let swipe = { x: 0, y: 0, from: 0, to: 0, step: 0, last: -Infinity };
+    const width = () => {
+      const slides2 = deck.getHorizontalSlides();
+      const h = deck.getIndices().h;
+      const next = slides2[h + 1] ?? slides2[h - 1];
+      return next ? Math.abs(next.getBoundingClientRect().left - slides2[h].getBoundingClientRect().left) : 0;
+    };
+    const onWheel = (ev) => {
+      if (ev.ctrlKey) return;
+      ev.preventDefault();
+      const unit = ev.deltaMode === 1 ? 40 : ev.deltaMode === 2 ? window.innerWidth : 1;
+      const h = deck.getIndices().h;
+      if (ev.timeStamp - swipe.last > PAUSE) swipe = { x: 0, y: 0, from: h, to: h, step: width(), last: 0 };
+      swipe.from += h - swipe.to;
+      swipe.to = h;
+      swipe.last = ev.timeStamp;
+      swipe.x += ev.deltaX * unit;
+      swipe.y += ev.deltaY * unit;
+      if (Math.abs(ev.deltaX) <= Math.abs(ev.deltaY)) return;
+      if (!swipe.step || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;
+      const passed = Math.sign(swipe.x) * Math.ceil(Math.abs(swipe.x) / swipe.step);
+      swipe.to = Math.min(Math.max(swipe.from + passed, 0), deck.getHorizontalSlides().length - 1);
+      if (swipe.to !== h) deck.slide(swipe.to);
+    };
+    deck.on("overviewshown", () => {
+      window.addEventListener("wheel", onWheel, { passive: false });
+      reveal.style.touchAction = "none";
+    });
+    deck.on("overviewhidden", () => {
+      window.removeEventListener("wheel", onWheel);
+      reveal.style.touchAction = "";
+    });
+    let pinch = null;
+    document.addEventListener("touchstart", (ev) => {
+      pinch = null;
+      if (ev.touches.length !== 2) return;
+      const zoom = window.visualViewport?.scale ?? 1;
+      const own = ev.target instanceof Element && ev.target.closest("tycho-viewer");
+      if (!deck.isOverview() && (zoom >= FULL || own)) return;
+      const [a, b] = [ev.touches[0], ev.touches[1]];
+      pinch = { from: distance(ev.touches), x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+    }, { passive: true });
+    const read2 = (scale) => {
+      if (!pinch) return;
+      if (!deck.isOverview() && scale < PINCH) {
+        pinch = null;
+        deck.toggleOverview(true);
+      } else if (deck.isOverview() && scale > 1 / PINCH) {
+        const under = document.elementFromPoint(pinch.x, pinch.y)?.closest(".slides section:not(.stack)");
+        pinch = null;
+        deck.toggleOverview(false);
+        if (under) deck.slide(Number(under.dataset.indexH), Number(under.dataset.indexV ?? 0));
+      }
+    };
+    document.addEventListener("touchmove", (ev) => {
+      if (pinch && ev.touches.length === 2) read2(distance(ev.touches) / pinch.from);
+    }, { passive: true });
+    const lift = (ev) => {
+      if (ev.touches.length < 2) pinch = null;
+    };
+    document.addEventListener("touchend", lift, { passive: true });
+    document.addEventListener("touchcancel", lift, { passive: true });
+    const gesture = (ev) => {
+      const scale = ev.scale;
+      if (!pinch) return;
+      if (deck.isOverview() || scale < 1) ev.preventDefault();
+      read2(scale);
+    };
+    document.addEventListener("gesturestart", gesture, { passive: false });
+    document.addEventListener("gesturechange", gesture, { passive: false });
   }
 
   // src/contour.ts
@@ -6240,6 +6519,9 @@ void main() {
     progress: true,
     slideNumber: (slide) => numberOf(slide, window.Reveal.getSlides()),
     controls: false,
+    // off, since the box on G counts the unnumbered slides too, and shows another slide than the one
+    // whose number is typed
+    jumpToSlide: false,
     center: false,
     pdfSeparateFragments: true,
     // one page per step, as in Keynote and PowerPoint, with what runs past the slide cut off in the
@@ -6461,6 +6743,7 @@ void main() {
     if (!EDITING && !deck.isPrintView() && !/print-pdf/.test(location.search)) {
       if (!PLAYED) initFullscreen();
       initScrub(deck);
+      initOverview(deck);
       initVideos(deck);
       initViewers(deck);
       if (internal) initClick(deck, () => internal.cueAutoSlide(), ENDS ? () => toEditor("edit") : void 0);
@@ -6579,10 +6862,11 @@ void main() {
     animated,
     surfaces,
     plots,
-    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs
+    // resolved once every TikZ figure that is being drawn is drawn, see scripts/chrome.mjs. reload is
+    // called by the editor after the edit command wrote an output
     figures: { get ready() {
       return figuresReady();
-    } },
+    }, reload: reloadFigure, preview: previewFigure, compiling: compilingFigure },
     // called in a script file of polylines named in data-trajectories, see src/trajectories.ts
     trajectories: register,
     // called by the editor after a structural change of the slides
