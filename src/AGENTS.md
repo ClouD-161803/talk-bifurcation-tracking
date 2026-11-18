@@ -41,13 +41,17 @@ The rules below are for work on the template itself: the theme, the editor, the 
 - Run one test file with `node --test test/<name>.test.mjs`. The whole suite takes over an hour on one machine. In the workflow `check`, it is split over seven runners per system.
 - Run `node --test test/perf.test.mjs` yourself after you change how backdrops are drawn. This test is skipped on CI.
 - In the workflow `check`, `npm test` is run only in beeson-group/slides. In a talk, only the checks of the deck are run.
-- A draft is tested on Ubuntu only. The test shards on Windows are run in the round that is started when the PR is marked as ready. Watch this round as well.
+- A PR is checked on Ubuntu only: the tests, the deck in Chrome and in Firefox, and the figures. Windows, macOS, and Safari are checked on `main` after each merge.
+- Before the merge of a change that is specific to Windows, macOS, or Safari, start a round on every system with `gh workflow run check --ref <branch>`. Watch this round as well.
+- Fix a failed round on `main` before other changes are merged.
 
 ## Writing a test
 
 A round is one run of the workflow `check` on a commit. A flaky test is a test that fails in a round without a fault in the code under test. On GitHub runners, with two to four cores, WebGL and video are drawn in software. Hence pages are many times slower there than on a laptop.
 
-- Fix flaky tests before the merge. Reproduce the failure first by forcing its condition. Do not run the failed job again in place of a fix.
+- A test file with a failed test is run once more in the same job. A test that then passes is flaky. It is named in a warning of the round, and the round does not fail.
+- Read the warnings of a round before the merge. Fix a flaky test of the code that you changed. For any other flaky test, open a `Bug` issue, or extend its open issue.
+- Reproduce the failure of a flaky test first by forcing its condition. Do not run a failed job again in place of a fix.
 - Do not read results after a fixed wait. Wait for the state of the page with `page.waitFor`. Read the result once this state is reached.
 - Record the states of previews and animations with a clock in the page, and assert the record. A state may be over before it is read in the test.
 - Wait for the end of animations, transitions, and mode flips by their state. Give them 60 s on slides with a surface, a video, or a TyCHO viewer.
