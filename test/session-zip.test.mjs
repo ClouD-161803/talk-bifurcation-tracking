@@ -194,10 +194,15 @@ const PAGE = `{
   }, true);
 }`;
 
-// an iPad with a trackpad: iPadOS names itself a Mac with a touch screen, and the page has a fine
-// pointer
+// an iPad with a trackpad: iPadOS names itself a Mac with a touch screen, and the page has a coarse
+// and a fine pointer. both are set here, since a page has the pointers of its machine, and a runner
+// does not have a mouse
 const IPAD = `Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel' });
-Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5 });`;
+Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () => 5 });
+{
+  const media = window.matchMedia.bind(window);
+  window.matchMedia = (query) => media(/^\\(any-pointer: (coarse|fine)\\)$/.test(query) ? 'all' : query);
+}`;
 
 // a phone of Android. without it, the page has the platform of its runner, which is a computer for
 // a touch screen alone on Windows
@@ -578,7 +583,7 @@ test('a tablet with a trackpad is told about phones and tablets as well, and to 
   t.after(() => browser.close());
   const server = await zipTalk(t);
   const tablet = await editorOn(browser, sessionUrl(server.edit), { name: 'Di', script: IPAD });
-  assert.deepEqual(await tablet.evaluate(`[matchMedia('(any-pointer: fine)').matches, navigator.platform, navigator.maxTouchPoints]`), [true, 'MacIntel', 5]);
+  assert.deepEqual(await tablet.evaluate(`[matchMedia('(any-pointer: coarse)').matches, matchMedia('(any-pointer: fine)').matches, navigator.platform, navigator.maxTouchPoints]`), [true, true, 'MacIntel', 5]);
   const dir = join(server.root, 'tablet downloads');
   await downloadsTo(tablet, dir);
   await choose(tablet, PATH);
