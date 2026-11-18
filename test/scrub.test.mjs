@@ -603,6 +603,26 @@ test('the title, section, and closing slides are not numbered, and the slides af
   assert.deepEqual(runs, ['', '', 'Chapter one', 'Chapter one', '', 'Chapter two', '', 'Appendix slides', 'Appendix slides']);
 });
 
+test('the slides of a stack have ticks, and a step down a stack is not a jump', { timeout: 60000 }, async (t) => {
+  const { page, rest } = await openDeck(t, '', { deck: 'test/pages/stack.html' });
+  const at = (heading) => `Reveal.getCurrentSlide().querySelector('h1, h2').textContent === ${JSON.stringify(heading)}`;
+  await rest();
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.scrub-tick')].map((t) => t.firstChild.textContent)`), ['1', '2', '3', '4']);
+
+  // into the stack, down it, and out of it, one slide at a time
+  await page.evaluate('Reveal.slide(1)');
+  for (const heading of ['Second', 'Third', 'Fourth']) {
+    await page.evaluate('Reveal.next()');
+    await page.waitFor(at(heading));
+  }
+  await past(page, 100);
+  assert.equal(await page.evaluate(`document.querySelector('.scrub .viewed')`), null, 'a slide is marked as the last viewed slide');
+
+  // a jump out of the last slide still marks it
+  await page.evaluate('Reveal.slide(0)');
+  await page.waitFor(`document.querySelector('.scrub-tick.viewed')?.firstChild.textContent === '4'`);
+});
+
 test('a last viewed slide without a tick has its name at its end of the band', { timeout: 60000 }, async (t) => {
   const { page, rest, click } = await openDeck(t, '', { deck: 'test/pages/numbers.html' });
   const at = (heading) => `Reveal.getCurrentSlide().querySelector('h1, h2').textContent === ${JSON.stringify(heading)}`;
