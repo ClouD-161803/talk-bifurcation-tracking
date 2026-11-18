@@ -110,3 +110,45 @@ test('the cursor over a text element is the move cursor where a press selects or
   assert.equal(await clicked(page, shape), 'text', 'the words of the shape with the caret');
   assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
 });
+
+// the center of the handle, or null where the handle is hidden
+const handle = (page) => page.evaluate(`(() => { const h = document.querySelector('.beeson-overlay .beeson-handle'); if (h.hidden) return null; const r = h.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+
+// the pointer moved in steps from a cell of the table to the handle, with the handle read at each step
+async function toHandle(page) {
+  const from = await words(page, 'td');
+  await move(page, from);
+  await settle(page);
+  const to = await handle(page);
+  assert.ok(to, 'the table does not show its handle');
+  const table = await page.evaluate(`Reveal.getCurrentSlide().querySelector('table').getBoundingClientRect().left`);
+  assert.ok(to.x < table, 'the handle is not left of the table');
+  const steps = 12;
+  for (let i = 1; i <= steps; i++) {
+    const p = { x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps };
+    await move(page, p);
+    await settle(page);
+    assert.deepEqual(await handle(page), to, `the handle moved away at step ${i} of the way, at ${js(p)}`);
+  }
+  return to;
+}
+
+test('the handle of a table stays reachable over a list on the way to it', async (t) => {
+  const page = await load(t, 1);
+  const ul = await page.evaluate(`(() => { const r = Reveal.getCurrentSlide().querySelector('ul').getBoundingClientRect(); return { left: r.left, right: r.right }; })()`);
+  const table = await page.evaluate(`Reveal.getCurrentSlide().querySelector('table').getBoundingClientRect().left`);
+  assert.ok(ul.right > table, 'the list does not reach under the left of the table');
+  const to = await toHandle(page);
+  assert.ok(to.x > ul.left + 30, 'the handle is not over the list');
+  // a few pixels left of the handle, the list under the pointer is hovered
+  await move(page, { x: to.x - 25, y: to.y });
+  await settle(page);
+  assert.notDeepEqual(await handle(page), to, 'the list left of the handle is not hovered');
+
+  // the same with the caret in a cell of the table
+  await click(page, await words(page, 'td'));
+  await settle(page);
+  assert.equal(await page.evaluate(`!!document.activeElement.closest('td')`), true, 'the cell does not take the caret');
+  await toHandle(page);
+  assert.deepEqual(page.errors.filter((e) => !e.includes('favicon.ico')), []);
+});
