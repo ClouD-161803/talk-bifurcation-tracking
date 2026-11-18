@@ -600,10 +600,17 @@ function lockTargets(app: App, on: boolean): Element[] {
   return [...new Set([...els, ...locked])];
 }
 
-function setLock(app: App, on: boolean): void {
-  const els = lockTargets(app, on).filter((el) => locked(el) !== on);
+function setLock(app: App, on: boolean, targets: Element[] = lockTargets(app, on)): void {
+  const els = targets.filter((el) => locked(el) !== on);
   for (const el of els) app.doc.setTag(el, { attrs: { 'data-locked': on ? '' : null } }, on ? 'lock' : 'unlock');
   app.invalidate('selection');
+}
+
+// the lock or the unlock of els by a padlock of the canvas, as one entry of the history, as Lock and
+// Unlock of the Arrange menu
+export async function lockEls(app: App, els: Element[], on: boolean): Promise<void> {
+  if (app.commands.refused(on ? 'arrange.lock' : 'arrange.unlock')) return;
+  await app.history.transact(on ? 'Lock' : 'Unlock', () => setLock(app, on, els));
 }
 
 export { angleOf };

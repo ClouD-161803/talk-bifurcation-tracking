@@ -61,7 +61,7 @@ function assertGrips(grips, what) {
     assert.equal(g.width, '1px', `${what}: the ring of a grip`);
     assert.equal(g.color, RING, `${what}: the color of the ring of a grip`);
     assert.equal(g.background, WHITE, `${what}: the fill of a grip`);
-    assert.equal(Math.round(g.size), 12, `${what}: the size of a grip`);
+    assert.equal(Math.round(g.size), 11, `${what}: the size of a grip`);
   }
 }
 
@@ -136,7 +136,7 @@ const padlocks = (page) => page.evaluate(`[...document.querySelectorAll('.beeson
 })`);
 const box = (page, selector) => page.evaluate(`(() => { const r = document.querySelector('.reveal section.present ${selector}').getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; })()`);
 const locked = (page, selector) => page.evaluate(`[...document.querySelectorAll('.reveal section.present ${selector}')].map((el) => el.hasAttribute('data-locked'))`);
-const selection = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.className || el.localName)`);
+const selection = (page) => page.evaluate(`window.BeesonEditor.selection().map((el) => el.classList[0] === 'shape' ? [...el.classList].slice(0, 3).join(' ') : el.classList[0] ?? el.localName)`);
 const shownGrips = (page) => page.evaluate(`[...document.querySelectorAll('.beeson-overlay .beeson-grip')].filter((g) => !g.hidden).length`);
 const undo = async (page) => { await page.evaluate('window.BeesonEditor.undo()'); await settle(page); };
 const redo = async (page) => { await page.evaluate('window.BeesonEditor.redo()'); await settle(page); };
@@ -208,7 +208,7 @@ test('a group has one padlock, and each frame of a multiple selection has its ow
   let locks = await padlocks(page);
   assert.equal(locks.length, 1, 'a selected group does not have one padlock');
   const m1 = await box(page, '.shape.m1');
-  assert.ok(Math.abs(locks[0].top - m1.top) <= 1, 'the padlock of a group is not at the top of its frame');
+  assert.ok(Math.abs(locks[0].top - (m1.top - 6)) <= 1, 'the padlock of a group is not at the top of its frame');
   await click(page, locks[0]);
   await settle(page);
   assert.deepEqual(await locked(page, '.shape[data-group]'), [true, true, true], 'the padlock does not lock the group');

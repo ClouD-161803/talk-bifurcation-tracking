@@ -4,17 +4,18 @@
 // clipped to the canvas cell of the stage, so that a handle at the edge of the slide is drawn on
 // the pasteboard and none is drawn over the bars at a zoom. the frames are drawn in screen pixels
 // from the live boxes of the elements, and the guides from slide pixels by the live scale. the frame
-// and the handles of a rotated element are turned with it, and a locked element is framed in gray
-// with a cross in place of each handle
+// and the handles of a rotated element are turned with it, and a locked element is framed dimmed
+// without grips. left of each frame, a padlock locks and unlocks its element
 
 import type { App } from '../app.ts';
 import { HOST } from '../app.ts';
 import { injectStyle } from '../ui/dom.ts';
-import { groupOf, membersOf } from '../commands/order.ts';
+import { icon } from '../ui/icons.ts';
+import { groupOf, lockEls, membersOf } from '../commands/order.ts';
 import { scopeOf } from '../model/groups.ts';
 import { apartOf, turnersOf } from './drag.ts';
 import type { Box, Guide, Handle, Spacing } from './snap.ts';
-import { BY_ITSELF, CONTAINER, RESIZABLE, captionsOf, figureFrame, frameOf, frameRect, isTextSized, movableOf, orientedBox, pictureOf, scaleAt, sizedOf, toScreen, turnable as turns } from './hit.ts';
+import { BY_ITSELF, CONTAINER, RESIZABLE, captionsOf, objectsOf, figureFrame, frameOf, frameRect, isTextSized, movableOf, orientedBox, pictureOf, scaleAt, sizedOf, toScreen, turnable as turns } from './hit.ts';
 
 export const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 // the resize cursors from the direction of the grip e on, by eighths of a turn clockwise
@@ -49,10 +50,9 @@ const CSS = `
 .beeson-frame:where(.selected, .union, .entered, .caret) { border: 1px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.55); opacity: 1; }
 .beeson-frame.entered { border-style: dashed; }
 .beeson-overlay [hidden] { display: none !important; }
-.beeson-grip { position: fixed; width: 10px; height: 10px; margin: -6px 0 0 -6px; border-radius: 50%; border: 1px solid #444; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; }
-.beeson-frame.selected.locked { border-color: #8a8a8a; }
+.beeson-grip { position: fixed; width: 9px; height: 9px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; border: 1px solid #444; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); pointer-events: auto; touch-action: none; }
+.beeson-frame.locked { opacity: 0.45; }
 .beeson-grip.square { border-radius: 0; }
-.beeson-grip.locked { width: 9px; height: 9px; border: 0; border-radius: 0; background: linear-gradient(45deg, transparent 42%, #8a8a8a 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, #8a8a8a 42% 58%, transparent 58%); box-shadow: none; pointer-events: none; }
 .beeson-rotor { position: fixed; width: 14px; height: 14px; margin: -7px 0 0 -7px; box-sizing: border-box; border-radius: 50%; border: 1px solid #444; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); color: #444; font: 600 10px/12px system-ui, sans-serif; text-align: center; cursor: grab; user-select: none; pointer-events: auto; touch-action: none; }
 .beeson-rotor-stem { position: fixed; width: 1px; height: 11px; margin-left: -0.5px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55); transform-origin: 50% 0; }
 html.beeson-rotating, html.beeson-rotating * { cursor: grabbing !important; user-select: none !important; }
@@ -60,8 +60,10 @@ html.beeson-rotating, html.beeson-rotating * { cursor: grabbing !important; user
 .beeson-grip[data-handle=ne], .beeson-grip[data-handle=sw] { cursor: nesw-resize; }
 .beeson-grip[data-handle=n], .beeson-grip[data-handle=s] { cursor: ns-resize; }
 .beeson-grip[data-handle=e], .beeson-grip[data-handle=w] { cursor: ew-resize; }
-.beeson-handle { position: fixed; width: 22px; height: 22px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--ed-line, var(--line, #555)); background: var(--ed-panel, var(--bg, #000)); color: var(--ed-text, var(--text, #eee)); font: 14px/20px system-ui, sans-serif; text-align: center; cursor: move; user-select: none; pointer-events: auto; }
-.beeson-handle:hover, .beeson-handle:focus-visible { border-color: var(--ed-text, var(--text, #eee)); outline: none; }
+.beeson-handle, .beeson-lock { position: fixed; width: 22px; height: 22px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--ed-line, var(--line, #555)); background: var(--ed-panel, var(--bg, #000)); color: var(--ed-text, var(--text, #eee)); font: 14px/20px system-ui, sans-serif; text-align: center; cursor: move; user-select: none; pointer-events: auto; }
+.beeson-handle:hover, .beeson-handle:focus-visible, .beeson-lock:hover, .beeson-lock:focus-visible { border-color: var(--ed-text, var(--text, #eee)); outline: none; }
+.beeson-lock { display: grid; place-items: center; cursor: default; touch-action: manipulation; }
+.beeson-lock.closed { background: var(--ed-text, var(--text, #eee)); color: var(--ed-panel, var(--bg, #000)); }
 .beeson-guide { position: fixed; background: var(--ed-guide, #e8590c); }
 .beeson-guide.v { width: 1px; }
 .beeson-guide.h { height: 1px; }
@@ -207,6 +209,9 @@ const HANDLE_GAP = 10;
 // the bar of the row numbers of a table with its gap, in commands/table.ts, which the handle of a
 // table is drawn left of
 const ROW_BAR = 24;
+// the distance between the rows of the column of buttons left of a frame: the handle, the padlock,
+// and the group button
+const ROW = 23;
 
 // the overlay of the editor. the handle of a text element and the resize handles are its only parts that
 // take the pointer
@@ -245,6 +250,11 @@ export class Frames {
   private readonly gaps: HTMLDivElement[] = [];
   readonly readout: HTMLDivElement;
   private readonly marquee: HTMLDivElement;
+  // the padlock of each frame of the selection, with the elements that it locks, and the box of the
+  // column of buttons of each framed element, which the hover keeps to on its way there
+  private readonly locks: HTMLDivElement[] = [];
+  private lockTargets: Element[][] = [];
+  private columns = new Map<Element, Box>();
   private readonly app: App;
 
   constructor(app: App) {
@@ -274,6 +284,39 @@ export class Frames {
     this.handle.setAttribute('role', 'button');
     this.handle.setAttribute('aria-label', 'Move the text element: the arrow keys nudge it, Enter puts it back');
     this.readout = div('beeson-offset', this.layer);
+  }
+
+  // a button of the column left of a frame, pressed with a click, a tap, Enter, or Space. a press on
+  // it does not reach the canvas, and it does not take the focus from a text
+  private button(className: string, act: () => void): HTMLDivElement {
+    const b = div(className, this.layer);
+    b.tabIndex = 0;
+    b.setAttribute('role', 'button');
+    b.addEventListener('pointerdown', (ev) => ev.preventDefault());
+    b.addEventListener('click', act);
+    b.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      act();
+    });
+    return b;
+  }
+
+  private padlock(): HTMLDivElement {
+    const n = this.locks.length;
+    const b = this.button('beeson-lock', () => {
+      const els = this.lockTargets[n];
+      if (!els?.length) return;
+      lockEls(this.app, els, !els.every((el) => el.hasAttribute('data-locked'))).catch((e) => this.app.fail(e));
+    });
+    this.locks.push(b);
+    return b;
+  }
+
+  // the box of the column of buttons of el, while el is framed
+  columnOf(el: Element): Box | null {
+    return this.columns.get(el) ?? null;
   }
 
   private gripSet(): Record<Handle, HTMLDivElement> {
@@ -320,12 +363,18 @@ export class Frames {
 
   // the resize handles of a selected element, drawn on each element of a multiple selection as in
   // Keynote and PowerPoint: live on an image, a video, a QR code, a viewer, a figure that holds one
-  // of them, and a text element, whose grips set its width, none on another figure, and crosses on a
-  // locked element
+  // of them, and a text element, whose grips set its width, none on another figure, and 'locked' on a
+  // locked element, whose grips are not drawn
   gripsOf(el: Element | null): 'live' | 'locked' | null {
     if (!el || !(this.app.selection.elements().includes(el) || el === this.caretElement())) return null;
     if (el.hasAttribute('data-locked')) return 'locked';
     return sizedOf(el).length || el.matches('.backdrop') ? 'live' : null;
+  }
+
+  // whether the selected el is dragged by the handle, i.e. a text element, also while it is locked
+  // and the handle is hidden, so that its padlock keeps its row through a lock
+  private handles(el: Element): boolean {
+    return !(el.matches(BY_ITSELF) && !el.matches('tycho-viewer')) && !((sizedOf(el).length || el.matches('.backdrop')) && !isTextSized(el));
   }
 
   // the text element of the caret while nothing is selected as an object, framed with its grips as a text
@@ -362,7 +411,7 @@ export class Frames {
       }
       place(f, boxes[i]);
       f.style.rotate = orients[i].deg ? `${orients[i].deg}deg` : '';
-      f.classList.toggle('locked', selected[i].hasAttribute('data-locked'));
+      f.classList.toggle('locked', objectsOf(app, [selected[i]]).every((el) => el.hasAttribute('data-locked')));
     });
     // a whole group is drawn as one element, with one frame around its members, as in Keynote and
     // PowerPoint. in another multiple selection, each member is drawn with its own frame and grips,
@@ -379,6 +428,7 @@ export class Frames {
       this.reach = turn?.box ?? groupFrame(selected, this.groupDeg);
       this.group = selected.some((el) => captionsOf(el).length) ? grow(this.reach, INSET) : this.reach;
       place(this.union, this.group);
+      this.union.classList.toggle('locked', selected.some((el) => el.hasAttribute('data-locked')));
       this.union.style.rotate = this.groupDeg ? `${this.groupDeg}deg` : '';
       for (const f of this.frames) f.hidden = true;
     } else this.union.hidden = true;
@@ -407,6 +457,7 @@ export class Frames {
         return;
       }
       place(u, shown[n].box);
+      u.classList.toggle('locked', shown[n].els.some((el) => el.hasAttribute('data-locked')));
       u.style.rotate = shown[n].deg ? `${shown[n].deg}deg` : '';
     });
     selected.forEach((el, i) => {
@@ -452,8 +503,7 @@ export class Frames {
         }
         const b = m.box, deg = m.deg;
         const at = turned(b, deg, h.includes('w') ? b.left : h.includes('e') ? b.left + b.width : b.left + b.width / 2, h.includes('n') ? b.top : h.includes('s') ? b.top + b.height : b.top + b.height / 2);
-        g.hidden = turning;
-        g.classList.toggle('locked', m.grips === 'locked');
+        g.hidden = turning || m.grips === 'locked';
         // the cursor of a grip on a turned frame points along its turned direction, to the nearest
         // eighth of a turn, while it is not held
         const cursor = deg ? CURSORS[Math.round((((HANDLES.indexOf(h) * 45 + 225 + deg) % 360) + 360) % 360 / 45) % 4] : '';
@@ -494,10 +544,51 @@ export class Frames {
       Object.assign(this.stem.style, { left: `${edge.x}px`, top: `${edge.y}px`, height: `${this.rotorAt - KNOB}px`, rotate: `${deg + 180}deg` });
     }
 
-    // the canvas is given room for every grip and the rotate handle past the slide, kept through a
-    // gesture so that the slide does not move under the pointer
+    // a padlock for each frame, i.e. for each selected element and each whole group, in a column
+    // left of the upper left corner of the frame, under the handle of a text element. it is not
+    // drawn in a drag, a resize, or a turn
+    const columns: { els: Element[]; at: Box; handled: boolean }[] = [];
+    const bounds = (els: Element[]) => {
+      const rs = els.map((el) => el.getBoundingClientRect());
+      const left = Math.min(...rs.map((r) => r.left)), top = Math.min(...rs.map((r) => r.top));
+      return { left, top, width: Math.max(...rs.map((r) => r.right)) - left, height: Math.max(...rs.map((r) => r.bottom)) - top };
+    };
+    if (!view.moving && !turn) {
+      if (this.group) columns.push({ els: selected, at: bounds(selected), handled: false });
+      else {
+        for (const o of shown) columns.push({ els: o.els, at: bounds(o.els), handled: false });
+        for (const el of selected) if (!drawn.has(el)) columns.push({ els: [el], at: bounds([el]), handled: this.handles(el) });
+      }
+    }
+    while (this.locks.length < columns.length) this.padlock();
+    this.lockTargets = columns.map((f) => objectsOf(app, f.els));
+    this.columns = new Map();
+    const buttons: Box[] = [];
+    this.locks.forEach((b, n) => {
+      const f = columns[n];
+      b.hidden = !f;
+      if (!f) return;
+      const closed = this.lockTargets[n].every((el) => el.hasAttribute('data-locked'));
+      if (b.dataset.closed !== String(closed)) {
+        b.dataset.closed = String(closed);
+        b.classList.toggle('closed', closed);
+        b.title = closed ? 'Unlock' : 'Lock';
+        b.setAttribute('aria-label', b.title);
+        b.replaceChildren(icon(closed ? 'lock' : 'unlock', 16));
+      }
+      const bar = f.els.length === 1 && f.els[0].localName === 'table' ? ROW_BAR : 0;
+      const at = { left: f.at.left - 6 - HANDLE_GAP - HANDLE - bar, top: f.at.top - 6 + (f.handled ? ROW : 0), width: HANDLE, height: HANDLE };
+      Object.assign(b.style, { left: `${at.left}px`, top: `${at.top}px` });
+      buttons.push(at);
+      const column = { left: at.left, top: f.at.top - 6, width: HANDLE, height: at.top + HANDLE - (f.at.top - 6) };
+      for (const el of f.els) this.columns.set(el, column);
+    });
+
+    // the canvas is given room for every grip, the rotate handle, and the buttons past the slide,
+    // kept through a gesture so that the slide does not move under the pointer
     if (!view.moving && app.stage) {
       const points = gripped.flatMap((m) => [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => turned(m.box, m.deg, m.box.left + u * m.box.width, m.box.top + v * m.box.height)));
+      for (const b of buttons) points.push({ x: b.left, y: b.top }, { x: b.left + b.width, y: b.top + b.height });
       if (!this.rotor.hidden) points.push({ x: parseFloat(this.rotor.style.left), y: parseFloat(this.rotor.style.top) });
       const inSlide = points.map((p) => app.stage.toSlide(p));
       app.stage.setReach(inSlide.length ? { left: Math.min(...inSlide.map((p) => p.x)), top: Math.min(...inSlide.map((p) => p.y)), right: Math.max(...inSlide.map((p) => p.x)), bottom: Math.max(...inSlide.map((p) => p.y)) } : null);

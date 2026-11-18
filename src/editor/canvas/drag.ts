@@ -602,7 +602,8 @@ export function install(app: App): void {
     if (ev.button !== 0 || (ev.ctrlKey && mac()) || press) return;
     quiet = false;
     const target = ev.target instanceof Element ? ev.target : null;
-    if (!target) return;
+    // a button of the column left of a frame, e.g. a padlock, acts at its click
+    if (!target || target.closest('.beeson-lock')) return;
     const sel = app.selection;
     if (target === frames.rotor) {
       const el = sel.only();
@@ -640,7 +641,7 @@ export function install(app: App): void {
       return;
     }
     const grip = target.closest('.beeson-grip');
-    if (grip && !grip.classList.contains('locked') && (grip as HTMLElement).dataset.group) {
+    if (grip && (grip as HTMLElement).dataset.group) {
       // the grips of a group, also of one selected with other objects: each member is a follower
       // of the box of the group
       ev.preventDefault();
@@ -660,7 +661,7 @@ export function install(app: App): void {
       holdGrip(grip as HTMLElement);
       return;
     }
-    if (grip && !grip.classList.contains('locked')) {
+    if (grip) {
       // the grips of a picture selected inside its figure resize the figure
       const member = frames.memberOf(grip);
       // a grip of a backdrop resizes its box, with its drawing kept in place
@@ -1232,7 +1233,7 @@ export function install(app: App): void {
   // is on its way to the handle at its upper left
   const hover = (ev: PointerEvent) => {
     const target = ev.target instanceof Element ? ev.target : null;
-    if (target && (target === frames.handle || target.closest('.beeson-grip, .beeson-table-bars'))) return;
+    if (target && (target === frames.handle || target.closest('.beeson-grip, .beeson-lock, .beeson-table-bars'))) return;
     const el = pickOf(app, target);
     const band = el ? null : onCanvas(target, app, { x: ev.clientX, y: ev.clientY }) ? bandAt(app, ev.clientX, ev.clientY) : null;
     document.documentElement.classList.toggle('beeson-band', !!band);
@@ -1264,19 +1265,29 @@ export function install(app: App): void {
   app.onRefresh(['selection', 'content', 'slide'], pickCursor);
   for (const type of ['focusin', 'focusout']) document.addEventListener(type, () => queueMicrotask(pickCursor));
 
-  // whether the pointer of ev is on the way from el to its handle, i.e. in the strip from the left
-  // edge of the handle to the left edge of el over the height of el, or on the handle. there the
-  // hover stays on el, also over another element behind the strip
+  // the box of the handle and the buttons left of el, i.e. its padlock and its group button
+  const columnOf = (el: Element): Box | null => {
+    const parts = [frames.handle.hidden ? null : frames.handle.getBoundingClientRect(), frames.columnOf(el)].filter((b): b is Box => !!b);
+    if (!parts.length) return null;
+    const left = Math.min(...parts.map((b) => b.left)), top = Math.min(...parts.map((b) => b.top));
+    return { left, top, width: Math.max(...parts.map((b) => b.left + b.width)) - left, height: Math.max(...parts.map((b) => b.top + b.height)) - top };
+  };
+
+  // whether the pointer of ev is on the way from el to its handle and its buttons, i.e. in the strip
+  // from the left edge of the column of the buttons to the left edge of el, over the height of el
+  // and of the column, or on the column. there the hover stays on el, also over another element
+  // behind the strip
   const toward = (el: Element, ev: PointerEvent): boolean => {
-    if (frames.handle.hidden) return false;
+    const h = columnOf(el);
+    if (!h) return false;
     const r = el.getBoundingClientRect();
-    const h = frames.handle.getBoundingClientRect();
-    return ev.clientX >= h.left && ev.clientX <= r.left && ev.clientY >= Math.min(h.top, r.top) && ev.clientY <= Math.max(h.bottom, r.bottom);
+    return ev.clientX >= h.left && ev.clientX <= r.left && ev.clientY >= Math.min(h.top, r.top) && ev.clientY <= Math.max(h.top + h.height, r.bottom);
   };
 
   const near = (el: Element, ev: PointerEvent): boolean => {
     const r = el.getBoundingClientRect();
-    return ev.clientX >= r.left - 28 && ev.clientX <= r.right + 6 && ev.clientY >= r.top - 28 && ev.clientY <= r.bottom + 6;
+    const h = columnOf(el);
+    return ev.clientX >= Math.min(r.left - 28, h?.left ?? Infinity) && ev.clientX <= r.right + 6 && ev.clientY >= r.top - 28 && ev.clientY <= Math.max(r.bottom + 6, h ? h.top + h.height : -Infinity);
   };
 
   // the handle of a text element puts it back at its place in the file with a double click or Enter

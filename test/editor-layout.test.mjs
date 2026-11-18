@@ -263,7 +263,8 @@ for (const platform of PLATFORMS) {
     const qr = '<div class="qr" data-qr="https://github.com/beeson-group/slides" style="translate: -100px -50px" data-locked></div>';
     const locked = [['<h1 style="translate: -100px -50px" data-group="g1">', '<h1 style="translate: -100px -50px">'], ['<div class="qr" data-qr="https://github.com/beeson-group/slides" style="translate: -100px -50px" data-group="g1"></div>', qr]];
     await byteExact(page, locked);
-    assert.equal(await page.evaluate(`document.querySelectorAll('.beeson-grip.locked:not([hidden])').length`), 8, 'a locked element does not show crosses');
+    assert.equal(await page.evaluate(`document.querySelectorAll('.beeson-grip:not([hidden])').length`), 0, 'a locked element shows grips');
+    assert.equal(await page.evaluate(`document.querySelector('.beeson-lock:not([hidden])')?.getAttribute('aria-label')`), 'Unlock', 'the padlock of a locked element is not closed');
     await drag(page, '.reveal section.present > .qr', { dx: 80, dy: 40 });
     await press(page, 'ArrowLeft');
     await byteExact(page, locked);
