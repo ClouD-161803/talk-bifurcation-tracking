@@ -387,3 +387,61 @@ test('tex.js of the zip is the one of the text of the session, before the edit c
   await until(() => existsSync(join(talk, 'tex.js')), 'tex.js to be written');
   assert.equal(readFileSync(join(talk, 'tex.js'), 'utf8'), tex);
 });
+
+test('a tex.js that the talk folder holds under a name in another case is zipped as tex.js on a disk that does not tell the cases apart', { timeout: 60_000 }, async (t) => {
+  // the second name ends with a long s, which the disk of a Mac reads as an s
+  for (const name of ['Tex.js', 'tex.j\u017f']) {
+    const { root, talk } = talkFolder(t, DECK.replace('</body>', '<section><p>A paper <cite data-key="ann2020"></cite></p></section>\n</body>'));
+    put(talk, 'references.bib', '@article{ann2020,\n  author = {Ann Author},\n  title = {The first paper},\n  journal = {Journal of Tests},\n  year = {2020}\n}\n');
+    put(talk, name, 'stale');
+    const blind = existsSync(join(talk, 'tex.js'));
+    const running = await inProcess(t, root, talk);
+    const token = await hello(t, running.port, running.key, 'Ann');
+    const got = byName((await download(running.port, running.key, token)).zip);
+    assert.ok(got.get('tex.js')?.bytes.toString('utf8').includes('The first paper'), `tex.js is the one of the session next to ${name}`);
+    // a deck loads tex.js by this name, also after an unzip on a disk that tells the cases apart
+    if (blind) assert.equal(got.has(name), false, name);
+    else assert.equal(got.get(name)?.bytes.toString('utf8'), 'stale', name);
+  }
+});
+
+test('a Tex.js of a talk folder without sources is zipped as tex.js as well on a disk that does not tell the cases apart, with its bytes', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  put(talk, 'Tex.js', 'written by npm run tex');
+  const blind = existsSync(join(talk, 'tex.js'));
+  const running = await inProcess(t, root, talk);
+  const token = await hello(t, running.port, running.key, 'Ann');
+  const got = byName((await download(running.port, running.key, token)).zip);
+  assert.deepEqual([...got.keys()], ['index.html', blind ? 'tex.js' : 'Tex.js']);
+  assert.equal([...got.values()][1].bytes.toString('utf8'), 'written by npm run tex');
+});
+
+test('a talk folder with a folder named tex.js gives a zip without a file of this name, which is unzipped', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t, DECK.replace('</body>', '<section><p>A paper <cite data-key="ann2020"></cite></p></section>\n</body>'));
+  put(talk, 'references.bib', '@article{ann2020,\n  author = {Ann Author},\n  title = {The first paper},\n  journal = {Journal of Tests},\n  year = {2020}\n}\n');
+  put(talk, 'tex.js/notes.txt', 'notes');
+  const running = await inProcess(t, root, talk);
+  const token = await hello(t, running.port, running.key, 'Ann');
+  const { zip } = await download(running.port, running.key, token);
+  assert.deepEqual([...byName(zip).keys()], ['index.html', 'references.bib', 'tex.js/notes.txt']);
+  const file = join(root, 'talk.zip');
+  writeFileSync(file, zip);
+  unzipTo(file, zip, join(root, 'unzipped'));
+  assert.equal(readFileSync(join(root, 'unzipped', 'talk', 'tex.js', 'notes.txt'), 'utf8'), 'notes');
+});
+
+test('on a disk that tells the cases apart, a Tex.js is kept next to the tex.js of the session, also when tex.js is a link out of the talk folder', { skip: !unix, timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t, DECK.replace('</body>', '<section><p>A paper <cite data-key="ann2020"></cite></p></section>\n</body>'));
+  put(talk, 'references.bib', '@article{ann2020,\n  author = {Ann Author},\n  title = {The first paper},\n  journal = {Journal of Tests},\n  year = {2020}\n}\n');
+  put(talk, 'Tex.js', 'a file of the talk');
+  if (existsSync(join(talk, 'tex.js'))) return t.skip('the disk does not tell the cases apart');
+  // a file outside the talk folder, which the edit command does not serve
+  put(root, 'outside.js', 'outside');
+  symlinkSync(join(root, 'outside.js'), join(talk, 'tex.js'));
+  const running = await inProcess(t, root, talk);
+  const token = await hello(t, running.port, running.key, 'Ann');
+  const got = byName((await download(running.port, running.key, token)).zip);
+  assert.deepEqual([...got.keys()], ['index.html', 'Tex.js', 'references.bib', 'tex.js']);
+  assert.equal(got.get('Tex.js').bytes.toString('utf8'), 'a file of the talk');
+  assert.ok(got.get('tex.js').bytes.toString('utf8').includes('The first paper'), 'tex.js is the one of the session');
+});
