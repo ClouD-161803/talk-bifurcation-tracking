@@ -33,6 +33,10 @@ const HEAD = `document.querySelector('.reveal .slides p.theorem[data-kind="conje
 // the edit command answers 404 for a package of the preamble that is not in the talk folder, e.g.
 // physics.sty
 const MISSING = [/404/];
+// a load of tex.js fails when the file is made shorter between the read of its size and the read of
+// its bytes. the edit command then closes the connection, and the page draws tex.js at its next
+// answer
+const CUT = /^Failed to load resource: net::ERR_(CONTENT_LENGTH_MISMATCH|EMPTY_RESPONSE) \S+\/tex\.js$/;
 
 let browser;
 before(async () => {
@@ -365,7 +369,7 @@ test('a tex.js read cut off while a program writes it is not run, and the page d
   assert.equal(await ann.evaluate(RED), true, 'the page keeps the macros of the tex.js before');
   server.write('tex.js', changed);
   await onEvery([ann], `!${RED}`);
-  clean(ann, MISSING);
+  clean(ann, [...MISSING, CUT]);
 });
 
 test('a page that stays open across a kill and a start of the edit command draws a tex.js changed after the start, also when the new count of the changes reaches the count of the page', { timeout: 300_000, skip: process.platform === 'win32' && 'signals' }, async (t) => {
