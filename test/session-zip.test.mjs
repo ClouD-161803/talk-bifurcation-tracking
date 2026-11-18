@@ -723,3 +723,27 @@ test('the end of the session closes the dialog of a download that is on its way 
   assert.deepEqual(await waiting.evaluate('window.__saved'), []);
   assert.deepEqual(await refused.evaluate('window.__saved'), []);
 });
+
+test('a page that edits without a session does not have Talk Folder…, and Export To lists PDF…, HTML…, and PowerPoint…', { timeout: 300_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const { root } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const folder = join(root, NAME);
+  build(folder);
+  const site = await serve(folder);
+  t.after(() => site.close());
+  for (const url of [deckUrl(join(folder, 'index.html'), 'edit'), `${site.origin}/index.html?edit`]) {
+    const page = await browser.newPage({ width: 1280, height: 800 });
+    await page.goto(url);
+    await page.waitFor('window.BeesonEditor && window.BeesonEditor.ready.then(() => true)', 60_000);
+    const seen = await page.evaluate(`(() => {
+      const E = window.BeesonEditor;
+      let defined = true;
+      try { E.state('file.export.folder'); } catch { defined = false; }
+      return { session: !!window.BeesonSession, defined, items: window.BeesonEditorShell.menuItems('File', 'Export To').map((i) => E.state(i.command).label) };
+    })()`);
+    assert.deepEqual(seen, { session: false, defined: false, items: ['PDF…', 'HTML…', 'PowerPoint…'] }, url);
+    await page.close();
+  }
+});
