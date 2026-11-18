@@ -619,6 +619,16 @@ html.beeson-editing.beeson-previewing .reveal .slides section .fragment.beeson-p
 @media (prefers-reduced-motion: reduce) { html.beeson-editing.beeson-previewing .reveal .slides section .fragment { transition: none !important; } }
 `;
 
+// the selected TikZ figure of slide and the parts of its output without a span, which the Steps pane
+// lists as rows that make a part a step
+function freeParts(app: App, slide: Element): { figure: Element; parts: string[] } | null {
+  const figure = app.selection.only()?.closest('.tikz');
+  if (!figure || figure.closest('section') !== slide) return null;
+  const had = new Set([...figure.querySelectorAll(':scope > [data-part]')].map((s) => s.getAttribute('data-part')));
+  const parts = (window.beesonFigures?.[(figure as HTMLElement).dataset.figure ?? '']?.parts ?? []).filter((p) => !had.has(p));
+  return parts.length ? { figure, parts } : null;
+}
+
 // the lists of the slide delivered by item whose items are consecutive steps, each alone at its
 // step but the first, which may share its step. such a list is shown as one row with its items
 // nested under it, as a build By Bullet in Keynote
@@ -872,15 +882,16 @@ export class Steps {
     const described = els.map((el, i) => (m.lines[i] ? describeLines(m.lines[i] as LineStep) : describe(el, this.ctx.tex)));
     const effects = els.map((el, i) => (m.lines[i] ? 'Highlight' : effectOf(classesOf(app, el)).label));
     const delays = delaysOf(app, m);
-    const key = [app.pairing?.sections.findIndex((s) => s.live === m.slide), JSON.stringify(plan), JSON.stringify([...delays]), ...els.map((el, i) => `${this.idOf(el)}|${described[i].kind}|${described[i].text}|${effects[i]}|${items[i].final}`)].join('\n');
+    const free = freeParts(app, m.slide);
+    const key = [app.pairing?.sections.findIndex((s) => s.live === m.slide), free && `${this.idOf(free.figure)}:${free.parts}`, JSON.stringify(plan), JSON.stringify([...delays]), ...els.map((el, i) => `${this.idOf(el)}|${described[i].kind}|${described[i].text}|${effects[i]}|${items[i].final}`)].join('\n');
     if (key !== this.key) {
       this.key = key;
-      this.build(m, described, effects, delays);
+      this.build(m, described, effects, delays, free);
     }
     this.mark();
   }
 
-  private build(m: Model, described: { kind: string; text: string }[], effects: string[], delays: Map<number, number>): void {
+  private build(m: Model, described: { kind: string; text: string }[], effects: string[], delays: Map<number, number>, free: ReturnType<typeof freeParts>): void {
     const { els, plan } = m;
     const app = this.app as App;
     const open = document.activeElement instanceof HTMLElement && this.list.contains(document.activeElement) ? this.rows.find((r) => r.row === document.activeElement || r.chip === document.activeElement)?.el : null;
@@ -983,14 +994,16 @@ export class Steps {
     if (!stepBoxes.length) stepBoxes.push(make('div', 'step empty', 'No element of this slide is a step. Choose a step in the menu of a row, or drag a row here.'));
     this.list.append(...stepBoxes);
     const rest = els.map((_, i) => i).filter((i) => stepAt(plan, i) < 0);
-    if (rest.length) {
+    const parts = free?.parts ?? [];
+    if (rest.length || parts.length) {
       const zone = make('div', 'slide-zone');
       const head = make('div', 'section');
-      head.append(make('span', '', 'With the slide'), make('span', '', String(rest.length)));
+      head.append(make('span', '', 'With the slide'), make('span', '', String(rest.length + parts.length)));
       const stepBox = make('div', 'step plain');
       stepBox.setAttribute('role', 'group');
       stepBox.setAttribute('aria-label', 'With the slide');
       for (const i of rest) stepBox.append(row(i, -1));
+      for (const p of parts) stepBox.append(this.partRow(free!.figure, p, plan.groups.length));
       zone.append(head, stepBox);
       this.list.append(zone);
     }
@@ -998,6 +1011,30 @@ export class Steps {
     if (back) back.row.focus({ preventScroll: true });
     const was = this.current;
     this.current = was ? (this.rows.find((r) => r.i === was.i && r.el === was.el) ?? null) : null;
+  }
+
+  // the row of a part of a figure without a span, whose chip makes the part a step with a new span
+  private partRow(figure: Element, part: string, steps: number): HTMLElement {
+    const app = this.app as App;
+    const r = make('div', 'row slide');
+    const chip = make('button', 'chip');
+    chip.type = 'button';
+    chip.setAttribute('aria-haspopup', 'menu');
+    chip.setAttribute('aria-label', `Step of the figure step: Part ${part}`);
+    chip.title = 'Shown with the slide. Click to choose a step';
+    chip.append('–', icon('chevron-down', 9));
+    const meta = make('span', 'meta');
+    meta.append(make('span', 'kind', 'Figure step'), ' · With the slide');
+    const body = make('span', 'body');
+    body.append(fullText(`Part ${part}`), meta);
+    r.append(make('span', 'grip'), chip, body);
+    r.dataset.step = '';
+    const run = (to: number | 'first' | 'last') => () => void app.commands.run('steps.part', { el: figure, part, to }).catch((e) => app.fail(e));
+    chip.addEventListener('click', () => {
+      const items: MenuItem[] = [...Array.from({ length: steps }, (_, k): MenuItem => ({ label: `Step ${k + 1}`, run: run(k) })), { label: 'New Step at Start', run: run('first') }, { label: 'New Step at End', run: run('last') }];
+      popover(openMenu(app, items, { anchor: rowAnchor(chip, r), placement: 'below', owner: chip, keyboard: false, label: 'Step', className: 'select steps' }).el, r);
+    });
+    return r;
   }
 
   // the row of a list delivered by item, above its items. a press selects the list, and its chip

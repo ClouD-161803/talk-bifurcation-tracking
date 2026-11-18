@@ -1,7 +1,7 @@
 // the TikZ figures of test/pages/tikz.html in the editor, with trusted input: every part shown, a
-// figure in a figure box and a bare div.tikz selected and moved by themselves as figures, the file written
-// back with every byte outside the moved tag, the row of the step of a part in the Steps pane, and
-// the width and the height of a div.tikz in the scope rule of the editor
+// figure in a figure box and a bare div.tikz selected and moved by themselves as figures, the file
+// written back with every byte outside the moved tag, the rows of the parts in the Steps pane, which
+// make a part a step, and the width and the height of a div.tikz in the scope rule of the editor
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -66,7 +66,37 @@ test('a TikZ figure is shown with every part in the editor, moved as a figure, a
   assert.deepEqual(errors(page), []);
 });
 
-test('the Steps pane lists the step of a part as a row named Part with the name of the part', { timeout: 120000 }, async (t) => {
+// the center of the shown grip of handle, in CSS pixels of the viewport, or null without one
+const grip = (page, handle) => page.evaluate(`(() => {
+  const g = [...document.querySelectorAll('.beeson-grip[data-handle="${handle}"]')].find((g) => !g.hidden && g.getClientRects().length && !g.classList.contains('locked'));
+  if (!g) return null;
+  const r = g.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`);
+
+test('a TikZ figure is resized with its grips, which write its new box in px into its style', { timeout: 120000 }, async (t) => {
+  const page = await open(t, 1);
+  await click(page, `${SLIDE} .tikz`);
+  await wait(page);
+  const se = await grip(page, 'se');
+  assert.ok(se, 'a selected TikZ figure does not have a grip at its lower right corner');
+  const scale = await page.evaluate(`(() => { const s = document.querySelector('.reveal .slides'); return s.getBoundingClientRect().width / s.offsetWidth; })()`);
+  // the box is not held at its proportions, since the next compile fits the figure to it
+  await drag(page, se, { dx: 100 * scale, dy: -50 * scale });
+  await wait(page);
+  const resized = (await render(page)).match(/<div class="figure-box tikz" data-figure="two" style="width: (\d+)px; height: (\d+)px">/);
+  assert.ok(resized, 'the resize does not write the width and the height of the figure');
+  assert.ok(Math.abs(Number(resized[1]) - 700) <= 2 && Math.abs(Number(resized[2]) - 350) <= 2, resized[0]);
+  await byteExact(page, [[BOX, resized[0]]]);
+  // the Size fields of the Arrange pane give the box, one axis at a time
+  await page.evaluate(`window.BeesonEditor.exec('arrange.setSize', { w: 640 })`);
+  await page.evaluate(`window.BeesonEditor.exec('arrange.setSize', { h: 480 })`);
+  await wait(page);
+  assert.match(await render(page), /<div class="figure-box tikz" data-figure="two" style="width: 640px; height: 480px">/);
+  assert.deepEqual(errors(page), []);
+});
+
+test('the Steps pane lists the step of a part as a row named Part with the name of the part',{ timeout: 120000 }, async (t) => {
   const page = await open(t, 1);
   await page.evaluate(`window.BeesonEditor.exec('view.steps')`);
   await wait(page);
@@ -80,6 +110,33 @@ test('the Steps pane lists the step of a part as a row named Part with the name 
   assert.deepEqual(errors(page), []);
 });
 
+test('the Steps pane lists the parts of the selected figure without a step as rows Part x, and makes one a step in one change', { timeout: 120000 }, async (t) => {
+  const page = await open(t, 1);
+  await page.evaluate(`window.BeesonEditor.exec('view.steps')`);
+  await wait(page);
+  const rows = () => page.evaluate(`[...document.querySelectorAll('.beeson-edit-side .rows .row')].map((r) => ({ step: r.dataset.step, text: r.querySelector('.text').textContent }))`);
+  const text = await render(page);
+  assert.ok(!(await rows()).some((r) => r.text === 'Part c'));
+  await click(page, await center(page, `${SLIDE} .tikz`));
+  await wait(page);
+  const listed = (await rows()).filter((r) => r.text.startsWith('Part'));
+  assert.deepEqual(listed, [{ step: '0', text: 'Part a' }, { step: '1', text: 'Part b' }, { step: '', text: 'Part c' }]);
+
+  // the chip of the row opens the steps that the part can be made
+  const chip = await page.evaluate(`(() => { const r = [...document.querySelectorAll('.beeson-edit-side .rows .row')].find((r) => r.querySelector('.text').textContent === 'Part c'); const b = r.querySelector('.chip').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+  await click(page, chip);
+  await wait(page);
+  const item = await page.evaluate(`(() => { const r = [...[...document.querySelectorAll('[role=menu]')].at(-1).querySelectorAll('[role^=menuitem]')].find((r) => r.textContent.trim() === 'New Step at End'); if (!r) return null; const b = r.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+  assert.ok(item, 'the menu of the chip does not have New Step at End');
+  await click(page, item);
+  await wait(page);
+  assert.match(await render(page), /<span class="fragment" data-part="c" data-fragment-index="\d+"><\/span><\/div>/);
+  assert.deepEqual((await rows()).filter((r) => r.text.startsWith('Part')), [{ step: '0', text: 'Part a' }, { step: '1', text: 'Part b' }, { step: '2', text: 'Part c' }]);
+  await page.evaluate('window.BeesonEditor.exec("edit.undo")');
+  await wait(page);
+  assert.equal(await render(page), text);
+  assert.deepEqual(errors(page), []);
+});
 test('the scope rule of the editor allows a width and a height in px on a div.tikz, and the attributes of a figure and of a part', () => {
   const theme = new Set(themeClasses(readFileSync('theme/beeson.css', 'utf8')));
   const attrs = (html) => tokenize(html).find((x) => x.type === 'start').attrs;

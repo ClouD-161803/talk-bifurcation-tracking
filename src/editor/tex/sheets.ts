@@ -14,6 +14,8 @@ import type { Entry as Step } from '../history.ts';
 import { trapTab } from '../ui/dialog.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { citations, type Store } from './cite.ts';
+import { figurePane } from './figure-pane.ts';
+import { figures } from './figures.ts';
 import type { TexHost, TexSheets, Which } from './install.ts';
 
 const CSS = `
@@ -780,6 +782,8 @@ function sheets(host: TexHost): TexSheets {
     dirty: () => loaded && (text.preamble !== saved.preamble || text.bibliography !== saved.bibliography),
     redraw,
     ...citations(store),
+    ...figures(host),
+    figurePane: (el, figure) => figurePane(host, el, figure),
   };
 }
 

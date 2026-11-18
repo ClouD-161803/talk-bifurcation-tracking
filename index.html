@@ -196,6 +196,24 @@ try {
   <aside class="notes">The stable and the unstable manifolds of an \(\mathcal{L}_{1}\) halo orbit of the Earth–Moon system grow in 20 s and hold for 4 s, in the inertial frame at the top and in the rotating frame at the bottom. The arcs that reach the orbit are blue, the arcs that leave it are orange, the z axis is stretched by five, and the camera turns by 60 degrees in each loop. The clip and its poster are given once for each mode, with the classes for-dark and for-light, since a video does not have a transparent background.</aside>
 </section>
 
+<section>
+  <h2>Writing TikZ figures in the editor</h2>
+  <p style="width: 800px">Pick “TikZ Figure” in the “Media” dropdown, and start from a CSV file, a <code>.tex</code> file, or a blank drawing.</p>
+  <ul style="width: 800px">
+    <li class="fragment" data-fragment-index="1">Double-click a figure to edit its TeX, with a live preview.</li>
+    <li class="fragment" data-fragment-index="3">Each scope marked <code>part</code> can be a step of its own.</li>
+    <li class="fragment" data-fragment-index="5"><code>npm run edit</code> compiles each figure with your TeX.</li>
+  </ul>
+  <div class="tikz figure-box" data-figure="cr3bp" style="width: 760px; height: 640px; translate: -160px 60px">
+    <span class="fragment" data-part="axes" data-fragment-index="1"></span>
+    <span class="fragment" data-part="primary" data-fragment-index="2"></span>
+    <span class="fragment" data-part="secondary" data-fragment-index="3"></span>
+    <span class="fragment" data-part="body" data-fragment-index="4"></span>
+    <span class="fragment" data-part="distances" data-fragment-index="5"></span>
+  </div>
+  <aside class="notes">The figure is figures/cr3bp.tex, a pgfplots drawing of the CR3BP in the synodic frame, compiled into figures/cr3bp.js at the size of its box. Its five scopes are parts: the axes, the primary at \((-\mu, 0, 0)\), the secondary at \((1 - \mu, 0, 0)\), the third body, and its distances \(\rho_1\) and \(\rho_2\) from the primary and the secondary. Each part is a step, written as an empty span of the figure with data-part, and in the editor every part is shown. The colors are the tones of styles/beeson-tikz.sty, hence the figure is drawn in each mode without a second version.</aside>
+</section>
+
 <section class="closing">
   <div class="backdrop" data-backdrop="tubes" data-cx="0.42" data-cy="0" data-half="0.6"></div>
   <div class="title-text">
