@@ -663,3 +663,30 @@ test('a zip is dropped once its page has not asked for a piece during SLIDES_ZIP
   // an at past the end is answered without keeping the zip any longer
   await until(async () => (await pieceOf(edit.port, edit.key, token, id, size)).status === 404, 'the zip to be dropped');
 });
+
+test('a folder over the limit is refused with its size, and the zips kept at one time are capped', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  put(talk, 'media/a.png', randomBytes(2 * MB));
+  const edit = await startEdit(talk, { env: { SLIDES_ZIP_MAX_BYTES: String(3 * MB), XDG_CONFIG_HOME: config, APPDATA: config } });
+  const { port, key } = edit;
+  const ann = await hello(t, port, key, 'Ann');
+  const bo = await hello(t, port, key, 'Bo');
+  const first = (await makeZip(port, key, ann)).json();
+  const busy = await makeZip(port, key, bo);
+  assert.equal(busy.status, 503);
+  assert.deepEqual(busy.json(), { error: BUSY });
+  assert.equal((await pieceOf(port, key, ann, first.id, 0)).status, 200, 'the zip of the first page is kept');
+  assert.equal((await dropZip(port, key, ann, first.id)).status, 200);
+  const later = await makeZip(port, key, bo);
+  assert.equal(later.status, 200, later.text);
+  assert.equal((await dropZip(port, key, bo, later.json().id)).status, 200);
+
+  put(talk, 'media/extra.png', randomBytes(1.5 * MB));
+  const bytes = 3.5 * MB + Buffer.byteLength(DECK);
+  const size = (Math.ceil((bytes / MB) * 10) / 10).toFixed(1);
+  assert.equal(size, '3.6');
+  const over = await makeZip(port, key, ann);
+  assert.equal(over.status, 413);
+  assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 3 MB for a download.` });
+});
