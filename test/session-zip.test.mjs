@@ -624,3 +624,25 @@ test('a guest whose talk folder is over the limit of a download through the rela
   await guest.waitFor('window.__said.at(-1) === null');
   clean(guest, [/status of 413/]);
 });
+
+test('Cancel during a download closes the dialog, downloads nothing, and the edit command frees the zip', { timeout: 360_000 }, async (t) => {
+  const browser = await launch({ offline: false });
+  t.after(() => browser.close());
+  const server = await zipTalk(t);
+  const host = await editorOn(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const dir = join(server.root, 'downloads');
+  await downloadsTo(host, dir);
+  // the pieces of the zip are held, hence the dialog is still downloading at Cancel
+  await host.evaluate('window.__hold.piece = true');
+  await choose(host, PATH);
+  await host.waitFor(`window.__held.length > 0 && /^Downloading ${NAME}\\.zip: 0\\.0 of /.test(window.__said.at(-1)?.text)`);
+  await press(host, BUTTON('Cancel'));
+  await host.waitFor('window.__said.at(-1) === null');
+  const piece = (await host.evaluate('window.__zip')).find((r) => r.method === 'GET');
+  await until(async () => (await host.evaluate(`window.__zip.some((r) => r.method === 'DELETE')`)) && (await fetch(piece.url)).status === 404, 'the zip to be freed');
+  await host.evaluate('(window.__hold.piece = false, window.__release())');
+  assert.deepEqual(await host.evaluate('window.__saved'), []);
+  assert.deepEqual(readdirSync(dir), []);
+  assert.deepEqual(await host.evaluate('window.__zip.map((r) => r.method)'), ['POST', 'GET', 'DELETE']);
+  clean(host);
+});
