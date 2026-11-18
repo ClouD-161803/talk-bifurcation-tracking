@@ -693,6 +693,27 @@ test('a folder over the limit is refused with its size, and the zips kept at one
   assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 3 MB for a download.` });
 });
 
+test('a page alone downloads a talk folder whose files are at the limit, although its zip is over the cap of the zips kept', { timeout: 60_000 }, async (t) => {
+  const { root, talk, config } = talkFolder(t);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // random bytes are stored as they are, hence the zip is longer than its files by its headers
+  const most = 3 * MB - Buffer.byteLength(DECK);
+  put(talk, 'media/a.png', randomBytes(most));
+  const edit = await startEdit(talk, { env: { SLIDES_ZIP_MAX_BYTES: String(3 * MB), XDG_CONFIG_HOME: config, APPDATA: config } });
+  const { port, key } = edit;
+  const ann = await hello(t, port, key, 'Ann');
+  const first = await download(port, key, ann);
+  assert.ok(first.size > 3 * MB, `a zip of ${first.size} bytes`);
+  assert.equal(byName(first.zip).get('media/a.png').bytes.length, most);
+  // the zip that the page still holds does not count against its next one
+  assert.equal((await download(port, key, ann)).size, first.size);
+
+  put(talk, 'media/a.png', randomBytes(most + 1));
+  const over = await makeZip(port, key, ann);
+  assert.equal(over.status, 413);
+  assert.deepEqual(over.json(), { error: 'The talk folder is 3.1 MB, over the limit of 3 MB for a download.' });
+});
+
 test('pages that ask at one time do not each build a zip: the room of a zip is taken before its files are read', { timeout: 60_000 }, async (t) => {
   const { root, talk } = talkFolder(t);
   put(talk, 'media/a.png', randomBytes(2 * MB));
