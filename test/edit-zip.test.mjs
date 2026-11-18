@@ -764,3 +764,29 @@ test('a page whose zip is built while the edit command stops is told so, and not
   assert.deepEqual(answer.json(), { error: 'the edit command is stopping' });
   await closing;
 });
+
+test('a file that grows after it was listed counts against the limit with the bytes that are read', { timeout: 60_000 }, async (t) => {
+  const { root, talk } = talkFolder(t);
+  put(talk, 'media/a.png', randomBytes(MB));
+  const { readFile } = fsp;
+  let grown = 0;
+  fsp.readFile = async (file, ...rest) => {
+    const bytes = await readFile(file, ...rest);
+    return String(file).endsWith('a.png') ? Buffer.concat([bytes, Buffer.alloc(grown)]) : bytes;
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fsp.readFile = readFile;
+    syncBuiltinESMExports();
+  });
+  const { port, key } = await inProcess(t, root, talk, small.start);
+  const token = await hello(t, port, key, 'Ann');
+  grown = MB;
+  const got = byName((await download(port, key, token)).zip);
+  assert.equal(got.get('media/a.png').bytes.length, 2 * MB, 'a file that grew below the limit is zipped as it was read');
+  grown = 2.5 * MB;
+  const over = await makeZip(port, key, token);
+  assert.equal(over.status, 413);
+  const size = (Math.ceil(((3.5 * MB + Buffer.byteLength(DECK)) / MB) * 10) / 10).toFixed(1);
+  assert.deepEqual(over.json(), { error: `The talk folder is ${size} MB, over the limit of 3 MB for a download.` });
+});
