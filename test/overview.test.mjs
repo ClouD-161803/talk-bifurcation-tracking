@@ -50,14 +50,24 @@ const step = `(() => {
   return slides[h + 1].getBoundingClientRect().left - slides[h].getBoundingClientRect().left;
 })()`;
 
-// swipe sends the wheels of one swipe, each given as [deltaX, deltaY], from within the page to the
-// element under the pointer, hence the wheels are a few ms apart. swipe returns, for each wheel,
-// whether it was prevented and the slide of the row after it
-const swipe = (page, wheels) => page.evaluate(`${JSON.stringify(wheels)}.map(([deltaX, deltaY]) => {
-  const ev = new WheelEvent('wheel', { deltaX, deltaY, cancelable: true, bubbles: true });
-  document.elementFromPoint(400, 300).dispatchEvent(ev);
-  return { prevented: ev.defaultPrevented, h: Reveal.getIndices().h };
-})`);
+// send, a function of the page, sends a wheel to the element under the pointer and returns it. the
+// time of a wheel made in the page is the time at which it is made, and a loaded machine takes
+// longer than the pause between two swipes to show a slide. the wheels of one evaluate are hence
+// given times 16 ms apart, as the wheels of one swipe
+const sender = `let time = performance.now();
+  const send = (deltaX, deltaY = 0) => {
+    const ev = new WheelEvent('wheel', { deltaX, deltaY, cancelable: true, bubbles: true });
+    Object.defineProperty(ev, 'timeStamp', { value: (time += 16) });
+    document.elementFromPoint(400, 300).dispatchEvent(ev);
+    return ev;
+  };`;
+
+// swipe sends the wheels of one swipe, each given as [deltaX, deltaY], from within the page. swipe
+// returns, for each wheel, whether it was prevented and the slide of the row after it
+const swipe = (page, wheels) => page.evaluate(`(() => {
+  ${sender}
+  return ${JSON.stringify(wheels)}.map(([deltaX, deltaY]) => ({ prevented: send(deltaX, deltaY).defaultPrevented, h: Reveal.getIndices().h }));
+})()`);
 
 test('in the overview, a sideways wheel moves the row by the length of the swipe', { timeout: 60000 }, async (t) => {
   const { page, wheel } = await openDeck(t);
@@ -113,7 +123,7 @@ test('in the overview, a slide shown with a key during a swipe is kept by the ne
   assert.ok(h + 3 < (await page.evaluate(`Reveal.getHorizontalSlides().length`)), `three slides follow the slide ${h}`);
   // the momentum of a trackpad sends wheels for about a second after the fingers are lifted
   const row = await page.evaluate(`(() => {
-    const send = (deltaX) => document.elementFromPoint(400, 300).dispatchEvent(new WheelEvent('wheel', { deltaX, cancelable: true, bubbles: true }));
+    ${sender}
     const at = () => Reveal.getIndices().h;
     send(3);
     const swiped = at();
@@ -132,7 +142,7 @@ test('in the overview, a swipe measures the row only when it sets off', { timeou
   // a read of a box after a move of the row forces a layout. the first wheel sets the swipe off, and
   // the next ones do not pass a slide
   const reads = await page.evaluate(`(() => {
-    const send = (deltaX) => document.elementFromPoint(400, 300).dispatchEvent(new WheelEvent('wheel', { deltaX, cancelable: true, bubbles: true }));
+    ${sender}
     send(5);
     const read = Element.prototype.getBoundingClientRect;
     let reads = 0;
