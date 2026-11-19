@@ -714,7 +714,7 @@ test('the rows of the File menu in a session fit the menu on a phone of 390 px a
   }
 });
 
-test('a slide pasted in a session with macros that preamble.tex does not have opens the dialog that says the host pastes their lines into preamble.tex', { timeout: 300_000 }, async (t) => {
+test('a slide pasted in a session with macros that preamble.tex does not have opens the dialog that says to paste their lines with File > Preamble…', { timeout: 300_000 }, async (t) => {
   const deck = await serve('.');
   t.after(() => deck.close());
   const a = await openDeck(browser, `${deck.origin}/${A}?${QUERY}`, A);
@@ -735,5 +735,5 @@ test('a slide pasted in a session with macros that preamble.tex does not have op
   await ann.waitFor(`!!document.querySelector('dialog.paste-macros:not([hidden])') || window.__pasted !== false`, 30_000);
   assert.ok(await ann.evaluate(`!!document.querySelector('dialog.paste-macros:not([hidden])')`), `the paste ended without the dialog: ${await ann.evaluate('String(window.__pasted)')}, ${(await ann.evaluate('window.BeesonEditor.status()')).message}`);
   const text = await ann.evaluate(`document.querySelector('dialog.paste-macros:not([hidden]) p').textContent`);
-  assert.ok(text.startsWith('In a session, the host pastes the lines below at the end of preamble.tex'), text);
+  assert.ok(text.startsWith('Choose File > Preamble… and paste the lines below at the end of the preamble of this deck.'), text);
 });
