@@ -43,6 +43,7 @@ export class Replica {
   // the offsets of mine at which the editor put or removed an element, which place the patches of
   // every diff of mine, see placed(). they are kept until base is mine
   private places: number[] = [];
+  private others: number[] = [];
 
   // text is the text at version v that the editor read. seq is the last sequence number used by
   // this client, 0 for a new client
@@ -97,6 +98,7 @@ export class Replica {
     this.mine = wellFormed(text);
     const moved = moveOffsets(this.places, was, this.mine);
     this.places = [...moved, ...places.filter((h) => !moved.includes(h))];
+    this.others = moveOffsets(this.others, was, this.mine);
     this.settle();
     return this.mine === text ? null : this.mine;
   }
@@ -109,9 +111,17 @@ export class Replica {
   // mine becomes text with patches, the merge of ours with the patches of others. the places become
   // the starts of the removals and insertions of ours in it, which the order of patches tells also
   // where the others insert at one of them
-  private remine(text: string, patches: Patch[], ours: Patch[]): void {
+  private remine(text: string, patches: Patch[], ours: Patch[]): number[] {
     this.mine = apply(text, patches);
-    this.places = this.places.length ? starts(text, patches, new Set(ours)) : [];
+    const own = new Set(ours);
+    this.places = this.places.length ? starts(text, patches, own) : [];
+    return starts(text, patches, new Set(patches.filter((p) => !own.has(p))));
+  }
+
+  takeOthers(): number[] {
+    const out = this.others;
+    this.others = [];
+    return out;
   }
 
   private settle(): void {
@@ -213,7 +223,7 @@ export class Replica {
     // a side is given by the dialog after a break, which decides, and mine wins without one
     const both = mergePatches(kept, ours, wins, from, false, wins);
     conflicts.push(...both.conflicts);
-    this.remine(from, both.patches, ours);
+    this.others = this.remine(from, both.patches, ours);
     const merged = this.mine;
     this.base = text;
     this.epoch = parsed.epoch;
@@ -250,6 +260,7 @@ export class Replica {
       // the broadcast of the operation of this browser, which the deck already reads as
       this.flight = null;
     } else if (this.mine === this.base && !this.flight) {
+      this.others = [...moveOffsets(this.others, this.mine, next), ...starts(this.base, op.patches)];
       this.mine = next;
       this.places = [];
     } else {
@@ -280,12 +291,14 @@ export class Replica {
   // is merged with the text, hence a format and the keys of the other side inside its run are both
   // kept, while the operations missed during a break are shown to the person as conflicts
   private merge(text: string, theirs: Patch[], wins: Side, conflicts: Patch[], dedupe: boolean): void {
+    const was = this.mine;
     const ours = this.ours(text);
     const kept = dedupe ? theirs.filter((t) => !ours.some((o) => o.start === t.start && o.end === t.end && o.text === t.text)) : theirs;
     // a catch-up is decided
     const merged = mergePatches(kept, ours, wins, text, !dedupe, dedupe && wins);
     conflicts.push(...merged.conflicts);
-    this.remine(text, merged.patches, ours);
+    const added = this.remine(text, merged.patches, ours);
+    this.others = [...moveOffsets(this.others, was, this.mine), ...added];
   }
 }
 

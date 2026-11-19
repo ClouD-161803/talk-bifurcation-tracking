@@ -547,7 +547,7 @@ export class Client {
     const before = this.changes;
     let applied: Applied;
     try {
-      applied = await this.port.apply(text);
+      applied = await this.port.apply(text, this.sync!.takeOthers());
     } catch (e) {
       // the deck may be changed in part, hence it is not read again. the edits of the person that
       // were not read are taken from the text that the deck was to read
