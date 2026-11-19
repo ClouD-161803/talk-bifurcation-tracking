@@ -62,7 +62,7 @@ export const error = (status: number, message: string): Response => json(status,
 
 // a segment that is never served: one that starts with a dot or is node_modules, also under a
 // spelling that Windows reads as such, i.e. with a trailing dot or space
-const hiddenSegment = (s: string) => s.startsWith('.') || s.endsWith('.') || s.endsWith(' ') || s.toLowerCase() === 'node_modules';
+export const hiddenSegment = (s: string) => s.startsWith('.') || s.endsWith('.') || s.endsWith(' ') || s.toLowerCase() === 'node_modules';
 
 // a segment of a path that is served: one that is not empty or hidden, and that does not hold a
 // separator, a colon, or a NUL

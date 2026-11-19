@@ -4,11 +4,11 @@
 // synchronous deflate would hold up every page, hence each file goes through gzip, which runs in
 // the thread pool and ends with the CRC-32 of the file
 
-import { readdir, readFile, realpath, stat } from 'node:fs/promises';
-import { join, sep } from 'node:path';
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { join, relative, sep } from 'node:path';
 import { gzip } from 'node:zlib';
 import { decodeAttr, REFERENCE_IN_ATTR, tokenize } from '../editor/tokens.ts';
-import { fileInside, segmentsOf, servedSegment } from './http.ts';
+import { fileInside, hiddenSegment, segmentsOf, servedSegment } from './http.ts';
 
 // what npm run check, pdf, and pptx write next to index.html, which a deck does not load
 const OUTPUTS = new Set(['check', 'slides.pdf', 'slides.pptx']);
@@ -65,20 +65,23 @@ const loose = (name: string) => same(name).replace(/\p{M}/gu, '');
 
 // the files below dir that the edit command serves, by their names with / below the talk folder,
 // without index.html and the outputs. a link to a folder is followed inside the talk folder, and
-// not into a folder that it is below
+// not into a folder that it is below. the entries of a folder are looked up at one time, and only a
+// link is resolved, so that a folder of many files is listed fast also on a busy disk
 async function walk(root: string, dir: string[], above: string[], out: Source[]): Promise<void> {
   const real = await realpath(join(root, ...dir)).catch(() => null);
   if (real === null || above.includes(real) || (dir.length > 0 && !real.startsWith(root + sep))) return;
-  const names = await readdir(real).catch(() => [] as string[]);
-  for (const name of names.sort()) {
-    if (!servedSegment(name)) continue;
-    const lower = name.toLowerCase();
-    if (dir.length === 0 && (OUTPUTS.has(lower) || lower === 'index.html')) continue;
+  // a file below a real path with a hidden segment is not served, unless through a link
+  const shown = !relative(root, real).split(sep).some(hiddenSegment);
+  const names = (await readdir(real).catch(() => [] as string[])).sort().filter((name) => servedSegment(name) && !(dir.length === 0 && (OUTPUTS.has(name.toLowerCase()) || name.toLowerCase() === 'index.html')));
+  const links = await Promise.all(names.map((name) => lstat(join(real, name)).catch(() => null)));
+  for (const [i, name] of names.entries()) {
     const path = [...dir, name];
-    const info = await stat(join(root, ...path)).catch(() => null);
+    const link = links[i];
+    const direct = shown && link !== null && !link.isSymbolicLink();
+    const info = direct ? link : await stat(join(root, ...path)).catch(() => null);
     if (info?.isDirectory()) await walk(root, path, [...above, real], out);
     if (!info?.isFile()) continue;
-    const file = await fileInside(root, path);
+    const file = direct ? join(real, name) : await fileInside(root, path);
     if (!file) continue;
     out.push({ name: nameOf(path.join('/')), file, size: info.size, mtime: info.mtime, run: (info.mode & 0o111) !== 0 || LAUNCHER.test(name) });
     if (out.length > MOST_FILES) throw new TooLarge(0, out.length);
@@ -162,6 +165,9 @@ const gz = (bytes: Buffer, level: number) => new Promise<Buffer>((done, fail) =>
 const BLOCK = 64 * 1024;
 // the bytes of a large part that its buffer may hold besides, e.g. the header and the trailer of gzip
 const SPARE = 64;
+// the most files, and of bytes, that are read and compressed ahead of the one that is added
+const AHEAD_FILES = 16;
+const AHEAD_BYTES = 8 * 1024 * 1024;
 
 // the zip of the talk folder root below the folder top, with the index.html and the tex.js of deck.
 // it rejects with TooLarge when the files hold more than limit bytes. before a file is read, admit
@@ -234,8 +240,7 @@ export async function zipOf(root: string, top: string, { html, bom, tex }: Deck,
   };
   const central: Buffer[] = [];
   let at = 0;
-  const add = async (name: string, content: Buffer, mtime: Date, run: boolean) => {
-    const z = await gz(content, PACKED.test(name) ? 0 : 6);
+  const add = (name: string, content: Buffer, z: Buffer, mtime: Date, run: boolean) => {
     // the raw deflate stream is between the header of 10 bytes, which is without a field when its
     // flags are 0, and the trailer of the CRC-32 and the length
     if (z[3] !== 0) throw new Error('gzip wrote a header with a field');
@@ -275,17 +280,34 @@ export async function zipOf(root: string, top: string, { html, bom, tex }: Deck,
     at += local.length + data.length;
   };
 
-  await add('index.html', index, now, false);
-  let grown = 0;
-  for (const s of sources) {
-    // a file that left the folder since it was listed is left out, as it is no longer served
+  add('index.html', index, await gz(index, 6), now, false);
+  // the files are read and compressed a few at a time, in the order of the zip. each is null when it
+  // left the folder since it was listed, as it is no longer served
+  const ready: Promise<{ content: Buffer; z: Buffer } | null>[] = [];
+  const prepare = async (s: Source) => {
     const read = s.content ?? (await readFile(s.file).catch(() => null));
-    if (read === null) continue;
+    if (read === null) return null;
     const content = s.wrap ? Buffer.concat([OPEN, read, CLOSE]) : read;
+    return { content, z: await gz(content, PACKED.test(s.name) ? 0 : 6) };
+  };
+  let grown = 0;
+  let next = 0;
+  let ahead = 0;
+  for (const [i, s] of sources.entries()) {
+    while (next < sources.length && (next === i || (next < i + AHEAD_FILES && ahead + sources[next].size <= AHEAD_BYTES))) {
+      ahead += sources[next].size;
+      ready[next] = prepare(sources[next++]);
+      // a read ahead that fails after the zip is given up is not unhandled
+      ready[next - 1].catch(() => {});
+    }
+    const made = await ready[i];
+    delete ready[i];
+    ahead -= s.size;
+    if (made === null) continue;
     // the bytes by which a file grew since it was listed count against the limit as well
-    grown += Math.max(0, content.length - s.size);
+    grown += Math.max(0, made.content.length - s.size);
     if (bytes + grown > limit) throw new TooLarge(bytes + grown, sources.length + 1);
-    await add(s.name, content, s.mtime, s.run);
+    add(s.name, made.content, made.z, s.mtime, s.run);
   }
   let directory = 0;
   for (const entry of central) {
