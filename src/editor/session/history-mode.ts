@@ -11,18 +11,18 @@ const refuse = (ev: Event) => {
   ev.stopImmediatePropagation();
 };
 for (const type of ['paste', 'cut', 'drop', 'dragover']) window.addEventListener(type, refuse, true);
-window.addEventListener('keydown', (ev) => {
-  if (!on || ev.key !== 'Escape' || !esc || document.querySelector('dialog[open], .beeson-edit-menu')) return;
-  ev.preventDefault();
-  ev.stopImmediatePropagation();
-  esc();
-}, true);
 
 const FREE = ['file.history', 'file.save'];
 
 export function historyShell(app: App): HistoryShell {
   const run = app.commands.run.bind(app.commands);
   app.commands.run = (id, arg, ev) => (on && !FREE.includes(id) ? Promise.resolve() : run(id, arg, ev));
+  app.commands.intercept((ev) => {
+    if (!on || ev.key !== 'Escape' || !esc || document.querySelector('dialog[open], .beeson-edit-menu')) return false;
+    ev.preventDefault();
+    esc();
+    return true;
+  });
   let opener = () => {};
   app.commands.define({
     id: 'file.history',

@@ -95,6 +95,16 @@ export class Commands {
     this.vetoes.push(check);
   }
 
+  private readonly interceptors: ((ev: KeyboardEvent) => boolean)[] = [];
+
+  intercept(take: (ev: KeyboardEvent) => boolean): void {
+    this.interceptors.push(take);
+  }
+
+  intercepted(ev: KeyboardEvent): boolean {
+    return this.interceptors.some((take) => take(ev));
+  }
+
   private readonly refusals: ((app: App, c: Command, arg?: unknown) => boolean)[] = [];
 
   refuse(check: (app: App, c: Command, arg?: unknown) => boolean): void {
@@ -177,6 +187,7 @@ export class Commands {
 
 export function installKeys(app: App): void {
   window.addEventListener('keydown', (ev) => {
+    if (app.commands.intercepted(ev)) return void ev.stopImmediatePropagation();
     if (ev.isComposing || ev.keyCode === 229) return;
     if (dialogKey(app, ev)) return;
     const own = (document.activeElement as Element | null)?.closest?.('[data-own-keys]')?.getAttribute('data-own-keys');

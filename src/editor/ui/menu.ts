@@ -635,25 +635,7 @@ export function closeMenus(): void {
 export const menuOpen = (): boolean => stack.length > 0;
 
 let menuKey = false;
-window.addEventListener('keydown', (ev) => {
-  menuKey = ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey);
-}, true);
-
 let textMenu = false;
-window.addEventListener('pointerdown', () => {
-  menuKey = false;
-  const kinds = stack[0]?.options.className?.split(' ') ?? [];
-  textMenu = kinds.includes('context') && (kinds.includes('text') || kinds.includes('cell'));
-}, true);
-
-window.addEventListener('contextmenu', (ev) => {
-  const t = ev.target instanceof Element ? ev.target : null;
-  const again = textMenu && !!t?.closest('[contenteditable="true"]');
-  textMenu = false;
-  if (!t || t.closest('.beeson-edit-menu') || !(again || ev.altKey)) return;
-  closeMenus();
-  ev.stopImmediatePropagation();
-}, true);
 
 export function openContextMenu(app: App, kind: Context, target: Element | null, at: { x: number; y: number }, more: MenuItem[] = []): OpenMenu | null {
   const items = contextItems(app, kind, target);
@@ -722,28 +704,43 @@ export function chromeSelect(app: App, options: { label: string; choices: () => 
   return b;
 }
 
-window.addEventListener('keydown', (ev) => {
-  if (!stack.length) return;
-  const handled = stack[stack.length - 1].key(ev);
-  if (handled) ev.stopImmediatePropagation();
-  if (handled === true) ev.preventDefault();
-}, true);
-
-window.addEventListener('pointerdown', (ev) => {
-  if (!stack.length) return;
-  const t = ev.target instanceof Node ? ev.target : null;
-  if (t && stack.some((m) => m.el.contains(t))) {
-    ev.stopPropagation();
-    return;
-  }
-  const owner = stack[0].options.owner;
-  if (owner && t && owner.contains(t)) return;
-  closeMenus();
-}, true);
-window.addEventListener('blur', () => closeMenus());
-window.addEventListener('resize', () => closeMenus());
-
 export function install(app: App): void {
   injectStyle('menu', CSS);
   platform = app.platform;
+  app.commands.intercept((ev) => {
+    menuKey = ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey);
+    return false;
+  });
+  app.commands.intercept((ev) => {
+    if (!stack.length) return false;
+    const handled = stack[stack.length - 1].key(ev);
+    if (handled === true) ev.preventDefault();
+    return !!handled;
+  });
+  window.addEventListener('pointerdown', () => {
+    menuKey = false;
+    const kinds = stack[0]?.options.className?.split(' ') ?? [];
+    textMenu = kinds.includes('context') && (kinds.includes('text') || kinds.includes('cell'));
+  }, true);
+  window.addEventListener('contextmenu', (ev) => {
+    const t = ev.target instanceof Element ? ev.target : null;
+    const again = textMenu && !!t?.closest('[contenteditable="true"]');
+    textMenu = false;
+    if (!t || t.closest('.beeson-edit-menu') || !(again || ev.altKey)) return;
+    closeMenus();
+    ev.stopImmediatePropagation();
+  }, true);
+  window.addEventListener('pointerdown', (ev) => {
+    if (!stack.length) return;
+    const t = ev.target instanceof Node ? ev.target : null;
+    if (t && stack.some((m) => m.el.contains(t))) {
+      ev.stopPropagation();
+      return;
+    }
+    const owner = stack[0].options.owner;
+    if (owner && t && owner.contains(t)) return;
+    closeMenus();
+  }, true);
+  window.addEventListener('blur', () => closeMenus());
+  window.addEventListener('resize', () => closeMenus());
 }

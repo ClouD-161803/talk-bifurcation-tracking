@@ -450,6 +450,19 @@ for (const platform of ['mac', 'other']) {
     await roundTrip(page);
   });
 
+  test(`Shift+F10 with the caret in a cell opens the menu of the cell, not the menu of the text (${platform})`, async (t) => {
+    const page = await open(platform, LAYOUTS_DECK);
+    t.after(() => page.close?.());
+    await show(page, '.reveal .slides table');
+    await click(page, cellSelector(2, 1));
+    await press(page, 'Shift+F10');
+    await page.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.beeson-edit-menu')].map((m) => m.getAttribute('aria-label'))`), ['cell menu']);
+    assert.deepEqual(await focusCell(page), [2, 1]);
+    await press(page, 'Escape');
+    assert.deepEqual(errors(page), []);
+  });
+
   test(`the Table pane of the inspector shows the cell of the caret and adds a row below it (${platform})`, async (t) => {
     const page = await open(platform, LAYOUTS_DECK);
     t.after(() => page.close?.());

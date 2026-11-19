@@ -99,9 +99,6 @@ export function shapeText(kind: string, b: Box): string {
   return `<div class="${cls}" style="width: ${b.width}px; height: ${b.height}px${at}"></div>`;
 }
 
-let typed: ((ev: KeyboardEvent) => void) | null = null;
-window.addEventListener('keydown', (ev) => typed?.(ev), true);
-
 export function install(app: App): void {
   injectStyle('shape', CSS);
   const c = app.commands;
@@ -255,19 +252,19 @@ export function install(app: App): void {
       return;
     }
   }, true);
-  typed = (ev) => {
-    if (ev.isComposing || ev.key.length !== 1 || ev.key === ' ' || ev.ctrlKey || ev.metaKey || app.state !== 'loaded' || app.region() !== 'canvas' || document.documentElement.classList.contains('beeson-history')) return;
-    if (ev.altKey && app.commands.forKey(ev, 'canvas')) return;
+  c.intercept((ev) => {
+    if (ev.isComposing || ev.key.length !== 1 || ev.key === ' ' || ev.ctrlKey || ev.metaKey || app.state !== 'loaded' || app.region() !== 'canvas' || document.documentElement.classList.contains('beeson-history')) return false;
+    if (ev.altKey && app.commands.forKey(ev, 'canvas')) return false;
     const el = app.selection.only();
-    if (!el || !isShape(el) || el.hasAttribute('data-locked')) return;
+    if (!el || !isShape(el) || el.hasAttribute('data-locked')) return false;
     ev.preventDefault();
-    ev.stopImmediatePropagation();
     const host = [...el.querySelectorAll(HOST)].at(-1);
     if (host) {
       caretAtEnd(host);
       document.execCommand('insertText', false, ev.key);
     } else void startWords(el, ev.key).catch((e) => app.fail(e));
-  };
+    return true;
+  });
   window.addEventListener('dblclick', (ev) => {
     const host = ev.target instanceof Element ? ev.target.closest(HOST) : null;
     const s = getSelection(), node = s?.anchorNode;
