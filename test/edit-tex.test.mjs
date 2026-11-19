@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import fs, { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import fs, { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -373,4 +373,97 @@ test('the skipped lines of the sources and the cited keys without an entry are l
   await twoPolls(w);
   assert.ok(f.read('tex.js').includes('"R"'));
   assert.deepEqual(seen.log.slice(start), printed);
+});
+
+// the edit command on a copy of test/pages/tex-sheets, with hello() for a page of the host, and
+// save() for a save of a source by the page of token
+async function sourceSession(t) {
+  const { talkFolder, startEdit, stopEdit, post, raw } = await import('./helpers/session.mjs');
+  const { root, talk, config } = talkFolder(t, DECK);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const name of SOURCES) cpSync(join(DIR, name), join(talk, name));
+  const edit = await startEdit(talk, { env: { XDG_CONFIG_HOME: config, APPDATA: config } });
+  t.after(() => stopEdit(edit));
+  const api = (route) => `${edit.base}.session/${route}`;
+  const hello = async (name) => (await post(edit.port, api('hello'), { name })).json();
+  const save = (token, name, base, text) => raw(edit.port, 'PUT', api(`source/${name}`), { body: { token, base, text }, headers: { 'content-type': 'application/json' } });
+  return { root, talk, config, edit, api, hello, save, post, read: (name) => readFileSync(join(talk, name), 'utf8'), write: (name, text) => writeFileSync(join(talk, name), text) };
+}
+
+test('a save of preamble.tex or references.bib is written over the text that the page read, and a save on an older text is refused with the newer text', { timeout: 60_000 }, async (t) => {
+  const s = await sourceSession(t);
+  const [ann, ben] = [await s.hello('Ann'), await s.hello('Ben')];
+  const preamble = s.read('preamble.tex');
+  const mine = `${preamble}\\newcommand{\\Q}{\\mathbb{Q}}\n`;
+  const first = await s.save(ann.token, 'preamble.tex', preamble, mine);
+  assert.equal(first.status, 200, first.text);
+  assert.equal(s.read('preamble.tex'), mine);
+  assert.deepEqual(readdirSync(s.talk).filter((name) => name.startsWith('.preamble')), [], 'no temporary file is left');
+  await until(() => s.read('tex.js').includes('"Q"'), 'the macro Q in tex.js');
+  const theirs = `${preamble}\\newcommand{\\R}{\\mathbb{R}}\n`;
+  const stale = await s.save(ben.token, 'preamble.tex', preamble, theirs);
+  assert.equal(stale.status, 409);
+  assert.equal(stale.json().text, mine);
+  assert.equal(s.read('preamble.tex'), mine);
+  // a change on disk is a newer text as well, and the byte-order mark of the file is kept
+  s.write('references.bib', `\ufeff${s.read('references.bib')}`);
+  const bib = s.read('references.bib').slice(1);
+  const added = `${bib}\n@book{szebehely1968, author = {Szebehely, Victor}, title = {Orbits}, year = {1968}}\n`;
+  const old = await s.save(ann.token, 'references.bib', bib.replace('koon2000', 'koon2001'), added);
+  assert.equal(old.status, 409);
+  assert.equal(old.json().text, bib);
+  assert.equal((await s.save(ann.token, 'references.bib', bib, added)).status, 200);
+  assert.equal(s.read('references.bib'), `\ufeff${added}`);
+  // a source that is missing from the folder is read as empty
+  rmSync(join(s.talk, 'preamble.tex'));
+  assert.equal((await s.save(ben.token, 'preamble.tex', '', theirs)).status, 200);
+  assert.equal(s.read('preamble.tex'), theirs);
+  assert.equal((await s.save('not a token', 'preamble.tex', theirs, mine)).status, 404);
+  assert.equal(s.read('preamble.tex'), theirs);
+});
+
+test('a guest saves preamble.tex and references.bib through the relay as the host does, and the edit command takes no other file from a page', { timeout: 60_000 }, async (t) => {
+  const { startRelay } = await import('../scripts/relay.mjs');
+  const s = await sourceSession(t);
+  const secret = 'a secret of the group, long enough';
+  const relay = await startRelay({ host: '127.0.0.1', secret });
+  t.after(() => relay.close());
+  const ann = await s.hello('Ann');
+  assert.equal((await s.post(s.edit.port, s.api('share'), { relay: relay.url, secret })).status, 200);
+  const guest = async (method, route, body) => {
+    const r = await fetch(`${relay.url}${s.api(route)}`, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+  const ben = (await guest('POST', 'hello', { name: 'Ben' })).json;
+  assert.equal(ben.host, false);
+  const read = await fetch(`${relay.url}${s.edit.base}references.bib`);
+  assert.equal(read.status, 200);
+  const bib = await read.text();
+  const added = `${bib}\n@book{szebehely1968, author = {Szebehely, Victor}, title = {Orbits}, year = {1968}}\n`;
+  const saved = await guest('PUT', 'source/references.bib', { token: ben.token, base: bib, text: added });
+  assert.equal(saved.status, 200, JSON.stringify(saved.json));
+  assert.equal(s.read('references.bib'), added);
+  const stale = await guest('PUT', 'source/references.bib', { token: ben.token, base: bib, text: `${bib}% mine\n` });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.json.text, added);
+  const before = Object.fromEntries(['index.html', 'tex.js', 'defs.tex', 'mymath.sty'].map((name) => [name, s.read(name)]));
+  for (const name of ['index.html', 'tex.js', 'defs.tex', 'mymath.sty', 'other.bib', 'figures%2Forbit.tex', '..%2Fpreamble.tex', '.session%2Fkey']) {
+    for (const [who, send] of [['the host', (body) => s.save(ann.token, name, body.base, body.text).then((r) => ({ status: r.status }))], ['a guest', (body) => guest('PUT', `source/${name}`, { token: ben.token, ...body })]]) {
+      const refused = await send({ base: '', text: 'x' });
+      assert.equal(refused.status, 404, `${name} from ${who}`);
+    }
+  }
+  assert.deepEqual(Object.fromEntries(Object.keys(before).map((name) => [name, s.read(name)])), before);
+  assert.equal(existsSync(join(s.talk, 'other.bib')), false);
+  assert.equal(existsSync(join(s.root, 'preamble.tex')), false);
+  // a preamble saved by a guest may input only files of the talk folder, since the macros of any
+  // other file of the host would be written into tex.js, which every page reads
+  const preamble = s.read('preamble.tex');
+  for (const line of ['\\input{../secret}', '\\input{/etc/hosts}', '\\usepackage{.session/key}', '\\input{a/../../b}']) {
+    const refused = await guest('PUT', 'source/preamble.tex', { token: ben.token, base: preamble, text: `${preamble}${line}\n` });
+    assert.equal(refused.status, 403, line);
+  }
+  assert.equal(s.read('preamble.tex'), preamble);
+  assert.equal((await guest('PUT', 'source/preamble.tex', { token: ben.token, base: preamble, text: `${preamble}\\input{defs}\n` })).status, 200);
+  assert.equal((await s.save(ann.token, 'preamble.tex', `${preamble}\\input{defs}\n`, `${preamble}\\input{../shared/macros}\n`)).status, 200, 'the host inputs any file');
 });

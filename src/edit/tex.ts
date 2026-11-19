@@ -149,6 +149,11 @@ export class TexWriter {
     if (keysOf(html) !== this.keys) this.derive();
   }
 
+  // a source written by the edit command, which is taken at once rather than once it is stable
+  sourceWritten(): void {
+    this.derive(new Map([...this.watched.keys()].map((name) => [name, sigOf(join(this.dir, name))])));
+  }
+
   // a stat of the files of the last derivation and of tex.js, at each poll of index.html
   poll(): void {
     if (this.polling || this.stopped) return;

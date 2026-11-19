@@ -9,13 +9,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
+import { readPreamble } from '../preamble.ts';
 import { Authority } from '../session/authority.ts';
 import { FULL, isToken, type HelloRequest, type NameRequest, type OpPost, type OpRequest } from '../session/protocol.ts';
 import { AppliedTable, readApplied } from './applied.ts';
 import { Comments, isCommentId, isFailure, type CommentsOptions, type Failure } from './comments.ts';
 import { Disk, readText, renameRetried, renameRetriedSync } from './disk.ts';
 import { History, type HistoryOptions } from './history.ts';
-import { error, fileInside, json, paramNames, segmentsOf, serveFile, withParam, type Request, type Response } from './http.ts';
+import { error, fileInside, json, paramNames, segmentsOf, servedSegment, serveFile, withParam, type Request, type Response } from './http.ts';
 import { MAX_STATE, People } from './people.ts';
 import { ADDRESS_RULE, loadConfig, RELAY_ANSWER, RELAY_BODY, relayAddress, RelayLink, saveConfig, Taken } from './relay.ts';
 import { deriveTex, TexWriter } from './tex.ts';
@@ -188,6 +189,8 @@ function cleanStem(raw: string, fallback: string): string {
 // the names that Windows keeps for its devices
 const RESERVED = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
 const FIGURE_NAME = /^[\w-]+$/;
+// the files of the talk folder that a page writes with its sheets
+const SOURCES = ['preamble.tex', 'references.bib'];
 
 // the box of a preview, each size a number of px or null
 function boxOf(value: unknown): Box | null {
@@ -567,6 +570,59 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     });
   }
 
+  // PUT source/preamble.tex and source/references.bib: the text of a sheet, written only over the
+  // text that the page read, base, where a missing file reads as empty. a newer text is answered
+  // with 409. a guest may input only files of the talk folder in the preamble, since the macros
+  // of any other file of the host would be written into tex.js
+  async function sourceApi(name: string, request: Request): Promise<Response> {
+    if (!SOURCES.includes(name)) return error(404, 'only preamble.tex and references.bib are written');
+    if (request.method !== 'PUT') return error(405, 'PUT');
+    if (closed) return error(503, 'the edit command is stopping');
+    const body = bodyOf(request);
+    if (isResponse(body)) return body;
+    const client = people.clientOf(body.token);
+    if (client === null || !people.present(client)) return error(404, 'say hello first');
+    const { base, text } = body;
+    if (typeof base !== 'string' || typeof text !== 'string') return error(400, 'base or text is missing');
+    if (Buffer.byteLength(text) > RELAY_BODY) return error(413, 'the file is larger than 16 MB');
+    if (!request.direct && name === 'preamble.tex') {
+      const outside: string[] = [];
+      readPreamble(text, {
+        resolve: (input, kind) => {
+          const file = kind === 'input' ? input : `${input}.${kind === 'package' ? 'sty' : 'cls'}`;
+          if (!file.replace(/^(\.\/)+/, '').split('/').every(servedSegment)) outside.push(input);
+          return null;
+        },
+      });
+      if (outside.length) return error(403, `a guest inputs only files of the talk folder in preamble.tex, not ${outside.join(', ')}`);
+    }
+    return oneAtATime(async () => {
+      let file = join(root, name);
+      const real = await realpath(file).catch(() => null);
+      if (real !== null && !real.startsWith(root + sep)) return error(403, `${name} is a link out of the talk folder`);
+      file = real ?? file;
+      const current = await readFile(file, 'utf8').catch((e) => {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return '';
+        throw e;
+      });
+      // a page reads the text without a byte-order mark, as fetch() drops it, and the mark is kept
+      const bom = current.startsWith('﻿') ? '﻿' : '';
+      const unmarked = current.slice(bom.length);
+      if (unmarked !== base) return json(409, { error: `${name} changed since it was read`, text: unmarked });
+      if (text === unmarked) return json(200, {});
+      const tmp = join(root, `.${name}.${randomBytes(6).toString('hex')}.tmp`);
+      try {
+        await writeFile(tmp, bom + text.replace(/^﻿/, ''));
+        await renameRetried(tmp, file);
+      } catch (e) {
+        await unlink(tmp).catch(() => {});
+        return error(500, `could not write ${name}: ${(e as Error).message}`);
+      }
+      tex.sourceWritten();
+      return json(200, {});
+    });
+  }
+
   // the version history and the texts set aside, for every page with a token
   function historyApi(route: string, request: Request): Response {
     const parts = route.split('/');
@@ -647,6 +703,7 @@ export async function start(options: StartOptions = {}): Promise<Running> {
     if (route === 'share') return share(request);
     if (route === 'zip' || route.startsWith('zip/')) return zipApi(route, request);
     if (route.startsWith('figures/')) return figuresApi(route.slice('figures/'.length), request);
+    if (route.startsWith('source/')) return sourceApi(route.slice('source/'.length), request);
     if (route === 'events') {
       if (request.method !== 'GET') return error(405, 'GET');
       const query = new URLSearchParams(request.query);
