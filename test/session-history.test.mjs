@@ -490,12 +490,23 @@ test('the mode ends at the time limit of a restore whose operation does not reac
   clean(ann);
 });
 
+// a request that fails is failed 2 s late, as Windows refuses a connection to a closed port of localhost
+const SLOW_REFUSAL = `{
+  const fetched = window.fetch;
+  window.fetch = function (...args) {
+    return fetched.apply(this, args).catch((e) => new Promise((_, fail) => setTimeout(() => fail(e), 2000)));
+  };
+}`;
+const STATE_BUTTON = `document.querySelector('.beeson-session-state')`;
+const TRY_NOW = `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Try Now')`;
+const pointOf = (page, expression) => page.evaluate(`(() => { const e = ${expression}; if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+
 test('the pane of a page offline reads the versions once the page is online again', { timeout: 300_000 }, async (t) => {
   const browser = await launch({ offline: false });
   t.after(() => browser.close());
   const server = await talk(t, { env: HELD });
   const { port } = server.edit;
-  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann' });
+  const ann = await open(browser, sessionUrl(server.edit), { name: 'Ann', script: SLOW_REFUSAL });
   await converge(server, [ann]);
   await openPane(ann);
   await press$(ann, PANE, 'Tag this version');
@@ -517,10 +528,21 @@ test('the pane of a page offline reads the versions once the page is online agai
   await typeName(ann, 'Lost');
   await ann.waitFor(`document.querySelector('dialog.beeson-session-history-dialog[open] h3')?.textContent === 'The version could not be tagged'`);
   await press$(ann, 'dialog.beeson-session-history-dialog[open]', 'OK');
+  // the menu opened while a reconnect is in flight does not have Try Now
+  await ann.waitFor(`${C}.connection === 'offline' && ${C}.retryAt === null`, 40_000);
+  await tapOrClick(ann, STATE_BUTTON);
+  await ann.waitFor(`!!document.querySelector('.beeson-edit-menu')`);
   await server.start(['--port', String(port)]);
-  await tapOrClick(ann, `document.querySelector('.beeson-session-state')`);
-  await tapOrClick(ann, `[...document.querySelectorAll('.beeson-edit-menu .item')].find((b) => b.textContent === 'Try Now')`);
-  await ann.waitFor(ONLINE, 20_000);
+  // Try Now is in the menu only while the page waits for its next reconnect, hence a menu without
+  // it is closed and opened again
+  await until(async () => {
+    if (await ann.evaluate(ONLINE)) return true;
+    const item = await pointOf(ann, TRY_NOW);
+    if (item) await click(ann, item);
+    else if (await ann.evaluate(`!!document.querySelector('.beeson-edit-menu')`)) await click(ann, await pointOf(ann, STATE_BUTTON));
+    else if (await ann.evaluate(`${C}.retryAt !== null`)) await click(ann, await pointOf(ann, STATE_BUTTON));
+    return false;
+  }, 'the page to be online', 40_000);
   await ann.waitFor(`${LIST}[0]?.day === 'Today'`, 20_000);
   assert.equal(await ann.evaluate(`${LIST}[1].title`), 'Kept');
   assert.equal(await ann.evaluate(SHOWN), true);
