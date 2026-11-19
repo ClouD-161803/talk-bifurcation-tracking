@@ -1,51 +1,33 @@
 name: check
 
-# a push to a pull request is checked on Ubuntu: the tests, the deck in Chrome and in Firefox, and
-# the figures. Every system and browser is checked on main after each merge, and in a round that is
-# started by hand on any branch under Actions > check > Run workflow
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
 
-# the token of a job can only read the repository, and it is not left in the checkout
 permissions:
   contents: read
 
-# a push to a pull request cancels the round of the commit before it. A round on main is not
-# cancelled, since a failure of main would then not be seen. While one round on main runs, GitHub
-# keeps only the newest of the rounds that wait, hence the last of a row of merges is always checked.
-# A round started by hand has a group of its own
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref) || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# the tests and each browser are separate jobs, so that they run on separate runners at once
 jobs:
-  # the tests read the demo deck, hence a talk made with "Use this template" checks only its deck
   test:
     if: ${{ github.repository == 'beeson-group/slides' }}
     strategy:
       fail-fast: false
       matrix:
-        # the macOS runners draw WebGL in SwiftShader, too slowly for the timings of the tests
         os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
-        # the test files are split over seven runners, since the suite is over an hour long on one.
-        # With the two jobs of check and the job tex, a round of a pull request has 10 jobs, hence
-        # two pull requests are checked at once on the 20 runners of the free plan. In a trial with
-        # twelve runners, the longest job took 27 minutes in place of 31, since the files are split
-        # by their index, and one runner then had nearly twice the tests of the mean
         shard: [1, 2, 3, 4, 5, 6, 7]
     runs-on: ${{ matrix.os }}
-    # the longest job of a round takes 30 to 40 minutes. A test file that reaches its limit of 20
-    # minutes is run once more, and the job is not ended before the end of this second run
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
           cache: npm
@@ -53,49 +35,33 @@ jobs:
       - run: npm run vendor
       - run: npm run build
       - run: npm run typecheck
-      # npm test with the shard of the job. It is written out, since npm does not pass an option
-      # on to the script in PowerShell. With --test-force-exit, a test file that leaves a server
-      # open after a failed cleanup is ended, and with --test-timeout, a test file that does not end
-      # fails by name after 20 minutes. The module of --import makes the writes to standard output
-      # blocking, hence no report is lost at the end. A file with a failed test is run once more by
-      # scripts/test.mjs, and a test that then passes is named in a warning of the round
-      - run: node --test-force-exit --test-timeout=1200000 --import ./test/helpers/blocking-stdout.mjs scripts/test.mjs --shard=${{ matrix.shard }}/7
+      - name: Run the shard of npm test, written out since npm does not pass options to a script in PowerShell
+        run: node --test-force-exit --test-timeout=1200000 --import ./test/helpers/blocking-stdout.mjs scripts/test.mjs --shard=${{ matrix.shard }}/7
 
-  # the one check that is required on main. It fails when a job of the round failed or reached its
-  # limit. Without a status function in its condition, it is skipped after a failed job, and a
-  # skipped check counts as passed. It is not run in a cancelled round: the round of the next push is
-  # started only when the cancelled one has ended, and with always() it waited until pass had found
-  # a runner. In a cancelled round, pass is reported as cancelled, which does not count as passed
   pass:
     needs: [test, check, tex]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: exit 1
+      - name: Fail the required check when a job failed or was cancelled, since a skipped check counts as passed
+        run: exit 1
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
 
-  # the TikZ figures are compiled with TeX Live only on this runner. The test shards and the jobs of
-  # check do not have TeX, hence they skip the compile tests and compare the hash of each output
   tex:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      # latex, dvisvgm, TikZ and pgfplots, and the fonts of the wrapper of a figure. dvisvgm is a
-      # package of its own on Ubuntu
-      # a mirror of Ubuntu that stops sending a file is left after 20 s without a byte, and the file
-      # is asked again, of the next mirror in the list of the runner. The options are given on the
-      # command line, since the runner sets its own in /etc/apt/apt.conf.d. A try that hangs anyway
-      # is stopped, and the next try asks the next mirror first
-      - run: |
+      - name: Install TeX Live, from the next mirror of Ubuntu when one stalls
+        run: |
           cat /etc/apt/apt-mirrors.txt || true
           for attempt in 1 2 3; do
             sudo timeout 240 sh -c 'o="-o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 -o Acquire::Retries=5" && apt-get $o update && apt-get $o install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-pictures lmodern dvisvgm' && break
@@ -105,39 +71,32 @@ jobs:
           done
       - run: latex --version && dvisvgm --version
       - run: node --test test/figures.test.mjs
-      # the demo figures are compiled again from their sources, since the bytes of an output differ
-      # between versions of TeX and cannot be compared
-      - run: rm figures/*.js && npm run tex
+      - name: Compile the demo figures again, since the bytes of the output differ between versions of TeX
+        run: rm figures/*.js && npm run tex
 
   check:
-    # the name is given without the key record of the matrix
     name: check (${{ matrix.os }}, ${{ matrix.browser }})
     strategy:
       fail-fast: false
       matrix:
-        # npm run pptx records the scene and the traced backdrops of the deck on one runner, with
-        # WebGL and H.264 in software. The demo deck takes 10 minutes on Windows, 16 on Ubuntu, and
-        # over 40 on macOS, hence only the job on Windows has record, and the others write the file
-        # without a recording. A pull request is checked in the first two only
         include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-latest","browser":"chrome"},{"os":"ubuntu-latest","browser":"firefox"}]' || '[{"os":"ubuntu-latest","browser":"chrome"},{"os":"ubuntu-latest","browser":"firefox"},{"os":"macos-latest","browser":"chrome"},{"os":"macos-latest","browser":"safari"},{"os":"windows-latest","browser":"chrome","record":true}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.record && 45 || 15 }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run vendor
       - run: npm run build
-      # the Chrome preinstalled on each runner is found in scripts/chrome.mjs
       - run: npm run check
         if: ${{ matrix.browser == 'chrome' }}
-      # Firefox on Linux has WebGL in software only in a window, hence Xvfb
-      - run: xvfb-run -a -s "-screen 0 1920x1080x24" npm run check -- --browser firefox --out check/firefox
+      - name: Check the deck in Firefox, in a virtual display, since Firefox on Linux draws WebGL in software only in a window
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" npm run check -- --browser firefox --out check/firefox
         if: ${{ matrix.browser == 'firefox' }}
       - run: sudo safaridriver --enable && npm run check -- --browser safari --out check/safari
         if: ${{ matrix.browser == 'safari' }}
@@ -147,7 +106,7 @@ jobs:
         if: ${{ !cancelled() && matrix.browser == 'chrome' && matrix.record }}
       - run: npm run pptx -- --still
         if: ${{ !cancelled() && matrix.browser == 'chrome' && !matrix.record }}
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: ${{ !cancelled() }}
         with:
           name: slides-${{ matrix.os }}-${{ matrix.browser }}

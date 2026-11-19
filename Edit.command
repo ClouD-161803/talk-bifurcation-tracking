@@ -1,5 +1,4 @@
 #!/bin/sh
-# starts the edit command of this talk folder and opens the editor in the default browser
 cd "$(dirname "$0")" || exit 1
 PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 if ! command -v node >/dev/null 2>&1 || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) < 20 ? 1 : 0)' >/dev/null 2>&1; then
