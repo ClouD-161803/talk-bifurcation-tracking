@@ -3071,6 +3071,10 @@
     get playing() {
       return this.raf !== 0;
     }
+    /** The seconds of a pass over the frames of the tab shown, of the hold of its last frame, and of the fade into the next pass, e.g. for the recordings of scripts/animations.mjs. */
+    get timing() {
+      return this.spec ? { pass: this.length, hold: this.plot.hold, fade: this.plot.fade } : null;
+    }
     /** The fractional frame shown. */
     get frame() {
       return this.u;
