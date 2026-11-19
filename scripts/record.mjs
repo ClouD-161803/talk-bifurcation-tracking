@@ -27,7 +27,37 @@ const config = (fps, scale, hardwareAcceleration) => ({
 // every system
 const ACCELERATIONS = ['prefer-software', 'no-preference'];
 
-const refused = (reason) => new Error(`${reason}. Export with the option --still to keep the backdrops as stills.`);
+// a clock that is stepped from Node in place of performance.now and requestAnimationFrame, in a page.
+// at(ms) runs the frames asked for at ms after install(), and remove() hands them to the real clock
+export const CLOCK = `{
+  install() {
+    this.real = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
+    // a whole number of seconds ahead of the real clock, so that a time of a frame is summed exactly
+    this.base = Math.ceil(performance.now() / 1000) * 1000 + 1000;
+    this.now = this.base;
+    this.queue = new Map();
+    let id = 0;
+    performance.now = () => this.now;
+    window.requestAnimationFrame = (f) => { this.queue.set(++id, f); return id; };
+    window.cancelAnimationFrame = (i) => { this.queue.delete(i); };
+  },
+  at(ms) {
+    this.now = this.base + ms;
+    const q = this.queue;
+    this.queue = new Map();
+    for (const f of q.values()) f(this.now);
+  },
+  remove() {
+    if (!this.real) return;
+    delete performance.now;
+    window.requestAnimationFrame = this.real.raf;
+    window.cancelAnimationFrame = this.real.caf;
+    for (const f of this.queue.values()) this.real.raf(f);
+    this.real = null;
+  },
+}`;
+
+export const refused = (reason, what = 'the backdrops') => new Error(`${reason}. Export with the option --still to keep ${what} as stills.`);
 
 // the part of the recorder in the page, installed once in the print view. the elements of a step
 // are marked with data-rec as under or over the canvases of the recorded backdrops, by their order
@@ -154,34 +184,7 @@ const HELPER = `window.__record ??= (() => {
   };
   const png = async (canvas) => toBase64(new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer()));
 
-  // a clock that is stepped from Node in place of performance.now and requestAnimationFrame
-  const clock = {
-    install() {
-      this.real = { raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
-      // a whole number of seconds ahead of the real clock, so that a time of a frame is summed exactly
-      this.base = Math.ceil(performance.now() / 1000) * 1000 + 1000;
-      this.now = this.base;
-      this.queue = new Map();
-      let id = 0;
-      performance.now = () => this.now;
-      window.requestAnimationFrame = (f) => { this.queue.set(++id, f); return id; };
-      window.cancelAnimationFrame = (i) => { this.queue.delete(i); };
-    },
-    at(ms) {
-      this.now = this.base + ms;
-      const q = this.queue;
-      this.queue = new Map();
-      for (const f of q.values()) f(this.now);
-    },
-    remove() {
-      if (!this.real) return;
-      delete performance.now;
-      window.requestAnimationFrame = this.real.raf;
-      window.cancelAnimationFrame = this.real.caf;
-      for (const f of this.queue.values()) this.real.raf(f);
-      this.real = null;
-    },
-  };
+  const clock = ${CLOCK};
 
   let state = null;
 
