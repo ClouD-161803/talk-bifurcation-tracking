@@ -211,3 +211,28 @@ for (const rate of [1, 6]) {
     assert.fail(`an apply in ${found}, in each of three rounds`);
   });
 }
+
+test('a composition on a page whose session did not start reads no attribute of the deck', { timeout: 120_000 }, async () => {
+  const page = await editorPage(browser);
+  const reads = await page.evaluate(`(async () => {
+    await ${E}.loadSession();
+    const host = [...document.querySelectorAll('.reveal .slides p')].find((p) => p.textContent.trim().length > 10);
+    host.focus();
+    getSelection().selectAllChildren(host);
+    getSelection().collapseToEnd();
+    document.execCommand('insertText', false, 'x');
+    await ${E}.history?.settle?.();
+    let reads = 0;
+    const get = Element.prototype.getAttribute;
+    Element.prototype.getAttribute = function (...a) { reads++; return get.apply(this, a); };
+    try {
+      host.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+    } finally {
+      Element.prototype.getAttribute = get;
+    }
+    host.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '' }));
+    return reads;
+  })()`);
+  assert.equal(reads, 0);
+  await page.close();
+});

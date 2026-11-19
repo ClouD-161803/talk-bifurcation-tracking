@@ -187,8 +187,8 @@ export function install(app: App, tracked: Tracked): Engine {
     composing = app.hostOf(ev.target);
     // a deck changed in part is not rendered, hence while the history or the document model is busy
     // only the content of the composing element is read, and rest is made at the first read once
-    // both are quiet
-    const on = !!composing && ready();
+    // both are quiet. a page without a client, e.g. one whose session did not start, reads nothing
+    const on = !!composing && ready() && listeners.size > 0;
     const t = on && busy() ? app.pairing!.byLive.get(composing!) : undefined;
     late = t ? { host: composing!, content: renderTextElement(app.source!, t, mathLookup(), app.tagEdits) } : null;
     rest = on && !busy() ? current() : null;
