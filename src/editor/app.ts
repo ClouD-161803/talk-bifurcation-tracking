@@ -188,7 +188,7 @@ export class App {
   // the session of the synchronous editor after its begin(), see session/port.ts. Save then
   // calls save() of its client, the file is neither written nor followed, and status is shown in
   // the state line
-  session: { status: string | null; save(): Promise<void> | void } | null = null;
+  session: { status: string | null; save(): Promise<void> | void; sent(): Promise<void> } | null = null;
   autosave = false;
   // the texts of the current slide that run past its edge
   overflow = 0;

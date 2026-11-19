@@ -2,7 +2,6 @@ import type { Client } from './client.ts';
 import { make } from './dom.ts';
 import { mayRetry } from './transport.ts';
 
-const SEND_WAIT = 4000;
 const TRIES = 5;
 const FAILED = 'The talk folder could not be downloaded. Try again.';
 const MB = 1024 * 1024;
@@ -23,16 +22,10 @@ const sleep = (ms: number, signal: AbortSignal) =>
   });
 
 async function sent(client: Client): Promise<void> {
-  let timer = 0;
-  const late = new Promise<never>((_, fail) => {
-    timer = window.setTimeout(() => fail(new Told('Your last changes are not sent yet. Try again once they are saved.')), SEND_WAIT);
-  });
   try {
-    await Promise.race([client.app.session!.save(), late]);
+    await client.app.session!.sent();
   } catch (e) {
-    throw e instanceof Told ? e : new Told(`${(e as Error).message.replace(/\.$/, '')}.`);
-  } finally {
-    clearTimeout(timer);
+    throw new Told(`${(e as Error).message.replace(/\.$/, '')}.`);
   }
 }
 

@@ -21,6 +21,8 @@ import { script } from '../ui/script.ts';
 import { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn } from './caret.ts';
 import type { Host } from './host.ts';
 
+const SEND_WAIT = 4000;
+
 const host: Host = { caretOf, mapOffset, markOf, moved, putCaret, runsOf, textIn, fragmentRoot, parseFragment, refreshHeads, mathIn, mathLookup, setContentWithTex, apply, charEdits, edits, fine, mergeEdits, shared, detached, isTextElement, pair, pairElement, renderDeck, renderTextElement, unitsWithin, virtualChildren, contentRange, decode, elementRange, parseSource, segmentsOf, VOID, media, stateOf, RAW_TEXT, tokenize };
 
 // what an apply did: the elements it changed, e.g. for a flash, and reload when the deck could not
@@ -132,6 +134,17 @@ export function install(app: App): Port {
           await app.doc.idle();
         }
       return saver();
+    },
+    sent: async () => {
+      let timer = 0;
+      const late = new Promise<never>((_, fail) => {
+        timer = window.setTimeout(() => fail(new Error('Your last changes are not sent yet. Try again once they are saved')), SEND_WAIT);
+      });
+      try {
+        await Promise.race([session.save(), late]);
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 
