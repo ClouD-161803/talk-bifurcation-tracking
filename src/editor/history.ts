@@ -78,6 +78,8 @@ export class History {
   refused?: (entry: Entry, way: 'undo' | 'redo') => void;
   // the functions run at the end of each transaction, whose changes are part of it
   private readonly settlers: (() => void)[] = [];
+  // the waits of settle()
+  private readonly waiting: (() => void)[] = [];
   // the functions run after each input recorded into an entry of typing outside a transaction
   private readonly typers: ((entry: Entry) => void)[] = [];
   // read before an undo or a redo, the function that selects the one element changed by its entry
@@ -136,13 +138,14 @@ export class History {
     return !this.open && !this.busy;
   }
 
-  // resolved once settled holds. amend() reopens a transaction without a new closed promise, hence
-  // a task is waited for when queue and closed resolve while the history is still open
-  async settle(): Promise<void> {
-    while (!this.settled) {
-      await this.queue.then(() => this.closed);
-      if (!this.settled) await new Promise((done) => setTimeout(done, 16));
-    }
+  // resolved once settled holds, by calm() at the end of each transaction, amend, undo, redo, and
+  // retract
+  settle(): Promise<void> {
+    return this.settled ? Promise.resolve() : new Promise((done) => this.waiting.push(done));
+  }
+
+  private calm(): void {
+    if (this.settled) for (const done of this.waiting.splice(0)) done();
   }
 
   // fn run at the end of each transaction with changes, e.g. to keep a number in step with them
@@ -228,6 +231,7 @@ export class History {
           }
         } finally {
           close();
+          this.calm();
         }
       }
     }
@@ -439,6 +443,7 @@ export class History {
         return;
       } finally {
         this.busy = false;
+        this.calm();
       }
       const els = this.touched(entry, way);
       if (els?.length === 1) select(els[0]);
@@ -470,6 +475,7 @@ export class History {
       this.open = null;
       this.typing = null;
       this.undone = [];
+      this.calm();
       this.onChange();
     }
   }
@@ -491,6 +497,7 @@ export class History {
       } finally {
         this.busy = false;
         this.still = false;
+        this.calm();
       }
       this.onChange();
     });

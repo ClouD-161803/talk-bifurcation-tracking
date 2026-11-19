@@ -609,3 +609,27 @@ test('outside a session, an undo and a redo of typing write the old text over a 
   assert.equal(el.content, 'Cited words \\cite{gomez2004}');
   assert.equal(h.undoLabel, 'typing');
 });
+
+test('a wait for the history to settle during an amend sets no timer, and ends with the amend', async () => {
+  const h = history();
+  const log = [];
+  await h.transact('a', () => h.push(slow(log, 'x', 0)));
+  const entry = h.last;
+  let end;
+  const amend = h.amend(entry, () => new Promise((done) => (end = done)));
+  const set = globalThis.setTimeout;
+  let timers = 0;
+  globalThis.setTimeout = (...args) => (timers++, set(...args));
+  let settled = false;
+  const wait = h.settle().then(() => (settled = true));
+  try {
+    await new Promise((done) => setImmediate(done));
+    assert.equal(settled, false);
+    end();
+    await Promise.all([amend, wait]);
+  } finally {
+    globalThis.setTimeout = set;
+  }
+  assert.equal(settled, true);
+  assert.equal(timers, 0);
+});
