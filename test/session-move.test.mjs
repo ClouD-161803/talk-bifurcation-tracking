@@ -172,9 +172,14 @@ for (const c of CASES) {
     const was = server.read();
     await front(ben);
     assert.ok(await ben.evaluate(c.ben));
-    await c.then?.(ben);
     await until(() => server.read() !== was, 'index.html to hold the change of Ben');
     await until(async () => (await ana.evaluate(`${C}.base?.text`)) === server.read(), 'the page of Ana to receive the change of Ben');
+    // the page of Ana takes the next change of Ben only once its history is free
+    if (c.then) {
+      const moved = server.read();
+      await c.then(ben);
+      await until(() => server.read() !== moved, 'index.html to hold the key of Ben');
+    }
     await front(ana);
     await caretAtEnd(ana, para(c.into));
     await typeKeys(ana, ' by Ana');

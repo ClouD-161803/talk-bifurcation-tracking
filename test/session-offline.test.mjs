@@ -485,9 +485,10 @@ test('the copies of two closed tabs that changed the same text are both sent, th
   clean(c);
 });
 
-// the copy of the tab closed first is sent first, and the other is merged into the deck with the dialog
-for (const [older, choice] of [['key', 'Keep theirs'], ['move', 'Keep mine']]) {
-  test(`a slide moved in one closed tab and typed in by the other is in the deck once with the key when the ${older} is sent first and the page keeps ${choice === 'Keep mine' ? 'the other copy' : 'it'}`, { timeout: 300_000 }, async (t) => {
+// the copy of the tab closed first is sent first, and the other is merged into the deck without the
+// dialog, since the key goes with the move
+for (const older of ['key', 'move']) {
+  test(`a slide moved in one closed tab and typed in by the other is in the deck once, moved, with the key, without a dialog, when the ${older} is sent first`, { timeout: 300_000 }, async (t) => {
     const browser = await launch({ offline: false });
     t.after(() => browser.close());
     const server = await talk(t);
@@ -519,12 +520,13 @@ for (const [older, choice] of [['key', 'Keep theirs'], ['move', 'Keep mine']]) {
     const c = await tab(browser, url);
     await until(() => (older === 'key' ? server.read().includes('First slide by A') : server.read().indexOf('<h2>One') > server.read().indexOf('<h2>Three')), 'the older copy to reach the file');
     await front(c);
-    await c.waitFor(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`, 20_000);
-    await press(c, choice);
+    await until(() => server.read().includes('First slide by A') && server.read().indexOf('<h2>One') > server.read().indexOf('<h2>Three'), 'the move and the key in the file', 40_000);
     const text = await converge(server, [c], 'the page and index.html to agree', 40_000);
     const s = text.slice(text.indexOf('<div class="slides">'));
     const count = (part) => s.split(part).length - 1;
     assert.deepEqual({ one: count('<h2>One'), key: count('First slide by A'), slides: count('<section') }, { one: 1, key: 1, slides: 3 });
+    assert.ok(s.indexOf('<h2>One') > s.indexOf('<h2>Three'), 'the slide is moved');
+    assert.equal(await c.evaluate(`!!document.querySelector('dialog.beeson-session-conflicts[open]')`), false, 'no dialog of conflicts');
     clean(c);
   });
 }
