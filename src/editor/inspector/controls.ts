@@ -1,10 +1,3 @@
-// the controls of the panes of the inspector, drawn in the tokens of the chrome as the controls of
-// the Format inspector of Keynote: sections with a heading, segmented buttons, number fields with a
-// stepper, checkboxes, and text fields. a press on a button is run as a command of the registry,
-// and neither the focus nor the range of a text is moved by it, hence the selection on the canvas
-// is kept. the value of a field is committed with Return or at a blur, as one entry of the history,
-// and Esc puts the shown value back
-
 import type { App } from '../app.ts';
 import { keysOf } from '../commands.ts';
 import { entering } from '../commands/edit.ts';
@@ -15,8 +8,6 @@ import { commandKeys } from '../ui/menu.ts';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
-// the icons of the inspector, on the grid of ui/icons.ts: 20 by 20 px, a stroke of 1.5 px, and a
-// path that starts with F filled
 export const GLYPHS: Record<string, string[]> = {
   'align-left': ['M3.5 3v14', 'M6.5 5.5h10v3.5h-10z', 'M6.5 11.5h6v3.5h-6z'],
   'align-center': ['M10 3v14', 'M4.5 5.5h11v3.5h-11z', 'M6.75 11.5h6.5v3.5h-6.5z'],
@@ -40,7 +31,6 @@ export const GLYPHS: Record<string, string[]> = {
   'chevron-up': ['M6 12l4-4 4 4'],
 };
 
-// the svg of an icon of GLYPHS, or of ui/icons.ts for another name
 export function glyph(name: string, size = 18): SVGSVGElement {
   const paths = GLYPHS[name];
   if (!paths) return icon(name, size);
@@ -144,8 +134,6 @@ export function installStyle(): void {
   injectStyle('inspector', CSS);
 }
 
-// a part of a pane, which reads its state again at sync. flush commits a field that has a value
-// typed and not committed yet
 export type Control = { el: HTMLElement; sync(): void; flush?(): void };
 
 export const group = (el: HTMLElement, parts: Control[]): Control => {
@@ -153,7 +141,6 @@ export const group = (el: HTMLElement, parts: Control[]): Control => {
   return { el, sync: () => parts.forEach((p) => p.sync()), flush: () => parts.forEach((p) => p.flush?.()) };
 };
 
-// a section of a pane with a heading
 export function section(title: string | null, parts: Control[]): Control {
   const el = make('div', 'ed-sec');
   if (title) el.append(make('h5', '', title));
@@ -177,14 +164,11 @@ export function note(text: () => string, warn: () => boolean = () => false): Con
   return { el, sync };
 }
 
-// a press on a button of the inspector leaves the focus and the range of a text where they are
 export function keepFocus(el: HTMLElement): void {
   el.addEventListener('pointerdown', (ev) => ev.preventDefault());
   el.addEventListener('mousedown', (ev) => ev.preventDefault());
 }
 
-// the command id is run with arg, an error is shown in the state of the toolbar, and after is
-// called once it is done, e.g. to read the inspector again
 export function runner(app: App, after: () => void) {
   return (id: string, arg?: unknown) =>
     app.commands
@@ -197,9 +181,6 @@ export type Run = ReturnType<typeof runner>;
 
 const stateOf = (app: App, id: string) => (app.commands.get(id) ? app.commands.state(id) : null);
 
-// a button of a segmented control or of its own: a command with its arg, shown with an icon of
-// GLYPHS, a text, or both. a command that is not defined is drawn disabled, as is an item whose off
-// gives the reason. click runs in place of the command, e.g. a command chosen at the click
 export type Item = { command: string; arg?: unknown; icon?: string; text?: string | (() => Node); title?: string; pressed?: () => boolean | 'mixed' | null; off?: () => string | null; click?: () => unknown };
 
 function itemButton(app: App, run: Run, item: Item, className: string): { el: HTMLButtonElement; sync(): void } {
@@ -220,7 +201,6 @@ function itemButton(app: App, run: Run, item: Item, className: string): { el: HT
     if (on === null || on === undefined) b.removeAttribute('aria-pressed');
     else b.setAttribute('aria-pressed', on === 'mixed' && !b.disabled ? 'mixed' : String(on === true && !b.disabled));
     if (!item.title && s && typeof item.text !== 'string') b.setAttribute('aria-label', s.label);
-    // a dimmed control says why in its tooltip, and else gives its keys as the toolbar does
     const name = item.title ?? (s && typeof item.text !== 'string' ? s.label : '');
     const c = app.commands.get(item.command);
     const keys = name && c ? commandKeys(c, app.platform) : '';
@@ -241,8 +221,6 @@ export function button(app: App, run: Run, item: Item): Control {
   return itemButton(app, run, item, 'ed-btn');
 }
 
-// a checkbox of a switch command, e.g. White Figure on an image. checked is given for a command that is
-// not a switch, e.g. Hide Slide
 export function checkbox(app: App, run: Run, command: string, text: string, checked?: () => boolean, arg?: unknown): Control {
   const el = make('label', 'ed-check');
   const input = make('input');
@@ -250,8 +228,6 @@ export function checkbox(app: App, run: Run, command: string, text: string, chec
   input.dataset.command = command;
   el.append(input, make('span', '', text));
   keepFocus(el);
-  // the browser puts back the old check of a cancelled click after its listeners, hence the box
-  // is synced once the click is over, for a command that does not refresh the pane
   el.addEventListener('click', (ev) => {
     ev.preventDefault();
     if (!input.disabled) void Promise.resolve(run(command, arg)).then(() => setTimeout(sync));
@@ -261,16 +237,12 @@ export function checkbox(app: App, run: Run, command: string, text: string, chec
     input.disabled = !s?.enabled;
     input.checked = checked ? checked() : !!s?.checked;
     el.classList.toggle('off', input.disabled);
-    // a dimmed control says why in its tooltip
     el.title = s?.why ?? '';
   };
   sync();
   return { el, sync };
 }
 
-// a field whose text is committed with Return or at a blur. commit is given the text, and it acts
-// on the targets read when the pane was built, which a later change of the selection does not
-// change
 type FieldOptions = {
   label?: string;
   name: string;
@@ -279,7 +251,6 @@ type FieldOptions = {
   value(): string | null;
   enabled(): boolean;
   commit(text: string): unknown;
-  // a line under the field, e.g. the count of the bytes of a QR code
   hint?(text: string): { text: string; warn: boolean } | null;
 };
 
@@ -339,9 +310,6 @@ export function textField(app: App, o: FieldOptions): Control & { input: HTMLInp
   return { el, sync, flush, input };
 }
 
-// a number field with a stepper and its label under it, as the size and position fields of the
-// Arrange tab of Keynote. the arrow keys step it by step, 1 by default, or by 10 steps with Shift,
-// and so does a click on the stepper. a value is rounded to a whole number of steps
 type NumberOptions = {
   label: string;
   unit?: string;
@@ -351,14 +319,9 @@ type NumberOptions = {
   min?: number;
   max?: number;
   step?: number;
-  // the reason the field is dimmed, shown in its tooltip and in those of its stepper
   why?(): string;
-  // the command of the field, named on its stepper as on the buttons of a pane
   command?: string;
-  // a typed value outside min and max is refused, and the field shows the value before, in place
-  // of the nearest bound
   refuse?: boolean;
-  // Return enters the shown value as well, e.g. to keep the start of a list
   same?: boolean;
 };
 
@@ -391,7 +354,6 @@ export function numberField(app: App, o: NumberOptions): Control & { input: HTML
   const step = o.step ?? 1;
   const digits = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
   const round = (v: number) => Number((Math.round(v / step) * step).toFixed(digits));
-  // the value as the field shows it, rounded to its step, hence a flush commits a typed value only
   let shown: number | null = null;
   const show = (v: number | null) => {
     shown = v === null ? null : round(v);
@@ -420,8 +382,6 @@ export function numberField(app: App, o: NumberOptions): Control & { input: HTML
   });
   input.addEventListener('blur', flush);
   input.addEventListener('keydown', (ev) => {
-    // Undo and Redo after a commit act on the history and not on the text of the field, which then
-    // follows the selection, as in Keynote. the command shows the value with follow of the field
     const history = ['edit.undo', 'edit.redo'].find((id) => {
       const c = app.commands.get(id);
       return c && keysOf(c, app.platform).some((k) => matches(ev, k, app.platform));
@@ -431,8 +391,6 @@ export function numberField(app: App, o: NumberOptions): Control & { input: HTML
       ev.stopPropagation();
       void app.commands.run(history).catch((e) => app.fail(e));
     } else if (history === 'edit.undo') {
-      // Undo of a value typed and not entered puts the shown value back in one step, where the
-      // undo of the browser takes off one typed character on Windows
       ev.preventDefault();
       ev.stopPropagation();
       show(shown);
@@ -462,7 +420,6 @@ export function numberField(app: App, o: NumberOptions): Control & { input: HTML
     input.disabled = up.disabled = down.disabled = !on;
     el.classList.toggle('off', !on);
     if (o.why) el.title = up.title = down.title = on ? '' : o.why();
-    // a focused field follows a change made elsewhere, e.g. an undo, unless a value is typed into it
     if (document.activeElement === input) {
       const v = o.value();
       if (round(typed()) !== shown || v === null || round(v) === shown) return;
@@ -477,7 +434,6 @@ export function numberField(app: App, o: NumberOptions): Control & { input: HTML
   return { el, sync, flush, input };
 }
 
-// the button of the layout chooser at the top of the Slide pane, with a sketch of the layout
 export function chooserButton(sketch: () => SVGSVGElement, caption: string, value: () => string): Control {
   const el = make('div', 'ed-chooser');
   const thumb = make('div', 'thumb');

@@ -1,14 +1,3 @@
-// the guides placed by hand, as the guides of Keynote: a guide is dragged out of a ruler of
-// canvas/rulers.ts, with its place in slide px shown during the drag, moved by a drag on the canvas
-// where no element is under the pointer, and removed by a drag back onto a ruler or off the
-// canvas. an element snaps to the guides as it snaps to the other elements in snap.ts. the guides of
-// a slide are written into data-guides on its section, e.g. data-guides="x480 y270" in slide px,
-// which only the editor reads, and each change of them is one entry of the history. guides kept in
-// the storage of the browser by an earlier editor, by the index of each slide in the order of the
-// page, are shown until the next change of the guides of their slide writes them into the file.
-// the guides are drawn and snapped to while the rulers of View > Rulers are shown. Clear All Guides
-// on Slide, Copy Guides, and Paste Guides are the commands of Keynote
-
 import type { App } from '../app.ts';
 import { injectStyle, make, store, stored } from '../ui/dom.ts';
 import { frameOf, movableOf, onCanvas } from './hit.ts';
@@ -16,7 +5,6 @@ import { provideLines } from './snap.ts';
 
 export type Guides = { x: number[]; y: number[] };
 
-// the distance in screen px within which a press grabs a guide
 const GRAB = 4;
 const CLIP = 'beeson-edit-guides-copied';
 const keyOf = () => `beeson-edit-guides:${location.pathname}`;
@@ -39,13 +27,11 @@ const clean = (g: Partial<Guides> | null | undefined): Guides => ({
   y: (g?.y ?? []).filter(Number.isFinite).map(Math.round),
 });
 
-// the guides of b added to those of a, each place once, in order
 export function merged(a: Guides, b: Guides): Guides {
   const join = (p: number[], q: number[]) => [...new Set([...p, ...q])].sort((m, n) => m - n);
   return { x: join(a.x, b.x), y: join(a.y, b.y) };
 }
 
-// the guides as the value of data-guides, x before y, each in order
 const format = (g: Guides): string => [...[...g.x].sort((m, n) => m - n).map((v) => `x${v}`), ...[...g.y].sort((m, n) => m - n).map((v) => `y${v}`)].join(' ');
 
 function parse(text: string): Guides {
@@ -75,14 +61,9 @@ export function install(app: App): void {
   const root = document.documentElement;
 
   const shown = () => app.commands.get('view.rulers')?.checked?.(app) === true;
-  // the guides of each slide element. every slide of the page is read by its index from the storage
-  // of the deck at the first use, before a slide can be moved, and a slide added later has none
   const kept = new WeakMap<Element, Guides>();
   const sections = () => [...app.slides().querySelectorAll(':scope > section')];
   let seeded = false;
-  // the slides in the order of the last read or write of the storage. a page writes its guides at a
-  // change of the slides only where this order changed, so that a page that opens the file again or
-  // inserts an element does not write the guides it read at its start over those of another tab
   let order: Element[] = [];
   const seed = () => {
     seeded = true;
@@ -109,7 +90,6 @@ export function install(app: App): void {
     const text = all.some((g) => g.x.length || g.y.length) ? JSON.stringify(all) : null;
     if (text !== stored(keyOf())) store(keyOf(), text);
   };
-  // a copy of a slide gets a copy of the guides kept in the storage for it
   const duplicate = app.doc.duplicate.bind(app.doc);
   app.doc.duplicate = async (el) => {
     const source = el.parentElement === app.slides() && el.matches('section') && !el.hasAttribute('data-guides') ? of(el) : null;
@@ -120,8 +100,6 @@ export function install(app: App): void {
     }
     return copy;
   };
-  // the guides of slide written into the file as one entry of the history, with those kept in the
-  // storage for it dropped, and kept again by an undo
   const setOf = (slide: Element, g: Guides) => {
     const text = format(clean(g));
     const old = kept.get(slide);
@@ -178,13 +156,11 @@ export function install(app: App): void {
     });
   };
 
-  // a press released off the viewport of the canvas, e.g. on a ruler, removes its guide
   const outside = (p: Press) => {
     const v = stage.viewport;
     return p.x < v.left || p.x >= v.right || p.y < v.top || p.y >= v.bottom;
   };
 
-  // the guide within GRAB of the point x, y in screen px, or null
   const guideAt = (x: number, y: number): { axis: 'x' | 'y'; index: number } | null => {
     if (!shown()) return null;
     const f = frameOf(app);
@@ -201,8 +177,6 @@ export function install(app: App): void {
     return best;
   };
 
-  // a guide is grabbed only where a press does not select anything, i.e. on the slide outside its
-  // elements or on the pasteboard
   const free = (target: Element, x: number, y: number) =>
     onCanvas(target, app, { x, y }) && !movableOf(app, target) && !target.closest('.beeson-overlay *, .beeson-line-layer *, [contenteditable="true"]');
 
@@ -225,7 +199,6 @@ export function install(app: App): void {
     const target = ev.target instanceof Element ? ev.target : null;
     if (!target) return;
     const ruler = target.closest<HTMLElement>('.beeson-ruler');
-    // the top ruler gives a horizontal guide, i.e. one at a y, and the left ruler a vertical one
     let grab: { axis: 'x' | 'y'; index: number } | null = null;
     if (ruler) grab = { axis: ruler.dataset.axis === 'x' ? 'y' : 'x', index: -1 };
     else if (free(target, ev.clientX, ev.clientY)) grab = guideAt(ev.clientX, ev.clientY);
@@ -239,7 +212,6 @@ export function install(app: App): void {
 
   window.addEventListener('pointermove', (ev) => {
     if (press) {
-      // the hover frame of drag.ts is not drawn while a guide is dragged
       ev.preventDefault();
       ev.stopPropagation();
       track(ev);
@@ -289,7 +261,6 @@ export function install(app: App): void {
   };
   const menu = (order: number) => ({ bar: 'View', group: 'guides', order, submenu: 'Guides' });
   const c = app.commands;
-  // with an arg { x, y } of lists in slide px, the guides are added at once, e.g. by a test
   c.define({
     id: 'view.guides.add',
     label: 'Add Guides',

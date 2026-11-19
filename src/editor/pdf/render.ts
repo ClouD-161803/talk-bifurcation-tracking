@@ -1,7 +1,3 @@
-// the renders of PDF figures, built into theme/editor-pdf.js, which the editor loads after
-// theme/vendor/pdfjs/pdf.js at the first PDF, and which npm run tex loads into a page of Chrome.
-// a page is drawn once and mapped onto each mode asked for
-
 import { RENDER_HEIGHT, RENDER_WIDTH, mapColors, renderHash, withHash, type Mode, type Tones } from '../../pdffigure.ts';
 
 type Viewport = { width: number; height: number };
@@ -20,12 +16,9 @@ const pngOf = (canvas: HTMLCanvasElement): Promise<Uint8Array> =>
     canvas.toBlob((blob) => (blob ? blob.arrayBuffer().then((b) => done(new Uint8Array(b)), fail) : fail(new Error('the page could not be written as a PNG'))), 'image/png'),
   );
 
-// the renders of page of the PDF pdf in each of modes, with the tones of each mode. a page past
-// the last one throws an error with the number of pages
 export async function render(pdf: Uint8Array, page: number, modes: Mode[], tones: Record<'dark' | 'light', Tones>): Promise<Rendered> {
   const lib = (globalThis as { pdfjsLib?: PdfLib }).pdfjsLib;
   if (!lib) throw new Error('theme/vendor/pdfjs/pdf.js is not loaded');
-  // pdf.js takes over the buffer that it is given, hence it is given a copy
   const task = lib.getDocument({ data: pdf.slice(), isEvalSupported: false });
   const canvas = document.createElement('canvas');
   try {
@@ -36,8 +29,6 @@ export async function render(pdf: Uint8Array, page: number, modes: Mode[], tones
     const viewport = p.getViewport({ scale: Math.min(RENDER_WIDTH / unit.width, RENDER_HEIGHT / unit.height) });
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
-    // the context is made with an alpha channel before pdf.js asks for one without it, hence a page
-    // without a background of its own is transparent
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
     await p.render({ canvas, viewport, background: 'rgba(0,0,0,0)' }).promise;
     const drawn = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -51,7 +42,6 @@ export async function render(pdf: Uint8Array, page: number, modes: Mode[], tones
     }
     return { pages: doc.numPages, renders };
   } finally {
-    // the memory of the canvas is given back at once, which Safari on a phone holds to a small limit
     canvas.width = canvas.height = 0;
     void task.destroy();
   }

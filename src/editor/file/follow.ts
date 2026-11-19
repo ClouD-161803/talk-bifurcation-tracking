@@ -1,11 +1,3 @@
-// the file of the deck followed while the editor is open, so that the deck can be edited together
-// with an agent or a collaborator who changes the file, e.g. in a text editor or with a git pull.
-// the file is read at each WATCH_DELAY, through the handle of the file or from the server of the
-// deck. a change of the file without unsaved edits loads the page again on the same slide, and
-// with unsaved edits it is named in the state, and the next save merges the edits into the file
-// with merge.ts. after a reload of its own, the editor writes into the same file without asking for
-// it again, while the browser allows it
-
 import type { App, Follow } from '../app.ts';
 import type { Navigator } from '../navigator/navigator.ts';
 import { changes, merge, type Edit } from '../merge.ts';
@@ -17,16 +9,12 @@ import { keepSlide, plural, write } from './files.ts';
 import { loadRecents, pageOf, recentsOfPage, remember } from './recent.ts';
 
 const WATCH_DELAY = 1000;
-// a changed file is read again after SETTLE_DELAY until two reads agree, since a write that is not
-// atomic, e.g. on Windows, can be read half done
 const SETTLE_DELAY = 150;
 const SETTLE_TRIES = 20;
-// the message and the changed slides of a reload of the editor, kept for the page after the reload
 const RELOAD_KEY = `beeson-reload:${pageOf()}`;
 
 const clock = (): string => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// ' on slide 3', ' on slides 3 and 5', or ' on slides 3, 5, and 7', and '' without a slide
 export function onSlides(numbers: number[]): string {
   if (!numbers.length) return '';
   if (numbers.length === 1) return ` on slide ${numbers[0]}`;
@@ -34,11 +22,8 @@ export function onSlides(numbers: number[]): string {
   return ` on slides ${head}${numbers.length > 2 ? ',' : ''} and ${numbers[numbers.length - 1]}`;
 }
 
-// the sections of the last text parsed by slidesAt, since a caller may ask for one range at a time
 let last: { text: string; sections: { start: number; end: number }[] } | null = null;
 
-// the numbers of the slides, from 1, of the ranges in a text of the deck, i.e. of the sections
-// that are children of its div.slides, as the navigator counts them
 export function slidesAt(text: string, ranges: Edit[]): number[] {
   if (last?.text !== text) {
     const sections = parseSource(text).slides.children.flatMap((c) => (c.kind === 'element' && c.tag === 'section' && c.open ? [{ start: c.open.start, end: c.close?.end ?? c.open.end }] : []));
@@ -54,7 +39,6 @@ export function slidesAt(text: string, ranges: Edit[]): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
-// the slides of after that differ from before, by their numbers in after
 export function changedSlides(before: string, after: string): number[] {
   try {
     const hunks = changes(before, after);
@@ -74,19 +58,12 @@ export function changedSlides(before: string, after: string): number[] {
 type Permitted = FileSystemFileHandle & { queryPermission?(o: { mode: 'readwrite' }): Promise<PermissionState> };
 
 export function install(app: App): void {
-  // the text of the file when it was last read or written, which watch() compares the file with,
-  // and the time stamp of the file read through the handle. diskText is null while the file is not
-  // followed, e.g. before a file is chosen on file:
   let diskText: string | null = null;
   let stamp = 0;
-  // the file that the editor read or wrote last, which a save merges into. a file chosen for a save
-  // that holds other text, e.g. an older copy of the deck, is overwritten as before
   let known: FileSystemFileHandle | null = null;
-  // the number of the saves started, which tells watch() that a save ran while the file was read
   let saves = 0;
   let saving = false;
   let busy = false;
-  // the slides of the file changed while the edits are not saved
   let stale: number[] | null = null;
   const nav = (): Navigator => app.nav as Navigator;
 
@@ -129,21 +106,14 @@ export function install(app: App): void {
     }
   }
 
-  // the page is loaded again on the same slide, and after the reload the message is shown in the
-  // state and the changed slides are marked in the navigator
   function reload(changed: number[], message: string): void {
     try {
       sessionStorage.setItem(RELOAD_KEY, JSON.stringify({ changed, message }));
-    } catch {
-      // the page is loaded again without the message
-    }
+    } catch {}
     keepSlide(app);
     location.reload();
   }
 
-  // the edits of the page merged into the file of target, which changed since it was read. the
-  // edits are the changes from the text that was read to the rendered text, hence every kind of
-  // edit is merged, a new slide too. at a conflict the user is asked which version to keep
   async function mergeInto(target: FileSystemFileHandle): Promise<'same' | 'other' | 'merged' | 'cancelled'> {
     const base = app.source;
     const pairing = app.pairing;
@@ -156,15 +126,12 @@ export function install(app: App): void {
     }
     if (read === null || read === base.text) return 'same';
     const disk = (await readSettled(target, read)) ?? read;
-    // a file that is not the one read, and that does not hold the last text seen of the deck either
     if (disk !== diskText && !(await isKnown(target))) return 'other';
     const ours = (): { text: string; edits: Edit[] } => {
       const text = renderDeck(base, pairing, mathLookup(), app.tagEdits).text;
       return { text, edits: changes(base.text, text) ?? [{ start: 0, end: base.text.length, text }] };
     };
     const live = app.slides() as HTMLElement;
-    // the slides cannot be typed into until the merged text is written, since the page is then
-    // loaded again
     live.inert = true;
     try {
       const first = merge(base.text, ours().edits, disk, 'theirs');
@@ -176,8 +143,6 @@ export function install(app: App): void {
         if (choice !== 'ours' && choice !== 'theirs') return 'cancelled';
         prefer = choice;
       }
-      // the file is read again after the dialog, and the edits are rendered again for the changes
-      // made meanwhile outside the slides, e.g. in the Steps pane
       const again = await readText(target);
       const now = (again === null ? null : await readSettled(target, again)) ?? disk;
       const mine = ours();
@@ -197,14 +162,11 @@ export function install(app: App): void {
     }
   }
 
-  // a change without unsaved edits, and without an open dialog, loads the page again. a change with
-  // unsaved edits is named in the state and marked in the navigator until a save
   async function watch(): Promise<void> {
     if (busy || diskText === null || app.state !== 'loaded' || saving || document.hidden || app.session) return;
     busy = true;
     try {
       const at = saves;
-      // a file chosen but not yet written is not followed, and the deck is then read from the server
       const handle = (await isKnown(app.handle)) ? app.handle : null;
       if (handle) {
         const file = await handle.getFile();
@@ -214,7 +176,6 @@ export function install(app: App): void {
       const read = await readText(handle);
       if (read === null || read === diskText || saves !== at || saving) return;
       const text = await readSettled(handle, read);
-      // a session begun while the file was read
       if (text === null || text === diskText || saves !== at || saving || app.session) return;
       const changed = changedSlides(diskText, text);
       if (!app.dirty && !document.querySelector('dialog.beeson-edit-dialog[open], .beeson-math')) {
@@ -225,16 +186,11 @@ export function install(app: App): void {
       stale = [...new Set([...(stale ?? []), ...changed])].sort((a, b) => a - b);
       nav().mark(changed);
       app.report();
-    } catch {
-      // a file that cannot be read now is read again at the next tick
-    } finally {
+    } catch {} finally {
       busy = false;
     }
   }
 
-  // after a reload of the editor, the file of this deck kept for Open Recent is used again when
-  // the browser still allows the page to write it, and when it holds the deck on the page: the text
-  // fetched from the server, or on file: a text that pairs with the page
   async function restore(): Promise<void> {
     await loadRecents();
     const kept = recentsOfPage()[0]?.handle as Permitted | undefined;
@@ -261,9 +217,7 @@ export function install(app: App): void {
       known = kept;
       diskText = text;
       stamp = file.lastModified;
-    } catch {
-      // a file that was moved or deleted is not used
-    }
+    } catch {}
   }
 
   async function start(): Promise<void> {
@@ -309,7 +263,6 @@ export function install(app: App): void {
     status: () => ({ changed: nav().marked, stale, watching: diskText !== null }),
   };
   app.follow = follow;
-  // the changes of the file before a session are in the deck of the session
   app.listen('session', () => {
     if (app.session) stale = null;
   });

@@ -1,17 +1,9 @@
-// the placeholder of an empty figure box or plate, as the content placeholder of PowerPoint: a dashed
-// edge with buttons for an image, a video, a table, and a QR code at its center, of which a click
-// inserts into the figure box. it is an element of the editor only, marked data-generated, which the save
-// and the pairing pass over, and it is drawn again after each change of the slides. it does not
-// have text, since a slot with text is not empty, hence its hint is drawn by the stylesheet
-
 import type { App } from '../app.ts';
 import { pickTableInto } from '../commands/table.ts';
 import { injectStyle, make } from '../ui/dom.ts';
 import { icon } from '../ui/icons.ts';
 import { ACCEPT, chooseFiles, insertFiles, isEmptySlot } from './actions.ts';
 
-// the sizes are in slide px, hence the placeholder is scaled with the slide as in PowerPoint. on a
-// plate it is drawn inside the padding, where the figure of the plate is drawn
 const CSS = `
 html.beeson-editor .reveal .slides section .plate:has(> .beeson-placeholder) { position: relative; }
 html.beeson-editor .reveal .slides .beeson-placeholder { position: absolute; inset: 0; z-index: 1; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 28px; box-sizing: border-box; border: 3px dashed color-mix(in srgb, var(--muted, #888) 70%, transparent); border-radius: 8px; pointer-events: none; }
@@ -39,8 +31,6 @@ function placeholder(): HTMLElement {
   const box = make('div', 'beeson-placeholder');
   box.setAttribute('data-generated', '');
   box.setAttribute('aria-label', 'Empty figure box');
-  // hidden outside the stylesheet of the editor, e.g. in a thumbnail of the navigator, whose clone
-  // of the slide is drawn without the hidden attribute
   box.style.display = 'none';
   const row = make('div', 'row');
   for (const b of BUTTONS) {
@@ -57,7 +47,6 @@ function placeholder(): HTMLElement {
   return box;
 }
 
-// a placeholder in each empty slot of the slides, and none in a slot with content
 export function syncPlaceholders(app: App): void {
   const ready = !!app.pairing?.root;
   for (const slot of document.querySelectorAll(SLOTS)) {
@@ -81,8 +70,6 @@ async function insertInto(app: App, figureBox: Element, kind: Kind, anchor: DOMR
 export function install(app: App): void {
   injectStyle('media-placeholder', CSS);
   app.onRefresh(['content', 'slide', 'structure'], () => syncPlaceholders(app));
-  // a press on a button is taken before the selection and the drag of the canvas, which listen on
-  // the document, and it does not move the focus
   window.addEventListener('pointerdown', (ev) => {
     const b = ev.target instanceof Element ? ev.target.closest('.beeson-placeholder button') : null;
     if (!b) return;

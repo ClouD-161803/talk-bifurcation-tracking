@@ -1,20 +1,11 @@
-// the rulers along the top and the left of the canvas, as View > Rulers of Keynote: marked in
-// slide px from the upper left of the slide, negative on the pasteboard, at a step that follows the
-// zoom, and with the extent of the selection as a band. a drag out of a ruler places a guide of
-// canvas/guides.ts. the setting is kept in the storage of the browser. the key of Keynote, Cmd+R,
-// is taken on a Mac only, since Ctrl+R reloads the page in Firefox on Windows and Linux before a
-// page sees it
-
 import type { App } from '../app.ts';
 import { OUTSIDE_DIALOGS } from '../commands.ts';
 import { injectStyle, make, store, stored } from '../ui/dom.ts';
 import { previewPlays } from './frames.ts';
 import { frameOf, frameRect } from './hit.ts';
 
-// the thickness of a ruler, in CSS px
 export const RULER = 18;
 const KEY = 'beeson-edit-rulers';
-// the steps of the labels in slide px, of which the smallest at least LABEL screen px apart is used
 const STEPS = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
 const LABEL = 48;
 
@@ -26,7 +17,6 @@ const CSS = `
 .beeson-ruler[hidden], .beeson-ruler-corner[hidden] { display: none; }
 `;
 
-// the label step and the minor step of a ruler at scale, in slide px
 export function rulerSteps(scale: number): { label: number; minor: number } {
   const label = STEPS.find((s) => s * scale >= LABEL) ?? STEPS[STEPS.length - 1];
   const minor = [label / 10, label / 5, label / 2].find((m) => m * scale >= 5 && Number.isInteger(m)) ?? label;
@@ -36,7 +26,6 @@ export function rulerSteps(scale: number): { label: number; minor: number } {
 export function install(app: App): void {
   injectStyle('rulers', CSS);
   const stage = app.stage;
-  // the top ruler marks x, and the left ruler marks y
   const top = make('canvas', 'beeson-ruler');
   top.dataset.axis = 'x';
   const left = make('canvas', 'beeson-ruler');
@@ -47,7 +36,6 @@ export function install(app: App): void {
 
   const color = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 
-  // the ruler of the axis, with the band of the selection from band[0] to band[1] in slide px
   const paint = (cv: HTMLCanvasElement, axis: 'x' | 'y', band: [number, number] | null) => {
     const v = stage.viewport;
     const f = frameOf(app);
@@ -60,8 +48,6 @@ export function install(app: App): void {
     const g = cv.getContext('2d');
     if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // x of the drawing is along the ruler and y across it, from its outer edge, hence the left
-    // ruler is drawn transposed
     if (axis === 'y') g.setTransform(0, dpr, dpr, 0, 0, 0);
     const start = axis === 'x' ? v.left : v.top;
     const origin = axis === 'x' ? f.left : f.top;
@@ -94,7 +80,6 @@ export function install(app: App): void {
         g.fillText(String(Math.round(u)), x + 3, 2);
         continue;
       }
-      // a label of the left ruler is read from the bottom up, as in Keynote
       g.save();
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.translate(2, x - 3);
@@ -104,7 +89,6 @@ export function install(app: App): void {
     }
   };
 
-  // the extent of the selection on each axis, in slide px
   const extent = (): { x: [number, number]; y: [number, number] } | null => {
     const els = app.selection.elements().filter((el) => el.isConnected);
     if (!els.length) return null;
@@ -143,8 +127,6 @@ export function install(app: App): void {
   app.commands.define({
     id: 'view.rulers',
     label: 'Rulers',
-    // Safari takes Cmd+R of Keynote before the page, and Chrome and Firefox pass it on. both keys
-    // are bound, and the menus list first the one that reaches the page. elsewhere Ctrl+R reloads
     keys: { mac: app.safari ? ['Ctrl+Mod+R', 'Mod+R'] : ['Mod+R', 'Ctrl+Mod+R'], other: ['Alt+Shift+R'] },
     in: OUTSIDE_DIALOGS,
     menu: { bar: 'View', group: 'guides', order: 50 },

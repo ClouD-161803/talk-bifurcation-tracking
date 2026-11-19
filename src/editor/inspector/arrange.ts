@@ -1,11 +1,3 @@
-// the Arrange pane of the Format tab, as the Arrange tab of Keynote: Align with its reference,
-// Distribute, the size in W and H, the position in X and Y, and the angle, each with its reset,
-// with Flip Horizontal and Flip Vertical for an image, then the order of the elements, Group and
-// Ungroup, Lock and Unlock, and Faint. X and Y are the upper left corner of an element on the
-// slide, as in Keynote and in the readout of a move, and W and H its size, in slide pixels. W and H
-// are set on an image, a video, a QR code, and a tycho viewer, and W alone on a text element, whose
-// height follows its wrapped text. the size of every other element is set by its layout
-
 import type { App } from '../app.ts';
 import { captionHeight, groupBoxOf, groupFrameOf, heightSet, positionOf, resizable, selectedTargets, sizeOf, sizedTarget, targetsOf } from '../commands/align.ts';
 import { angleOf, attachedLines, groupAngle } from '../commands/order.ts';
@@ -13,7 +5,6 @@ import { imageOf, viewerOf } from '../commands/figure.ts';
 import { turnable } from '../canvas/hit.ts';
 import { GLYPHS, button, checkbox, note, numberField, row, section, segmented, type Control, type Run } from './controls.ts';
 
-// the glyphs of the order, the groups, and the locks, on the grid of GLYPHS
 Object.assign(GLYPHS, {
   'order-front': ['M3.5 7.5h9v9h-9z', 'F7.5 3.5h9v9h-9z'],
   'order-forward': ['M5 9.5h10v7H5z', 'M10 7V2.5', 'M8 4.5l2-2 2 2'],
@@ -27,11 +18,8 @@ Object.assign(GLYPHS, {
   'flip-v': ['M2.5 10h15', 'M5.5 8 14.5 3v5z', 'F5.5 12l9 5v-5z'],
 });
 
-// the value shared by every element, or null when they differ
 const shared = (values: number[]): number | null => (values.length && values.every((v) => Math.round(v) === Math.round(values[0])) ? values[0] : null);
 
-// a flip is offered for a shown image only, hence the row is hidden at each sync while the mode of
-// the slide or an undo hides the image of a kept pane
 function flipRow(app: App, run: Run): Control {
   const r = row([
     button(app, run, { command: 'arrange.flipHorizontal', icon: 'flip-h', text: 'Flip Horizontal' }),
@@ -46,25 +34,17 @@ function flipRow(app: App, run: Run): Control {
 }
 
 export function arrangePane(app: App, run: Run): Control[] {
-  // the fields act on the elements selected when the pane was built, i.e. on the figure of a
-  // picture selected inside it, apart from the angle, which turns the picture alone
   const els = targetsOf(app);
   const turned = selectedTargets(app);
   const live = () => els.filter((el) => el.isConnected);
   const liveTurned = () => turned.filter((el) => el.isConnected);
-  // W, H, X, and Y of a group are those of its frame without its rotation by the angle of its first
-  // member, as in Keynote, where a group is one object. a typed W or H scales it as its corner grips
-  // do, and a typed X or Y moves it as one
   const group = () => groupBoxOf(app, live());
   const frame = () => groupFrameOf(app, live())?.box;
   const sized = () => !group() && resizable(live());
-  // H of a figure selected as one object gives its picture with its caption, as its frame, and H of
-  // the picture selected inside it the picture alone
   const whole = (el: Element) => (turned.includes(el) ? el : sizedTarget(el));
   const field = (label: string, value: () => number | null, commit: (v: number) => unknown, enabled: () => boolean, min?: number) =>
     numberField(app, { label, value, commit, enabled, min });
   return [
-    // Start on a click of a tycho viewer, as in the Video pane, since the Arrange pane is the one pane of a scene
     ...(viewerOf(app) ? [section('Playback', [checkbox(app, run, 'figure.startOnClick', 'Start on a click')])] : []),
     section('Align', [
       row([
@@ -85,7 +65,6 @@ export function arrangePane(app: App, run: Run): Control[] {
       ], 'Align to')], 'Align to'),
     ]),
     section('Distribute', [
-      // two buttons a row, as Lock and Unlock, since three do not fit the width of the inspector
       row([
         button(app, run, { command: 'arrange.distribute.horizontal', icon: 'distribute-h', text: 'Horizontally' }),
         button(app, run, { command: 'arrange.distribute.vertical', icon: 'distribute-v', text: 'Vertically' }),
@@ -99,7 +78,6 @@ export function arrangePane(app: App, run: Run): Control[] {
       ]),
       note(() => (!els.length || sized() || group() ? '' : 'Set in the layout of the slide.')),
       row([checkbox(app, run, 'arrange.constrainProportions', 'Constrain Proportions')]),
-      // a lock turns the checkbox off too, which the note does not explain
       note(() => (sized() && !app.commands.applies('arrange.constrainProportions') ? 'Only the width is written, and the height follows the aspect or the layout.' : '')),
       row([button(app, run, { command: 'arrange.resetSize', icon: 'reset', text: 'Reset Size' })]),
     ]),
@@ -116,7 +94,6 @@ export function arrangePane(app: App, run: Run): Control[] {
         numberField(app, {
           label: 'Angle',
           unit: '°',
-          // the angle of a group is that of its first member, which a typed angle turns it to
           value: () => (group() ? groupAngle(app, live()) : shared(liveTurned().map(angleOf))),
           commit: (deg) => run('arrange.setRotation', { deg, els: group() ? live() : liveTurned() }),
           enabled: () => (group() ? live() : liveTurned()).some(turnable) && !attachedLines(liveTurned()),

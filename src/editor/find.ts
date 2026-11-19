@@ -1,13 +1,3 @@
-// find and replace over the text of the text elements of every slide and of the speaker notes, in one
-// floating panel modeled on the Find & Replace window of Keynote. the panel has a search field with
-// the count of the matches, the previous and next buttons, and a gear menu with the modes Find and
-// Find & Replace, the options Whole Words and Match Case, the scope, and the TeX of the formulas.
-// the scope is the slides and the notes, the notes only, or the alt texts of the images. every match
-// is marked with a highlight of CSS while the panel is open, and the current one more strongly. a
-// replacement writes the content of its text element through app.doc.setContent
-//
-// pattern(), spans(), and splice() are pure, hence tested under node
-
 import type { App } from './app.ts';
 import { mathLookup, type MathInfo, type MathLookup } from './math.ts';
 import { display } from './keymap.ts';
@@ -16,25 +6,19 @@ import { injectStyle, make } from './ui/dom.ts';
 import { closeMenus, openMenu, type MenuItem } from './ui/menu.ts';
 import { type FindOptions, type Span, pattern, spans, splice } from './find-match.ts';
 
-// the texts searched: the text elements of the slides and of the notes, the notes only, or the alt texts
 export type Scope = 'all' | 'notes' | 'alt';
 
-// the text of a formula is set off by this character, which a query does not contain, so that a
-// match does not run from a text into a formula
 export const MARK = '￼';
 
-// a piece of the text of a text element: a text node, a formula, or a line break
 type Piece =
   | { kind: 'text'; node: Text; from: number; to: number }
   | { kind: 'math'; el: Element; info: MathInfo | null; from: number; to: number }
   | { kind: 'other'; from: number; to: number };
 
-// the text of a text element with its pieces, in the order of the page
 type Indexed = { textEl: Element; text: string; pieces: Piece[] };
 
 export type Match = Span & { textEl: Element };
 
-// the elements of the editor that may sit inside a text element, and the elements without text
 const SKIP = '[data-generated], script, style, template, .beeson-badge';
 
 function index(textEl: Element, lookup: MathLookup | null, tex: boolean): Indexed {
@@ -66,7 +50,6 @@ function index(textEl: Element, lookup: MathLookup | null, tex: boolean): Indexe
   return { textEl, text, pieces };
 }
 
-// the nodes of a copy of a text element in the order of the pieces of index(), with null for a line break
 function piecesOf(root: Element): (Text | Element | null)[] {
   const out: (Text | Element | null)[] = [];
   const walk = (node: Node) => {
@@ -83,8 +66,6 @@ function piecesOf(root: Element): (Text | Element | null)[] {
   return out;
 }
 
-// the content of a text element with each span of list replaced, in the form of contentWithTex of math.ts.
-// an inline element emptied by a replacement, e.g. an em around the matched word, is removed
 function replaced(idx: Indexed, list: Span[], replacement: string): string {
   const copy = idx.textEl.cloneNode(true) as Element;
   const nodes = piecesOf(copy);
@@ -117,7 +98,6 @@ function replaced(idx: Indexed, list: Span[], replacement: string): string {
   return copy.innerHTML;
 }
 
-// the range of a match on the page. a match in the TeX of a formula is the range of its formula
 function rangeOf(idx: Indexed, m: Span): Range | null {
   const range = document.createRange();
   const math = idx.pieces.find((p) => p.kind === 'math' && m.start >= p.from && m.end <= p.to);
@@ -157,9 +137,6 @@ function icon(name: keyof typeof ICONS): SVGSVGElement {
   return svg;
 }
 
-// the colors are the tokens --ed-* of the chrome, set by shell/shell.ts. the panel is a window of
-// its own over the canvas, hence it is drawn in the color of the bars in dark mode, which is
-// lighter than the canvas
 const CSS = `
 .beeson-find { position: fixed; z-index: 80; top: 92px; right: calc(var(--ed-insp-col, 0px) + 16px); width: 480px; max-width: calc(100vw - 32px); box-sizing: border-box; background: var(--ed-panel); color: var(--ed-text); border: 1px solid var(--ed-menu-line); border-radius: 10px; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.12); font: 13px/1.3 var(--ed-font); user-select: none; -webkit-user-select: none; }
 @media (prefers-color-scheme: dark) { .beeson-find { background: var(--ed-bg); box-shadow: 0 10px 32px rgba(0, 0, 0, 0.55), 0 0 0 0.5px rgba(0, 0, 0, 0.8); } }
@@ -225,7 +202,6 @@ export type Finder = {
   replaceAll(): Promise<number>;
 };
 
-// the keys of Next and Previous, shown in the titles of their buttons
 type Keys = { next: string[]; previous: string[] };
 
 export function createFinder(app: App, keys: Keys): Finder {
@@ -236,7 +212,6 @@ export function createFinder(app: App, keys: Keys): Finder {
   let indexed: Indexed[] = [];
   let matches: Match[] = [];
   let current = -1;
-  // the count of the last Replace All, shown in place of the count of matches until the next edit
   let note: string | null = null;
 
   const panel = make('div', 'beeson-find');
@@ -312,7 +287,6 @@ export function createFinder(app: App, keys: Keys): Finder {
   const body = make('div', 'body');
   body.append(gear, search.box, replace.box, actions, nav);
 
-  // the gear menu of the modes and the options, drawn by ui/menu.ts as the other menus
   const menuOf = (): MenuItem[] => [
     { label: 'Find', checked: mode === 'find', run: () => setMode('find') },
     { label: 'Find & Replace', checked: mode === 'replace', run: () => setMode('replace') },
@@ -340,7 +314,6 @@ export function createFinder(app: App, keys: Keys): Finder {
   panel.append(title, body);
   document.body.append(panel);
 
-  // the panel is moved by a drag of its title, within the window
   title.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0 || (ev.target as Element).closest('button')) return;
     ev.preventDefault();
@@ -365,8 +338,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     title.addEventListener('pointercancel', up);
   });
 
-  // the paired text elements on the page in the order of the page, hence the notes of a slide after its
-  // other text elements. in the scope of the alt texts, they are the images with an alt text in the file
   function textEls(): Element[] {
     if (scope === 'alt') return [...app.slides().querySelectorAll('section img[alt]')].filter((img) => img.getAttribute('alt') && !img.closest('aside.notes') && isPaired(img));
     const list = (app.pairing?.texts ?? []).map((b) => b.live).filter((el) => el.isConnected && app.slides().contains(el) && (scope !== 'notes' || !!el.closest('aside.notes')));
@@ -375,7 +346,6 @@ export function createFinder(app: App, keys: Keys): Finder {
 
   const isPaired = (el: Element) => paired(app, el);
 
-  // the alt text of an image is one piece without nodes, since it is not drawn on the slide
   const altIndex = (img: Element): Indexed => ({ textEl: img, text: img.getAttribute('alt') ?? '', pieces: [] });
 
   function compute(): void {
@@ -387,7 +357,6 @@ export function createFinder(app: App, keys: Keys): Finder {
 
   const indexedOf = (textEl: Element) => indexed.find((i) => i.textEl === textEl) ?? null;
 
-  // the first match at or after the start of the current slide, for a search as the query is typed
   function fromSlide(): number {
     const slide = app.current();
     if (!matches.length) return -1;
@@ -396,15 +365,12 @@ export function createFinder(app: App, keys: Keys): Finder {
     return at < 0 ? 0 : at;
   }
 
-  // the first match at or after the offset start of text element, once the matches are computed again
   function nearest(textEl: Element, start: number): number {
     if (!matches.length) return -1;
     const at = matches.findIndex((m) => (m.textEl === textEl && m.start >= start) || (m.textEl !== textEl && before(textEl, m.textEl)));
     return at < 0 ? 0 : at;
   }
 
-  // the highlights of CSS are drawn by Chrome, Safari, and Firefox from 140, and a browser without
-  // them shows only the current match, selected when the panel is closed
   function paint(): void {
     const highlights = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;
     const Highlight = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
@@ -447,9 +413,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     paint();
   }
 
-  // the slide of the current match is shown, with the notes when the match is in them, and the
-  // notes are scrolled to it. with select, the match is selected in its text element, which then takes
-  // the focus, and else the focus stays where it is
   function reveal(select: boolean): void {
     const m = matches[current];
     if (!m) return;
@@ -457,7 +420,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     app.showSlide(m.textEl);
     if (m.textEl.closest('aside.notes') && !app.notes.shown()) app.notes.toggle();
     app.flush();
-    // an image is selected on its slide, as its alt text is not drawn
     if (m.textEl.matches('img')) {
       if (m.textEl.getClientRects().length) app.selection.set('elements', [m.textEl]);
       app.invalidate('layout');
@@ -482,7 +444,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     }
   }
 
-  // the query or an option changed, hence the search starts again from the current slide
   function research(): void {
     note = null;
     compute();
@@ -491,7 +452,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     if (current >= 0) reveal(false);
   }
 
-  // the deck changed, hence the matches are computed again and the current one is kept in its place
   function refresh(): void {
     if (panel.hidden || !search.input.value) return;
     const was = matches[current];
@@ -522,7 +482,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     mode = m;
     const wasHidden = panel.hidden;
     if (query === undefined && wasHidden) {
-      // a text selected in a text element is taken as the query, as Use Selection for Find of Keynote
       const sel = getSelection();
       const text = sel && !sel.isCollapsed && app.hostOf(sel.anchorNode?.parentElement ?? null) ? sel.toString() : '';
       if (text && text.length < 200 && !text.includes('\n')) query = text;
@@ -541,8 +500,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     target.select();
   }
 
-  // the current match is selected in its text element once the panel is closed, so that it can be typed
-  // over, as in Keynote
   function hide(): void {
     if (panel.hidden) return;
     if (optionsOpen()) closeMenus();
@@ -553,7 +510,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     else if (had) (document.activeElement as HTMLElement | null)?.blur();
   }
 
-  // with select, as for Find Next with the panel closed, the match is selected in its text element
   function step(way: 1 | -1, select = false): void {
     compute();
     if (!matches.length) {
@@ -569,8 +525,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     reveal(select);
   }
 
-  // the focus put back on el of the panel after a replace, or on the panel once el is disabled, since
-  // the write put the caret into the replaced text element. ⌘Z there is still the undo of the deck
   const refocus = (el: HTMLElement | null) => {
     if (!el?.matches(':disabled')) return el?.focus({ preventScroll: true });
     panel.tabIndex = -1;
@@ -589,7 +543,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     await app.doc.setContent(textEl, replaced(idx, list, replace.input.value), label);
   }
 
-  // the current match is replaced, and with find the next match is shown
   async function replaceCurrent(find: boolean): Promise<void> {
     const m = matches[current];
     if (!m) return;
@@ -603,14 +556,11 @@ export function createFinder(app: App, keys: Keys): Finder {
     refocus(keep);
   }
 
-  // every match is replaced with each text element written once, and the count of replacements is shown
   async function replaceAll(): Promise<number> {
     compute();
     const total = matches.length;
     if (!total) return 0;
     const keep = panel.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
-    // restoreHost of text/typing.ts shows the slide of each text element written, hence the slide shown
-    // before is shown again
     const slide = app.current();
     const byTextElement = new Map<Element, Span[]>();
     for (const m of matches) byTextElement.set(m.textEl, [...(byTextElement.get(m.textEl) ?? []), m]);
@@ -637,8 +587,6 @@ export function createFinder(app: App, keys: Keys): Finder {
     });
   }
   const fail = (e: unknown) => app.fail(e);
-  // Return in the search field finds the next match and Shift+Return the one before. Return in
-  // the replace field replaces the current match and finds the next one
   search.input.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter' || ev.isComposing) return;
     ev.preventDefault();
@@ -662,7 +610,6 @@ export function createFinder(app: App, keys: Keys): Finder {
   andFindButton.addEventListener('click', () => void app.commands.run('find.replaceAndFind').catch(fail));
   oneButton.addEventListener('click', () => void app.commands.run('find.replaceOne').catch(fail));
 
-  // the matches follow the typing, an undo, and a change of the slides while the panel is open
   app.onRefresh(['content', 'structure'], refresh);
   app.listen('history', () => {
     if (!panel.hidden) queueMicrotask(refresh);

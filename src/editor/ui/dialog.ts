@@ -1,17 +1,7 @@
-// a modal dialog over the dialog element, which traps Tab, gives the focus back on close, and
-// gives its answer as a Promise. it is shown as a sheet of Keynote, i.e. a dialog at the top of the
-// window under the toolbar, over a scrim that dims the window in both modes of the chrome. the
-// dialogs of a file in file/files.ts and file/drafts.ts are dialogs of this kind. a Dialog is kept
-// in the page between its opens, with the attribute hidden while it is closed, since the tests
-// read a dialog by its class and its hidden state
-
 import type { App } from '../app.ts';
 import { injectStyle, make } from './dom.ts';
 
 export type DialogButton = { label: string; value: string; title?: string; primary?: boolean };
-// a dialog is answered with the value of a button, or with null on Esc. a dialog that is not
-// dismissable keeps Esc for nothing. onButton is called with the value of a pressed button, and
-// the dialog is kept open for a value in stay
 export type DialogOptions = { title: string; text?: string; body?: HTMLElement; buttons: DialogButton[]; className?: string; dismissable?: boolean; stay?: string[]; onButton?: (value: string) => void };
 
 const CSS = `
@@ -51,11 +41,8 @@ dialog.beeson-edit-dialog.form input[type="number"] { width: 7ch; font: inherit;
 
 const FOCUSABLE = 'button:not([disabled]):not([hidden]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-// on a Mac, Return presses the default button of a sheet wherever the focus is in it, and Space the
-// focused button. elsewhere Return presses the focused button, as in Windows
 let returnPressesDefault = false;
 
-// Tab and Shift+Tab go round the shown controls of root, a dialog or a popover, and never leave it
 export function trapTab(root: HTMLElement, ev: KeyboardEvent): void {
   const list = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0 || el === document.activeElement);
   ev.preventDefault();
@@ -91,13 +78,10 @@ export class Dialog {
     if (options.body) this.el.append(options.body);
     this.setButtons(options.buttons);
     this.el.append(this.row);
-    // Esc is answered here for a trusted key, through the cancel event, and for a key sent by a
-    // script, through keydown
     this.el.addEventListener('cancel', (ev) => {
       ev.preventDefault();
       if (options.dismissable !== false) this.close(null);
     });
-    // a close by the browser, e.g. at the second back gesture of Android, answers null as Esc does
     this.el.addEventListener('close', () => {
       if (this.done && !this.el.open) this.close(null);
     });
@@ -107,15 +91,12 @@ export class Dialog {
         if (options.dismissable !== false) this.close(null);
       } else if (ev.key === 'Tab') trapTab(this.el, ev);
       else if (ev.key === 'Enter' && !ev.isComposing && (returnPressesDefault || ev.target instanceof HTMLInputElement)) {
-        // Return in a field, or anywhere in a sheet on a Mac, presses the default button. in a sheet
-        // without one, Return on a button of a Mac does not press this button, as Space does
         const primary = this.row.querySelector<HTMLButtonElement>('button.primary:not(:disabled)');
         if (!primary && !(returnPressesDefault && ev.target instanceof HTMLButtonElement)) return;
         ev.preventDefault();
         ev.stopPropagation();
         primary?.click();
       }
-      // the keys that press a button are kept from the key handler of reveal.js, which cancels them
       else if ((ev.key === 'Enter' || ev.key === ' ') && ev.target instanceof HTMLButtonElement) ev.stopPropagation();
     });
     document.body.append(this.el);
@@ -140,9 +121,6 @@ export class Dialog {
     return this.el.open;
   }
 
-  // the dialog is shown over the page, which is inert meanwhile, with the focus on the button of
-  // the value focus or on the first button. the answer is the value of the button pressed, or null
-  // for Esc or a close by the editor
   open(focus?: string, back?: HTMLElement | null): Promise<string | null> {
     if (this.el.open) return new Promise((resolve) => this.chain(resolve));
     this.back = back ?? (document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null);
@@ -150,7 +128,6 @@ export class Dialog {
     try {
       this.el.showModal();
     } catch {
-      // a dialog of a page that is not shown yet is opened without the scrim
       this.el.show();
     }
     const target = (focus && this.buttons.get(focus)) || this.el.querySelector<HTMLElement>(FOCUSABLE);
@@ -181,7 +158,6 @@ export class Dialog {
   }
 }
 
-// a dialog shown once and removed after its answer
 export async function ask(options: DialogOptions, focus?: string): Promise<string | null> {
   const d = new Dialog(options);
   try {
@@ -191,11 +167,8 @@ export async function ask(options: DialogOptions, focus?: string): Promise<strin
   }
 }
 
-// the open modal dialog, into which an element that must be clicked while it is open is put,
-// since the rest of the page is inert
 export const host = (): HTMLElement => document.querySelector<HTMLElement>('dialog.beeson-edit-dialog[open]') ?? document.body;
 
-// a side of a target at which a popover is put
 export type Side = 'below' | 'above' | 'right' | 'left';
 
 export type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
@@ -205,16 +178,6 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Ma
 const meets = (a: { left: number; top: number; right: number; bottom: number }, b: Box) =>
   a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 
-// the place of a popover of size w by h beside the box t, as the popovers of Keynote are put beside
-// their object and flipped to the other side. a side fits when the popover is in view there
-// without meeting t. on each side that fits, the popover is put next to t, and else at the far
-// edge of view, centered on at, or else aligned with the start or the end of t or clear of a box
-// of avoid, e.g. a line of the text of the slide, at the first of these places where it meets none
-// of the boxes of avoid.
-// where each place meets one, it is put where it covers the least of them, and where no side
-// fits, it is put on the side with the most room and kept in view, and side is null. view is the window or the canvas, at left and top 0 unless
-// given. arrow is the place of the point of its arrow at at along its edge, in px from its left or
-// top. a pure function, tested under node
 export function besidePlace(t: Box, w: number, h: number, view: Bounds, sides: Side[] = ['below', 'above', 'right', 'left'], gap = 10, margin = 8, avoid: Box[] = [], at: Box = t): { x: number; y: number; side: Side | null; arrow: number } {
   const x0 = view.left ?? 0;
   const y0 = view.top ?? 0;
@@ -227,8 +190,6 @@ export function besidePlace(t: Box, w: number, h: number, view: Bounds, sides: S
     left: t.left - gap - w - margin - x0,
   };
   const across = (side: Side) => side === 'below' || side === 'above';
-  // the popover on side, next to t or at the far edge of view, at the place cross along the side,
-  // i.e. its left on a side below or above t and its top on a side at the right or the left
   const place = (side: Side, cross: number, far = false) => {
     let x = cross;
     let y = cross;
@@ -239,8 +200,6 @@ export function besidePlace(t: Box, w: number, h: number, view: Bounds, sides: S
     const arrow = across(side) ? clamp(at.left + at.width / 2 - x, 18, w - 18) : clamp(at.top + at.height / 2 - y, 18, h - 18);
     return { x, y, arrow };
   };
-  // the places along a side: centered on at, aligned with the start or the end of t, and clear of
-  // the start or the end of each box of avoid, as long as the popover is level with t
   const crosses = (side: Side): number[] => {
     const a = across(side);
     const size = a ? w : h;
@@ -249,7 +208,6 @@ export function besidePlace(t: Box, w: number, h: number, view: Bounds, sides: S
     for (const b of avoid) out.push(a ? b.left - gap - size : b.top - gap - size, a ? b.right + gap : b.bottom + gap);
     return out.filter((c) => c < hi && c + size > lo);
   };
-  // the area of the boxes of avoid under the popover at p
   const covers = (p: { x: number; y: number }) => avoid.reduce((sum, b) => {
     const dx = Math.min(p.x + w, b.right) - Math.max(p.x, b.left);
     const dy = Math.min(p.y + h, b.bottom) - Math.max(p.y, b.top);
@@ -272,13 +230,10 @@ export function besidePlace(t: Box, w: number, h: number, view: Bounds, sides: S
   return { ...place(side, crosses(side)[0] ?? (across(side) ? at.left + at.width / 2 - w / 2 : at.top + at.height / 2 - h / 2)), side: null };
 }
 
-// a box on the screen, from a DOMRect or a box of edges
 const boxOf = (r: { left: number; top: number; right: number; bottom: number }): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.right - r.left, height: r.bottom - r.top });
 
 const TEXT = 'h1, h2, h3, h4, p, ul, ol, dl, table, pre, blockquote, div.math, figcaption, .caption, .foot';
 
-// the boxes of the lines of the text and of the formulas of el, on the screen. the empty part of
-// a text element, e.g. the right of a short line, is left out, since a popover may be put over it
 export function inkBoxes(el: Element): Box[] {
   const out: Box[] = [];
   const range = document.createRange();
@@ -287,7 +242,6 @@ export function inkBoxes(el: Element): Box[] {
   });
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     if (n instanceof Element) {
-      // the ink of a formula is its svg, which is narrower than a display container
       const ink = n.firstElementChild ?? n;
       for (const r of ink.getClientRects()) if (r.width && r.height) out.push(boxOf(r));
       continue;
@@ -299,27 +253,19 @@ export function inkBoxes(el: Element): Box[] {
   return out;
 }
 
-// the lines of the text of the text elements of slide, which a popover is kept off
 export function slideInk(slide: Element | null): Box[] {
   if (!slide) return [];
   return [...slide.querySelectorAll(TEXT)].filter((el) => !el.parentElement?.closest(TEXT) && !el.closest('aside.notes')).flatMap(inkBoxes);
 }
 
-// the canvas, in which a popover is kept as the popovers of Keynote are kept on its canvas, off the
-// inspector. a target outside the canvas, e.g. scrolled off it, keeps the popover in the window
 export function canvasView(app: App, t: Box): Bounds {
   const v = app.stage?.viewport;
   const within = v && t.left >= v.left && t.right <= v.right && t.top >= v.top && t.bottom <= v.bottom;
   return within ? v : { left: 0, top: 0, width: innerWidth, height: innerHeight };
 }
 
-// how a popover is put: the sides to try in order, the gap to its target, the box of its view,
-// the boxes to keep it off, and the box that its arrow points at
 export type Beside = { sides?: Side[]; gap?: number; view?: () => Bounds; avoid?: () => Box[]; at?: () => Box };
 
-// the popover pop, a fixed element, put beside the box of target in view, by default the window,
-// with an arrow at the target on the side where it fits. it is given the attribute data-beside with
-// its side
 export function placeBeside(pop: HTMLElement, target: Box | DOMRectReadOnly, options: Beside = {}): Side | null {
   const t = boxOf(target);
   const view = options.view?.() ?? { width: innerWidth, height: innerHeight };
@@ -333,10 +279,6 @@ export function placeBeside(pop: HTMLElement, target: Box | DOMRectReadOnly, opt
   return p.side;
 }
 
-// the popover of the editor put by the rule of every popover: beside the text element of target, which
-// is kept clear also where it is empty, since a text typed there grows into it, off the lines of
-// the text of the current slide, and inside the canvas. the boxes are read once, since a target
-// may be typeset again while the popover is open. the function returned stops it
 export function popoverBeside(app: App, pop: HTMLElement, target: Element, options: { sides?: Side[]; at?: Box } = {}): () => void {
   const t = boxOf(target.getBoundingClientRect());
   const avoid = slideInk(app.current());
@@ -344,8 +286,6 @@ export function popoverBeside(app: App, pop: HTMLElement, target: Element, optio
   return keepBeside(pop, () => t, { sides: options.sides, view: () => view, avoid: () => avoid, at: options.at ? () => options.at! : undefined });
 }
 
-// the popover kept beside target while its size changes, e.g. as a preview is typeset or a row is
-// shown. the function returned stops it
 export function keepBeside(pop: HTMLElement, target: () => Box | DOMRectReadOnly, options: Beside = {}): () => void {
   const place = () => {
     if (pop.isConnected) placeBeside(pop, target(), options);

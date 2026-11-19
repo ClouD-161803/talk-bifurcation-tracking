@@ -1,8 +1,3 @@
-// the unsaved edits of the deck, kept in the storage of the browser 1 s after the last change and
-// offered on a dialog when the deck is opened again, e.g. after a crash or a closed tab. a draft is
-// the whole rendered text with its time, under a key of the address of the deck without its query
-// and hash. it is never replayed onto the page: Restore writes it over the file and reloads
-
 import type { App, Drafts } from '../app.ts';
 import { store, stored } from '../ui/dom.ts';
 import { Dialog } from '../ui/dialog.ts';
@@ -11,7 +6,6 @@ import { canWrite, download, fileName, folder, pickTarget, write } from './files
 type Draft = { at: number; text: string };
 
 const DRAFT_KEY = `beeson-draft:${location.href.split(/[?#]/)[0]}`;
-// the pause after the last change, in ms, before the edits are kept in the storage
 const DRAFT_DELAY = 1000;
 
 function readDraft(): Draft | null {
@@ -29,8 +23,6 @@ export function install(app: App): void {
   const fail = (e: unknown) => app.fail(e);
   const actions: Record<string, () => unknown> = { restore: () => restore(), copy: () => copy(), discard: () => discard() };
 
-  // the dialog shown when edits that were not saved are found in the storage of the browser. it
-  // stays open until its action is done, since a dismissed picker leaves the draft where it is
   const recover = new Dialog({
     title: 'Edits that were not saved were found',
     text: '',
@@ -47,7 +39,6 @@ export function install(app: App): void {
 
   let draftTimer = 0;
 
-  // a render error is shown, since the edits are then not kept anywhere but on the page
   function keepDraft(): void {
     if (!app.dirty || !app.source || !app.pairing || app.session) return;
     let text: string;
@@ -66,7 +57,6 @@ export function install(app: App): void {
     store(DRAFT_KEY, null);
   }
 
-  // a draft that differs from the file that was opened is offered on the dialog
   function offer(): void {
     if (app.session) return;
     const draft = readDraft();

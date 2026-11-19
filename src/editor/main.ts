@@ -1,13 +1,3 @@
-// the entry point of editor.js, which beeson.js loads with the URL parameter edit. the text, the
-// formulas, the speaker notes, the steps, and the places of the figures of the slides are edited
-// on the page, and a save writes each edit into its place in the file of the deck, so that every
-// other byte of the file stays as it was. the edits are also kept in the storage of the browser
-// until they are saved, and offered again when the deck is opened after a crash or a closed tab.
-//
-// this file creates the App of app.ts, installs the modules in their order, and defines
-// window.BeesonEditor, the interface of the tests. a module is added with one import and one line
-// in the list of installs below
-
 import { App } from './app.ts';
 import { installKeys } from './commands.ts';
 import { mathReady, mathLookup } from './math.ts';
@@ -77,8 +67,6 @@ import { Doc } from './model/doc.ts';
 
 const app = new App();
 
-// the document model, through which a command inserts, removes, moves, and retags the slides and
-// their elements, and writes the start tags
 const doc = new Doc({
   source: () => app.source,
   pairing: () => app.pairing,
@@ -95,9 +83,6 @@ const doc = new Doc({
 });
 app.doc = doc;
 
-// the modules of today that are classes with a context: the slide list at the left, the steps of
-// the current slide in a pane at the right, and the switch of the steps shown. each is replaced by a module of
-// the plan
 const nav = new Navigator(app);
 const steps = new Steps({
   pairing: () => app.pairing,
@@ -110,7 +95,6 @@ const steps = new Steps({
   tex: (el) => mathLookup()(el)?.tex ?? null,
   changed: () => app.invalidate('content'),
 });
-// an element hidden at the steps shown is hidden, hence the selection is dropped at a change of them
 const shownSteps = new ShownSteps(() => app.current(), () => {
   app.selection.clear();
   app.invalidate('slide');
@@ -118,15 +102,12 @@ const shownSteps = new ShownSteps(() => app.current(), () => {
 app.nav = nav;
 app.steps = steps;
 app.shownSteps = shownSteps;
-// the refresh of today, of every part after any change, in this order
 app.onRefresh(['content', 'selection', 'slide', 'structure', 'layout'], () => {
   shownSteps.refresh();
   steps.refresh();
   nav.refresh();
 });
 
-// the order of the installs is the order of the stylesheets, of the listeners of an event, and of
-// the refreshes in a frame
 installCanvas(app);
 installToolbar(app);
 installNotes(app);
@@ -138,7 +119,6 @@ installOverflow(app);
 installTyping(app);
 installMathPop(app);
 installShownTex(app);
-// before installKeys, since the keys of the list of the citations are taken before those of the editor
 installTex(app);
 installSelection(app);
 installFileCommands(app);
@@ -146,7 +126,6 @@ installEditCommands(app);
 installViewCommands(app);
 installNavigateCommands(app);
 installKeys(app);
-// the stubs of the next modules, which do nothing yet
 installMenu(app);
 installDialog(app);
 installShell(app);
@@ -187,8 +166,6 @@ installMaskCommands(app);
 installFlipCommands(app);
 installObjects(app);
 const session = installSession(app);
-// a page opened with edit and session is in the session from its start, before a draft is offered
-// or the file is followed
 if (/[?&]session(=|&|$)/.test(location.search) && /[?&]edit(=|&|$)/.test(location.search)) session.begin();
 const startSession = loadSession(app, session);
 
@@ -205,11 +182,6 @@ async function init(): Promise<void> {
   await revealReady();
   const d = app.deck();
   if (d) {
-    // the slides change without a transition and with every step shown, as in the editing view
-    // of PowerPoint, and the keys of reveal.js for the overview (Esc, O), the black and the white
-    // screen (B, V, the period), fullscreen (F), the help (the question mark), and the speaker view
-    // (S) are off. the viewport of reveal.js is laid out again between the bars. a video is held at
-    // its poster, as a movie of Keynote in the editing view, and played only from the Video pane
     d.configure({ transition: 'none', backgroundTransition: 'none', fragments: false, autoPlayMedia: false, keyboard: { 27: null, 79: null, 66: null, 86: null, 190: null, 70: null, 191: null, 83: null } });
     for (const v of document.querySelectorAll<HTMLVideoElement>('.reveal .slides video')) {
       if (v.paused) continue;
@@ -220,7 +192,6 @@ async function init(): Promise<void> {
       app.emit('slide');
       app.invalidate();
     });
-    // a zoom of the stage tells the modules itself, once
     d.on('resize', () => {
       if (app.stage?.zooming) return;
       app.emit('resize');
@@ -229,8 +200,6 @@ async function init(): Promise<void> {
     app.relayout();
   }
   await mathReady();
-  // in a session, the client fetches the text of the version of the page. a page that could not
-  // join, e.g. on a static server, is edited as without a session
   const joined = await startSession();
   if (!joined) session.end();
   if (!joined && !(await fetchSource(app))) {
@@ -240,18 +209,15 @@ async function init(): Promise<void> {
   await app.follow.start();
 }
 
-// a call of a test sees the state after every refresh that is due
 function status() {
   app.flush();
   return {
     state: app.state,
-    // true where the file is written in place, false where a save is a download
     supported: canWrite(),
     dirty: app.dirty,
     file: app.handle?.name ?? null,
     texts: app.pairing?.texts.length ?? 0,
     sections: app.pairing?.sections.length ?? 0,
-    // the elements whose step or place was changed since the last save
     tags: app.tagEdits.size,
     problems: (app.pairing?.problems ?? []).map((p) => ({ slide: app.slideNumber(p.slide), tag: p.tag, reason: p.reason })),
     message: app.line.text,
@@ -262,15 +228,12 @@ function status() {
     draft: app.drafts.hasDraft(),
     recover: app.drafts.offered(),
     pane: app.notes.height(),
-    // the slides marked in the navigator as changed in the file, the slides of the file changed
-    // while the edits are not saved, and whether the file is followed
     ...app.follow.status(),
   };
 }
 
 const BeesonEditor = {
   ready: init(),
-  // a fresh text starts the history anew, and false opens it as the text of a save
   open: (text: string, fresh = true) => {
     app.files.open(text, fresh);
     return status();
@@ -285,22 +248,16 @@ const BeesonEditor = {
   toggleAutosave: () => app.files.toggleAutosave(),
   restoreDraft: () => app.drafts.restore(),
   setPane: (height: number) => app.notes.setPane(height),
-  // the file written by save, for a test with a handle of the origin private file system
   attach: (h: FileSystemFileHandle) => {
     app.handle = h;
   },
-  // a command of the registry run by its id, and its label, switch, and enabled state
   exec: (id: string, arg?: unknown) => app.commands.run(id, arg),
   state: (id: string) => app.commands.state(id),
-  // the selected elements, a line among them
   selection: () => app.selection.elements(),
   doc,
-  // the port of the synchronous editor, see session/port.ts, and its apply of a text
   session,
   apply: (text: string) => session.apply(text),
-  // the engine of the port loaded on a page without a session, for a test of an apply
   loadSession: () => loadEngine(),
-  // the delay of a step of Preview in ms, which a test shortens
   preview: previewTiming,
   version: __VERSION__,
 };
